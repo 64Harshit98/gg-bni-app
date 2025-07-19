@@ -24,11 +24,7 @@
     "noUncheckedSideEffectImports": true,
 
     /* Added for absolute path */
-    "composite": true, 
-    "baseUrl": "./", 
-    "paths": {
-      "@/*": ["./src/*"], 
-    },
+    "composite": true
   },
   "include": ["src"]
 }

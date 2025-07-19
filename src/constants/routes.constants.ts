@@ -1,0 +1,15 @@
+export const ROUTES = {
+    HOME: '/',
+    JOURNAL: '/journal',
+    MASTERS: '/masters',
+    REPORTS: '/reports',
+    ACCOUNT: '/account',
+    SALES: 'sales',
+    SALES_RETURN: 'sales-return',
+    PURCHASE: 'purchase',
+    PURCHASE_RETURN: 'purchase-return',
+    ITEM_ADD: 'item-add',
+    ITEM_GROUP: 'item-group',
+    USER_ADD: 'user-add',
+    PAYMENT: 'payment',
+};

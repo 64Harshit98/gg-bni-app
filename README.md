@@ -36,15 +36,11 @@ This project is a comprehensive application designed to streamline inventory tra
 - **[TypeScript](https://www.typescriptlang.org/)**: A superset of JavaScript that adds static types, enhancing code quality and maintainability.
 - **[Vite](https://vitejs.dev/)**: A blazing fast build tool for modern web projects, used for rapid development and optimized builds.
 - **[Tailwind CSS](https://tailwindcss.com/)**: A utility-first CSS framework for rapidly building custom designs.
-- **[Shadcn UI](https://ui.shadcn.com/)**: A collection of re-usable components built with Radix UI and Tailwind CSS, providing a beautiful and accessible UI.
-- **[Google Firestore](https://firebase.google.com/docs/firestore)**: A flexible, scalable NoSQL cloud database for developing mobile, web, and server applications, offering real-time data synchronization.
-- **[Firebase Authentication](https://firebase.google.com/docs/auth)**: Provides backend services, easy-to-use SDKs, and ready-made UI libraries to authenticate users to your app.
-- **[Node.js](https://nodejs.org/)**: JavaScript runtime environment (for development dependencies and scripts).
-- **[npm](https://www.npmjs.com/) / [Yarn](https://yarnpkg.com/) / [pnpm](https://pnpm.io/)**: Package manager (Specify which one you prefer to recommend).
-- **[React Router](https://reactrouter.com/en/main)**: (If you're using it for client-side routing)
-- **[Axios](https://axios-http.com/) / Fetch API**: (If you're making external API requests beyond Firebase SDKs)
-- **[ESLint](https://eslint.org/) / [Prettier](https://prettier.io/)**: (For code linting and formatting, highly recommended for TS projects)
-- _Add any other significant libraries or frameworks you've used (e.g., state management like Zustand, Redux, or React Context API, charting libraries, form libraries)._
+- **[RTK Query](https://redux-toolkit.js.org/rtk-query/overview)**: A powerful data fetching and caching tool built on top of Redux Toolkit.
+- **[React Router DOM](https://reactrouter.com/web/guides/quick-start)**: A standard library for routing in React.
+- **[React Icons](https://react-icons.github.io/react-icons/)**: A small library that helps you add icons to your React apps.
+- **[ESLint](https://eslint.org/)**: A tool for identifying and reporting on patterns found in ECMAScript/JavaScript code.
+- **[Prettier](https://prettier.io/)**: An opinionated code formatter.
 
 ---
 
@@ -108,4 +104,62 @@ To create an optimized production build of the application:
 
 ```bash
 npm run build # or yarn build or pnpm build
+```
+
+---
+
+## Project Structure
+
+```
+/
+├── public/
+│   └── vite.svg
+├── src/
+│   ├── app/
+│   │   ├── App.tsx
+│   │   ├── MainLayout.tsx
+│   │   └── index.ts
+│   ├── assets/
+│   ├── Components/
+│   │   └── index.tsx
+│   ├── Pages/
+│   │   ├── Account.tsx
+│   │   ├── Home.tsx
+│   │   ├── Journal.tsx
+│   │   ├── Masters.tsx
+│   │   ├── Reports.tsx
+│   │   ├── Master/
+│   │   │   ├── ItemAdd.tsx
+│   │   │   ├── ItemGroup.tsx
+│   │   │   ├── MastersLayout.tsx
+│   │   │   ├── Payment.tsx
+│   │   │   ├── Purchase.tsx
+│   │   │   ├── PurchaseReturn.tsx
+│   │   │   ├── Sales.tsx
+│   │   │   ├── SalesReturn.tsx
+│   │   │   └── UserAdd.tsx
+│   │   └── index.tsx
+│   ├── routes/
+│   │   └── routes.tsx
+│   ├── store/
+│   │   ├── api.ts
+│   │   └── store.ts
+│   ├── global.css
+│   ├── main.tsx
+│   └── vite-env.d.ts
+├── .env
+├── .firebaserc
+├── .gitignore
+├── .prettierignore
+├── .prettierrc
+├── eslint.config.js
+├── firebase.json
+├── index.html
+├── package-lock.json
+├── package.json
+├── README.md
+├── tsconfig.app.json
+├── tsconfig.json
+├── tsconfig.node.json
+└── vite.config.ts
 ```

@@ -1,42 +1,48 @@
+import { lazy } from 'react';
 import { createBrowserRouter } from 'react-router-dom';
 import MainLayout from '../app/MainLayout';
-import Home from '../Pages/Home';
-import Account from '../Pages/Account';
-import Journal from '../Pages/Journal';
-import Reports from '../Pages/Reports';
-import Sales from '../Pages/Master/Sales';
-import SalesReturn from '../Pages/Master/SalesReturn';
-import Purchase from '../Pages/Master/Purchase';
-import PurchaseReturn from '../Pages/Master/PurchaseReturn';
-import ItemAdd from '../Pages/Master/ItemAdd';
-import ItemGroup from '../Pages/Master/ItemGroup';
-import UserAdd from '../Pages/Master/UserAdd';
-import Masters from '../Pages/Masters';
-import Payment from '../Pages/Master/Payment'; // Import the Payment component
+import { ROUTES } from '../constants/routes.constants';
+
+// Lazy load all the page components
+const Home = lazy(() => import('../Pages/Home'));
+const Account = lazy(() => import('../Pages/Account'));
+const Journal = lazy(() => import('../Pages/Journal'));
+const Reports = lazy(() => import('../Pages/Reports'));
+const MastersLayout = lazy(() => import('../Pages/Master/MastersLayout'));
+const Masters = lazy(() => import('../Pages/Masters'));
+const Sales = lazy(() => import('../Pages/Master/Sales'));
+const SalesReturn = lazy(() => import('../Pages/Master/SalesReturn'));
+const Purchase = lazy(() => import('../Pages/Master/Purchase'));
+const PurchaseReturn = lazy(() => import('../Pages/Master/PurchaseReturn'));
+const ItemAdd = lazy(() => import('../Pages/Master/ItemAdd'));
+const ItemGroup = lazy(() => import('../Pages/Master/ItemGroup'));
+const UserAdd = lazy(() => import('../Pages/Master/UserAdd'));
+const Payment = lazy(() => import('../Pages/Master/Payment'));
 
 const router = createBrowserRouter([
   {
-    path: '/',
+    path: ROUTES.HOME,
     element: <MainLayout />,
     children: [
       { index: true, element: <Home /> },
-      { path: 'account', element: <Account /> },
-      { path: 'journal', element: <Journal /> },
+      { path: ROUTES.ACCOUNT.substring(1), element: <Account /> },
+      { path: ROUTES.JOURNAL.substring(1), element: <Journal /> },
       {
-        path: 'masters',
-        element: <Masters />,
+        path: ROUTES.MASTERS.substring(1),
+        element: <MastersLayout />,
         children: [
-          { path: 'sales-page-1', element: <Sales /> },
-          { path: 'sales-return-1', element: <SalesReturn /> },
-          { path: 'purchase-page-1', element: <Purchase /> },
-          { path: 'purchase-return-1', element: <PurchaseReturn /> },
-          { path: 'item-add', element: <ItemAdd /> },
-          { path: 'item-group', element: <ItemGroup /> },
-          { path: 'user-add', element: <UserAdd /> },
+          { index: true, element: <Masters /> },
+          { path: ROUTES.SALES, element: <Sales /> },
+          { path: ROUTES.SALES_RETURN, element: <SalesReturn /> },
+          { path: ROUTES.PURCHASE, element: <Purchase /> },
+          { path: ROUTES.PURCHASE_RETURN, element: <PurchaseReturn /> },
+          { path: ROUTES.ITEM_ADD, element: <ItemAdd /> },
+          { path: ROUTES.ITEM_GROUP, element: <ItemGroup /> },
+          { path: ROUTES.USER_ADD, element: <UserAdd /> },
+          { path: ROUTES.PAYMENT, element: <Payment /> },
         ],
       },
-      { path: '/payment', element: <Payment />},
-      { path: 'reports', element: <Reports /> },
+      { path: ROUTES.REPORTS.substring(1), element: <Reports /> },
     ],
   },
 ]);

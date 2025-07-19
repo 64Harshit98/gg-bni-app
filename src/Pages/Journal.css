@@ -1,0 +1,152 @@
+/* src/Pages/Journal.css */
+
+/* General body styling (important for full page background) */
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background-color: #f0f2f5;
+}
+
+.journal-page-wrapper {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh; /* Take full viewport height */
+    background-color: #ffffff; /* White background for the page itself */
+    width: 100%;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05); /* Subtle shadow */
+    overflow: hidden; /* Prevent overall page scrollbar */
+}
+
+/* Header */
+.journal-header {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start; /* Align title to the left */
+    padding: 1rem 1.5rem; /* Padding for header */
+    background-color: #ffffff;
+    border-bottom: 1px solid #e0e0e0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03);
+    flex-shrink: 0;
+}
+
+.journal-title {
+    font-size: 1.8rem;
+    font-weight: bold;
+    color: #2d3748; /* Dark gray text */
+    margin: 0; /* Remove default margin */
+}
+
+/* Type Tabs (Debit/Credit) - MODIFIED */
+.journal-type-tabs {
+    display: flex; /* Make it a flex container */
+    justify-content: space-around; /* Distribute space evenly */
+    /* Or use justify-content: stretch; for full width if items don't have flex: 1 */
+    padding: 0 1.5rem; /* Remove top/bottom padding here, add to tab buttons */
+    background-color: #ffffff;
+    border-bottom: 1px solid #e0e0e0; /* Separator line below type tabs */
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03); /* Subtle shadow */
+}
+
+.journal-type-tab {
+    flex: 1; /* Make each tab take equal available space */
+    background: none;
+    border: none;
+    padding: 0.75rem 0; /* Vertical padding, no horizontal padding as flex:1 handles width */
+    font-size: 1rem;
+    font-weight: 500;
+    color: #718096; /* Gray text for inactive tabs */
+    cursor: pointer;
+    transition: color 0.2s ease, border-bottom 0.2s ease;
+    border-bottom: 2px solid transparent; /* Transparent border for inactive */
+    text-align: center; /* Center the text within the tab */
+}
+
+.journal-type-tab.active {
+    color: #3182ce; /* Blue for active tab */
+    border-bottom-color: #3182ce; /* Blue underline for active tab */
+    font-weight: 600;
+}
+
+/* Filter Tabs (Paid/Unpaid/Upcoming) */
+.journal-filter-tabs {
+    display: flex;
+    justify-content: space-around; /* Distribute tabs evenly */
+    padding: 0.75rem 1.5rem;
+    background-color: #ffffff;
+    border-bottom: 1px solid #e0e0e0; /* Separator line below filter tabs */
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); /* Subtle shadow for filter bar */
+}
+
+.journal-filter-tab {
+    background: #f7fafc; /* Light background for tab buttons */
+    border: 1px solid #e2e8f0; /* Light border */
+    border-radius: 0.5rem; /* Rounded corners for tabs */
+    padding: 0.6rem 1.2rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #4a5568; /* Darker gray text */
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.journal-filter-tab.active {
+    background-color: #3182ce; /* Blue background for active tab */
+    color: #ffffff; /* White text for active tab */
+    border-color: #3182ce;
+    box-shadow: 0 2px 5px rgba(49, 130, 206, 0.2);
+}
+
+.journal-filter-tab:hover:not(.active) {
+    background-color: #ebf8ff; /* Lighter blue on hover for inactive */
+    border-color: #a3daff;
+}
+
+/* Invoice List Container */
+.journal-invoice-list-container {
+    flex-grow: 1; /* Allows content to take up remaining space */
+    padding: 1.5rem; /* Padding around the list */
+    overflow-y: auto; /* Enable scrolling for the list */
+    background-color: #f7f7f7; /* Light background for the list area */
+}
+
+.invoice-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: #ffffff;
+    padding: 1rem 1.2rem;
+    border-radius: 0.6rem;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06); /* Slightly more prominent shadow */
+    margin-bottom: 1rem; /* Space between invoice items */
+    border: 1px solid #edf2f7;
+    transition: transform 0.2s ease; /* Add a subtle hover effect */
+}
+
+.invoice-item:hover {
+    transform: translateY(-2px);
+}
+
+.invoice-number {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #2d3748;
+    margin-bottom: 0.25rem; /* Small space below number */
+}
+
+.invoice-time {
+    font-size: 0.85rem;
+    color: #718096;
+}
+
+.invoice-amount {
+    font-size: 1.4rem;
+    font-weight: bold;
+    color: #2d3748;
+}
+
+.no-invoices-message {
+    text-align: center;
+    color: #718096;
+    font-size: 1rem;
+    padding: 2rem;
+}

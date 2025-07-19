@@ -1,0 +1,241 @@
+/* src/Pages/Master/Sales.css */
+
+/* General body styling - important for full page background */
+body {
+    margin: 0;
+    font-family: Arial, sans-serif; /* Using a common sans-serif font */
+    background-color: #f0f2f5; /* Light grey background */
+}
+
+/* Main wrapper for the entire Sales page - make it end-to-end */
+.sales-page-wrapper {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh; /* Full viewport height */
+    background-color: #ffffff; /* White background for the page itself */
+    width: 100%; /* <--- THIS IS THE KEY CHANGE: Make it span the full width */
+}
+
+/* Top Bar (New Sale header) */
+.sales-top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem; /* 16px padding */
+    background-color: #ffffff;
+    border-bottom: 1px solid #e2e8f0; /* Light border at the bottom */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); /* Subtle shadow */
+}
+
+.sales-close-button {
+    font-size: 1.5rem; /* Equivalent to text-2xl */
+    font-weight: bold;
+    color: #4a5568; /* Equivalent to text-gray-600 */
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.25rem 0.5rem; /* Small padding for click area */
+}
+
+.sales-title {
+    font-size: 1.25rem; /* Equivalent to text-xl */
+    font-weight: 600; /* Equivalent to font-semibold */
+    color: #2d3748; /* Equivalent to text-gray-800 */
+}
+
+/* Main Content Area (scrollable part) */
+.sales-content-area {
+    flex-grow: 1; /* Allows content to take up remaining space */
+    padding: 1rem; /* 16px padding */
+    background-color: #ffffff;
+    width: 100%; /* Ensure it takes full width within the wrapper */
+    /* REMOVE max-width or margin: auto here if they exist and are limiting width */
+}
+
+/* Section heading (e.g., "Party Number", "Items", "Total Amount") */
+.section-heading {
+    display: block; /* Ensures it acts like a block-level element */
+    color: #4a5568; /* Equivalent to text-gray-700 */
+    font-size: 1.125rem; /* Equivalent to text-lg */
+    font-weight: 500; /* Equivalent to font-medium */
+    margin-bottom: 0.5rem; /* Equivalent to mb-2 */
+}
+.party-name-input {
+    width: 100%;
+    padding: 0.75rem; /* Equivalent to p-3 */
+    border: 1px solid #cbd5e0; /* Equivalent to border-gray-300 */
+    border-radius: 0.5rem; /* Equivalent to rounded-lg */
+    background-color: #ebf8ff; /* Equivalent to bg-blue-50 */
+    color: #2d3748; /* Equivalent to text-gray-800 */
+    font-size: 1rem;
+    padding-left: 1rem; /* Optional: Adjust padding for placeholder visibility */
+}
+.party-name-input::placeholder {
+    color: #a0aec0; /* Equivalent to placeholder-gray-500 */
+}
+.party-name-input:focus {
+    outline: none;
+    border-color: #63b3ed; /* Focus ring color */
+    box-shadow: 0 0 0 2px rgba(99, 179, 237, 0.5); /* Equivalent to focus:ring-2 focus:ring-blue-400 */
+}
+/* Party Number Input */
+.party-number-input {
+    width: 100%;
+    padding: 0.75rem; /* Equivalent to p-3 */
+    border: 1px solid #cbd5e0; /* Equivalent to border-gray-300 */
+    border-radius: 0.5rem; /* Equivalent to rounded-lg */
+    background-color: #ebf8ff; /* Equivalent to bg-blue-50 */
+    color: #2d3748; /* Equivalent to text-gray-800 */
+    font-size: 1rem;
+    padding-left: 1rem; /* Optional: Adjust padding for placeholder visibility */
+}
+.party-number-input::placeholder {
+    color: #a0aec0; /* Equivalent to placeholder-gray-500 */
+}
+.party-number-input:focus {
+    outline: none;
+    border-color: #63b3ed; /* Focus ring color */
+    box-shadow: 0 0 0 2px rgba(99, 179, 237, 0.5); /* Equivalent to focus:ring-2 focus:ring-blue-400 */
+}
+
+/* Items List Container */
+.items-list-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem; /* Equivalent to space-y-4 */
+}
+
+/* Individual Item Card */
+.item-card {
+    display: flex;
+    align-items: center; /* Still useful for vertical centering of text and quantity */
+    justify-content: space-between;
+    background-color: #ffffff;
+    padding: 0.75rem; /* Equivalent to p-3 */
+    border-radius: 0.5rem; /* Equivalent to rounded-lg */
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); /* Equivalent to shadow-sm */
+    border: 1px solid #f7fafc; /* Equivalent to border-gray-100 */
+}
+
+.item-name {
+    color: #2d3748; /* Equivalent to text-gray-800 */
+    font-weight: 500; /* Equivalent to font-medium */
+}
+
+.item-price {
+    color: #4a5568; /* Equivalent to text-gray-600 */
+    font-size: 0.875rem; /* Equivalent to text-sm */
+}
+
+/* Quantity Controls */
+.quantity-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem; /* Equivalent to space-x-2 */
+}
+
+.quantity-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem; /* Equivalent to w-8 (32px) */
+    height: 2rem; /* Equivalent to h-8 (32px) */
+    border-radius: 9999px; /* Equivalent to rounded-full */
+    background-color: #e2e8f0; /* Equivalent to bg-gray-200 */
+    color: #4a5568; /* Equivalent to text-gray-700 */
+    font-size: 1.125rem; /* Equivalent to text-lg */
+    font-weight: bold;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+.quantity-button:hover {
+    background-color: #cbd5e0; /* Slightly darker on hover */
+}
+
+.quantity-display {
+    color: #2d3748; /* Equivalent to text-gray-800 */
+    font-weight: 600; /* Equivalent to font-semibold */
+    width: 1.5rem; /* Equivalent to w-6 (24px) */
+    text-align: center;
+}
+
+/* Total Amount Display */
+.total-amount-section {
+    margin-bottom: 1.5rem; /* Equivalent to mb-6 */
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.total-amount-label {
+    color: #4a5568; /* Equivalent to text-gray-700 */
+    font-size: 1.125rem; /* Equivalent to text-lg */
+    font-weight: 500; /* Equivalent to font-medium */
+}
+
+.total-amount-value {
+    color: #1a202c; /* Equivalent to text-gray-900 */
+    font-size: 1.875rem; /* Equivalent to text-3xl */
+    font-weight: bold;
+}
+
+/* Fixed Bottom Bar */
+.sales-bottom-bar {
+    position: sticky; /* Make it stick to the bottom */
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 1rem; /* 16px padding */
+    background-color: #ffffff;
+    border-top: 1px solid #e2e8f0; /* Light border at the top */
+    box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.05); /* Subtle shadow pointing upwards */
+    display: flex;
+    justify-content: flex-end; /* Push items to the right */
+    align-items: center;
+    z-index: 10; /* Ensure it stays above other content */
+    width: 100%; /* Ensure the bottom bar also fills the width */
+}
+
+/* Camera Icon Button */
+.camera-button {
+    background-color: #ebf8ff; /* Equivalent to bg-blue-100 */
+    color: #3182ce; /* Equivalent to text-blue-600 */
+    padding: 0.75rem; /* Equivalent to p-3 */
+    border-radius: 9999px; /* Equivalent to rounded-full */
+    margin-right: 1rem; /* Equivalent to mr-4 */
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06); /* Equivalent to shadow-md */
+    border: none;
+    cursor: pointer;
+    display: flex; /* For centering SVG */
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+.camera-button:hover {
+    background-color: #cee8f5; /* Slightly darker blue on hover */
+}
+/* Styling for the SVG inside the camera button */
+.camera-button svg {
+    width: 1.5rem; /* Equivalent to h-6 w-6 */
+    height: 1.5rem;
+}
+
+/* Proceed to Payment Button */
+.proceed-button {
+    width: 100%; /* Take full width of its container */
+    max-width: 20rem; /* Equivalent to max-w-xs (320px) */
+    background-color: #3182ce; /* Equivalent to bg-blue-600 */
+    color: #ffffff;
+    padding: 0.75rem; /* Equivalent to p-3 */
+    border-radius: 0.5rem; /* Equivalent to rounded-lg */
+    font-size: 1.125rem; /* Equivalent to text-lg */
+    font-weight: 600; /* Equivalent to font-semibold */
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06); /* Equivalent to shadow-md */
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+.proceed-button:hover {
+    background-color: #2b6cb0; /* Equivalent to hover:bg-blue-700 */
+}

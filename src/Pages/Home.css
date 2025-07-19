@@ -1,0 +1,99 @@
+/* src/Pages/Home.css */
+
+/* General body styling (ensure this is in your main global CSS or directly applied if no global CSS) */
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background-color: #f0f2f5; /* Light grey background for the entire app */
+}
+
+.home-page-wrapper {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh; /* Take full viewport height */
+    background-color: #f7f7f7; /* Slightly off-white background for the page */
+    width: 100%; /* Make it span the full width */
+    box-shadow: 0 0 15px rgba(0, 0, 0, 0.05); /* Subtle shadow for the page container */
+    overflow: hidden; /* Prevent overall page scrollbar */
+}
+
+.home-header {
+    display: flex;
+    align-items: center;
+    justify-content: center; /* Center the title */
+    padding: 1rem;
+    background-color: #ffffff;
+    border-bottom: 1px solid #e0e0e0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03);
+    flex-shrink: 0; /* Prevent header from shrinking */
+}
+
+.home-title {
+    font-size: 1.8rem; /* Larger title */
+    font-weight: bold;
+    color: #333333;
+    margin: 0; /* Remove default h1 margin */
+}
+
+.home-content-area {
+    flex-grow: 1; /* Allows content to take up remaining space */
+    padding: 1.5rem; /* Generous padding */
+    overflow-y: auto; /* Enable vertical scrolling for content */
+    background-color: #f7f7f7; /* Match wrapper background */
+    box-sizing: border-box; /* Include padding in element's total width/height */
+}
+
+.welcome-message {
+    font-size: 1.1rem;
+    color: #555555;
+    text-align: center;
+    margin-bottom: 2rem;
+    font-style: italic;
+}
+
+.dashboard-card {
+    background-color: #ffffff;
+    padding: 1.2rem;
+    border-radius: 0.6rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    margin-bottom: 1.5rem; /* Space between cards */
+    border: 1px solid #eeeeee;
+}
+
+.dashboard-card h3 {
+    font-size: 1.2rem;
+    color: #444444;
+    margin-top: 0;
+    margin-bottom: 0.8rem;
+    border-bottom: 1px solid #f0f0f0;
+    padding-bottom: 0.5rem;
+}
+
+.dashboard-card p, .dashboard-card ul {
+    font-size: 0.95rem;
+    color: #666666;
+    line-height: 1.6;
+    margin-bottom: 0.5rem;
+}
+
+.dashboard-card ul {
+    list-style: none; /* Remove default bullet points */
+    padding-left: 0;
+}
+
+.dashboard-card ul li {
+    margin-bottom: 0.3rem;
+    padding-left: 1rem; /* Indent list items */
+    position: relative;
+}
+
+.dashboard-card ul li::before {
+    content: '•'; /* Custom bullet point */
+    color: #007bff; /* Blue bullet */
+    font-weight: bold;
+    display: inline-block;
+    width: 1em;
+    margin-left: -1em;
+    position: absolute;
+    left: 0;
+}

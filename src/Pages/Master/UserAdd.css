@@ -1,0 +1,103 @@
+/* src/Pages/Master/UserAdd.css */
+
+/* General body styling (ensure this is in your main global CSS or directly applied if no global CSS) */
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background-color: #f0f2f5;
+}
+
+.user-add-page-wrapper {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background-color: #f8f8f8; /* Light grey background for the page */
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+    width: 100%;
+    overflow: hidden;
+}
+
+.user-add-top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem;
+    background-color: #e0f2f7; /* Light blue-grey header */
+    border-bottom: 1px solid #cce0e6;
+    color: #2c5282; /* Darker blue text */
+    flex-shrink: 0;
+}
+
+.user-add-close-button {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #2c5282;
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+.user-add-title {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: #1a365d;
+}
+
+.user-add-content-area {
+    flex-grow: 1;
+    padding: 1.5rem;
+    overflow-y: auto;
+    background-color: #ffffff;
+}
+
+.user-add-form-group {
+    margin-bottom: 1.2rem;
+}
+
+.user-add-label {
+    display: block;
+    color: #4a5568;
+    font-size: 0.95rem;
+    font-weight: 500;
+    margin-bottom: 0.4rem;
+}
+
+.user-add-input,
+.user-add-select {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border: 1px solid #a0aec0; /* Medium grey border */
+    border-radius: 0.4rem;
+    background-color: #edf2f7; /* Very light grey background */
+    color: #2d3748;
+    font-size: 1rem;
+    box-sizing: border-box; /* Include padding in width */
+}
+.user-add-input::placeholder {
+    color: #a0aec0;
+}
+.user-add-input:focus,
+.user-add-select:focus {
+    outline: none;
+    border-color: #4299e1; /* Blue focus border */
+    box-shadow: 0 0 0 2px rgba(66, 153, 225, 0.3);
+}
+
+.user-add-save-button {
+    width: 100%;
+    padding: 1rem;
+    background-color: #3182ce; /* Blue button */
+    color: #ffffff;
+    font-size: 1.125rem;
+    font-weight: bold;
+    border: none;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+    margin-top: 1.5rem; /* Space above the button */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+.user-add-save-button:hover {
+    background-color: #2b6cb0; /* Darker blue on hover */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}

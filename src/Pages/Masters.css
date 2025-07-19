@@ -1,0 +1,147 @@
+/* src/Pages/Master/Master.css */
+
+/* General body styling (important for full page background) */
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background-color: #f0f2f5;
+}
+
+/* Main wrapper for the Masters page */
+.masters-page-wrapper {
+    display: flex;
+    flex-direction: column;
+    height: 100vh; /* Full viewport height */
+    background-color: #ffffff;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    overflow: hidden; /* Crucial: Prevents scrollbar on the wrapper itself */
+}
+
+/* Header for Masters page */
+.masters-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.5rem; /* Padding for header */
+    background-color: #ffffff;
+    border-bottom: 1px solid #e0e0e0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03);
+    flex-shrink: 0; /* Prevent header from shrinking */
+}
+
+.masters-title {
+    font-size: 1.8rem;
+    font-weight: bold;
+    color: #2d3748;
+    margin: 0;
+    flex-grow: 1; /* Allow title to take available space */
+    text-align: center; /* Center the title */
+}
+
+.masters-menu-icon,
+.masters-notification-icon {
+    /* Style for menu and notification icons */
+    font-size: 1.5rem;
+    color: #4a5568;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0 0.5rem; /* Adjust padding if needed */
+}
+
+/* Main content area for Masters options */
+.masters-content-area {
+    flex-grow: 1; /* Crucial: Allows content to take up remaining space */
+    padding: 1.5rem; /* Padding around the content */
+    overflow-y: auto; /* Crucial: Enables vertical scrolling ONLY for this div */
+    background-color: #f7f7f7; /* Light background for content area */
+    box-sizing: border-box; /* Include padding in element's total width/height */
+}
+
+/* Style for individual master options (like Sales / Sales Return) */
+.master-option-link {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: #ffffff;
+    padding: 1rem 1.2rem;
+    border-radius: 0.6rem;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+    margin-bottom: 1rem; /* Space between options */
+    border: 1px solid #edf2f7;
+    text-decoration: none; /* Remove underline from links */
+    color: #2d3748; /* Text color */
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.master-option-link:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+.master-option-text {
+    font-size: 1.1rem;
+    font-weight: 500;
+}
+
+.master-option-arrow {
+    font-size: 1.2rem;
+    color: #718096; /* Gray arrow color */
+}
+
+
+/* Styling for the nested Outlet content (e.g., Sales Page 1, Purchase, etc.) */
+.masters-outlet-content {
+    background-color: #ffffff; /* White background for the outlet content */
+    padding: 1.5rem;
+    border-radius: 0.6rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    margin-top: 1.5rem; /* Space above the outlet content */
+    min-height: 200px; /* Give it a min-height for visual separation */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: #718096;
+    font-style: italic;
+}
+
+/* Bottom Navigation Bar (if it's part of the global layout, not directly in Masters.css) */
+/* If your bottom navigation is *inside* Masters.tsx, uncomment and adjust these:
+.bottom-nav-bar {
+    position: sticky;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 0.5rem 1rem;
+    background-color: #ffffff;
+    border-top: 1px solid #e0e0e0;
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    flex-shrink: 0;
+    z-index: 20;
+}
+
+.nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-decoration: none;
+    color: #718096;
+    font-size: 0.75rem;
+    padding: 0.5rem;
+    transition: color 0.2s ease;
+}
+
+.nav-item.active {
+    color: #3182ce;
+}
+
+.nav-item svg {
+    width: 1.5rem;
+    height: 1.5rem;
+    margin-bottom: 0.2rem;
+}
+*/

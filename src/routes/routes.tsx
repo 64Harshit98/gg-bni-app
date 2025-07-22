@@ -8,7 +8,6 @@ const Home = lazy(() => import('../Pages/Home'));
 const Account = lazy(() => import('../Pages/Account'));
 const Journal = lazy(() => import('../Pages/Journal'));
 const Reports = lazy(() => import('../Pages/Reports'));
-const MastersLayout = lazy(() => import('../Pages/Master/MastersLayout'));
 const Masters = lazy(() => import('../Pages/Masters'));
 const Sales = lazy(() => import('../Pages/Master/Sales'));
 const SalesReturn = lazy(() => import('../Pages/Master/SalesReturn'));
@@ -18,18 +17,18 @@ const ItemAdd = lazy(() => import('../Pages/Master/ItemAdd'));
 const ItemGroup = lazy(() => import('../Pages/Master/ItemGroup'));
 const UserAdd = lazy(() => import('../Pages/Master/UserAdd'));
 const Payment = lazy(() => import('../Pages/Master/Payment'));
-
+const Login = lazy(() => import('../Pages/Auth/Login'));
 const router = createBrowserRouter([
   {
     path: ROUTES.HOME,
     element: <MainLayout />,
     children: [
       { index: true, element: <Home /> },
-      { path: ROUTES.ACCOUNT.substring(1), element: <Account /> },
+      { path: ROUTES.ACCOUNT.substring(1), element: <Account />},
       { path: ROUTES.JOURNAL.substring(1), element: <Journal /> },
       {
-        path: ROUTES.MASTERS.substring(1),
-        element: <MastersLayout />,
+        path: ROUTES.MASTERS,
+        element: <Masters />,
         children: [
           { index: true, element: <Masters /> },
           { path: ROUTES.SALES, element: <Sales /> },
@@ -45,6 +44,11 @@ const router = createBrowserRouter([
       { path: ROUTES.REPORTS.substring(1), element: <Reports /> },
     ],
   },
+   {
+    path: ROUTES.LOGIN, 
+    element: <Login />,
+  },
 ]);
+
 
 export default router;

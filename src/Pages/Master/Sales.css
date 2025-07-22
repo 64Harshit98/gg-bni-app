@@ -20,11 +20,14 @@ body {
 .sales-top-bar {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: space-between; /* Changed to space-between to push links and close button to ends */
     padding: 1rem; /* 16px padding */
     background-color: #ffffff;
     border-bottom: 1px solid #e2e8f0; /* Light border at the bottom */
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); /* Subtle shadow */
+    position: sticky; /* Make it stick to the top */
+    top: 0;
+    z-index: 1000; /* Ensure it's above other content */
 }
 
 .sales-close-button {
@@ -37,11 +40,45 @@ body {
     padding: 0.25rem 0.5rem; /* Small padding for click area */
 }
 
-.sales-title {
-    font-size: 1.25rem; /* Equivalent to text-xl */
-    font-weight: 600; /* Equivalent to font-semibold */
-    color: #2d3748; /* Equivalent to text-gray-800 */
+/* Removed .sales-title as it's replaced by navigation links */
+/* .sales-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #2d3748;
+} */
+
+/* --- New Styles for Sales Navigation Links --- */
+.sales-nav-links {
+    display: flex;
+    justify-content: center; /* Center the links within their container */
+    align-items: center;
+    flex-grow: 1; /* Allow navigation links to take available space */
+    gap: 1.5rem; /* Space between links */
 }
+
+.sales-nav-link {
+    text-decoration: none;
+    color: #4a5568; /* Default link color (gray-700 equivalent) */
+    font-size: 1rem; /* Default font size */
+    font-weight: 500; /* Medium font weight */
+    padding: 0.5rem 1rem; /* Padding around the text */
+    border-radius: 0.375rem; /* Slightly rounded corners */
+    transition: all 0.2s ease-in-out; /* Smooth transition for hover effects */
+}
+
+.sales-nav-link:hover {
+    background-color: #f0f2f5; /* Light grey background on hover */
+    color: #2d3748; /* Darker text on hover */
+}
+
+.sales-nav-link.active {
+    background-color: #3182ce; /* Blue background for active link */
+    color: #ffffff; /* White text for active link */
+    font-weight: 600; /* Slightly bolder for active link */
+    box-shadow: 0 2px 5px rgba(49, 130, 206, 0.3); /* Subtle shadow for active link */
+}
+/* --- End New Styles --- */
+
 
 /* Main Content Area (scrollable part) */
 .sales-content-area {
@@ -50,9 +87,15 @@ body {
     background-color: #ffffff;
     width: 100%; /* Ensure it takes full width within the wrapper */
     /* REMOVE max-width or margin: auto here if they exist and are limiting width */
+    overflow-y: auto; /* Enable scrolling for this area */
+    box-sizing: border-box; /* Include padding in the element's total width and height */
 }
 
 /* Section heading (e.g., "Party Number", "Items", "Total Amount") */
+.section-heading-group {
+    margin-bottom: 1rem;
+}
+
 .section-heading {
     display: block; /* Ensures it acts like a block-level element */
     color: #4a5568; /* Equivalent to text-gray-700 */
@@ -69,6 +112,7 @@ body {
     color: #2d3748; /* Equivalent to text-gray-800 */
     font-size: 1rem;
     padding-left: 1rem; /* Optional: Adjust padding for placeholder visibility */
+    box-sizing: border-box; /* Include padding in the element's total width and height */
 }
 .party-name-input::placeholder {
     color: #a0aec0; /* Equivalent to placeholder-gray-500 */
@@ -88,6 +132,7 @@ body {
     color: #2d3748; /* Equivalent to text-gray-800 */
     font-size: 1rem;
     padding-left: 1rem; /* Optional: Adjust padding for placeholder visibility */
+    box-sizing: border-box; /* Include padding in the element's total width and height */
 }
 .party-number-input::placeholder {
     color: #a0aec0; /* Equivalent to placeholder-gray-500 */
@@ -103,6 +148,7 @@ body {
     display: flex;
     flex-direction: column;
     gap: 1rem; /* Equivalent to space-y-4 */
+    margin-bottom: 1.5rem; /* Added margin-bottom for spacing before total amount */
 }
 
 /* Individual Item Card */
@@ -166,6 +212,10 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    padding: 1rem; /* Added padding to make it distinct */
+    background-color: #f7fafc; /* Light background for the section */
+    border-radius: 0.5rem; /* Rounded corners */
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); /* Subtle shadow */
 }
 
 .total-amount-label {
@@ -195,6 +245,7 @@ body {
     align-items: center;
     z-index: 10; /* Ensure it stays above other content */
     width: 100%; /* Ensure the bottom bar also fills the width */
+    box-sizing: border-box; /* Include padding in the element's total width and height */
 }
 
 /* Camera Icon Button */
@@ -238,4 +289,50 @@ body {
 }
 .proceed-button:hover {
     background-color: #2b6cb0; /* Equivalent to hover:bg-blue-700 */
+}
+
+/* Captured Image Preview */
+.captured-image-preview {
+    margin-bottom: 1rem;
+    text-align: center;
+    padding: 1rem;
+    background-color: #f7fafc; /* Lighter background for preview section */
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    border: 1px solid #e2e8f0;
+}
+
+.captured-image-preview h3 {
+    margin-top: 0;
+    color: #2d3748;
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+}
+
+.preview-image {
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.375rem;
+    margin-top: 0.5rem;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    display: block; /* Ensure it doesn't leave extra space below */
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.clear-image-button {
+    background-color: #e53e3e; /* Red for delete */
+    color: #fff;
+    border: none;
+    border-radius: 0.375rem;
+    padding: 0.5rem 1rem;
+    margin-top: 1rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: background-color 0.2s ease;
+}
+
+.clear-image-button:hover {
+    background-color: #c53030; /* Darker red on hover */
 }

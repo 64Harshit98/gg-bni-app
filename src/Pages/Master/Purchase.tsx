@@ -18,7 +18,7 @@ const Purchase = () => {
   const [gstin, setGstin] = useState('');
   const handleProceedToPayment = () => {
     // In a real app, you might include capturedImage data here
-    navigate('/payment', { state: { totalAmount: totalAmount.toFixed(2) } });
+    navigate('/masters/payment', { state: { totalAmount: totalAmount.toFixed(2) } });
   };
 
   // State for dynamic items

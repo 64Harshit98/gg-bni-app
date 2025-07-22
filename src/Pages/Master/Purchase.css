@@ -14,7 +14,6 @@ body {
     background-color: #f8fcf8;
     box-shadow: 0 4px 10px rgba(0, 50, 0, 0.1);
     width: 100%;
-    overflow: hidden;
 }
 
 .purchase-top-bar {
@@ -46,7 +45,6 @@ body {
 .purchase-content-area {
     flex-grow: 1;
     padding: 1.2rem;
-    overflow-y: auto;
     background-color: #ffffff;
 }
 
@@ -116,7 +114,7 @@ body {
   height: 1px;
   padding: 0;
   margin: -1px;
-  overflow: hidden;
+
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border-width: 0;

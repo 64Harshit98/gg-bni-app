@@ -3,7 +3,7 @@ import { Link, Outlet, useLocation } from 'react-router-dom';
 // IMPORTANT: Correct the import path for Master.css based on your file structure
 // From image_d9af3c.png, Master.css is in src/Pages/Master/
 import './Masters.css'; // Corrected import path
-
+import { ROUTES } from '../constants/routes.constants';
 const Masters = () => {
   const location = useLocation();
 
@@ -22,31 +22,31 @@ const Masters = () => {
         {isDefaultMastersView ? (
           <>
             {/* Display list of master options if no specific sub-page is selected */}
-            <Link to="sales-page-1" className="master-option-link">
+            <Link to={ROUTES.SALES} className="master-option-link">
               <span className="master-option-text">Sales </span>
               <span className="master-option-arrow">→</span>
             </Link>
-            <Link to="sales-return-1" className="master-option-link"> {/* Placeholder route */}
-                <span className="master-option-text">Sales Return</span>
-                <span className="master-option-arrow">→</span>
+            <Link to={ROUTES.SALES_RETURN} className="master-option-link">
+              <span className="master-option-text">Sales Return</span>
+              <span className="master-option-arrow">→</span>
             </Link>
-            <Link to="purchase-page-1" className="master-option-link">
+            <Link to={ROUTES.PURCHASE} className="master-option-link">
               <span className="master-option-text">Purchase </span>
               <span className="master-option-arrow">→</span>
             </Link>
-            <Link to="purchase-return-1" className="master-option-link">
+            <Link to={ROUTES.PURCHASE_RETURN} className="master-option-link">
               <span className="master-option-text">Purchase Return</span>
               <span className="master-option-arrow">→</span>
             </Link>
-            <Link to="user-add" className="master-option-link">
+            <Link to={ROUTES.USER_ADD} className="master-option-link">
               <span className="master-option-text">Users (Salesman, Admin)</span>
               <span className="master-option-arrow">→</span>
             </Link>
-            <Link to="item-add" className="master-option-link">
+            <Link to={ROUTES.ITEM_ADD} className="master-option-link">
               <span className="master-option-text">Items </span>
               <span className="master-option-arrow">→</span>
             </Link>
-            <Link to="item-group" className="master-option-link">
+            <Link to={ROUTES.ITEM_GROUP} className="master-option-link">
               <span className="master-option-text">Items Group</span>
               <span className="master-option-arrow">→</span>
             </Link>

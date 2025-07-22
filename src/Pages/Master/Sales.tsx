@@ -1,6 +1,6 @@
 // src/Pages/Master/Sales.tsx (or SalesPage1.tsx)
-import React, { useState, useRef } from 'react'; // Removed useEffect
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useRef } from 'react';
+import { useNavigate, Link } from 'react-router-dom'; // Added Link for navigation
 import './Sales.css';
 
 const SalesPage1 = () => {
@@ -33,7 +33,8 @@ const SalesPage1 = () => {
 
   const handleProceedToPayment = () => {
     // In a real app, you might include capturedImage data here
-    navigate('/payment', { state: { totalAmount: totalAmount.toFixed(2) } });
+    // FIX: Changed navigation path to '/masters/payment'
+    navigate('/masters/payment', { state: { totalAmount: totalAmount.toFixed(2) } });
   };
 
   // Function to trigger the hidden file input
@@ -66,7 +67,15 @@ const SalesPage1 = () => {
         <button onClick={() => navigate(-1)} className="sales-close-button">
           &times;
         </button>
-        <h2 className="sales-title">New Sale</h2>
+        {/* Links for Sales and Sales Return */}
+        <div className="sales-nav-links">
+          <Link to="/masters/sales" className="sales-nav-link active">
+            Sales
+          </Link>
+          <Link to="/masters/sales-return" className="sales-nav-link">
+            Sales Return
+          </Link>
+        </div>
         <div style={{ width: '1.5rem' }}></div> {/* Spacer for symmetry */}
       </div>
 
@@ -93,7 +102,7 @@ const SalesPage1 = () => {
             className="party-name-input"
           />
         </div>
-        
+
         {/* Party Number Section */}
         <div className="section-heading-group">
           <label htmlFor="party-number" className="section-heading">Party Number</label>
@@ -162,7 +171,10 @@ const SalesPage1 = () => {
             <path d="M4.5 12.75l6 6 9-13.5" />
           </svg>
         </button>
-        <button className="proceed-button" onClick={handleProceedToPayment}>
+        <button
+          onClick={handleProceedToPayment}
+          className="proceed-button"
+        >
           Proceed to Payment
         </button>
       </div>

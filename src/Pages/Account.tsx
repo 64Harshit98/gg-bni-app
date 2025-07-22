@@ -1,4 +1,32 @@
+import { useNavigate } from 'react-router-dom'; // Import useNavigate for redirection
+
 const Account = () => {
+  const navigate = useNavigate(); // Initialize useNavigate hook
+
+  // Function to handle logout logic
+  const handleLogout = () => {
+    // In a real application, you would:
+    // 1. Clear user session/token from localStorage or sessionStorage
+    // 2. Clear any user-related state in your application (e.g., Redux store)
+    // 3. Redirect to the login page (or home page)
+    console.log('User logged out.');
+    // Example: localStorage.removeItem('authToken');
+    navigate('/login'); // Redirect to the login page
+  };
+
+  // Function to navigate to the sign-up page
+  const handleSignUp = () => {
+    console.log('Navigating to Sign Up page.');
+    navigate('/Signup'); // Redirect to your signup page
+  };
+
+  // Function to handle edit profile
+  const handleEditProfile = () => {
+    console.log('Navigating to Edit Profile page or opening modal.');
+    // You might navigate to /edit-profile or open a modal here
+  };
+
+
   return (
     <div className="flex min-h-screen flex-col items-center bg-slate-50 py-8 px-4 text-center">
       <img
@@ -12,9 +40,27 @@ const Account = () => {
       </h2>
       <p className="mb-8 text-base text-slate-500">ethan.carter@email.com</p>
 
-      <button className="mb-12 rounded-full bg-slate-200 py-3 px-8 font-semibold text-slate-900 transition hover:bg-slate-300">
-        Edit Profile
-      </button>
+      {/* Buttons: Edit Profile, Logout, and Sign Up */}
+      <div className="mb-12 flex flex-wrap justify-center gap-4"> {/* Added flex-wrap for responsiveness */}
+        <button
+          onClick={handleEditProfile}
+          className="rounded-full bg-slate-200 py-3 px-8 font-semibold text-slate-900 transition hover:bg-slate-300"
+        >
+          Edit Profile
+        </button>
+        <button
+          onClick={handleLogout}
+          className="rounded-full bg-red-500 py-3 px-8 font-semibold text-white transition hover:bg-red-600"
+        >
+          Logout
+        </button>
+        <button
+          onClick={handleSignUp} // Attach signup handler
+          className="rounded-full bg-blue-600 py-3 px-8 font-semibold text-white transition hover:bg-blue-700"
+        >
+          Sign Up
+        </button>
+      </div>
 
       {/* NEW SECTION: Share your business card */}
       <div className="w-full border-t border-slate-200 pt-8">

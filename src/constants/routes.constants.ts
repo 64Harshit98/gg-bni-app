@@ -12,4 +12,5 @@ export const ROUTES = {
     ITEM_GROUP: 'item-group',
     USER_ADD: 'user-add',
     PAYMENT: 'payment',
+    LOGIN: 'login',
 };

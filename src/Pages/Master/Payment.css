@@ -1,0 +1,279 @@
+/* src/Pages/Payment.css */
+
+/* General body styling */
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background-color: #f0f2f5;
+}
+
+.payment-page-wrapper {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background-color: #ffffff;
+    width: 100%;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+    overflow: hidden;
+}
+
+.payment-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.5rem;
+    background-color: #ffffff;
+    border-bottom: 1px solid #e0e0e0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03);
+    flex-shrink: 0;
+}
+
+.payment-back-button {
+    font-size: 2rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #555;
+    line-height: 1;
+    padding: 0;
+}
+
+.payment-title {
+    font-size: 1.4rem;
+    font-weight: bold;
+    color: #2d3748;
+    margin: 0;
+    flex-grow: 1;
+    text-align: center;
+}
+
+.payment-header-spacer {
+    width: 2rem;
+}
+
+.payment-content-area {
+    flex-grow: 1;
+    padding: 1.5rem;
+    overflow-y: auto;
+    background-color: #f7f7f7;
+}
+
+.payment-subtitle {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #4a5568;
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+}
+
+/* Total Payable Section */
+.total-payable-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: #e6f0fa; /* Light blue background */
+    padding: 1rem 1.2rem;
+    border-radius: 0.6rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 2px 5px rgba(49, 130, 206, 0.1);
+    border: 1px solid #cce0e6;
+}
+
+.total-payable-label {
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: #2c5282;
+}
+
+.total-payable-amount {
+    font-size: 1.8rem;
+    font-weight: bold;
+    color: #1a365d;
+}
+
+
+.payment-modes-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.payment-mode-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background-color: #ffffff;
+    padding: 1rem 1.2rem;
+    border-radius: 0.6rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.payment-mode-item:hover {
+    background-color: #f0f8ff;
+    border-color: #a3daff;
+}
+
+.payment-mode-item.selected {
+    border-color: #3182ce;
+    box-shadow: 0 3px 10px rgba(49, 130, 206, 0.15);
+    background-color: #e6f0fa;
+}
+
+.mode-text-content {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+}
+
+.mode-name {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #2d3748;
+    margin-bottom: 0.2rem;
+}
+
+.mode-description {
+    font-size: 0.85rem;
+    color: #718096;
+}
+
+.mode-input-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem; /* Space between checkbox and input */
+}
+
+/* Custom Checkbox Styling */
+.mode-checkbox {
+    /* Hide default checkbox */
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    width: 1.25rem;
+    height: 1.25rem;
+    border: 2px solid #a0aec0;
+    border-radius: 0.25rem; /* Slightly rounded square */
+    cursor: pointer;
+    position: relative;
+    outline: none;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.mode-checkbox:checked {
+    background-color: #3182ce;
+    border-color: #3182ce;
+}
+
+.mode-checkbox:checked::after {
+    content: '✔'; /* Checkmark symbol */
+    font-size: 0.8rem;
+    color: #ffffff;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.mode-checkbox:focus {
+    box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.3);
+}
+
+/* Amount Input Field */
+.mode-amount-input {
+    width: 80px; /* Adjust width as needed */
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #cbd5e0;
+    border-radius: 0.4rem;
+    font-size: 0.9rem;
+    color: #2d3748;
+    background-color: #f7fafc;
+    box-sizing: border-box;
+    text-align: right; /* Align text to the right */
+}
+.mode-amount-input:focus {
+    outline: none;
+    border-color: #4299e1;
+    box-shadow: 0 0 0 2px rgba(66, 153, 225, 0.3);
+}
+
+/* Payment Summary Section */
+.payment-summary {
+    background-color: #ffffff;
+    padding: 1.2rem;
+    border-radius: 0.6rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    margin-top: 1.5rem; /* Space above summary */
+    border: 1px solid #e2e8f0;
+}
+
+.summary-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+    font-size: 1rem;
+    color: #4a5568;
+}
+
+.summary-row:last-child {
+    margin-bottom: 0;
+    padding-top: 0.5rem;
+    border-top: 1px dashed #e2e8f0; /* Dashed line for remaining */
+    font-weight: bold;
+    font-size: 1.1rem;
+    color: #2d3748;
+}
+
+.summary-amount {
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+.summary-amount.text-red {
+    color: #e53e3e; /* Red for remaining amount > 0 (still due) */
+}
+
+.summary-amount.text-green {
+    color: #38a169; /* Green for remaining amount <= 0 (paid or overpaid) */
+}
+
+
+/* Fixed Bottom Bar for Confirm Payment */
+.payment-bottom-bar {
+    flex-shrink: 0; /* Prevent from shrinking */
+    padding: 1rem;
+    background-color: #ffffff;
+    border-top: 1px solid #e0e0e0;
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10;
+}
+
+.confirm-payment-button {
+    width: 100%;
+    max-width: 300px; /* Max width for the button */
+    padding: 1rem;
+    background-color: #3182ce;
+    color: #ffffff;
+    font-size: 1.125rem;
+    font-weight: bold;
+    border: none;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+.confirm-payment-button:hover {
+    background-color: #2b6cb0;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+.confirm-payment-button:disabled {
+    background-color: #a0aec0;
+    cursor: not-allowed;
+    box-shadow: none;
+}

@@ -1,0 +1,96 @@
+/* src/Pages/Master/ItemAdd.css */
+
+.item-add-page-wrapper {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background-color: #f5f0ff; /* Example: Light purple background */
+    box-shadow: 0 4px 12px rgba(50, 0, 50, 0.1);
+    width: 100%;
+}
+
+.item-add-top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem;
+    background-color: #d8c2ed; /* Purple header */
+    border-bottom: 1px solid #b29de0;
+    color: #3d0066;
+}
+
+.item-add-close-button {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #3d0066;
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+.item-add-title {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #2b004d;
+}
+
+.item-add-content-area {
+    flex-grow: 1;
+    padding: 1.5rem;
+    background-color: #ffffff;
+}
+
+.item-add-form-group {
+    margin-bottom: 1.2rem;
+}
+
+.item-add-label {
+    display: block;
+    color: #5d3d80;
+    font-size: 1rem;
+    font-weight: 500;
+    margin-bottom: 0.4rem;
+}
+
+.item-add-input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #a37ddc; /* Purple border */
+    border-radius: 0.3rem;
+    background-color: #ede2f8; /* Very light purple */
+    color: #333;
+    font-size: 1rem;
+}
+.item-add-input:focus {
+    outline: none;
+    border-color: #7a30c0;
+    box-shadow: 0 0 0 2px rgba(122, 48, 192, 0.3);
+}
+
+.item-add-bottom-bar {
+    padding: 1.2rem;
+    background-color: #d8c2ed;
+    border-top: 1px solid #b29de0;
+    box-shadow: 0 -2px 6px rgba(50, 0, 50, 0.08);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.item-add-save-button {
+    width: 100%;
+    max-width: 18rem;
+    background-color: #6a0dad; /* Dark purple button */
+    color: #ffffff;
+    padding: 0.9rem;
+    border-radius: 0.4rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    transition: background-color 0.2s ease;
+}
+.item-add-save-button:hover {
+    background-color: #4a0080;
+}

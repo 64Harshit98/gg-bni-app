@@ -1,9 +1,10 @@
 // src/Pages/Master/SalesReturnPage.tsx
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import  { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom'; // Import Link
 import './SalesReturn.css'; // Dedicated CSS for Sales Return
+import { ROUTES } from '../../constants/routes.constants'; // Import ROUTES
 
-const SalesReturn = () => {
+const SalesReturnPage = () => {
   const navigate = useNavigate();
 
   // State for form fields
@@ -71,10 +72,18 @@ const SalesReturn = () => {
     <div className="sales-return-page-wrapper">
       {/* Top Bar */}
       <div className="sales-return-top-bar">
-        <button onClick={() => navigate(-1)} className="sales-return-close-button">
+        <button onClick={() => navigate('/masters')} className="sales-return-close-button">
           &times;
         </button>
-        <h2 className="sales-return-title">Sales Return</h2>
+        {/* Links for Sales and Sales Return */}
+        <div className="sales-return-nav-links">
+          <Link to={`${ROUTES.MASTERS}/${ROUTES.SALES}`} className="sales-return-nav-link">
+            Sales
+          </Link>
+          <Link to={`${ROUTES.MASTERS}/${ROUTES.SALES_RETURN}`} className="sales-return-nav-link active">
+            Sales Return
+          </Link>
+        </div>
         <div style={{ width: '1.5rem' }}></div> {/* Spacer for symmetry */}
       </div>
 
@@ -240,4 +249,4 @@ const SalesReturn = () => {
   );
 };
 
-export default SalesReturn;
+export default SalesReturnPage;

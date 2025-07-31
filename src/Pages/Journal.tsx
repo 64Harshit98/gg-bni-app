@@ -71,7 +71,7 @@ const Journal = () => {
           }`}
           onClick={() => setActiveType('Debit')}
         >
-          Debit
+          Debit (-)
         </button>
         <button
           className={`flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${
@@ -81,7 +81,7 @@ const Journal = () => {
           }`}
           onClick={() => setActiveType('Credit')}
         >
-          Credit
+          Credit (+)
         </button>
       </div>
 

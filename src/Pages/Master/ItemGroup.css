@@ -39,6 +39,13 @@ body {
     cursor: pointer;
     padding: 0.25rem 0.5rem;
 }
+.items-nav-links {
+    display: flex;
+    justify-content: center; /* Center the links within their container */
+    align-items: center;
+    flex-grow: 1; /* Allow navigation links to take available space */
+    gap: 1.5rem; /* Space between links */
+}
 
 .item-group-title {
     font-size: 1.25rem;
@@ -46,6 +53,27 @@ body {
     color: #2d3748;
     flex-grow: 1;
     text-align: center;
+}
+.item-group-navigate-button {
+  /* Inherit general button properties from .tab-button */
+  padding: 10px 20px; /* Adjust padding as needed */
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  border-radius: 6px;
+  white-space: nowrap;
+  align-content: center;
+  /* Apply the active blue style directly */
+  background-color: #007bff;
+  color: white;
+  box-shadow: 0 2px 6px rgba(0, 123, 255, 0.3);
+}
+
+.item-group-navigate-button:hover {
+  background-color: #0056b3; /* Darker blue on hover */
+  box-shadow: 0 4px 8px rgba(0, 123, 255, 0.3); /* More pronounced shadow on hover */
 }
 
 /* Main Content Area */

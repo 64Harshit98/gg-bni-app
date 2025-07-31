@@ -13,7 +13,7 @@ body {
     flex-direction: column;
     min-height: 100vh; /* Full viewport height */
     background-color: #ffffff; /* White background for the page itself */
-    width: 100%; /* <--- THIS IS THE KEY CHANGE: Make it span the full width */
+    width: 100%; /* Make it span the full width */
 }
 
 /* Top Bar (New Sale header) */
@@ -39,13 +39,6 @@ body {
     cursor: pointer;
     padding: 0.25rem 0.5rem; /* Small padding for click area */
 }
-
-/* Removed .sales-title as it's replaced by navigation links */
-/* .sales-title {
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: #2d3748;
-} */
 
 /* --- New Styles for Sales Navigation Links --- */
 .sales-nav-links {
@@ -86,7 +79,6 @@ body {
     padding: 1rem; /* 16px padding */
     background-color: #ffffff;
     width: 100%; /* Ensure it takes full width within the wrapper */
-    /* REMOVE max-width or margin: auto here if they exist and are limiting width */
     overflow-y: auto; /* Enable scrolling for this area */
     box-sizing: border-box; /* Include padding in the element's total width and height */
 }
@@ -243,9 +235,9 @@ body {
     display: flex;
     justify-content: flex-end; /* Push items to the right */
     align-items: center;
-    z-index: 10; /* Ensure it stays above other content */
-    width: 100%; /* Ensure the bottom bar also fills the width */
-    box-sizing: border-box; /* Include padding in the element's total width and height */
+    z-index: 10;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 /* Camera Icon Button */
@@ -274,21 +266,21 @@ body {
 
 /* Proceed to Payment Button */
 .proceed-button {
-    width: 100%; /* Take full width of its container */
-    max-width: 20rem; /* Equivalent to max-w-xs (320px) */
-    background-color: #3182ce; /* Equivalent to bg-blue-600 */
+    width: 100%;
+    max-width: 20rem;
+    background-color: #3182ce;
     color: #ffffff;
-    padding: 0.75rem; /* Equivalent to p-3 */
-    border-radius: 0.5rem; /* Equivalent to rounded-lg */
-    font-size: 1.125rem; /* Equivalent to text-lg */
-    font-weight: 600; /* Equivalent to font-semibold */
-    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06); /* Equivalent to shadow-md */
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
     border: none;
     cursor: pointer;
     transition: background-color 0.2s ease, box-shadow 0.2s ease;
 }
 .proceed-button:hover {
-    background-color: #2b6cb0; /* Equivalent to hover:bg-blue-700 */
+    background-color: #2b6cb0;
 }
 
 /* Captured Image Preview */

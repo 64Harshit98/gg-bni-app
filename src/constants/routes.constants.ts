@@ -12,5 +12,7 @@ export const ROUTES = {
     ITEM_GROUP: 'item-group',
     USER_ADD: 'user-add',
     PAYMENT: 'payment',
-    LOGIN: 'login',
+    LOGIN: '/login',
+    SIGNUP: '/signup',
+    FORGOT_PASSWORD: 'forgot-password',
 };

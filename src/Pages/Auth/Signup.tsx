@@ -1,16 +1,90 @@
-// src/Pages/Auth/SignUp.tsx
+// src/app/Pages/Auth/Signup.tsx
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-// import './SignUp.css'; // Create this CSS file
+import { signupUser } from '../../lib/auth_operations'; // Adjust path as needed
+import { ROUTES } from '../../constants/routes.constants';
+import './Signup.css'; // Assuming you have a CSS file for Signup
 
-const SignUp = () => {
+const Signup: React.FC = () => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      await signupUser(email, password);
+      alert('Account created successfully! Please log in.');
+      navigate(ROUTES.LOGIN); // Redirect to login page after successful signup
+    } catch (err: any) {
+      setError(err.message || 'Signup failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <div className="signup-page-container">
-      <h1>Sign Up</h1>
-      <p>Create your new account.</p>
-      {/* Add form fields and logic here */}
-      <button onClick={() => navigate('/login')}>Already have an account? Login</button>
+    <div className="signup-container">
+      <form onSubmit={handleSubmit} className="signup-form">
+        <h2>Sign Up</h2>
+        {error && <p className="signup-error-message">{error}</p>}
+        <div className="form-group">
+          <label htmlFor="email">Email</label>
+          <input
+            type="email"
+            id="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            disabled={loading}
+          />
+        </div>
+        <div className="form-group">
+          <label htmlFor="password">Password</label>
+          <input
+            type="password"
+            id="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            disabled={loading}
+          />
+        </div>
+        <div className="form-group">
+          <label htmlFor="confirmPassword">Confirm Password</label>
+          <input
+            type="password"
+            id="confirmPassword"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+            disabled={loading}
+          />
+        </div>
+        <button type="submit" disabled={loading}>
+          {loading ? 'Signing up...' : 'Sign Up'}
+        </button>
+        <p className="signup-switch-link">
+          Already have an account?{' '}
+          <span onClick={() => navigate(ROUTES.LOGIN)} style={{ cursor: 'pointer', color: '#007bff' }}>
+            Login
+          </span>
+        </p>
+      </form>
     </div>
   );
 };
-export default SignUp;
+
+export default Signup;

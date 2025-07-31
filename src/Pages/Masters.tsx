@@ -23,13 +23,13 @@ const Masters = () => {
           <>
             {/* Display list of master options if no specific sub-page is selected */}
             <Link to={ROUTES.SALES} className="master-option-link">
-              <span className="master-option-text">Sales </span>
+              <span className="master-option-text">Sales/Sales Return </span>
               <span className="master-option-arrow">→</span>
             </Link>
-            <Link to={ROUTES.SALES_RETURN} className="master-option-link">
+            {/* <Link to={ROUTES.SALES_RETURN} className="master-option-link">
               <span className="master-option-text">Sales Return</span>
               <span className="master-option-arrow">→</span>
-            </Link>
+            </Link> */}
             <Link to={ROUTES.PURCHASE} className="master-option-link">
               <span className="master-option-text">Purchase </span>
               <span className="master-option-arrow">→</span>
@@ -43,13 +43,13 @@ const Masters = () => {
               <span className="master-option-arrow">→</span>
             </Link>
             <Link to={ROUTES.ITEM_ADD} className="master-option-link">
-              <span className="master-option-text">Items </span>
+              <span className="master-option-text">Items/Items Group </span>
               <span className="master-option-arrow">→</span>
             </Link>
-            <Link to={ROUTES.ITEM_GROUP} className="master-option-link">
+            {/* <Link to={ROUTES.ITEM_GROUP} className="master-option-link">
               <span className="master-option-text">Items Group</span>
               <span className="master-option-arrow">→</span>
-            </Link>
+            </Link> */}
           </>
         ) : (
           // Render nested route content (e.g., Sales Page 1, Purchase)

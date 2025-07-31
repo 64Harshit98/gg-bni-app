@@ -1,0 +1,18 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Rules for itemGroups collection
+    match /itemGroups/{itemGroupId} {
+      // Allowing anyone to read, create, update, and delete item groups
+      allow read, create, update, delete: if true;
+    }
+
+    // Rules for items collection
+    match /items/{itemId} {
+      // Allowing anyone to read, create, update, and delete items
+      allow read, create, update, delete: if true;
+    }
+
+  }
+}

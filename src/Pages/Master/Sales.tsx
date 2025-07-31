@@ -1,7 +1,8 @@
-// src/Pages/Master/Sales.tsx (or SalesPage1.tsx)
+// src/Pages/Master/SalesPage1.tsx
 import React, { useState, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom'; // Added Link for navigation
+import { useNavigate, Link ,useLocation} from 'react-router-dom'; // Added Link for navigation
 import './Sales.css';
+import { ROUTES } from '../../constants/routes.constants';
 
 const SalesPage1 = () => {
   const navigate = useNavigate();
@@ -13,7 +14,8 @@ const SalesPage1 = () => {
     { id: 3, name: 'Hat', price: 1000.00, quantity: 1 },
     { id: 4, name: 'Jacket', price: 2000.00, quantity: 1 },
   ]);
-
+  const location = useLocation(); // To get current path for conditional rendering
+  const isActive = (path: string) => location.pathname.includes(path);
   // State to hold the captured image file or data URL for preview
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null); // Ref for the hidden file input
@@ -33,7 +35,6 @@ const SalesPage1 = () => {
 
   const handleProceedToPayment = () => {
     // In a real app, you might include capturedImage data here
-    // FIX: Changed navigation path to '/masters/payment'
     navigate('/masters/payment', { state: { totalAmount: totalAmount.toFixed(2) } });
   };
 
@@ -46,17 +47,12 @@ const SalesPage1 = () => {
   const handleFileCapture = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      // You can now process this 'file' object
-      // For demonstration, let's create a URL to display the image
       const reader = new FileReader();
       reader.onloadend = () => {
         setCapturedImage(reader.result as string);
       };
       reader.readAsDataURL(file); // Read file as Data URL for preview
-
       console.log("Captured file:", file.name, file.type, file.size);
-      // In a real application, you would typically upload this file to a server
-      // or save its reference for further processing.
     }
   };
 
@@ -64,15 +60,18 @@ const SalesPage1 = () => {
     <div className="sales-page-wrapper">
       {/* Top Bar */}
       <div className="sales-top-bar">
-        <button onClick={() => navigate(-1)} className="sales-close-button">
+        <button onClick={() => navigate('/masters')} className="sales-close-button">
           &times;
         </button>
         {/* Links for Sales and Sales Return */}
         <div className="sales-nav-links">
-          <Link to="/masters/sales" className="sales-nav-link active">
+          <Link
+          to={`${ROUTES.MASTERS}/${ROUTES.SALES}`}
+          className={`sales-nav-link ${isActive(ROUTES.SALES) ? 'active' : ''}`}
+        >
             Sales
           </Link>
-          <Link to="/masters/sales-return" className="sales-nav-link">
+          <Link to={`${ROUTES.MASTERS}/${ROUTES.SALES_RETURN}`} className="sales-nav-link">
             Sales Return
           </Link>
         </div>
@@ -158,11 +157,11 @@ const SalesPage1 = () => {
         {/* Hidden file input */}
         <input
           type="file"
-          accept="image/*" // Accept all image types
-          capture="environment" // Suggest using the rear camera (use "user" for front camera)
+          accept="image/*"
+          capture="environment"
           ref={fileInputRef}
           onChange={handleFileCapture}
-          style={{ display: 'none' }} // Hide the actual input
+          style={{ display: 'none' }}
         />
         {/* Camera Button - now acts as a label for the hidden input */}
         <button className="camera-button" onClick={triggerCameraInput}>

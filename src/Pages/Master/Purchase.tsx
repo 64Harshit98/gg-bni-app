@@ -2,7 +2,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Purchase.css'; // Import its unique CSS
-
+import { ROUTES } from '../../constants/routes.constants';
+import { Link } from 'react-router-dom';
 interface PurchaseItem {
   id: number;
   itemName: string;
@@ -86,7 +87,14 @@ const Purchase = () => {
         <button onClick={() => navigate(-1)} className="purchase-close-button">
           &times;
         </button>
-        <h2 className="purchase-title">New Purchase</h2>
+         <div className="purchase-nav-links">
+          <Link to={`${ROUTES.MASTERS}/${ROUTES.PURCHASE}`} className="purchase-nav-link">
+            Purchase
+          </Link>
+          <Link to={`${ROUTES.MASTERS}/${ROUTES.PURCHASE_RETURN}`} className="purchase-nav-link active">
+            Purchase Return
+          </Link>
+        </div>
         <div style={{ width: '1.5rem' }}></div> {/* Spacer */}
       </div>
 

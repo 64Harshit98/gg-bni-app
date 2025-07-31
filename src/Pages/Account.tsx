@@ -14,11 +14,7 @@ const Account = () => {
     navigate('/login'); // Redirect to the login page
   };
 
-  // Function to navigate to the sign-up page
-  const handleSignUp = () => {
-    console.log('Navigating to Sign Up page.');
-    navigate('/Signup'); // Redirect to your signup page
-  };
+  // Function to navigate to the sign-up page 
 
   // Function to handle edit profile
   const handleEditProfile = () => {
@@ -53,12 +49,6 @@ const Account = () => {
           className="rounded-full bg-red-500 py-3 px-8 font-semibold text-white transition hover:bg-red-600"
         >
           Logout
-        </button>
-        <button
-          onClick={handleSignUp} // Attach signup handler
-          className="rounded-full bg-blue-600 py-3 px-8 font-semibold text-white transition hover:bg-blue-700"
-        >
-          Sign Up
         </button>
       </div>
 

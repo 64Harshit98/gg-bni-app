@@ -1,159 +1,115 @@
-/* src/Pages/Auth/Login.css */
+/* src/app/Pages/Auth/Login.css */
 
-/* Full page container for centering */
-.login-page-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 100vh;
-    background-color: #f0f2f5; /* Light grey background */
-    font-family: Arial, sans-serif;
-    padding: 1rem; /* Add some padding for smaller screens */
-    box-sizing: border-box; /* Include padding in element's total width and height */
+.login-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh; /* Full viewport height */
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); /* Soft gradient background */
+  padding: 20px;
+  box-sizing: border-box; /* Include padding in element's total width/height */
 }
 
-/* Login Card/Form Container */
-.login-card {
-    background-color: #ffffff;
-    padding: 2.5rem 2rem; /* Increased padding */
-    border-radius: 1rem; /* More rounded corners */
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1); /* Stronger shadow */
-    width: 100%;
-    max-width: 400px; /* Max width for the card */
-    text-align: center;
-}
-
-.login-title {
-    font-size: 2rem; /* Larger title */
-    font-weight: bold;
-    color: #2d3748; /* Dark grey */
-    margin-bottom: 0.5rem;
-}
-
-.login-subtitle {
-    font-size: 1rem;
-    color: #718096; /* Medium grey */
-    margin-bottom: 2rem; /* More space below subtitle */
-}
-
-/* Form Styling */
 .login-form {
-    display: flex;
-    flex-direction: column;
-    gap: 1.25rem; /* Space between field groups */
+  background-color: #ffffff;
+  padding: 40px;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1); /* Deeper shadow for depth */
+  width: 100%;
+  max-width: 400px; /* Max width for the form */
+  text-align: center;
 }
 
-.login-field-group {
-    text-align: left;
+.login-form h2 {
+  font-size: 2.2rem;
+  color: #333;
+  margin-bottom: 30px;
+  font-weight: 700;
 }
 
-.login-label {
-    display: block;
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: #4a5568; /* Slightly darker grey for labels */
-    margin-bottom: 0.4rem;
+.form-group {
+  margin-bottom: 20px;
+  text-align: left; /* Align labels to the left */
 }
 
-.login-input {
-    width: 100%;
-    padding: 0.85rem 1rem; /* Larger padding for inputs */
-    border: 1px solid #cbd5e0; /* Light border */
-    border-radius: 0.5rem; /* Rounded input corners */
-    font-size: 1rem;
-    color: #2d3748;
-    background-color: #f7fafc; /* Very light grey background for inputs */
-    box-sizing: border-box; /* Crucial for full width with padding */
-    transition: all 0.2s ease-in-out;
+.form-group label {
+  display: block;
+  font-size: 0.95rem;
+  color: #555;
+  margin-bottom: 8px;
+  font-weight: 600;
 }
 
-.login-input::placeholder {
-    color: #a0aec0; /* Placeholder color */
+.form-group input {
+  width: 100%;
+  padding: 12px 15px;
+  border: 1px solid #ddd;
+  border-radius: 8px; /* Slightly more rounded inputs */
+  font-size: 1rem;
+  color: #333;
+  box-sizing: border-box;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.login-input:focus {
-    outline: none;
-    border-color: #3182ce; /* Blue border on focus */
-    box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.2); /* Soft blue shadow on focus */
-    background-color: #ebf8ff; /* Lighter blue background on focus */
+.form-group input:focus {
+  border-color: #007bff;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+}
+
+.login-form button[type="submit"] {
+  width: 100%;
+  padding: 14px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 4px 10px rgba(0, 123, 255, 0.3);
+}
+
+.login-form button[type="submit"]:hover {
+  background-color: #0056b3;
+  box-shadow: 0 6px 15px rgba(0, 123, 255, 0.4);
+}
+
+.login-form button[type="submit"]:disabled {
+  background-color: #a0cffc;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .login-error-message {
-    color: #e53e3e; /* Red for errors */
-    font-size: 0.875rem;
-    margin-top: -0.75rem; /* Pull up closer to input */
-    margin-bottom: 0.5rem;
-    text-align: left;
+  color: #dc3545; /* Red for errors */
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
+  padding: 10px;
+  margin-bottom: 20px;
+  border-radius: 8px;
+  font-size: 0.9rem;
 }
 
-.login-button {
-    width: 100%;
-    padding: 0.9rem 1.5rem; /* Generous padding */
-    background-color: #3182ce; /* Primary blue */
-    color: #ffffff;
-    border: none;
-    border-radius: 0.5rem;
-    font-size: 1.1rem; /* Larger font size */
-    font-weight: bold;
-    cursor: pointer;
-    margin-top: 1rem; /* Space above button */
-    transition: background-color 0.2s ease, transform 0.1s ease;
-    box-shadow: 0 4px 10px rgba(49, 130, 206, 0.2); /* Subtle shadow */
+.login-switch-link,
+.login-reset-password {
+  margin-top: 20px;
+  font-size: 0.9rem;
+  color: #666;
 }
 
-.login-button:hover {
-    background-color: #2b6cb0; /* Darker blue on hover */
-    transform: translateY(-1px); /* Slight lift effect */
+.login-switch-link span,
+.login-reset-password span {
+  color: #007bff;
+  cursor: pointer;
+  font-weight: 500;
+  text-decoration: none; /* No default underline */
+  transition: color 0.2s ease;
 }
 
-.login-button:active {
-    transform: translateY(0);
-    box-shadow: 0 2px 5px rgba(49, 130, 206, 0.3);
-}
-
-/* Links Section */
-.login-links {
-    margin-top: 2rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem; /* Space between links */
-}
-
-.login-link-button {
-    background: none;
-    border: none;
-    color: #3182ce; /* Blue for links */
-    font-size: 0.95rem;
-    cursor: pointer;
-    text-decoration: none; /* In case it's an anchor tag */
-    transition: color 0.2s ease;
-}
-
-.login-link-button:hover {
-    color: #2b6cb0; /* Darker blue on hover */
-    text-decoration: underline;
-}
-
-.login-signup-text {
-    color: #4a5568;
-    font-size: 0.95rem;
-}
-
-.login-signup-text .login-link-button {
-    font-weight: 600; /* Make Sign Up link bolder */
-}
-
-/* Responsive adjustments */
-@media (max-width: 480px) {
-    .login-card {
-        padding: 2rem 1.5rem;
-        margin: 1rem; /* Ensure some margin on very small screens */
-    }
-    .login-title {
-        font-size: 1.75rem;
-    }
-    .login-button {
-        font-size: 1rem;
-        padding: 0.8rem 1rem;
-    }
+.login-switch-link span:hover,
+.login-reset-password span:hover {
+  color: #0056b3;
+  text-decoration: underline; /* Underline on hover for better UX */
 }

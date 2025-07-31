@@ -1,8 +1,9 @@
-import { lazy } from 'react';
-import { createBrowserRouter } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
+import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import MainLayout from '../app/MainLayout';
 import { ROUTES } from '../constants/routes.constants';
-
+import {AuthProvider} from '../context/Authcontext'; // Import AuthProvider
+import ProtectedRoute from '../constants/ProtectedRoutes';
 // Lazy load all the page components
 const Home = lazy(() => import('../Pages/Home'));
 const Account = lazy(() => import('../Pages/Account'));
@@ -18,13 +19,18 @@ const ItemGroup = lazy(() => import('../Pages/Master/ItemGroup'));
 const UserAdd = lazy(() => import('../Pages/Master/UserAdd'));
 const Payment = lazy(() => import('../Pages/Master/Payment'));
 const Login = lazy(() => import('../Pages/Auth/Login'));
+const Signup = lazy(() => import('../Pages/Auth/Signup'));
 const router = createBrowserRouter([
   {
     path: ROUTES.HOME,
-    element: <MainLayout />,
+    element: (
+      <ProtectedRoute>
+        <MainLayout />
+      </ProtectedRoute>
+    ),
     children: [
       { index: true, element: <Home /> },
-      { path: ROUTES.ACCOUNT.substring(1), element: <Account />},
+      { path: ROUTES.ACCOUNT.substring(1), element: <Account /> },
       { path: ROUTES.JOURNAL.substring(1), element: <Journal /> },
       {
         path: ROUTES.MASTERS,
@@ -48,7 +54,19 @@ const router = createBrowserRouter([
     path: ROUTES.LOGIN, 
     element: <Login />,
   },
+  {
+    path: ROUTES.SIGNUP,
+    element: <Signup />,
+  },
 ]);
+const AppRouter: React.FC = () => {
+    return (
+        <AuthProvider>
+            <Suspense fallback={<div>Loading app...</div>}> {/* Suspense for lazy loading */}
+                <RouterProvider router={router} />
+            </Suspense>
+        </AuthProvider>
+    );
+};
 
-
-export default router;
+export default AppRouter;

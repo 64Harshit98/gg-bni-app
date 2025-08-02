@@ -31,11 +31,7 @@ const Masters = () => {
               <span className="master-option-arrow">→</span>
             </Link> */}
             <Link to={ROUTES.PURCHASE} className="master-option-link">
-              <span className="master-option-text">Purchase </span>
-              <span className="master-option-arrow">→</span>
-            </Link>
-            <Link to={ROUTES.PURCHASE_RETURN} className="master-option-link">
-              <span className="master-option-text">Purchase Return</span>
+              <span className="master-option-text">Purchase/Purchase Return </span>
               <span className="master-option-arrow">→</span>
             </Link>
             <Link to={ROUTES.USER_ADD} className="master-option-link">

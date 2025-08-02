@@ -1,43 +1,127 @@
-import { useNavigate } from 'react-router-dom'; // Import useNavigate for redirection
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/Authcontext'; // Import useAuth hook
+import { logoutUser } from '../lib/auth_operations'; // Import logout function
+import { db } from '../lib/firebase'; // Import Firestore database instance
+import { doc, getDoc } from 'firebase/firestore';
+import { ROUTES } from '../constants/routes.constants'; // Import routes for navigation
 
-const Account = () => {
-  const navigate = useNavigate(); // Initialize useNavigate hook
+// Define a type for the user profile data
+interface UserProfile {
+  name: string;
+  email: string;
+  // Add other fields from your Firestore user document here
+}
+
+const Account: React.FC = () => {
+  const navigate = useNavigate();
+
+  const { currentUser, loading: loadingAuth } = useAuth(); // Get user and auth loading state
+  const [profileData, setProfileData] = useState<UserProfile | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  
+  // useEffect to fetch user data from Firestore
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      // First, check if auth state is still loading or no user is logged in
+      if (loadingAuth) {
+        return;
+      }
+      if (!currentUser) {
+        setLoadingProfile(false);
+        setError('No user is currently logged in.');
+        navigate(ROUTES.LOGIN); // Redirect to login if currentUser is null
+        return;
+      }
+
+      setLoadingProfile(true);
+      setError(null);
+
+      try {
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        const userDocSnap = await getDoc(userDocRef);
+
+        if (userDocSnap.exists()) {
+          setProfileData(userDocSnap.data() as UserProfile);
+        } else {
+          setError('User profile not found in Firestore.');
+        }
+      } catch (err) {
+        console.error('Failed to fetch user profile:', err);
+        setError('Failed to fetch user data. Please try again.');
+      } finally {
+        setLoadingProfile(false);
+      }
+    };
+
+    fetchUserProfile();
+  }, [currentUser, loadingAuth, navigate]); // Rerun effect when auth state changes
+
 
   // Function to handle logout logic
-  const handleLogout = () => {
-    // In a real application, you would:
-    // 1. Clear user session/token from localStorage or sessionStorage
-    // 2. Clear any user-related state in your application (e.g., Redux store)
-    // 3. Redirect to the login page (or home page)
-    console.log('User logged out.');
-    // Example: localStorage.removeItem('authToken');
-    navigate('/login'); // Redirect to the login page
+  const handleLogout = async () => {
+    try {
+      await logoutUser(); // Call the imported logout function
+      navigate(ROUTES.LOGIN); // Redirect to the login page
+    } catch (err) {
+      console.error('Logout failed:', err);
+      // You can add a user-facing alert here
+    }
   };
-
-  // Function to navigate to the sign-up page 
 
   // Function to handle edit profile
-  const handleEditProfile = () => {
-    console.log('Navigating to Edit Profile page or opening modal.');
-    // You might navigate to /edit-profile or open a modal here
-  };
+  // In Account.tsx
+const handleEditProfile = () => {
+  navigate(`${ROUTES.ACCOUNT}/${ROUTES.EDIT_PROFILE}`);
+};
 
+  // Conditional rendering for different states
+  if (loadingAuth || loadingProfile) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 text-slate-500">
+        <p>Loading profile data...</p>
+      </div>
+    );
+  }
 
+  if (error) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 text-red-500">
+        <p>{error}</p>
+      </div>
+    );
+  }
+
+  if (!profileData) {
+      return (
+        <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 text-red-500">
+          <p>No profile data available.</p>
+        </div>
+      );
+  }
+
+  // Render the actual content once data is loaded
   return (
     <div className="flex min-h-screen flex-col items-center bg-slate-50 py-8 px-4 text-center">
       <img
         className="mb-4 h-32 w-32 rounded-full object-cover"
-        src="https://i.pravatar.cc/150?img=32"
+        src="https://i.pravatar.cc/150?img=1" // You can replace this with a dynamic profile image URL
         alt="Profile"
       />
 
       <h2 className="mb-1 text-2xl font-semibold text-slate-900">
-        Ethan Carter
+        {/* Display the user's name */}
+        {profileData.name}
       </h2>
-      <p className="mb-8 text-base text-slate-500">ethan.carter@email.com</p>
+      <p className="mb-8 text-base text-slate-500">
+        {/* Display the user's email */}
+        {profileData.email}
+      </p>
 
       {/* Buttons: Edit Profile, Logout, and Sign Up */}
-      <div className="mb-12 flex flex-wrap justify-center gap-4"> {/* Added flex-wrap for responsiveness */}
+      <div className="mb-12 flex flex-wrap justify-center gap-4">
         <button
           onClick={handleEditProfile}
           className="rounded-full bg-slate-200 py-3 px-8 font-semibold text-slate-900 transition hover:bg-slate-300"
@@ -86,7 +170,6 @@ const Account = () => {
           </button>
         </div>
       </div>
-      {/* END NEW SECTION */}
     </div>
   );
 };

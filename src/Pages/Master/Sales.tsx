@@ -1,29 +1,73 @@
 // src/Pages/Master/SalesPage1.tsx
-import React, { useState, useRef } from 'react';
-import { useNavigate, Link ,useLocation} from 'react-router-dom'; // Added Link for navigation
+import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate, NavLink} from 'react-router-dom';
+import { getItems } from '../../lib/items_firebase';
+import type { Item } from '../../constants/models';
 import './Sales.css';
 import { ROUTES } from '../../constants/routes.constants';
 
-const SalesPage1 = () => {
+interface SalesItem {
+  id: string;
+  name: string;
+  mrp: number;
+  quantity: number;
+}
+
+const SalesPage1: React.FC = () => {
   const navigate = useNavigate();
-  const [partyNumber, setPartyNumber] = useState('');
-  const [partyName, setPartyName] = useState('');
-  const [items, setItems] = useState([
-    { id: 1, name: 'T-Shirt', price: 1200.00, quantity: 1 },
-    { id: 2, name: 'Hoodie', price: 1500.00, quantity: 1 },
-    { id: 3, name: 'Hat', price: 1000.00, quantity: 1 },
-    { id: 4, name: 'Jacket', price: 2000.00, quantity: 1 },
-  ]);
-  const location = useLocation(); // To get current path for conditional rendering
-  const isActive = (path: string) => location.pathname.includes(path);
-  // State to hold the captured image file or data URL for preview
+
+  const [partyNumber, setPartyNumber] = useState<string>('');
+  const [partyName, setPartyName] = useState<string>('');
+  
+  const [items, setItems] = useState<SalesItem[]>([]);
+  const [selectedItem, setSelectedItem] = useState<string>('');
+  
+  const [availableItems, setAvailableItems] = useState<Item[]>([]);
+  
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false); // State to control dropdown visibility
+  const dropdownRef = useRef<HTMLDivElement>(null); // Ref to handle clicks outside the dropdown
+
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null); // Ref for the hidden file input
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Calculate total amount
-  const totalAmount = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  useEffect(() => {
+    const fetchItems = async () => {
+      try {
+        setIsLoading(true);
+        const fetchedItems = await getItems();
+        setAvailableItems(fetchedItems);
+        setError(null);
+      } catch (err) {
+        console.error('Failed to fetch items:', err);
+        setError('Failed to load items. Please try again later.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchItems();
+  }, []);
+  
+  // Effect to handle clicks outside the dropdown to close it
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [dropdownRef]);
 
-  const handleQuantityChange = (id: number, delta: number) => {
+
+  const totalAmount = items.reduce((sum, item) => sum + item.mrp * item.quantity, 0);
+
+  const handleQuantityChange = (id: string, delta: number) => {
     setItems(prevItems =>
       prevItems.map(item =>
         item.id === id
@@ -32,18 +76,50 @@ const SalesPage1 = () => {
       )
     );
   };
+  
+  const handleDeleteItem = (id: string) => {
+    setItems(prevItems => prevItems.filter(item => item.id !== id));
+  };
+  
+  const handleAddItemToCart = () => {
+    if (!selectedItem) {
+      // You might want to show an error message if no item is selected
+      return;
+    }
+    
+    const itemToAdd = availableItems.find(item => item.id === selectedItem);
 
-  const handleProceedToPayment = () => {
-    // In a real app, you might include capturedImage data here
-    navigate('/masters/payment', { state: { totalAmount: totalAmount.toFixed(2) } });
+    if (itemToAdd) {
+        const itemExists = items.find(item => item.id === itemToAdd.id);
+        
+        if (itemExists) {
+            setItems(prevItems =>
+                prevItems.map(item =>
+                    item.id === itemToAdd.id
+                        ? { ...item, quantity: item.quantity + 1 }
+                        : item
+                )
+            );
+        } else {
+            setItems(prevItems => [
+                ...prevItems,
+                { id: itemToAdd.id!, name: itemToAdd.name, mrp: itemToAdd.mrp, quantity: 1 }
+            ]);
+        }
+        setSelectedItem('');
+        setSearchQuery('');
+    }
   };
 
-  // Function to trigger the hidden file input
+
+  const handleProceedToPayment = () => {
+    navigate(`${ROUTES.MASTERS}/${ROUTES.PAYMENT}`, { state: { totalAmount: totalAmount.toFixed(2) } });
+  };
+
   const triggerCameraInput = () => {
     fileInputRef.current?.click();
   };
 
-  // Handler for when a file is selected (either from camera or gallery)
   const handleFileCapture = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
@@ -51,36 +127,91 @@ const SalesPage1 = () => {
       reader.onloadend = () => {
         setCapturedImage(reader.result as string);
       };
-      reader.readAsDataURL(file); // Read file as Data URL for preview
+      reader.readAsDataURL(file);
       console.log("Captured file:", file.name, file.type, file.size);
     }
   };
+  
+  // Filter items based on searchQuery
+  const filteredItems = availableItems.filter(item =>
+    item.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+  
+  // Handle selecting an item from the list
+  const handleSelect = (item: Item) => {
+    setSelectedItem(item.id!);
+    setSearchQuery(item.name);
+    setIsDropdownOpen(false); // Close dropdown after selection
+  };
 
+  const renderItemsContent = () => {
+    if (items.length === 0) {
+      return <div className="text-center py-8 text-gray-500">No items added to the list.</div>;
+    }
+    
+    return (
+      <div className="items-list-container">
+        {items.map(item => (
+          <div key={item.id} className="item-card">
+            <div className="item-details">
+              <div className="item-info">
+                <p className="item-name">{item.name}</p>
+                <p className="item-price">₹{item.mrp.toFixed(2)}</p>
+              </div>
+            </div>
+            <div className="quantity-controls">
+              <button
+                className="quantity-button"
+                onClick={() => handleQuantityChange(item.id, -1)}
+                disabled={item.quantity === 1}
+              >
+                -
+              </button>
+              <span className="quantity-display">{item.quantity}</span>
+              <button
+                className="quantity-button"
+                onClick={() => handleQuantityChange(item.id, 1)}
+              >
+                +
+              </button>
+              <button
+                className="delete-button"
+                onClick={() => handleDeleteItem(item.id)}
+                title="Remove item"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+  
   return (
     <div className="sales-page-wrapper">
-      {/* Top Bar */}
       <div className="sales-top-bar">
         <button onClick={() => navigate('/masters')} className="sales-close-button">
           &times;
         </button>
-        {/* Links for Sales and Sales Return */}
         <div className="sales-nav-links">
-          <Link
-          to={`${ROUTES.MASTERS}/${ROUTES.SALES}`}
-          className={`sales-nav-link ${isActive(ROUTES.SALES) ? 'active' : ''}`}
-        >
+          <NavLink
+            to={`${ROUTES.MASTERS}/${ROUTES.SALES}`}
+            className={({ isActive }) => `sales-nav-link ${isActive ? 'active' : ''}`}
+          >
             Sales
-          </Link>
-          <Link to={`${ROUTES.MASTERS}/${ROUTES.SALES_RETURN}`} className="sales-nav-link">
+          </NavLink>
+          <NavLink
+            to={`${ROUTES.MASTERS}/${ROUTES.SALES_RETURN}`}
+            className={({ isActive }) => `sales-nav-link ${isActive ? 'active' : ''}`}
+          >
             Sales Return
-          </Link>
+          </NavLink>
         </div>
-        <div style={{ width: '1.5rem' }}></div> {/* Spacer for symmetry */}
+        <div style={{ width: '1.5rem' }}></div>
       </div>
 
-      {/* Main Content Area */}
       <div className="sales-content-area">
-        {/* Display captured image preview if available */}
         {capturedImage && (
           <div className="captured-image-preview">
             <h3>Captured Image:</h3>
@@ -89,7 +220,6 @@ const SalesPage1 = () => {
           </div>
         )}
 
-        {/* Party Name Section */}
         <div className="section-heading-group">
           <label htmlFor="party-name" className="section-heading">Party Name</label>
           <input
@@ -102,7 +232,6 @@ const SalesPage1 = () => {
           />
         </div>
 
-        {/* Party Number Section */}
         <div className="section-heading-group">
           <label htmlFor="party-number" className="section-heading">Party Number</label>
           <input
@@ -115,46 +244,65 @@ const SalesPage1 = () => {
           />
         </div>
 
-        {/* Items Section */}
         <h3 className="section-heading">Items</h3>
-        <div className="items-list-container">
-          {items.map(item => (
-            <div key={item.id} className="item-card">
-              <div className="item-details">
-                <div className="item-info">
-                  <p className="item-name">{item.name}</p>
-                  <p className="item-price">₹{item.price.toFixed(2)}</p>
-                </div>
+        {renderItemsContent()}
+        <div className="item-add-form-group">
+          <label className="item-add-label">Search & Add Item</label>
+          <div className="item-dropdown-and-button" ref={dropdownRef}>
+            {/* --- The Merged Search/Dropdown Input --- */}
+            <input
+              type="text"
+              id="searchable-item-input"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setIsDropdownOpen(true);
+              }}
+              onFocus={() => setIsDropdownOpen(true)}
+              placeholder="Search for an item..."
+              className="searchable-item-input"
+              autoComplete="off"
+            />
+            {/* --- The Dropdown List (rendered conditionally) --- */}
+            {isDropdownOpen && (
+              <div className="dropdown-list">
+                {isLoading ? (
+                  <div className="dropdown-item">Loading items...</div>
+                ) : error ? (
+                  <div className="dropdown-item error">Error loading items.</div>
+                ) : filteredItems.length === 0 ? (
+                  <div className="dropdown-item no-results">No items found.</div>
+                ) : (
+                  filteredItems.map(item => (
+                    <div 
+                      key={item.id}
+                      className="dropdown-item"
+                      onClick={() => handleSelect(item)}
+                    >
+                      {item.name}
+                    </div>
+                  ))
+                )}
               </div>
-              <div className="quantity-controls">
-                <button
-                  className="quantity-button"
-                  onClick={() => handleQuantityChange(item.id, -1)}
-                >
-                  -
-                </button>
-                <span className="quantity-display">{item.quantity}</span>
-                <button
-                  className="quantity-button"
-                  onClick={() => handleQuantityChange(item.id, 1)}
-                >
-                  +
-                </button>
-              </div>
-            </div>
-          ))}
+            )}
+            {/* -------------------------------------------------- */}
+            <button 
+              onClick={handleAddItemToCart}
+              className="add-to-cart-button"
+              disabled={!selectedItem}
+            >
+              Add
+            </button>
+          </div>
         </div>
 
-        {/* Total Amount Section */}
         <div className="total-amount-section">
           <p className="total-amount-label">Total Amount</p>
           <p className="total-amount-value">₹{totalAmount.toFixed(2)}</p>
         </div>
       </div>
 
-      {/* Fixed Bottom Bar */}
       <div className="sales-bottom-bar">
-        {/* Hidden file input */}
         <input
           type="file"
           accept="image/*"
@@ -163,9 +311,7 @@ const SalesPage1 = () => {
           onChange={handleFileCapture}
           style={{ display: 'none' }}
         />
-        {/* Camera Button - now acts as a label for the hidden input */}
         <button className="camera-button" onClick={triggerCameraInput}>
-          {/* SVG for camera icon */}
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
             <path d="M4.5 12.75l6 6 9-13.5" />
           </svg>

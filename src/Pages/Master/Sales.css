@@ -328,3 +328,176 @@ body {
 .clear-image-button:hover {
     background-color: #c53030; /* Darker red on hover */
 }
+/* src/Pages/Master/Sales.css */
+
+/* Add these new classes to your existing CSS file */
+
+.item-dropdown-and-button {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.add-to-cart-button {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 1rem;
+  white-space: nowrap;
+  transition: background-color 0.2s ease;
+}
+
+.add-to-cart-button:hover:not(:disabled) {
+  background-color: #218838;
+}
+
+.add-to-cart-button:disabled {
+  background-color: #a7d7b2;
+  cursor: not-allowed;
+}
+
+/* You might want to style the quantity buttons more cleanly */
+.quantity-controls {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.quantity-button {
+  background-color: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.quantity-button:hover:not(:disabled) {
+  background-color: #e0e0e0;
+}
+
+.quantity-button:disabled {
+  color: #ccc;
+  cursor: not-allowed;
+}
+
+.total-amount-section {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-top: 2px solid #eee;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+/* src/Pages/Master/Sales.css */
+
+/* Add this to your existing CSS file */
+
+.search-bar-input {
+  /* Inherit some styles from the dropdown for a consistent look */
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 1rem;
+  box-sizing: border-box;
+  margin-bottom: 10px; /* Space between search bar and dropdown */
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.search-bar-input:focus {
+  border-color: #80bdff;
+  outline: 0;
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+/* Update the container for the search/dropdown/add-button group */
+.item-dropdown-and-button {
+  display: flex;
+  flex-direction: column; /* Stack search and dropdown vertically */
+  gap: 10px;
+  align-items: stretch; /* Stretch children to fill the container width */
+}
+
+/* Ensure the dropdown and add button are still on the same line if desired */
+/* To have them side-by-side, you'd change the flex-direction and container. For now, this stacks them. */
+
+/* src/Pages/Master/Sales.css */
+
+/* Remove the old .search-bar-input and .item-add-select styles */
+/* and replace with the following: */
+
+.item-dropdown-and-button {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative; /* This is key for the dropdown list positioning */
+}
+
+/* Style for the merged input field */
+.searchable-item-input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 1rem;
+  box-sizing: border-box;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.searchable-item-input:focus {
+  border-color: #80bdff;
+  outline: 0;
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+/* Style for the dropdown list container */
+.dropdown-list {
+  position: absolute;
+  top: 100%; /* Position it right below the input */
+  left: 0;
+  right: 0;
+  z-index: 10;
+  background-color: white;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  max-height: 200px; /* Set a max height and enable scrolling */
+  overflow-y: auto;
+  margin-top: 5px; /* Small space between input and list */
+}
+
+/* Style for each item in the dropdown list */
+.dropdown-item {
+  padding: 10px;
+  cursor: pointer;
+  border-bottom: 1px solid #eee;
+  transition: background-color 0.1s ease;
+}
+
+.dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.dropdown-item:hover {
+  background-color: #f0f0f0;
+}
+
+.dropdown-item.no-results,
+.dropdown-item.error {
+  cursor: default;
+  font-style: italic;
+  color: #6c757d;
+}
+
+.dropdown-item.error {
+  color: #dc3545;
+}

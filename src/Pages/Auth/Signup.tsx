@@ -1,12 +1,13 @@
 // src/app/Pages/Auth/Signup.tsx
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signupUser } from '../../lib/auth_operations'; // Adjust path as needed
+import { registerUserWithDetails } from '../../lib/auth_operations'; // Import the new unified function
 import { ROUTES } from '../../constants/routes.constants';
-import './Signup.css'; // Assuming you have a CSS file for Signup
+import './Signup.css';
 
 const Signup: React.FC = () => {
   const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -23,11 +24,20 @@ const Signup: React.FC = () => {
       setLoading(false);
       return;
     }
+    
+    if (!name.trim()) {
+        setError('Name cannot be empty.');
+        setLoading(false);
+        return;
+    }
 
     try {
-      await signupUser(email, password);
+      // --- Call the new unified function for a single, clean operation ---
+      await registerUserWithDetails(name.trim(), email, password);
+      // ---------------------------------------------------------------------
+      
       alert('Account created successfully! Please log in.');
-      navigate(ROUTES.LOGIN); // Redirect to login page after successful signup
+      navigate(ROUTES.LOGIN);
     } catch (err: any) {
       setError(err.message || 'Signup failed.');
     } finally {
@@ -40,6 +50,17 @@ const Signup: React.FC = () => {
       <form onSubmit={handleSubmit} className="signup-form">
         <h2>Sign Up</h2>
         {error && <p className="signup-error-message">{error}</p>}
+        <div className="form-group">
+          <label htmlFor="name">Name</label>
+          <input
+            type="text"
+            id="name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            disabled={loading}
+          />
+        </div>
         <div className="form-group">
           <label htmlFor="email">Email</label>
           <input

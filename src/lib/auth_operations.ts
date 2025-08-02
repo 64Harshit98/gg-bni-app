@@ -1,25 +1,45 @@
 // src/lib/auth_operations.ts
-import { auth } from './firebase'; // Import the auth instance
+import { auth, db } from './firebase'; // Import 'db' for Firestore
+import { doc, setDoc } from 'firebase/firestore'; // Import Firestore functions
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
   sendPasswordResetEmail,
 } from 'firebase/auth';
-import type { User } from 'firebase/auth'; // Import User type-only
+import type { User } from 'firebase/auth';
 
 /**
- * Signs up a new user with email and password.
+ * Creates a new user in Firebase Auth and a corresponding
+ * document in Firestore with their name and email.
+ * @param name The user's name.
  * @param email User's email address.
  * @param password User's password.
- * @returns Promise that resolves with the User credential.
+ * @returns Promise that resolves with the User object.
  */
-export const signupUser = async (email: string, password: string): Promise<User> => {
+export const registerUserWithDetails = async (
+  name: string,
+  email: string,
+  password: string
+): Promise<User> => {
   try {
+    // 1. Create the user in Firebase Authentication
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    return userCredential.user;
+    const user = userCredential.user;
+
+    // 2. Immediately create a user document in Firestore
+    if (user.uid) {
+      const userRef = doc(db, 'users', user.uid);
+      await setDoc(userRef, {
+        name: name,
+        email: user.email,
+        createdAt: Date.now(),
+      });
+    }
+
+    return user;
   } catch (error: any) {
-    console.error('Error signing up:', error.code, error.message);
+    console.error('Error during user registration:', error.code, error.message);
     throw new Error(getFriendlyErrorMessage(error.code));
   }
 };
@@ -67,7 +87,6 @@ export const resetPassword = async (email: string): Promise<void> => {
   }
 };
 
-// Helper function to provide user-friendly error messages
 const getFriendlyErrorMessage = (errorCode: string): string => {
   switch (errorCode) {
     case 'auth/invalid-email':

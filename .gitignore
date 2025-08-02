@@ -1,5 +1,14 @@
-# Created by https://www.toptal.com/developers/gitignore/api/react,node,visualstudiocode
-# Edit at https://www.toptal.com/developers/gitignore?templates=react,node,visualstudiocode
+# Created by https://www.toptal.com/developers/gitignore/api/node,react,visualstudiocode,firebase
+# Edit at https://www.toptal.com/developers/gitignore?templates=node,react,visualstudiocode,firebase
+
+### Firebase ###
+.idea
+**/node_modules/*
+**/.firebaserc
+
+### Firebase Patch ###
+.runtimeconfig.json
+.firebase/
 
 ### Node ###
 # Logs
@@ -173,6 +182,4 @@ sketch
 .history
 .ionide
 
-# End of https://www.toptal.com/developers/gitignore/api/react,node,visualstudiocode
-# Environment variables
-.env
+# End of https://www.toptal.com/developers/gitignore/api/node,react,visualstudiocode,firebase

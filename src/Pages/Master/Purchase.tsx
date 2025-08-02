@@ -1,9 +1,9 @@
 // src/Pages/Master/Purchase.tsx
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import './Purchase.css'; // Import its unique CSS
+import { useNavigate, NavLink} from 'react-router-dom'; // Import NavLink and useLocation
+import './Purchase.css';
 import { ROUTES } from '../../constants/routes.constants';
-import { Link } from 'react-router-dom';
+
 interface PurchaseItem {
   id: number;
   itemName: string;
@@ -17,27 +17,23 @@ const Purchase = () => {
   const [mobileNumber, setMobileNumber] = useState('');
   const [emailId, setEmailId] = useState('');
   const [gstin, setGstin] = useState('');
+  
   const handleProceedToPayment = () => {
-    // In a real app, you might include capturedImage data here
-    navigate('/masters/payment', { state: { totalAmount: totalAmount.toFixed(2) } });
+    navigate(`${ROUTES.MASTERS}/${ROUTES.PAYMENT}`, { state: { totalAmount: totalAmount.toFixed(2) } });
   };
 
-  // State for dynamic items
   const [items, setItems] = useState<PurchaseItem[]>([
-    { id: 1, itemName: '', price: 0, quantity: 1 }, // Initial empty item row
+    { id: 1, itemName: '', price: 0, quantity: 1 },
   ]);
-  const [nextItemId, setNextItemId] = useState(2); // For unique item IDs
+  const [nextItemId, setNextItemId] = useState(2);
 
-  // Calculate total amount for all items
   const totalAmount = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
-  // Handle changes for Party details
   const handlePartyNameChange = (e: React.ChangeEvent<HTMLInputElement>) => setPartyName(e.target.value);
   const handleMobileNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => setMobileNumber(e.target.value);
   const handleEmailIdChange = (e: React.ChangeEvent<HTMLInputElement>) => setEmailId(e.target.value);
   const handleGstinChange = (e: React.ChangeEvent<HTMLInputElement>) => setGstin(e.target.value);
 
-  // Handle changes for individual item properties
   const handleItemChange = (id: number, field: keyof PurchaseItem, value: string | number) => {
     setItems(prevItems =>
       prevItems.map(item =>
@@ -46,7 +42,6 @@ const Purchase = () => {
     );
   };
 
-  // Handle quantity change for an item
   const handleQuantityChange = (id: number, delta: number) => {
     setItems(prevItems =>
       prevItems.map(item =>
@@ -55,20 +50,17 @@ const Purchase = () => {
     );
   };
 
-  // Add a new empty item row
   const handleAddItemRow = () => {
     setItems(prevItems => [...prevItems, { id: nextItemId, itemName: '', price: 0, quantity: 1 }]);
     setNextItemId(prevId => prevId + 1);
   };
 
-  // Remove an item row
   const handleRemoveItemRow = (id: number) => {
     setItems(prevItems => prevItems.filter(item => item.id !== id));
   };
 
   const handleSavePurchase = (e: React.FormEvent) => {
     e.preventDefault();
-    // In a real application, you would send all this data to your backend API
     alert(`Saving Purchase:
       Party Name: ${partyName}
       Mobile: ${mobileNumber}
@@ -76,8 +68,6 @@ const Purchase = () => {
       GSTIN: ${gstin}
       Items: ${JSON.stringify(items, null, 2)}
       Total Amount: ₹${totalAmount.toFixed(2)}`);
-    // Optionally clear form or navigate after submission
-    // For now, just alert
   };
 
   return (
@@ -87,13 +77,21 @@ const Purchase = () => {
         <button onClick={() => navigate(-1)} className="purchase-close-button">
           &times;
         </button>
-         <div className="purchase-nav-links">
-          <Link to={`${ROUTES.MASTERS}/${ROUTES.PURCHASE}`} className="purchase-nav-link">
+        <div className="purchase-nav-links">
+          {/* --- FIX: Use NavLink and its isActive prop for dynamic styling --- */}
+          <NavLink
+            to={`${ROUTES.MASTERS}/${ROUTES.PURCHASE}`}
+            className={({ isActive }) => `purchase-nav-link ${isActive ? 'active' : ''}`}
+          >
             Purchase
-          </Link>
-          <Link to={`${ROUTES.MASTERS}/${ROUTES.PURCHASE_RETURN}`} className="purchase-nav-link active">
+          </NavLink>
+          <NavLink
+            to={`${ROUTES.MASTERS}/${ROUTES.PURCHASE_RETURN}`}
+            className={({ isActive }) => `purchase-nav-link ${isActive ? 'active' : ''}`}
+          >
             Purchase Return
-          </Link>
+          </NavLink>
+          {/* ------------------------------------------------------------------ */}
         </div>
         <div style={{ width: '1.5rem' }}></div> {/* Spacer */}
       </div>
@@ -145,7 +143,7 @@ const Purchase = () => {
                     <input
                       type="number"
                       id={`itemPrice-${item.id}`}
-                      value={item.price === 0 ? '' : item.price} // Display empty for 0 to make it user-friendly
+                      value={item.price === 0 ? '' : item.price}
                       onChange={(e) => handleItemChange(item.id, 'price', parseFloat(e.target.value) || 0)}
                       placeholder="Price"
                       className="purchase-item-input item-price-input"
@@ -159,7 +157,7 @@ const Purchase = () => {
                     <span className="purchase-quantity-display">{item.quantity}</span>
                     <button type="button" onClick={() => handleQuantityChange(item.id, 1)} className="purchase-quantity-button">+</button>
                   </div>
-                  {items.length > 1 && ( // Only show remove button if more than one item
+                  {items.length > 1 && (
                     <button type="button" onClick={() => handleRemoveItemRow(item.id)} className="purchase-remove-item-button">
                       &times;
                     </button>
@@ -181,8 +179,8 @@ const Purchase = () => {
           {/* Fixed Bottom Bar for Save Purchase */}
           <div className="purchase-bottom-bar">
             <button className="purchase-save-button" onClick={handleProceedToPayment}>
-          Proceed to Payment
-        </button>
+              Proceed to Payment
+            </button>
           </div>
         </form>
       </div>

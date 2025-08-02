@@ -20,6 +20,7 @@ const UserAdd = lazy(() => import('../Pages/Master/UserAdd'));
 const Payment = lazy(() => import('../Pages/Master/Payment'));
 const Login = lazy(() => import('../Pages/Auth/Login'));
 const Signup = lazy(() => import('../Pages/Auth/Signup'));
+const EditProfile = lazy(() => import('../Pages/Account/EditProfile'));
 const router = createBrowserRouter([
   {
     path: ROUTES.HOME,
@@ -30,7 +31,11 @@ const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <Home /> },
-      { path: ROUTES.ACCOUNT.substring(1), element: <Account /> },
+      { path: ROUTES.ACCOUNT.substring(1), element: <Account />,
+        children: [
+          { index: true, element: <Account /> },
+        { path: ROUTES.EDIT_PROFILE.substring(1), element: <EditProfile /> },
+      ]},
       { path: ROUTES.JOURNAL.substring(1), element: <Journal /> },
       {
         path: ROUTES.MASTERS,

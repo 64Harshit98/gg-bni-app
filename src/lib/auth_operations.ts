@@ -1,5 +1,5 @@
 // src/lib/auth_operations.ts
-import { auth, db } from './firebase'; // Import 'db' for Firestore
+import { auth, db } from '@/lib/firebase'; // Import 'db' for Firestore
 import { doc, setDoc } from 'firebase/firestore'; // Import Firestore functions
 import {
   createUserWithEmailAndPassword,
@@ -8,6 +8,18 @@ import {
   sendPasswordResetEmail,
 } from 'firebase/auth';
 import type { User } from 'firebase/auth';
+
+// Type guard to check for Firebase errors
+function isFirebaseError(
+  error: unknown,
+): error is { code: string; message: string } {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    'message' in error
+  );
+}
 
 /**
  * Creates a new user in Firebase Auth and a corresponding
@@ -20,11 +32,15 @@ import type { User } from 'firebase/auth';
 export const registerUserWithDetails = async (
   name: string,
   email: string,
-  password: string
+  password: string,
 ): Promise<User> => {
   try {
     // 1. Create the user in Firebase Authentication
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const userCredential = await createUserWithEmailAndPassword(
+      auth,
+      email,
+      password,
+    );
     const user = userCredential.user;
 
     // 2. Immediately create a user document in Firestore
@@ -38,9 +54,16 @@ export const registerUserWithDetails = async (
     }
 
     return user;
-  } catch (error: any) {
-    console.error('Error during user registration:', error.code, error.message);
-    throw new Error(getFriendlyErrorMessage(error.code));
+  } catch (error: unknown) {
+    if (isFirebaseError(error)) {
+      console.error(
+        'Error during user registration:',
+        error.code,
+        error.message,
+      );
+      throw new Error(getFriendlyErrorMessage(error.code));
+    }
+    throw new Error('An unknown error occurred during registration.');
   }
 };
 
@@ -50,13 +73,23 @@ export const registerUserWithDetails = async (
  * @param password User's password.
  * @returns Promise that resolves with the User credential.
  */
-export const loginUser = async (email: string, password: string): Promise<User> => {
+export const loginUser = async (
+  email: string,
+  password: string,
+): Promise<User> => {
   try {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const userCredential = await signInWithEmailAndPassword(
+      auth,
+      email,
+      password,
+    );
     return userCredential.user;
-  } catch (error: any) {
-    console.error('Error logging in:', error.code, error.message);
-    throw new Error(getFriendlyErrorMessage(error.code));
+  } catch (error: unknown) {
+    if (isFirebaseError(error)) {
+      console.error('Error logging in:', error.code, error.message);
+      throw new Error(getFriendlyErrorMessage(error.code));
+    }
+    throw new Error('An unknown error occurred during login.');
   }
 };
 
@@ -67,9 +100,12 @@ export const loginUser = async (email: string, password: string): Promise<User> 
 export const logoutUser = async (): Promise<void> => {
   try {
     await signOut(auth);
-  } catch (error: any) {
-    console.error('Error logging out:', error.code, error.message);
-    throw new Error(getFriendlyErrorMessage(error.code));
+  } catch (error: unknown) {
+    if (isFirebaseError(error)) {
+      console.error('Error logging out:', error.code, error.message);
+      throw new Error(getFriendlyErrorMessage(error.code));
+    }
+    throw new Error('An unknown error occurred during logout.');
   }
 };
 
@@ -81,9 +117,18 @@ export const logoutUser = async (): Promise<void> => {
 export const resetPassword = async (email: string): Promise<void> => {
   try {
     await sendPasswordResetEmail(auth, email);
-  } catch (error: any) {
-    console.error('Error sending password reset email:', error.code, error.message);
-    throw new Error(getFriendlyErrorMessage(error.code));
+  } catch (error: unknown) {
+    if (isFirebaseError(error)) {
+      console.error(
+        'Error sending password reset email:',
+        error.code,
+        error.message,
+      );
+      throw new Error(getFriendlyErrorMessage(error.code));
+    }
+    throw new Error(
+      'An unknown error occurred while sending password reset email.',
+    );
   }
 };
 

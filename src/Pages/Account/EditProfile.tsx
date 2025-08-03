@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/Authcontext';
-import { db } from '../../lib/firebase';
+import { useAuth } from '@/context/Authcontext';
+import { db } from '@/lib/firebase';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { ROUTES } from '../../constants/routes.constants';
+import { ROUTES } from '@/constants/routes.constants';
 
 // Define the type for the user profile data
 interface UserProfile {
@@ -17,7 +17,7 @@ interface UserProfile {
 const EditProfile: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser, loading: loadingAuth } = useAuth();
-  
+
   // State for form fields
   const [name, setName] = useState('');
   const [mobileNumber, setMobileNumber] = useState('');
@@ -89,7 +89,7 @@ const EditProfile: React.FC = () => {
         bio: bio.trim(),
         // Add other fields to update here
       };
-      
+
       await updateDoc(userDocRef, updates);
       setSuccess('Profile updated successfully!');
       console.log('Profile updated successfully!');
@@ -97,7 +97,6 @@ const EditProfile: React.FC = () => {
       setTimeout(() => {
         navigate(ROUTES.ACCOUNT);
       }, 1500);
-
     } catch (err) {
       console.error('Failed to update user profile:', err);
       setError('Failed to save profile. Please try again.');
@@ -131,16 +130,35 @@ const EditProfile: React.FC = () => {
             onClick={() => navigate(-1)}
             className="rounded-full bg-slate-200 p-2 text-slate-900 transition hover:bg-slate-300"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="lucide lucide-x"
+            >
+              <path d="M18 6 6 18" />
+              <path d="m6 6 12 12" />
+            </svg>
           </button>
         </div>
 
         <form onSubmit={handleSave}>
           {error && <p className="mb-4 text-red-500">{error}</p>}
           {success && <p className="mb-4 text-green-600">{success}</p>}
-          
+
           <div className="mb-4">
-            <label htmlFor="name" className="mb-2 block text-sm font-medium text-slate-700">Name</label>
+            <label
+              htmlFor="name"
+              className="mb-2 block text-sm font-medium text-slate-700"
+            >
+              Name
+            </label>
             <input
               type="text"
               id="name"
@@ -153,7 +171,12 @@ const EditProfile: React.FC = () => {
           </div>
 
           <div className="mb-4">
-            <label htmlFor="email" className="mb-2 block text-sm font-medium text-slate-700">Email Address</label>
+            <label
+              htmlFor="email"
+              className="mb-2 block text-sm font-medium text-slate-700"
+            >
+              Email Address
+            </label>
             <input
               type="email"
               id="email"
@@ -164,7 +187,12 @@ const EditProfile: React.FC = () => {
           </div>
 
           <div className="mb-4">
-            <label htmlFor="mobileNumber" className="mb-2 block text-sm font-medium text-slate-700">Mobile Number</label>
+            <label
+              htmlFor="mobileNumber"
+              className="mb-2 block text-sm font-medium text-slate-700"
+            >
+              Mobile Number
+            </label>
             <input
               type="tel"
               id="mobileNumber"
@@ -176,7 +204,12 @@ const EditProfile: React.FC = () => {
           </div>
 
           <div className="mb-6">
-            <label htmlFor="bio" className="mb-2 block text-sm font-medium text-slate-700">Bio</label>
+            <label
+              htmlFor="bio"
+              className="mb-2 block text-sm font-medium text-slate-700"
+            >
+              Bio
+            </label>
             <textarea
               id="bio"
               value={bio}

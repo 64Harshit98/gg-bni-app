@@ -6,9 +6,15 @@ import {
   AiOutlineUsergroupAdd,
 } from 'react-icons/ai';
 
-import { ROUTES } from '../constants/routes.constants';
+import { ROUTES } from '@/constants/routes.constants';
 
-export const navItems = [
+interface NavItem {
+  to: string;
+  icon: React.ReactNode;
+  label: string;
+}
+
+export const navItems: NavItem[] = [
   { to: ROUTES.HOME, icon: <AiOutlineHome size={24} />, label: 'Home' },
   { to: ROUTES.JOURNAL, icon: <AiFillBook size={24} />, label: 'Journal' },
   {

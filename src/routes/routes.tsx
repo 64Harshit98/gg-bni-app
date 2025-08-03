@@ -1,9 +1,9 @@
 import { lazy, Suspense } from 'react';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
-import MainLayout from '../app/MainLayout';
-import { ROUTES } from '../constants/routes.constants';
-import {AuthProvider} from '../context/Authcontext'; // Import AuthProvider
-import ProtectedRoute from '../constants/ProtectedRoutes';
+import MainLayout from '@/app/MainLayout';
+import { ROUTES } from '@/constants/routes.constants';
+import { AuthProvider } from '@/context/Authcontext'; // Import AuthProvider
+import ProtectedRoute from '@/constants/ProtectedRoutes';
 // Lazy load all the page components
 const Home = lazy(() => import('../Pages/Home'));
 const Account = lazy(() => import('../Pages/Account'));
@@ -31,11 +31,14 @@ const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <Home /> },
-      { path: ROUTES.ACCOUNT.substring(1), element: <Account />,
+      {
+        path: ROUTES.ACCOUNT.substring(1),
+        element: <Account />,
         children: [
           { index: true, element: <Account /> },
-        { path: ROUTES.EDIT_PROFILE.substring(1), element: <EditProfile /> },
-      ]},
+          { path: ROUTES.EDIT_PROFILE.substring(1), element: <EditProfile /> },
+        ],
+      },
       { path: ROUTES.JOURNAL.substring(1), element: <Journal /> },
       {
         path: ROUTES.MASTERS,
@@ -55,8 +58,8 @@ const router = createBrowserRouter([
       { path: ROUTES.REPORTS.substring(1), element: <Reports /> },
     ],
   },
-   {
-    path: ROUTES.LOGIN, 
+  {
+    path: ROUTES.LOGIN,
     element: <Login />,
   },
   {
@@ -65,13 +68,15 @@ const router = createBrowserRouter([
   },
 ]);
 const AppRouter: React.FC = () => {
-    return (
-        <AuthProvider>
-            <Suspense fallback={<div>Loading app...</div>}> {/* Suspense for lazy loading */}
-                <RouterProvider router={router} />
-            </Suspense>
-        </AuthProvider>
-    );
+  return (
+    <AuthProvider>
+      <Suspense fallback={<div>Loading app...</div>}>
+        {' '}
+        {/* Suspense for lazy loading */}
+        <RouterProvider router={router} />
+      </Suspense>
+    </AuthProvider>
+  );
 };
 
 export default AppRouter;

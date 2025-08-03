@@ -1,8 +1,8 @@
 // src/app/Pages/Auth/Login.tsx
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { loginUser } from '../../lib/auth_operations'; // Adjust path as needed
-import { ROUTES } from '../../constants/routes.constants'; // Import routes for navigation
+import { loginUser } from '@/lib/auth_operations'; // Adjust path as needed
+import { ROUTES } from '@/constants/routes.constants'; // Import routes for navigation
 import './Login.css'; // Assuming you have a CSS file for Login
 
 const Login: React.FC = () => {
@@ -20,8 +20,12 @@ const Login: React.FC = () => {
     try {
       await loginUser(email, password);
       navigate(ROUTES.HOME); // Redirect to home page after successful login
-    } catch (err: any) {
-      setError(err.message || 'Login failed. Please check your credentials.');
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('Login failed. Please check your credentials.');
+      }
     } finally {
       setLoading(false);
     }
@@ -59,12 +63,19 @@ const Login: React.FC = () => {
         </button>
         <p className="login-switch-link">
           Don't have an account?{' '}
-          <span onClick={() => navigate(`${ROUTES.SIGNUP}`)} style={{ cursor: 'pointer', color: '#007bff' }}>
+          <span
+            onClick={() => navigate(`${ROUTES.SIGNUP}`)}
+            style={{ cursor: 'pointer', color: '#007bff' }}
+          >
             Sign Up
           </span>
         </p>
         {/* Optional: Password Reset Link */}
-        <p className="login-reset-password" onClick={() => navigate(`${ROUTES.FORGOT_PASSWORD}`)} style={{ cursor: 'pointer', color: '#007bff' }}>
+        <p
+          className="login-reset-password"
+          onClick={() => navigate(`${ROUTES.FORGOT_PASSWORD}`)}
+          style={{ cursor: 'pointer', color: '#007bff' }}
+        >
           Forgot Password?
         </p>
       </form>

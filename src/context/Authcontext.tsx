@@ -1,7 +1,7 @@
 // src/context/AuthContext.tsx
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { User } from 'firebase/auth'; // Firebase User type
-import { auth } from '../lib/firebase'; // Import the auth instance
+import { auth } from '@/lib/firebase'; // Import the auth instance
 
 // Define the shape of your AuthContext
 interface AuthContextType {
@@ -22,7 +22,9 @@ export const useAuth = () => {
 };
 
 // AuthProvider component to wrap your application
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true); // Initially true
 

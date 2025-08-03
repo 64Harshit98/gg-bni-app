@@ -2,8 +2,8 @@
 
 import React from 'react'; // Ensure React is imported
 import { Navigate } from 'react-router-dom';
-import { useAuth } from '../context/Authcontext';
-import { ROUTES } from '../constants/routes.constants';
+import { useAuth } from '@/context/Authcontext';
+import { ROUTES } from '@/constants/routes.constants';
 
 // Update ProtectedRouteProps interface
 interface ProtectedRouteProps {
@@ -11,7 +11,11 @@ interface ProtectedRouteProps {
   children?: React.ReactNode; // <--- ADD THIS LINE
 }
 
-const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ redirectPath = ROUTES.LOGIN, children }) => { // <--- ALSO ADD 'children' to destructuring
+const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
+  redirectPath = ROUTES.LOGIN,
+  children,
+}) => {
+  // <--- ALSO ADD 'children' to destructuring
   const { currentUser, loading } = useAuth();
 
   if (loading) {

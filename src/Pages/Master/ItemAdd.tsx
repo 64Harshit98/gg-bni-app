@@ -1,11 +1,10 @@
 // src/Pages/Master/ItemAdd.tsx
 import React, { useState, useEffect } from 'react';
-import { useNavigate,Link } from 'react-router-dom';
-import { createItem, getItemGroups } from '../../lib/items_firebase'; // Adjust path as needed
-import type { Item, ItemGroup } from '../../constants/models';
-import { ROUTES } from '../../constants/routes.constants'; // Import ROUTES
+import { useNavigate, Link } from 'react-router-dom';
+import { createItem, getItemGroups } from '@/lib/items_firebase'; // Adjust path as needed
+import type { Item, ItemGroup } from '@/constants/models';
+import { ROUTES } from '@/constants/routes.constants'; // Import ROUTES
 import './ItemAdd.css'; // Import its unique CSS
-
 
 const ItemAdd: React.FC = () => {
   const navigate = useNavigate();
@@ -42,7 +41,9 @@ const ItemAdd: React.FC = () => {
     setError(null);
 
     if (!itemName.trim() || !itemMRP.trim() || !selectedCategory) {
-      setError('Please fill in all required fields: Item Name, MRP, and Category.');
+      setError(
+        'Please fill in all required fields: Item Name, MRP, and Category.',
+      );
       return;
     }
 
@@ -55,24 +56,30 @@ const ItemAdd: React.FC = () => {
       setError('Please enter a valid MRP (a positive number).');
       return;
     }
-    if (itemPurchasePrice.trim() !== '' && (isNaN(purchasePrice) || purchasePrice < 0)) {
-        setError('Please enter a valid Purchase Price (a non-negative number).');
-        return;
+    if (
+      itemPurchasePrice.trim() !== '' &&
+      (isNaN(purchasePrice) || purchasePrice < 0)
+    ) {
+      setError('Please enter a valid Purchase Price (a non-negative number).');
+      return;
     }
-    if (itemDiscount.trim() !== '' && (isNaN(discount) || discount < 0 || discount > 100)) {
-        setError('Please enter a valid Discount percentage (0-100).');
-        return;
+    if (
+      itemDiscount.trim() !== '' &&
+      (isNaN(discount) || discount < 0 || discount > 100)
+    ) {
+      setError('Please enter a valid Discount percentage (0-100).');
+      return;
     }
     if (itemTax.trim() !== '' && (isNaN(tax) || tax < 0)) {
-        setError('Please enter a valid Tax percentage (a non-negative number).');
-        return;
+      setError('Please enter a valid Tax percentage (a non-negative number).');
+      return;
     }
 
     const itemGroupId = selectedCategory;
 
     if (!itemGroupId) {
-        setError('Selected category is invalid. Please select a valid category.');
-        return;
+      setError('Selected category is invalid. Please select a valid category.');
+      return;
     }
 
     try {
@@ -105,25 +112,28 @@ const ItemAdd: React.FC = () => {
   return (
     <div className="item-add-page-wrapper">
       <div className="item-add-top-bar">
-        <button onClick={() => navigate(ROUTES.MASTERS)} className="item-add-close-button">
+        <button
+          onClick={() => navigate(ROUTES.MASTERS)}
+          className="item-add-close-button"
+        >
           &times;
         </button>
         {/* New button to navigate to Item Group page */}
         <div className="item-add-nav-links">
-         <Link
+          <Link
             to={`${ROUTES.MASTERS}/${ROUTES.ITEM_ADD}`}
             className="item-add-nav-links" // Add a new CSS class for styling
             title="Manage Item Groups"
-        >
-          ITEM ADD
-        </Link>
-        <Link
+          >
+            ITEM ADD
+          </Link>
+          <Link
             to={`${ROUTES.MASTERS}/${ROUTES.ITEM_GROUP}`}
             className="item-add-nav-links" // Add a new CSS class for styling
             title="Manage Item Groups"
-        >
-          ITEM GROUPS
-        </Link>
+          >
+            ITEM GROUPS
+          </Link>
         </div>
       </div>
 
@@ -131,7 +141,9 @@ const ItemAdd: React.FC = () => {
 
       <div className="item-add-content-area">
         <div className="item-add-form-group">
-          <label htmlFor="itemName" className="item-add-label">Item Name</label>
+          <label htmlFor="itemName" className="item-add-label">
+            Item Name
+          </label>
           <input
             type="text"
             id="itemName"
@@ -143,7 +155,9 @@ const ItemAdd: React.FC = () => {
         </div>
 
         <div className="item-add-form-group">
-          <label htmlFor="itemMRP" className="item-add-label">MRP</label>
+          <label htmlFor="itemMRP" className="item-add-label">
+            MRP
+          </label>
           <input
             type="number"
             id="itemMRP"
@@ -154,7 +168,9 @@ const ItemAdd: React.FC = () => {
           />
         </div>
         <div className="item-add-form-group">
-          <label htmlFor="itemPurchasePrice" className="item-add-label">Item Purchase Price</label>
+          <label htmlFor="itemPurchasePrice" className="item-add-label">
+            Item Purchase Price
+          </label>
           <input
             type="number"
             id="itemPurchasePrice"
@@ -165,7 +181,9 @@ const ItemAdd: React.FC = () => {
           />
         </div>
         <div className="item-add-form-group">
-          <label htmlFor="itemDiscount" className="item-add-label">Item Discount (%)</label>
+          <label htmlFor="itemDiscount" className="item-add-label">
+            Item Discount (%)
+          </label>
           <input
             type="number"
             id="itemDiscount"
@@ -177,7 +195,9 @@ const ItemAdd: React.FC = () => {
         </div>
 
         <div className="item-add-form-group">
-          <label htmlFor="itemCategory" className="item-add-label">Category</label>
+          <label htmlFor="itemCategory" className="item-add-label">
+            Category
+          </label>
           {loading ? (
             <p>Loading categories...</p>
           ) : error ? (
@@ -200,7 +220,9 @@ const ItemAdd: React.FC = () => {
         </div>
 
         <div className="item-add-form-group">
-          <label htmlFor="itemTax" className="item-add-label">Tax (%)</label>
+          <label htmlFor="itemTax" className="item-add-label">
+            Tax (%)
+          </label>
           <input
             type="number"
             id="itemTax"

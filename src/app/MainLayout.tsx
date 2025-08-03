@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { Button } from '../Components/ui/button';
-import { navItems } from '../routes/bottomRoutes';
+import { Button } from '@/Components/ui/button';
+import { navItems } from '@/routes/bottomRoutes';
 
 const MainLayout = () => {
   const location = useLocation();

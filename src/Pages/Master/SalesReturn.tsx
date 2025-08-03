@@ -1,14 +1,16 @@
 // src/Pages/Master/SalesReturnPage.tsx
-import  { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom'; // Import Link
 import './SalesReturn.css'; // Dedicated CSS for Sales Return
-import { ROUTES } from '../../constants/routes.constants'; // Import ROUTES
+import { ROUTES } from '@/constants/routes.constants'; // Import ROUTES
 
 const SalesReturnPage = () => {
   const navigate = useNavigate();
 
   // State for form fields
-  const [returnDate, setReturnDate] = useState<string>(new Date().toISOString().split('T')[0]); // Default to today's date
+  const [returnDate, setReturnDate] = useState<string>(
+    new Date().toISOString().split('T')[0],
+  ); // Default to today's date
   const [voucherNo, setVoucherNo] = useState<string>('');
   const [saleType, setSaleType] = useState<string>('Cash Sale'); // Default sale type
   const [partyName, setPartyName] = useState<string>('');
@@ -16,26 +18,36 @@ const SalesReturnPage = () => {
 
   // State for items being returned (can add multiple items)
   const [returnItems, setReturnItems] = useState([
-    { id: 1, name: '', quantity: 1, unitPrice: 0.00, amount: 0.00 },
+    { id: 1, name: '', quantity: 1, unitPrice: 0.0, amount: 0.0 },
   ]);
 
   // Function to add a new item row
   const handleAddItem = () => {
-    setReturnItems(prevItems => [
+    setReturnItems((prevItems) => [
       ...prevItems,
-      { id: prevItems.length + 1, name: '', quantity: 1, unitPrice: 0.00, amount: 0.00 },
+      {
+        id: prevItems.length + 1,
+        name: '',
+        quantity: 1,
+        unitPrice: 0.0,
+        amount: 0.0,
+      },
     ]);
   };
 
   // Function to remove an item row
   const handleRemoveItem = (id: number) => {
-    setReturnItems(prevItems => prevItems.filter(item => item.id !== id));
+    setReturnItems((prevItems) => prevItems.filter((item) => item.id !== id));
   };
 
   // Handler for item name, quantity, or unit price changes
-  const handleItemChange = (id: number, field: string, value: string | number) => {
-    setReturnItems(prevItems =>
-      prevItems.map(item => {
+  const handleItemChange = (
+    id: number,
+    field: string,
+    value: string | number,
+  ) => {
+    setReturnItems((prevItems) =>
+      prevItems.map((item) => {
         if (item.id === id) {
           const updatedItem = { ...item, [field]: value };
           // Recalculate amount if quantity or unitPrice changes
@@ -45,12 +57,15 @@ const SalesReturnPage = () => {
           return updatedItem;
         }
         return item;
-      })
+      }),
     );
   };
 
   // Calculate total return amount
-  const totalReturnAmount = returnItems.reduce((sum, item) => sum + item.amount, 0);
+  const totalReturnAmount = returnItems.reduce(
+    (sum, item) => sum + item.amount,
+    0,
+  );
 
   const handleSaveReturn = () => {
     // In a real application, you would send this data to your backend
@@ -72,15 +87,24 @@ const SalesReturnPage = () => {
     <div className="sales-return-page-wrapper">
       {/* Top Bar */}
       <div className="sales-return-top-bar">
-        <button onClick={() => navigate('/masters')} className="sales-return-close-button">
+        <button
+          onClick={() => navigate('/masters')}
+          className="sales-return-close-button"
+        >
           &times;
         </button>
         {/* Links for Sales and Sales Return */}
         <div className="sales-return-nav-links">
-          <Link to={`${ROUTES.MASTERS}/${ROUTES.SALES}`} className="sales-return-nav-link">
+          <Link
+            to={`${ROUTES.MASTERS}/${ROUTES.SALES}`}
+            className="sales-return-nav-link"
+          >
             Sales
           </Link>
-          <Link to={`${ROUTES.MASTERS}/${ROUTES.SALES_RETURN}`} className="sales-return-nav-link active">
+          <Link
+            to={`${ROUTES.MASTERS}/${ROUTES.SALES_RETURN}`}
+            className="sales-return-nav-link active"
+          >
             Sales Return
           </Link>
         </div>
@@ -91,7 +115,9 @@ const SalesReturnPage = () => {
       <div className="sales-return-content-area">
         {/* Date and Voucher No */}
         <div className="sales-return-field-group">
-          <label htmlFor="return-date" className="sales-return-label">Date</label>
+          <label htmlFor="return-date" className="sales-return-label">
+            Date
+          </label>
           <input
             type="date"
             id="return-date"
@@ -102,7 +128,9 @@ const SalesReturnPage = () => {
         </div>
 
         <div className="sales-return-field-group">
-          <label htmlFor="voucher-no" className="sales-return-label">Voucher No.</label>
+          <label htmlFor="voucher-no" className="sales-return-label">
+            Voucher No.
+          </label>
           <input
             type="text"
             id="voucher-no"
@@ -115,7 +143,9 @@ const SalesReturnPage = () => {
 
         {/* Sale Type */}
         <div className="sales-return-field-group">
-          <label htmlFor="sale-type" className="sales-return-label">Sale Type</label>
+          <label htmlFor="sale-type" className="sales-return-label">
+            Sale Type
+          </label>
           <select
             id="sale-type"
             value={saleType}
@@ -129,7 +159,9 @@ const SalesReturnPage = () => {
 
         {/* Party Name */}
         <div className="sales-return-field-group">
-          <label htmlFor="party-name" className="sales-return-label">Party</label>
+          <label htmlFor="party-name" className="sales-return-label">
+            Party
+          </label>
           <input
             type="text"
             id="party-name"
@@ -143,7 +175,7 @@ const SalesReturnPage = () => {
         {/* Items Section */}
         <h3 className="sales-return-section-heading">Items to Return</h3>
         <div className="sales-return-items-list-container">
-          {returnItems.map(item => (
+          {returnItems.map((item) => (
             <div key={item.id} className="sales-return-item-card">
               <div className="sales-return-item-details">
                 <div className="sales-return-item-field">
@@ -151,7 +183,9 @@ const SalesReturnPage = () => {
                   <input
                     type="text"
                     value={item.name}
-                    onChange={(e) => handleItemChange(item.id, 'name', e.target.value)}
+                    onChange={(e) =>
+                      handleItemChange(item.id, 'name', e.target.value)
+                    }
                     placeholder="e.g., T-Shirt"
                     className="sales-return-item-input"
                   />
@@ -162,20 +196,34 @@ const SalesReturnPage = () => {
                   <div className="sales-return-quantity-controls">
                     <button
                       className="sales-return-quantity-button"
-                      onClick={() => handleItemChange(item.id, 'quantity', Math.max(1, item.quantity - 1))}
+                      onClick={() =>
+                        handleItemChange(
+                          item.id,
+                          'quantity',
+                          Math.max(1, item.quantity - 1),
+                        )
+                      }
                     >
                       -
                     </button>
                     <input
                       type="number"
                       value={item.quantity}
-                      onChange={(e) => handleItemChange(item.id, 'quantity', parseInt(e.target.value) || 0)}
+                      onChange={(e) =>
+                        handleItemChange(
+                          item.id,
+                          'quantity',
+                          parseInt(e.target.value) || 0,
+                        )
+                      }
                       className="sales-return-quantity-display"
                       min="1"
                     />
                     <button
                       className="sales-return-quantity-button"
-                      onClick={() => handleItemChange(item.id, 'quantity', item.quantity + 1)}
+                      onClick={() =>
+                        handleItemChange(item.id, 'quantity', item.quantity + 1)
+                      }
                     >
                       +
                     </button>
@@ -188,14 +236,22 @@ const SalesReturnPage = () => {
                     type="number"
                     step="0.01"
                     value={item.unitPrice.toFixed(2)}
-                    onChange={(e) => handleItemChange(item.id, 'unitPrice', parseFloat(e.target.value) || 0)}
+                    onChange={(e) =>
+                      handleItemChange(
+                        item.id,
+                        'unitPrice',
+                        parseFloat(e.target.value) || 0,
+                      )
+                    }
                     className="sales-return-item-input"
                   />
                 </div>
 
                 <div className="sales-return-item-field sales-return-amount-field">
                   <label className="sales-return-item-label">Amount</label>
-                  <p className="sales-return-item-amount">₹{item.amount.toFixed(2)}</p>
+                  <p className="sales-return-item-amount">
+                    ₹{item.amount.toFixed(2)}
+                  </p>
                 </div>
               </div>
               {returnItems.length > 1 && (
@@ -209,7 +265,10 @@ const SalesReturnPage = () => {
               )}
             </div>
           ))}
-          <button onClick={handleAddItem} className="sales-return-add-item-button">
+          <button
+            onClick={handleAddItem}
+            className="sales-return-add-item-button"
+          >
             + Add Item
           </button>
         </div>
@@ -217,12 +276,16 @@ const SalesReturnPage = () => {
         {/* Total Return Amount */}
         <div className="sales-return-total-amount-section">
           <p className="sales-return-total-amount-label">Total Return Amount</p>
-          <p className="sales-return-total-amount-value">₹{totalReturnAmount.toFixed(2)}</p>
+          <p className="sales-return-total-amount-value">
+            ₹{totalReturnAmount.toFixed(2)}
+          </p>
         </div>
 
         {/* Mode of Return */}
         <div className="sales-return-field-group">
-          <label htmlFor="mode-of-return" className="sales-return-label">Mode of Return</label>
+          <label htmlFor="mode-of-return" className="sales-return-label">
+            Mode of Return
+          </label>
           <select
             id="mode-of-return"
             value={modeOfReturn}
@@ -238,10 +301,7 @@ const SalesReturnPage = () => {
 
       {/* Fixed Bottom Bar */}
       <div className="sales-return-bottom-bar">
-        <button
-          onClick={handleSaveReturn}
-          className="sales-return-save-button"
-        >
+        <button onClick={handleSaveReturn} className="sales-return-save-button">
           Save Return
         </button>
       </div>

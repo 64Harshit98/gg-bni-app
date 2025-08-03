@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/Authcontext'; // Import useAuth hook
-import { logoutUser } from '../lib/auth_operations'; // Import logout function
-import { db } from '../lib/firebase'; // Import Firestore database instance
+import { useAuth } from '@/context/Authcontext'; // Import useAuth hook
+import { logoutUser } from '@/lib/auth_operations'; // Import logout function
+import { db } from '@/lib/firebase'; // Import Firestore database instance
 import { doc, getDoc } from 'firebase/firestore';
-import { ROUTES } from '../constants/routes.constants'; // Import routes for navigation
+import { ROUTES } from '@/constants/routes.constants'; // Import routes for navigation
 
 // Define a type for the user profile data
 interface UserProfile {
@@ -21,7 +21,6 @@ const Account: React.FC = () => {
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  
   // useEffect to fetch user data from Firestore
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -59,7 +58,6 @@ const Account: React.FC = () => {
     fetchUserProfile();
   }, [currentUser, loadingAuth, navigate]); // Rerun effect when auth state changes
 
-
   // Function to handle logout logic
   const handleLogout = async () => {
     try {
@@ -73,9 +71,9 @@ const Account: React.FC = () => {
 
   // Function to handle edit profile
   // In Account.tsx
-const handleEditProfile = () => {
-  navigate(`${ROUTES.ACCOUNT}/${ROUTES.EDIT_PROFILE}`);
-};
+  const handleEditProfile = () => {
+    navigate(`${ROUTES.ACCOUNT}/${ROUTES.EDIT_PROFILE}`);
+  };
 
   // Conditional rendering for different states
   if (loadingAuth || loadingProfile) {
@@ -95,11 +93,11 @@ const handleEditProfile = () => {
   }
 
   if (!profileData) {
-      return (
-        <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 text-red-500">
-          <p>No profile data available.</p>
-        </div>
-      );
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 text-red-500">
+        <p>No profile data available.</p>
+      </div>
+    );
   }
 
   // Render the actual content once data is loaded

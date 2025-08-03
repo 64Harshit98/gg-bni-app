@@ -1,10 +1,10 @@
 // src/Pages/Master/SalesPage1.tsx
 import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate, NavLink} from 'react-router-dom';
-import { getItems } from '../../lib/items_firebase';
-import type { Item } from '../../constants/models';
+import { useNavigate, NavLink } from 'react-router-dom';
+import { getItems } from '@/lib/items_firebase';
+import type { Item } from '@/constants/models';
 import './Sales.css';
-import { ROUTES } from '../../constants/routes.constants';
+import { ROUTES } from '@/constants/routes.constants';
 
 interface SalesItem {
   id: string;
@@ -18,12 +18,12 @@ const SalesPage1: React.FC = () => {
 
   const [partyNumber, setPartyNumber] = useState<string>('');
   const [partyName, setPartyName] = useState<string>('');
-  
+
   const [items, setItems] = useState<SalesItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<string>('');
-  
+
   const [availableItems, setAvailableItems] = useState<Item[]>([]);
-  
+
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false); // State to control dropdown visibility
   const dropdownRef = useRef<HTMLDivElement>(null); // Ref to handle clicks outside the dropdown
@@ -50,11 +50,14 @@ const SalesPage1: React.FC = () => {
     };
     fetchItems();
   }, []);
-  
+
   // Effect to handle clicks outside the dropdown to close it
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node)
+      ) {
         setIsDropdownOpen(false);
       }
     };
@@ -64,56 +67,64 @@ const SalesPage1: React.FC = () => {
     };
   }, [dropdownRef]);
 
-
-  const totalAmount = items.reduce((sum, item) => sum + item.mrp * item.quantity, 0);
+  const totalAmount = items.reduce(
+    (sum, item) => sum + item.mrp * item.quantity,
+    0,
+  );
 
   const handleQuantityChange = (id: string, delta: number) => {
-    setItems(prevItems =>
-      prevItems.map(item =>
+    setItems((prevItems) =>
+      prevItems.map((item) =>
         item.id === id
           ? { ...item, quantity: Math.max(1, item.quantity + delta) }
-          : item
-      )
+          : item,
+      ),
     );
   };
-  
+
   const handleDeleteItem = (id: string) => {
-    setItems(prevItems => prevItems.filter(item => item.id !== id));
+    setItems((prevItems) => prevItems.filter((item) => item.id !== id));
   };
-  
+
   const handleAddItemToCart = () => {
     if (!selectedItem) {
       // You might want to show an error message if no item is selected
       return;
     }
-    
-    const itemToAdd = availableItems.find(item => item.id === selectedItem);
+
+    const itemToAdd = availableItems.find((item) => item.id === selectedItem);
 
     if (itemToAdd) {
-        const itemExists = items.find(item => item.id === itemToAdd.id);
-        
-        if (itemExists) {
-            setItems(prevItems =>
-                prevItems.map(item =>
-                    item.id === itemToAdd.id
-                        ? { ...item, quantity: item.quantity + 1 }
-                        : item
-                )
-            );
-        } else {
-            setItems(prevItems => [
-                ...prevItems,
-                { id: itemToAdd.id!, name: itemToAdd.name, mrp: itemToAdd.mrp, quantity: 1 }
-            ]);
-        }
-        setSelectedItem('');
-        setSearchQuery('');
+      const itemExists = items.find((item) => item.id === itemToAdd.id);
+
+      if (itemExists) {
+        setItems((prevItems) =>
+          prevItems.map((item) =>
+            item.id === itemToAdd.id
+              ? { ...item, quantity: item.quantity + 1 }
+              : item,
+          ),
+        );
+      } else {
+        setItems((prevItems) => [
+          ...prevItems,
+          {
+            id: itemToAdd.id!,
+            name: itemToAdd.name,
+            mrp: itemToAdd.mrp,
+            quantity: 1,
+          },
+        ]);
+      }
+      setSelectedItem('');
+      setSearchQuery('');
     }
   };
 
-
   const handleProceedToPayment = () => {
-    navigate(`${ROUTES.MASTERS}/${ROUTES.PAYMENT}`, { state: { totalAmount: totalAmount.toFixed(2) } });
+    navigate(`${ROUTES.MASTERS}/${ROUTES.PAYMENT}`, {
+      state: { totalAmount: totalAmount.toFixed(2) },
+    });
   };
 
   const triggerCameraInput = () => {
@@ -128,15 +139,15 @@ const SalesPage1: React.FC = () => {
         setCapturedImage(reader.result as string);
       };
       reader.readAsDataURL(file);
-      console.log("Captured file:", file.name, file.type, file.size);
+      console.log('Captured file:', file.name, file.type, file.size);
     }
   };
-  
+
   // Filter items based on searchQuery
-  const filteredItems = availableItems.filter(item =>
-    item.name.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredItems = availableItems.filter((item) =>
+    item.name.toLowerCase().includes(searchQuery.toLowerCase()),
   );
-  
+
   // Handle selecting an item from the list
   const handleSelect = (item: Item) => {
     setSelectedItem(item.id!);
@@ -146,12 +157,16 @@ const SalesPage1: React.FC = () => {
 
   const renderItemsContent = () => {
     if (items.length === 0) {
-      return <div className="text-center py-8 text-gray-500">No items added to the list.</div>;
+      return (
+        <div className="text-center py-8 text-gray-500">
+          No items added to the list.
+        </div>
+      );
     }
-    
+
     return (
       <div className="items-list-container">
-        {items.map(item => (
+        {items.map((item) => (
           <div key={item.id} className="item-card">
             <div className="item-details">
               <div className="item-info">
@@ -179,7 +194,21 @@ const SalesPage1: React.FC = () => {
                 onClick={() => handleDeleteItem(item.id)}
                 title="Remove item"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="lucide lucide-x"
+                >
+                  <path d="M18 6 6 18" />
+                  <path d="m6 6 12 12" />
+                </svg>
               </button>
             </div>
           </div>
@@ -187,23 +216,30 @@ const SalesPage1: React.FC = () => {
       </div>
     );
   };
-  
+
   return (
     <div className="sales-page-wrapper">
       <div className="sales-top-bar">
-        <button onClick={() => navigate('/masters')} className="sales-close-button">
+        <button
+          onClick={() => navigate('/masters')}
+          className="sales-close-button"
+        >
           &times;
         </button>
         <div className="sales-nav-links">
           <NavLink
             to={`${ROUTES.MASTERS}/${ROUTES.SALES}`}
-            className={({ isActive }) => `sales-nav-link ${isActive ? 'active' : ''}`}
+            className={({ isActive }) =>
+              `sales-nav-link ${isActive ? 'active' : ''}`
+            }
           >
             Sales
           </NavLink>
           <NavLink
             to={`${ROUTES.MASTERS}/${ROUTES.SALES_RETURN}`}
-            className={({ isActive }) => `sales-nav-link ${isActive ? 'active' : ''}`}
+            className={({ isActive }) =>
+              `sales-nav-link ${isActive ? 'active' : ''}`
+            }
           >
             Sales Return
           </NavLink>
@@ -216,12 +252,19 @@ const SalesPage1: React.FC = () => {
           <div className="captured-image-preview">
             <h3>Captured Image:</h3>
             <img src={capturedImage} alt="Captured" className="preview-image" />
-            <button onClick={() => setCapturedImage(null)} className="clear-image-button">Clear Image</button>
+            <button
+              onClick={() => setCapturedImage(null)}
+              className="clear-image-button"
+            >
+              Clear Image
+            </button>
           </div>
         )}
 
         <div className="section-heading-group">
-          <label htmlFor="party-name" className="section-heading">Party Name</label>
+          <label htmlFor="party-name" className="section-heading">
+            Party Name
+          </label>
           <input
             type="text"
             id="party-name"
@@ -233,7 +276,9 @@ const SalesPage1: React.FC = () => {
         </div>
 
         <div className="section-heading-group">
-          <label htmlFor="party-number" className="section-heading">Party Number</label>
+          <label htmlFor="party-number" className="section-heading">
+            Party Number
+          </label>
           <input
             type="text"
             id="party-number"
@@ -269,12 +314,16 @@ const SalesPage1: React.FC = () => {
                 {isLoading ? (
                   <div className="dropdown-item">Loading items...</div>
                 ) : error ? (
-                  <div className="dropdown-item error">Error loading items.</div>
+                  <div className="dropdown-item error">
+                    Error loading items.
+                  </div>
                 ) : filteredItems.length === 0 ? (
-                  <div className="dropdown-item no-results">No items found.</div>
+                  <div className="dropdown-item no-results">
+                    No items found.
+                  </div>
                 ) : (
-                  filteredItems.map(item => (
-                    <div 
+                  filteredItems.map((item) => (
+                    <div
                       key={item.id}
                       className="dropdown-item"
                       onClick={() => handleSelect(item)}
@@ -286,7 +335,7 @@ const SalesPage1: React.FC = () => {
               </div>
             )}
             {/* -------------------------------------------------- */}
-            <button 
+            <button
               onClick={handleAddItemToCart}
               className="add-to-cart-button"
               disabled={!selectedItem}
@@ -312,14 +361,16 @@ const SalesPage1: React.FC = () => {
           style={{ display: 'none' }}
         />
         <button className="camera-button" onClick={triggerCameraInput}>
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            className="w-6 h-6"
+          >
             <path d="M4.5 12.75l6 6 9-13.5" />
           </svg>
         </button>
-        <button
-          onClick={handleProceedToPayment}
-          className="proceed-button"
-        >
+        <button onClick={handleProceedToPayment} className="proceed-button">
           Proceed to Payment
         </button>
       </div>

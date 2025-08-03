@@ -12,6 +12,7 @@ This project is a comprehensive application designed to streamline inventory tra
 - [Usage](#usage)
 - [Scripts](#scripts)
 - [Project Structure](#project-structure)
+- [Commit Message Guidelines](#commit-message-guidelines)
 - [Contributing](#contributing)
 - [License](#license)
 - [Contact](#contact)
@@ -163,3 +164,37 @@ npm run build # or yarn build or pnpm build
 ├── tsconfig.node.json
 └── vite.config.ts
 ```
+
+---
+
+## Commit Message Guidelines
+
+This project uses `commitizen` and `husky` to enforce a consistent commit message format and to run linters before committing. This ensures that our commit history is readable and that our code stays clean.
+
+### Setup
+
+The following tools are used:
+
+- **[Commitizen](http://commitizen.github.io/cz-cli/)**: A tool to create conventional commit messages.
+- **[cz-customizable](https://github.com/leoforfree/cz-customizable)**: A customizable adapter for `commitizen` that allows us to define our own commit message format.
+- **[Husky](https://typicode.github.io/husky/)**: A tool that makes it easy to work with Git hooks.
+- **[lint-staged](https://github.com/okonet/lint-staged)**: A tool to run linters on staged files.
+
+### How to Commit
+
+To commit your changes, simply use the standard `git commit` command:
+
+```bash
+git commit
+```
+
+A `prepare-commit-msg` hook has been set up to automatically launch an interactive prompt that will guide you through creating a commit message that follows our conventions.
+
+### Pre-commit Hook
+
+Before each commit, a `pre-commit` hook will run `lint-staged`. This will:
+
+1.  Run `eslint` to check for any linting errors in the staged files.
+2.  Run `prettier` to format the staged files.
+
+If either of these checks fails, the commit will be aborted. You will need to fix the errors and stage the files again before you can commit.

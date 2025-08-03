@@ -1,0 +1,2 @@
+# This hook runs commitizen when you run git commit
+npx cz --hook -- "$@"

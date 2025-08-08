@@ -1,44 +1,201 @@
 // src/Pages/Master/SalesReturnPage.tsx
-import  { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom'; // Import Link
-import './SalesReturn.css'; // Dedicated CSS for Sales Return
-import { ROUTES } from '../../constants/routes.constants'; // Import ROUTES
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate, NavLink} from 'react-router-dom';
+import { ROUTES } from '../../constants/routes.constants';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getFirestore, collection, query, getDocs, serverTimestamp, addDoc } from 'firebase/firestore';
+import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 
-const SalesReturnPage = () => {
+// Declare global variables to resolve 'Cannot find name' errors
+declare const __firebase_config: string;
+declare const __initial_auth_token: string;
+declare const __app_id: string;
+
+// Define interfaces for consistency with SalesPage1 and for fetched sales
+interface SalesItem {
+  id: string;
+  name: string;
+  mrp: number; // This will be used as unitPrice for returns
+  quantity: number;
+}
+
+interface SalesData {
+  id: string; // Firestore document ID
+  partyName: string;
+  partyNumber: string;
+  items: SalesItem[];
+  totalAmount: number;
+  capturedImage: string | null;
+  createdAt: any; // Firestore Timestamp
+}
+
+interface ReturnItem {
+  id: string; // Unique ID for the return item instance
+  name: string;
+  quantity: number;
+  unitPrice: number; // Corresponds to mrp from original sale
+  amount: number; // quantity * unitPrice
+}
+
+const SalesReturnPage: React.FC = () => {
   const navigate = useNavigate();
+  
+  // State for Firebase and authentication
+  const [db, setDb] = useState<any>(null);
+  const [auth, setAuth] = useState<any>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
 
-  // State for form fields
-  const [returnDate, setReturnDate] = useState<string>(new Date().toISOString().split('T')[0]); // Default to today's date
+  // Initialize Firebase and handle authentication
+  useEffect(() => {
+    const initializeFirebase = async () => {
+      try {
+        let app;
+        if (getApps().length === 0) {
+          const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+          app = initializeApp(firebaseConfig);
+        } else {
+          app = getApp(); // Use the existing app
+        }
+        
+        const firestore = getFirestore(app);
+        const firebaseAuth = getAuth(app);
+
+        setDb(firestore);
+        setAuth(firebaseAuth);
+
+        const unsubscribe = onAuthStateChanged(firebaseAuth, async (user) => {
+          if (user) {
+            setUserId(user.uid);
+          } else {
+            // Sign in anonymously if no user is logged in
+            try {
+              if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                await signInWithCustomToken(firebaseAuth, __initial_auth_token);
+              } else {
+                await signInAnonymously(firebaseAuth);
+              }
+              setUserId(firebaseAuth.currentUser?.uid || crypto.randomUUID()); // Fallback for anonymous
+            } catch (error) {
+              console.error("Firebase anonymous sign-in failed:", error);
+              setUserId(crypto.randomUUID()); // Generate a random ID if sign-in fails
+            }
+          }
+          setIsAuthReady(true); // Auth state is ready
+        });
+
+        return () => unsubscribe();
+      } catch (error) {
+        console.error("Failed to initialize Firebase:", error);
+        setIsAuthReady(true); // Mark as ready even on error to unblock UI
+      }
+    };
+
+    initializeFirebase();
+  }, []);
+
+  // Form states
+  const [returnDate, setReturnDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [voucherNo, setVoucherNo] = useState<string>('');
-  const [saleType, setSaleType] = useState<string>('Cash Sale'); // Default sale type
+  const [saleType, setSaleType] = useState<string>('Cash Sale');
   const [partyName, setPartyName] = useState<string>('');
-  const [modeOfReturn, setModeOfReturn] = useState<string>('Cash Refund'); // Default mode of return
+  const [modeOfReturn, setModeOfReturn] = useState<string>('Cash Refund');
 
-  // State for items being returned (can add multiple items)
-  const [returnItems, setReturnItems] = useState([
-    { id: 1, name: '', quantity: 1, unitPrice: 0.00, amount: 0.00 },
-  ]);
+  // Items for return
+  const [returnItems, setReturnItems] = useState<ReturnItem[]>([]);
 
-  // Function to add a new item row
-  const handleAddItem = () => {
-    setReturnItems(prevItems => [
-      ...prevItems,
-      { id: prevItems.length + 1, name: '', quantity: 1, unitPrice: 0.00, amount: 0.00 },
-    ]);
+  // States for fetching and selecting sales
+  const [salesList, setSalesList] = useState<SalesData[]>([]);
+  const [selectedSale, setSelectedSale] = useState<SalesData | null>(null);
+  const [searchSaleQuery, setSearchSaleQuery] = useState<string>('');
+  const [isSalesDropdownOpen, setIsSalesDropdownOpen] = useState<boolean>(false);
+  const salesDropdownRef = useRef<HTMLDivElement>(null);
+
+  const [isLoadingSales, setIsLoadingSales] = useState<boolean>(false);
+  const [salesError, setSalesError] = useState<string | null>(null);
+
+  // Fetch sales data from Firestore
+  useEffect(() => {
+    const fetchSales = async () => {
+      if (!db || !isAuthReady || !userId) return;
+
+      setIsLoadingSales(true);
+      setSalesError(null);
+      try {
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const salesCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/sales`);
+        const q = query(salesCollectionRef);
+        const querySnapshot = await getDocs(q);
+        const fetchedSales: SalesData[] = [];
+        querySnapshot.forEach((doc) => {
+          fetchedSales.push({ id: doc.id, ...doc.data() } as SalesData);
+        });
+        setSalesList(fetchedSales);
+      } catch (err) {
+        console.error('Error fetching sales:', err);
+        setSalesError('Failed to load sales data. Please ensure you have saved sales.');
+      } finally {
+        setIsLoadingSales(false);
+      }
+    };
+
+    fetchSales();
+  }, [db, isAuthReady, userId]);
+
+  // Handle click outside sales dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (salesDropdownRef.current && !salesDropdownRef.current.contains(event.target as Node)) {
+        setIsSalesDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Filter sales based on search query
+  const filteredSales = salesList.filter(sale =>
+    sale.partyName.toLowerCase().includes(searchSaleQuery.toLowerCase()) ||
+    sale.partyNumber.toLowerCase().includes(searchSaleQuery.toLowerCase()) ||
+    sale.id.toLowerCase().includes(searchSaleQuery.toLowerCase())
+  );
+
+  // Handle selecting a sale from the dropdown
+  const handleSelectSale = (sale: SalesData) => {
+    setSelectedSale(sale);
+    setPartyName(sale.partyName);
+    setVoucherNo(sale.partyNumber);
+    setReturnItems(sale.items.map(item => ({
+      id: item.id, // Use original item ID for reference, but can be a new UUID if needed
+      name: item.name,
+      quantity: item.quantity,
+      unitPrice: item.mrp,
+      amount: item.quantity * item.mrp,
+    })));
+    setSearchSaleQuery(sale.partyName);
+    setIsSalesDropdownOpen(false);
   };
 
-  // Function to remove an item row
-  const handleRemoveItem = (id: number) => {
-    setReturnItems(prevItems => prevItems.filter(item => item.id !== id));
+  // Clear selected sale and reset form
+  const handleClearSelectedSale = () => {
+    setSelectedSale(null);
+    setPartyName('');
+    setVoucherNo('');
+    setReturnItems([{ id: crypto.randomUUID(), name: '', quantity: 1, unitPrice: 0.00, amount: 0.00 }]);
+    setSearchSaleQuery('');
   };
+
+  // Calculate total return amount
+  const totalReturnAmount = returnItems.reduce((sum, item) => sum + item.amount, 0);
 
   // Handler for item name, quantity, or unit price changes
-  const handleItemChange = (id: number, field: string, value: string | number) => {
+  const handleItemChange = (id: string, field: keyof ReturnItem, value: string | number) => {
     setReturnItems(prevItems =>
       prevItems.map(item => {
         if (item.id === id) {
           const updatedItem = { ...item, [field]: value };
-          // Recalculate amount if quantity or unitPrice changes
           if (field === 'quantity' || field === 'unitPrice') {
             updatedItem.amount = updatedItem.quantity * updatedItem.unitPrice;
           }
@@ -49,198 +206,304 @@ const SalesReturnPage = () => {
     );
   };
 
-  // Calculate total return amount
-  const totalReturnAmount = returnItems.reduce((sum, item) => sum + item.amount, 0);
+  // Function to add a new item row
+  const handleAddItem = () => {
+    setReturnItems(prevItems => [
+      ...prevItems,
+      { id: crypto.randomUUID(), name: '', quantity: 1, unitPrice: 0.00, amount: 0.00 },
+    ]);
+  };
 
-  const handleSaveReturn = () => {
-    // In a real application, you would send this data to your backend
-    const salesReturnData = {
-      returnDate,
-      voucherNo,
-      saleType,
-      partyName,
-      returnItems,
-      totalReturnAmount: totalReturnAmount.toFixed(2),
-      modeOfReturn,
-    };
-    console.log('Saving Sales Return:', salesReturnData);
-    // After saving, navigate back or to a confirmation page
-    navigate(-1); // Go back to the previous page
+  // Function to remove an item row
+  const handleRemoveItem = (id: string) => {
+    setReturnItems(prevItems => prevItems.filter(item => item.id !== id));
+  };
+
+  const handleSaveReturn = async () => {
+    if (!db || !userId) {
+      alert('Firestore is not initialized or user is not authenticated.');
+      return;
+    }
+
+    // Basic validation
+    if (!partyName.trim() || returnItems.length === 0 || returnItems.some(item => !item.name.trim() || item.quantity <= 0 || item.unitPrice < 0)) {
+      alert('Please fill in Party Name and ensure all return items have a name, quantity, and valid unit price.');
+      return;
+    }
+
+    try {
+      const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+      const salesReturnData = {
+        userId: userId,
+        originalSaleId: selectedSale ? selectedSale.id : null, // Link to the original sale if selected
+        returnDate,
+        voucherNo: voucherNo.trim(),
+        saleType,
+        partyName: partyName.trim(),
+        returnItems,
+        totalReturnAmount,
+        modeOfReturn,
+        createdAt: serverTimestamp(),
+      };
+
+      const docRef = await addDoc(collection(db, `artifacts/${appId}/users/${userId}/salesReturns`), salesReturnData);
+      console.log('Sales Return successfully saved with ID:', docRef.id);
+      alert('Sales Return saved successfully!');
+
+      handleClearSelectedSale();
+      setReturnDate(new Date().toISOString().split('T')[0]);
+      setModeOfReturn('Cash Refund');
+
+    } catch (error) {
+      console.error('Error saving sales return:', error);
+      alert('Failed to save sales return. Please try again.');
+    }
   };
 
   return (
-    <div className="sales-return-page-wrapper">
+    <div className="flex flex-col min-h-screen bg-gray-100">
       {/* Top Bar */}
-      <div className="sales-return-top-bar">
-        <button onClick={() => navigate('/masters')} className="sales-return-close-button">
+      <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
+        <button onClick={() => navigate(ROUTES.MASTERS)} className="text-2xl font-bold text-gray-600 bg-transparent border-none cursor-pointer p-1">
           &times;
         </button>
-        {/* Links for Sales and Sales Return */}
-        <div className="sales-return-nav-links">
-          <Link to={`${ROUTES.MASTERS}/${ROUTES.SALES}`} className="sales-return-nav-link">
+        <div className="flex-1 flex justify-center items-center gap-6">
+          <NavLink
+            to={`${ROUTES.MASTERS}/${ROUTES.SALES}`}
+            className={({ isActive }) =>
+              `flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${
+                isActive ? 'border-blue-600 font-semibold text-blue-600' : 'border-transparent text-slate-500'
+              }`
+            }
+          >
             Sales
-          </Link>
-          <Link to={`${ROUTES.MASTERS}/${ROUTES.SALES_RETURN}`} className="sales-return-nav-link active">
+          </NavLink>
+          <NavLink
+            to={`${ROUTES.MASTERS}/${ROUTES.SALES_RETURN}`}
+            className={({ isActive }) =>
+              `flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${
+                isActive ? 'border-blue-600 font-semibold text-blue-600' : 'border-transparent text-slate-500'
+              }`
+            }
+          >
             Sales Return
-          </Link>
+          </NavLink>
         </div>
-        <div style={{ width: '1.5rem' }}></div> {/* Spacer for symmetry */}
+        <div className="w-6"></div> {/* Spacer for symmetry */}
       </div>
 
       {/* Main Content Area */}
-      <div className="sales-return-content-area">
-        {/* Date and Voucher No */}
-        <div className="sales-return-field-group">
-          <label htmlFor="return-date" className="sales-return-label">Date</label>
-          <input
-            type="date"
-            id="return-date"
-            value={returnDate}
-            onChange={(e) => setReturnDate(e.target.value)}
-            className="sales-return-input"
-          />
-        </div>
-
-        <div className="sales-return-field-group">
-          <label htmlFor="voucher-no" className="sales-return-label">Voucher No.</label>
-          <input
-            type="text"
-            id="voucher-no"
-            value={voucherNo}
-            onChange={(e) => setVoucherNo(e.target.value)}
-            placeholder="Enter Voucher No."
-            className="sales-return-input"
-          />
-        </div>
-
-        {/* Sale Type */}
-        <div className="sales-return-field-group">
-          <label htmlFor="sale-type" className="sales-return-label">Sale Type</label>
-          <select
-            id="sale-type"
-            value={saleType}
-            onChange={(e) => setSaleType(e.target.value)}
-            className="sales-return-select"
-          >
-            <option value="Cash Sale">Cash Sale</option>
-            <option value="Credit Sale">Credit Sale</option>
-          </select>
-        </div>
-
-        {/* Party Name */}
-        <div className="sales-return-field-group">
-          <label htmlFor="party-name" className="sales-return-label">Party</label>
-          <input
-            type="text"
-            id="party-name"
-            value={partyName}
-            onChange={(e) => setPartyName(e.target.value)}
-            placeholder="Enter Party Name"
-            className="sales-return-input"
-          />
-        </div>
-
-        {/* Items Section */}
-        <h3 className="sales-return-section-heading">Items to Return</h3>
-        <div className="sales-return-items-list-container">
-          {returnItems.map(item => (
-            <div key={item.id} className="sales-return-item-card">
-              <div className="sales-return-item-details">
-                <div className="sales-return-item-field">
-                  <label className="sales-return-item-label">Item Name</label>
-                  <input
-                    type="text"
-                    value={item.name}
-                    onChange={(e) => handleItemChange(item.id, 'name', e.target.value)}
-                    placeholder="e.g., T-Shirt"
-                    className="sales-return-item-input"
-                  />
-                </div>
-
-                <div className="sales-return-item-field sales-return-quantity-field">
-                  <label className="sales-return-item-label">Qty</label>
-                  <div className="sales-return-quantity-controls">
-                    <button
-                      className="sales-return-quantity-button"
-                      onClick={() => handleItemChange(item.id, 'quantity', Math.max(1, item.quantity - 1))}
+      <div className="flex-grow p-4 bg-gray-100 w-full overflow-y-auto box-border">
+        <div className="bg-white p-6 rounded-lg shadow-md">
+          {/* Search Sale Section */}
+          <div className="mb-4 relative" ref={salesDropdownRef}>
+            <label htmlFor="search-sale" className="block text-gray-700 text-lg font-medium mb-2">Search Existing Sale</label>
+            <input
+              type="text"
+              id="search-sale"
+              value={searchSaleQuery}
+              onChange={(e) => {
+                setSearchSaleQuery(e.target.value);
+                setIsSalesDropdownOpen(true);
+              }}
+              onFocus={() => setIsSalesDropdownOpen(true)}
+              placeholder="Search by Party Name or Voucher No."
+              className="w-full p-3 border border-gray-300 rounded-lg bg-blue-50 text-gray-800 text-base pl-4 box-border placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+              autoComplete="off"
+            />
+            {isSalesDropdownOpen && (
+              <div className="absolute top-full left-0 right-0 z-20 mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-52 overflow-y-auto">
+                {isLoadingSales ? (
+                  <div className="p-3 text-gray-500">Loading sales...</div>
+                ) : salesError ? (
+                  <div className="p-3 text-red-600 font-italic">Error: {salesError}</div>
+                ) : filteredSales.length === 0 ? (
+                  <div className="p-3 text-gray-500 italic">No sales found.</div>
+                ) : (
+                  filteredSales.map(sale => (
+                    <div
+                      key={sale.id}
+                      className="p-3 cursor-pointer border-b border-gray-200 last:border-b-0 hover:bg-gray-100"
+                      onClick={() => handleSelectSale(sale)}
                     >
-                      -
-                    </button>
+                      <p className="font-semibold">{sale.partyName} (Voucher: {sale.partyNumber || 'N/A'})</p>
+                      <p className="text-sm text-gray-600">Total: ₹{sale.totalAmount.toFixed(2)}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+            {selectedSale && (
+              <button
+                onClick={handleClearSelectedSale}
+                className="mt-2 w-full py-2 px-4 bg-red-500 text-white rounded-lg font-semibold shadow-sm transition hover:bg-red-600"
+              >
+                Clear Selected Sale
+              </button>
+            )}
+          </div>
+
+          {/* Date and Voucher No */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label htmlFor="return-date" className="block text-gray-700 text-lg font-medium mb-2">Date</label>
+              <input
+                type="date"
+                id="return-date"
+                value={returnDate}
+                onChange={(e) => setReturnDate(e.target.value)}
+                className="w-full p-3 border border-gray-300 rounded-lg bg-blue-50 text-gray-800 text-base pl-4 box-border focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label htmlFor="voucher-no" className="block text-gray-700 text-lg font-medium mb-2">Voucher No.</label>
+              <input
+                type="text"
+                id="voucher-no"
+                value={voucherNo}
+                onChange={(e) => setVoucherNo(e.target.value)}
+                placeholder="Enter Voucher No."
+                className="w-full p-3 border border-gray-300 rounded-lg bg-blue-50 text-gray-800 text-base pl-4 box-border placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                readOnly={!!selectedSale}
+              />
+            </div>
+          </div>
+
+          {/* Sale Type */}
+          <div className="mb-4">
+            <label htmlFor="sale-type" className="block text-gray-700 text-lg font-medium mb-2">Sale Type</label>
+            <select
+              id="sale-type"
+              value={saleType}
+              onChange={(e) => setSaleType(e.target.value)}
+              className="w-full p-3 border border-gray-300 rounded-lg bg-blue-50 text-gray-800 text-base focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+            >
+              <option value="Cash Sale">Cash Sale</option>
+              <option value="Credit Sale">Credit Sale</option>
+            </select>
+          </div>
+
+          {/* Party Name */}
+          <div className="mb-4">
+            <label htmlFor="party-name" className="block text-gray-700 text-lg font-medium mb-2">Party</label>
+            <input
+              type="text"
+              id="party-name"
+              value={partyName}
+              onChange={(e) => setPartyName(e.target.value)}
+              placeholder="Enter Party Name"
+              className="w-full p-3 border border-gray-300 rounded-lg bg-blue-50 text-gray-800 text-base pl-4 box-border placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+              readOnly={!!selectedSale}
+            />
+          </div>
+
+          {/* Items Section */}
+          <h3 className="text-gray-700 text-xl font-semibold mt-6 mb-4">Items to Return</h3>
+          <div className="flex flex-col gap-4 mb-6">
+            {returnItems.map(item => (
+              <div key={item.id} className="flex items-start justify-between p-4 bg-white rounded-lg shadow-sm border border-gray-200 relative">
+                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="col-span-1">
+                    <label className="block text-gray-600 text-sm font-medium mb-1">Item Name</label>
+                    <input
+                      type="text"
+                      value={item.name}
+                      onChange={(e) => handleItemChange(item.id, 'name', e.target.value)}
+                      placeholder="e.g., T-Shirt"
+                      className="w-full p-2 border border-gray-300 rounded-md text-base"
+                      readOnly={!!selectedSale}
+                    />
+                  </div>
+                  <div className="col-span-1">
+                    <label className="block text-gray-600 text-sm font-medium mb-1">Qty</label>
+                    <div className="flex items-center">
+                      <button
+                        className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-200 text-gray-700 font-bold transition hover:bg-gray-300"
+                        onClick={() => handleItemChange(item.id, 'quantity', Math.max(1, item.quantity - 1))}
+                        disabled={!!selectedSale}
+                      >
+                        -
+                      </button>
+                      <input
+                        type="number"
+                        value={item.quantity}
+                        onChange={(e) => handleItemChange(item.id, 'quantity', parseInt(e.target.value) || 0)}
+                        className="w-full text-center px-2 py-1 mx-2 border-b-2 border-gray-300 focus:outline-none focus:border-blue-500"
+                        min="1"
+                        readOnly={!!selectedSale}
+                      />
+                      <button
+                        className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-200 text-gray-700 font-bold transition hover:bg-gray-300"
+                        onClick={() => handleItemChange(item.id, 'quantity', item.quantity + 1)}
+                        disabled={!!selectedSale}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                  <div className="col-span-1">
+                    <label className="block text-gray-600 text-sm font-medium mb-1">Unit Price</label>
                     <input
                       type="number"
-                      value={item.quantity}
-                      onChange={(e) => handleItemChange(item.id, 'quantity', parseInt(e.target.value) || 0)}
-                      className="sales-return-quantity-display"
-                      min="1"
+                      step="0.01"
+                      value={item.unitPrice.toFixed(2)}
+                      onChange={(e) => handleItemChange(item.id, 'unitPrice', parseFloat(e.target.value) || 0)}
+                      className="w-full p-2 border border-gray-300 rounded-md text-base"
+                      readOnly={!!selectedSale}
                     />
-                    <button
-                      className="sales-return-quantity-button"
-                      onClick={() => handleItemChange(item.id, 'quantity', item.quantity + 1)}
-                    >
-                      +
-                    </button>
+                  </div>
+                  <div className="col-span-1">
+                    <label className="block text-gray-600 text-sm font-medium mb-1">Amount</label>
+                    <p className="text-lg font-semibold text-gray-800 mt-1">₹{item.amount.toFixed(2)}</p>
                   </div>
                 </div>
-
-                <div className="sales-return-item-field sales-return-price-field">
-                  <label className="sales-return-item-label">Unit Price</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={item.unitPrice.toFixed(2)}
-                    onChange={(e) => handleItemChange(item.id, 'unitPrice', parseFloat(e.target.value) || 0)}
-                    className="sales-return-item-input"
-                  />
-                </div>
-
-                <div className="sales-return-item-field sales-return-amount-field">
-                  <label className="sales-return-item-label">Amount</label>
-                  <p className="sales-return-item-amount">₹{item.amount.toFixed(2)}</p>
-                </div>
+                {returnItems.length > 1 && (
+                  <button
+                    onClick={() => handleRemoveItem(item.id)}
+                    className="absolute top-2 right-2 text-2xl text-red-500 hover:text-red-700 transition"
+                    title="Remove Item"
+                    disabled={!!selectedSale}
+                  >
+                    &times;
+                  </button>
+                )}
               </div>
-              {returnItems.length > 1 && (
-                <button
-                  onClick={() => handleRemoveItem(item.id)}
-                  className="sales-return-remove-item-button"
-                  title="Remove Item"
-                >
-                  &times;
-                </button>
-              )}
-            </div>
-          ))}
-          <button onClick={handleAddItem} className="sales-return-add-item-button">
-            + Add Item
-          </button>
-        </div>
+            ))}
+            {!selectedSale && (
+              <button onClick={handleAddItem} className="w-full py-3 px-6 bg-green-500 text-white rounded-lg font-semibold shadow-sm transition hover:bg-green-600">
+                + Add Item
+              </button>
+            )}
+          </div>
 
-        {/* Total Return Amount */}
-        <div className="sales-return-total-amount-section">
-          <p className="sales-return-total-amount-label">Total Return Amount</p>
-          <p className="sales-return-total-amount-value">₹{totalReturnAmount.toFixed(2)}</p>
-        </div>
+          {/* Total Return Amount */}
+          <div className="flex justify-between items-center p-4 bg-gray-100 rounded-lg shadow-sm">
+            <p className="text-lg font-medium text-gray-700">Total Return Amount</p>
+            <p className="text-3xl font-bold text-gray-900">₹{totalReturnAmount.toFixed(2)}</p>
+          </div>
 
-        {/* Mode of Return */}
-        <div className="sales-return-field-group">
-          <label htmlFor="mode-of-return" className="sales-return-label">Mode of Return</label>
-          <select
-            id="mode-of-return"
-            value={modeOfReturn}
-            onChange={(e) => setModeOfReturn(e.target.value)}
-            className="sales-return-select"
-          >
-            <option value="Cash Refund">Cash Refund</option>
-            <option value="Credit Note">Credit Note</option>
-            <option value="Exchange">Exchange</option>
-          </select>
+          {/* Mode of Return */}
+          <div className="mt-6 mb-4">
+            <label htmlFor="mode-of-return" className="block text-gray-700 text-lg font-medium mb-2">Mode of Return</label>
+            <select
+              id="mode-of-return"
+              value={modeOfReturn}
+              onChange={(e) => setModeOfReturn(e.target.value)}
+              className="w-full p-3 border border-gray-300 rounded-lg bg-blue-50 text-gray-800 text-base focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+            >
+              <option value="Cash Refund">Cash Refund</option>
+              <option value="Credit Note">Credit Note</option>
+              <option value="Exchange">Exchange</option>
+            </select>
+          </div>
         </div>
       </div>
 
       {/* Fixed Bottom Bar */}
-      <div className="sales-return-bottom-bar">
+      <div className="sticky bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-up flex justify-center items-center z-10 w-full box-border">
         <button
           onClick={handleSaveReturn}
-          className="sales-return-save-button"
+          className="w-full max-w-xs py-3 px-6 bg-blue-600 text-white rounded-lg text-lg font-semibold shadow-md transition hover:bg-blue-700"
         >
           Save Return
         </button>

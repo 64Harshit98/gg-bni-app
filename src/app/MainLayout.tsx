@@ -1,10 +1,13 @@
 import { Suspense } from 'react';
-import { Link, Outlet, useLocation } from 'react-router-dom';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '../Components/ui/button';
-import { navItems } from '../routes/bottomRoutes';
+import { navItems } from '../routes/bottomRoutes'; // Import the Fab component
+import { FloatingButton } from '../Components';
+import {ROUTES} from '../constants/routes.constants'; // Import ROUTES
 
 const MainLayout = () => {
   const location = useLocation();
+  const navigate = useNavigate();
 
   return (
     <>
@@ -13,6 +16,18 @@ const MainLayout = () => {
           <Outlet />
         </Suspense>
       </main>
+
+      <FloatingButton className=''>
+         <Button variant="outline" className="w-full mb-2" onClick={() => navigate(`${ROUTES.MASTERS}/${ROUTES.SALES}`)}>
+          Sales
+        </Button>
+        <Button variant="outline" className="w-full mb-2" onClick={() => navigate(`${ROUTES.MASTERS}/${ROUTES.PURCHASE}`)}>
+          Purchase
+        </Button>
+        <Button variant="outline" className="w-full mb-2" onClick={() => navigate(`${ROUTES.MASTERS}/${ROUTES.ITEM_ADD}`)}>
+          Add Item
+        </Button>
+      </FloatingButton>
 
       <nav className="fixed bottom-0 left-0 w-full border-t border-slate-200 bg-slate-50">
         <div className="flex justify-around px-4 pt-2 pb-3">

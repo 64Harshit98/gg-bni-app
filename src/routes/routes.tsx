@@ -4,6 +4,7 @@ import MainLayout from '../app/MainLayout';
 import { ROUTES } from '../constants/routes.constants';
 import {AuthProvider} from '../context/Authcontext'; // Import AuthProvider
 import ProtectedRoute from '../constants/ProtectedRoutes';
+
 // Lazy load all the page components
 const Home = lazy(() => import('../Pages/Home'));
 const Account = lazy(() => import('../Pages/Account'));
@@ -21,6 +22,9 @@ const Payment = lazy(() => import('../Pages/Master/Payment'));
 const Login = lazy(() => import('../Pages/Auth/Login'));
 const Signup = lazy(() => import('../Pages/Auth/Signup'));
 const EditProfile = lazy(() => import('../Pages/Account/EditProfile'));
+const ItemReport = lazy(() => import('../Pages/Reports/ItemReport'));
+const SalesReport = lazy(() => import('../Pages/Reports/SalesReport'));
+
 const router = createBrowserRouter([
   {
     path: ROUTES.HOME,
@@ -31,12 +35,13 @@ const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <Home /> },
-      { path: ROUTES.ACCOUNT.substring(1), element: <Account />,
+      { path: ROUTES.ACCOUNT,
+        element: <Account />,
         children: [
           { index: true, element: <Account /> },
-        { path: ROUTES.EDIT_PROFILE.substring(1), element: <EditProfile /> },
-      ]},
-      { path: ROUTES.JOURNAL.substring(1), element: <Journal /> },
+          { path: ROUTES.EDIT_PROFILE, element: <EditProfile /> },
+      ],},
+      { path: ROUTES.JOURNAL, element: <Journal /> },
       {
         path: ROUTES.MASTERS,
         element: <Masters />,
@@ -52,11 +57,18 @@ const router = createBrowserRouter([
           { path: ROUTES.PAYMENT, element: <Payment /> },
         ],
       },
-      { path: ROUTES.REPORTS.substring(1), element: <Reports /> },
+      { path: ROUTES.REPORTS,
+        element: <Reports />,
+        children: [
+          { index: true, element: <Reports />   },
+          { path: ROUTES.ITEM_REPORT, element: <ItemReport /> },
+          { path: ROUTES.SALES_REPORT, element: <SalesReport /> },
+        ],
+      },
     ],
   },
-   {
-    path: ROUTES.LOGIN, 
+  {
+    path: ROUTES.LOGIN,
     element: <Login />,
   },
   {
@@ -64,6 +76,7 @@ const router = createBrowserRouter([
     element: <Signup />,
   },
 ]);
+
 const AppRouter: React.FC = () => {
     return (
         <AuthProvider>

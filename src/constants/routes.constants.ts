@@ -16,4 +16,7 @@ export const ROUTES = {
     SIGNUP: '/signup',
     FORGOT_PASSWORD: 'forgot-password',
     EDIT_PROFILE: 'edit-profile',
+    ITEM_REPORT: 'item-report',
+    SALES_REPORT: 'sales-report',
+    PURCHASE_REPORT: 'purchase-report',
 };

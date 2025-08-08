@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/Authcontext'; // Import useAuth hook
 import { logoutUser } from '../lib/auth_operations'; // Import logout function
 import { db } from '../lib/firebase'; // Import Firestore database instance
@@ -161,13 +161,26 @@ const handleEditProfile = () => {
             <p className="font-semibold text-slate-600">Template 2</p>
           </div>
         </div>
-        <div className="flex justify-end gap-4">
-          <button className="rounded-full bg-slate-200 py-3 px-8 font-bold text-slate-800 transition hover:bg-slate-300 hover:-translate-y-0.5">
-            Share
-          </button>
-          <button className="rounded-full bg-blue-600 py-3 px-8 font-bold text-white transition hover:bg-blue-700 hover:-translate-y-0.5">
-            View
-          </button>
+        <div className="flex flex-wrap justify-center items-center gap-4"> {/* Added flex-wrap */}
+  <button className="bg-gray-200 text-gray-800 px-6 py-3 rounded-full shadow-sm">Share</button>
+  <button className="bg-blue-600 text-white px-6 py-3 rounded-full shadow-md">View</button>
+
+  {/* Option A: Wrap in a full-width div */}
+  <div className="w-full flex justify-center mt-4"> {/* Added mt-4 for spacing */}
+    <Link
+      to={ROUTES.REPORTS}
+      className="
+         flex justify-between items-center
+    bg-white p-4 px-5 rounded-xl shadow-md mb-4
+    border border-gray-200 text-gray-800
+    transition-all duration-200 ease-in-out
+    hover:-translate-y-0.5 hover:shadow-lg
+    w-full"
+    >
+      <span className="text-lg font-medium">Reports</span>
+      <span className="text-xl text-gray-600">→</span>
+    </Link>
+  </div>
         </div>
       </div>
     </div>

@@ -107,16 +107,6 @@ const Journal = () => {
         >
           Unpaid
         </button>
-        <button
-          className={`cursor-pointer rounded-lg border px-5 py-2 text-sm font-medium transition ${
-            activeTab === 'Upcoming'
-              ? 'border-blue-600 bg-blue-600 text-white shadow-md'
-              : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-blue-300 hover:bg-blue-50'
-          }`}
-          onClick={() => setActiveTab('Upcoming')}
-        >
-          Upcoming
-        </button>
       </div>
 
       {/* Invoice List */}

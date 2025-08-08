@@ -15,7 +15,6 @@ const Purchase = () => {
   const navigate = useNavigate();
   const [partyName, setPartyName] = useState('');
   const [mobileNumber, setMobileNumber] = useState('');
-  const [emailId, setEmailId] = useState('');
   const [gstin, setGstin] = useState('');
   
   const handleProceedToPayment = () => {
@@ -31,7 +30,6 @@ const Purchase = () => {
 
   const handlePartyNameChange = (e: React.ChangeEvent<HTMLInputElement>) => setPartyName(e.target.value);
   const handleMobileNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => setMobileNumber(e.target.value);
-  const handleEmailIdChange = (e: React.ChangeEvent<HTMLInputElement>) => setEmailId(e.target.value);
   const handleGstinChange = (e: React.ChangeEvent<HTMLInputElement>) => setGstin(e.target.value);
 
   const handleItemChange = (id: number, field: keyof PurchaseItem, value: string | number) => {
@@ -64,7 +62,6 @@ const Purchase = () => {
     alert(`Saving Purchase:
       Party Name: ${partyName}
       Mobile: ${mobileNumber}
-      Email: ${emailId}
       GSTIN: ${gstin}
       Items: ${JSON.stringify(items, null, 2)}
       Total Amount: ₹${totalAmount.toFixed(2)}`);
@@ -110,10 +107,7 @@ const Purchase = () => {
               <label htmlFor="mobileNumber" className="purchase-label">Mobile Number</label>
               <input type="tel" id="mobileNumber" value={mobileNumber} onChange={handleMobileNumberChange} placeholder="Enter Mobile Number" className="purchase-input" />
             </div>
-            <div className="purchase-form-group">
-              <label htmlFor="emailId" className="purchase-label">Email Id</label>
-              <input type="email" id="emailId" value={emailId} onChange={handleEmailIdChange} placeholder="Enter Email Id" className="purchase-input" />
-            </div>
+
             <div className="purchase-form-group">
               <label htmlFor="gstin" className="purchase-label">GSTIN</label>
               <input type="text" id="gstin" value={gstin} onChange={handleGstinChange} placeholder="Enter GSTIN" className="purchase-input" />

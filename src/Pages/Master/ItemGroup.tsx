@@ -1,6 +1,6 @@
 // src/Pages/Master/ItemGroupPage.tsx
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate,Link } from 'react-router-dom';
 import type { ItemGroup } from '../../constants/models';
 import {
   createItemGroup,
@@ -113,17 +113,25 @@ const ItemGroupPage: React.FC = () => {
     <div className="item-group-page-wrapper">
       {/* Top Bar */}
       <div className="item-group-top-bar">
-        <button onClick={() => navigate(-1)} className="item-group-close-button">
+        <button onClick={() => navigate(ROUTES.MASTERS)} className="item-group-close-button">
           &times;
         </button>
-        {/* New button to navigate to Item Add page */}
-        <button
-            onClick={() => navigate(`${ROUTES.MASTERS}/${ROUTES.ITEM_ADD}`)}
-            className="item-group-navigate-button" // Apply styling for navigation buttons
-            title="Add New Item"
+        <div className="item-add-nav-links">
+         <Link
+            to={`${ROUTES.MASTERS}/${ROUTES.ITEM_ADD}`}
+            className="item-add-nav-links" // Add a new CSS class for styling
+            title="Manage Item Groups"
         >
-            Add Item
-        </button>
+          ITEM ADD
+        </Link>
+        <Link
+            to={`${ROUTES.MASTERS}/${ROUTES.ITEM_GROUP}`}
+            className="item-add-nav-links" // Add a new CSS class for styling
+            title="Manage Item Groups"
+        >
+          ITEM GROUPS
+        </Link>
+        </div>
       </div>
 
       {/* Error Message Display */}

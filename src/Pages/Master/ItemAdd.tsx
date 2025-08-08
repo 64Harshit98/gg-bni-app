@@ -1,11 +1,10 @@
 // src/Pages/Master/ItemAdd.tsx
 import React, { useState, useEffect } from 'react';
-import { useNavigate,Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { createItem, getItemGroups } from '../../lib/items_firebase'; // Adjust path as needed
 import type { Item, ItemGroup } from '../../constants/models';
 import { ROUTES } from '../../constants/routes.constants'; // Import ROUTES
 import './ItemAdd.css'; // Import its unique CSS
-
 
 const ItemAdd: React.FC = () => {
   const navigate = useNavigate();
@@ -109,21 +108,21 @@ const ItemAdd: React.FC = () => {
           &times;
         </button>
         {/* New button to navigate to Item Group page */}
-        <div className="item-add-nav-links">
-         <Link
-            to={`${ROUTES.MASTERS}/${ROUTES.ITEM_ADD}`}
-            className="item-add-nav-links" // Add a new CSS class for styling
+        <div>
+         <button
+            onClick={() => navigate(`${ROUTES.MASTERS}/${ROUTES.ITEM_ADD}`)}
+            className="item-add-navigate-button" // Add a new CSS class for styling
             title="Manage Item Groups"
         >
-          ITEM ADD
-        </Link>
-        <Link
-            to={`${ROUTES.MASTERS}/${ROUTES.ITEM_GROUP}`}
-            className="item-add-nav-links" // Add a new CSS class for styling
+            ITEM ADD
+        </button>
+        <button
+            onClick={() => navigate(`${ROUTES.MASTERS}/${ROUTES.ITEM_GROUP}`)}
+            className="item-add-navigate-button" // Add a new CSS class for styling
             title="Manage Item Groups"
         >
           ITEM GROUPS
-        </Link>
+        </button>
         </div>
       </div>
 

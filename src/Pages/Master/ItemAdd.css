@@ -14,9 +14,9 @@
     align-items: center;
     justify-content: space-between;
     padding: 1rem;
-    background-color: #d8c2ed; /* Purple header */
-    border-bottom: 1px solid #b29de0;
-    color: #3d0066;
+    background-color: #f1f0f1; /* Purple header */
+    border-bottom: 1px solid #e7e5ec;
+    color: #f0f2f5;
 }
 
 .item-add-nav-links {
@@ -88,8 +88,8 @@
 }
 .item-add-input:focus {
     outline: none;
-    border-color: #7a30c0;
-    box-shadow: 0 0 0 2px rgba(122, 48, 192, 0.3);
+    border-color: #e0dce3;
+    box-shadow: 0 0 0 2px rgba(247, 245, 249, 0.3);
 }
 
 .item-add-bottom-bar {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, NavLink, useLocation } from 'react-router-dom';
+import { useNavigate, NavLink} from 'react-router-dom';
 import { db } from '../../lib/firebase';
-import { collection, query, getDocs, serverTimestamp, addDoc, Timestamp, where } from 'firebase/firestore';
+import { collection, query, getDocs, serverTimestamp, addDoc, where } from 'firebase/firestore';
 import { useAuth } from '../../context/Authcontext';
 import { ROUTES } from '../../constants/routes.constants';
 
@@ -33,11 +33,8 @@ interface ReturnItem {
 
 const SalesReturnPage: React.FC = () => {
   const navigate = useNavigate();
-  const location = useLocation();
   const { currentUser } = useAuth();
-  
-  const [activeTab, setActiveTab] = useState('Sales Return');
-
+ 
   const [returnDate, setReturnDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [voucherNo, setVoucherNo] = useState<string>('');
   const [saleType, setSaleType] = useState<string>('Cash Sale');

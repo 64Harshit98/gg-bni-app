@@ -74,11 +74,11 @@ const PurchaseReturnPage: React.FC = () => {
         <button onClick={() => navigate(ROUTES.HOME)} className="text-xl text-gray-500 hover:text-gray-900 transition-colors">
           &times;
         </button>
-        <div className="purchase-nav-links">
+        <div className="flex-1 flex justify-center items-center gap-6">
           {/* --- FIX: Use NavLink and its isActive prop for dynamic styling --- */}
           <NavLink
             to={`${ROUTES.MASTERS}/${ROUTES.PURCHASE}`}
-            className={({ isActive }) => `purchase-nav-link ${isActive ? 'active' : ''} flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${
+            className={({ isActive }) => ` ${isActive ? 'active' : ''} flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${
               isActive
                 ? 'border-blue-600 font-semibold text-blue-600'
                 : 'border-transparent text-slate-500'
@@ -88,7 +88,7 @@ const PurchaseReturnPage: React.FC = () => {
           </NavLink>
           <NavLink
             to={`${ROUTES.MASTERS}/${ROUTES.PURCHASE_RETURN}`}
-            className={({ isActive }) => `purchase-nav-link ${isActive ? 'active' : ''} flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${
+            className={({ isActive }) => ` ${isActive ? 'active' : ''} flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${
               isActive
                 ? 'border-blue-600 font-semibold text-blue-600'
                 : 'border-transparent text-slate-500'
@@ -98,7 +98,6 @@ const PurchaseReturnPage: React.FC = () => {
           </NavLink>
           {/* ------------------------------------------------------------------ */}
         </div>
-        <div className="w-6 h-6"></div> {/* Spacer for symmetry */}
       </div>
 
       {/* Main Content Area */}

@@ -10,7 +10,7 @@ import { ROUTES } from '../constants/routes.constants';
 
 export const navItems = [
   { to: ROUTES.HOME, icon: <AiOutlineHome size={24} />, label: 'Home' },
-  { to: ROUTES.JOURNAL, icon: <AiFillBook size={24} />, label: 'Transaction' },
+  { to: ROUTES.JOURNAL, icon: <AiFillBook size={24} />, label: 'Transactions' },
   // {
   //   to: ROUTES.MASTERS,
   //   icon: <AiOutlineAppstore size={24} />,

@@ -1,5 +1,6 @@
 // src/Pages/Home.tsx
-import { SalesBarChartReport } from "../Components/Graph";
+import { SalesBarChartReport } from "../Components/SBGraph";
+import { PurchaseBarChartReport } from "../Components/PGraph";
 const Home = () => {
   return (
     <div className="flex min-h-screen w-full flex-col overflow-hidden bg-slate-100 shadow-sm">
@@ -9,6 +10,7 @@ const Home = () => {
       </div>
       <div className="flex-grow overflow-y-auto p-6">
         <SalesBarChartReport />
+        <PurchaseBarChartReport />
       </div>
 
     </div>

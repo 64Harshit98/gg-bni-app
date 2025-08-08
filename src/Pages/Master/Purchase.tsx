@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate, NavLink, useLocation } from 'react-router-dom';
-import { getItems } from '../../lib/items_firebase'; // Assuming this fetches items from Firestore
-import type { Item } from '../../constants/models'; // Assuming your Item type is here
+import { useNavigate, NavLink} from 'react-router-dom';
+import { getItems } from '../../lib/items_firebase';
+import type { Item } from '../../constants/models';
 import { ROUTES } from '../../constants/routes.constants';
 import { db } from '../../lib/firebase';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
@@ -12,16 +12,16 @@ import './Purchase.css';
 interface PurchaseItem {
   id: string;
   name: string;
-  purchasePrice: number; // Use purchasePrice for purchases
+  purchasePrice: number;
   quantity: number;
 }
 
 const PurchasePage: React.FC = () => {
   const navigate = useNavigate();
-  const location = useLocation();
+  // const location = useLocation();
   const { currentUser } = useAuth();
   
-  const [activeTab, setActiveTab] = useState('Purchase'); // State for active tab in top nav
+  const [activeTab, setActiveTab] = useState('Purchase');
 
   const [partyNumber, setPartyNumber] = useState<string>('');
   const [partyName, setPartyName] = useState<string>('');
@@ -37,7 +37,7 @@ const PurchasePage: React.FC = () => {
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState<boolean>(false); // State to track saving status
 
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -165,14 +165,14 @@ const PurchasePage: React.FC = () => {
 
 
   const handleProceedToPayment = () => {
+    if (isSaving) return; // Prevent multiple clicks
     handleSavePurchase();
-    // This navigation is for consistency, you might not have a separate payment flow for purchases
     navigate(`${ROUTES.MASTERS}/${ROUTES.PAYMENT}`, { state: { totalAmount: totalAmount.toFixed(2) } });
   };
   
-  const triggerCameraInput = () => {
-    fileInputRef.current?.click();
-  };
+  // const triggerCameraInput = () => {
+  //   fileInputRef.current?.click();
+  // };
 
   const handleFileCapture = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -242,7 +242,7 @@ const PurchasePage: React.FC = () => {
     <div className="flex flex-col min-h-screen bg-white w-full">
       {/* Top Bar */}
       <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-1000">
-        <button onClick={() => navigate(ROUTES.HOME)} className="text-2xl font-bold text-gray-600 bg-transparent border-none cursor-pointer p-1">
+        <button onClick={() => navigate(ROUTES.MASTERS)} className="text-2xl font-bold text-gray-600 bg-transparent border-none cursor-pointer p-1">
           &times;
         </button>
         <div className="flex-1 flex justify-center items-center gap-6">
@@ -269,7 +269,7 @@ const PurchasePage: React.FC = () => {
             Purchase Return
           </NavLink>
         </div>
-        <div className="w-6"></div> {/* Spacer to balance the close button */}
+        <div className="w-6"></div>
       </div>
 
       {/* Main Content Area */}
@@ -336,7 +336,7 @@ const PurchasePage: React.FC = () => {
                   <div className="p-3 text-gray-500 italic">No items found.</div>
                 ) : (
                   filteredItems.map(item => (
-                    <div 
+                    <div
                       key={item.id}
                       className="p-3 cursor-pointer border-b border-gray-200 last:border-b-0 hover:bg-gray-100"
                       onClick={() => handleSelect(item)}
@@ -347,7 +347,7 @@ const PurchasePage: React.FC = () => {
                 )}
               </div>
             )}
-            <button 
+            <button
               onClick={handleAddItemToCart}
               className="bg-green-600 text-white py-3 px-6 rounded-md text-base font-semibold whitespace-nowrap transition duration-200 ease-in-out hover:bg-green-700 disabled:bg-green-300 disabled:cursor-not-allowed"
               disabled={!selectedItem}

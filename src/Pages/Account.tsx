@@ -107,7 +107,7 @@ const handleEditProfile = () => {
     <div className="flex min-h-screen flex-col items-center bg-slate-50 py-8 px-4 text-center">
       <img
         className="mb-4 h-32 w-32 rounded-full object-cover"
-        src="https://i.pravatar.cc/150?img=1" // You can replace this with a dynamic profile image URL
+        src="https://github.com/shadcn.png" // You can replace this with a dynamic profile image URL
         alt="Profile"
       />
 

@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './UserAdd.css'; // Import its unique CSS
+import { ROUTES } from '../../constants/routes.constants';
 
 const UserAdd = () => {
   const navigate = useNavigate();
@@ -31,7 +32,7 @@ const UserAdd = () => {
     <div className="user-add-page-wrapper">
       {/* Top Bar for User Add */}
       <div className="user-add-top-bar">
-        <button onClick={() => navigate(-1)} className="user-add-close-button">
+        <button onClick={() => navigate(ROUTES.HOME)} className="user-add-close-button">
           &times;
         </button>
         <h2 className="user-add-title">Add New User</h2>

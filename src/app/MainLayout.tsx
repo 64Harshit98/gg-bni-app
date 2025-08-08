@@ -18,13 +18,13 @@ const MainLayout = () => {
       </main>
 
       <FloatingButton className=''>
-         <Button variant="outline" className="w-full mb-2" onClick={() => navigate(`${ROUTES.MASTERS}/${ROUTES.SALES}`)}>
+         <Button variant="outline" className="w-full mb-2 rounded" onClick={() => navigate(`${ROUTES.MASTERS}/${ROUTES.SALES}`)}>
           Sales
         </Button>
-        <Button variant="outline" className="w-full mb-2" onClick={() => navigate(`${ROUTES.MASTERS}/${ROUTES.PURCHASE}`)}>
+        <Button variant="outline" className="w-full mb-2 rounded" onClick={() => navigate(`${ROUTES.MASTERS}/${ROUTES.PURCHASE}`)}>
           Purchase
         </Button>
-        <Button variant="outline" className="w-full mb-2" onClick={() => navigate(`${ROUTES.MASTERS}/${ROUTES.ITEM_ADD}`)}>
+        <Button variant="outline" className="w-full mb-2 rounded" onClick={() => navigate(`${ROUTES.MASTERS}/${ROUTES.ITEM_ADD}`)}>
           Add Item
         </Button>
       </FloatingButton>

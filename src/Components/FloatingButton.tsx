@@ -14,7 +14,7 @@ const FloatingButton: React.FC<IFloatingButtonProps> = ({ className, children })
         +
       </PopoverTrigger>
       {children && (
-        <PopoverContent align="center" side="top" className="bg-transparent p-4 ">
+        <PopoverContent align="center" side="top" className="bg-transparent p-4 border-none shadow-none">
           {children}
         </PopoverContent>
       )}

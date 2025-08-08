@@ -113,7 +113,7 @@ const ItemGroupPage: React.FC = () => {
     <div className="item-group-page-wrapper">
       {/* Top Bar */}
       <div className="item-group-top-bar">
-        <button onClick={() => navigate(ROUTES.MASTERS)} className="item-group-close-button">
+        <button onClick={() => navigate(ROUTES.HOME)} className="item-group-close-button">
           &times;
         </button>
         <div className="item-add-nav-links">

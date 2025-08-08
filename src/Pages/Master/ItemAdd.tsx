@@ -104,7 +104,7 @@ const ItemAdd: React.FC = () => {
   return (
     <div className="item-add-page-wrapper">
       <div className="item-add-top-bar">
-        <button onClick={() => navigate(ROUTES.MASTERS)} className="item-add-close-button">
+        <button onClick={() => navigate(ROUTES.HOME)} className="item-add-close-button">
           &times;
         </button>
         {/* New button to navigate to Item Group page */}

@@ -71,20 +71,28 @@ const PurchaseReturnPage: React.FC = () => {
     <div className="p-4 sm:p-6 lg:p-8 bg-gray-100 min-h-screen rounded-lg shadow-inner">
       {/* Top Bar */}
       <div className="flex justify-between items-center bg-white p-4 rounded-t-lg shadow-sm">
-        <button onClick={() => navigate('/masters')} className="text-xl text-gray-500 hover:text-gray-900 transition-colors">
+        <button onClick={() => navigate(ROUTES.HOME)} className="text-xl text-gray-500 hover:text-gray-900 transition-colors">
           &times;
         </button>
         <div className="purchase-nav-links">
           {/* --- FIX: Use NavLink and its isActive prop for dynamic styling --- */}
           <NavLink
             to={`${ROUTES.MASTERS}/${ROUTES.PURCHASE}`}
-            className={({ isActive }) => `purchase-nav-link ${isActive ? 'active' : ''}`}
+            className={({ isActive }) => `purchase-nav-link ${isActive ? 'active' : ''} flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${
+              isActive
+                ? 'border-blue-600 font-semibold text-blue-600'
+                : 'border-transparent text-slate-500'
+          }`}
           >
             Purchase
           </NavLink>
           <NavLink
             to={`${ROUTES.MASTERS}/${ROUTES.PURCHASE_RETURN}`}
-            className={({ isActive }) => `purchase-nav-link ${isActive ? 'active' : ''}`}
+            className={({ isActive }) => `purchase-nav-link ${isActive ? 'active' : ''} flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${
+              isActive
+                ? 'border-blue-600 font-semibold text-blue-600'
+                : 'border-transparent text-slate-500'
+          }`}
           >
             Purchase Return
           </NavLink>

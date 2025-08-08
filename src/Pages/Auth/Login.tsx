@@ -1,9 +1,12 @@
-// src/app/Pages/Auth/Login.tsx
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { loginUser } from '../../lib/auth_operations'; // Adjust path as needed
-import { ROUTES } from '../../constants/routes.constants'; // Import routes for navigation
-import './Login.css'; // Assuming you have a CSS file for Login
+import { loginUser } from '../../lib/auth_operations';
+import { ROUTES } from '../../constants/routes.constants';
+
+import { CustomIcon } from '../../Components';
+import { ICONS } from '../../constants/icon.constants';
+import { CustomButton } from '../../Components/CustomButton';
+import { FloatingLabelInput } from '../../Components/ui/FloatingLabelInput';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -19,54 +22,47 @@ const Login: React.FC = () => {
 
     try {
       await loginUser(email, password);
-      navigate(ROUTES.HOME); // Redirect to home page after successful login
-    } catch (err: any) {
-      setError(err.message || 'Login failed. Please check your credentials.');
+      navigate(ROUTES.HOME);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('An unexpected error occurred.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="login-container">
-      <form onSubmit={handleSubmit} className="login-form">
-        <h2>Login</h2>
-        {error && <p className="login-error-message">{error}</p>}
-        <div className="form-group">
-          <label htmlFor="email">Email</label>
-          <input
-            type="email"
-            id="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            disabled={loading}
-          />
-        </div>
-        <div className="form-group">
-          <label htmlFor="password">Password</label>
-          <input
-            type="password"
-            id="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            disabled={loading}
-          />
-        </div>
-        <button type="submit" disabled={loading}>
-          {loading ? 'Logging in...' : 'Login'}
-        </button>
-        <p className="login-switch-link">
-          Don't have an account?{' '}
-          <span onClick={() => navigate(`${ROUTES.SIGNUP}`)} style={{ cursor: 'pointer', color: '#007bff' }}>
-            Sign Up
-          </span>
-        </p>
-        {/* Optional: Password Reset Link */}
-        <p className="login-reset-password" onClick={() => navigate(`${ROUTES.FORGOT_PASSWORD}`)} style={{ cursor: 'pointer', color: '#007bff' }}>
-          Forgot Password?
-        </p>
+    <div className="flex flex-col h-screen bg-white p-6">
+      <button onClick={() => navigate(-1)} className="self-start mb-8">
+        <CustomIcon iconName={ICONS.BACK_CURVE} />
+      </button>
+      <h1 className="text-4xl font-bold mb-8">Log in</h1>
+      <form onSubmit={handleSubmit} className="flex flex-col space-y-6">
+        {error && <p className="text-red-500 text-sm">{error}</p>}
+        <FloatingLabelInput
+          id="email"
+          type="email"
+          label="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          disabled={loading}
+        />
+        <FloatingLabelInput
+          id="password"
+          type="password"
+          label="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          disabled={loading}
+        />
+        <CustomButton type="submit" variant="filled" disabled={loading}>
+          {loading ? 'Logging in...' : 'LOG IN'}
+        </CustomButton>
       </form>
     </div>
   );

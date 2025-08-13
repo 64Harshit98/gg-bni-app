@@ -31,7 +31,7 @@ service cloud.firestore {
     // if your sales are ONLY stored under the user's artifacts path.
     match /sales/{saleId} {
       allow create: if request.auth != null;
-      allow read: if request.auth != null ;
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
     }
 
     // NEW/UPDATED Rule: This rule grants read/write access to all collections

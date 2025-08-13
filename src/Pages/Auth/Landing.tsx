@@ -28,7 +28,7 @@ const Landing: React.FC = () => {
             </CustomButton>
             <CustomButton
               variant="filled"
-              onClick={() => navigate(ROUTES.SIGNUP)}
+              onClick={() => navigate(ROUTES.BUSINESS_INFO)}
               className="flex-1"
             >
               REGISTER

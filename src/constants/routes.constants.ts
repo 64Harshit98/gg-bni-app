@@ -21,4 +21,6 @@ export const ROUTES = {
   SALES_REPORT: 'sales-report',
   PURCHASE_REPORT: 'purchase-report',
   PNL_REPORT: 'pnl-report',
+  BUSINESS_INFO: '/bus-info',
+  BUSINESS_ADDRESS: '/bus-address',
 };

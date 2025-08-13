@@ -1,0 +1,45 @@
+
+> gg-bni-app@0.0.0 lint
+> eslint . --ext .ts,.tsx
+
+
+Z:\Git\gg-bni-app\src\Components\PCard.tsx
+  83:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+Z:\Git\gg-bni-app\src\Components\SBGraph.tsx
+  64:11  error  Unexpected lexical declaration in case block  no-case-declarations
+  68:11  error  Unexpected lexical declaration in case block  no-case-declarations
+  73:11  error  Unexpected lexical declaration in case block  no-case-declarations
+  78:11  error  Unexpected lexical declaration in case block  no-case-declarations
+
+Z:\Git\gg-bni-app\src\Components\SCard.tsx
+  78:20  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+Z:\Git\gg-bni-app\src\Components\ui\button.tsx
+  58:18  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+Z:\Git\gg-bni-app\src\Pages\Auth\Signup.tsx
+  40:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+Z:\Git\gg-bni-app\src\Pages\Journal.tsx
+  57:44  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  58:44  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+Z:\Git\gg-bni-app\src\Pages\Master\SalesReturn.tsx
+  23:16  error    Unexpected any. Specify a different type                                                                                                                                                                                  @typescript-eslint/no-explicit-any
+  86:8   warning  React Hook useEffect has an unnecessary dependency: 'db'. Either exclude it or remove the dependency array. Outer scope values like 'db' aren't valid dependencies because mutating them doesn't re-render the component  react-hooks/exhaustive-deps
+
+Z:\Git\gg-bni-app\src\Pages\index.tsx
+  6:1  warning  This rule can't verify that `export *` only exports components  react-refresh/only-export-components
+
+Z:\Git\gg-bni-app\src\context\Authcontext.tsx
+  16:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+Z:\Git\gg-bni-app\src\lib\auth_operations.ts
+  41:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  57:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  70:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  84:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+✖ 18 problems (14 errors, 4 warnings)
+

@@ -11,12 +11,12 @@ import {
   where,
   getDoc,
 } from 'firebase/firestore';
-import type { Item, ItemGroup } from '../constants/models';// --- ItemGroup CRUD Operations ---
+import type { Item, ItemGroup } from '../constants/models'; // --- ItemGroup CRUD Operations ---
 
 const itemGroupCollectionRef = collection(db, 'itemGroups');
 
 export const createItemGroup = async (
-  itemGroup: Omit<ItemGroup, 'id' | 'createdAt' | 'updatedAt'>
+  itemGroup: Omit<ItemGroup, 'id' | 'createdAt' | 'updatedAt'>,
 ): Promise<string> => {
   try {
     const docRef = await addDoc(itemGroupCollectionRef, {
@@ -46,25 +46,26 @@ export const getItemGroups = async (): Promise<ItemGroup[]> => {
   }
 };
 
-export const getItemGroupById = async (id: string): Promise<ItemGroup | null> => {
-    try {
-        const docRef = doc(db, 'itemGroups', id);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-            return { id: docSnap.id, ...(docSnap.data() as ItemGroup) };
-        } else {
-            return null; // Document does not exist
-        }
-    } catch (e) {
-        console.error('Error getting item group by ID: ', e);
-        throw e;
+export const getItemGroupById = async (
+  id: string,
+): Promise<ItemGroup | null> => {
+  try {
+    const docRef = doc(db, 'itemGroups', id);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return { id: docSnap.id, ...(docSnap.data() as ItemGroup) };
+    } else {
+      return null; // Document does not exist
     }
+  } catch (e) {
+    console.error('Error getting item group by ID: ', e);
+    throw e;
+  }
 };
-
 
 export const updateItemGroup = async (
   id: string,
-  updates: Partial<Omit<ItemGroup, 'id' | 'createdAt'>>
+  updates: Partial<Omit<ItemGroup, 'id' | 'createdAt'>>,
 ): Promise<void> => {
   try {
     const itemGroupDoc = doc(db, 'itemGroups', id);
@@ -93,7 +94,7 @@ export const deleteItemGroup = async (id: string): Promise<void> => {
 const itemCollectionRef = collection(db, 'items');
 
 export const createItem = async (
-  item: Omit<Item, 'id' | 'createdAt' | 'updatedAt'>
+  item: Omit<Item, 'id' | 'createdAt' | 'updatedAt'>,
 ): Promise<string> => {
   try {
     const docRef = await addDoc(itemCollectionRef, {
@@ -124,21 +125,23 @@ export const getItems = async (): Promise<Item[]> => {
 };
 
 export const getItemById = async (id: string): Promise<Item | null> => {
-    try {
-        const docRef = doc(db, 'items', id);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-            return { id: docSnap.id, ...(docSnap.data() as Item) };
-        } else {
-            return null; // Document does not exist
-        }
-    } catch (e) {
-        console.error('Error getting item by ID: ', e);
-        throw e;
+  try {
+    const docRef = doc(db, 'items', id);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return { id: docSnap.id, ...(docSnap.data() as Item) };
+    } else {
+      return null; // Document does not exist
     }
+  } catch (e) {
+    console.error('Error getting item by ID: ', e);
+    throw e;
+  }
 };
 
-export const getItemsByItemGroupId = async (itemGroupId: string): Promise<Item[]> => {
+export const getItemsByItemGroupId = async (
+  itemGroupId: string,
+): Promise<Item[]> => {
   try {
     const q = query(itemCollectionRef, where('itemGroupId', '==', itemGroupId));
     const querySnapshot = await getDocs(q);
@@ -155,7 +158,7 @@ export const getItemsByItemGroupId = async (itemGroupId: string): Promise<Item[]
 
 export const updateItem = async (
   id: string,
-  updates: Partial<Omit<Item, 'id' | 'createdAt'>>
+  updates: Partial<Omit<Item, 'id' | 'createdAt'>>,
 ): Promise<void> => {
   try {
     const itemDoc = doc(db, 'items', id);

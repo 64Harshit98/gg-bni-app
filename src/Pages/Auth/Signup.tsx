@@ -3,7 +3,6 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { registerUserWithDetails } from '../../lib/auth_operations'; // Import the new unified function
 import { ROUTES } from '../../constants/routes.constants';
-import './Signup.css';
 
 const Signup: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -24,22 +23,26 @@ const Signup: React.FC = () => {
       setLoading(false);
       return;
     }
-    
+
     if (!name.trim()) {
-        setError('Name cannot be empty.');
-        setLoading(false);
-        return;
+      setError('Name cannot be empty.');
+      setLoading(false);
+      return;
     }
 
     try {
       // --- Call the new unified function for a single, clean operation ---
       await registerUserWithDetails(name.trim(), email, password);
       // ---------------------------------------------------------------------
-      
+
       alert('Account created successfully! Please log in.');
       navigate(ROUTES.LOGIN);
-    } catch (err: any) {
-      setError(err.message || 'Signup failed.');
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('An unknown error occurred');
+      }
     } finally {
       setLoading(false);
     }
@@ -99,7 +102,10 @@ const Signup: React.FC = () => {
         </button>
         <p className="signup-switch-link">
           Already have an account?{' '}
-          <span onClick={() => navigate(ROUTES.LOGIN)} style={{ cursor: 'pointer', color: '#007bff' }}>
+          <span
+            onClick={() => navigate(ROUTES.LOGIN)}
+            style={{ cursor: 'pointer', color: '#007bff' }}
+          >
             Login
           </span>
         </p>

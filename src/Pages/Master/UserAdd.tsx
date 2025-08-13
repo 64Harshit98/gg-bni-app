@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './UserAdd.css'; // Import its unique CSS
+import { ROUTES } from '../../constants/routes.constants';
 
 const UserAdd = () => {
   const navigate = useNavigate();
@@ -31,7 +32,10 @@ const UserAdd = () => {
     <div className="user-add-page-wrapper">
       {/* Top Bar for User Add */}
       <div className="user-add-top-bar">
-        <button onClick={() => navigate(-1)} className="user-add-close-button">
+        <button
+          onClick={() => navigate(ROUTES.HOME)}
+          className="user-add-close-button"
+        >
           &times;
         </button>
         <h2 className="user-add-title">Add New User</h2>
@@ -42,7 +46,9 @@ const UserAdd = () => {
       <div className="user-add-content-area">
         <form onSubmit={handleAddUser} className="user-add-form">
           <div className="user-add-form-group">
-            <label htmlFor="fullName" className="user-add-label">Full Name</label>
+            <label htmlFor="fullName" className="user-add-label">
+              Full Name
+            </label>
             <input
               type="text"
               id="fullName"
@@ -55,7 +61,9 @@ const UserAdd = () => {
           </div>
 
           <div className="user-add-form-group">
-            <label htmlFor="username" className="user-add-label">Username</label>
+            <label htmlFor="username" className="user-add-label">
+              Username
+            </label>
             <input
               type="text"
               id="username"
@@ -68,7 +76,9 @@ const UserAdd = () => {
           </div>
 
           <div className="user-add-form-group">
-            <label htmlFor="email" className="user-add-label">Email</label>
+            <label htmlFor="email" className="user-add-label">
+              Email
+            </label>
             <input
               type="email"
               id="email"
@@ -81,7 +91,9 @@ const UserAdd = () => {
           </div>
 
           <div className="user-add-form-group">
-            <label htmlFor="password" className="user-add-label">Password</label>
+            <label htmlFor="password" className="user-add-label">
+              Password
+            </label>
             <input
               type="password"
               id="password"
@@ -94,7 +106,9 @@ const UserAdd = () => {
           </div>
 
           <div className="user-add-form-group">
-            <label htmlFor="role" className="user-add-label">Role</label>
+            <label htmlFor="role" className="user-add-label">
+              Role
+            </label>
             <select
               id="role"
               value={role}

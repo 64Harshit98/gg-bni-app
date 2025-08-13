@@ -21,5 +21,30 @@ service cloud.firestore {
     match /items/{itemId} {
       allow read, write: if request.auth != null;
     }
+
+    // IMPORTANT: Remove or comment out your old /sales/{saleId} rule
+    // if your sales are ONLY stored under the user's artifacts path.
+    match /sales/{saleId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+
+    // NEW/UPDATED Rule: This rule grants read/write access to all collections
+    // (like 'sales' and 'salesReturns') and documents nested under
+    // 'artifacts/{appId}/users/{userId}/' for the authenticated user.
+    match /artifacts/{appId}/users/{userId}/{collectionId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+     match /purchases/{purchaseId} {
+  // Allow a user to read ONLY the documents where their UID matches the userId field in the document.
+  allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+
+  // Allow a user to create a new document, but check that the userId field in the new document
+  // is correctly set to their own UID.
+  allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+
+  // You can add update and delete rules for ownership checks as well.
+  allow update, delete: if request.auth != null && request.auth.uid == resource.data.userId;
+}
   }
 }

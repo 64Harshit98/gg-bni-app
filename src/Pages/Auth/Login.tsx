@@ -36,7 +36,10 @@ const Login: React.FC = () => {
 
   return (
     <div className="flex flex-col h-screen bg-white p-6">
-      <button onClick={() => navigate(-1)} className="self-start mb-8">
+      <button
+        onClick={() => navigate(ROUTES.LANDING)}
+        className="self-start mb-8"
+      >
         <CustomIcon iconName={ICONS.BACK_CURVE} />
       </button>
       <h1 className="text-4xl font-bold mb-8">Log in</h1>

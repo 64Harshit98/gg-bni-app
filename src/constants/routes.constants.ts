@@ -17,4 +17,8 @@ export const ROUTES = {
   FORGOT_PASSWORD: 'forgot-password',
   EDIT_PROFILE: 'edit-profile',
   LANDING: '/landing',
+  ITEM_REPORT: 'item-report',
+  SALES_REPORT: 'sales-report',
+  PURCHASE_REPORT: 'purchase-report',
+  PNL_REPORT: 'pnl-report',
 };

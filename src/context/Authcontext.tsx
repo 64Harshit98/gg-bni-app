@@ -1,28 +1,13 @@
-// src/context/AuthContext.tsx
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import type { User } from 'firebase/auth'; // Firebase User type
-import { auth } from '../lib/firebase'; // Import the auth instance
-
-// Define the shape of your AuthContext
-interface AuthContextType {
-  currentUser: User | null;
-  loading: boolean; // To indicate if auth state is still loading
-}
-
-// Create the context
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-// Custom hook to use the AuthContext
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-};
+import React, { useEffect, useState } from 'react';
+import type { User } from 'firebase/auth';
+import { auth } from '../lib/firebase';
+// Import the context and hook from the new file
+import { AuthContext } from './auth-context.ts';
 
 // AuthProvider component to wrap your application
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true); // Initially true
 
@@ -34,7 +19,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     // Cleanup subscription on unmount
-    return () => unsubscribe();
+    return unsubscribe;
   }, []);
 
   const value = {

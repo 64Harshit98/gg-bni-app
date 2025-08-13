@@ -11,7 +11,11 @@ interface ProtectedRouteProps {
   children?: React.ReactNode; // <--- ADD THIS LINE
 }
 
-const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ redirectPath = ROUTES.LOGIN, children }) => { // <--- ALSO ADD 'children' to destructuring
+const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
+  redirectPath = ROUTES.LANDING,
+  children,
+}) => {
+  // <--- ALSO ADD 'children' to destructuring
   const { currentUser, loading } = useAuth();
 
   if (loading) {

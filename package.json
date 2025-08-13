@@ -6,18 +6,24 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "eslint .",
+    "lint": "eslint . --ext .ts,.tsx",
+    "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "preview": "vite preview",
     "deploy": "npm run build && firebase deploy",
     "commit": "cz",
-    "prepare": "husky"
+    "prepare": "husky",
+    "prettier": "prettier --write .",
+    "prettier-check": "prettier --check ."
   },
   "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.14",
+    "@radix-ui/react-popover": "^1.1.14",
     "@radix-ui/react-slot": "^1.2.3",
     "@reduxjs/toolkit": "^2.8.2",
     "@tailwindcss/vite": "^4.1.10",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
     "firebase": "^12.0.0",
     "firebase-admin": "^13.4.0",
     "lucide-react": "^0.525.0",
@@ -27,7 +33,9 @@
     "react-redux": "^9.2.0",
     "react-router": "^7.6.2",
     "react-router-dom": "^7.6.3",
-    "tailwind-merge": "^3.3.1"
+    "recharts": "^2.15.4",
+    "tailwind-merge": "^3.3.1",
+    "vaul": "^1.1.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.25.0",

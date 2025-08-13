@@ -8,6 +8,7 @@ import {
   sendPasswordResetEmail,
 } from 'firebase/auth';
 import type { User } from 'firebase/auth';
+import { FirebaseError } from 'firebase/app'; // FIX: Import FirebaseError
 
 /**
  * Creates a new user in Firebase Auth and a corresponding
@@ -20,11 +21,15 @@ import type { User } from 'firebase/auth';
 export const registerUserWithDetails = async (
   name: string,
   email: string,
-  password: string
+  password: string,
 ): Promise<User> => {
   try {
     // 1. Create the user in Firebase Authentication
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const userCredential = await createUserWithEmailAndPassword(
+      auth,
+      email,
+      password,
+    );
     const user = userCredential.user;
 
     // 2. Immediately create a user document in Firestore
@@ -38,9 +43,17 @@ export const registerUserWithDetails = async (
     }
 
     return user;
-  } catch (error: any) {
-    console.error('Error during user registration:', error.code, error.message);
-    throw new Error(getFriendlyErrorMessage(error.code));
+  } catch (error: unknown) {
+    // FIX: Use unknown and type check
+    if (error instanceof FirebaseError) {
+      console.error(
+        'Error during user registration:',
+        error.code,
+        error.message,
+      );
+      throw new Error(getFriendlyErrorMessage(error.code));
+    }
+    throw new Error('An unexpected error occurred during registration.');
   }
 };
 
@@ -50,13 +63,24 @@ export const registerUserWithDetails = async (
  * @param password User's password.
  * @returns Promise that resolves with the User credential.
  */
-export const loginUser = async (email: string, password: string): Promise<User> => {
+export const loginUser = async (
+  email: string,
+  password: string,
+): Promise<User> => {
   try {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const userCredential = await signInWithEmailAndPassword(
+      auth,
+      email,
+      password,
+    );
     return userCredential.user;
-  } catch (error: any) {
-    console.error('Error logging in:', error.code, error.message);
-    throw new Error(getFriendlyErrorMessage(error.code));
+  } catch (error: unknown) {
+    // FIX: Use unknown and type check
+    if (error instanceof FirebaseError) {
+      console.error('Error logging in:', error.code, error.message);
+      throw new Error(getFriendlyErrorMessage(error.code));
+    }
+    throw new Error('An unexpected error occurred during login.');
   }
 };
 
@@ -67,9 +91,13 @@ export const loginUser = async (email: string, password: string): Promise<User> 
 export const logoutUser = async (): Promise<void> => {
   try {
     await signOut(auth);
-  } catch (error: any) {
-    console.error('Error logging out:', error.code, error.message);
-    throw new Error(getFriendlyErrorMessage(error.code));
+  } catch (error: unknown) {
+    // FIX: Use unknown and type check
+    if (error instanceof FirebaseError) {
+      console.error('Error logging out:', error.code, error.message);
+      throw new Error(getFriendlyErrorMessage(error.code));
+    }
+    throw new Error('An unexpected error occurred during logout.');
   }
 };
 
@@ -81,9 +109,19 @@ export const logoutUser = async (): Promise<void> => {
 export const resetPassword = async (email: string): Promise<void> => {
   try {
     await sendPasswordResetEmail(auth, email);
-  } catch (error: any) {
-    console.error('Error sending password reset email:', error.code, error.message);
-    throw new Error(getFriendlyErrorMessage(error.code));
+  } catch (error: unknown) {
+    // FIX: Use unknown and type check
+    if (error instanceof FirebaseError) {
+      console.error(
+        'Error sending password reset email:',
+        error.code,
+        error.message,
+      );
+      throw new Error(getFriendlyErrorMessage(error.code));
+    }
+    throw new Error(
+      'An unexpected error occurred while sending the reset email.',
+    );
   }
 };
 

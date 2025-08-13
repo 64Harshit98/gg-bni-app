@@ -8,15 +8,11 @@ const Masters = () => {
   const location = useLocation();
 
   // Determine if we are on a specific master sub-page (e.g., /masters/sales-page-1)
-  const isDefaultMastersView = location.pathname === '/masters' || location.pathname === '/masters/';
+  const isDefaultMastersView =
+    location.pathname === '/masters' || location.pathname === '/masters/';
 
   return (
     <div className="masters-page-wrapper">
-      {/* Top Header */}
-      <div className="masters-header">
-        <h1 className="masters-title">Masters</h1>
-      </div>
-
       {/* Main Content Area - This will be the scrollable part */}
       <div className="masters-content-area">
         {isDefaultMastersView ? (
@@ -31,11 +27,15 @@ const Masters = () => {
               <span className="master-option-arrow">→</span>
             </Link> */}
             <Link to={ROUTES.PURCHASE} className="master-option-link">
-              <span className="master-option-text">Purchase/Purchase Return </span>
+              <span className="master-option-text">
+                Purchase/Purchase Return{' '}
+              </span>
               <span className="master-option-arrow">→</span>
             </Link>
             <Link to={ROUTES.USER_ADD} className="master-option-link">
-              <span className="master-option-text">Users (Salesman, Admin)</span>
+              <span className="master-option-text">
+                Users (Salesman, Admin)
+              </span>
               <span className="master-option-arrow">→</span>
             </Link>
             <Link to={ROUTES.ITEM_ADD} className="master-option-link">

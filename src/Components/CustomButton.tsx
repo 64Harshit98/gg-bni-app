@@ -11,7 +11,8 @@ const CustomButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
     const variantClasses = {
       outline:
         'bg-white text-black border border-black hover:bg-gray-100 border-2',
-      filled: 'bg-black text-white hover:bg-gray-800',
+      filled:
+        'bg-black text-white border border-black border-2 hover:bg-gray-800',
     };
 
     return (

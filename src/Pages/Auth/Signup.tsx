@@ -1,117 +1,124 @@
-// src/app/Pages/Auth/Signup.tsx
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { registerUserWithDetails } from '../../lib/auth_operations'; // Import the new unified function
+import { useNavigate, useLocation } from 'react-router-dom';
+import { db } from '../../lib/firebase';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { ROUTES } from '../../constants/routes.constants';
+import { registerUserWithDetails } from '../../lib/auth_operations';
 
-const Signup: React.FC = () => {
-  const [email, setEmail] = useState('');
-  const [name, setName] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+import { CustomIcon } from '../../Components';
+import { ICONS } from '../../constants/icon.constants';
+import { CustomButton } from '../../Components/CustomButton';
+import { FloatingLabelInput } from '../../Components/ui/FloatingLabelInput';
+
+
+// --- Main Owner Info Page Component (Step 3) ---
+const OwnerInfoPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Retrieve all business and address info from the previous steps
+  const combinedData = location.state;
+
+  // State for this page's form fields
+  const [ownerName, setOwnerName] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleFinish = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setLoading(true);
 
-    if (password !== confirmPassword) {
-      setError('Passwords do not match.');
-      setLoading(false);
+    if (!ownerName.trim() || !email.trim() || !password.trim()) {
+      setError("Please fill out all owner details.");
       return;
     }
 
-    if (!name.trim()) {
-      setError('Name cannot be empty.');
-      setLoading(false);
-      return;
-    }
+    setIsSubmitting(true);
 
     try {
-      // --- Call the new unified function for a single, clean operation ---
-      await registerUserWithDetails(name.trim(), email, password);
-      // ---------------------------------------------------------------------
+      // 1. Create the user account in Firebase Auth
+      const user = await registerUserWithDetails(ownerName, phoneNumber, email, password);
 
-      alert('Account created successfully! Please log in.');
-      navigate(ROUTES.LOGIN);
-    } catch (err: unknown) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError('An unknown error occurred');
-      }
+      // 2. Prepare the final business info document
+      const finalBusinessData = {
+        ...combinedData, // Data from step 1 & 2
+        ownerUID: user.uid,
+        ownerName: ownerName,
+        phoneNumber: phoneNumber, // Include phone number
+        ownerEmail: email,
+        createdAt: serverTimestamp(),
+      };
+
+      // 3. Save the complete business profile to Firestore
+      const docRef = doc(db, 'business_info', user.uid);
+      await setDoc(docRef, finalBusinessData);
+
+      // 4. Navigate to the home page on success
+      navigate(ROUTES.HOME);
+
+    } catch (err: any) {
+      console.error("Registration failed:", err);
+      setError(err.message || "An unexpected error occurred. Please try again.");
     } finally {
-      setLoading(false);
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="signup-container">
-      <form onSubmit={handleSubmit} className="signup-form">
-        <h2>Sign Up</h2>
-        {error && <p className="signup-error-message">{error}</p>}
-        <div className="form-group">
-          <label htmlFor="name">Name</label>
-          <input
-            type="text"
-            id="name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-            disabled={loading}
-          />
-        </div>
-        <div className="form-group">
-          <label htmlFor="email">Email</label>
-          <input
-            type="email"
-            id="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            disabled={loading}
-          />
-        </div>
-        <div className="form-group">
-          <label htmlFor="password">Password</label>
-          <input
-            type="password"
-            id="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            disabled={loading}
-          />
-        </div>
-        <div className="form-group">
-          <label htmlFor="confirmPassword">Confirm Password</label>
-          <input
-            type="password"
-            id="confirmPassword"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            required
-            disabled={loading}
-          />
-        </div>
-        <button type="submit" disabled={loading}>
-          {loading ? 'Signing up...' : 'Sign Up'}
-        </button>
-        <p className="signup-switch-link">
-          Already have an account?{' '}
-          <span
-            onClick={() => navigate(ROUTES.LOGIN)}
-            style={{ cursor: 'pointer', color: '#007bff' }}
-          >
-            Login
-          </span>
-        </p>
+    <div className="flex flex-col min-h-screen bg-white p-6">
+      <button
+        onClick={() => navigate(-1)} // Go back to the address page
+        className="self-start mb-8"
+      >
+        <CustomIcon iconName={ICONS.BACK_CURVE} />
+      </button>
+      <h1 className="text-4xl font-bold mb-2">Owner Information</h1>
+
+      <form onSubmit={handleFinish} className="flex flex-col space-y-6 overflow-y-auto">
+        <FloatingLabelInput
+          id="ownerName"
+          type="text"
+          label="Your Full Name"
+          value={ownerName}
+          onChange={(e) => setOwnerName(e.target.value)}
+          required
+        />
+        <FloatingLabelInput
+          id="phoneNumber"
+          type="number"
+          label="Your Phone Number"
+          value={phoneNumber}
+          onChange={(e) => setPhoneNumber(e.target.value)}
+          required
+        />
+        <FloatingLabelInput
+          id="email"
+          type="email"
+          label="Email Address"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+        />
+        <FloatingLabelInput
+          id="password"
+          type="password"
+          label="Create a Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+        />
+
+        {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+        <CustomButton type="submit" variant="filled" disabled={isSubmitting}>
+          {isSubmitting ? 'Signing Up...' : 'Sign Up'}
+        </CustomButton>
       </form>
     </div>
   );
 };
 
-export default Signup;
+export default OwnerInfoPage;

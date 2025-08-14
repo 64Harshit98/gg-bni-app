@@ -27,6 +27,8 @@ const ItemReport = lazy(() => import('../Pages/Reports/ItemReport'));
 const SalesReport = lazy(() => import('../Pages/Reports/SalesReport'));
 const PurchaseReport = lazy(() => import('../Pages/Reports/PurchaseReport'));
 const PnlReport = lazy(() => import('../Pages/Reports/PNLReport'));
+const BusInfo = lazy(() => import('../Pages/Auth/BusInfo'));
+const BusAddress = lazy(() => import('../Pages/Auth/BusAddress'));
 
 const router = createBrowserRouter([
   {
@@ -78,6 +80,14 @@ const router = createBrowserRouter([
   {
     path: ROUTES.SIGNUP,
     element: <Signup />,
+  },
+  {
+    path: ROUTES.BUSINESS_INFO,
+    element: <BusInfo />,
+  },
+  {
+    path: ROUTES.BUSINESS_ADDRESS,
+    element: <BusAddress />,
   },
   {
     path: ROUTES.LOGIN,

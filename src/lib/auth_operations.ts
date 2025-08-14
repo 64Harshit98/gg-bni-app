@@ -20,6 +20,7 @@ import { FirebaseError } from 'firebase/app'; // FIX: Import FirebaseError
  */
 export const registerUserWithDetails = async (
   name: string,
+  phoneNumber: string, // Changed to phoneNumber
   email: string,
   password: string,
 ): Promise<User> => {
@@ -37,6 +38,7 @@ export const registerUserWithDetails = async (
       const userRef = doc(db, 'users', user.uid);
       await setDoc(userRef, {
         name: name,
+        phoneNumber: phoneNumber, // Store phone number
         email: user.email,
         createdAt: Date.now(),
       });

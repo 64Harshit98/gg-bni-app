@@ -217,8 +217,8 @@ const Journal: React.FC = () => {
   return (
     <div className="flex min-h-screen w-full flex-col overflow-hidden bg-white shadow-md">
       {/* Top Header */}
-      <div className="flex flex-shrink-0 items-center justify-start border-b border-slate-200 bg-white p-4 px-6 shadow-sm">
-        <h1 className="text-3xl font-bold text-slate-800">Journal</h1>
+      <div className="flex flex-shrink-0 items-center justify-center border-b border-slate-200 bg-white p-4 px-6 shadow-sm ">
+        <h1 className="text-3xl font-bold text-slate-800 ">Transactions</h1>
       </div>
 
       {/* Debit/Credit Tabs */}

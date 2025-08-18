@@ -95,24 +95,22 @@ const PurchaseReturnPage: React.FC = () => {
         <div className="flex-1 flex justify-center items-center gap-6">
           {/* --- FIX: Use NavLink and its isActive prop for dynamic styling --- */}
           <NavLink
-            to={`${ROUTES.MASTERS}/${ROUTES.PURCHASE}`}
+            to={`${ROUTES.PURCHASE}`}
             className={({ isActive }) =>
-              ` ${isActive ? 'active' : ''} flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${
-                isActive
-                  ? 'border-blue-600 font-semibold text-blue-600'
-                  : 'border-transparent text-slate-500'
+              ` ${isActive ? 'active' : ''} flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${isActive
+                ? 'border-blue-600 font-semibold text-blue-600'
+                : 'border-transparent text-slate-500'
               }`
             }
           >
             Purchase
           </NavLink>
           <NavLink
-            to={`${ROUTES.MASTERS}/${ROUTES.PURCHASE_RETURN}`}
+            to={`${ROUTES.PURCHASE_RETURN}`}
             className={({ isActive }) =>
-              ` ${isActive ? 'active' : ''} flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${
-                isActive
-                  ? 'border-blue-600 font-semibold text-blue-600'
-                  : 'border-transparent text-slate-500'
+              ` ${isActive ? 'active' : ''} flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${isActive
+                ? 'border-blue-600 font-semibold text-blue-600'
+                : 'border-transparent text-slate-500'
               }`
             }
           >

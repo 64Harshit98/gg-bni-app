@@ -47,19 +47,14 @@ const router = createBrowserRouter([
       },
 
       { path: ROUTES.JOURNAL.substring(1), element: <Journal /> },
-      {
-        path: ROUTES.MASTERS.substring(1),
-        element: <Masters />,
-        children: [
-          { path: ROUTES.SALES, element: <Sales /> },
-          { path: ROUTES.SALES_RETURN, element: <SalesReturn /> },
-          { path: ROUTES.PURCHASE, element: <Purchase /> },
-          { path: ROUTES.PURCHASE_RETURN, element: <PurchaseReturn /> },
-          { path: ROUTES.ITEM_ADD, element: <ItemAdd /> },
-          { path: ROUTES.ITEM_GROUP, element: <ItemGroup /> },
-          { path: ROUTES.USER_ADD, element: <UserAdd /> },
-        ],
-      },
+      { path: ROUTES.MASTERS.substring(1), element: <Masters /> },
+      { path: ROUTES.SALES, element: <Sales /> },
+      { path: ROUTES.SALES_RETURN, element: <SalesReturn /> },
+      { path: ROUTES.PURCHASE, element: <Purchase /> },
+      { path: ROUTES.PURCHASE_RETURN, element: <PurchaseReturn /> },
+      { path: ROUTES.ITEM_ADD, element: <ItemAdd /> },
+      { path: ROUTES.ITEM_GROUP, element: <ItemGroup /> },
+      { path: ROUTES.USER_ADD, element: <UserAdd /> },
       {
         path: ROUTES.REPORTS.substring(1),
         element: <Reports />,

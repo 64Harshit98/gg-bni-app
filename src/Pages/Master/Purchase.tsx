@@ -4,7 +4,7 @@ import { getItems } from '../../lib/items_firebase';
 import type { Item } from '../../constants/models';
 import { ROUTES } from '../../constants/routes.constants';
 import { db } from '../../lib/firebase';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, serverTimestamp, doc, updateDoc, increment as firebaseIncrement } from 'firebase/firestore';
 import { useAuth } from '../../context/auth-context';
 
 // --- Helper Types & Interfaces ---
@@ -25,79 +25,39 @@ interface PaymentDetails {
   [key: string]: number;
 }
 
+interface PurchaseCompletionData {
+  paymentDetails: PaymentDetails;
+  partyName: string;
+  partyNumber: string;
+  discount: number;
+}
+
 // --- Reusable Modal Component ---
 const Modal: React.FC<{
   message: string;
   onClose: () => void;
-  type: 'success' | 'error';
+  type: 'success' | 'error' | 'info';
 }> = ({ message, onClose, type }) => (
   <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
     <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm text-center">
       <div
-        className={`mx-auto mb-4 w-12 h-12 rounded-full flex items-center justify-center ${type === 'success' ? 'bg-green-100' : 'bg-red-100'}`}
+        className={`mx-auto mb-4 w-12 h-12 rounded-full flex items-center justify-center ${type === 'success' ? 'bg-green-100' : type === 'error' ? 'bg-red-100' : 'bg-blue-100'}`}
       >
-        {type === 'success' ? (
-          <svg
-            className="w-6 h-6 text-green-600"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              d="M5 13l4 4L19 7"
-            ></path>
-          </svg>
-        ) : (
-          <svg
-            className="w-6 h-6 text-red-600"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              d="M6 18L18 6M6 6l12 12"
-            ></path>
-          </svg>
-        )}
+        {type === 'success' && <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>}
+        {type === 'error' && <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>}
+        {type === 'info' && <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>}
       </div>
       <p className="text-lg font-medium text-gray-800 mb-4">{message}</p>
-      <button
-        onClick={onClose}
-        className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors"
-      >
-        OK
-      </button>
+      <button onClick={onClose} className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">OK</button>
     </div>
   </div>
 );
 
 // --- Reusable Spinner Component ---
 const Spinner: React.FC<{ size?: string }> = ({ size = 'h-5 w-5' }) => (
-  <svg
-    className={`animate-spin text-white ${size}`}
-    xmlns="http://www.w3.org/2000/svg"
-    fill="none"
-    viewBox="0 0 24 24"
-  >
-    <circle
-      className="opacity-25"
-      cx="12"
-      cy="12"
-      r="10"
-      stroke="currentColor"
-      strokeWidth="4"
-    ></circle>
-    <path
-      className="opacity-75"
-      fill="currentColor"
-      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-    ></path>
+  <svg className={`animate-spin text-white ${size}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
   </svg>
 );
 
@@ -105,32 +65,23 @@ const Spinner: React.FC<{ size?: string }> = ({ size = 'h-5 w-5' }) => (
 interface PaymentDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  totalAmount: number;
-  onPaymentComplete: (paymentDetails: PaymentDetails) => Promise<void>;
+  subtotal: number;
+  onPaymentComplete: (completionData: PurchaseCompletionData) => Promise<void>;
 }
 
-const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
-  isOpen,
-  onClose,
-  totalAmount,
-  onPaymentComplete,
-}) => {
+const PaymentDrawer: React.FC<PaymentDrawerProps> = ({ isOpen, onClose, subtotal, onPaymentComplete }) => {
+  const [partyName, setPartyName] = useState('');
+  const [partyNumber, setPartyNumber] = useState('');
+  const [discount, setDiscount] = useState(0);
   const [selectedPayments, setSelectedPayments] = useState<PaymentDetails>({});
-  const [modal, setModal] = useState<{
-    message: string;
-    type: 'success' | 'error';
-  } | null>(null);
+  const [modal, setModal] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDiscountLocked, setIsDiscountLocked] = useState(true);
+  const longPressTimer = useRef<NodeJS.Timeout | null>(null);
 
-  const totalEnteredAmount = useMemo(
-    () =>
-      Object.values(selectedPayments).reduce((sum, amount) => sum + amount, 0),
-    [selectedPayments],
-  );
-  const remainingAmount = useMemo(
-    () => totalAmount - totalEnteredAmount,
-    [totalAmount, totalEnteredAmount],
-  );
+  const finalPayableAmount = useMemo(() => Math.max(0, subtotal - (subtotal * (discount / 100))), [subtotal, discount]);
+  const totalEnteredAmount = useMemo(() => Object.values(selectedPayments).reduce((sum, amount) => sum + amount, 0), [selectedPayments]);
+  const remainingAmount = useMemo(() => finalPayableAmount - totalEnteredAmount, [finalPayableAmount, totalEnteredAmount]);
 
   const transactionModes: PaymentMode[] = [
     { id: 'cash', name: 'Cash', description: 'Pay with physical currency' },
@@ -141,20 +92,23 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      setSelectedPayments({ cash: totalAmount });
+      setSelectedPayments({ cash: finalPayableAmount });
     } else {
       setSelectedPayments({});
+      setPartyName('');
+      setPartyNumber('');
+      setDiscount(0);
+      setIsDiscountLocked(true);
     }
-  }, [isOpen, totalAmount]);
+  }, [isOpen, finalPayableAmount]);
 
   const handleModeToggle = (modeId: string) => {
-    setSelectedPayments((prev) => {
+    setSelectedPayments(prev => {
       const newPayments = { ...prev };
       if (newPayments[modeId] !== undefined) {
         delete newPayments[modeId];
       } else {
-        newPayments[modeId] =
-          Object.keys(newPayments).length === 0 ? totalAmount : 0;
+        newPayments[modeId] = Object.keys(newPayments).length === 0 ? finalPayableAmount : 0;
       }
       return newPayments;
     });
@@ -162,10 +116,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
 
   const handleAmountChange = (modeId: string, amount: string) => {
     const numAmount = parseFloat(amount);
-    setSelectedPayments((prev) => ({
-      ...prev,
-      [modeId]: isNaN(numAmount) ? 0 : numAmount,
-    }));
+    setSelectedPayments(prev => ({ ...prev, [modeId]: isNaN(numAmount) ? 0 : numAmount }));
   };
 
   const handleFillRemaining = (modeId: string) => {
@@ -173,125 +124,120 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     handleAmountChange(modeId, (currentAmount + remainingAmount).toFixed(2));
   };
 
+  const handleDiscountChange = (amount: string) => {
+    const numAmount = parseFloat(amount);
+    setDiscount(isNaN(numAmount) ? 0 : numAmount);
+  };
+
   const handleConfirm = async () => {
+    if (!partyName.trim()) {
+      setModal({ message: 'Please enter a Party Name.', type: 'error' });
+      return;
+    }
     if (Object.keys(selectedPayments).length === 0) {
       setModal({ message: 'Please select a payment mode.', type: 'error' });
       return;
     }
     if (remainingAmount !== 0) {
-      setModal({
-        message: `Amount mismatch. Remaining: ₹${remainingAmount.toFixed(2)}`,
-        type: 'error',
-      });
+      setModal({ message: `Amount mismatch. Remaining: ₹${remainingAmount.toFixed(2)}`, type: 'error' });
       return;
     }
 
     setIsSubmitting(true);
     try {
-      await onPaymentComplete(selectedPayments);
+      await onPaymentComplete({ paymentDetails: selectedPayments, partyName, partyNumber, discount });
       setModal({ message: 'Purchase saved successfully!', type: 'success' });
       setTimeout(() => {
         setModal(null);
         onClose();
       }, 1500);
     } catch (error) {
-      console.error('Payment submission failed:', error);
-      setModal({
-        message: 'Failed to save purchase. Please try again.',
-        type: 'error',
-      });
+      console.error("Payment submission failed:", error);
+      setModal({ message: 'Failed to save purchase. Please try again.', type: 'error' });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleDiscountPressStart = () => {
+    longPressTimer.current = setTimeout(() => {
+      setIsDiscountLocked(false);
+    }, 500);
+  };
+
+  const handleDiscountPressEnd = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+    }
+  };
+
+  const handleDiscountClick = () => {
+    if (isDiscountLocked) {
+      setModal({ message: "Long press to enable discount field.", type: 'info' });
     }
   };
 
   if (!isOpen) return null;
 
   return (
-    <div
-      className="fixed inset-0 bg-black bg-opacity-50 z-40"
-      onClick={onClose}
-    >
-      {modal && (
-        <Modal
-          message={modal.message}
-          onClose={() => setModal(null)}
-          type={modal.type}
-        />
-      )}
-      <div
-        className="fixed bottom-0 left-0 right-0 bg-gray-50 rounded-t-2xl shadow-xl max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-40" onClick={onClose}>
+      {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+      <div className="fixed bottom-0 left-0 right-0 bg-gray-50 rounded-t-2xl shadow-xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="p-4 sticky top-0 bg-gray-50 z-10 border-b">
-          <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-4"></div>
-          <h2 className="text-xl font-bold text-center text-gray-800">
-            Payment Details
-          </h2>
+          <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-2"></div>
+          <h2 className="text-xl font-bold text-center text-gray-800">Payment</h2>
         </div>
 
-        <div className="p-4 space-y-3">
-          {transactionModes.map((mode) => (
-            <div key={mode.id} className="bg-white rounded-xl shadow-sm p-4">
-              <div
-                className="flex items-center justify-between cursor-pointer"
-                onClick={() => handleModeToggle(mode.id)}
-              >
-                <div>
-                  <h3 className="font-semibold text-gray-800">{mode.name}</h3>
-                  <p className="text-xs text-gray-500">{mode.description}</p>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={selectedPayments[mode.id] !== undefined}
-                  readOnly
-                  className="h-5 w-5 rounded text-blue-600 focus:ring-0 border-gray-300"
-                />
-              </div>
-              {selectedPayments[mode.id] !== undefined && (
-                <div className="mt-4 pt-4 border-t border-gray-100 flex items-center gap-2">
-                  <span className="font-bold text-lg text-gray-700">₹</span>
-                  <input
-                    type="number"
-                    placeholder="0.00"
-                    value={selectedPayments[mode.id] || ''}
-                    onChange={(e) =>
-                      handleAmountChange(mode.id, e.target.value)
-                    }
-                    className="flex-grow w-full bg-gray-100 p-2 rounded-lg border-gray-300 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                  {remainingAmount > 0 && (
-                    <button
-                      onClick={() => handleFillRemaining(mode.id)}
-                      className="text-xs bg-blue-100 text-blue-700 font-semibold px-3 py-1 rounded-full hover:bg-blue-200"
-                    >
-                      Fill
-                    </button>
+        <div className="overflow-y-auto p-3 space-y-3">
+          <div className="bg-white rounded-xl shadow-sm p-3 space-y-2">
+            <h3 className="font-semibold text-gray-800 text-sm">Customer Details</h3>
+            <input type="text" placeholder="Party Name*" value={partyName} onChange={(e) => setPartyName(e.target.value)} className="w-full bg-gray-100 p-2 text-sm rounded-lg border-gray-300 focus:ring-blue-500 focus:border-blue-500" />
+            <input type="text" placeholder="Party Number (Optional)" value={partyNumber} onChange={(e) => setPartyNumber(e.target.value)} className="w-full bg-gray-100 p-2 text-sm rounded-lg border-gray-300 focus:ring-blue-500 focus:border-blue-500" />
+          </div>
+
+          {/* --- Payment Modes Grid --- */}
+          <div className="grid grid-cols-2 gap-2">
+            {transactionModes.map((mode) => {
+              const isSelected = selectedPayments[mode.id] !== undefined;
+              return (
+                <div key={mode.id}>
+                  <div
+                    onClick={() => handleModeToggle(mode.id)}
+                    className={`p-3 rounded-lg shadow-sm cursor-pointer aspect-square flex flex-col items-center justify-center text-center transition-all duration-200
+                                       ${isSelected ? 'bg-gray-600 text-white border-2 border-gray-700' : 'bg-white text-gray-800 border'}`}
+                  >
+                    <h3 className="font-semibold text-sm">{mode.name}</h3>
+                    <p className={`text-xs mt-1 ${isSelected ? 'text-blue-200' : 'text-gray-500'}`}>{mode.description}</p>
+                  </div>
+                  {isSelected && (
+                    <div className="mt-2 flex items-center gap-1">
+                      <span className="font-bold text-gray-700">₹</span>
+                      <input type="number" placeholder="0.00" value={selectedPayments[mode.id] || ''} onChange={(e) => handleAmountChange(mode.id, e.target.value)} className="flex-grow w-full bg-gray-100 p-1 text-sm rounded-lg border-gray-300 focus:ring-blue-500 focus:border-blue-500" />
+                      {remainingAmount > 0 && <button onClick={() => handleFillRemaining(mode.id)} className="text-xs bg-blue-100 text-blue-700 font-semibold px-2 py-1 rounded-full hover:bg-blue-200">Fill</button>}
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
-          ))}
+              )
+            })}
+          </div>
         </div>
 
-        <div className="p-4 sticky bottom-0 bg-white border-t">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-gray-600">Total Entered:</span>
-            <span className="font-bold">₹{totalEnteredAmount.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between items-center mb-4">
-            <span className="text-gray-600">Remaining:</span>
-            <span
-              className={`font-bold text-lg ${remainingAmount === 0 ? 'text-green-600' : 'text-red-600'}`}
-            >
-              ₹{remainingAmount.toFixed(2)}
-            </span>
-          </div>
-          <button
-            onClick={handleConfirm}
-            disabled={isSubmitting || remainingAmount !== 0}
-            className="w-full flex items-center justify-center bg-blue-600 text-white font-bold py-3 px-4 rounded-xl hover:bg-blue-700 transition-colors disabled:bg-gray-400"
+        <div className="p-4 mt-auto sticky bottom-0 bg-white border-t">
+          <div className="flex justify-between items-center mb-2"><span className="text-sm text-gray-600">Subtotal:</span><span className="font-medium text-sm">₹{subtotal.toFixed(2)}</span></div>
+          <div
+            className="flex items-center justify-between mb-2 gap-2"
+            onMouseDown={handleDiscountPressStart}
+            onMouseUp={handleDiscountPressEnd}
+            onTouchStart={handleDiscountPressStart}
+            onTouchEnd={handleDiscountPressEnd}
+            onClick={handleDiscountClick}
           >
+            <label htmlFor="discount" className="text-sm text-gray-600">Discount:</label>
+            <input id="discount" type="number" placeholder="0.00" value={discount || ''} onChange={(e) => handleDiscountChange(e.target.value)} readOnly={isDiscountLocked} className={`w-20 text-right bg-gray-100 p-1 text-sm rounded-md border-gray-300 focus:ring-blue-500 focus:border-blue-500 ${isDiscountLocked ? 'cursor-pointer' : ''}`} />
+          </div>
+          <div className="flex justify-between items-center mb-2 border-t pt-2"><span className="text-gray-800 font-semibold">Total Payable:</span><span className="font-bold text-lg text-blue-600">₹{finalPayableAmount.toFixed(2)}</span></div>
+          <div className="flex justify-between items-center mb-3"><span className="text-gray-600">Remaining:</span><span className={`font-bold text-md ${remainingAmount === 0 ? 'text-green-600' : 'text-red-600'}`}>₹{remainingAmount.toFixed(2)}</span></div>
+          <button onClick={handleConfirm} disabled={isSubmitting || remainingAmount !== 0} className="w-full flex items-center justify-center bg-blue-600 text-white font-bold py-3 px-4 rounded-xl hover:bg-blue-700 transition-colors disabled:bg-gray-400">
             {isSubmitting ? <Spinner /> : 'Confirm & Save Purchase'}
           </button>
         </div>
@@ -304,6 +250,9 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
 const PurchasePage: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
+
+  // New state to manage feedback messages
+  const [modal, setModal] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
   const [partyNumber, setPartyNumber] = useState<string>('');
   const [partyName, setPartyName] = useState<string>('');
@@ -397,21 +346,46 @@ const PurchasePage: React.FC = () => {
 
   const handleProceedToPayment = () => {
     if (!partyName.trim() || items.length === 0) {
-      alert('Please enter a Party Name and add at least one item.');
+      setModal({ message: 'Please enter a Party Name and add at least one item.', type: 'error' });
       return;
     }
     setIsDrawerOpen(true);
   };
 
-  const handleSavePurchase = async (paymentDetails: PaymentDetails) => {
+  // New function to update item amount in Firestore
+  const updateItemAmount = async (itemId: string, quantityAdded: number) => {
+    const itemRef = doc(db, "items", itemId);
+    try {
+      await updateDoc(itemRef, {
+        amount: firebaseIncrement(quantityAdded)
+      });
+    } catch (error) {
+      console.error(`Error updating item amount for ID: ${itemId}`, error);
+      throw new Error(`Failed to update inventory for item ID: ${itemId}`);
+    }
+  };
+
+
+  const handleSavePurchase = async (completionData: PurchaseCompletionData) => {
     if (!currentUser) {
       throw new Error('User is not authenticated.');
     }
+    const { paymentDetails, partyName, partyNumber, discount } = completionData;
+
+    // Check if enough stock is available before saving
+    for (const item of items) {
+      const availableItem = availableItems.find(i => i.id === item.id);
+      if (availableItem && availableItem.amount < item.quantity) {
+        throw new Error(`Not enough stock for item: ${item.name}. Available: ${availableItem.amount}, Requested: ${item.quantity}`);
+      }
+    }
+
 
     const purchaseData = {
       userId: currentUser.uid,
       partyName: partyName.trim(),
       partyNumber: partyNumber.trim(),
+      discount: discount,
       items: items.map(({ id, name, purchasePrice, quantity }) => ({
         id,
         name,
@@ -424,14 +398,20 @@ const PurchasePage: React.FC = () => {
     };
 
     try {
-      const docRef = await addDoc(collection(db, 'purchases'), purchaseData);
-      console.log('Purchase successfully saved with ID:', docRef.id);
+      // 1. Save the purchase to the 'purchases' collection
+      await addDoc(collection(db, 'purchases'), purchaseData);
+
+      // 2. Update the amount of each purchased item in the 'items' collection
+      const updatePromises = items.map(item => updateItemAmount(item.id, item.quantity));
+      await Promise.all(updatePromises);
+
 
       // Reset form on success
       setPartyName('');
       setPartyNumber('');
       setItems([]);
       setSelectedItem('');
+      setModal({ message: 'Purchase saved successfully!', type: 'success' });
     } catch (err) {
       console.error('Error saving purchase:', err);
       throw err; // Re-throw to be handled by the drawer
@@ -450,34 +430,34 @@ const PurchasePage: React.FC = () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-white w-full">
+      {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+
       {/* Top Bar */}
       <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
         <button
-          onClick={() => navigate(ROUTES.MASTERS)}
+          onClick={() => navigate(ROUTES.HOME)}
           className="text-2xl font-bold text-gray-600 bg-transparent border-none cursor-pointer p-1"
         >
           &times;
         </button>
         <div className="flex-1 flex justify-center items-center gap-6">
           <NavLink
-            to={`${ROUTES.MASTERS}/${ROUTES.PURCHASE}`}
+            to={`${ROUTES.PURCHASE}`}
             className={({ isActive }) =>
-              `flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${
-                isActive
-                  ? 'border-blue-600 font-semibold text-blue-600'
-                  : 'border-transparent text-slate-500'
+              `flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${isActive
+                ? 'border-blue-600 font-semibold text-blue-600'
+                : 'border-transparent text-slate-500'
               }`
             }
           >
             Purchase
           </NavLink>
           <NavLink
-            to={`${ROUTES.MASTERS}/${ROUTES.PURCHASE_RETURN}`}
+            to={`${ROUTES.PURCHASE_RETURN}`}
             className={({ isActive }) =>
-              `flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${
-                isActive
-                  ? 'border-blue-600 font-semibold text-blue-600'
-                  : 'border-transparent text-slate-500'
+              `flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${isActive
+                ? 'border-blue-600 font-semibold text-blue-600'
+                : 'border-transparent text-slate-500'
               }`
             }
           >
@@ -653,7 +633,7 @@ const PurchasePage: React.FC = () => {
       <PaymentDrawer
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
-        totalAmount={totalAmount}
+        subtotal={totalAmount}
         onPaymentComplete={handleSavePurchase}
       />
     </div>

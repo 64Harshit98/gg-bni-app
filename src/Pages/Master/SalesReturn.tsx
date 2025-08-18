@@ -272,24 +272,22 @@ const SalesReturnPage: React.FC = () => {
         </button>
         <div className="flex-1 flex justify-center items-center gap-6">
           <NavLink
-            to={`${ROUTES.MASTERS}/${ROUTES.SALES}`}
+            to={`${ROUTES.SALES}`}
             className={({ isActive }) =>
-              `flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${
-                isActive
-                  ? 'border-blue-600 font-semibold text-blue-600'
-                  : 'border-transparent text-slate-500'
+              `flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${isActive
+                ? 'border-blue-600 font-semibold text-blue-600'
+                : 'border-transparent text-slate-500'
               }`
             }
           >
             Sales
           </NavLink>
           <NavLink
-            to={`${ROUTES.MASTERS}/${ROUTES.SALES_RETURN}`}
+            to={`${ROUTES.SALES_RETURN}`}
             className={({ isActive }) =>
-              `flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${
-                isActive
-                  ? 'border-blue-600 font-semibold text-blue-600'
-                  : 'border-transparent text-slate-500'
+              `flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${isActive
+                ? 'border-blue-600 font-semibold text-blue-600'
+                : 'border-transparent text-slate-500'
               }`
             }
           >

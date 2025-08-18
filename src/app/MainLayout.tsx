@@ -22,28 +22,28 @@ const MainLayout = () => {
         <Button
           variant="outline"
           className="w-full mb-2 rounded"
-          onClick={() => navigate(`${ROUTES.MASTERS}/${ROUTES.SALES}`)}
+          onClick={() => navigate(`${ROUTES.SALES}`)}
         >
           Sales
         </Button>
         <Button
           variant="outline"
           className="w-full mb-2 rounded"
-          onClick={() => navigate(`${ROUTES.MASTERS}/${ROUTES.PURCHASE}`)}
+          onClick={() => navigate(`${ROUTES.PURCHASE}`)}
         >
           Purchase
         </Button>
         <Button
           variant="outline"
           className="w-full mb-2 rounded"
-          onClick={() => navigate(`${ROUTES.MASTERS}/${ROUTES.ITEM_ADD}`)}
+          onClick={() => navigate(`${ROUTES.ITEM_ADD}`)}
         >
           Add Item
         </Button>
         <Button
           variant="outline"
           className="w-full mb-2 rounded"
-          onClick={() => navigate(`${ROUTES.MASTERS}/${ROUTES.USER_ADD}`)}
+          onClick={() => navigate(`${ROUTES.USER_ADD}`)}
         >
           User Add
         </Button>

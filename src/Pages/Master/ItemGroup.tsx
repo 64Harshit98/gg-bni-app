@@ -123,23 +123,21 @@ const ItemGroupPage: React.FC = () => {
         </button>
         <div className="flex-1 flex justify-center items-center gap-6">
           <NavLink
-            to={`${ROUTES.MASTERS}/${ROUTES.ITEM_ADD}`}
-            className={`flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${
-              activeTab === 'Item Add'
+            to={`${ROUTES.ITEM_ADD}`}
+            className={`flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${activeTab === 'Item Add'
                 ? 'border-blue-600 font-semibold text-blue-600'
                 : 'border-transparent text-slate-500'
-            }`}
+              }`}
             onClick={() => setActiveTab('Item Add')}
           >
             Item Add
           </NavLink>
           <NavLink
-            to={`${ROUTES.MASTERS}/${ROUTES.ITEM_GROUP}`}
-            className={`flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${
-              activeTab === 'Item Groups'
+            to={`${ROUTES.ITEM_GROUP}`}
+            className={`flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${activeTab === 'Item Groups'
                 ? 'border-blue-600 font-semibold text-blue-600'
                 : 'border-transparent text-slate-500'
-            }`}
+              }`}
             onClick={() => setActiveTab('Item Groups')}
           >
             Item Groups

@@ -147,8 +147,8 @@ const ItemAdd: React.FC = () => {
       <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
         <button onClick={() => navigate(ROUTES.HOME)} className="text-2xl font-bold text-gray-600">&times;</button>
         <div className="flex-1 flex justify-center items-center gap-6">
-          <NavLink to={`${ROUTES.MASTERS}/${ROUTES.ITEM_ADD}`} className={({ isActive }) => `flex-1 text-center py-3 border-b-2 ${isActive ? 'border-blue-600 text-blue-600 font-semibold' : 'border-transparent text-slate-500'}`}>Item Add</NavLink>
-          <NavLink to={`${ROUTES.MASTERS}/${ROUTES.ITEM_GROUP}`} className={({ isActive }) => `flex-1 text-center py-3 border-b-2 ${isActive ? 'border-blue-600 text-blue-600 font-semibold' : 'border-transparent text-slate-500'}`}>Item Groups</NavLink>
+          <NavLink to={`${ROUTES.ITEM_ADD}`} className={({ isActive }) => `flex-1 text-center py-3 border-b-2 ${isActive ? 'border-blue-600 text-blue-600 font-semibold' : 'border-transparent text-slate-500'}`}>Item Add</NavLink>
+          <NavLink to={`${ROUTES.ITEM_GROUP}`} className={({ isActive }) => `flex-1 text-center py-3 border-b-2 ${isActive ? 'border-blue-600 text-blue-600 font-semibold' : 'border-transparent text-slate-500'}`}>Item Groups</NavLink>
         </div>
         <div className="w-6"></div>
       </div>

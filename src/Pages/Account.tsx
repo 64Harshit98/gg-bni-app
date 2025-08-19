@@ -72,7 +72,7 @@ const Account: React.FC = () => {
   // Function to handle edit profile
   const handleEditProfile = () => {
     // Navigate to the nested edit profile route
-    navigate(ROUTES.EDIT_PROFILE);
+    navigate(`${ROUTES.EDIT_PROFILE}`);
   };
 
   // Conditional rendering for different states

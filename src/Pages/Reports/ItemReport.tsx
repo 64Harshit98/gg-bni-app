@@ -1,8 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getItems } from '../../lib/items_firebase'; // Assuming getItems fetches all items
 import type { Item } from '../../constants/models'; // Assuming your Item type is here
-// Function to format a Unix timestamp to a readable date string
+// FIX: Add imports for PDF generation
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
+// --- Helper Functions ---
 const formatDate = (timestamp: number | null): string => {
   if (!timestamp) return 'N/A';
   const date = new Date(timestamp);
@@ -10,33 +14,37 @@ const formatDate = (timestamp: number | null): string => {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
   });
 };
+
+// FIX: New reusable component for summary cards
+const SummaryCard: React.FC<{ title: string; value: string }> = ({
+  title,
+  value,
+}) => (
+  <div className="bg-white p-6 rounded-xl shadow">
+    <h3 className="text-sm font-medium text-gray-500">{title}</h3>
+    <p className="text-3xl font-bold text-gray-900 mt-2">{value}</p>
+  </div>
+);
 
 const ItemReport: React.FC = () => {
   const navigate = useNavigate();
 
-  // State for data and filtering
   const [items, setItems] = useState<Item[]>([]);
-  const [filteredItems, setFilteredItems] = useState<Item[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // State for filter inputs
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
 
-  // Fetch all items from the database on component mount
   useEffect(() => {
     const fetchAllItems = async () => {
       try {
         setIsLoading(true);
         const fetchedItems = await getItems();
         setItems(fetchedItems);
-        setFilteredItems(fetchedItems); // Initialize filtered list with all items
         setError(null);
       } catch (err) {
         console.error('Failed to fetch items:', err);
@@ -48,40 +56,76 @@ const ItemReport: React.FC = () => {
     fetchAllItems();
   }, []);
 
-  // Filter logic: apply filters whenever searchQuery or date ranges change
-  useEffect(() => {
+  // FIX: Refactored filtering and summary logic into a useMemo hook for efficiency
+  const { filteredItems, summary } = useMemo(() => {
     let newFilteredItems = items;
 
-    // 1. Filter by search query (item name)
     if (searchQuery) {
       newFilteredItems = newFilteredItems.filter((item) =>
-        item.name.toLowerCase().includes(searchQuery.toLowerCase()),
+        item.name.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
 
-    // 2. Filter by date range (created date)
     if (startDate || endDate) {
-      const startTimestamp = startDate ? new Date(startDate).getTime() : null;
-      const endTimestamp = endDate ? new Date(endDate).getTime() : null;
+      const startTimestamp = startDate
+        ? new Date(startDate).setHours(0, 0, 0, 0)
+        : 0;
+      const endTimestamp = endDate
+        ? new Date(endDate).setHours(23, 59, 59, 999)
+        : Infinity;
 
       newFilteredItems = newFilteredItems.filter((item) => {
         const itemCreatedAt = item.createdAt;
         if (!itemCreatedAt) return false;
-
-        const isAfterStart = startTimestamp
-          ? itemCreatedAt >= startTimestamp
-          : true;
-        // Add 86399999 milliseconds (just under 24 hours) to include the entire end date
-        const isBeforeEnd = endTimestamp
-          ? itemCreatedAt <= endTimestamp + 86399999
-          : true;
-
-        return isAfterStart && isBeforeEnd;
+        return itemCreatedAt >= startTimestamp && itemCreatedAt <= endTimestamp;
       });
     }
 
-    setFilteredItems(newFilteredItems);
+    // Calculate summary statistics
+    const totalItems = newFilteredItems.length;
+    const totalMrp = newFilteredItems.reduce(
+      (sum, item) => sum + (item.mrp || 0),
+      0
+    );
+    const totalPurchasePrice = newFilteredItems.reduce(
+      (sum, item) => sum + (item.purchasePrice || 0),
+      0
+    );
+
+    const averageMrp = totalItems > 0 ? totalMrp / totalItems : 0;
+    const averagePurchasePrice =
+      totalItems > 0 ? totalPurchasePrice / totalItems : 0;
+
+    return {
+      filteredItems: newFilteredItems,
+      summary: {
+        totalItems,
+        averageMrp,
+        averagePurchasePrice,
+      },
+    };
   }, [searchQuery, startDate, endDate, items]);
+
+  // FIX: New function to handle PDF download
+  const downloadAsPdf = () => {
+    const doc = new jsPDF();
+    doc.text('Item Report', 20, 10);
+
+    autoTable(doc, {
+      head: [
+        ['Item Name', 'MRP', 'Purchase Price', 'Tax (%)', 'Created At'],
+      ],
+      body: filteredItems.map((item) => [
+        item.name,
+        `₹${item.mrp?.toFixed(2) || 'N/A'}`,
+        `₹${item.purchasePrice?.toFixed(2) || 'N/A'}`,
+        `${item.tax || '0'}%`,
+        formatDate(item.createdAt || null),
+      ]),
+    });
+
+    doc.save('item_report.pdf');
+  };
 
   const handleClearFilters = () => {
     setSearchQuery('');
@@ -107,9 +151,8 @@ const ItemReport: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 sm:p-6">
-      {/* Top Bar with Title and Back Button */}
       <div className="flex items-center justify-between pb-4 border-b border-gray-300 mb-6">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
+        <h1 className="flex-1 text-2xl text-center sm:text-3xl font-bold text-gray-800">
           Item Report
         </h1>
         <button
@@ -126,7 +169,6 @@ const ItemReport: React.FC = () => {
             strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
-            className="lucide lucide-x"
           >
             <path d="M18 6 6 18" />
             <path d="m6 6 12 12" />
@@ -134,16 +176,37 @@ const ItemReport: React.FC = () => {
         </button>
       </div>
 
-      {/* Filter Section */}
+      {/* FIX: Summary Cards Section */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <SummaryCard
+          title="Total Items (Filtered)"
+          value={summary.totalItems.toString()}
+        />
+        <SummaryCard
+          title="Average MRP (Filtered)"
+          value={`₹${summary.averageMrp.toFixed(2)}`}
+        />
+        <SummaryCard
+          title="Avg. Purchase Price (Filtered)"
+          value={`₹${summary.averagePurchasePrice.toFixed(2)}`}
+        />
+      </div>
+
       <div className="bg-white rounded-xl shadow-md p-4 sm:p-6 mb-6">
-        <h2 className="text-xl font-semibold text-gray-700 mb-4">Filters</h2>
+        {/* FIX: Added Download PDF Button */}
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold text-gray-700">Filters</h2>
+          <button
+            onClick={downloadAsPdf}
+            disabled={filteredItems.length === 0}
+            className="bg-blue-600 text-white font-semibold rounded-md py-2 px-4 shadow-sm hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Download PDF
+          </button>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 items-end">
-          {/* Search Input */}
           <div>
-            <label
-              htmlFor="searchQuery"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
+            <label htmlFor="searchQuery" className="block text-sm font-medium text-gray-700 mb-1">
               Search by Item Name
             </label>
             <input
@@ -155,13 +218,8 @@ const ItemReport: React.FC = () => {
               className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
             />
           </div>
-
-          {/* Start Date */}
           <div>
-            <label
-              htmlFor="startDate"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
+            <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 mb-1">
               From Date
             </label>
             <input
@@ -172,13 +230,8 @@ const ItemReport: React.FC = () => {
               className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
             />
           </div>
-
-          {/* End Date */}
           <div>
-            <label
-              htmlFor="endDate"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
+            <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 mb-1">
               To Date
             </label>
             <input
@@ -189,8 +242,6 @@ const ItemReport: React.FC = () => {
               className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
             />
           </div>
-
-          {/* Clear Filters Button */}
           <div className="md:col-span-1 lg:col-span-1">
             <button
               onClick={handleClearFilters}
@@ -201,80 +252,7 @@ const ItemReport: React.FC = () => {
           </div>
         </div>
       </div>
-
-      {/* Report Table Section */}
-      <div className="bg-white rounded-xl shadow-md overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  Item Name
-                </th>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  MRP
-                </th>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  Purchase Price
-                </th>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  Tax (%)
-                </th>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  Created At
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {filteredItems.length > 0 ? (
-                filteredItems.map((item) => (
-                  <tr key={item.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {item.name}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      ₹{item.mrp?.toFixed(2) || 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      ₹{item.purchasePrice?.toFixed(2) || 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {item.tax || '0'}%
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatDate(item.createdAt || null)}
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td
-                    colSpan={5}
-                    className="px-6 py-4 text-center text-sm text-gray-500"
-                  >
-                    No items found matching the filters.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {/* FIX: The detailed table has been removed. The data is now available in the PDF. */}
     </div>
   );
 };

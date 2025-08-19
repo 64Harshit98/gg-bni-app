@@ -36,6 +36,13 @@ const MainLayout = () => {
         <Button
           variant="outline"
           className="w-full mb-2 rounded"
+          onClick={() => navigate(`${ROUTES.PAYMENT}`)}
+        >
+          Payments
+        </Button>
+        <Button
+          variant="outline"
+          className="w-full mb-2 rounded"
           onClick={() => navigate(`${ROUTES.ITEM_ADD}`)}
         >
           Add Item

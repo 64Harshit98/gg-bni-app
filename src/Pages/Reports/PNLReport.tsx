@@ -199,10 +199,30 @@ const PnlReportPage: React.FC = () => {
 
   return (
     <div className="container mx-auto p-4 md:p-8 font-sans">
-      <h1 className="text-3xl font-bold mb-6 text-gray-800">
-        Profit & Loss Report
-      </h1>
-
+      <div className="flex items-center text-center justify-between pb-4 border-b border-gray-200 mb-6">
+        <h1 className="flex-1 text-2xl text-center sm:text-3xl font-bold text-gray-800">
+          Profit & Loss Report
+        </h1>
+        <button
+          onClick={() => navigate(-1)}
+          className="rounded-full bg-gray-200 p-2 text-gray-700 transition hover:bg-gray-300"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </svg>
+        </button>
+      </div>
       <div className="flex flex-col lg:flex-row gap-8">
         {/* Filter Panel */}
         <div className="w-full lg:w-1/4 bg-white rounded-lg shadow-md p-6 h-fit">

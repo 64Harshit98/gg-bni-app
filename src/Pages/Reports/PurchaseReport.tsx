@@ -9,6 +9,9 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { useAuth } from '../../context/auth-context';
+// FIX: Added imports for PDF generation
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 // --- Data Types ---
 interface PurchaseItem {
@@ -48,10 +51,22 @@ const formatPaymentMethods = (methods: PaymentMethods): string => {
   return Object.entries(methods)
     .map(
       ([mode, amount]) =>
-        `${mode.charAt(0).toUpperCase() + mode.slice(1)}: ₹${amount.toFixed(2)}`,
+        `${mode.charAt(0).toUpperCase() + mode.slice(1)}: ₹${amount.toFixed(
+          2
+        )}`
     )
     .join(', ');
 };
+
+// FIX: New reusable component for summary cards
+const SummaryCard: React.FC<{ title: string; value: string; note?: string }> =
+  ({ title, value, note }) => (
+    <div className="bg-white p-6 rounded-xl shadow">
+      <h3 className="text-sm font-medium text-gray-500">{title}</h3>
+      <p className="text-3xl font-bold text-gray-900 mt-2">{value}</p>
+      {note && <p className="text-xs text-gray-400 mt-1">{note}</p>}
+    </div>
+  );
 
 // --- Main Purchase Report Component ---
 const PurchaseReport: React.FC = () => {
@@ -62,12 +77,10 @@ const PurchaseReport: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Filter states
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
 
-  // Fetch purchase data from Firestore
   useEffect(() => {
     if (authLoading) return;
     if (!currentUser) {
@@ -83,7 +96,7 @@ const PurchaseReport: React.FC = () => {
         const purchasesCollection = collection(db, 'purchases');
         const q = query(
           purchasesCollection,
-          where('userId', '==', currentUser.uid),
+          where('userId', '==', currentUser.uid)
         );
         const querySnapshot = await getDocs(q);
         const fetchedPurchases: PurchaseRecord[] = [];
@@ -114,13 +127,12 @@ const PurchaseReport: React.FC = () => {
     fetchPurchases();
   }, [currentUser, authLoading]);
 
-  // Memoized filtered purchases and summary
   const { filteredPurchases, summary } = useMemo(() => {
     let newFilteredPurchases = purchases;
 
     if (searchQuery) {
       newFilteredPurchases = newFilteredPurchases.filter((purchase) =>
-        purchase.partyName.toLowerCase().includes(searchQuery.toLowerCase()),
+        purchase.partyName.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
 
@@ -134,23 +146,53 @@ const PurchaseReport: React.FC = () => {
       newFilteredPurchases = newFilteredPurchases.filter((purchase) => {
         const purchaseCreatedAt = purchase.createdAt;
         return (
-          purchaseCreatedAt >= startTimestamp &&
-          purchaseCreatedAt <= endTimestamp
+          purchaseCreatedAt >= startTimestamp && purchaseCreatedAt <= endTimestamp
         );
       });
     }
 
     const totalCost = newFilteredPurchases.reduce(
       (sum, purchase) => sum + purchase.totalAmount,
-      0,
+      0
     );
     const totalOrders = newFilteredPurchases.length;
 
+    // FIX: Added logic to find the top supplier
+    const supplierTotals: { [key: string]: number } = {};
+    newFilteredPurchases.forEach((p) => {
+      supplierTotals[p.partyName] =
+        (supplierTotals[p.partyName] || 0) + p.totalAmount;
+    });
+
+    const topSupplierData =
+      Object.entries(supplierTotals).sort((a, b) => b[1] - a[1])[0] || null;
+
     return {
       filteredPurchases: newFilteredPurchases,
-      summary: { totalCost, totalOrders },
+      summary: { totalCost, totalOrders, topSupplier: topSupplierData },
     };
   }, [searchQuery, startDate, endDate, purchases]);
+
+  // FIX: New function to handle PDF download
+  const downloadAsPdf = () => {
+    const doc = new jsPDF();
+    doc.text('Purchase Report', 20, 10);
+
+    autoTable(doc, {
+      head: [
+        ['Invoice ID', 'Party Name', 'Total Amount', 'Payment Method', 'Date'],
+      ],
+      body: filteredPurchases.map((purchase) => [
+        purchase.id.slice(0, 8),
+        purchase.partyName,
+        `₹${purchase.totalAmount.toLocaleString('en-IN')}`,
+        formatPaymentMethods(purchase.paymentMethods),
+        formatDate(purchase.createdAt),
+      ]),
+    });
+
+    doc.save('purchase_report.pdf');
+  };
 
   const handleClearFilters = () => {
     setSearchQuery('');
@@ -176,185 +218,123 @@ const PurchaseReport: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between pb-4 border-b border-gray-200 mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
-            Purchase Report
-          </h1>
-          <button
-            onClick={() => navigate(-1)}
-            className="rounded-full bg-gray-200 p-2 text-gray-700 transition hover:bg-gray-300"
+      <div className="flex items-center justify-between pb-4 border-b border-gray-200 mb-6">
+        <h1 className="flex-1 text-2xl text-center sm:text-3xl font-bold text-gray-800">
+          Purchase Report
+        </h1>
+        <button
+          onClick={() => navigate(-1)}
+          className="rounded-full bg-gray-200 p-2 text-gray-700 transition hover:bg-gray-300"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </svg>
+        </button>
+      </div>
+
+      {/* FIX: Updated summary cards section */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <SummaryCard
+          title="Total Cost (Filtered)"
+          value={`₹${summary.totalCost.toLocaleString('en-IN')}`}
+        />
+        <SummaryCard
+          title="Total Orders (Filtered)"
+          value={summary.totalOrders.toString()}
+        />
+        <SummaryCard
+          title="Top Supplier (Filtered)"
+          value={summary.topSupplier ? summary.topSupplier[0] : 'N/A'}
+          note={
+            summary.topSupplier
+              ? `Total: ₹${summary.topSupplier[1].toLocaleString('en-IN')}`
+              : ''
+          }
+        />
+      </div>
+
+      <div className="bg-white rounded-xl shadow-md">
+        <div className="p-4 sm:p-6 border-b border-gray-200">
+          {/* FIX: Added Download PDF button */}
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold text-gray-700">Filters</h2>
+            <button
+              onClick={downloadAsPdf}
+              className="bg-blue-600 text-white font-semibold rounded-md py-2 px-4 shadow-sm hover:bg-blue-700 transition"
+              disabled={filteredPurchases.length === 0}
             >
-              <path d="M18 6 6 18" />
-              <path d="m6 6 12 12" />
-            </svg>
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div className="bg-white p-6 rounded-xl shadow">
-            <h3 className="text-sm font-medium text-gray-500">
-              Total Cost (Filtered)
-            </h3>
-            <p className="text-3xl font-bold text-gray-900 mt-2">
-              ₹{summary.totalCost.toLocaleString('en-IN')}
-            </p>
+              Download PDF
+            </button>
           </div>
-          <div className="bg-white p-6 rounded-xl shadow">
-            <h3 className="text-sm font-medium text-gray-500">
-              Total Orders (Filtered)
-            </h3>
-            <p className="text-3xl font-bold text-gray-900 mt-2">
-              {summary.totalOrders}
-            </p>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-md">
-          <div className="p-4 sm:p-6 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-700 mb-4">
-              Filters
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
-              <div>
-                <label
-                  htmlFor="searchQuery"
-                  className="block text-sm font-medium text-gray-600 mb-1"
-                >
-                  Party Name
-                </label>
-                <input
-                  type="text"
-                  id="searchQuery"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="e.g., Supplier Inc."
-                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor="startDate"
-                  className="block text-sm font-medium text-gray-600 mb-1"
-                >
-                  From Date
-                </label>
-                <input
-                  type="date"
-                  id="startDate"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor="endDate"
-                  className="block text-sm font-medium text-gray-600 mb-1"
-                >
-                  To Date
-                </label>
-                <input
-                  type="date"
-                  id="endDate"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <button
-                  onClick={handleClearFilters}
-                  className="w-full bg-gray-600 text-white rounded-md py-2 px-4 shadow-sm hover:bg-gray-700 transition"
-                >
-                  Clear Filters
-                </button>
-              </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+            <div>
+              <label
+                htmlFor="searchQuery"
+                className="block text-sm font-medium text-gray-600 mb-1"
+              >
+                Party Name
+              </label>
+              <input
+                type="text"
+                id="searchQuery"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="e.g., Supplier Inc."
+                className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="startDate"
+                className="block text-sm font-medium text-gray-600 mb-1"
+              >
+                From Date
+              </label>
+              <input
+                type="date"
+                id="startDate"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="endDate"
+                className="block text-sm font-medium text-gray-600 mb-1"
+              >
+                To Date
+              </label>
+              <input
+                type="date"
+                id="endDate"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <button
+                onClick={handleClearFilters}
+                className="w-full bg-gray-600 text-white rounded-md py-2 px-4 shadow-sm hover:bg-gray-700 transition"
+              >
+                Clear Filters
+              </button>
             </div>
           </div>
-
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Invoice ID
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Party Name
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Total Amount
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Payment Method
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    Date
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredPurchases.length > 0 ? (
-                  filteredPurchases.map((purchase) => (
-                    <tr key={purchase.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-800">
-                        {purchase.id.slice(0, 8)}...
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {purchase.partyName}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        ₹{purchase.totalAmount.toLocaleString('en-IN')}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 capitalize">
-                        {formatPaymentMethods(purchase.paymentMethods)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {formatDate(purchase.createdAt)}
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="px-6 py-4 text-center text-sm text-gray-500"
-                    >
-                      No purchases found matching the current filters.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
         </div>
+        {/* FIX: Table has been removed */}
       </div>
     </div>
   );

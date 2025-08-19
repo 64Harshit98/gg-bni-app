@@ -29,6 +29,7 @@ const PurchaseReport = lazy(() => import('../Pages/Reports/PurchaseReport'));
 const PnlReport = lazy(() => import('../Pages/Reports/PNLReport'));
 const BusInfo = lazy(() => import('../Pages/Auth/BusInfo'));
 const BusAddress = lazy(() => import('../Pages/Auth/BusAddress'));
+const Payment = lazy(() => import('../Pages/Master/Payment'));
 
 const router = createBrowserRouter([
   {
@@ -40,11 +41,8 @@ const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <Home /> },
-      {
-        path: ROUTES.ACCOUNT.substring(1),
-        element: <Account />,
-        children: [{ path: ROUTES.EDIT_PROFILE, element: <EditProfile /> }],
-      },
+      { path: ROUTES.ACCOUNT.substring(1), element: <Account /> },
+      { path: ROUTES.EDIT_PROFILE, element: <EditProfile /> },
 
       { path: ROUTES.JOURNAL.substring(1), element: <Journal /> },
       { path: ROUTES.MASTERS.substring(1), element: <Masters /> },
@@ -52,20 +50,16 @@ const router = createBrowserRouter([
       { path: ROUTES.SALES_RETURN, element: <SalesReturn /> },
       { path: ROUTES.PURCHASE, element: <Purchase /> },
       { path: ROUTES.PURCHASE_RETURN, element: <PurchaseReturn /> },
+      { path: ROUTES.PAYMENT, element: <Payment /> },
       { path: ROUTES.ITEM_ADD, element: <ItemAdd /> },
       { path: ROUTES.ITEM_GROUP, element: <ItemGroup /> },
       { path: ROUTES.USER_ADD, element: <UserAdd /> },
-      {
-        path: ROUTES.REPORTS.substring(1),
-        element: <Reports />,
-        children: [
-          { index: true, element: <Reports /> },
-          { path: ROUTES.ITEM_REPORT, element: <ItemReport /> },
-          { path: ROUTES.SALES_REPORT, element: <SalesReport /> },
-          { path: ROUTES.PURCHASE_REPORT, element: <PurchaseReport /> },
-          { path: ROUTES.PNL_REPORT, element: <PnlReport /> },
-        ],
-      },
+      { path: ROUTES.REPORTS.substring(1), element: <Reports /> },
+      { index: true, element: <Reports /> },
+      { path: ROUTES.ITEM_REPORT, element: <ItemReport /> },
+      { path: ROUTES.SALES_REPORT, element: <SalesReport /> },
+      { path: ROUTES.PURCHASE_REPORT, element: <PurchaseReport /> },
+      { path: ROUTES.PNL_REPORT, element: <PnlReport /> },
     ],
   },
   {

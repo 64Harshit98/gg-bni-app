@@ -4,7 +4,7 @@ import { db } from '../lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
 
-import { PurchaseCard } from '../Components/PCard';
+// import { PurchaseCard } from '../Components/PCard';
 import { SalesBarChartReport } from '../Components/SBGraph';
 import { SalesCard } from '../Components/SCard';
 import { TopSoldItemsCard } from '../Components/TFCard';
@@ -68,9 +68,9 @@ const Home = () => {
             <SalesCard />
           </div>
           {/* Wrapper for Purchase Card */}
-          <div className="flex-1 min-w-0">
+          {/* <div className="flex-1 min-w-0">
             <PurchaseCard />
-          </div>
+          </div> */}
         </div>
         <div className="mb-6">
           <SalesBarChartReport />

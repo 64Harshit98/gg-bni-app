@@ -25,24 +25,18 @@ interface PaymentDetails {
   [key: string]: number;
 }
 
+// FIX: Added finalAmount to ensure the correct total is saved
 interface PurchaseCompletionData {
   paymentDetails: PaymentDetails;
-  partyName: string;
-  partyNumber: string;
   discount: number;
+  finalAmount: number;
 }
 
-// --- Reusable Modal Component ---
-const Modal: React.FC<{
-  message: string;
-  onClose: () => void;
-  type: 'success' | 'error' | 'info';
-}> = ({ message, onClose, type }) => (
+// --- Reusable Modal & Spinner Components (unchanged) ---
+const Modal: React.FC<{ message: string; onClose: () => void; type: 'success' | 'error' | 'info'; }> = ({ message, onClose, type }) => (
   <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
     <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm text-center">
-      <div
-        className={`mx-auto mb-4 w-12 h-12 rounded-full flex items-center justify-center ${type === 'success' ? 'bg-green-100' : type === 'error' ? 'bg-red-100' : 'bg-blue-100'}`}
-      >
+      <div className={`mx-auto mb-4 w-12 h-12 rounded-full flex items-center justify-center ${type === 'success' ? 'bg-green-100' : type === 'error' ? 'bg-red-100' : 'bg-blue-100'}`}>
         {type === 'success' && <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>}
         {type === 'error' && <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>}
         {type === 'info' && <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>}
@@ -52,8 +46,6 @@ const Modal: React.FC<{
     </div>
   </div>
 );
-
-// --- Reusable Spinner Component ---
 const Spinner: React.FC<{ size?: string }> = ({ size = 'h-5 w-5' }) => (
   <svg className={`animate-spin text-white ${size}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -61,17 +53,17 @@ const Spinner: React.FC<{ size?: string }> = ({ size = 'h-5 w-5' }) => (
   </svg>
 );
 
+
 // --- The Payment Drawer Component ---
 interface PaymentDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   subtotal: number;
+  partyName: string;
   onPaymentComplete: (completionData: PurchaseCompletionData) => Promise<void>;
 }
 
-const PaymentDrawer: React.FC<PaymentDrawerProps> = ({ isOpen, onClose, subtotal, onPaymentComplete }) => {
-  const [partyName, setPartyName] = useState('');
-  const [partyNumber, setPartyNumber] = useState('');
+const PaymentDrawer: React.FC<PaymentDrawerProps> = ({ isOpen, onClose, subtotal, partyName, onPaymentComplete }) => {
   const [discount, setDiscount] = useState(0);
   const [selectedPayments, setSelectedPayments] = useState<PaymentDetails>({});
   const [modal, setModal] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -80,27 +72,23 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({ isOpen, onClose, subtotal
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
 
   const finalPayableAmount = useMemo(() => Math.max(0, subtotal - (subtotal * (discount / 100))), [subtotal, discount]);
-  const totalEnteredAmount = useMemo(() => Object.values(selectedPayments).reduce((sum, amount) => sum + amount, 0), [selectedPayments]);
+  const totalEnteredAmount = useMemo(() => Object.values(selectedPayments).reduce((sum, amount) => sum + (amount || 0), 0), [selectedPayments]);
   const remainingAmount = useMemo(() => finalPayableAmount - totalEnteredAmount, [finalPayableAmount, totalEnteredAmount]);
 
   const transactionModes: PaymentMode[] = [
     { id: 'cash', name: 'Cash', description: 'Pay with physical currency' },
-    { id: 'card', name: 'Card', description: 'Credit or Debit Card' },
     { id: 'upi', name: 'UPI', description: 'Google Pay, PhonePe, etc.' },
+    { id: 'card', name: 'Card', description: 'Credit or Debit Card' },
     { id: 'due', name: 'Due', description: 'Record as an outstanding payment' },
   ];
 
   useEffect(() => {
     if (isOpen) {
-      setSelectedPayments({ cash: finalPayableAmount });
-    } else {
-      setSelectedPayments({});
-      setPartyName('');
-      setPartyNumber('');
+      setSelectedPayments({ cash: subtotal });
       setDiscount(0);
       setIsDiscountLocked(true);
     }
-  }, [isOpen, finalPayableAmount]);
+  }, [isOpen, subtotal]);
 
   const handleModeToggle = (modeId: string) => {
     setSelectedPayments(prev => {
@@ -121,61 +109,52 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({ isOpen, onClose, subtotal
 
   const handleFillRemaining = (modeId: string) => {
     const currentAmount = selectedPayments[modeId] || 0;
-    handleAmountChange(modeId, (currentAmount + remainingAmount).toFixed(2));
+    const amountToFill = Math.max(0, remainingAmount);
+    handleAmountChange(modeId, (currentAmount + amountToFill).toFixed(2));
   };
 
+  // FIX: This function now automatically adjusts the payment amount if only one payment mode is selected.
   const handleDiscountChange = (amount: string) => {
     const numAmount = parseFloat(amount);
-    setDiscount(isNaN(numAmount) ? 0 : numAmount);
+    const newDiscount = isNaN(numAmount) ? 0 : numAmount;
+    setDiscount(newDiscount);
+
+    const newFinalPayable = subtotal - (subtotal * (newDiscount / 100));
+
+    // Auto-adjust payment only if a single payment mode is active
+    const paymentModes = Object.keys(selectedPayments);
+    if (paymentModes.length === 1) {
+      const singleMode = paymentModes[0];
+      setSelectedPayments({ [singleMode]: newFinalPayable });
+    }
   };
 
   const handleConfirm = async () => {
-    if (!partyName.trim()) {
-      setModal({ message: 'Please enter a Party Name.', type: 'error' });
-      return;
-    }
     if (Object.keys(selectedPayments).length === 0) {
       setModal({ message: 'Please select a payment mode.', type: 'error' });
       return;
     }
-    if (remainingAmount !== 0) {
+    if (Math.abs(remainingAmount) > 0.01) {
       setModal({ message: `Amount mismatch. Remaining: ₹${remainingAmount.toFixed(2)}`, type: 'error' });
       return;
     }
 
     setIsSubmitting(true);
     try {
-      await onPaymentComplete({ paymentDetails: selectedPayments, partyName, partyNumber, discount });
-      setModal({ message: 'Purchase saved successfully!', type: 'success' });
-      setTimeout(() => {
-        setModal(null);
-        onClose();
-      }, 1500);
+      // FIX: Pass the final calculated amount up to the parent
+      await onPaymentComplete({ paymentDetails: selectedPayments, discount, finalAmount: finalPayableAmount });
+      // Success modal is now handled by the parent component after successful save
     } catch (error) {
       console.error("Payment submission failed:", error);
-      setModal({ message: 'Failed to save purchase. Please try again.', type: 'error' });
+      setModal({ message: (error as Error).message || 'Failed to save purchase.', type: 'error' });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleDiscountPressStart = () => {
-    longPressTimer.current = setTimeout(() => {
-      setIsDiscountLocked(false);
-    }, 500);
-  };
-
-  const handleDiscountPressEnd = () => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-    }
-  };
-
-  const handleDiscountClick = () => {
-    if (isDiscountLocked) {
-      setModal({ message: "Long press to enable discount field.", type: 'info' });
-    }
-  };
+  const handleDiscountPressStart = () => { longPressTimer.current = setTimeout(() => { setIsDiscountLocked(false); }, 500); };
+  const handleDiscountPressEnd = () => { if (longPressTimer.current) { clearTimeout(longPressTimer.current); } };
+  const handleDiscountClick = () => { if (isDiscountLocked) { setModal({ message: "Long press to enable discount field.", type: 'info' }); } };
 
   if (!isOpen) return null;
 
@@ -189,31 +168,25 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({ isOpen, onClose, subtotal
         </div>
 
         <div className="overflow-y-auto p-3 space-y-3">
-          <div className="bg-white rounded-xl shadow-sm p-3 space-y-2">
-            <h3 className="font-semibold text-gray-800 text-sm">Customer Details</h3>
-            <input type="text" placeholder="Party Name*" value={partyName} onChange={(e) => setPartyName(e.target.value)} className="w-full bg-gray-100 p-2 text-sm rounded-lg border-gray-300 focus:ring-blue-500 focus:border-blue-500" />
-            <input type="text" placeholder="Party Number (Optional)" value={partyNumber} onChange={(e) => setPartyNumber(e.target.value)} className="w-full bg-gray-100 p-2 text-sm rounded-lg border-gray-300 focus:ring-blue-500 focus:border-blue-500" />
+          <div className="bg-white rounded-xl shadow-sm p-3">
+            <h3 className="font-semibold text-gray-800 text-sm">Purchasing For:</h3>
+            <p className="text-gray-700">{partyName || 'N/A'}</p>
           </div>
 
-          {/* --- Payment Modes Grid --- */}
           <div className="grid grid-cols-2 gap-2">
             {transactionModes.map((mode) => {
               const isSelected = selectedPayments[mode.id] !== undefined;
               return (
                 <div key={mode.id}>
-                  <div
-                    onClick={() => handleModeToggle(mode.id)}
-                    className={`p-3 rounded-lg shadow-sm cursor-pointer aspect-square flex flex-col items-center justify-center text-center transition-all duration-200
-                                       ${isSelected ? 'bg-gray-600 text-white border-2 border-gray-700' : 'bg-white text-gray-800 border'}`}
-                  >
+                  <div onClick={() => handleModeToggle(mode.id)} className={`p-3 rounded-lg shadow-sm cursor-pointer aspect-square flex flex-col items-center justify-center text-center transition-all duration-200 ${isSelected ? 'bg-blue-600 text-white border-2 border-blue-700' : 'bg-white text-gray-800 border'}`}>
                     <h3 className="font-semibold text-sm">{mode.name}</h3>
-                    <p className={`text-xs mt-1 ${isSelected ? 'text-blue-200' : 'text-gray-500'}`}>{mode.description}</p>
+                    <p className={`text-xs mt-1 ${isSelected ? 'text-gray-300' : 'text-gray-500'}`}>{mode.description}</p>
                   </div>
                   {isSelected && (
                     <div className="mt-2 flex items-center gap-1">
                       <span className="font-bold text-gray-700">₹</span>
                       <input type="number" placeholder="0.00" value={selectedPayments[mode.id] || ''} onChange={(e) => handleAmountChange(mode.id, e.target.value)} className="flex-grow w-full bg-gray-100 p-1 text-sm rounded-lg border-gray-300 focus:ring-blue-500 focus:border-blue-500" />
-                      {remainingAmount > 0 && <button onClick={() => handleFillRemaining(mode.id)} className="text-xs bg-blue-100 text-blue-700 font-semibold px-2 py-1 rounded-full hover:bg-blue-200">Fill</button>}
+                      {remainingAmount > 0.01 && <button onClick={() => handleFillRemaining(mode.id)} className="text-xs bg-blue-100 text-blue-700 font-semibold px-2 py-1 rounded-full hover:bg-blue-200">Fill</button>}
                     </div>
                   )}
                 </div>
@@ -224,20 +197,13 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({ isOpen, onClose, subtotal
 
         <div className="p-4 mt-auto sticky bottom-0 bg-white border-t">
           <div className="flex justify-between items-center mb-2"><span className="text-sm text-gray-600">Subtotal:</span><span className="font-medium text-sm">₹{subtotal.toFixed(2)}</span></div>
-          <div
-            className="flex items-center justify-between mb-2 gap-2"
-            onMouseDown={handleDiscountPressStart}
-            onMouseUp={handleDiscountPressEnd}
-            onTouchStart={handleDiscountPressStart}
-            onTouchEnd={handleDiscountPressEnd}
-            onClick={handleDiscountClick}
-          >
-            <label htmlFor="discount" className="text-sm text-gray-600">Discount:</label>
+          <div className="flex items-center justify-between mb-2 gap-2" onMouseDown={handleDiscountPressStart} onMouseUp={handleDiscountPressEnd} onTouchStart={handleDiscountPressStart} onTouchEnd={handleDiscountPressEnd} onClick={handleDiscountClick}>
+            <label htmlFor="discount" className="text-sm text-gray-600">Discount (%):</label>
             <input id="discount" type="number" placeholder="0.00" value={discount || ''} onChange={(e) => handleDiscountChange(e.target.value)} readOnly={isDiscountLocked} className={`w-20 text-right bg-gray-100 p-1 text-sm rounded-md border-gray-300 focus:ring-blue-500 focus:border-blue-500 ${isDiscountLocked ? 'cursor-pointer' : ''}`} />
           </div>
           <div className="flex justify-between items-center mb-2 border-t pt-2"><span className="text-gray-800 font-semibold">Total Payable:</span><span className="font-bold text-lg text-blue-600">₹{finalPayableAmount.toFixed(2)}</span></div>
-          <div className="flex justify-between items-center mb-3"><span className="text-gray-600">Remaining:</span><span className={`font-bold text-md ${remainingAmount === 0 ? 'text-green-600' : 'text-red-600'}`}>₹{remainingAmount.toFixed(2)}</span></div>
-          <button onClick={handleConfirm} disabled={isSubmitting || remainingAmount !== 0} className="w-full flex items-center justify-center bg-blue-600 text-white font-bold py-3 px-4 rounded-xl hover:bg-blue-700 transition-colors disabled:bg-gray-400">
+          <div className="flex justify-between items-center mb-3"><span className="text-gray-600">Remaining:</span><span className={`font-bold text-md ${Math.abs(remainingAmount) < 0.01 ? 'text-green-600' : 'text-red-600'}`}>₹{remainingAmount.toFixed(2)}</span></div>
+          <button onClick={handleConfirm} disabled={isSubmitting || Math.abs(remainingAmount) > 0.01} className="w-full flex items-center justify-center bg-blue-600 text-white font-bold py-3 px-4 rounded-xl hover:bg-blue-700 transition-colors disabled:bg-gray-400">
             {isSubmitting ? <Spinner /> : 'Confirm & Save Purchase'}
           </button>
         </div>
@@ -246,14 +212,12 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({ isOpen, onClose, subtotal
   );
 };
 
+
 // --- Main Purchase Page Component ---
 const PurchasePage: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-
-  // New state to manage feedback messages
   const [modal, setModal] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
-
   const [partyNumber, setPartyNumber] = useState<string>('');
   const [partyName, setPartyName] = useState<string>('');
   const [items, setItems] = useState<PurchaseItem[]>([]);
@@ -285,10 +249,7 @@ const PurchasePage: React.FC = () => {
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
-      ) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsDropdownOpen(false);
       }
     };
@@ -296,53 +257,11 @@ const PurchasePage: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [dropdownRef]);
 
-  const totalAmount = items.reduce(
-    (sum, item) => sum + item.purchasePrice * item.quantity,
-    0,
-  );
+  const totalAmount = useMemo(() => items.reduce((sum, item) => sum + item.purchasePrice * item.quantity, 0), [items]);
 
-  const handleQuantityChange = (id: string, delta: number) => {
-    setItems((prevItems) =>
-      prevItems.map((item) =>
-        item.id === id
-          ? { ...item, quantity: Math.max(1, item.quantity + delta) }
-          : item,
-      ),
-    );
-  };
-
-  const handleDeleteItem = (id: string) => {
-    setItems((prevItems) => prevItems.filter((item) => item.id !== id));
-  };
-
-  const handleAddItemToCart = () => {
-    if (!selectedItem) return;
-    const itemToAdd = availableItems.find((item) => item.id === selectedItem);
-    if (itemToAdd) {
-      const itemExists = items.find((item) => item.id === itemToAdd.id);
-      if (itemExists) {
-        setItems((prevItems) =>
-          prevItems.map((item) =>
-            item.id === itemToAdd.id
-              ? { ...item, quantity: item.quantity + 1 }
-              : item,
-          ),
-        );
-      } else {
-        setItems((prevItems) => [
-          ...prevItems,
-          {
-            id: itemToAdd.id!,
-            name: itemToAdd.name,
-            purchasePrice: itemToAdd.purchasePrice || 0,
-            quantity: 1,
-          },
-        ]);
-      }
-      setSelectedItem('');
-      setSearchQuery('');
-    }
-  };
+  const handleQuantityChange = (id: string, delta: number) => { setItems((prevItems) => prevItems.map((item) => item.id === id ? { ...item, quantity: Math.max(1, item.quantity + delta) } : item,),); };
+  const handleDeleteItem = (id: string) => { setItems((prevItems) => prevItems.filter((item) => item.id !== id)); };
+  const handleAddItemToCart = () => { if (!selectedItem) return; const itemToAdd = availableItems.find((item) => item.id === selectedItem); if (itemToAdd) { const itemExists = items.find((item) => item.id === itemToAdd.id); if (itemExists) { setItems((prevItems) => prevItems.map((item) => item.id === itemToAdd.id ? { ...item, quantity: item.quantity + 1 } : item,),); } else { setItems((prevItems) => [...prevItems, { id: itemToAdd.id!, name: itemToAdd.name, purchasePrice: itemToAdd.purchasePrice || 0, quantity: 1, },]); } setSelectedItem(''); setSearchQuery(''); } };
 
   const handleProceedToPayment = () => {
     if (!partyName.trim() || items.length === 0) {
@@ -352,34 +271,27 @@ const PurchasePage: React.FC = () => {
     setIsDrawerOpen(true);
   };
 
-  // New function to update item amount in Firestore
-  const updateItemAmount = async (itemId: string, quantityAdded: number) => {
+  const updateItemStock = async (itemId: string, quantityAdded: number) => {
     const itemRef = doc(db, "items", itemId);
     try {
+      // Assuming 'amount' is the field for stock quantity
       await updateDoc(itemRef, {
         amount: firebaseIncrement(quantityAdded)
       });
     } catch (error) {
-      console.error(`Error updating item amount for ID: ${itemId}`, error);
+      console.error(`Error updating item stock for ID: ${itemId}`, error);
       throw new Error(`Failed to update inventory for item ID: ${itemId}`);
     }
   };
-
 
   const handleSavePurchase = async (completionData: PurchaseCompletionData) => {
     if (!currentUser) {
       throw new Error('User is not authenticated.');
     }
-    const { paymentDetails, partyName, partyNumber, discount } = completionData;
+    // FIX: Destructure finalAmount from the completion data
+    const { paymentDetails, discount, finalAmount } = completionData;
 
-    // Check if enough stock is available before saving
-    for (const item of items) {
-      const availableItem = availableItems.find(i => i.id === item.id);
-      if (availableItem && availableItem.amount < item.quantity) {
-        throw new Error(`Not enough stock for item: ${item.name}. Available: ${availableItem.amount}, Requested: ${item.quantity}`);
-      }
-    }
-
+    // Stock check logic can be added here if needed
 
     const purchaseData = {
       userId: currentUser.uid,
@@ -387,34 +299,35 @@ const PurchasePage: React.FC = () => {
       partyNumber: partyNumber.trim(),
       discount: discount,
       items: items.map(({ id, name, purchasePrice, quantity }) => ({
-        id,
-        name,
-        purchasePrice,
-        quantity,
+        id, name, purchasePrice, quantity,
       })),
-      totalAmount: totalAmount,
+      totalAmount: finalAmount, // FIX: Use the accurate final amount from the drawer
       paymentMethods: paymentDetails,
       createdAt: serverTimestamp(),
     };
 
     try {
-      // 1. Save the purchase to the 'purchases' collection
       await addDoc(collection(db, 'purchases'), purchaseData);
 
-      // 2. Update the amount of each purchased item in the 'items' collection
-      const updatePromises = items.map(item => updateItemAmount(item.id, item.quantity));
+      const updatePromises = items.map(item => updateItemStock(item.id, item.quantity));
       await Promise.all(updatePromises);
 
-
-      // Reset form on success
-      setPartyName('');
-      setPartyNumber('');
-      setItems([]);
-      setSelectedItem('');
+      // Close the drawer and show success on the main page
+      setIsDrawerOpen(false);
       setModal({ message: 'Purchase saved successfully!', type: 'success' });
+
+      // Reset form after a short delay
+      setTimeout(() => {
+        setModal(null);
+        setPartyName('');
+        setPartyNumber('');
+        setItems([]);
+        setSelectedItem('');
+      }, 1500);
+
     } catch (err) {
       console.error('Error saving purchase:', err);
-      throw err; // Re-throw to be handled by the drawer
+      throw err;
     }
   };
 
@@ -432,208 +345,66 @@ const PurchasePage: React.FC = () => {
     <div className="flex flex-col min-h-screen bg-white w-full">
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
-      {/* Top Bar */}
       <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
-        <button
-          onClick={() => navigate(ROUTES.HOME)}
-          className="text-2xl font-bold text-gray-600 bg-transparent border-none cursor-pointer p-1"
-        >
-          &times;
-        </button>
+        <button onClick={() => navigate(ROUTES.HOME)} className="text-2xl font-bold text-gray-600 bg-transparent border-none cursor-pointer p-1">&times;</button>
         <div className="flex-1 flex justify-center items-center gap-6">
-          <NavLink
-            to={`${ROUTES.PURCHASE}`}
-            className={({ isActive }) =>
-              `flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${isActive
-                ? 'border-blue-600 font-semibold text-blue-600'
-                : 'border-transparent text-slate-500'
-              }`
-            }
-          >
-            Purchase
-          </NavLink>
-          <NavLink
-            to={`${ROUTES.PURCHASE_RETURN}`}
-            className={({ isActive }) =>
-              `flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${isActive
-                ? 'border-blue-600 font-semibold text-blue-600'
-                : 'border-transparent text-slate-500'
-              }`
-            }
-          >
-            Purchase Return
-          </NavLink>
+          <NavLink to={`${ROUTES.PURCHASE}`} className={({ isActive }) => `flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${isActive ? 'border-blue-600 font-semibold text-blue-600' : 'border-transparent text-slate-500'}`}>Purchase</NavLink>
+          <NavLink to={`${ROUTES.PURCHASE_RETURN}`} className={({ isActive }) => `flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${isActive ? 'border-blue-600 font-semibold text-blue-600' : 'border-transparent text-slate-500'}`}>Purchase Return</NavLink>
         </div>
         <div className="w-6"></div>
       </div>
 
-      {/* Main Content Area */}
       <div className="flex-grow p-4 bg-gray-50 w-full overflow-y-auto box-border">
         <div className="mb-4">
-          <label
-            htmlFor="party-name"
-            className="block text-gray-700 text-sm font-medium mb-1"
-          >
-            Party Name
-          </label>
-          <input
-            type="text"
-            id="party-name"
-            value={partyName}
-            onChange={(e) => setPartyName(e.target.value)}
-            placeholder="Enter Party Name"
-            className="w-full p-3 border border-gray-300 rounded-lg bg-white text-gray-800 text-base box-border placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-400"
-          />
+          <label htmlFor="party-name" className="block text-gray-700 text-sm font-medium mb-1">Party Name</label>
+          <input type="text" id="party-name" value={partyName} onChange={(e) => setPartyName(e.target.value)} placeholder="Enter Party Name" className="w-full p-3 border border-gray-300 rounded-lg bg-white text-gray-800 text-base box-border placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-400" />
         </div>
-
         <div className="mb-4">
-          <label
-            htmlFor="party-number"
-            className="block text-gray-700 text-sm font-medium mb-1"
-          >
-            Party Number
-          </label>
-          <input
-            type="text"
-            id="party-number"
-            value={partyNumber}
-            onChange={(e) => setPartyNumber(e.target.value)}
-            placeholder="Enter Party Number"
-            className="w-full p-3 border border-gray-300 rounded-lg bg-white text-gray-800 text-base box-border placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-400"
-          />
+          <label htmlFor="party-number" className="block text-gray-700 text-sm font-medium mb-1">Party Number (Optional)</label>
+          <input type="text" id="party-number" value={partyNumber} onChange={(e) => setPartyNumber(e.target.value)} placeholder="Enter Party Number" className="w-full p-3 border border-gray-300 rounded-lg bg-white text-gray-800 text-base box-border placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-400" />
         </div>
 
         <h3 className="text-gray-700 text-lg font-medium mb-4">Items</h3>
         <div className="flex flex-col gap-3 mb-6">
-          {items.length === 0 ? (
-            <div className="text-center py-8 text-gray-500 bg-gray-100 rounded-lg">
-              No items added to the list.
-            </div>
-          ) : (
-            items.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm border border-gray-200"
-              >
-                <div className="flex flex-col">
-                  <p className="text-gray-800 font-medium">{item.name}</p>
-                  <p className="text-gray-600 text-sm">
-                    ₹{item.purchasePrice.toFixed(2)}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    className="flex items-center justify-center w-7 h-7 rounded-full bg-gray-200 text-gray-700 text-lg font-bold cursor-pointer transition hover:bg-gray-300 disabled:opacity-50"
-                    onClick={() => handleQuantityChange(item.id, -1)}
-                    disabled={item.quantity === 1}
-                  >
-                    -
-                  </button>
-                  <span className="text-gray-800 font-semibold w-6 text-center">
-                    {item.quantity}
-                  </span>
-                  <button
-                    className="flex items-center justify-center w-7 h-7 rounded-full bg-gray-200 text-gray-700 text-lg font-bold cursor-pointer transition hover:bg-gray-300"
-                    onClick={() => handleQuantityChange(item.id, 1)}
-                  >
-                    +
-                  </button>
-                  <button
-                    className="text-gray-500 hover:text-red-500 transition-colors"
-                    onClick={() => handleDeleteItem(item.id)}
-                    title="Remove item"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="20"
-                      height="20"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M18 6 6 18" />
-                      <path d="m6 6 12 12" />
-                    </svg>
-                  </button>
-                </div>
+          {items.length === 0 ? <div className="text-center py-8 text-gray-500 bg-gray-100 rounded-lg">No items added to the list.</div> : items.map((item) => (
+            <div key={item.id} className="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm border border-gray-200">
+              <div className="flex flex-col">
+                <p className="text-gray-800 font-medium">{item.name}</p>
+                <p className="text-gray-600 text-sm">₹{item.purchasePrice.toFixed(2)}</p>
               </div>
-            ))
-          )}
+              <div className="flex items-center gap-2">
+                <button className="flex items-center justify-center w-7 h-7 rounded-full bg-gray-200 text-gray-700 text-lg font-bold cursor-pointer transition hover:bg-gray-300 disabled:opacity-50" onClick={() => handleQuantityChange(item.id, -1)} disabled={item.quantity === 1}>-</button>
+                <span className="text-gray-800 font-semibold w-6 text-center">{item.quantity}</span>
+                <button className="flex items-center justify-center w-7 h-7 rounded-full bg-gray-200 text-gray-700 text-lg font-bold cursor-pointer transition hover:bg-gray-300" onClick={() => handleQuantityChange(item.id, 1)}>+</button>
+                <button className="text-gray-500 hover:text-red-500 transition-colors" onClick={() => handleDeleteItem(item.id)} title="Remove item"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg></button>
+              </div>
+            </div>
+          ))}
         </div>
 
         <div className="mb-4 relative" ref={dropdownRef}>
-          <label className="block text-gray-700 text-sm font-medium mb-1">
-            Search & Add Item
-          </label>
+          <label className="block text-gray-700 text-sm font-medium mb-1">Search & Add Item</label>
           <div className="flex gap-2">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setIsDropdownOpen(true);
-              }}
-              onFocus={() => setIsDropdownOpen(true)}
-              placeholder="Search for an item..."
-              className="flex-grow w-full p-3 border border-gray-300 rounded-md text-base focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
-              autoComplete="off"
-            />
-            <button
-              onClick={handleAddItemToCart}
-              className="bg-blue-600 text-white py-3 px-5 rounded-md text-base font-semibold transition hover:bg-blue-700 disabled:bg-blue-300"
-              disabled={!selectedItem}
-            >
-              Add
-            </button>
+            <input type="text" value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setIsDropdownOpen(true); }} onFocus={() => setIsDropdownOpen(true)} placeholder="Search for an item..." className="flex-grow w-full p-3 border border-gray-300 rounded-md text-base focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200" autoComplete="off" />
+            <button onClick={handleAddItemToCart} className="bg-blue-600 text-white py-3 px-5 rounded-md text-base font-semibold transition hover:bg-blue-700 disabled:bg-blue-300" disabled={!selectedItem}>Add</button>
           </div>
-          {isDropdownOpen && (
-            <div className="absolute top-full left-0 right-0 z-20 mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-52 overflow-y-auto">
-              {isLoading ? (
-                <div className="p-3 text-gray-500">Loading items...</div>
-              ) : error ? (
-                <div className="p-3 text-red-600">Error loading items.</div>
-              ) : filteredItems.length === 0 ? (
-                <div className="p-3 text-gray-500">No items found.</div>
-              ) : (
-                filteredItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className="p-3 cursor-pointer border-b last:border-b-0 hover:bg-gray-100"
-                    onClick={() => handleSelect(item)}
-                  >
-                    {item.name}
-                  </div>
-                ))
-              )}
-            </div>
-          )}
+          {isDropdownOpen && <div className="absolute top-full left-0 right-0 z-20 mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-52 overflow-y-auto">{isLoading ? <div className="p-3 text-gray-500">Loading items...</div> : error ? <div className="p-3 text-red-600">Error loading items.</div> : filteredItems.length === 0 ? <div className="p-3 text-gray-500">No items found.</div> : filteredItems.map((item) => (<div key={item.id} className="p-3 cursor-pointer border-b last:border-b-0 hover:bg-gray-100" onClick={() => handleSelect(item)}>{item.name}</div>))}</div>}
         </div>
       </div>
 
-      {/* Fixed Bottom Bar */}
       <div className="sticky bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-[0_-2px_5px_rgba(0,0,0,0.05)]">
         <div className="flex justify-between items-center mb-3">
           <p className="text-gray-700 text-lg font-medium">Total Amount</p>
-          <p className="text-gray-900 text-2xl font-bold">
-            ₹{totalAmount.toFixed(2)}
-          </p>
+          <p className="text-gray-900 text-2xl font-bold">₹{totalAmount.toFixed(2)}</p>
         </div>
-        <button
-          onClick={handleProceedToPayment}
-          className="w-full bg-green-600 text-white p-3 rounded-lg text-lg font-semibold shadow-md transition hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          disabled={items.length === 0}
-        >
-          Proceed to Payment
-        </button>
+        <button onClick={handleProceedToPayment} className="w-full bg-green-600 text-white p-3 rounded-lg text-lg font-semibold shadow-md transition hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed" disabled={items.length === 0}>Proceed to Payment</button>
       </div>
 
       <PaymentDrawer
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
         subtotal={totalAmount}
+        partyName={partyName}
         onPaymentComplete={handleSavePurchase}
       />
     </div>

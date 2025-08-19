@@ -14,12 +14,13 @@ export const ROUTES = {
   LOGIN: '/login',
   SIGNUP: '/signup',
   FORGOT_PASSWORD: '/forgot-password',
-  EDIT_PROFILE: 'edit-profile',
+  EDIT_PROFILE: '/edit-profile',
   LANDING: '/landing',
-  ITEM_REPORT: 'item-report',
-  SALES_REPORT: 'sales-report',
-  PURCHASE_REPORT: 'purchase-report',
-  PNL_REPORT: 'pnl-report',
+  ITEM_REPORT: '/item-report',
+  SALES_REPORT: '/sales-report',
+  PURCHASE_REPORT: '/purchase-report',
+  PNL_REPORT: '/pnl-report',
   BUSINESS_INFO: '/bus-info',
   BUSINESS_ADDRESS: '/bus-address',
+  PAYMENT: '/payment'
 };

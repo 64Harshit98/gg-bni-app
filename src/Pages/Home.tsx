@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
+
+// import { PurchaseCard } from '../Components/PCard';
 import { SalesBarChartReport } from '../Components/SBGraph';
 import { SalesCard } from '../Components/SCard';
 import { TopSoldItemsCard } from '../Components/TFCard';
@@ -67,23 +69,25 @@ const Home = () => {
           </div>
           {/* Wrapper for Purchase Card */}
           {/* <div className="flex-1 min-w-0">
+          {/* <div className="flex-1 min-w-0">
             <PurchaseCard />
           </div> */}
+        </div> */}
+      </div>
+      <div className="mb-6">
+        <SalesBarChartReport />
+      </div>
+      {/* Flex container for the bottom cards */}
+      <div className="flex w-full flex-wrap items-start justify-center gap-6 mb-6">
+        <div className="flex-1 min-w-[280px]">
+          <TopSoldItemsCard />
         </div>
-        <div className="mb-6">
-          <SalesBarChartReport />
-        </div>
-        {/* Flex container for the bottom cards */}
-        <div className="flex w-full flex-wrap items-start justify-center gap-6 mb-6">
-          <div className="flex-1 min-w-[280px]">
-            <TopSoldItemsCard />
-          </div>
-          <div className="flex-1 min-w-[280px]">
-            <TopSalespersonCard />
-          </div>
+        <div className="flex-1 min-w-[280px]">
+          <TopSalespersonCard />
         </div>
       </div>
     </div>
+    </div >
   );
 };
 

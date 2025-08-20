@@ -12,7 +12,7 @@ import {
 } from 'firebase/firestore';
 import type { FirestoreError } from 'firebase/firestore';
 
-// --- Mock UI Components (for a self-contained example) ---
+// --- Mock UI Components (unchanged) ---
 const Card: React.FC<{ children: React.ReactNode; className?: string }> = ({
   children,
   className,
@@ -39,9 +39,8 @@ const CardContent: React.FC<{
 }> = ({ children, className }) => (
   <div className={`p-6 ${className}`}>{children}</div>
 );
-// --- End of Mock UI Components ---
 
-// --- Data Fetching Hook for Sales Data ---
+// --- Data Fetching Hook for Sales Data (unchanged) ---
 const useSalesComparison = (userId: string | undefined) => {
   const [todaySales, setTodaySales] = useState(0);
   const [yesterdaySales, setYesterdaySales] = useState(0);
@@ -125,8 +124,14 @@ const useSalesComparison = (userId: string | undefined) => {
   return { todaySales, yesterdaySales, loading, error };
 };
 
+// FIX: Define props for the SalesCard component
+interface SalesCardProps {
+  isDataVisible: boolean;
+}
+
 // --- The Sales Card Component ---
-export function SalesCard() {
+// FIX: Update the component to accept the isDataVisible prop
+export const SalesCard: React.FC<SalesCardProps> = ({ isDataVisible }) => {
   const { currentUser } = useAuth();
   const { todaySales, yesterdaySales, loading, error } = useSalesComparison(
     currentUser?.uid,
@@ -155,13 +160,20 @@ export function SalesCard() {
         ) : (
           <div className="text-center">
             <p className="text-4xl font-bold text-blue-600">
-              ₹{todaySales.toLocaleString('en-IN')}
+              {/* FIX: Conditionally render the sales total */}
+              {isDataVisible ? `₹${todaySales.toLocaleString('en-IN')}` : '₹ ******'}
             </p>
             <p className="text-md text-gray-500 mt-2">
               <span
-                className={`font-bold ${isPositive ? 'text-green-600' : 'text-red-600'}`}
+                className={`font-bold ${
+                  // FIX: Use a neutral color when data is hidden
+                  isDataVisible
+                    ? isPositive ? 'text-green-600' : 'text-red-600'
+                    : 'text-gray-500'
+                  }`}
               >
-                {percentageChange.toFixed(1)}%
+                {/* FIX: Conditionally render the percentage change */}
+                {isDataVisible ? `${percentageChange.toFixed(1)}%` : '**.*%'}
               </span>{' '}
               from yesterday
             </p>

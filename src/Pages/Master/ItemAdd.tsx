@@ -5,6 +5,56 @@ import type { Item, ItemGroup } from '../../constants/models';
 import { ROUTES } from '../../constants/routes.constants';
 // Import the xlsx library for reading Excel files
 import * as XLSX from 'xlsx';
+// Import the barcode scanner library
+import { Html5Qrcode } from 'html5-qrcode';
+
+// --- Reusable Barcode Scanner Component ---
+const BarcodeScanner: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  onScanSuccess: (decodedText: string) => void;
+}> = ({ isOpen, onClose, onScanSuccess }) => {
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const scanner = new Html5Qrcode('barcode-scanner-container');
+
+    const startScanner = async () => {
+      try {
+        await scanner.start(
+          { facingMode: "environment" },
+          { fps: 10, qrbox: { width: 250, height: 250 } },
+          (decodedText) => {
+            onScanSuccess(decodedText);
+            scanner.stop();
+          },
+          undefined // Optional error callback
+        );
+      } catch (err) {
+        console.error("Error starting scanner:", err);
+      }
+    };
+
+    startScanner();
+
+    return () => {
+      // Ensure scanner is stopped on cleanup
+      scanner.stop().catch(() => { });
+    };
+  }, [isOpen, onScanSuccess]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center p-4">
+      <div id="barcode-scanner-container" className="w-full max-w-md bg-gray-900 rounded-lg overflow-hidden"></div>
+      <button onClick={onClose} className="mt-4 bg-white text-gray-800 font-bold py-2 px-6 rounded-lg shadow-lg hover:bg-gray-200 transition">
+        Close
+      </button>
+    </div>
+  );
+};
+
 
 const ItemAdd: React.FC = () => {
   const navigate = useNavigate();
@@ -13,14 +63,16 @@ const ItemAdd: React.FC = () => {
   const [itemPurchasePrice, setItemPurchasePrice] = useState<string>('');
   const [itemDiscount, setItemDiscount] = useState<string>('');
   const [itemTax, setItemTax] = useState<string>('');
-  const [itemAmount, setItemAmount] = useState<string>(''); // Added state for item amount
+  const [itemAmount, setItemAmount] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [itemBarcode, setItemBarcode] = useState<string>('');
   const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
 
   useEffect(() => {
     const fetchGroups = async () => {
@@ -48,6 +100,7 @@ const ItemAdd: React.FC = () => {
     setItemDiscount('');
     setItemTax('');
     setItemAmount('');
+    setItemBarcode('');
   };
 
   const handleAddItem = async () => {
@@ -67,7 +120,8 @@ const ItemAdd: React.FC = () => {
         discount: parseFloat(itemDiscount) || 0,
         tax: parseFloat(itemTax) || 0,
         itemGroupId: selectedCategory,
-        amount: parseInt(itemAmount, 10), // Converted amount to integer
+        amount: parseInt(itemAmount, 10),
+        barcode: itemBarcode.trim() || '',
       };
 
       await createItem(newItemData);
@@ -81,7 +135,6 @@ const ItemAdd: React.FC = () => {
     }
   };
 
-  // --- New Function to Handle Excel File Upload ---
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -103,12 +156,10 @@ const ItemAdd: React.FC = () => {
           throw new Error("The selected Excel file is empty or in the wrong format.");
         }
 
-        // Process each row from the Excel file
         for (const row of json) {
-          // Basic validation for each row
           if (!row.name || !row.mrp || !row.itemGroupId || !row.amount) {
             console.warn("Skipping invalid row:", row);
-            continue; // Skip rows that are missing required data
+            continue;
           }
 
           const newItemData: Omit<Item, 'id' | 'createdAt' | 'updatedAt'> = {
@@ -118,10 +169,10 @@ const ItemAdd: React.FC = () => {
             discount: parseFloat(row.discount) || 0,
             tax: parseFloat(row.tax) || 0,
             itemGroupId: String(row.itemGroupId),
-            amount: parseInt(row.amount, 10), // Converted amount to integer
+            amount: parseInt(row.amount, 10),
+            barcode: String(row.barcode || '').trim(),
           };
 
-          // Use your existing createItem function to add the item
           await createItem(newItemData);
         }
 
@@ -130,10 +181,9 @@ const ItemAdd: React.FC = () => {
 
       } catch (err) {
         console.error('Error processing Excel file:', err);
-        setError('Failed to process file. Please ensure it is a valid .xlsx or .csv file and has columns: name, mrp, purchasePrice, discount, tax, itemGroupId, and amount.');
+        setError('Failed to process file. Ensure it has columns: name, mrp, itemGroupId, amount, and optionally barcode.');
       } finally {
         setIsUploading(false);
-        // Reset file input to allow re-uploading the same file
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
         }
@@ -142,8 +192,19 @@ const ItemAdd: React.FC = () => {
     reader.readAsArrayBuffer(file);
   };
 
+  const handleBarcodeScanned = (barcode: string) => {
+    setItemBarcode(barcode);
+    setIsScannerOpen(false);
+  };
+
   return (
     <div className="flex flex-col min-h-screen bg-white w-full">
+      <BarcodeScanner
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        onScanSuccess={handleBarcodeScanned}
+      />
+
       <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
         <button onClick={() => navigate(ROUTES.HOME)} className="text-2xl font-bold text-gray-600">&times;</button>
         <div className="flex-1 flex justify-center items-center gap-6">
@@ -158,10 +219,9 @@ const ItemAdd: React.FC = () => {
         {success && <div className="mb-4 text-center p-3 bg-green-100 text-green-700 rounded-lg">{success}</div>}
 
         <div className="p-6 bg-white rounded-lg shadow-md">
-          {/* Import from Excel Button */}
           <div className="mb-6 pb-6 border-b">
             <h2 className="text-xl font-semibold text-gray-700 mb-2">Bulk Import</h2>
-            <p className="text-sm text-gray-500 mb-3">Upload an Excel (.xlsx, .csv) file with columns: name, mrp, purchasePrice, discount, tax, itemGroupId, and amount.</p>
+            <p className="text-sm text-gray-500 mb-3">Upload an Excel file with columns: name, mrp, purchasePrice, discount, tax, itemGroupId, amount, and barcode.</p>
             <input
               type="file"
               ref={fileInputRef}
@@ -179,12 +239,33 @@ const ItemAdd: React.FC = () => {
           </div>
 
           <h2 className="text-xl font-semibold text-gray-700 mb-4">Add a Single Item</h2>
-          {/* Form for adding a single item */}
           <div className="space-y-4">
             <div>
               <label htmlFor="itemName" className="block text-sm font-medium text-gray-600 mb-1">Item Name</label>
               <input type="text" id="itemName" value={itemName} onChange={(e) => setItemName(e.target.value)} placeholder="e.g., Laptop, Keyboard" className="w-full p-2 border rounded-md" />
             </div>
+
+            <div>
+              <label htmlFor="itemBarcode" className="block text-sm font-medium text-gray-600 mb-1">Barcode (Optional)</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  id="itemBarcode"
+                  value={itemBarcode}
+                  onChange={(e) => setItemBarcode(e.target.value)}
+                  placeholder="Scan or enter barcode"
+                  className="flex-grow w-full p-2 border rounded-md"
+                />
+                <button
+                  onClick={() => setIsScannerOpen(true)}
+                  className="bg-gray-700 text-white p-2 rounded-md font-semibold transition hover:bg-gray-800"
+                  title="Scan Barcode"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"></path><circle cx="12" cy="13" r="3"></circle></svg>
+                </button>
+              </div>
+            </div>
+
             <div>
               <label htmlFor="itemMRP" className="block text-sm font-medium text-gray-600 mb-1">MRP</label>
               <input type="number" id="itemMRP" value={itemMRP} onChange={(e) => setItemMRP(e.target.value)} placeholder="e.g., 999.99" className="w-full p-2 border rounded-md" />
@@ -201,9 +282,8 @@ const ItemAdd: React.FC = () => {
               <label htmlFor="itemTax" className="block text-sm font-medium text-gray-600 mb-1">Tax (%)</label>
               <input type="number" id="itemTax" value={itemTax} onChange={(e) => setItemTax(e.target.value)} placeholder="e.g., 18" className="w-full p-2 border rounded-md" />
             </div>
-            {/* Added input for item amount */}
             <div>
-              <label htmlFor="itemAmount" className="block text-sm font-medium text-gray-600 mb-1">Amount of Items</label>
+              <label htmlFor="itemAmount" className="block text-sm font-medium text-gray-600 mb-1">Stock Quantity</label>
               <input type="number" id="itemAmount" value={itemAmount} onChange={(e) => setItemAmount(e.target.value)} placeholder="e.g., 50" className="w-full p-2 border rounded-md" />
             </div>
             <div>

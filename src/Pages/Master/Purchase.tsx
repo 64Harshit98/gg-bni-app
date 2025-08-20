@@ -1,36 +1,12 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, NavLink } from 'react-router-dom';
 import { getItems } from '../../lib/items_firebase';
-import type { Item } from '../../constants/models';
+import type { Item, PurchaseItem, PaymentMode, PaymentDetails, PurchaseCompletionData, PaymentDrawerProps } from '../../constants/models';
 import { ROUTES } from '../../constants/routes.constants';
 import { db } from '../../lib/firebase';
 import { addDoc, collection, serverTimestamp, doc, updateDoc, increment as firebaseIncrement } from 'firebase/firestore';
 import { useAuth } from '../../context/auth-context';
 
-// --- Helper Types & Interfaces ---
-interface PurchaseItem {
-  id: string;
-  name: string;
-  purchasePrice: number;
-  quantity: number;
-}
-
-interface PaymentMode {
-  id: 'cash' | 'card' | 'upi' | 'due';
-  name: string;
-  description: string;
-}
-
-interface PaymentDetails {
-  [key: string]: number;
-}
-
-// FIX: Added finalAmount to ensure the correct total is saved
-interface PurchaseCompletionData {
-  paymentDetails: PaymentDetails;
-  discount: number;
-  finalAmount: number;
-}
 
 // --- Reusable Modal & Spinner Components (unchanged) ---
 const Modal: React.FC<{ message: string; onClose: () => void; type: 'success' | 'error' | 'info'; }> = ({ message, onClose, type }) => (
@@ -53,15 +29,6 @@ const Spinner: React.FC<{ size?: string }> = ({ size = 'h-5 w-5' }) => (
   </svg>
 );
 
-
-// --- The Payment Drawer Component ---
-interface PaymentDrawerProps {
-  isOpen: boolean;
-  onClose: () => void;
-  subtotal: number;
-  partyName: string;
-  onPaymentComplete: (completionData: PurchaseCompletionData) => Promise<void>;
-}
 
 const PaymentDrawer: React.FC<PaymentDrawerProps> = ({ isOpen, onClose, subtotal, partyName, onPaymentComplete }) => {
   const [discount, setDiscount] = useState(0);

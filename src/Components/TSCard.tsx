@@ -31,9 +31,7 @@ const Spinner: React.FC = () => (
 // --- Data Types ---
 interface SaleDoc {
   userId: string;
-  // ... other sale properties
 }
-
 interface TopSalesperson {
   name: string;
   billCount: number;
@@ -41,14 +39,11 @@ interface TopSalesperson {
 
 // --- Custom Hook to Fetch and Process Top Salesperson ---
 const useTopSalesperson = () => {
-  const [topSalesperson, setTopSalesperson] = useState<TopSalesperson | null>(
-    null,
-  );
+  const [topSalesperson, setTopSalesperson] = useState<TopSalesperson | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // This query fetches ALL sales, not just for the current user
     const salesQuery = query(collection(db, 'sales'));
 
     const unsubscribe = onSnapshot(
@@ -61,8 +56,6 @@ const useTopSalesperson = () => {
         }
 
         const billCounts = new Map<string, number>();
-
-        // Aggregate bill counts for each user
         snapshot.docs.forEach((doc) => {
           const sale = doc.data() as SaleDoc;
           if (sale.userId) {
@@ -77,14 +70,12 @@ const useTopSalesperson = () => {
           return;
         }
 
-        // Find the user with the most bills
         const topUserEntry = [...billCounts.entries()].reduce((a, b) =>
           b[1] > a[1] ? b : a,
         );
         const [topUserId, billCount] = topUserEntry;
 
         try {
-          // Fetch the top user's profile to get their name
           const userDocRef = doc(db, 'users', topUserId);
           const userDocSnap = await getDoc(userDocRef);
 
@@ -95,7 +86,6 @@ const useTopSalesperson = () => {
               billCount: billCount,
             });
           } else {
-            // Handle case where user profile might not exist
             setTopSalesperson({
               name: 'Unknown User',
               billCount: billCount,
@@ -116,41 +106,32 @@ const useTopSalesperson = () => {
     );
 
     return () => unsubscribe();
-  }, []); // Empty dependency array to run only once
+  }, []);
 
   return { topSalesperson, loading, error };
 };
 
-// --- Mock Card Components for self-contained example ---
-const Card: React.FC<{ children: React.ReactNode; className?: string }> = ({
-  children,
-  className,
-}) => (
+// --- Mock Card Components ---
+const Card: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (
   <div className={`bg-white rounded-xl shadow-md ${className}`}>{children}</div>
 );
-const CardHeader: React.FC<{
-  children: React.ReactNode;
-  className?: string;
-}> = ({ children, className }) => (
+const CardHeader: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (
   <div className={`p-6 border-b border-gray-200 ${className}`}>{children}</div>
 );
-const CardTitle: React.FC<{
-  children: React.ReactNode;
-  className?: string;
-}> = ({ children, className }) => (
-  <h3 className={`text-lg font-semibold text-gray-800 ${className}`}>
-    {children}
-  </h3>
+const CardTitle: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (
+  <h3 className={`text-lg font-semibold text-gray-800 ${className}`}>{children}</h3>
 );
-const CardContent: React.FC<{
-  children: React.ReactNode;
-  className?: string;
-}> = ({ children, className }) => (
+const CardContent: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (
   <div className={`p-6 ${className}`}>{children}</div>
 );
 
+// FIX: Define props for the component
+interface TopSalespersonCardProps {
+  isDataVisible: boolean;
+}
+
 // --- Main Top Salesperson Card Component ---
-export const TopSalespersonCard: React.FC = () => {
+export const TopSalespersonCard: React.FC<TopSalespersonCardProps> = ({ isDataVisible }) => {
   const { topSalesperson, loading, error } = useTopSalesperson();
 
   const renderContent = () => {
@@ -160,14 +141,26 @@ export const TopSalespersonCard: React.FC = () => {
     if (error) {
       return <p className="text-center text-red-500">{error}</p>;
     }
+
+    // FIX: Check if data should be hidden
+    if (!isDataVisible) {
+      return (
+        <div className="flex flex-col items-center justify-center text-center text-gray-500 py-8">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mb-1"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" /><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" /><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" /><line x1="2" x2="22" y1="2" y2="22" /></svg>
+          Data is hidden
+        </div>
+      );
+    }
+
     if (!topSalesperson) {
       return (
         <p className="text-center text-gray-500">No sales data available.</p>
       );
     }
+
     return (
       <div className="text-center">
-        <p className="text-4xl font-bold text-blue-600">
+        <p className="text-4xl font-bold text-blue-600 truncate">
           {topSalesperson.name}
         </p>
         <p className="text-md text-gray-500 mt-2">

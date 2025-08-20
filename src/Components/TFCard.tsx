@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+// Import your Auth context hook
+import { useAuth } from '../context/auth-context';
+// Import the db instance from your central firebase config file
 import { db } from '../lib/firebase';
 import {
   collection,
@@ -7,7 +10,6 @@ import {
   onSnapshot,
   Timestamp,
 } from 'firebase/firestore';
-import { useAuth } from '../context/auth-context';
 
 // --- Reusable Spinner Component ---
 const Spinner: React.FC = () => (
@@ -41,13 +43,11 @@ interface SalesItem {
   name: string;
   quantity: number;
 }
-
 interface SaleDoc {
   items: SalesItem[];
   userId: string;
   createdAt: Timestamp;
 }
-
 interface AggregatedItem {
   name: string;
   totalQuantity: number;
@@ -75,7 +75,6 @@ const useTopSoldItems = (userId?: string) => {
       (snapshot) => {
         const itemMap = new Map<string, number>();
 
-        // Aggregate quantities for each item across all sales documents
         snapshot.docs.forEach((doc) => {
           const sale = doc.data() as SaleDoc;
           if (sale.items && Array.isArray(sale.items)) {
@@ -86,7 +85,6 @@ const useTopSoldItems = (userId?: string) => {
           }
         });
 
-        // Convert map to array, sort by quantity, and take the top 5
         const aggregatedList: AggregatedItem[] = Array.from(
           itemMap.entries(),
         ).map(([name, totalQuantity]) => ({
@@ -95,7 +93,6 @@ const useTopSoldItems = (userId?: string) => {
         }));
 
         aggregatedList.sort((a, b) => b.totalQuantity - a.totalQuantity);
-
         setTopItems(aggregatedList.slice(0, 5));
         setLoading(false);
       },
@@ -119,29 +116,36 @@ const Card: React.FC<{ children: React.ReactNode; className?: string }> = ({
 }) => (
   <div className={`bg-white rounded-xl shadow-md ${className}`}>{children}</div>
 );
-const CardHeader: React.FC<{
-  children: React.ReactNode;
-  className?: string;
-}> = ({ children, className }) => (
+const CardHeader: React.FC<{ children: React.ReactNode; className?: string }> = ({
+  children,
+  className,
+}) => (
   <div className={`p-6 border-b border-gray-200 ${className}`}>{children}</div>
 );
-const CardTitle: React.FC<{
-  children: React.ReactNode;
-  className?: string;
-}> = ({ children, className }) => (
+const CardTitle: React.FC<{ children: React.ReactNode; className?: string }> = ({
+  children,
+  className,
+}) => (
   <h3 className={`text-lg font-semibold text-gray-800 ${className}`}>
     {children}
   </h3>
 );
-const CardContent: React.FC<{
-  children: React.ReactNode;
-  className?: string;
-}> = ({ children, className }) => (
+const CardContent: React.FC<{ children: React.ReactNode; className?: string }> = ({
+  children,
+  className,
+}) => (
   <div className={`p-6 ${className}`}>{children}</div>
 );
 
+// FIX: Define props for the component
+interface TopSoldItemsCardProps {
+  isDataVisible: boolean;
+}
+
 // --- Main Top Sold Items Card Component ---
-export const TopSoldItemsCard: React.FC = () => {
+export const TopSoldItemsCard: React.FC<TopSoldItemsCardProps> = ({
+  isDataVisible,
+}) => {
   const { currentUser, loading: authLoading } = useAuth();
   const {
     topItems,
@@ -156,6 +160,17 @@ export const TopSoldItemsCard: React.FC = () => {
     if (error) {
       return <p className="text-center text-red-500">{error}</p>;
     }
+
+    // FIX: Check if data should be hidden
+    if (!isDataVisible) {
+      return (
+        <div className="flex flex-col items-center justify-center text-center text-gray-500 py-4">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mb-1"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" /><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" /><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" /><line x1="2" x2="22" y1="2" y2="22" /></svg>
+          Data is hidden
+        </div>
+      );
+    }
+
     if (topItems.length === 0) {
       return (
         <p className="text-center text-gray-500">
@@ -163,6 +178,7 @@ export const TopSoldItemsCard: React.FC = () => {
         </p>
       );
     }
+
     return (
       <ul className="space-y-4">
         {topItems.map((item, index) => (

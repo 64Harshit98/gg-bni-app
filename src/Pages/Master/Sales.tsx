@@ -164,6 +164,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({ isOpen, onClose, subtotal
     longPressTimer.current = setTimeout(() => {
       setIsDiscountLocked(false);
     }, 500);
+ // 500ms for a long press
   };
 
   const handleDiscountPressEnd = () => {
@@ -224,6 +225,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({ isOpen, onClose, subtotal
         </div>
 
         <div className="p-4 mt-auto sticky bottom-0 bg-white border-t">
+
           <div className="flex justify-between items-center mb-2"><span className="text-sm text-gray-600">Subtotal:</span><span className="font-medium text-sm">₹{subtotal.toFixed(2)}</span></div>
           <div
             className="flex items-center justify-between mb-2 gap-2"

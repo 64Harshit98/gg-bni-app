@@ -62,13 +62,13 @@ const Home = () => {
       </div>
       <div className="flex-grow overflow-y-auto p-4 sm:p-6">
         {/* Flex container for the cards */}
-        <div className="flex w-full items-start justify-center gap-4 mb-6">
+        <div className="flex w-full flex-wrap items-start justify-center gap-4 mb-6">
           {/* Wrapper for Sales Card */}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-[280px]">
             <SalesCard />
           </div>
           {/* Wrapper for Purchase Card */}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-[280px]">
             <PurchaseCard />
           </div>
         </div>

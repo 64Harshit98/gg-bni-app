@@ -24,7 +24,6 @@ interface PaymentMode {
 interface PaymentDetails {
   [key: string]: number;
 }
-
 // FIX: Added finalAmount to ensure the correct total is saved
 interface PurchaseCompletionData {
   paymentDetails: PaymentDetails;
@@ -129,7 +128,16 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({ isOpen, onClose, subtotal
     }
   };
 
+  const handleDiscountChange = (amount: string) => {
+    const numAmount = parseFloat(amount);
+    setDiscount(isNaN(numAmount) ? 0 : numAmount);
+  };
+
   const handleConfirm = async () => {
+    if (!partyName.trim()) {
+      setModal({ message: 'Please enter a Party Name.', type: 'error' });
+      return;
+    }
     if (Object.keys(selectedPayments).length === 0) {
       setModal({ message: 'Please select a payment mode.', type: 'error' });
       return;
@@ -197,6 +205,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({ isOpen, onClose, subtotal
 
         <div className="p-4 mt-auto sticky bottom-0 bg-white border-t">
           <div className="flex justify-between items-center mb-2"><span className="text-sm text-gray-600">Subtotal:</span><span className="font-medium text-sm">₹{subtotal.toFixed(2)}</span></div>
+
           <div className="flex items-center justify-between mb-2 gap-2" onMouseDown={handleDiscountPressStart} onMouseUp={handleDiscountPressEnd} onTouchStart={handleDiscountPressStart} onTouchEnd={handleDiscountPressEnd} onClick={handleDiscountClick}>
             <label htmlFor="discount" className="text-sm text-gray-600">Discount (%):</label>
             <input id="discount" type="number" placeholder="0.00" value={discount || ''} onChange={(e) => handleDiscountChange(e.target.value)} readOnly={isDiscountLocked} className={`w-20 text-right bg-gray-100 p-1 text-sm rounded-md border-gray-300 focus:ring-blue-500 focus:border-blue-500 ${isDiscountLocked ? 'cursor-pointer' : ''}`} />
@@ -217,6 +226,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({ isOpen, onClose, subtotal
 const PurchasePage: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
+
   const [modal, setModal] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [partyNumber, setPartyNumber] = useState<string>('');
   const [partyName, setPartyName] = useState<string>('');
@@ -271,6 +281,7 @@ const PurchasePage: React.FC = () => {
     setIsDrawerOpen(true);
   };
 
+
   const updateItemStock = async (itemId: string, quantityAdded: number) => {
     const itemRef = doc(db, "items", itemId);
     try {
@@ -283,7 +294,6 @@ const PurchasePage: React.FC = () => {
       throw new Error(`Failed to update inventory for item ID: ${itemId}`);
     }
   };
-
   const handleSavePurchase = async (completionData: PurchaseCompletionData) => {
     if (!currentUser) {
       throw new Error('User is not authenticated.');

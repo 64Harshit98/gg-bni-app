@@ -159,6 +159,42 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({ isOpen, onClose, subtotal
       setIsSubmitting(false);
     }
   };
+  const handleDiscountPressStart = () => {
+    longPressTimer.current = setTimeout(() => {
+      setIsDiscountLocked(false);
+    }, 500);
+  };
+
+  const handleDiscountPressEnd = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+    }
+  };
+
+  const handleDiscountClick = () => {
+    if (isDiscountLocked) {
+      setModal({ message: "Long press to enable discount field.", type: 'info' });
+    }
+  };
+
+
+  const handleDiscountPressStart = () => {
+    longPressTimer.current = setTimeout(() => {
+      setIsDiscountLocked(false);
+    }, 500);
+  };
+
+  const handleDiscountPressEnd = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+    }
+  };
+
+  const handleDiscountClick = () => {
+    if (isDiscountLocked) {
+      setModal({ message: "Long press to enable discount field.", type: 'info' });
+    }
+  };
 
   const handleDiscountPressStart = () => {
     longPressTimer.current = setTimeout(() => {
@@ -251,7 +287,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({ isOpen, onClose, subtotal
 const SalesPage1: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-
+  // New state to manage feedback messages
+  const [modal, setModal] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   // New state to manage feedback messages
   const [modal, setModal] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
@@ -348,6 +385,22 @@ const SalesPage1: React.FC = () => {
         throw new Error(`Not enough stock for item: ${item.name}. Available: ${availableItem.amount}, Requested: ${item.quantity}`);
       }
     }
+  };
+
+
+  const handleSavePayment = async (completionData: PaymentCompletionData) => {
+    if (!currentUser) throw new Error("User is not authenticated.");
+
+    const { paymentDetails, partyName, partyNumber, discount } = completionData;
+
+    // Check if enough stock is available before saving
+    for (const item of items) {
+      const availableItem = availableItems.find(i => i.id === item.id);
+      if (availableItem && availableItem.amount < item.quantity) {
+        throw new Error(`Not enough stock for item: ${item.name}. Available: ${availableItem.amount}, Requested: ${item.quantity}`);
+      }
+    }
+
 
     const saleData = {
       userId: currentUser.uid,
@@ -364,7 +417,6 @@ const SalesPage1: React.FC = () => {
     try {
       // 1. Save the sale to the 'sales' collection
       await addDoc(collection(db, "sales"), saleData);
-
       // 2. Update the amount of each sold item in the 'items' collection
       const updatePromises = items.map(item => updateItemAmount(item.id, item.quantity));
       await Promise.all(updatePromises);

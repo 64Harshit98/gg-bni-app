@@ -189,60 +189,6 @@ const PaymentDrawer: React.FC<{ isOpen: boolean; onClose: () => void; subtotal: 
       setIsSubmitting(false);
     }
   };
-  const handleDiscountPressStart = () => {
-    longPressTimer.current = setTimeout(() => {
-      setIsDiscountLocked(false);
-    }, 500);
-  };
-
-  const handleDiscountPressEnd = () => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-    }
-  };
-
-  const handleDiscountClick = () => {
-    if (isDiscountLocked) {
-      setModal({ message: "Long press to enable discount field.", type: 'info' });
-    }
-  };
-
-
-  const handleDiscountPressStart = () => {
-    longPressTimer.current = setTimeout(() => {
-      setIsDiscountLocked(false);
-    }, 500);
-  };
-
-  const handleDiscountPressEnd = () => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-    }
-  };
-
-  const handleDiscountClick = () => {
-    if (isDiscountLocked) {
-      setModal({ message: "Long press to enable discount field.", type: 'info' });
-    }
-  };
-
-  const handleDiscountPressStart = () => {
-    longPressTimer.current = setTimeout(() => {
-      setIsDiscountLocked(false);
-    }, 500);
-  };
-
-  const handleDiscountPressEnd = () => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-    }
-  };
-
-  const handleDiscountClick = () => {
-    if (isDiscountLocked) {
-      setModal({ message: "Long press to enable discount field.", type: 'info' });
-    }
-  };
 
   if (!isOpen) return null;
 
@@ -302,9 +248,6 @@ const PaymentDrawer: React.FC<{ isOpen: boolean; onClose: () => void; subtotal: 
 const Sales: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  // New state to manage feedback messages
-  const [modal, setModal] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
-  // New state to manage feedback messages
   const [modal, setModal] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [items, setItems] = useState<SalesItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<string>('');
@@ -390,47 +333,16 @@ const Sales: React.FC = () => {
     setIsDrawerOpen(true);
   };
 
-  // New function to update item amount in Firestore
-  const updateItemAmount = async (itemId: string, quantitySold: number) => {
-    const itemRef = doc(db, "items", itemId);
-    try {
-      await updateDoc(itemRef, {
-        amount: firebaseIncrement(-quantitySold)
-      });
-    } catch (error) {
-      console.error(`Error updating item amount for ID: ${itemId}`, error);
-      throw new Error(`Failed to update inventory for item ID: ${itemId}`);
-    }
-  };
-
   const handleSavePayment = async (completionData: PaymentCompletionData) => {
     if (!currentUser) throw new Error("User is not authenticated.");
+    const { paymentDetails, partyName, partyNumber, discount, finalAmount } = completionData;
 
-    const { paymentDetails, partyName, partyNumber, discount } = completionData;
-
-    // Check if enough stock is available before saving
     for (const item of items) {
       const availableItem = availableItems.find(i => i.id === item.id);
-      if (availableItem && availableItem.amount < item.quantity) {
-        throw new Error(`Not enough stock for item: ${item.name}. Available: ${availableItem.amount}, Requested: ${item.quantity}`);
+      if (!availableItem || availableItem.amount < item.quantity) {
+        throw new Error(`Not enough stock for item: ${item.name}.`);
       }
     }
-  };
-
-
-  const handleSavePayment = async (completionData: PaymentCompletionData) => {
-    if (!currentUser) throw new Error("User is not authenticated.");
-
-    const { paymentDetails, partyName, partyNumber, discount } = completionData;
-
-    // Check if enough stock is available before saving
-    for (const item of items) {
-      const availableItem = availableItems.find(i => i.id === item.id);
-      if (availableItem && availableItem.amount < item.quantity) {
-        throw new Error(`Not enough stock for item: ${item.name}. Available: ${availableItem.amount}, Requested: ${item.quantity}`);
-      }
-    }
-
 
     const saleData = {
       userId: currentUser.uid,
@@ -444,114 +356,115 @@ const Sales: React.FC = () => {
       createdAt: serverTimestamp(),
     };
 
-    try {
-      // 1. Save the sale to the 'sales' collection
-      await addDoc(collection(db, "sales"), saleData);
-      // 2. Update the amount of each sold item in the 'items' collection
-      const updatePromises = items.map(item => updateItemAmount(item.id, item.quantity));
-      await Promise.all(updatePromises);
+    const updatePromises = items.map(item => {
+      const itemRef = doc(db, "items", item.id);
+      return updateDoc(itemRef, { amount: firebaseIncrement(-item.quantity) });
+    });
 
-      setIsDrawerOpen(false);
-      setItems([]);
-      setSelectedItem('');
-      setSearchQuery('');
-      setModal({ message: "Sale completed successfully!", type: 'success' });
-    };
+    await addDoc(collection(db, "sales"), saleData);
+    await Promise.all(updatePromises);
 
-    const filteredItems = useMemo(() => availableItems.filter(item =>
-      item.name.toLowerCase().includes(searchQuery.toLowerCase())
-    ), [availableItems, searchQuery]);
-
-    const handleSelect = (item: Item) => {
-      setSelectedItem(item.id!);
-      setSearchQuery(item.name);
-      setIsDropdownOpen(false);
-    };
-
-    return (
-      <div className="flex flex-col min-h-screen bg-white w-full">
-        {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
-        <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
-
-        <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
-          <button onClick={() => navigate(ROUTES.HOME)} className="text-2xl font-bold text-gray-600">&times;</button>
-          <div className="flex-1 flex justify-center items-center gap-6">
-            <NavLink to={ROUTES.SALES} className={({ isActive }) => `flex-1 text-center py-3 border-b-2 ${isActive ? 'border-blue-600 text-blue-600 font-semibold' : 'border-transparent text-slate-500'}`}>Sales</NavLink>
-            <NavLink to={ROUTES.SALES_RETURN} className={({ isActive }) => `flex-1 text-center py-3 border-b-2 ${isActive ? 'border-blue-600 text-blue-600 font-semibold' : 'border-transparent text-slate-500'}`}>Sales Return</NavLink>
-          </div>
-          <div className="w-6"></div>
-        </div>
-
-        <div className="flex-grow p-4 bg-gray-50 w-full overflow-y-auto box-border">
-          <div className="mb-6 relative" ref={dropdownRef}>
-            <label className="block text-gray-700 text-sm font-medium mb-1">Search & Add Item</label>
-            <div className="flex gap-2">
-              <input type="text" value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setIsDropdownOpen(true); }} onFocus={() => setIsDropdownOpen(true)} placeholder="Search for an item..." className="flex-grow w-full p-3 border border-gray-300 rounded-md focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200" autoComplete="off" />
-              <button onClick={() => setIsScannerOpen(true)} className="bg-gray-700 text-white p-3 rounded-md font-semibold transition hover:bg-gray-800" title="Scan Barcode">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"></path><circle cx="12" cy="13" r="3"></circle></svg>
-              </button>
-              <button onClick={handleAddItemToCart} className="bg-blue-600 text-white py-3 px-5 rounded-md font-semibold hover:bg-blue-700 disabled:bg-blue-300" disabled={!selectedItem}>Add</button>
-            </div>
-            {isDropdownOpen && (
-              <div className="absolute top-full left-0 right-0 z-20 mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-52 overflow-y-auto">
-                {isLoading ? <div className="p-3 text-gray-500">Loading...</div> :
-                  error ? <div className="p-3 text-red-600">{error}</div> :
-                    filteredItems.length === 0 ? <div className="p-3 text-gray-500">No items found.</div> :
-                      (filteredItems.map(item => (
-                        <div
-                          key={item.id}
-                          className="p-3 cursor-pointer border-b last:border-b-0 hover:bg-gray-100 flex justify-between items-center"
-                          onClick={() => handleSelect(item)}
-                        >
-                          <span className="font-medium text-gray-800">{item.name}</span>
-                          <span className="text-sm font-semibold text-blue-600">
-                            ₹{item.mrp.toFixed(2)}
-                          </span>
-                        </div>
-                      )))
-                }
-              </div>
-            )}
-          </div>
-
-          <h3 className="text-gray-700 text-lg font-medium mb-4">Cart</h3>
-          <div className="flex flex-col gap-3 mb-6">
-            {items.length === 0 ? (
-              <div className="text-center py-8 text-gray-500 bg-gray-100 rounded-lg">No items added.</div>
-            ) : (
-              items.map(item => (
-                <div key={item.id} className="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm border border-gray-200">
-                  <div>
-                    <p className="font-medium">{item.name}</p>
-                    <p className="text-sm text-gray-600">₹{item.mrp.toFixed(2)}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button className="flex items-center justify-center w-7 h-7 rounded-full bg-gray-200 disabled:opacity-50" onClick={() => handleQuantityChange(item.id, -1)} disabled={item.quantity === 1}>-</button>
-                    <span className="w-6 text-center font-semibold">{item.quantity}</span>
-                    <button className="flex items-center justify-center w-7 h-7 rounded-full bg-gray-200" onClick={() => handleQuantityChange(item.id, 1)}>+</button>
-                    <button className="text-gray-500 hover:text-red-500" onClick={() => handleDeleteItem(item.id)} title="Remove item">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="sticky bottom-0 left-0 right-0 p-4 bg-white border-t shadow-[0_-2px_5px_rgba(0,0,0,0.05)]">
-          <div className="flex justify-between items-center mb-3">
-            <p className="text-lg font-medium">Total Amount</p>
-            <p className="text-2xl font-bold">₹{totalAmount.toFixed(2)}</p>
-          </div>
-          <button onClick={handleProceedToPayment} className="w-full bg-green-600 text-white p-3 rounded-lg text-lg font-semibold shadow-md hover:bg-green-700 disabled:opacity-50" disabled={items.length === 0}>
-            Proceed to Payment
-          </button>
-        </div>
-
-        <PaymentDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} subtotal={totalAmount} onPaymentComplete={handleSavePayment} />
-      </div>
-    );
+    setIsDrawerOpen(false);
+    setItems([]);
+    setSelectedItem('');
+    setSearchQuery('');
+    setModal({ message: "Sale completed successfully!", type: 'success' });
   };
 
-  export default Sales;
+  const filteredItems = useMemo(() => availableItems.filter(item =>
+    item.name.toLowerCase().includes(searchQuery.toLowerCase())
+  ), [availableItems, searchQuery]);
+
+  const handleSelect = (item: Item) => {
+    setSelectedItem(item.id!);
+    setSearchQuery(item.name);
+    setIsDropdownOpen(false);
+  };
+
+  return (
+    <div className="flex flex-col min-h-screen bg-white w-full">
+      {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+      <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
+
+      <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
+        <button onClick={() => navigate(ROUTES.HOME)} className="text-2xl font-bold text-gray-600">&times;</button>
+        <div className="flex-1 flex justify-center items-center gap-6">
+          <NavLink to={ROUTES.SALES} className={({ isActive }) => `flex-1 text-center py-3 border-b-2 ${isActive ? 'border-blue-600 text-blue-600 font-semibold' : 'border-transparent text-slate-500'}`}>Sales</NavLink>
+          <NavLink to={ROUTES.SALES_RETURN} className={({ isActive }) => `flex-1 text-center py-3 border-b-2 ${isActive ? 'border-blue-600 text-blue-600 font-semibold' : 'border-transparent text-slate-500'}`}>Sales Return</NavLink>
+        </div>
+        <div className="w-6"></div>
+      </div>
+
+      <div className="flex-grow p-4 bg-gray-50 w-full overflow-y-auto box-border">
+        <div className="mb-6 relative" ref={dropdownRef}>
+          <label className="block text-gray-700 text-sm font-medium mb-1">Search & Add Item</label>
+          <div className="flex gap-2">
+            <input type="text" value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setIsDropdownOpen(true); }} onFocus={() => setIsDropdownOpen(true)} placeholder="Search for an item..." className="flex-grow w-full p-3 border border-gray-300 rounded-md focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200" autoComplete="off" />
+            <button onClick={() => setIsScannerOpen(true)} className="bg-gray-700 text-white p-3 rounded-md font-semibold transition hover:bg-gray-800" title="Scan Barcode">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"></path><circle cx="12" cy="13" r="3"></circle></svg>
+            </button>
+            <button onClick={handleAddItemToCart} className="bg-blue-600 text-white py-3 px-5 rounded-md font-semibold hover:bg-blue-700 disabled:bg-blue-300" disabled={!selectedItem}>Add</button>
+          </div>
+          {isDropdownOpen && (
+            <div className="absolute top-full left-0 right-0 z-20 mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-52 overflow-y-auto">
+              {isLoading ? <div className="p-3 text-gray-500">Loading...</div> :
+                error ? <div className="p-3 text-red-600">{error}</div> :
+                  filteredItems.length === 0 ? <div className="p-3 text-gray-500">No items found.</div> :
+                    (filteredItems.map(item => (
+                      <div
+                        key={item.id}
+                        className="p-3 cursor-pointer border-b last:border-b-0 hover:bg-gray-100 flex justify-between items-center"
+                        onClick={() => handleSelect(item)}
+                      >
+                        <span className="font-medium text-gray-800">{item.name}</span>
+                        <span className="text-sm font-semibold text-blue-600">
+                          ₹{item.mrp.toFixed(2)}
+                        </span>
+                      </div>
+                    )))
+              }
+            </div>
+          )}
+        </div>
+
+        <h3 className="text-gray-700 text-lg font-medium mb-4">Cart</h3>
+        <div className="flex flex-col gap-3 mb-6">
+          {items.length === 0 ? (
+            <div className="text-center py-8 text-gray-500 bg-gray-100 rounded-lg">No items added.</div>
+          ) : (
+            items.map(item => (
+              <div key={item.id} className="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm border border-gray-200">
+                <div>
+                  <p className="font-medium">{item.name}</p>
+                  <p className="text-sm text-gray-600">₹{item.mrp.toFixed(2)}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button className="flex items-center justify-center w-7 h-7 rounded-full bg-gray-200 disabled:opacity-50" onClick={() => handleQuantityChange(item.id, -1)} disabled={item.quantity === 1}>-</button>
+                  <span className="w-6 text-center font-semibold">{item.quantity}</span>
+                  <button className="flex items-center justify-center w-7 h-7 rounded-full bg-gray-200" onClick={() => handleQuantityChange(item.id, 1)}>+</button>
+                  <button className="text-gray-500 hover:text-red-500" onClick={() => handleDeleteItem(item.id)} title="Remove item">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      <div className="sticky bottom-0 left-0 right-0 p-4 bg-white border-t shadow-[0_-2px_5px_rgba(0,0,0,0.05)]">
+        <div className="flex justify-between items-center mb-3">
+          <p className="text-lg font-medium">Total Amount</p>
+          <p className="text-2xl font-bold">₹{totalAmount.toFixed(2)}</p>
+        </div>
+        <button onClick={handleProceedToPayment} className="w-full bg-green-600 text-white p-3 rounded-lg text-lg font-semibold shadow-md hover:bg-green-700 disabled:opacity-50" disabled={items.length === 0}>
+          Proceed to Payment
+        </button>
+      </div>
+
+      <PaymentDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} subtotal={totalAmount} onPaymentComplete={handleSavePayment} />
+    </div>
+  );
+};
+
+export default Sales;

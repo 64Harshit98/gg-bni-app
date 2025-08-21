@@ -127,6 +127,7 @@ const UserAdd: React.FC = () => {
 
         {error && <p className="text-sm text-center text-red-600">{error}</p>}
         {success && <p className="text-sm text-center text-green-600">{success}</p>}
+
         <CustomButton type="submit" variant="filled" disabled={isSubmitting}>
           {isSubmitting ? 'Adding User...' : 'Add User'}
         </CustomButton>

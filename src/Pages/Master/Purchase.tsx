@@ -2,8 +2,10 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, NavLink } from 'react-router-dom';
 import { getItems } from '../../lib/items_firebase';
 import type { Item, PurchaseItem, PaymentMode, PaymentDetails, PurchaseCompletionData, PaymentDrawerProps } from '../../constants/models';
+import type { Item, PurchaseItem, PaymentMode, PaymentDetails, PurchaseCompletionData, PaymentDrawerProps } from '../../constants/models';
 import { ROUTES } from '../../constants/routes.constants';
 import { db } from '../../lib/firebase';
+import { addDoc, collection, serverTimestamp, doc, updateDoc, increment as firebaseIncrement } from 'firebase/firestore';
 import { addDoc, collection, serverTimestamp, doc, updateDoc, increment as firebaseIncrement } from 'firebase/firestore';
 import { useAuth } from '../../context/auth-context';
 

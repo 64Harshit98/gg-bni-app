@@ -159,8 +159,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({ isOpen, onClose, subtotal
       setIsSubmitting(false);
     }
   };
-
-
   const handleDiscountPressStart = () => {
     longPressTimer.current = setTimeout(() => {
       setIsDiscountLocked(false);
@@ -175,10 +173,9 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({ isOpen, onClose, subtotal
 
   const handleDiscountClick = () => {
     if (isDiscountLocked) {
-      setModal({ message: "Cannot change the discount field.", type: 'info' });
+      setModal({ message: "Long press to enable discount field.", type: 'info' });
     }
   };
-  // --- End of Discount Logic ---
 
 
   if (!isOpen) return null;
@@ -236,7 +233,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({ isOpen, onClose, subtotal
             onTouchEnd={handleDiscountPressEnd}
             onClick={handleDiscountClick}
           >
-
             <label htmlFor="discount" className="text-sm text-gray-600">Discount:</label>
             <input id="discount" type="number" placeholder="0.00" value={discount || ''} onChange={(e) => handleDiscountChange(e.target.value)} readOnly={isDiscountLocked} className={`w-20 text-right bg-gray-100 p-1 text-sm rounded-md border-gray-300 focus:ring-blue-500 focus:border-blue-500 ${isDiscountLocked ? 'cursor-pointer' : ''}`} />
           </div>

@@ -160,6 +160,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({ isOpen, onClose, subtotal
     }
   };
 
+
   const handleDiscountPressStart = () => {
     longPressTimer.current = setTimeout(() => {
       setIsDiscountLocked(false);
@@ -174,9 +175,11 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({ isOpen, onClose, subtotal
 
   const handleDiscountClick = () => {
     if (isDiscountLocked) {
-      setModal({ message: "Long press to enable discount field.", type: 'info' });
+      setModal({ message: "Cannot change the discount field.", type: 'info' });
     }
   };
+  // --- End of Discount Logic ---
+
 
   if (!isOpen) return null;
 
@@ -233,6 +236,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({ isOpen, onClose, subtotal
             onTouchEnd={handleDiscountPressEnd}
             onClick={handleDiscountClick}
           >
+
             <label htmlFor="discount" className="text-sm text-gray-600">Discount:</label>
             <input id="discount" type="number" placeholder="0.00" value={discount || ''} onChange={(e) => handleDiscountChange(e.target.value)} readOnly={isDiscountLocked} className={`w-20 text-right bg-gray-100 p-1 text-sm rounded-md border-gray-300 focus:ring-blue-500 focus:border-blue-500 ${isDiscountLocked ? 'cursor-pointer' : ''}`} />
           </div>
@@ -252,9 +256,9 @@ const SalesPage1: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
 
+
   // New state to manage feedback messages
   const [modal, setModal] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
-
   const [items, setItems] = useState<SalesItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<string>('');
   const [availableItems, setAvailableItems] = useState<Item[]>([]);
@@ -322,7 +326,6 @@ const SalesPage1: React.FC = () => {
     }
     setIsDrawerOpen(true);
   };
-
   // New function to update item amount in Firestore
   const updateItemAmount = async (itemId: string, quantitySold: number) => {
     const itemRef = doc(db, "items", itemId);
@@ -336,10 +339,12 @@ const SalesPage1: React.FC = () => {
     }
   };
 
+
   const handleSavePayment = async (completionData: PaymentCompletionData) => {
     if (!currentUser) throw new Error("User is not authenticated.");
 
     const { paymentDetails, partyName, partyNumber, discount } = completionData;
+
 
     // Check if enough stock is available before saving
     for (const item of items) {
@@ -348,6 +353,7 @@ const SalesPage1: React.FC = () => {
         throw new Error(`Not enough stock for item: ${item.name}. Available: ${availableItem.amount}, Requested: ${item.quantity}`);
       }
     }
+
 
     const saleData = {
       userId: currentUser.uid,
@@ -362,6 +368,7 @@ const SalesPage1: React.FC = () => {
     };
 
     try {
+
       // 1. Save the sale to the 'sales' collection
       await addDoc(collection(db, "sales"), saleData);
 
@@ -370,13 +377,16 @@ const SalesPage1: React.FC = () => {
       await Promise.all(updatePromises);
 
       // Clear the cart and reset state after successful transaction
+
       setItems([]);
       setSelectedItem('');
       setSearchQuery('');
       setModal({ message: "Sale completed successfully!", type: 'success' });
     } catch (error) {
       console.error("Error saving sale to Firestore: ", error);
+
       setModal({ message: `Failed to save payment: ${error}`, type: 'error' });
+
       throw error;
     }
   };
@@ -393,7 +403,9 @@ const SalesPage1: React.FC = () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-white w-full">
+
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+
       <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
         <button onClick={() => navigate(ROUTES.HOME)} className="text-2xl font-bold text-gray-600">&times;</button>
         <div className="flex-1 flex justify-center items-center gap-6">

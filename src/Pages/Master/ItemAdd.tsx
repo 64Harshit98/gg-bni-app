@@ -58,7 +58,6 @@ const ItemAdd: React.FC = () => {
       setError('Please fill in all required fields: Item Name, MRP, Amount, and Category.');
       return;
     }
-
     try {
       const newItemData: Omit<Item, 'id' | 'createdAt' | 'updatedAt'> = {
         name: itemName.trim(),
@@ -119,6 +118,7 @@ const ItemAdd: React.FC = () => {
             tax: parseFloat(row.tax) || 0,
             itemGroupId: String(row.itemGroupId),
             amount: parseInt(row.amount, 10), // Converted amount to integer
+
           };
 
           // Use your existing createItem function to add the item

@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, NavLink } from 'react-router-dom';
 import { createItem, getItemGroups } from '../../lib/items_firebase';
 import type { Item, ItemGroup } from '../../constants/models';
@@ -306,14 +305,13 @@ const ItemAdd: React.FC = () => {
         <div className="sticky bottom-0 left-0 right-0 p-4 bg-white border-t">
           <button
             onClick={handleAddItem}
-            className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg text-lg font-semibold shadow-md hover:bg-blue-700"
-            className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg text-lg font-semibold shadow-md hover:bg-blue-700"
-          >
+            className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg text-lg font-semibold shadow-md hover:bg-blue-700" >
             Add Item
           </button>
         </div>
       </div>
-      );
+    </div>
+  );
 };
 
-      export default ItemAdd;
+export default ItemAdd;

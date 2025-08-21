@@ -58,7 +58,6 @@ const ItemAdd: React.FC = () => {
       setError('Please fill in all required fields: Item Name, MRP, Amount, and Category.');
       return;
     }
-
     try {
       const newItemData: Omit<Item, 'id' | 'createdAt' | 'updatedAt'> = {
         name: itemName.trim(),

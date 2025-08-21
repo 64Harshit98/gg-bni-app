@@ -3,7 +3,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // Rule for the 'users' collection
-     match /users/{userId} {
+     match /users/{userId} {g
       allow read, update: if request.auth != null && request.auth.uid == userId;
 
       // Allow a user to be created IF the person making the request

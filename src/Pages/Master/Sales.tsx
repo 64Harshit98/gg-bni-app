@@ -159,6 +159,24 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({ isOpen, onClose, subtotal
       setIsSubmitting(false);
     }
   };
+  const handleDiscountPressStart = () => {
+    longPressTimer.current = setTimeout(() => {
+      setIsDiscountLocked(false);
+    }, 500);
+  };
+
+  const handleDiscountPressEnd = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+    }
+  };
+
+  const handleDiscountClick = () => {
+    if (isDiscountLocked) {
+      setModal({ message: "Long press to enable discount field.", type: 'info' });
+    }
+  };
+
 
   const handleDiscountPressStart = () => {
     longPressTimer.current = setTimeout(() => {
@@ -251,7 +269,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({ isOpen, onClose, subtotal
 const SalesPage1: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-
   // New state to manage feedback messages
   const [modal, setModal] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
@@ -321,6 +338,7 @@ const SalesPage1: React.FC = () => {
       return;
     }
     setIsDrawerOpen(true);
+
   };
 
   // New function to update item amount in Firestore
@@ -336,6 +354,7 @@ const SalesPage1: React.FC = () => {
     }
   };
 
+
   const handleSavePayment = async (completionData: PaymentCompletionData) => {
     if (!currentUser) throw new Error("User is not authenticated.");
 
@@ -348,6 +367,7 @@ const SalesPage1: React.FC = () => {
         throw new Error(`Not enough stock for item: ${item.name}. Available: ${availableItem.amount}, Requested: ${item.quantity}`);
       }
     }
+
 
     const saleData = {
       userId: currentUser.uid,
@@ -365,6 +385,7 @@ const SalesPage1: React.FC = () => {
       // 1. Save the sale to the 'sales' collection
       await addDoc(collection(db, "sales"), saleData);
 
+
       // 2. Update the amount of each sold item in the 'items' collection
       const updatePromises = items.map(item => updateItemAmount(item.id, item.quantity));
       await Promise.all(updatePromises);
@@ -377,6 +398,7 @@ const SalesPage1: React.FC = () => {
     } catch (error) {
       console.error("Error saving sale to Firestore: ", error);
       setModal({ message: `Failed to save payment: ${error}`, type: 'error' });
+
       throw error;
     }
   };
@@ -394,6 +416,7 @@ const SalesPage1: React.FC = () => {
   return (
     <div className="flex flex-col min-h-screen bg-white w-full">
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+
       <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
         <button onClick={() => navigate(ROUTES.HOME)} className="text-2xl font-bold text-gray-600">&times;</button>
         <div className="flex-1 flex justify-center items-center gap-6">

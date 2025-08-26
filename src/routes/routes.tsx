@@ -33,7 +33,7 @@ const BusInfo = lazy(() => import('../Pages/Auth/BusInfo'));
 const BusAddress = lazy(() => import('../Pages/Auth/BusAddress'));
 const Payment = lazy(() => import('../Pages/Master/Payment'));
 const Permissionsetting = lazy(() => import('../Pages/Settings/Permissionsetting'))
-
+const UnauthorizedPage = lazy(() => import('../Pages/Unauthorized'))
 const router = createBrowserRouter([
   {
     path: ROUTES.HOME,
@@ -196,6 +196,10 @@ const router = createBrowserRouter([
         ),
       },
     ],
+  },
+  {
+    path: ROUTES.UNAUTHORIZED,
+    element: <UnauthorizedPage />,
   },
   {
     path: ROUTES.LANDING,

@@ -9,7 +9,6 @@ import { SalesCard } from '../Components/SCard';
 import { TopSoldItemsCard } from '../Components/TFCard';
 import { TopSalespersonCard } from '../Components/TSCard';
 
-// --- Custom Hooks (useBusinessName, useUserName) ---
 const useBusinessName = (userId?: string) => {
   const [businessName, setBusinessName] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -31,36 +30,15 @@ const useBusinessName = (userId?: string) => {
   return { businessName, loading };
 };
 
-const useUserName = (userId?: string) => {
-  const [userName, setUserName] = useState<string>('');
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    if (!userId) { setLoading(false); return; }
-    const fetchUserInfo = async () => {
-      try {
-        const docRef = doc(db, 'users', userId);
-        const docSnap = await getDoc(docRef);
-        setUserName(docSnap.exists() ? docSnap.data().name || docSnap.data().displayName || 'User' : 'User');
-      } catch (err) {
-        setUserName('User');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchUserInfo();
-  }, [userId]);
-  return { userName, loading };
-};
 
 
 const Home = () => {
   const { currentUser, loading: authLoading } = useAuth();
   const { businessName, loading: nameLoading } = useBusinessName(currentUser?.uid);
-  const { userName, loading: userLoading } = useUserName(currentUser?.uid);
 
   const [isDataVisible, setIsDataVisible] = useState<boolean>(false);
 
-  const isLoading = authLoading || nameLoading || userLoading;
+  const isLoading = authLoading || nameLoading;
 
   return (
     <div className="flex min-h-screen w-full flex-col overflow-hidden bg-slate-100 shadow-sm">
@@ -76,10 +54,7 @@ const Home = () => {
             Dashboard
           </h1>
           <p className="text-slate-500 text-sm">
-            {isLoading ? 'Loading...' : `Hi, ${userName}`}
-          </p>
-          <p className="text-slate-500 text-sm">
-            {isLoading ? 'Loading...' : `Welcome to, ${businessName}`}
+            {isLoading ? 'Loading...' : ` ${businessName}`}
           </p>
         </div>
 

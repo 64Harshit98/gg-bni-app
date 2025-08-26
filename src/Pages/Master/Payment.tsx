@@ -216,7 +216,7 @@ const PaymentModal: React.FC<{
 
 // --- Main Journal Component ---
 const Journal: React.FC = () => {
-    const [activeType, setActiveType] = useState<'Debit' | 'Credit'>('Debit');
+    const [activeType, setActiveType] = useState<'Debit' | 'Credit'>('Credit');
     const { currentUser, loading: authLoading } = useAuth();
     const { invoices, loading: dataLoading, error } = useUnpaidJournalData(
         currentUser?.uid

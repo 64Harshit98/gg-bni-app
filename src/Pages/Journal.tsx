@@ -155,7 +155,7 @@ const useJournalData = (userId?: string) => {
 // --- Main Journal Component ---
 const Journal: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'Paid' | 'Unpaid'>('Paid');
-  const [activeType, setActiveType] = useState<'Debit' | 'Credit'>('Debit');
+  const [activeType, setActiveType] = useState<'Debit' | 'Credit'>('Credit');
   const { currentUser, loading: authLoading } = useAuth();
   const {
     invoices,
@@ -224,16 +224,16 @@ const Journal: React.FC = () => {
       {/* Debit/Credit Tabs */}
       <div className="flex justify-around border-b border-slate-200 bg-white px-6 shadow-sm">
         <button
-          className={`flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${activeType === 'Debit' ? 'border-blue-600 font-semibold text-blue-600' : 'border-transparent text-slate-500'}`}
-          onClick={() => setActiveType('Debit')}
-        >
-          Debit (-)
-        </button>
-        <button
           className={`flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${activeType === 'Credit' ? 'border-blue-600 font-semibold text-blue-600' : 'border-transparent text-slate-500'}`}
           onClick={() => setActiveType('Credit')}
         >
-          Credit (+)
+          Sales
+        </button>
+        <button
+          className={`flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${activeType === 'Debit' ? 'border-blue-600 font-semibold text-blue-600' : 'border-transparent text-slate-500'}`}
+          onClick={() => setActiveType('Debit')}
+        >
+          Purchase
         </button>
       </div>
 

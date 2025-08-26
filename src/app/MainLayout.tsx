@@ -24,21 +24,21 @@ const MainLayout = () => {
           className="w-full mb-2 rounded"
           onClick={() => navigate(`${ROUTES.SALES}`)}
         >
-          Sales
+          Add Sales
         </Button>
         <Button
           variant="outline"
           className="w-full mb-2 rounded"
           onClick={() => navigate(`${ROUTES.PURCHASE}`)}
         >
-          Purchase
+          Add Purchase
         </Button>
         <Button
           variant="outline"
           className="w-full mb-2 rounded"
           onClick={() => navigate(`${ROUTES.PAYMENT}`)}
         >
-          Payments
+          Add Payments
         </Button>
         <Button
           variant="outline"
@@ -52,7 +52,7 @@ const MainLayout = () => {
           className="w-full mb-2 rounded"
           onClick={() => navigate(`${ROUTES.USER_ADD}`)}
         >
-          User Add
+          Add User
         </Button>
       </FloatingButton>
 

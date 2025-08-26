@@ -39,7 +39,7 @@ const Masters = () => {
               <span className="master-option-arrow">→</span>
             </Link>
             <Link to={ROUTES.PERMSETTING} className="master-option-link">
-              <span className="master-option-text">Items/Items Group </span>
+              <span className="master-option-text">Permission Setting </span>
               <span className="master-option-arrow">→</span>
             </Link>
             {/* <Link to={ROUTES.ITEM_GROUP} className="master-option-link">

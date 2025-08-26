@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAuth } from '../context/auth-context'; // Or your new hook path
 import Loading from '../Pages/Loading/Loading';
-import AccessDeniedPage from '../Pages/Home';
+import AccessDeniedPage from '../Pages/Unauthorized';
 import { Permissions } from '../enums';
 
 const PermissionWrapper = ({ children, requiredPermission }: { children: React.ReactNode, requiredPermission: Permissions }) => {

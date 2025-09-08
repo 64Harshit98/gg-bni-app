@@ -9,7 +9,6 @@ import { CustomIcon } from '../../Components';
 import { ICONS } from '../../constants/icon.constants';
 import { CustomButton } from '../../Components/CustomButton';
 import { FloatingLabelInput } from '../../Components/ui/FloatingLabelInput';
-import { ROLES, Variant } from '../../enums';
 
 
 // --- Main Owner Info Page Component (Step 3) ---
@@ -42,7 +41,7 @@ const OwnerInfoPage: React.FC = () => {
 
     try {
       // 1. Create the user account in Firebase Auth
-      const user = await registerUserWithDetails(ownerName, phoneNumber, email, password, ROLES.OWNER);
+      const user = await registerUserWithDetails(ownerName, phoneNumber, email, password);
 
       // 2. Prepare the final business info document
       const finalBusinessData = {
@@ -114,7 +113,7 @@ const OwnerInfoPage: React.FC = () => {
         />
 
         {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-        <CustomButton type="submit" variant={Variant.Filled} disabled={isSubmitting}>
+        <CustomButton type="submit" variant="filled" disabled={isSubmitting}>
           {isSubmitting ? 'Signing Up...' : 'Sign Up'}
         </CustomButton>
       </form>

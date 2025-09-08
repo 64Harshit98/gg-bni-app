@@ -15,7 +15,7 @@ const FloatingButton: React.FC<IFloatingButtonProps> = ({
     <Popover>
       <PopoverTrigger
         className={cn(
-          'fixed bottom-20 right-4 z-30 bg-sky-500 text-white p-5 w-4 h-4 rounded-full flex items-center justify-center',
+          'fixed bottom-20 right-4 z-5000 bg-black text-white p-5 w-4 h-4 rounded-full flex items-center justify-center',
           className,
         )}
       >

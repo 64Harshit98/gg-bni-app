@@ -5,7 +5,6 @@ import { CustomIcon } from '../../Components';
 import { ICONS } from '../../constants/icon.constants';
 import { CustomButton } from '../../Components/CustomButton';
 import { FloatingLabelInput } from '../../Components/ui/FloatingLabelInput';
-import { Variant } from '../../enums';
 
 // --- Main Business Info Page Component (Step 1) ---
 const BusinessInfoPage: React.FC = () => {
@@ -41,7 +40,7 @@ const BusinessInfoPage: React.FC = () => {
     };
 
     return (
-        <div className="flex flex-col min-h-screen bg-white px-6">
+        <div className="flex flex-col min-h-screen bg-white p-6">
             <button
                 onClick={() => navigate(ROUTES.LANDING)}
                 className="self-start mb-8"
@@ -93,7 +92,7 @@ const BusinessInfoPage: React.FC = () => {
 
                 {error && <p className="text-red-500 text-sm text-center">{error}</p>}
 
-                <CustomButton type="submit" variant={Variant.Filled}>
+                <CustomButton type="submit" variant="filled">
                     Next
                 </CustomButton>
             </form>

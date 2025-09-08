@@ -3,15 +3,12 @@ import { db } from '../lib/firebase';
 import {
   collection,
   query,
+  where,
   onSnapshot,
   Timestamp,
   QuerySnapshot,
 } from 'firebase/firestore'; // Import QuerySnapshot
 import { useAuth } from '../context/auth-context';
-import { CustomToggle, CustomToggleItem } from '../Components/CustomToggle';
-import { CustomCard } from '../Components/CustomCard';
-import { CustomButton } from '../Components/CustomButton';
-import { Variant } from '../enums';
 
 // --- Reusable Spinner Component ---
 const Spinner: React.FC = () => (
@@ -20,7 +17,7 @@ const Spinner: React.FC = () => (
       className="animate-spin h-8 w-8 text-blue-600"
       xmlns="http://www.w3.org/2000/svg"
       fill="none"
-      viewBox="0 0 24"
+      viewBox="0 0 24 24"
     >
       <circle
         className="opacity-25"
@@ -42,14 +39,13 @@ const Spinner: React.FC = () => (
 // --- Data Types & Helpers ---
 interface Invoice {
   id: string;
-  invoiceNumber: string;
   amount: number;
   time: string;
   status: 'Paid' | 'Unpaid';
   type: 'Debit' | 'Credit';
   partyName: string;
   createdAt: Date;
-  dueAmount?: number;
+  dueAmount?: number; // Added to store the unpaid amount
 }
 
 const formatDate = (date: Date): string => {
@@ -73,10 +69,12 @@ const useJournalData = (userId?: string) => {
     }
 
     const salesQuery = query(
-      collection(db, 'sales')
+      collection(db, 'sales'),
+      where('userId', '==', userId),
     );
     const purchasesQuery = query(
-      collection(db, 'purchases')
+      collection(db, 'purchases'),
+      where('userId', '==', userId),
     );
 
     const handleSnapshotError = (err: Error, type: string) => {
@@ -85,6 +83,7 @@ const useJournalData = (userId?: string) => {
       setLoading(false);
     };
 
+    // FIX: Add explicit type QuerySnapshot for the snapshot parameter
     const processSnapshot = (
       snapshot: QuerySnapshot,
       type: 'Credit' | 'Debit',
@@ -101,8 +100,6 @@ const useJournalData = (userId?: string) => {
 
         return {
           id: doc.id,
-          // FIX: Read the invoiceNumber from the document, with a fallback
-          invoiceNumber: data.invoiceNumber || `#${doc.id.slice(0, 6).toUpperCase()}`,
           amount: data.totalAmount || 0,
           time: formatDate(createdAt),
           status: status,
@@ -184,28 +181,32 @@ const Journal: React.FC = () => {
     }
     if (filteredInvoices.length > 0) {
       return filteredInvoices.map((invoice) => (
-        <CustomCard key={invoice.id}>
-          <div className="flex items-center justify-between">
-            <p className="text-base font-semibold text-slate-800">
-              {invoice.invoiceNumber}
+        <div
+          key={invoice.id}
+          className="mb-4 flex items-center justify-between rounded-lg border border-slate-200 bg-white p-4 px-5 shadow-sm transition hover:-translate-y-0.5"
+        >
+          <div>
+            <p className="mb-1 text-lg font-semibold text-slate-800">
+              {invoice.partyName}
             </p>
             <p className="text-sm text-slate-500">
-              {invoice.time}
+              Inv #{invoice.id.slice(0, 6)}... at {invoice.time}
+              {invoice.status === 'Unpaid' &&
+                ` (Total: ₹${invoice.amount.toLocaleString('en-IN')})`}
             </p>
           </div>
-          <p className="text-sm text-slate-800 mt-2">{invoice.partyName}</p>
-          <div className="flex justify-end -mt-6">
-            <p className="text-lg font-bold text-slate-800">
-              {invoice.amount.toLocaleString('en-IN', {
-                style: 'currency',
-                currency: 'INR',
-              })}
-            </p>
-          </div>
-        </CustomCard>
+          <p
+            className={`text-2xl font-bold ${invoice.type === 'Credit' ? 'text-green-600' : 'text-red-600'}`}
+          >
+            ₹
+            {(invoice.status === 'Unpaid'
+              ? invoice.dueAmount
+              : invoice.amount
+            )?.toLocaleString('en-IN')}
+          </p>
+        </div>
       ));
     }
-
     return (
       <p className="p-8 text-center text-base text-slate-500">
         No invoices found for this selection.
@@ -216,48 +217,47 @@ const Journal: React.FC = () => {
   return (
     <div className="flex min-h-screen w-full flex-col overflow-hidden bg-white shadow-md">
       {/* Top Header */}
-      <div className="flex items-center justify-center p-4 px-6">
-        <h1 className="text-4xl font-light text-slate-800 ">Transactions</h1>
+      <div className="flex flex-shrink-0 items-center justify-center border-b border-slate-200 bg-white p-4 px-6 shadow-sm ">
+        <h1 className="text-3xl font-bold text-slate-800 ">Transactions</h1>
       </div>
 
       {/* Debit/Credit Tabs */}
-      <div className="flex justify-center border-b border-gray-500 p-2 mb-4">
-        <CustomButton
-          variant={Variant.Transparent}
-          active={activeType === 'Credit'}
+      <div className="flex justify-around border-b border-slate-200 bg-white px-6 shadow-sm">
+        <button
+          className={`flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${activeType === 'Credit' ? 'border-blue-600 font-semibold text-blue-600' : 'border-transparent text-slate-500'}`}
           onClick={() => setActiveType('Credit')}
         >
           Sales
-        </CustomButton>
-        <CustomButton
-          variant={Variant.Transparent}
-          active={activeType === 'Debit'}
+        </button>
+        <button
+          className={`flex-1 cursor-pointer border-b-2 py-3 text-center text-base font-medium transition hover:text-slate-700 ${activeType === 'Debit' ? 'border-blue-600 font-semibold text-blue-600' : 'border-transparent text-slate-500'}`}
           onClick={() => setActiveType('Debit')}
         >
           Purchase
-        </CustomButton>
+        </button>
       </div>
+
       {/* Filter Tabs */}
-      <CustomToggle>
-        <CustomToggleItem
-          className="mr-2"
+      <div className="flex justify-around border-b border-slate-200 bg-white p-3 px-6 shadow-md">
+        <button
+          className={`cursor-pointer rounded-lg border px-5 py-2 text-sm font-medium transition ${activeTab === 'Paid' ? 'border-blue-600 bg-blue-600 text-white shadow-md' : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-blue-300 hover:bg-blue-50'}`}
           onClick={() => setActiveTab('Paid')}
-          data-state={activeTab === 'Paid' ? 'on' : 'off'}
         >
           Paid
-        </CustomToggleItem>
-        <CustomToggleItem
+        </button>
+        <button
+          className={`cursor-pointer rounded-lg border px-5 py-2 text-sm font-medium transition ${activeTab === 'Unpaid' ? 'border-blue-600 bg-blue-600 text-white shadow-md' : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-blue-300 hover:bg-blue-50'}`}
           onClick={() => setActiveTab('Unpaid')}
-          data-state={activeTab === 'Unpaid' ? 'on' : 'off'}
         >
           Unpaid
-        </CustomToggleItem>
-      </CustomToggle>
+        </button>
+      </div>
+
       {/* Invoice List */}
-      <div className="flex-grow overflow-y-auto bg-slate-100 p-6 space-y-3">
+      <div className="flex-grow overflow-y-auto bg-slate-100 p-6">
         {renderContent()}
       </div>
-    </div >
+    </div>
   );
 };
 

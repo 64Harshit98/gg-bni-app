@@ -5,7 +5,56 @@ import type { Item, ItemGroup } from '../../constants/models';
 import { ROUTES } from '../../constants/routes.constants';
 // Import the xlsx library for reading Excel files
 import * as XLSX from 'xlsx';
-import BarcodeScanner from '../../UseComponents/BarcodeScanner';
+// Import the barcode scanner library
+import { Html5Qrcode } from 'html5-qrcode';
+
+// --- Reusable Barcode Scanner Component ---
+const BarcodeScanner: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  onScanSuccess: (decodedText: string) => void;
+}> = ({ isOpen, onClose, onScanSuccess }) => {
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const scanner = new Html5Qrcode('barcode-scanner-container');
+
+    const startScanner = async () => {
+      try {
+        await scanner.start(
+          { facingMode: "environment" },
+          { fps: 10, qrbox: { width: 250, height: 250 } },
+          (decodedText) => {
+            onScanSuccess(decodedText);
+            scanner.stop();
+          },
+          undefined // Optional error callback
+        );
+      } catch (err) {
+        console.error("Error starting scanner:", err);
+      }
+    };
+
+    startScanner();
+
+    return () => {
+      // Ensure scanner is stopped on cleanup
+      scanner.stop().catch(() => { });
+    };
+  }, [isOpen, onScanSuccess]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center p-4">
+      <div id="barcode-scanner-container" className="w-full max-w-md bg-gray-900 rounded-lg overflow-hidden"></div>
+      <button onClick={onClose} className="mt-4 bg-white text-gray-800 font-bold py-2 px-6 rounded-lg shadow-lg hover:bg-gray-200 transition">
+        Close
+      </button>
+    </div>
+  );
+};
+
 
 const ItemAdd: React.FC = () => {
   const navigate = useNavigate();
@@ -107,16 +156,9 @@ const ItemAdd: React.FC = () => {
           throw new Error("The selected Excel file is empty or in the wrong format.");
         }
 
-        let processedCount = 0;
         for (const row of json) {
-          // THIS IS THE CORRECTED VALIDATION LOGIC
-          if (
-            !row.name ||
-            row.mrp == null || // Use `== null` to check for both null and undefined
-            !row.itemGroupId ||
-            row.amount == null // This will now correctly allow `amount: 0`
-          ) {
-            console.warn("Skipping invalid row (missing required fields):", row);
+          if (!row.name || !row.mrp || !row.itemGroupId || !row.amount) {
+            console.warn("Skipping invalid row:", row);
             continue;
           }
 
@@ -127,17 +169,15 @@ const ItemAdd: React.FC = () => {
             discount: parseFloat(row.discount) || 0,
             tax: parseFloat(row.tax) || 0,
             itemGroupId: String(row.itemGroupId),
-            amount: parseInt(String(row.amount), 10),
+            amount: parseInt(row.amount, 10),
             barcode: String(row.barcode || '').trim(),
           };
 
           await createItem(newItemData);
-          processedCount++;
         }
 
-        setSuccess(`${processedCount} items have been successfully imported!`);
+        setSuccess(`${json.length} items have been successfully imported!`);
         setTimeout(() => setSuccess(null), 5000);
-
 
       } catch (err) {
         console.error('Error processing Excel file:', err);

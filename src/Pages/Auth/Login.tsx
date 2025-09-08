@@ -7,7 +7,6 @@ import { CustomIcon } from '../../Components';
 import { ICONS } from '../../constants/icon.constants';
 import { CustomButton } from '../../Components/CustomButton';
 import { FloatingLabelInput } from '../../Components/ui/FloatingLabelInput';
-import { Variant } from '../../enums';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -64,7 +63,7 @@ const Login: React.FC = () => {
           required
           disabled={loading}
         />
-        <CustomButton type="submit" variant={Variant.Filled} disabled={loading}>
+        <CustomButton type="submit" variant="filled" disabled={loading}>
           {loading ? 'Logging in...' : 'LOG IN'}
         </CustomButton>
       </form>

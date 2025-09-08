@@ -4,7 +4,6 @@ import { ROUTES } from '../../constants/routes.constants';
 import { CustomButton } from '../../Components';
 import sellarLogo from '../../assets/sellar-logo-heading.png';
 import bgMain from '../../assets/bg-main.png';
-import { Variant } from '../../enums';
 
 const Landing: React.FC = () => {
   const navigate = useNavigate();
@@ -21,14 +20,14 @@ const Landing: React.FC = () => {
         <div className="w-full bg-white p-6 py-10 shadow-t-lg">
           <div className="flex w-full max-w-sm mx-auto space-x-4">
             <CustomButton
-              variant={Variant.Outline}
+              variant="outline"
               onClick={() => navigate(ROUTES.LOGIN)}
               className="flex-1"
             >
               LOG IN
             </CustomButton>
             <CustomButton
-              variant={Variant.Filled}
+              variant="filled"
               onClick={() => navigate(ROUTES.BUSINESS_INFO)}
               className="flex-1"
             >

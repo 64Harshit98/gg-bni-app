@@ -5,8 +5,6 @@ import { navItems } from '../routes/bottomRoutes';
 import { FloatingButton } from '../Components/FloatingButton';
 import { ROUTES } from '../constants/routes.constants';
 import { useNavigate } from 'react-router-dom';
-import { Permissions } from '../enums';
-import PermissionWrapper from '../context/PermissionWrapper';
 
 const MainLayout = () => {
   const location = useLocation();
@@ -28,67 +26,53 @@ const MainLayout = () => {
         >
           Add Sales
         </Button>
-        <PermissionWrapper
-          requiredPermission={Permissions.ViewTransactions}
-          behavior="hide"
+        <Button
+          variant="outline"
+          className="w-full mb-2 rounded"
+          onClick={() => navigate(`${ROUTES.PURCHASE}`)}
         >
-          <Button
-            variant="outline"
-            className="w-full mb-2 rounded"
-            onClick={() => navigate(`${ROUTES.PURCHASE}`)}
-          >
-            Add Purchase
-          </Button>
-        </PermissionWrapper>
-        <PermissionWrapper
-          requiredPermission={Permissions.ViewTransactions}
-          behavior="hide"
+          Add Purchase
+        </Button>
+        <Button
+          variant="outline"
+          className="w-full mb-2 rounded"
+          onClick={() => navigate(`${ROUTES.PAYMENT}`)}
         >
-          <Button
-            variant="outline"
-            className="w-full mb-2 rounded"
-            onClick={() => navigate(`${ROUTES.PAYMENT}`)}
-          >
-            Add Payments
-          </Button>
-        </PermissionWrapper>
-        <PermissionWrapper
-          requiredPermission={Permissions.ViewTransactions}
-          behavior="hide"
+          Add Payments
+        </Button>
+        <Button
+          variant="outline"
+          className="w-full mb-2 rounded"
+          onClick={() => navigate(`${ROUTES.ITEM_ADD}`)}
         >
-          <Button
-            variant="outline"
-            className="w-full mb-2 rounded"
-            onClick={() => navigate(`${ROUTES.ITEM_ADD}`)}
-          >
-            Add Item
-          </Button>
-        </PermissionWrapper>
-        <PermissionWrapper
-          requiredPermission={Permissions.ViewPNLReport}
-          behavior="hide"
+          Add Item
+        </Button>
+        <Button
+          variant="outline"
+          className="w-full mb-2 rounded"
+          onClick={() => navigate(`${ROUTES.USER_ADD}`)}
         >
-          <Button
-            variant="outline"
-            className="w-full mb-2 rounded"
-            onClick={() => navigate(`${ROUTES.USER_ADD}`)}
-          >
-            Add User
-          </Button>
-        </PermissionWrapper>
+          Add User
+        </Button>
       </FloatingButton>
 
-      <nav className="fixed bottom-0 left-0 w-full border-t border-slate-200 bg-white">
-        <div className="flex justify-around items-center px-4 pt-2 pb-3">
+      <nav className="fixed bottom-0 left-0 w-full border-t border-slate-200 bg-slate-50">
+        <div className="flex justify-around px-4 pt-2 pb-3">
           {navItems.map(({ to, icon, label }) => (
-            <Link
+            <Button
               key={to}
-              to={to}
-              className={`flex-1 flex flex-row items-center justify-center gap-1 py-2 rounded-lg text-sm transition-colors duration-200 ${location.pathname === to ? 'bg-sky-100 text-sky-600' : 'text-gray-500 hover:bg-gray-100'}`}
+              asChild
+              variant={location.pathname === to ? 'secondary' : 'ghost'}
+              className="flex-1"
             >
-              <div>{icon}</div>
-              <span className="font-medium">{label}</span>
-            </Link>
+              <Link
+                to={to}
+                className="flex flex-col items-center gap-1 text-xs"
+              >
+                {icon}
+                <span>{label}</span>
+              </Link>
+            </Button>
           ))}
         </div>
       </nav>

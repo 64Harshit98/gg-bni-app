@@ -4,28 +4,19 @@ import Loading from '../Pages/Loading/Loading';
 import AccessDeniedPage from '../Pages/Unauthorized';
 import { Permissions } from '../enums';
 
-interface WrapperProps {
-    children: React.ReactNode;
-    requiredPermission: Permissions;
-    // FIX: Add an optional 'behavior' prop
-    behavior?: 'showPage' | 'hide';
-}
-
-const PermissionWrapper = ({ children, requiredPermission, behavior = 'showPage' }: WrapperProps) => {
+const PermissionWrapper = ({ children, requiredPermission }: { children: React.ReactNode, requiredPermission: Permissions }) => {
+    // ✅ Get hasPermission from the hook
     const { currentUser, loading, hasPermission } = useAuth();
 
     if (loading) {
         return <Loading />;
     }
 
-    // FIX: Use the 'behavior' prop to decide what to do on failure
+    // ✅ Use the hasPermission function for the check
     if (!currentUser || !hasPermission(requiredPermission)) {
-        // If behavior is 'showPage' (default), show the full page.
-        // If behavior is 'hide', render nothing (null).
-        return behavior === 'showPage' ? <AccessDeniedPage /> : null;
+        return <AccessDeniedPage />;
     }
 
-    // If permission is granted, render the children as normal.
     return <>{children}</>;
 };
 

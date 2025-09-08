@@ -9,7 +9,6 @@ import {
 } from 'firebase/auth';
 import type { User } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app'; // FIX: Import FirebaseError
-import type { ROLES } from '../enums';
 
 /**
  * Creates a new user in Firebase Auth and a corresponding
@@ -24,7 +23,6 @@ export const registerUserWithDetails = async (
   phoneNumber: string, // Changed to phoneNumber
   email: string,
   password: string,
-  role: ROLES
 ): Promise<User> => {
   try {
     // 1. Create the user in Firebase Authentication
@@ -43,7 +41,6 @@ export const registerUserWithDetails = async (
         phoneNumber: phoneNumber, // Store phone number
         email: user.email,
         createdAt: Date.now(),
-        role: role || 'employee', // Default to 'employee' if no role provided
       });
     }
 

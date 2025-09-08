@@ -62,9 +62,11 @@ const useSalesComparison = (userId: string | undefined) => {
     const salesCollection = collection(db, 'sales');
 
     const baseQueryToday = [
+      where('userId', '==', userId),
       where('createdAt', '>=', todayStart),
     ];
     const baseQueryYesterday = [
+      where('userId', '==', userId),
       where('createdAt', '>=', yesterdayStart),
       where('createdAt', '<', todayStart),
     ];

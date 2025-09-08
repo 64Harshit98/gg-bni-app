@@ -12,10 +12,7 @@ export interface Item {
   barcode?: string; // Link to ItemGroup. This will be derived from 'Category'
   createdAt: number; // Timestamp
   updatedAt: number; // Timestamp
-  category?: string;
-  hsnSac?: string; // HSN/SAC code
-  gst?: number; // GST percentage
-  unit?: string; // Unit of measure (e.g., Pcs.)
+  // Add any other properties your items might have
 }
 
 export interface ItemGroup {
@@ -64,5 +61,4 @@ export interface SalesItem {
   name: string;
   mrp: number;
   quantity: number;
-  discount: number; // Store as a number (e.g., 10 for 10%)
 }

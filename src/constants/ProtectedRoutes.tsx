@@ -2,7 +2,7 @@
 
 import React from 'react'; // Ensure React is imported
 import { Navigate } from 'react-router-dom';
-import { useAuth } from '../context/auth-context';
+import { useAuth } from '../context/Auth-Context';
 import { ROUTES } from '../constants/routes.constants';
 
 // Update ProtectedRouteProps interface

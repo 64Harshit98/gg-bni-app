@@ -1,4 +1,4 @@
-import { useAuth } from '../context/auth-context';
+import { useAuth } from './Auth-Context';
 import AccessDeniedPage from '../Pages/Unauthorized';
 import { Navigate, Outlet, useMatches } from 'react-router-dom';
 import { ROUTES } from '../constants/routes.constants';

@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { doc, onSnapshot, runTransaction } from 'firebase/firestore';
 import { onAuthStateChanged, type User } from 'firebase/auth';
-import { db, auth } from '../lib/firebase';
+import { db, auth } from '../lib/Firebase';
 // Import your main app's auth context
-import { useAuth as useFullAuth } from '../context/auth-context';
+import { useAuth as useFullAuth } from '../context/Auth-Context';
 
 // --- Authentication Hook (Original) ---
 // This is a standalone hook. We'll use your main app's context instead,

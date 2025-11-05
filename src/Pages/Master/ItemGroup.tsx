@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { ItemGroup } from '../../constants/models';
-import { useDatabase } from '../../context/auth-context';
+import { useDatabase } from '../../context/Auth-Context';
 import { ROUTES } from '../../constants/routes.constants';
 import { CustomButton } from '../../Components';
 import { Variant } from '../../enums';

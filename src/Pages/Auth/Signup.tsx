@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 // db, serverTimestamp, setDoc, and doc are no longer needed here
 import { ROUTES } from '../../constants/routes.constants';
-import { registerUserWithDetails } from '../../lib/auth_operations';
+import { registerUserWithDetails } from '../../lib/AuthOperations';
 
 import { CustomIcon } from '../../Components';
 import { ICONS } from '../../constants/icon.constants';

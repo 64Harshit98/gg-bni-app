@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/auth-context';
-import { getFirestoreOperations } from '../../lib/items_firebase';
+import { useAuth } from '../../context/Auth-Context';
+import { getFirestoreOperations } from '../../lib/ItemsFirebase';
 import type { Item, ItemGroup } from '../../constants/models';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';

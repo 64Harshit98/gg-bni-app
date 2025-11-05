@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../lib/firebase';
-import { useAuth, useDatabase } from '../context/auth-context';
+import { db } from '../lib/Firebase';
+import { useAuth, useDatabase } from '../context/Auth-Context';
 import { collection, query, onSnapshot, where, Timestamp, orderBy } from 'firebase/firestore'; // Added orderBy
 import type { FirestoreError } from 'firebase/firestore';
 import { Spinner } from '../constants/Spinner';

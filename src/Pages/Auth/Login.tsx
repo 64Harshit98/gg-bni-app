@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { loginUser } from '../../lib/auth_operations';
+import { loginUser } from '../../lib/AuthOperations';
 import { ROUTES } from '../../constants/routes.constants';
 
 import { CustomIcon } from '../../Components';

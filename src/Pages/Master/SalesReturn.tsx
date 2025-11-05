@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { db } from '../../lib/firebase';
+import { db } from '../../lib/Firebase';
 import {
   collection,
   query,
@@ -11,7 +11,7 @@ import {
   arrayUnion,
   serverTimestamp,
 } from 'firebase/firestore';
-import { useAuth, useDatabase } from '../../context/auth-context';
+import { useAuth, useDatabase } from '../../context/Auth-Context';
 import { ROUTES } from '../../constants/routes.constants';
 import BarcodeScanner from '../../UseComponents/BarcodeScanner';
 import type { Item, SalesItem as OriginalSalesItem } from '../../constants/models';

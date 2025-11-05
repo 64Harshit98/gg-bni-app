@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { db } from '../../lib/firebase';
+import { db } from '../../lib/Firebase';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 // ✅ CHANGED: Import the new ROLES enum
 import { Permissions, ROLES } from '../../enums';
-import Loading from '../../Pages/Loading/Loading';
+import Loading from '../Loading/Loading';
 import { useNavigate } from 'react-router';
 
 type RolePermissionsMap = Record<string, Permissions[]>;

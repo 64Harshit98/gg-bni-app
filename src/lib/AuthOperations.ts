@@ -1,5 +1,5 @@
 // src/lib/auth_operations.ts
-import { auth } from './firebase'; // Import 'db'
+import { auth } from './Firebase'; // Import 'db'
 import {
   signInWithEmailAndPassword,
   signOut,

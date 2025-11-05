@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { db } from '../../lib/firebase';
+import { db } from '../../lib/Firebase';
 import {
     doc,
     getDocs,
@@ -13,7 +13,7 @@ import {
 import { Spinner } from '../../constants/Spinner';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
-import { useAuth } from '../../context/auth-context';
+import { useAuth } from '../../context/Auth-Context';
 
 // --- (Interface is correct, no changes needed) ---
 export interface PurchaseSettings {

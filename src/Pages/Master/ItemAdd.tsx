@@ -6,10 +6,10 @@ import { CustomButton } from '../../Components';
 import { Variant, State } from '../../enums';
 import * as XLSX from 'xlsx';
 import BarcodeScanner from '../../UseComponents/BarcodeScanner';
-import { useAuth, useDatabase } from '../../context/auth-context';
+import { useAuth, useDatabase } from '../../context/Auth-Context';
 import { Spinner } from '../../constants/Spinner';
 import { Modal } from '../../constants/Modal';
-import { useItemSettings } from '../../context/Settingscontext';
+import { useItemSettings } from '../../context/SettingsContext';
 import { v4 as uuidv4 } from 'uuid';
 
 

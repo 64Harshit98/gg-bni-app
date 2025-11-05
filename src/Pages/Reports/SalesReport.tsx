@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { db } from '../../lib/firebase';
+import { db } from '../../lib/Firebase';
 import {
   collection,
   query,
@@ -8,7 +8,7 @@ import {
   Timestamp,
   orderBy, // Import orderBy
 } from 'firebase/firestore';
-import { useAuth } from '../../context/auth-context';
+import { useAuth } from '../../context/Auth-Context';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 

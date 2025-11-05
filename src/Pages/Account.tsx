@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '../context/auth-context';
-import { logoutUser } from '../lib/auth_operations';
-import { db } from '../lib/firebase';
+import { useAuth } from '../context/Auth-Context';
+import { logoutUser } from '../lib/AuthOperations';
+import { db } from '../lib/Firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { ROUTES } from '../constants/routes.constants';
 import { Permissions } from '../enums';

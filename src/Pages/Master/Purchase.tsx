@@ -2,9 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import type { Item, Purchase as OriginalPurchase, SalesItem } from '../../constants/models';
 import { ROUTES } from '../../constants/routes.constants';
-import { db } from '../../lib/firebase';
+import { db } from '../../lib/Firebase';
 import { collection, serverTimestamp, doc, increment as firebaseIncrement, getDoc, runTransaction, query, where, getDocs } from 'firebase/firestore';
-import { useAuth, useDatabase } from '../../context/auth-context';
+import { useAuth, useDatabase } from '../../context/Auth-Context';
 import BarcodeScanner from '../../UseComponents/BarcodeScanner';
 import PaymentDrawer, { type PaymentCompletionData } from '../../Components/PaymentDrawer';
 import { Modal } from '../../constants/Modal';
@@ -16,7 +16,7 @@ import { generateNextInvoiceNumber } from '../../UseComponents/InvoiceCounter';
 import { Spinner } from '../../constants/Spinner';
 import { FiEdit } from 'react-icons/fi';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
-import { usePurchaseSettings } from '../../context/Settingscontext';
+import { usePurchaseSettings } from '../../context/SettingsContext';
 
 // --- (Interfaces are correct, no changes needed) ---
 interface PurchaseItem extends Omit<SalesItem, 'finalPrice' | 'effectiveUnitPrice' | 'discountPercentage'> {

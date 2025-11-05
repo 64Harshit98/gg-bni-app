@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { db } from '../lib/firebase';
+import { db } from '../lib/Firebase';
 import {
   collection,
   query,
@@ -8,7 +8,7 @@ import {
   Timestamp,
   orderBy,
 } from 'firebase/firestore';
-import { useAuth } from '../context/auth-context';
+import { useAuth } from '../context/Auth-Context';
 import { Line, LineChart, CartesianGrid, YAxis } from 'recharts';
 import {
   Card,

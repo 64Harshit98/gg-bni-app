@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { db } from '../lib/firebase';
+import { db } from '../lib/Firebase';
 import {
   collection,
   query,
@@ -12,7 +12,7 @@ import {
   runTransaction,
   increment,
 } from 'firebase/firestore';
-import { useAuth } from '../context/auth-context';
+import { useAuth } from '../context/Auth-Context';
 import { CustomToggle, CustomToggleItem } from '../Components/CustomToggle';
 import { CustomCard } from '../Components/CustomCard';
 import { CustomButton } from '../Components/CustomButton';

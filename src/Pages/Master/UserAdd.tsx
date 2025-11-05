@@ -4,9 +4,9 @@ import { useNavigate } from 'react-router-dom';
 import { ICONS } from '../../constants/icon.constants';
 import { ROUTES } from '../../constants/routes.constants';
 import { ROLES, Variant } from '../../enums';
-import { useAuth } from '../../context/auth-context';
+import { useAuth } from '../../context/Auth-Context';
 // --- FIX: Import the correct function ---
-import { inviteUser } from '../../lib/auth_operations';
+import { inviteUser } from '../../lib/AuthOperations';
 
 import { CustomIcon } from '../../Components';
 import { FloatingLabelInput } from '../../Components/ui/FloatingLabelInput';

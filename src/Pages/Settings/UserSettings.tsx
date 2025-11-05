@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, getDocs, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
-import { useAuth } from '../../context/auth-context';
+import { db } from '../../lib/Firebase';
+import { useAuth } from '../../context/Auth-Context';
 import { ROUTES } from '../../constants/routes.constants';
 import { Spinner } from '../../constants/Spinner';
 import { Permissions, State, Variant } from '../../enums';

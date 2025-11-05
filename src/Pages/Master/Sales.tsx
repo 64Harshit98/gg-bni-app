@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth, useDatabase } from '../../context/auth-context';
+import { useAuth, useDatabase } from '../../context/Auth-Context';
 import type { Item, SalesItem as OriginalSalesItem } from '../../constants/models';
 import { ROUTES } from '../../constants/routes.constants';
-import { db } from '../../lib/firebase';
+import { db } from '../../lib/Firebase';
 import { collection, serverTimestamp, doc, increment as firebaseIncrement, runTransaction, getDocs, query, where } from 'firebase/firestore';
 import SearchableItemInput from '../../UseComponents/SearchIteminput';
 import BarcodeScanner from '../../UseComponents/BarcodeScanner';
@@ -13,7 +13,7 @@ import { Modal } from '../../constants/Modal';
 import { Permissions, State, Variant } from '../../enums';
 import { CustomButton } from '../../Components';
 import type { User } from '../../Role/permission';
-import { useSalesSettings } from '../../context/Settingscontext'; // <-- Settings context
+import { useSalesSettings } from '../../context/SettingsContext'; // <-- Settings context
 import { Spinner } from '../../constants/Spinner'; // <-- Added Spinner import
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
 import { FiEdit } from 'react-icons/fi';

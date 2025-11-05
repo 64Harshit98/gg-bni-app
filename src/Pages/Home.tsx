@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
-import { db } from '../lib/firebase';
+import { db } from '../lib/Firebase';
 import { doc, getDoc } from 'firebase/firestore';
-import { useAuth } from '../context/auth-context';
+import { useAuth } from '../context/Auth-Context';
 import { AttendancePage } from '../Components/AttendaceCard';
-import { SalesBarChartReport } from '../Components/SBGraph';
-import { SalesCard } from '../Components/SCard';
-import { TopSoldItemsCard } from '../Components/TFCard';
-import { TopSalespersonCard } from '../Components/TSCard';
+import { SalesBarChartReport } from '../Components/SalesBarGraph';
+import { SalesCard } from '../Components/SalesCard';
+import { TopSoldItemsCard } from '../Components/TopFiveItemCard';
+import { TopSalespersonCard } from '../Components/TopSalesCard';
 import ShowWrapper from '../context/ShowWrapper';
 import { Permissions } from '../enums';
 import { FilterControls, FilterProvider } from '../Components/Filter';

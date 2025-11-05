@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { db } from '../lib/firebase'; // Adjust path if needed
+import { db } from '../lib/Firebase'; // Adjust path if needed
 import {
     collection,
     query,
@@ -11,7 +11,7 @@ import {
     updateDoc,
     orderBy // Import orderBy
 } from 'firebase/firestore';
-import { useAuth } from '../context/auth-context'; // Adjust path if needed
+import { useAuth } from '../context/Auth-Context'; // Adjust path if needed
 import { CustomCard } from '../Components/CustomCard'; // Adjust path if needed
 import { Spinner } from '../constants/Spinner'; // Adjust path if needed
 import { Modal } from '../constants/Modal'; // Adjust path if needed

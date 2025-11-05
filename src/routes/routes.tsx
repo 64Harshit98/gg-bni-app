@@ -36,7 +36,7 @@ const Permissionsetting = lazy(() => import('../Pages/Settings/Permissionsetting
 const UnauthorizedPage = lazy(() => import('../Pages/Unauthorized'));
 const SalesSettingsPage = lazy(() => import('../Pages/Settings/SalesSetting'));
 const PurchaseSettingsPage = lazy(() => import('../Pages/Settings/Purchasesetting'));
-const History = lazy(() => import('../UseComponents/historypage'));
+// const History = lazy(() => import('../UseComponents/historypage'));
 const CHome = lazy(() => import('../Catalogue/CHome'));
 const MyShop = lazy(() => import('../Catalogue/MyShop'));
 const UserSetting = lazy(() => import('../Pages/Settings/UserSettings'));
@@ -176,13 +176,13 @@ const router = createBrowserRouter([
           {
             path: ROUTES.PERMSETTING,
             element: <Permissionsetting />,
-            handle: { requiredPermission: Permissions.SetPermissions },
-          },
-          {
-            path: ROUTES.HISTORY,
-            element: <History />,
             handle: { requiredPermission: null },
           },
+          // {
+          //   path: ROUTES.HISTORY,
+          //   element: <History />,
+          //   handle: { requiredPermission: null },
+          // },
           {
             path: ROUTES.SALESETTING,
             element: <SalesSettingsPage />,

@@ -9,7 +9,7 @@ import {
   writeBatch,
   increment as firebaseIncrement,
   arrayUnion,
-  where,
+  serverTimestamp, // <-- Import serverTimestamp
 } from 'firebase/firestore';
 import { useAuth, useDatabase } from '../../context/auth-context';
 import { ROUTES } from '../../constants/routes.constants';
@@ -82,9 +82,10 @@ const PurchaseReturnPage: React.FC = () => {
     const fetchData = async () => {
       setIsLoading(true);
       try {
+        // --- FIX: Use multi-tenant path for 'purchases' ---
         const purchasesQuery = query(
-          collection(db, 'purchases'),
-          where('companyId', '==', currentUser.companyId)
+          collection(db, 'companies', currentUser.companyId, 'purchases')
+          // No 'where' clause for companyId needed
         );
         const [purchasesSnapshot, allItems] = await Promise.all([
           getDocs(purchasesQuery),
@@ -103,7 +104,7 @@ const PurchaseReturnPage: React.FC = () => {
         }
       } catch (err) {
         setError('Failed to load initial data.');
-        console.error(err);
+        console.error("Error fetching data:", err); // This is line 106
       } finally {
         setIsLoading(false);
       }
@@ -139,6 +140,7 @@ const PurchaseReturnPage: React.FC = () => {
       const itemData = item.data || item;
       const quantity = itemData.quantity || 1;
 
+      // Handle both old 'finalPrice' and new 'purchasePrice'
       const unitPrice = itemData.purchasePrice ?? itemData.finalPrice ?? 0;
 
       return {
@@ -240,7 +242,7 @@ const PurchaseReturnPage: React.FC = () => {
   }, [itemsToReturn, newItemsReceived]);
 
   const saveReturnTransaction = async (completionData?: Partial<PaymentCompletionData>) => {
-    if (!currentUser || !selectedPurchase) return;
+    if (!currentUser || !currentUser.companyId || !selectedPurchase) return;
 
     if (modeOfReturn === 'Debit Note' && !supplierNumber) {
       setModal({ type: State.ERROR, message: 'Cannot create Debit Note: Party Number is missing.' });
@@ -248,9 +250,13 @@ const PurchaseReturnPage: React.FC = () => {
     }
 
     setIsLoading(true);
+    const companyId = currentUser.companyId; // Get companyId for all paths
+
     try {
       const batch = writeBatch(db);
-      const purchaseRef = doc(db, 'purchases', selectedPurchase.id);
+      // --- FIX: Use multi-tenant path for 'purchases' ---
+      const purchaseRef = doc(db, 'companies', companyId, 'purchases', selectedPurchase.id);
+
       const originalItemsMap = new Map(selectedPurchase.items.map(item => [item.id, { ...item }]));
 
       itemsToReturn.forEach(returnItem => {
@@ -279,7 +285,7 @@ const PurchaseReturnPage: React.FC = () => {
       const newTotalAmount = newItemsList.reduce((sum, item) => sum + (item.quantity * (item.purchasePrice || 0)), 0);
 
       const returnHistoryRecord = {
-        returnedAt: new Date(),
+        returnedAt: serverTimestamp(), // Use server timestamp
         returnedItems: itemsToReturn.map(({ id, ...item }) => item),
         newItemsReceived: newItemsReceived.map(({ id, ...item }) => item),
         finalBalance,
@@ -294,18 +300,23 @@ const PurchaseReturnPage: React.FC = () => {
       });
 
       itemsToReturn.forEach(item => {
-        batch.update(doc(db, 'items', item.originalItemId), { amount: firebaseIncrement(-item.quantity) });
+        // --- FIX: Use multi-tenant path for 'items' ---
+        batch.update(doc(db, 'companies', companyId, 'items', item.originalItemId), { Stock: firebaseIncrement(-item.quantity) });
       });
       newItemsReceived.forEach(item => {
-        batch.update(doc(db, 'items', item.originalItemId), { amount: firebaseIncrement(item.quantity) });
+        // --- FIX: Use multi-tenant path for 'items' ---
+        batch.update(doc(db, 'companies', companyId, 'items', item.originalItemId), { Stock: firebaseIncrement(item.quantity) });
       });
 
       if (modeOfReturn === 'Debit Note' && finalBalance > 0) {
-        const customerRef = doc(db, 'customers', supplierNumber);
+        // --- FIX: Use multi-tenant path for 'customers' ---
+        const customerRef = doc(db, 'companies', companyId, 'customers', supplierNumber);
         batch.set(customerRef, {
           name: supplierName,
           phone: supplierNumber,
           debitBalance: firebaseIncrement(finalBalance),
+          companyId: companyId,
+          lastUpdatedAt: serverTimestamp()
         }, { merge: true });
       }
 

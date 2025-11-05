@@ -4,9 +4,9 @@ import { db } from '../../lib/firebase';
 import {
   collection,
   query,
-  where,
   getDocs,
   Timestamp,
+  orderBy, // Import orderBy
 } from 'firebase/firestore';
 import { useAuth } from '../../context/auth-context';
 import { jsPDF } from 'jspdf';
@@ -218,10 +218,17 @@ const SalesReport: React.FC = () => {
       return;
     }
 
+    const companyId = currentUser.companyId; // Get companyId
+
     const fetchSales = async () => {
       setIsLoading(true);
       try {
-        const q = query(collection(db, 'sales'), where('companyId', '==', currentUser.companyId));
+        // --- FIX: Use the correct multi-tenant path ---
+        const q = query(
+          collection(db, 'companies', companyId, 'sales'),
+          orderBy('createdAt', 'desc') // Order by, since 'where' is not always used
+        );
+
         const querySnapshot = await getDocs(q);
         const fetchedSales: SaleRecord[] = querySnapshot.docs.map(doc => {
           const data = doc.data();
@@ -236,13 +243,14 @@ const SalesReport: React.FC = () => {
         });
         setSales(fetchedSales);
       } catch (err) {
+        console.error("Error fetching sales:", err); // Log the actual error
         setError('Failed to load sales report.');
       } finally {
         setIsLoading(false);
       }
     };
     fetchSales();
-  }, [currentUser, authLoading]);
+  }, [currentUser, authLoading]); // Re-fetch if currentUser (and thus companyId) changes
 
   const handleDatePresetChange = (preset: string) => {
     setDatePreset(preset);
@@ -288,7 +296,6 @@ const SalesReport: React.FC = () => {
       const key = sortConfig.key;
       const direction = sortConfig.direction === 'asc' ? 1 : -1;
 
-      // ✅ FIX: Added special handling to sort by the total quantity of items.
       if (key === 'items') {
         const totalItemsA = a.items.reduce((sum, item) => sum + item.quantity, 0);
         const totalItemsB = b.items.reduce((sum, item) => sum + item.quantity, 0);
@@ -387,7 +394,7 @@ const SalesReport: React.FC = () => {
             <input type="date" value={customEndDate} onChange={e => { setCustomEndDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border rounded-md" placeholder="End Date" />
           </div>
         </div>
-        <button onClick={handleApplyFilters} className="w-full mt-2 px-3 py-1 bg-blue-600 text-white text-lg font-semibold rounded-lg shadow-sm hover:bg-blue-700 transition">Apply</button>
+        <button onClick={handleApplyFilters} className="w-full mt-2 px-3 py-1 bg-blue-600 text-white text-lg font-semibold rounded-lg shadow-sm hover:bg-blue-7Example">Apply</button>
       </div>
 
       <div className="grid grid-cols-2 gap-2 mb-2">

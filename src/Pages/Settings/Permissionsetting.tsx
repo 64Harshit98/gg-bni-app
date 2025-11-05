@@ -1,13 +1,15 @@
-// src/Pages/Admin/ManagePermissionsPage.tsx
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../../lib/firebase';
-import { collection, getDocs, doc, setDoc } from 'firebase/firestore';
-import { Permissions } from '../../enums';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
+// ✅ CHANGED: Import the new ROLES enum
+import { Permissions, ROLES } from '../../enums';
 import Loading from '../../Pages/Loading/Loading';
 import { useNavigate } from 'react-router';
 
 type RolePermissionsMap = Record<string, Permissions[]>;
+
+// ✅ CHANGED: This is no longer needed
+// const APP_ROLES = ['owner', 'admin', 'member'];
 
 const ManagePermissionsPage: React.FC = () => {
     const [rolePermissions, setRolePermissions] = useState<RolePermissionsMap>({});
@@ -16,36 +18,67 @@ const ManagePermissionsPage: React.FC = () => {
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const navigate = useNavigate();
 
-    const allPermissions = Object.values(Permissions);
+    const allPermissions = useMemo(() => Object.values(Permissions), []);
+
+    // ✅ CHANGED: Create the ROLES array from the enum and memoize it
+    const APP_ROLES = useMemo(() => Object.values(ROLES), []);
 
     useEffect(() => {
-        const fetchPermissions = async () => {
+        const fetchAndEnsurePermissions = async () => {
             try {
-                const permissionsCollectionRef = collection(db, 'permissions');
-                const querySnapshot = await getDocs(permissionsCollectionRef);
+                const permissionsMap: RolePermissionsMap = {};
 
-                const fetchedPermissions: RolePermissionsMap = {};
-                querySnapshot.forEach((doc) => {
-                    let permissionsData = doc.data().allowedPermissions || [];
+                for (const role of APP_ROLES) {
+                    const docRef = doc(db, 'permissions', role);
 
-                    // ✅ ADD THIS SAFETY CHECK
-                    // If the data is a string, try to parse it as a JSON array.
-                    if (typeof permissionsData === 'string') {
-                        try {
-                            permissionsData = JSON.parse(permissionsData);
-                            if (!Array.isArray(permissionsData)) {
-                                permissionsData = []; // Default to empty if not a valid array
+                    // ✅ CHANGED: Use the enum for comparison
+                    if (role === ROLES.OWNER) {
+                        // --- Enforce Owner Permissions ---
+                        permissionsMap[role] = allPermissions;
+
+                        const docSnap = await getDoc(docRef);
+                        const data = docSnap.data()?.allowedPermissions || [];
+
+                        let dbPermissions = data;
+                        if (typeof dbPermissions === 'string') {
+                            try {
+                                dbPermissions = JSON.parse(dbPermissions);
+                            } catch {
+                                dbPermissions = [];
                             }
-                        } catch (e) {
-                            console.warn(`Could not parse 'allowedPermissions' for role ${doc.id}.`, e);
-                            permissionsData = []; // Default to empty on error
+                        }
+
+                        if (!docSnap.exists() || dbPermissions.length !== allPermissions.length) {
+                            await setDoc(docRef, { allowedPermissions: allPermissions });
+                        }
+                    } else {
+                        // --- Fetch or Create Other ROLES ---
+                        const docSnap = await getDoc(docRef);
+
+                        if (docSnap.exists()) {
+                            let permissionsData = docSnap.data().allowedPermissions || [];
+
+                            if (typeof permissionsData === 'string') {
+                                try {
+                                    permissionsData = JSON.parse(permissionsData);
+                                    if (!Array.isArray(permissionsData)) {
+                                        permissionsData = [];
+                                    }
+                                } catch (e) {
+                                    console.warn(`Could not parse 'allowedPermissions' for role ${docSnap.id}.`, e);
+                                    permissionsData = [];
+                                }
+                            }
+                            permissionsMap[role] = permissionsData;
+
+                        } else {
+                            permissionsMap[role] = [];
+                            await setDoc(docRef, { allowedPermissions: [] });
                         }
                     }
+                }
 
-                    fetchedPermissions[doc.id] = permissionsData;
-                });
-
-                setRolePermissions(fetchedPermissions);
+                setRolePermissions(permissionsMap);
             } catch (err) {
                 console.error("Error fetching permissions:", err);
                 setError("Failed to load permissions.");
@@ -54,11 +87,16 @@ const ManagePermissionsPage: React.FC = () => {
             }
         };
 
-        fetchPermissions();
-    }, []);
+        fetchAndEnsurePermissions();
+        // ✅ CHANGED: Add APP_ROLES to the dependency array
+    }, [allPermissions, APP_ROLES]);
 
-    // ... (the rest of your component remains the same)
     const handlePermissionChange = (role: string, permission: Permissions, isChecked: boolean) => {
+        // ✅ CHANGED: Use the enum for comparison
+        if (role === ROLES.OWNER) {
+            return;
+        }
+
         setRolePermissions(prev => {
             const currentPermissions = prev[role] || [];
             if (isChecked) {
@@ -76,6 +114,12 @@ const ManagePermissionsPage: React.FC = () => {
     };
 
     const handleSaveChanges = async (role: string) => {
+        // ✅ CHANGED: Use the enum for comparison
+        if (role === ROLES.OWNER) {
+            setError("Cannot modify owner permissions.");
+            return;
+        }
+
         try {
             setSuccessMessage(null);
             setError(null);
@@ -124,7 +168,7 @@ const ManagePermissionsPage: React.FC = () => {
             {successMessage && <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">{successMessage}</div>}
 
             <div className="space-y-8">
-                {Object.keys(rolePermissions).map((role) => (
+                {APP_ROLES.map((role) => (
                     <div key={role} className="bg-white p-6 rounded-lg shadow-md">
                         <h2 className="text-2xl font-semibold mb-4 capitalize text-gray-700">{role}</h2>
                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -132,18 +176,32 @@ const ManagePermissionsPage: React.FC = () => {
                                 <label key={permission} className="flex items-center space-x-3">
                                     <input
                                         type="checkbox"
-                                        className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
                                         checked={rolePermissions[role]?.includes(permission as Permissions) || false}
                                         onChange={(e) => handlePermissionChange(role, permission as Permissions, e.target.checked)}
+
+                                        // ✅ CHANGED: Use the enum for comparison
+                                        disabled={role === ROLES.OWNER}
                                     />
                                     <span className="text-gray-700">{permission}</span>
                                 </label>
                             ))}
                         </div>
+
+                        {/* ✅ CHANGED: Use the enum for comparison */}
+                        {role === ROLES.OWNER && (
+                            <p className="text-sm text-gray-500 italic mt-4">
+                                The 'owner' role always has all permissions. This cannot be changed.
+                            </p>
+                        )}
+
                         <div className="mt-6 text-right">
                             <button
                                 onClick={() => handleSaveChanges(role)}
-                                className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                                className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+
+                                // ✅ CHANGED: Use the enum for comparison
+                                disabled={role === ROLES.OWNER}
                             >
                                 Save Changes for {role}
                             </button>

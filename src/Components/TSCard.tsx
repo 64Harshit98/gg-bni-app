@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
 import { useAuth, useDatabase } from '../context/auth-context';
-import { collection, query, onSnapshot, where, Timestamp } from 'firebase/firestore';
+import { collection, query, onSnapshot, where, Timestamp, orderBy } from 'firebase/firestore'; // Added orderBy
+import type { FirestoreError } from 'firebase/firestore';
 import { Spinner } from '../constants/Spinner';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { useFilter } from './Filter';
@@ -37,20 +38,24 @@ const useTopSalespeople = () => {
     }
 
     setLoading(true);
+    setError(null); // Reset error on new fetch
     const start = new Date(filters.startDate);
     start.setHours(0, 0, 0, 0);
     const end = new Date(filters.endDate);
     end.setHours(23, 59, 59, 999);
 
+    // --- FIX: Use the correct multi-tenant path ---
     const salesQuery = query(
-      collection(db, 'sales'),
-      where('companyId', '==', currentUser.companyId),
+      collection(db, 'companies', currentUser.companyId, 'sales'),
+      // --- FIX: The 'companyId' where clause is no longer needed ---
       where('createdAt', '>=', start),
-      where('createdAt', '<=', end)
+      where('createdAt', '<=', end),
+      orderBy('createdAt', 'asc') // Add orderBy for consistent query
     );
 
     const unsubscribe = onSnapshot(salesQuery, async (snapshot) => {
       try {
+        // This is correct, as dbOperations is already multi-tenant
         const salesmen = await dbOperations.getSalesmen();
         const salesmanMap = new Map(salesmen.map(s => [s.uid, s.name]));
 
@@ -94,7 +99,7 @@ const useTopSalespeople = () => {
       } finally {
         setLoading(false);
       }
-    }, (err: Error) => {
+    }, (err: FirestoreError) => { // Specify type for err
       console.error('Error fetching sales:', err);
       setError(`Failed to load sales data: ${err.message}`);
       setLoading(false);

@@ -46,7 +46,7 @@ const formatDateForInput = (date: Date): string => {
   return date.toISOString().split('T')[0];
 };
 
-// --- Reusable Components ---
+// --- Reusable Components (Unchanged) ---
 const SummaryCard: React.FC<{ title: string; value: string; note?: string }> = ({ title, value, note }) => (
   <div className="bg-white p-4 rounded-lg shadow-md text-center">
     <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">{title}</h3>
@@ -210,7 +210,7 @@ const PurchaseReport: React.FC = () => {
     setAppliedFilters({ start: start.getTime(), end: end.getTime() });
   }, []);
 
-  // --- FIX 1: Fetch data securely with companyId ---
+  // --- FIX 1: Fetch data securely with companyId AND filters ---
   useEffect(() => {
     if (authLoading) return;
     if (!currentUser?.companyId) {
@@ -218,12 +218,29 @@ const PurchaseReport: React.FC = () => {
       setError('Company information not found. Please log in again.');
       return;
     }
+    // --- FIX: Wait for filters to be applied ---
+    if (!appliedFilters) {
+      setIsLoading(false);
+      setPurchases([]);
+      return;
+    }
+
+    const companyId = currentUser.companyId;
+    // --- FIX: Get dates from appliedFilters ---
+    const start = new Date(appliedFilters.start);
+    const end = new Date(appliedFilters.end);
 
     const fetchPurchases = async () => {
       setIsLoading(true);
+      setError(null);
       try {
-        // Add 'where' clause to filter by companyId
-        const q = query(collection(db, 'purchases'), where('companyId', '==', currentUser.companyId));
+        // --- FIX: Use multi-tenant path and add date filters ---
+        const q = query(
+          collection(db, 'companies', companyId, 'purchases'),
+          where('createdAt', '>=', Timestamp.fromDate(start)),
+          where('createdAt', '<=', Timestamp.fromDate(end))
+          // No 'companyId' where clause needed
+        );
         const querySnapshot = await getDocs(q);
         const fetchedPurchases: PurchaseRecord[] = querySnapshot.docs.map(doc => {
           const data = doc.data();
@@ -238,14 +255,15 @@ const PurchaseReport: React.FC = () => {
         });
         setPurchases(fetchedPurchases);
       } catch (err) {
+        console.error("Error fetching purchases:", err); // Log the actual error
         setError('Failed to load purchase report.');
       } finally {
         setIsLoading(false);
       }
     };
     fetchPurchases();
-    // --- FIX 2: Add currentUser.companyId to dependency array ---
-  }, [currentUser, authLoading]);
+    // --- FIX 2: Add appliedFilters to dependency array ---
+  }, [currentUser, authLoading, appliedFilters]);
 
   const handleDatePresetChange = (preset: string) => {
     setDatePreset(preset);
@@ -283,9 +301,9 @@ const PurchaseReport: React.FC = () => {
       return { filteredPurchases: [], summary: { totalPurchases: 0, totalOrders: 0, totalItemsPurchased: 0, averagePurchaseValue: 0 }, topSuppliers: [], paymentModes: {} };
     }
 
-    const newFilteredPurchases = purchases.filter(p =>
-      p.createdAt >= appliedFilters.start && p.createdAt <= appliedFilters.end
-    );
+    // --- FIX: Date filtering is now done in useEffect query. Remove it from here. ---
+    // --- FIX: Typo s/sales/purchases/ ---
+    let newFilteredPurchases = [...purchases];
 
     newFilteredPurchases.sort((a, b) => {
       const key = sortConfig.key;
@@ -301,6 +319,7 @@ const PurchaseReport: React.FC = () => {
       return 0;
     });
 
+    // (Rest of the summary logic is correct)
     const totalPurchases = newFilteredPurchases.reduce((acc, p) => acc + p.totalAmount, 0);
     const totalItemsPurchased = newFilteredPurchases.reduce((acc, p) => acc + p.items.reduce((iAcc, i) => iAcc + i.quantity, 0), 0);
     const totalOrders = newFilteredPurchases.length;
@@ -331,6 +350,7 @@ const PurchaseReport: React.FC = () => {
   }, [appliedFilters, purchases, sortConfig]);
 
   const downloadAsPdf = () => {
+    // (This function is correct, no changes needed)
     const doc = new jsPDF();
     doc.text('Purchase Report', 20, 10);
     autoTable(doc, {

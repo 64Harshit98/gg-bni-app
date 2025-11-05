@@ -15,32 +15,25 @@ import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
 import { useAuth } from '../../context/auth-context';
 
-// --- MODIFIED: Interface updated for GST ---
+// --- (Interface is correct, no changes needed) ---
 export interface PurchaseSettings {
     companyId?: string;
     settingType?: 'purchase';
-
-    // Replaced enableTax and defaultTaxRate
     gstScheme?: 'regular' | 'composition' | 'none';
-    taxType?: 'inclusive' | 'exclusive'; // This applies to regular AND composition
-
+    taxType?: 'inclusive' | 'exclusive';
     defaultDiscount?: number;
     inputMRP?: boolean;
     zeroValueValidation?: boolean;
     enableBarcodePrinting?: boolean;
     copyVoucherAfterSaving?: boolean;
     roundingOff?: boolean;
-
     voucherName?: string;
     voucherPrefix?: string;
     currentVoucherNumber?: number;
-
     purchaseViewType?: 'card' | 'list';
-
     requireSupplierName?: boolean;
     requireSupplierMobile?: boolean;
 }
-// --- END MODIFICATION ---
 
 const PurchaseSettingsPage: React.FC = () => {
     const navigate = useNavigate();
@@ -54,7 +47,7 @@ const PurchaseSettingsPage: React.FC = () => {
 
     useEffect(() => {
         if (!currentUser?.companyId) {
-            setIsLoading(false);
+            setIsLoading(true); // Keep loading until we have a companyId
             setSettings({});
             console.warn("No currentUser or companyId found. Cannot load purchase settings.");
             return;
@@ -64,8 +57,11 @@ const PurchaseSettingsPage: React.FC = () => {
         const companyId = currentUser.companyId;
 
         const fetchOrCreateSettings = async () => {
-            const settingsCollectionRef = collection(db, 'settings');
-            const q = query(settingsCollectionRef, where('companyId', '==', companyId), where('settingType', '==', 'purchase'));
+            // --- FIX: Use the correct multi-tenant path ---
+            const settingsCollectionRef = collection(db, 'companies', companyId, 'settings');
+
+            // --- FIX: Remove the redundant where('companyId', ...) ---
+            const q = query(settingsCollectionRef, where('settingType', '==', 'purchase'));
 
             try {
                 const querySnapshot = await getDocs(q);
@@ -77,12 +73,11 @@ const PurchaseSettingsPage: React.FC = () => {
                 } else {
                     console.warn(`No purchase settings found for company ${companyId}. Creating defaults.`);
 
-                    // --- MODIFIED: Default settings updated for GST ---
                     const defaultSettings: PurchaseSettings = {
                         companyId: companyId,
                         settingType: 'purchase',
-                        gstScheme: 'regular', // Default to regular
-                        taxType: 'exclusive', // Default to exclusive
+                        gstScheme: 'regular',
+                        taxType: 'exclusive',
                         defaultDiscount: 0,
                         inputMRP: true,
                         zeroValueValidation: true,
@@ -96,10 +91,10 @@ const PurchaseSettingsPage: React.FC = () => {
                         requireSupplierName: true,
                         requireSupplierMobile: false,
                     };
-                    // --- END MODIFICATION ---
 
-                    const predictableDocId = `purchase-${companyId}`;
-                    const newDocRef = doc(db, 'settings', predictableDocId);
+                    const predictableDocId = `purchase-settings`; // Use a predictable ID for settings
+                    // --- FIX: Use the multi-tenant path to create the new doc ---
+                    const newDocRef = doc(db, 'companies', companyId, 'settings', predictableDocId);
                     await setDoc(newDocRef, defaultSettings);
 
                     setSettings(defaultSettings);
@@ -124,15 +119,16 @@ const PurchaseSettingsPage: React.FC = () => {
             setModal({ message: 'Error: Cannot determine user or settings document.', type: State.ERROR });
             return;
         }
-
+        const companyId = currentUser.companyId; // Get companyId for the path
 
         setIsSaving(true);
         try {
-            const docToUpdateRef = doc(db, 'settings', settingsDocId);
+            // --- FIX: Use the correct multi-tenant path to update ---
+            const docToUpdateRef = doc(db, 'companies', companyId, 'settings', settingsDocId);
 
             const settingsToSave = {
                 ...settings,
-                companyId: currentUser.companyId,
+                companyId: companyId, // Ensure companyId is saved
                 settingType: 'purchase'
             };
 
@@ -146,8 +142,8 @@ const PurchaseSettingsPage: React.FC = () => {
         }
     };
 
+    // (handleChange and handleCheckboxChange are correct, no changes needed)
     const handleChange = (field: keyof PurchaseSettings, value: string | number | boolean) => {
-        // --- MODIFIED: Removed defaultTaxRate ---
         if (field === 'defaultDiscount' || field === 'currentVoucherNumber') {
             if (value === '') {
                 setSettings(prev => ({ ...prev, [field]: undefined }));
@@ -185,14 +181,11 @@ const PurchaseSettingsPage: React.FC = () => {
             </div>
 
             <main className="flex-grow p-4 bg-gray-50 w-full overflow-y-auto box-border">
-                {/* --- MODIFIED: Removed card styles from form, added max-w --- */}
                 <form onSubmit={handleSave} className="max-w-3xl mx-auto">
 
                     {/* --- Card 1: Pricing & Tax --- */}
                     <div className="bg-white rounded-lg p-6 shadow-md mb-2">
                         <h2 className="text-lg font-semibold text-gray-800 mb-4">Pricing & Tax</h2>
-
-                        {/* --- MODIFIED: Replaced checkbox with GST Scheme dropdown --- */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                             <div>
                                 <label htmlFor="gst-scheme" className="block text-gray-700 text-sm font-medium mb-1">GST Scheme</label>
@@ -209,7 +202,6 @@ const PurchaseSettingsPage: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* --- MODIFIED: Show this for BOTH regular and composition --- */}
                         {(settings.gstScheme === 'regular' || settings.gstScheme === 'composition') && (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                                 <div>
@@ -224,11 +216,8 @@ const PurchaseSettingsPage: React.FC = () => {
                                         <option value="inclusive">Tax Inclusive (Purchase Price includes GST)</option>
                                     </select>
                                 </div>
-                                {/* --- MODIFIED: Removed Default Tax Rate input --- */}
                             </div>
                         )}
-                        {/* --- END MODIFICATION --- */}
-
                         <div className="flex items-center mb-4">
                             <input type="checkbox" id="rounding-off"
                                 checked={settings.roundingOff ?? false}

@@ -1,70 +1,79 @@
 // src/lib/auth_operations.ts
-import { auth, db } from './firebase'; // Import 'db' for Firestore
-import { doc, setDoc } from 'firebase/firestore'; // Import Firestore functions
+import { auth } from './firebase'; // Import 'db'
 import {
-  createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
   sendPasswordResetEmail,
 } from 'firebase/auth';
 import type { User } from 'firebase/auth';
-import { FirebaseError } from 'firebase/app'; // FIX: Import FirebaseError
+import { FirebaseError } from 'firebase/app';
 import type { ROLES } from '../enums';
-import { companyId } from '../UseComponents/CompanyCounter';
+// Import the functions client
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 /**
- * Creates a new user in Firebase Auth and a corresponding
- * document in Firestore with their name and email.
- * @param name The user's name.
- * @param email User's email address.
- * @param password User's password.
- * @returns Promise that resolves with the User object.
+ * Registers a new company and user by calling the secure Cloud Function.
  */
 export const registerUserWithDetails = async (
   name: string,
-  phoneNumber: string, // Changed to phoneNumber
+  phoneNumber: string,
   email: string,
   password: string,
-  role: ROLES
-): Promise<User> => {
+  role: ROLES,
+  businessData: any // Pass business data
+): Promise<any> => {
   try {
-    // 1. Create the user in Firebase Authentication
-    const userCredential = await createUserWithEmailAndPassword(
-      auth,
+    // 1. Get a reference to the Cloud Function
+    const functions = getFunctions();
+    const registerCompanyAndUser = httpsCallable(functions, 'registerCompanyAndUser');
+
+    // 2. Call the function with all the form data
+    const result = await registerCompanyAndUser({
+      name,
+      phoneNumber,
       email,
       password,
-    );
-    const user = userCredential.user;
-    const newCompanyId = await companyId();
+      role,
+      businessData: businessData // Pass it to the function
+    });
 
-    // 2. Immediately create a user document in Firestore
-    if (user.uid) {
-      const userRef = doc(db, 'users', user.uid);
-      await setDoc(userRef, {
-        name: name,
-        phoneNumber: phoneNumber, // Store phone number
-        email: user.email,
-        createdAt: Date.now(),
-        role: role || 'employee', // Default to 'employee' if no role provided
-        companyId: newCompanyId,
-      });
-    }
+    // 3. Return the successful result
+    return result.data;
 
-    return user;
-  } catch (error: unknown) {
-    // FIX: Use unknown and type check
-    if (error instanceof FirebaseError) {
-      console.error(
-        'Error during user registration:',
-        error.code,
-        error.message,
-      );
-      throw new Error(getFriendlyErrorMessage(error.code));
-    }
-    throw new Error('An unexpected error occurred during registration.');
+  } catch (error: any) {
+    console.error('Error calling registration function:', error);
+    // 'error.message' will now contain the friendly message from the Cloud Function
+    throw new Error(error.message || 'An unexpected error occurred during registration.');
   }
 };
 
+
+export const inviteUser = async (
+  fullName: string,
+  phoneNumber: string,
+  email: string,
+  password: string,
+  role: ROLES
+): Promise<{ status: string; userId: string }> => {
+  try {
+    const functions = getFunctions();
+    const inviteUserToCompany = httpsCallable(functions, 'inviteUserToCompany');
+
+    const result = await inviteUserToCompany({
+      fullName,
+      phoneNumber,
+      email,
+      password,
+      role,
+    });
+
+    return result.data as { status: string; userId: string };
+
+  } catch (error: any) {
+    console.error('Error calling invite user function:', error);
+    throw new Error(error.message || 'An unexpected error occurred during registration.');
+  }
+};
 /**
  * Logs in an existing user with email and password.
  * @param email User's email address.

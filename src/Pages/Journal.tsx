@@ -8,7 +8,6 @@ import {
   Timestamp,
   QuerySnapshot,
   doc,
-  where,
   type DocumentData,
   runTransaction,
   increment,
@@ -43,8 +42,8 @@ interface Invoice {
   createdAt: Date;
   dueAmount?: number;
   items?: InvoiceItem[];
-  paymentMethods?: DocumentData; // FIX: Made this property optional to match the Modal's type
-  salesmanId?: string | null; // Added for edit functionality
+  paymentMethods?: DocumentData;
+  salesmanId?: string | null;
 }
 
 const formatDate = (date: Date): string => {
@@ -70,8 +69,10 @@ const useJournalData = (companyId?: string) => {
       return;
     }
 
-    const salesQuery = query(collection(db, 'sales'), where('companyId', '==', companyId));
-    const purchasesQuery = query(collection(db, 'purchases'), where('companyId', '==', companyId));
+    // --- FIX: Point to the new, multi-tenant paths ---
+    // We no longer need where('companyId', '==', companyId)
+    const salesQuery = query(collection(db, 'companies', companyId, 'sales'));
+    const purchasesQuery = query(collection(db, 'companies', companyId, 'purchases'));
 
     const processSnapshot = (snapshot: QuerySnapshot, type: 'Credit' | 'Debit'): Invoice[] => {
       return snapshot.docs.map((doc) => {
@@ -263,14 +264,23 @@ const Journal: React.FC = () => {
   const confirmDeleteInvoice = async () => {
     if (!invoiceToDelete || !invoiceToDelete.items) return;
 
+    // --- FIX: Need companyId to build the correct paths ---
+    if (!currentUser?.companyId) {
+      setModal({ message: "Error: No company ID found. Cannot delete.", type: State.ERROR });
+      return;
+    }
+    const companyId = currentUser.companyId;
+
     const collectionName = invoiceToDelete.type === 'Credit' ? 'sales' : 'purchases';
-    const invoiceDocRef = doc(db, collectionName, invoiceToDelete.id);
+    // --- FIX: Use multi-tenant path for the invoice ---
+    const invoiceDocRef = doc(db, 'companies', companyId, collectionName, invoiceToDelete.id);
 
     try {
       await runTransaction(db, async (transaction) => {
         for (const item of invoiceToDelete.items!) {
           if (item.id && item.quantity > 0) {
-            const itemDocRef = doc(db, 'items', item.id);
+            // --- FIX: Use multi-tenant path for the item ---
+            const itemDocRef = doc(db, 'companies', companyId, 'items', item.id);
             const stockChange = invoiceToDelete.type === 'Credit' ? item.quantity : -item.quantity;
             transaction.update(itemDocRef, { stock: increment(stockChange) });
           }
@@ -308,13 +318,23 @@ const Journal: React.FC = () => {
   const handlePurchaseReturn = (invoice: Invoice) => {
     navigate(`${ROUTES.PURCHASE_RETURN}`, { state: { invoiceData: invoice } });
   };
+
   const openPaymentModal = (invoice: Invoice) => {
     setSelectedInvoice(invoice);
     setIsModalOpen(true);
   };
+
   const handleSettlePayment = async (invoice: Invoice, amount: number, method: string) => {
+    // --- FIX: Need companyId to build the correct path ---
+    if (!currentUser?.companyId) {
+      throw new Error("No company ID found. Cannot settle payment.");
+    }
+    const companyId = currentUser.companyId;
+
     const collectionName = invoice.type === 'Credit' ? 'sales' : 'purchases';
-    const docRef = doc(db, collectionName, invoice.id);
+    // --- FIX: Use multi-tenant path for the invoice ---
+    const docRef = doc(db, 'companies', companyId, collectionName, invoice.id);
+
     await runTransaction(db, async (transaction) => {
       const sfDoc = await transaction.get(docRef);
       if (!sfDoc.exists()) throw "Document does not exist!";

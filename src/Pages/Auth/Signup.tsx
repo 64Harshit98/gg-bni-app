@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { db } from '../../lib/firebase';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+// db, serverTimestamp, setDoc, and doc are no longer needed here
 import { ROUTES } from '../../constants/routes.constants';
 import { registerUserWithDetails } from '../../lib/auth_operations';
 
@@ -15,7 +14,7 @@ const OwnerInfoPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const combinedData = location.state;
+  const combinedData = location.state; // Business info from previous step
 
   const [ownerName, setOwnerName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -37,24 +36,30 @@ const OwnerInfoPage: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      const user = await registerUserWithDetails(ownerName, phoneNumber, email, password, ROLES.OWNER);
-
+      // Pass all data to the auth operations function
+      // The Cloud Function will handle all database writes
       const finalBusinessData = {
         ...combinedData,
-        ownerUID: user.uid,
         ownerName: ownerName,
         phoneNumber: phoneNumber,
         ownerEmail: email,
-        createdAt: serverTimestamp(),
       };
 
-      const docRef = doc(db, 'business_info', user.uid);
-      await setDoc(docRef, finalBusinessData);
+      await registerUserWithDetails(
+        ownerName,
+        phoneNumber,
+        email,
+        password,
+        ROLES.OWNER,
+        finalBusinessData
+      );
 
+      // Success! The Cloud Function did all the work.
       navigate(ROUTES.HOME);
 
     } catch (err: any) {
       console.error("Registration failed:", err);
+      // The error message will come directly from the Cloud Function
       setError(err.message || "An unexpected error occurred. Please try again.");
     } finally {
       setIsSubmitting(false);

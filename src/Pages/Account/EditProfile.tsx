@@ -24,13 +24,15 @@ interface ProfileData {
 }
 
 // --- Custom Hook to manage all profile data ---
-const useProfileData = (userId?: string) => {
+// --- FIX: Hook now accepts companyId ---
+const useProfileData = (userId?: string, companyId?: string) => {
   const [profile, setProfile] = useState<Partial<ProfileData>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!userId) {
+    // --- FIX: Wait for both userId AND companyId ---
+    if (!userId || !companyId) {
       setLoading(false);
       return;
     }
@@ -38,8 +40,10 @@ const useProfileData = (userId?: string) => {
     const fetchProfileData = async () => {
       setLoading(true);
       try {
-        const userDocRef = doc(db, 'users', userId);
-        const businessDocRef = doc(db, 'business_info', userId);
+        // --- FIX: Use correct multi-tenant paths ---
+        const userDocRef = doc(db, 'companies', companyId, 'users', userId);
+        // As per our Cloud Function, the business_info doc ID is the companyId
+        const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
 
         const [userDocSnap, businessDocSnap] = await Promise.all([
           getDoc(userDocRef),
@@ -59,18 +63,19 @@ const useProfileData = (userId?: string) => {
     };
 
     fetchProfileData();
-  }, [userId]);
+  }, [userId, companyId]); // --- FIX: Add companyId to dependency array ---
 
   const saveData = async (data: Partial<ProfileData>) => {
-    if (!userId || !auth.currentUser) {
-      throw new Error("User is not authenticated.");
+    // --- FIX: Check for companyId ---
+    if (!userId || !companyId || !auth.currentUser) {
+      throw new Error("User or company is not authenticated.");
     }
 
     const { name, email, ...businessData } = data;
 
-    // Prepare update promises
-    const userDocRef = doc(db, 'users', userId);
-    const businessDocRef = doc(db, 'business_info', userId);
+    // --- FIX: Use correct multi-tenant paths ---
+    const userDocRef = doc(db, 'companies', companyId, 'users', userId);
+    const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
 
     const promises = [];
 
@@ -82,7 +87,7 @@ const useProfileData = (userId?: string) => {
     // 2. Update 'users' collection
     promises.push(setDoc(userDocRef, { name: name }, { merge: true }));
 
-    // 3. Update 'business_info' collection, now including the owner's name
+    // 3. Update 'business_info' collection
     promises.push(setDoc(businessDocRef, { ...businessData, ownerName: name, updatedAt: serverTimestamp() }, { merge: true }));
 
     await Promise.all(promises);
@@ -96,7 +101,9 @@ const useProfileData = (userId?: string) => {
 const EditProfilePage: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
-  const { profile, loading: dataLoading, error: dataError, saveData } = useProfileData(currentUser?.uid);
+
+  // --- FIX: Pass companyId to the hook ---
+  const { profile, loading: dataLoading, error: dataError, saveData } = useProfileData(currentUser?.uid, currentUser?.companyId);
 
   const [formData, setFormData] = useState<Partial<ProfileData>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);

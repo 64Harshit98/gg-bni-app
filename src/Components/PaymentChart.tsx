@@ -7,7 +7,9 @@ import {
     onSnapshot,
     Timestamp,
     where,
+    orderBy // <-- Import orderBy
 } from 'firebase/firestore';
+import type { FirestoreError } from 'firebase/firestore'; // Import FirestoreError
 import { Spinner } from '../constants/Spinner';
 import {
     Card,
@@ -52,11 +54,13 @@ const usePaymentData = () => {
         const end = new Date(filters.endDate);
         end.setHours(23, 59, 59, 999);
 
+        // --- FIX: Use the correct multi-tenant path ---
         const salesQuery = query(
-            collection(db, 'sales'),
-            where('companyId', '==', currentUser.companyId),
+            collection(db, 'companies', currentUser.companyId, 'sales'),
+            // --- FIX: The 'companyId' where clause is no longer needed ---
             where('createdAt', '>=', start),
-            where('createdAt', '<=', end)
+            where('createdAt', '<=', end),
+            orderBy('createdAt', 'asc') // Add orderBy for query consistency
         );
 
         const unsubscribe = onSnapshot(salesQuery, (snapshot) => {
@@ -81,14 +85,14 @@ const usePaymentData = () => {
 
             setPaymentData(paymentTotals);
             setLoading(false);
-        }, (err: Error) => {
+        }, (err: FirestoreError) => { // Use typed error
             console.error('Error fetching payment data:', err);
             setError(`Failed to load payment data: ${err.message}`);
             setLoading(false);
         });
 
         return () => unsubscribe();
-    }, [currentUser, filters]);
+    }, [currentUser, filters]); // 'currentUser' is correct, it contains companyId
 
     return { paymentData, loading, error };
 };

@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { db } from '../../lib/firebase';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+// --- No 'db', 'doc', 'setDoc' imports needed! The Cloud Function does it. ---
 import { ICONS } from '../../constants/icon.constants';
 import { ROUTES } from '../../constants/routes.constants';
 import { ROLES, Variant } from '../../enums';
 import { useAuth } from '../../context/auth-context';
-import { registerUserWithDetails } from '../../lib/auth_operations';
+// --- FIX: Import the correct function ---
+import { inviteUser } from '../../lib/auth_operations';
 
 import { CustomIcon } from '../../Components';
 import { FloatingLabelInput } from '../../Components/ui/FloatingLabelInput';
@@ -46,35 +46,36 @@ const UserAdd: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      const newUserAuth = await registerUserWithDetails(fullName.trim(), phoneNumber.trim(), email.trim(), password, role);
+      // --- FIX: Call 'inviteUser' ---
+      // This is the correct function for this page.
+      await inviteUser(
+        fullName.trim(),
+        phoneNumber.trim(),
+        email.trim(),
+        password,
+        role
+      );
 
-      const finalUserData = {
-        name: fullName.trim(),
-        phoneNumber: phoneNumber.trim(),
-        email: email.trim(), // Corrected 'Email' to 'email' for consistency
-        role: role,
-        createdAt: serverTimestamp(),
-        companyId: currentUser.companyId,
-      };
-
-      const docRef = doc(db, 'users', newUserAuth.uid);
-      await setDoc(docRef, finalUserData);
+      // --- All client-side Firestore code is removed (it's insecure) ---
 
       setSuccess(`User "${fullName.trim()}" created successfully!`);
 
+      // Reset form
+      setFullName('');
+      setPhoneNumber('');
+      setEmail('');
+      setPassword('');
+
       setTimeout(() => {
+        setSuccess(null);
         navigate(ROUTES.MASTERS);
       }, 2000);
 
     } catch (err: any) {
       console.error("User creation failed:", err);
-      if (err.code === 'auth/email-already-in-use') {
-        setError('This email address is already in use by another account.');
-      } else if (err.code === 'auth/weak-password') {
-        setError('The password must be at least 6 characters long.');
-      } else {
-        setError(err.message || "An unexpected error occurred. Please try again.");
-      }
+      // The error message (e.g., "This email is already registered")
+      // will come directly from your Cloud Function.
+      setError(err.message || "An unexpected error occurred. Please try again.");
     } finally {
       setIsSubmitting(false);
     }

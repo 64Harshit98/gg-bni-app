@@ -27,23 +27,30 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
       try {
         if (firebaseUser) {
-          // If a user is logged in, fetch their profile from Firestore
-          const userDocRef = doc(db, 'users', firebaseUser.uid);
-          const businessDocRef = doc(db, 'business_info', firebaseUser.uid);
+          // --- Multi-Tenant Authentication Flow ---
 
-          const userDoc = await getDoc(userDocRef);
-          const businessDoc = await getDoc(businessDocRef);
+          // 1. Get the user's ID token to read their custom claims
+          const idTokenResult = await firebaseUser.getIdTokenResult();
+          const companyId = idTokenResult.claims.companyId as string | undefined;
 
-          let docData: { [key: string]: any } | undefined;
-
-          if (userDoc.exists()) {
-            docData = userDoc.data();
-          } else if (businessDoc.exists()) {
-            docData = businessDoc.data();
+          // 2. Check if the user has a companyId claim.
+          if (!companyId) {
+            // This user is authenticated but not part of a company.
+            // This is an error state in a multi-tenant app.
+            console.error("Auth Error: User is authenticated but has no companyId claim.");
+            setAuthState({ status: 'unauthenticated', user: null });
+            setDbOperations(null);
+            return; // Stop execution
           }
 
-          if (docData) {
-            // Fetch role-based permissions
+          // 3. Now that you have the companyId, build the CORRECT path to the user's profile
+          const userDocRef = doc(db, 'companies', companyId, 'users', firebaseUser.uid);
+          const userDoc = await getDoc(userDocRef);
+
+          if (userDoc.exists()) {
+            const docData = userDoc.data();
+
+            // 4. Fetch role-based permissions (this path is global and correct)
             let permissions: Permissions[] = [];
             if (docData.role) {
               const permissionDocRef = doc(db, 'permissions', docData.role);
@@ -53,26 +60,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               }
             }
 
-            // Construct the complete user object
+            // 5. Construct the complete user object
             const userData: User = {
               uid: firebaseUser.uid,
-              name: firebaseUser.displayName || docData.name || docData.ownerName || 'Anonymous',
+              name: firebaseUser.displayName || docData.name || 'Anonymous',
               role: docData.role,
               permissions: permissions,
-              companyId: docData.companyId || '',
+              companyId: companyId, // Use the trusted companyId from the token
             };
 
-            // If companyId exists, initialize DB operations and set state to authenticated
-            if (userData.companyId) {
-              setDbOperations(getFirestoreOperations(userData.companyId));
-              setAuthState({ status: 'authenticated', user: userData });
-            } else {
-              console.error("Auth Error: User is authenticated but no companyId was found.");
-              setAuthState({ status: 'unauthenticated', user: null });
-              setDbOperations(null);
-            }
+            // 6. Set state to authenticated
+            setDbOperations(getFirestoreOperations(userData.companyId));
+            setAuthState({ status: 'authenticated', user: userData });
+
           } else {
-            console.error("User document not found in Firestore for UID:", firebaseUser.uid);
+            // This error means the user has a claim but no matching Firestore document.
+            console.error("User document not found at path:", userDocRef.path);
             setAuthState({ status: 'unauthenticated', user: null });
             setDbOperations(null);
           }
@@ -82,6 +85,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setDbOperations(null);
         }
       } catch (error) {
+        // This will catch Firestore permission errors or other network issues.
         console.error("Error during authentication check:", error);
         setAuthState({ status: 'unauthenticated', user: null });
         setDbOperations(null);
@@ -90,7 +94,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     // Cleanup subscription on unmount
     return () => unsubscribe();
-  }, []);
+  }, []); // Empty dependency array ensures this runs once on mount
 
   // Memoize the context value to prevent unnecessary re-renders
   const authValue = useMemo(() => ({

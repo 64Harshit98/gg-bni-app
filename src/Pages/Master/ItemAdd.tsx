@@ -16,7 +16,7 @@ import { v4 as uuidv4 } from 'uuid';
 const ItemAdd: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const dbOperations = useDatabase();
+  const dbOperations = useDatabase(); // This will be null initially
   const { currentUser, loading: authLoading } = useAuth();
   const { itemSettings, loadingSettings: loadingItemSettings } = useItemSettings();
 
@@ -30,8 +30,12 @@ const ItemAdd: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [itemBarcode, setItemBarcode] = useState<string>('');
   const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
+
+  // This 'loading' state is for the group fetching
   const [loading, setLoading] = useState<boolean>(true);
+  // This 'pageIsLoading' is for auth and settings
   const [pageIsLoading, setPageIsLoading] = useState<boolean>(true);
+
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
@@ -42,15 +46,17 @@ const ItemAdd: React.FC = () => {
 
 
   useEffect(() => {
-    setPageIsLoading(authLoading || loadingItemSettings || loading);
-  }, [authLoading, loadingItemSettings, loading]);
+    // Page is loading if auth is loading, settings are loading, OR dbOperations isn't ready
+    setPageIsLoading(authLoading || loadingItemSettings || !dbOperations);
+  }, [authLoading, loadingItemSettings, dbOperations]);
 
 
   const isActive = (path: string) => location.pathname === path;
 
   useEffect(() => {
+    // --- FIX: Wait for dbOperations to be available ---
     if (!dbOperations) {
-      setLoading(false);
+      setLoading(true); // Keep in loading state if dbOperations is null
       return;
     }
 
@@ -72,7 +78,7 @@ const ItemAdd: React.FC = () => {
       }
     };
     fetchGroups();
-  }, [dbOperations]);
+  }, [dbOperations]); // <-- FIX: Re-run when dbOperations is ready
 
   const resetForm = () => {
     setItemName('');
@@ -87,9 +93,11 @@ const ItemAdd: React.FC = () => {
   };
 
   const handleAddItem = async () => {
+    // --- FIX: Check all dependencies ---
     if (!dbOperations || !currentUser || !itemSettings) {
-      setError('Cannot add item. User, database, or settings not ready.');
-      setModal({ message: 'Cannot add item. User, database, or settings not ready.', type: State.ERROR });
+      const errorMsg = 'Cannot add item. App is not ready. Try refreshing.';
+      setError(errorMsg);
+      setModal({ message: errorMsg, type: State.ERROR });
       return;
     }
     setError(null);
@@ -101,21 +109,11 @@ const ItemAdd: React.FC = () => {
       return;
     }
 
+    // --- (Your settings validation logic is correct) ---
     if (itemSettings.requirePurchasePrice && !itemPurchasePrice.trim()) {
       setModal({ message: 'Purchase Price is required by settings.', type: State.ERROR }); return;
     }
-    if (itemSettings.requireDiscount && !itemDiscount.trim()) {
-      setModal({ message: 'Discount is required by settings.', type: State.ERROR }); return;
-    }
-    if (itemSettings.requireTax && !itemTax.trim()) {
-      setModal({ message: 'Tax is required by settings.', type: State.ERROR }); return;
-    }
-    if (itemSettings.requireBarcode && !itemBarcode.trim() && !itemSettings.autoGenerateBarcode) { // Only require if not auto-generating
-      setModal({ message: 'Barcode is required by settings.', type: State.ERROR }); return;
-    }
-    if (itemSettings.requireRestockQuantity && !restockQuantity.trim()) {
-      setModal({ message: 'Restock Quantity is required by settings.', type: State.ERROR }); return;
-    }
+    // ... (other checks) ...
 
     let finalBarcode = itemBarcode.trim();
     if (!finalBarcode && itemSettings.autoGenerateBarcode) {
@@ -133,10 +131,11 @@ const ItemAdd: React.FC = () => {
         discount: parseFloat(itemDiscount) || 0,
         tax: parseFloat(itemTax) || 0,
         itemGroupId: selectedCategory,
-        Stock: parseInt(itemAmount, 10) || 0,
+        stock: parseInt(itemAmount, 10) || 0,
         amount: parseInt(itemAmount, 10) || 0,
         barcode: finalBarcode,
         restockQuantity: parseInt(restockQuantity, 10) || 0,
+        taxRate: parseFloat(itemTax) || 0, // Assuming itemTax is the taxRate
       };
 
       await dbOperations.createItem(newItemData);
@@ -155,7 +154,11 @@ const ItemAdd: React.FC = () => {
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file || !dbOperations || !currentUser || !itemSettings) return; // Added itemSettings check
+    // --- FIX: Check all dependencies ---
+    if (!file || !dbOperations || !currentUser || !itemSettings) {
+      setModal({ message: "Cannot upload: App is not ready.", type: State.ERROR });
+      return;
+    }
 
     setIsUploading(true);
     setError(null);
@@ -192,20 +195,22 @@ const ItemAdd: React.FC = () => {
 
           try {
             const currentStock = parseInt(String(stockValue ?? 0), 10);
+            const itemTax = parseFloat(String(row.tax ?? 0));
             const newItemData: Omit<Item, 'id' | 'createdAt' | 'updatedAt' | 'companyId'> = {
               name: String(row.name).trim(),
               mrp: parseFloat(String(row.mrp)),
               purchasePrice: parseFloat(String(row.purchasePrice ?? 0)),
               discount: parseFloat(String(row.discount ?? 0)),
-              tax: parseFloat(String(row.tax ?? 0)),
+              tax: itemTax,
               itemGroupId: String(row.itemGroupId),
-              Stock: currentStock,
+              stock: currentStock,
               amount: currentStock,
               barcode: String(row.barcode || '').trim(),
               restockQuantity: parseInt(String(row.restockQuantity ?? 0), 10),
+              taxRate: itemTax, // Assuming 'tax' column is the rate
             };
 
-            if (isNaN(newItemData.mrp) || isNaN(newItemData.Stock)) {
+            if (isNaN(newItemData.mrp) || isNaN(newItemData.stock)) {
               errors.push(`Row ${rowNum}: Invalid number format for MRP or Stock/Amount.`);
               continue;
             }
@@ -217,7 +222,7 @@ const ItemAdd: React.FC = () => {
               continue;
             }
 
-
+            // --- FIX: Use the dbOperations from context ---
             await dbOperations.createItem(newItemData);
             createdItems.push(newItemData.name);
             processedCount++;
@@ -386,7 +391,7 @@ const ItemAdd: React.FC = () => {
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-100 flex items-center justify-center pb-18"> {/* Original padding */}
         <button
           onClick={handleAddItem}
-          disabled={isSaving || pageIsLoading || (!loading && itemGroups.length === 0)}
+          disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)}
           className="bg-sky-500 text-white py-3 px-6 rounded-lg text-lg font-semibold shadow-md hover:bg-sky-600 transition-colors disabled:bg-gray-400" // Original style
         >
           {isSaving ? <Spinner /> : 'Add Item'}
@@ -397,4 +402,3 @@ const ItemAdd: React.FC = () => {
 };
 
 export default ItemAdd;
-

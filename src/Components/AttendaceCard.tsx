@@ -2,8 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { doc, onSnapshot, runTransaction } from 'firebase/firestore';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { db, auth } from '../lib/firebase';
+// Import your main app's auth context
+import { useAuth as useFullAuth } from '../context/auth-context';
 
-// --- Authentication Hook ---
+// --- Authentication Hook (Original) ---
+// This is a standalone hook. We'll use your main app's context instead,
+// but this hook is fine if used elsewhere.
 export const useAuth = () => {
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
@@ -19,7 +23,7 @@ export const useAuth = () => {
     return { user, loading };
 };
 
-// --- Helper Functions ---
+// --- Helper Functions (Unchanged) ---
 const formatTime = (date: Date | null): string => {
     if (!date) return '---';
     return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
@@ -32,7 +36,7 @@ const formatElapsedTime = (totalSeconds: number): string => {
     return `${hours}:${minutes}:${seconds}`;
 };
 
-// --- Data Types and Interfaces ---
+// --- Data Types and Interfaces (Unchanged) ---
 interface LogEntry {
     checkIn: Date;
     checkOut: Date | null;
@@ -42,11 +46,11 @@ interface AttendanceDoc {
     userId: string;
     date: string;
     status: 'Checked In' | 'Checked Out';
-    lastCheckInTime: number | null; // Storing Date.now() for accurate calculations
+    lastCheckInTime: number | null;
     totalElapsedTime: number;
     log: {
-        checkIn: number; // Storing client-side time as a timestamp
-        checkOut: number | null; // Storing client-side time as a timestamp
+        checkIn: number;
+        checkOut: number | null;
     }[];
 }
 
@@ -62,7 +66,8 @@ interface UseAttendanceReturn {
 }
 
 // --- Core Attendance Logic Hook ---
-export const useAttendance = (userId?: string): UseAttendanceReturn => {
+// Pass in both userId and companyId
+export const useAttendance = (userId?: string, companyId?: string): UseAttendanceReturn => {
     const [loading, setLoading] = useState(true);
     const [status, setStatus] = useState<'Checked In' | 'Checked Out'>('Checked Out');
     const [checkInTime, setCheckInTime] = useState<Date | null>(null);
@@ -73,7 +78,8 @@ export const useAttendance = (userId?: string): UseAttendanceReturn => {
     const [lastCheckInTime, setLastCheckInTime] = useState<Date | null>(null);
 
     useEffect(() => {
-        if (!userId) {
+        // Wait for both userId AND companyId
+        if (!userId || !companyId) {
             setLoading(false);
             return;
         }
@@ -81,7 +87,9 @@ export const useAttendance = (userId?: string): UseAttendanceReturn => {
         setLoading(true);
         const today = new Date().toISOString().split('T')[0];
         const documentId = `${userId}_${today}`;
-        const docRef = doc(db, 'attendance', documentId);
+
+        // --- FIX: Use the correct multi-tenant path ---
+        const docRef = doc(db, 'companies', companyId, 'attendance', documentId);
 
         const unsubscribe = onSnapshot(docRef, (docSnap) => {
             if (docSnap.exists()) {
@@ -103,6 +111,7 @@ export const useAttendance = (userId?: string): UseAttendanceReturn => {
                 setBaseElapsedTime(data.totalElapsedTime || 0);
                 setLastCheckInTime(data.status === 'Checked In' && data.lastCheckInTime ? new Date(data.lastCheckInTime) : null);
             } else {
+                // No document yet, set to default state
                 setStatus('Checked Out'); setCheckInTime(null); setCheckOutTime(null);
                 setBaseElapsedTime(0); setLastCheckInTime(null); setLog([]);
             }
@@ -112,8 +121,9 @@ export const useAttendance = (userId?: string): UseAttendanceReturn => {
         });
 
         return () => unsubscribe();
-    }, [userId]);
+    }, [userId, companyId]); // Add companyId to dependency array
 
+    // Timer effect (unchanged)
     useEffect(() => {
         let intervalId: NodeJS.Timeout;
         if (status === 'Checked In' && lastCheckInTime) {
@@ -129,10 +139,13 @@ export const useAttendance = (userId?: string): UseAttendanceReturn => {
     }, [status, baseElapsedTime, lastCheckInTime]);
 
     const handleCheckIn = async () => {
-        if (!userId) return;
+        if (!userId || !companyId) return;
+
         setLoading(true);
         const today = new Date().toISOString().split('T')[0];
-        const docRef = doc(db, 'attendance', `${userId}_${today}`);
+
+        // --- FIX: Use the correct multi-tenant path ---
+        const docRef = doc(db, 'companies', companyId, 'attendance', `${userId}_${today}`);
 
         try {
             await runTransaction(db, async (transaction) => {
@@ -151,6 +164,7 @@ export const useAttendance = (userId?: string): UseAttendanceReturn => {
                         lastCheckInTime: checkInTimestamp,
                         totalElapsedTime: 0,
                         log: [newLogEntry],
+                        companyId: companyId, // Store companyId for good practice
                     });
                 } else {
                     const data = docSnap.data() as AttendanceDoc;
@@ -173,10 +187,13 @@ export const useAttendance = (userId?: string): UseAttendanceReturn => {
     };
 
     const handleCheckOut = async () => {
-        if (!userId) return;
+        if (!userId || !companyId) return;
+
         setLoading(true);
         const today = new Date().toISOString().split('T')[0];
-        const docRef = doc(db, 'attendance', `${userId}_${today}`);
+
+        // --- FIX: Use the correct multi-tenant path ---
+        const docRef = doc(db, 'companies', companyId, 'attendance', `${userId}_${today}`);
 
         try {
             await runTransaction(db, async (transaction) => {
@@ -224,7 +241,7 @@ export const useAttendance = (userId?: string): UseAttendanceReturn => {
     return { status, checkInTime, checkOutTime, elapsedTime, log, loading, handleCheckIn, handleCheckOut };
 };
 
-// --- UI Components ---
+// --- UI Components (Unchanged) ---
 const AttendanceCard: React.FC<any> = ({ userName, status, checkInTime, checkOutTime, elapsedTime, onCheckIn, onCheckOut, loading }) => {
     const isCheckedIn = status === 'Checked In';
     return (
@@ -290,14 +307,17 @@ const AttendanceLogCard: React.FC<{ log: LogEntry[] }> = ({ log }) => {
 
 // --- Main Page Component ---
 export const AttendancePage: React.FC = () => {
-    const { user, loading: authLoading } = useAuth();
-    const { status, checkInTime, checkOutTime, elapsedTime, log, loading: attendanceLoading, handleCheckIn, handleCheckOut } = useAttendance(user?.uid);
+    // --- FIX: Use your main app's AuthContext ---
+    const { currentUser, loading: authLoading } = useFullAuth();
+
+    // --- FIX: Pass the currentUser's uid AND companyId to the hook ---
+    const { status, checkInTime, checkOutTime, elapsedTime, log, loading: attendanceLoading, handleCheckIn, handleCheckOut } = useAttendance(currentUser?.uid, currentUser?.companyId);
 
     if (authLoading) {
         return <div className="flex justify-center items-center h-screen">Loading Authentication...</div>;
     }
 
-    if (!user) {
+    if (!currentUser) {
         return (
             <div className="flex justify-center items-center h-screen">
                 <p className="text-xl text-slate-600">Please log in to track your attendance.</p>
@@ -311,7 +331,7 @@ export const AttendancePage: React.FC = () => {
             {/* Attendance Card Wrapper */}
             <div className="flex-1 min-w-0">
                 <AttendanceCard
-                    userName={user.displayName || 'Employee'}
+                    userName={currentUser.name || 'Employee'} // Use 'name' from your User object
                     status={status}
                     checkInTime={checkInTime}
                     checkOutTime={checkOutTime}

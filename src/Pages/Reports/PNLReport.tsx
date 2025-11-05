@@ -5,7 +5,6 @@ import { useAuth } from '../../context/auth-context';
 import {
   collection,
   query,
-  where,
   onSnapshot,
   Timestamp
 } from 'firebase/firestore';
@@ -143,8 +142,11 @@ const usePnlReport = (companyId: string | undefined) => {
       return;
     }
 
-    const itemsCollectionRef = collection(db, 'items');
-    const qItems = query(itemsCollectionRef, where('companyId', '==', companyId));
+    // --- FIX 1: Use the correct multi-tenant path for 'items' ---
+    const itemsCollectionRef = collection(db, 'companies', companyId, 'items');
+    // --- FIX 1: Remove the 'companyId' where clause ---
+    const qItems = query(itemsCollectionRef);
+
     const unsubscribeItems = onSnapshot(qItems, (snapshot) => {
       const newItemsMap = new Map<string, Item>();
       snapshot.docs.forEach(doc => {
@@ -156,9 +158,13 @@ const usePnlReport = (companyId: string | undefined) => {
       setItemsMap(newItemsMap);
     }, (_err) => setError('Failed to fetch item data.'));
 
-    const salesCollectionRef = collection(db, 'sales');
-    const qSales = query(salesCollectionRef, where('companyId', '==', companyId));
+    // --- FIX 2: Use the correct multi-tenant path for 'sales' ---
+    const salesCollectionRef = collection(db, 'companies', companyId, 'sales');
+    // --- FIX 2: Remove the 'companyId' where clause ---
+    const qSales = query(salesCollectionRef);
+
     const unsubscribeSales = onSnapshot(qSales, (snapshot) => {
+      // This logic to wait for itemsMap is correct
       if (itemsMap.size === 0 && snapshot.size > 0) return;
 
       setSales(snapshot.docs.map(doc => {
@@ -176,6 +182,7 @@ const usePnlReport = (companyId: string | undefined) => {
           invoiceNumber: saleData.invoiceNumber || 'N/A',
           partyName: saleData.partyName || 'N/A',
           costOfGoodsSold: costOfGoodsSold,
+          items: saleData.items || [], // Added items for useMemo
         };
       }));
       setLoading(false);
@@ -185,7 +192,7 @@ const usePnlReport = (companyId: string | undefined) => {
       unsubscribeItems();
       unsubscribeSales();
     };
-  }, [companyId, itemsMap]);
+  }, [companyId, itemsMap]); // itemsMap dependency is correct
 
   return { sales, loading, error };
 };
@@ -353,7 +360,7 @@ const PnlReportPage: React.FC = () => {
       <div className="flex items-center justify-between pb-3 border-b mb-2">
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">Profit & Loss Report</h1>
         <button onClick={() => navigate(-1)} className="p-2">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
         </button>
       </div>
 

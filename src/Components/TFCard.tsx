@@ -1,7 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, } from 'react';
 import { db } from '../lib/firebase';
 import { useAuth } from '../context/auth-context';
-import { collection, query, onSnapshot, where, Timestamp } from 'firebase/firestore';
+import {
+  collection,
+  query,
+  onSnapshot,
+  where,
+  Timestamp,
+  orderBy // Added orderBy just in case, though your original didn't have it
+} from 'firebase/firestore';
 import { Spinner } from '../constants/Spinner';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { useFilter } from './Filter';
@@ -41,16 +48,19 @@ const useTopItems = () => {
     }
 
     setLoading(true);
+    setError(null); // Reset error on new fetch
     const start = new Date(filters.startDate);
     start.setHours(0, 0, 0, 0);
     const end = new Date(filters.endDate);
     end.setHours(23, 59, 59, 999);
 
+    // --- FIX: Use the correct multi-tenant path ---
     const salesQuery = query(
-      collection(db, 'sales'),
-      where('companyId', '==', currentUser.companyId),
+      collection(db, 'companies', currentUser.companyId, 'sales'),
+      // --- FIX: No longer need the companyId filter ---
       where('createdAt', '>=', start),
-      where('createdAt', '<=', end)
+      where('createdAt', '<=', end),
+      orderBy('createdAt', 'asc') // Added for query consistency
     );
 
     const unsubscribe = onSnapshot(salesQuery, (snapshot) => {
@@ -59,6 +69,9 @@ const useTopItems = () => {
       snapshot.docs.forEach((doc) => {
         const sale = doc.data() as SaleDoc;
         sale.items?.forEach((item) => {
+          // Ensure item is valid before processing
+          if (!item || !item.id || !item.name) return;
+
           const currentStats = stats.get(item.id) || { name: item.name, quantitySold: 0, unitPrice: 0 };
           const itemUnitPrice = (item.finalPrice / item.quantity) || 0;
 
@@ -90,7 +103,7 @@ const useTopItems = () => {
     });
 
     return () => unsubscribe();
-  }, [currentUser, filters]);
+  }, [currentUser, filters]); // Using currentUser ensures it re-runs when auth is ready
 
   return { topItemsByQuantity, topItemsByPrice, loading, error };
 };

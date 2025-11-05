@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo, Fragment } from 'react';
-import { useAuth, useDatabase } from '../context/auth-context';
+import { useAuth, useDatabase } from '../context/Auth-Context';
 import type { Item } from '../constants/models';
 import { Modal } from '../constants/Modal';
 import { State } from '../enums';
 import { FiSearch, FiShoppingCart, FiX, FiPackage, FiPlus, FiMinus } from 'react-icons/fi';
 import { Transition } from '@headlessui/react';
 import { Spinner } from '../constants/Spinner';
-import { ItemDetailDrawer } from '../Components/Itemdetails'; // <-- Make sure this path is correct
+import { ItemDetailDrawer } from '../Components/ItemDetails'; // <-- Make sure this path is correct
 
 // --- Cart Item Type ---
 interface CartItem {

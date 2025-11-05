@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth, useDatabase } from '../../context/auth-context';
+import { useAuth, useDatabase } from '../../context/Auth-Context';
 import type { Item, SalesItem as OriginalSalesItem } from '../../constants/models';
 import { ROUTES } from '../../constants/routes.constants';
-import { db } from '../../lib/firebase';
+import { db } from '../../lib/Firebase';
 import { collection, serverTimestamp, doc, increment as firebaseIncrement, runTransaction, getDocs, query, where } from 'firebase/firestore';
 import SearchableItemInput from '../../UseComponents/SearchIteminput';
 import BarcodeScanner from '../../UseComponents/BarcodeScanner';
@@ -13,7 +13,7 @@ import { Modal } from '../../constants/Modal';
 import { Permissions, State, Variant } from '../../enums';
 import { CustomButton } from '../../Components';
 import type { User } from '../../Role/permission';
-import { useSalesSettings } from '../../context/Settingscontext'; // <-- Settings context
+import { useSalesSettings } from '../../context/SettingsContext'; // <-- Settings context
 import { Spinner } from '../../constants/Spinner'; // <-- Added Spinner import
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
 import { FiEdit } from 'react-icons/fi';
@@ -81,7 +81,8 @@ const Sales: React.FC = () => {
   useEffect(() => {
     const findSettingsDocId = async () => {
       if (currentUser?.companyId) {
-        const settingsQuery = query(collection(db, 'settings'), where('companyId', '==', currentUser.companyId), where('settingType', '==', 'sales')); // Query for SALES settings
+        // --- FIX: Use multi-tenant path for settings ---
+        const settingsQuery = query(collection(db, 'companies', currentUser.companyId, 'settings'), where('settingType', '==', 'sales'));
         const settingsSnapshot = await getDocs(settingsQuery);
         if (!settingsSnapshot.empty) {
           setSettingsDocId(settingsSnapshot.docs[0].id);
@@ -101,6 +102,7 @@ const Sales: React.FC = () => {
       try {
         setPageIsLoading(true);
         setError(null);
+        // dbOperations is already multi-tenant aware (from AuthContext)
         const [fetchedItems, fetchedWorkers] = await Promise.all([
           dbOperations.getItems(),
           dbOperations.getWorkers()
@@ -120,7 +122,7 @@ const Sales: React.FC = () => {
       } catch (err) {
         const errorMessage = 'Failed to load initial page data.';
         setError(errorMessage);
-        console.error(errorMessage, err);
+        console.error(errorMessage, err); // This is line 123
       } finally {
         setPageIsLoading(false);
       }
@@ -449,6 +451,7 @@ const Sales: React.FC = () => {
     if (!currentUser?.companyId) {
       setModal({ message: "User or company information missing.", type: State.ERROR }); return;
     }
+    const companyId = currentUser.companyId; // Get companyId for all paths
 
     const salesman = salesSettings?.enableSalesmanSelection ? selectedWorker : workers.find(w => w.uid === currentUser.uid);
     if (!salesman && salesSettings?.enableSalesmanSelection) {
@@ -523,13 +526,15 @@ const Sales: React.FC = () => {
       const newItems = items.filter(item => item.isEditable);
       try {
         await runTransaction(db, async (transaction) => {
-          const invoiceRef = doc(db, "sales", invoiceToEdit.id);
+          // --- FIX: Use multi-tenant path ---
+          const invoiceRef = doc(db, "companies", companyId, "sales", invoiceToEdit.id);
           const invoiceDoc = await transaction.get(invoiceRef);
           if (!invoiceDoc.exists()) throw new Error("Original invoice not found.");
 
           for (const newItem of newItems) {
             if (!salesSettings?.allowNegativeStock) {
-              const itemRef = doc(db, "items", newItem.id);
+              // --- FIX: Use multi-tenant path ---
+              const itemRef = doc(db, "companies", companyId, "items", newItem.id);
               transaction.update(itemRef, { stock: firebaseIncrement(-(newItem.quantity ?? 1)) });
             }
           }
@@ -575,7 +580,8 @@ const Sales: React.FC = () => {
 
 
       try {
-        const newInvoiceNumber = await generateNextInvoiceNumber();
+        const companyId = currentUser.companyId;
+        const newInvoiceNumber = await generateNextInvoiceNumber(companyId);
 
         await runTransaction(db, async (transaction) => {
           const saleData = {
@@ -595,22 +601,25 @@ const Sales: React.FC = () => {
             totalAmount: finalAmount,
             paymentMethods: paymentDetails,
             createdAt: serverTimestamp(),
-            companyId: currentUser.companyId!,
+            companyId: companyId, // Already correct, just verifying
             voucherName: salesSettings?.voucherName ?? 'Sales',
           };
-          const newSaleRef = doc(collection(db, "sales"));
+          // --- FIX: Use multi-tenant path ---
+          const newSaleRef = doc(collection(db, "companies", companyId, "sales"));
           transaction.set(newSaleRef, saleData);
 
 
           items.forEach(cartItem => {
             if (!salesSettings?.allowNegativeStock) {
-              const itemRef = doc(db, "items", cartItem.id);
+              // --- FIX: Use multi-tenant path ---
+              const itemRef = doc(db, "companies", companyId, "items", cartItem.id);
               transaction.update(itemRef, { stock: firebaseIncrement(-(cartItem.quantity || 1)) });
             }
           });
 
           if (settingsDocId) {
-            const settingsRef = doc(db, "settings", settingsDocId);
+            // --- FIX: Use multi-tenant path ---
+            const settingsRef = doc(db, "companies", companyId, "settings", settingsDocId);
             transaction.update(settingsRef, { currentVoucherNumber: firebaseIncrement(1) });
           } else {
             console.error("CRITICAL: Sales settings document ID not found. Cannot increment voucher number.");
@@ -911,7 +920,7 @@ const Sales: React.FC = () => {
         isOpen={isItemDrawerOpen}
         onClose={handleCloseEditDrawer}
         onSaveSuccess={handleSaveSuccess}
-      />    </div>
+      />  </div>
 
   );
 };

@@ -1,8 +1,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { SettingsProvider } from './context/Settingscontext';
+import { SettingsProvider } from './context/SettingsContext';
 import { Provider } from 'react-redux';
-import { AuthProvider } from './context/Authcontext';
+import { AuthProvider } from './context/AuthContext';
 import { store } from './store/store';
 import AppRouter from '../src/routes/routes';
 import './global.css';

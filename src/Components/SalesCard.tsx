@@ -1,19 +1,20 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useAuth } from '../context/auth-context';
-import { db } from '../lib/firebase';
+// --- FIX: Import 'db' from firebase ---
+import { db } from '../lib/Firebase';
 import {
   collection,
   query,
   where,
-  onSnapshot,
+  onSnapshot
 } from 'firebase/firestore';
 import type { FirestoreError } from 'firebase/firestore';
+import { useAuth } from '../context/Auth-Context'; // <-- Uses the correct hook
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { useFilter } from './Filter';
 
+
 /**
  * Custom hook to fetch and compare sales data for a specific company over two date ranges.
- * @param companyId The ID of the company to fetch sales for.
  */
 const useSalesComparison = (companyId: string | undefined) => {
   const { filters } = useFilter();
@@ -23,7 +24,6 @@ const useSalesComparison = (companyId: string | undefined) => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // --- FIX 1: Wait for companyId before running the effect ---
     if (!db || !companyId || !filters.startDate || !filters.endDate) {
       setLoading(false);
       return;
@@ -31,7 +31,7 @@ const useSalesComparison = (companyId: string | undefined) => {
     setLoading(true);
     setError(null);
 
-    const salesCollection = collection(db, 'sales');
+    // --- FIX: The global 'salesCollection' is removed ---
 
     // --- Main Date Range (from filter) ---
     const startDate = new Date(filters.startDate);
@@ -47,17 +47,19 @@ const useSalesComparison = (companyId: string | undefined) => {
     comparisonEndDate.setDate(startDate.getDate() - 1);
     comparisonEndDate.setHours(23, 59, 59, 999);
 
-    // --- FIX 2: Add 'where' clause for companyId to both queries ---
+    // --- FIX: Update queries to use the multi-tenant path ---
     const qSales = query(
-      salesCollection,
-      where('companyId', '==', companyId),
+      collection(db, 'companies', companyId, 'sales'), // Correct path
+      // 'where('companyId', ...)' is no longer needed
       where('createdAt', '>=', startDate),
       where('createdAt', '<=', endDate)
+      // Note: You may need to add orderBy back if you get an error
+      // orderBy('createdAt', 'asc') 
     );
 
     const qComparison = query(
-      salesCollection,
-      where('companyId', '==', companyId),
+      collection(db, 'companies', companyId, 'sales'), // Correct path
+      // 'where('companyId', ...)' is no longer needed
       where('createdAt', '>=', comparisonStartDate),
       where('createdAt', '<=', comparisonEndDate)
     );
@@ -79,14 +81,14 @@ const useSalesComparison = (companyId: string | undefined) => {
       setComparisonSales(total);
     }, (err: FirestoreError) => {
       console.error("Comparison sales snapshot error: ", err);
+      // Don't set loading/error for the comparison, it's less critical
     });
 
     return () => {
       unsubscribeSales();
       unsubscribeComparison();
     };
-    // --- FIX 3: Add companyId to the dependency array ---
-  }, [companyId, filters]);
+  }, [companyId, filters]); // companyId is correctly in the dependency array
 
   return { sales, comparisonSales, loading, error };
 };
@@ -96,8 +98,7 @@ interface SalesCardProps {
 }
 
 export const SalesCard: React.FC<SalesCardProps> = ({ isDataVisible }) => {
-  // --- FIX 4: Use 'user' for consistency and pass user.companyId to the hook ---
-  const { currentUser } = useAuth();
+  const { currentUser } = useAuth(); // This uses the hook from auth-context
   const { sales, comparisonSales, loading, error } = useSalesComparison(
     currentUser?.companyId,
   );

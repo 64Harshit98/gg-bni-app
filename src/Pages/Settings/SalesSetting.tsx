@@ -1,38 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { db } from '../../lib/firebase';
+import { db } from '../../lib/Firebase';
 import { doc, updateDoc, collection, query, where, getDocs, addDoc } from 'firebase/firestore';
 import { Spinner } from '../../constants/Spinner';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
-import { useAuth } from '../../context/auth-context';
+import { useAuth } from '../../context/Auth-Context';
 
 // --- THIS IS THE NEW INTERFACE ---
-// It replaces 'enableTax' and 'defaultTaxRate' with 'gstScheme'
+// (Interface is correct, no changes needed)
 export interface SalesSettings {
     settingType: 'sales';
     salesViewType?: 'card' | 'list';
     enableSalesmanSelection?: boolean;
-
-    // --- MODIFIED: New GST fields ---
-    gstScheme?: 'regular' | 'composition' | 'none'; // 'none' = tax disabled
-    taxType?: 'inclusive' | 'exclusive'; // Only used by 'regular' scheme
-    // --- END MODIFICATION ---
-
+    gstScheme?: 'regular' | 'composition' | 'none';
+    taxType?: 'inclusive' | 'exclusive';
     enableRounding?: boolean;
     enforceExactMRP?: boolean;
-
     enableItemWiseDiscount?: boolean;
     lockDiscountEntry?: boolean;
     lockSalePriceEntry?: boolean;
     defaultDiscount?: number;
-
     allowNegativeStock?: boolean;
     allowDueBilling?: boolean;
-
     requireCustomerName?: boolean;
     requireCustomerMobile?: boolean;
-
     voucherName?: string;
     voucherPrefix?: string;
     currentVoucherNumber?: number;
@@ -43,7 +35,6 @@ export interface SalesSettings {
 const SalesSettingsPage: React.FC = () => {
     const navigate = useNavigate();
     const { currentUser } = useAuth();
-    // Initialize with the new type
     const [settings, setSettings] = useState<SalesSettings>({ settingType: 'sales' });
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -53,7 +44,8 @@ const SalesSettingsPage: React.FC = () => {
 
     useEffect(() => {
         if (!currentUser?.companyId) {
-            if (!isLoading) setIsLoading(true);
+            // Keep loading if user/companyId isn't available yet
+            setIsLoading(true);
             return;
         }
 
@@ -61,11 +53,13 @@ const SalesSettingsPage: React.FC = () => {
 
         const fetchOrCreateSettings = async () => {
             setIsLoading(true);
-            const settingsCollectionRef = collection(db, 'settings');
 
+            // --- FIX: Use the correct multi-tenant path ---
+            const settingsCollectionRef = collection(db, 'companies', companyId, 'settings');
+
+            // --- FIX: Remove where('companyId', ...) as it's now in the path ---
             const q = query(
                 settingsCollectionRef,
-                where('companyId', '==', companyId),
                 where('settingType', '==', 'sales')
             );
 
@@ -79,13 +73,12 @@ const SalesSettingsPage: React.FC = () => {
                 } else {
                     console.warn(`No 'sales' settings found for company ${companyId}. Creating defaults.`);
 
-                    // --- MODIFIED: New default settings with GST ---
                     const defaultSettings: SalesSettings = {
                         settingType: 'sales',
                         salesViewType: 'list',
                         enableSalesmanSelection: true,
-                        gstScheme: 'regular', // Default to regular GST
-                        taxType: 'exclusive', // Default to exclusive
+                        gstScheme: 'regular',
+                        taxType: 'exclusive',
                         enableRounding: true,
                         enforceExactMRP: false,
                         enableItemWiseDiscount: true,
@@ -100,16 +93,16 @@ const SalesSettingsPage: React.FC = () => {
                         voucherPrefix: 'SLS-',
                         currentVoucherNumber: 1,
                         copyVoucherAfterSaving: false,
-                        companyId: companyId,
+                        companyId: companyId, // <-- companyId is already here, good.
                     };
-                    // --- END MODIFICATION ---
 
+                    // --- FIX: Add new doc to the correct multi-tenant collection ---
                     const newDocRef = await addDoc(settingsCollectionRef, defaultSettings);
                     setSettings(defaultSettings);
                     setSettingsDocId(newDocRef.id);
                 }
             } catch (err) {
-                console.error('Failed to fetch/create sales settings:', err);
+                console.error('Failed to fetch/create sales settings:', err); // This is line 112
                 setModal({ message: 'Failed to load settings. Please try again.', type: State.ERROR });
             } finally {
                 setIsLoading(false);
@@ -123,18 +116,21 @@ const SalesSettingsPage: React.FC = () => {
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (!settingsDocId) {
-            setModal({ message: 'Error: Cannot find settings document ID.', type: State.ERROR });
+        // --- FIX: Need companyId to build the path ---
+        if (!settingsDocId || !currentUser?.companyId) {
+            setModal({ message: 'Error: Cannot find settings document ID or company ID.', type: State.ERROR });
             return;
         }
+        const companyId = currentUser.companyId;
 
         setIsSaving(true);
         try {
-            const docToUpdateRef = doc(db, 'settings', settingsDocId);
+            // --- FIX: Use the correct multi-tenant path to update the doc ---
+            const docToUpdateRef = doc(db, 'companies', companyId, 'settings', settingsDocId);
 
             const settingsToSave = {
                 ...settings,
-                companyId: currentUser?.companyId,
+                companyId: companyId, // Ensure companyId is saved
                 settingType: 'sales'
             };
 
@@ -150,7 +146,7 @@ const SalesSettingsPage: React.FC = () => {
 
 
     const handleChange = (field: keyof SalesSettings, value: any) => {
-        // --- MODIFIED: Removed 'defaultTaxRate' ---
+        // (This function is correct, no changes needed)
         if (field === 'defaultDiscount' || field === 'currentVoucherNumber') {
             const numValue = parseFloat(value);
             setSettings(prev => ({ ...prev, [field]: isNaN(numValue) ? 0 : numValue }));
@@ -160,6 +156,7 @@ const SalesSettingsPage: React.FC = () => {
     };
 
     const handleCheckboxChange = (field: keyof SalesSettings, checked: boolean) => {
+        // (This function is correct, no changes needed)
         setSettings(prev => {
             const newSettings = { ...prev, [field]: checked };
             return newSettings;
@@ -187,7 +184,6 @@ const SalesSettingsPage: React.FC = () => {
             </div>
 
             <main className="flex-grow p-4 bg-gray-50 w-full overflow-y-auto box-border">
-                {/* --- MODIFIED: Removed card styles from form, added max-w --- */}
                 <form onSubmit={handleSave} className="max-w-3xl mx-auto">
 
                     {/* --- Card 1: General Settings --- */}
@@ -215,10 +211,8 @@ const SalesSettingsPage: React.FC = () => {
 
                     {/* --- Card 2: Pricing & Tax --- */}
                     <div className="bg-white rounded-lg p-6 shadow-md mb-2">
-                        {/* MODIFIED: Removed border-t class */}
                         <h2 className="text-lg font-semibold text-gray-800 mb-4">Pricing & Tax</h2>
 
-                        {/* --- MODIFIED: This is the new GST Scheme dropdown --- */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                             <div>
                                 <label htmlFor="gst-scheme" className="block text-gray-700 text-sm font-medium mb-1">GST Scheme</label>
@@ -234,9 +228,7 @@ const SalesSettingsPage: React.FC = () => {
                                 </select>
                             </div>
                         </div>
-                        {/* --- END MODIFICATION --- */}
 
-                        {/* --- MODIFIED: This section now only shows for 'regular' GST --- */}
                         {settings.gstScheme === 'regular' && (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
                                 <div>
@@ -251,10 +243,8 @@ const SalesSettingsPage: React.FC = () => {
                                         <option value="inclusive">Tax Inclusive (MRP includes GST)</option>
                                     </select>
                                 </div>
-                                {/* The defaultTaxRate input is removed */}
                             </div>
                         )}
-                        {/* --- END MODIFICATION --- */}
 
                         <div className="flex items-center mb-2">
                             <input type="checkbox" id="enable-rounding" checked={settings.enableRounding ?? false} onChange={(e) => handleCheckboxChange('enableRounding', e.target.checked)} className="w-4 h-4 text-blue-600" />
@@ -363,7 +353,6 @@ const SalesSettingsPage: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* --- MODIFIED: Save button is now outside the last card --- */}
                     <button
                         type="submit"
                         disabled={isSaving || isLoading}

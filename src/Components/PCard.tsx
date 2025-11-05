@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 // Import your Auth context hook
-import { useAuth } from '../context/auth-context';
+import { useAuth } from '../context/Auth-Context';
 // Import the db instance from your central firebase config file
-import { db } from '../lib/firebase';
+import { db } from '../lib/Firebase';
 import {
   collection,
   query,

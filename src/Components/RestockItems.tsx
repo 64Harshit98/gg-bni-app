@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../context/auth-context';
-import { db } from '../lib/firebase';
+import { db } from '../lib/Firebase';
+import { useAuth } from '../context/Auth-Context';
 import {
     collection,
     query,
-    onSnapshot,
-    where,
+    onSnapshot
 } from 'firebase/firestore';
+import type { FirestoreError } from 'firebase/firestore'; // Good practice to type errors
 import { Spinner } from '../constants/Spinner';
 import {
     Card,
@@ -43,15 +43,16 @@ const useRestockAlerts = (companyId?: string) => {
         setLoading(true);
         setError(null);
 
+        // --- FIX: Use the correct multi-tenant path ---
         const itemsQuery = query(
-            collection(db, 'items'),
-            where('companyId', '==', companyId)
+            collection(db, 'companies', companyId, 'items')
+            // --- FIX: The 'where' clause for companyId is no longer needed ---
         );
 
         const unsubscribe = onSnapshot(itemsQuery, (snapshot) => {
             const allItems: ItemDoc[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ItemDoc));
 
-            // Filter for items that need restocking
+            // Filter for items that need restocking (this client-side filter is correct)
             const filteredItems = allItems.filter(item =>
                 item.restockQuantity > 0 && item.amount <= item.restockQuantity
             );
@@ -61,7 +62,7 @@ const useRestockAlerts = (companyId?: string) => {
 
             setItemsToRestock(filteredItems);
             setLoading(false);
-        }, (err: Error) => {
+        }, (err: FirestoreError) => { // Use typed error
             console.error('Error fetching items for restock alerts:', err);
             setError(`Failed to load restock alerts: ${err.message}`);
             setLoading(false);

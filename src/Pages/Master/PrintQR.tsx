@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
-import { useAuth } from '../../context/auth-context';
+import { useAuth } from '../../context/Auth-Context';
 import type { Item } from '../../constants/models';
-import { getFirestoreOperations } from '../../lib/items_firebase';
+import { getFirestoreOperations } from '../../lib/ItemsFirebase';
 import { Card, CardContent, CardHeader, CardTitle } from '../../Components/ui/card';
 import { CustomButton } from '../../Components';
 import { Variant } from '../../enums';

@@ -3,7 +3,7 @@ import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import MainLayout from '../app/MainLayout';
 import CatalogueLayout from '../app/CatalougeLayout';
 import { ROUTES } from '../constants/routes.constants';
-import { AuthProvider } from '../context/Authcontext';
+import { AuthProvider } from '../context/AuthContext';
 import PermissionWrapper from '../context/PermissionWrapper';
 import { Permissions } from '../enums';
 
@@ -32,11 +32,11 @@ const PnlReport = lazy(() => import('../Pages/Reports/PNLReport'));
 const BusInfo = lazy(() => import('../Pages/Auth/BusInfo'));
 const BusAddress = lazy(() => import('../Pages/Auth/BusAddress'));
 const PrintQR = lazy(() => import('../Pages/Master/PrintQR'));
-const Permissionsetting = lazy(() => import('../Pages/Settings/Permissionsetting'));
+const Permissionsetting = lazy(() => import('../Pages/Settings/PermissionSetting'));
 const UnauthorizedPage = lazy(() => import('../Pages/Unauthorized'));
 const SalesSettingsPage = lazy(() => import('../Pages/Settings/SalesSetting'));
-const PurchaseSettingsPage = lazy(() => import('../Pages/Settings/Purchasesetting'));
-const History = lazy(() => import('../UseComponents/historypage'));
+const PurchaseSettingsPage = lazy(() => import('../Pages/Settings/PurchaseSetting'));
+// const History = lazy(() => import('../UseComponents/historypage'));
 const CHome = lazy(() => import('../Catalogue/CHome'));
 const MyShop = lazy(() => import('../Catalogue/MyShop'));
 const UserSetting = lazy(() => import('../Pages/Settings/UserSettings'));
@@ -176,13 +176,13 @@ const router = createBrowserRouter([
           {
             path: ROUTES.PERMSETTING,
             element: <Permissionsetting />,
-            handle: { requiredPermission: Permissions.SetPermissions },
-          },
-          {
-            path: ROUTES.HISTORY,
-            element: <History />,
             handle: { requiredPermission: null },
           },
+          // {
+          //   path: ROUTES.HISTORY,
+          //   element: <History />,
+          //   handle: { requiredPermission: null },
+          // },
           {
             path: ROUTES.SALESETTING,
             element: <SalesSettingsPage />,

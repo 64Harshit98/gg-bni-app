@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { Item } from '../constants/models'; // Adjust path as needed
-import { useDatabase } from '../context/auth-context'; // Adjust path as needed
+import { useDatabase } from '../context/Auth-Context'; // Adjust path as needed
 import { FieldValue, Timestamp } from 'firebase/firestore';
-import { storage } from '../lib/firebase'; // <-- Make sure this path is correct
+import { storage } from '../lib/Firebase'; // <-- Make sure this path is correct
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { FiSave, FiX, FiPackage } from 'react-icons/fi';
 import { Spinner } from '../constants/Spinner'; // Adjust path as needed

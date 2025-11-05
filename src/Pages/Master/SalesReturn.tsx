@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { db } from '../../lib/firebase';
+import { db } from '../../lib/Firebase';
 import {
   collection,
   query,
@@ -10,9 +10,8 @@ import {
   increment as firebaseIncrement,
   arrayUnion,
   serverTimestamp,
-  where,
 } from 'firebase/firestore';
-import { useAuth, useDatabase } from '../../context/auth-context';
+import { useAuth, useDatabase } from '../../context/Auth-Context';
 import { ROUTES } from '../../constants/routes.constants';
 import BarcodeScanner from '../../UseComponents/BarcodeScanner';
 import type { Item, SalesItem as OriginalSalesItem } from '../../constants/models';
@@ -100,9 +99,10 @@ const SalesReturnPage: React.FC = () => {
       setIsLoading(true);
       setError(null);
       try {
+        // --- FIX: Use the correct multi-tenant path for 'sales' ---
         const salesQuery = query(
-          collection(db, 'sales'),
-          where('companyId', '==', currentUser.companyId)
+          collection(db, 'companies', currentUser.companyId, 'sales')
+          // No 'where' for companyId is needed anymore
         );
         const [salesSnapshot, allItems] = await Promise.all([
           getDocs(salesQuery),
@@ -120,7 +120,7 @@ const SalesReturnPage: React.FC = () => {
           }
         }
       } catch (err) {
-        console.error('Error fetching data:', err);
+        console.error('Error fetching data:', err); // This is line 123
         setError('Failed to load initial data.');
       } finally {
         setIsLoading(false);
@@ -333,11 +333,16 @@ const SalesReturnPage: React.FC = () => {
   }, [itemsToReturn, exchangeItems]);
 
   const saveReturnTransaction = async (completionData?: Partial<PaymentCompletionData>) => {
-    if (!currentUser || !selectedSale) return;
+    if (!currentUser || !currentUser.companyId || !selectedSale) return;
     setIsLoading(true);
+
+    const companyId = currentUser.companyId; // Get companyId for all paths
+
     try {
       const batch = writeBatch(db);
-      const saleRef = doc(db, 'sales', selectedSale.id);
+      // --- FIX: Use multi-tenant path for 'sales' ---
+      const saleRef = doc(db, 'companies', companyId, 'sales', selectedSale.id);
+
       const originalItemsMap = new Map(selectedSale.items.map(item => [item.id, { ...item }]));
 
       itemsToReturn.forEach(returnItem => {
@@ -390,19 +395,22 @@ const SalesReturnPage: React.FC = () => {
       }, { merge: true });
 
       itemsToReturn.forEach(item => {
-        batch.update(doc(db, 'items', item.originalItemId), { amount: firebaseIncrement(item.quantity) });
+        // --- FIX: Use multi-tenant path for 'items' ---
+        batch.update(doc(db, 'companies', companyId, 'items', item.originalItemId), { amount: firebaseIncrement(item.quantity) });
       });
       exchangeItems.forEach(item => {
-        batch.update(doc(db, 'items', item.originalItemId), { amount: firebaseIncrement(-item.quantity) });
+        // --- FIX: Use multi-tenant path for 'items' ---
+        batch.update(doc(db, 'companies', companyId, 'items', item.originalItemId), { amount: firebaseIncrement(-item.quantity) });
       });
 
       if (finalBalance > 0 && selectedSale.partyNumber && selectedSale.partyNumber.length >= 10) {
-        const customerRef = doc(db, 'customers', selectedSale.partyNumber);
+        // --- FIX: Use multi-tenant path for 'customers' ---
+        const customerRef = doc(db, 'companies', companyId, 'customers', selectedSale.partyNumber);
         batch.set(customerRef, {
           creditBalance: firebaseIncrement(finalBalance),
           name: selectedSale.partyName,
           number: selectedSale.partyNumber,
-          companyId: currentUser.companyId,
+          companyId: companyId, // Already correct
           lastUpdatedAt: serverTimestamp()
         }, { merge: true });
       }
@@ -431,6 +439,9 @@ const SalesReturnPage: React.FC = () => {
   };
 
   if (isLoading) return <div className="flex min-h-screen items-center justify-center">Loading...</div>;
+
+  // ... (Rest of your JSX is correct) ...
+  // No changes are needed in the UI/JSX part.
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-100 w-full ">

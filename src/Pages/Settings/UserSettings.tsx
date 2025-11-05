@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
-import { useAuth } from '../../context/auth-context';
+import { collection, query, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { db } from '../../lib/Firebase';
+import { useAuth } from '../../context/Auth-Context';
 import { ROUTES } from '../../constants/routes.constants';
 import { Spinner } from '../../constants/Spinner';
 import { Permissions, State, Variant } from '../../enums';
@@ -19,7 +19,12 @@ interface AppUser {
     companyId?: string;
 }
 
-type EditFormData = Omit<AppUser, 'uid' | 'email' | 'companyId'>;
+// EditFormData now correctly includes 'name'
+type EditFormData = {
+    name?: string;
+    phoneNumber?: string;
+    role?: string;
+};
 
 const ManageUsersPage: React.FC = () => {
     const navigate = useNavigate();
@@ -58,8 +63,12 @@ const ManageUsersPage: React.FC = () => {
             setIsLoading(true);
             setError(null);
             try {
-                const usersCollectionRef = collection(db, 'users');
-                const q = query(usersCollectionRef, where('companyId', '==', currentUser.companyId));
+                // --- FIX: Use the correct multi-tenant path ---
+                const usersCollectionRef = collection(db, 'companies', currentUser.companyId, 'users');
+
+                // --- FIX: No 'where' clause for companyId is needed ---
+                const q = query(usersCollectionRef);
+
                 const querySnapshot = await getDocs(q);
                 const fetchedUsers: AppUser[] = [];
                 querySnapshot.forEach((doc) => {
@@ -92,7 +101,9 @@ const ManageUsersPage: React.FC = () => {
 
     const handleEditClick = (user: AppUser) => {
         setEditingUserId(user.uid);
+        // --- FIX: Pre-fill the 'name' field as well ---
         setEditFormData({
+            name: user.name || '',
             phoneNumber: user.phoneNumber || '',
             role: user.role || '',
         });
@@ -109,12 +120,19 @@ const ManageUsersPage: React.FC = () => {
     };
 
     const handleSaveEdit = async () => {
-        if (!editingUserId) return;
+        // --- FIX: Add guard for companyId ---
+        if (!editingUserId || !currentUser?.companyId) {
+            setModal({ message: 'Error: Cannot save. User or Company ID is missing.', type: State.ERROR });
+            return;
+        }
+        const companyId = currentUser.companyId;
 
         setIsSaving(true);
         setModal(null);
         try {
-            const userDocRef = doc(db, 'users', editingUserId);
+            // --- FIX: Use the correct multi-tenant path ---
+            const userDocRef = doc(db, 'companies', companyId, 'users', editingUserId);
+
             const updateData: Partial<AppUser> = {
                 name: editFormData.name?.trim() || '',
                 phoneNumber: editFormData.phoneNumber?.trim() || '',
@@ -247,4 +265,3 @@ const ManageUsersPage: React.FC = () => {
 };
 
 export default ManageUsersPage;
-

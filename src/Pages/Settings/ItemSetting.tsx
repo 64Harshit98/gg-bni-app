@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { db } from '../../lib/firebase';
+import { db } from '../../lib/Firebase';
 import {
     doc,
     getDocs,
@@ -13,18 +13,16 @@ import {
 import { Spinner } from '../../constants/Spinner';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
-import { useAuth } from '../../context/auth-context';
+import { useAuth } from '../../context/Auth-Context';
 
 export interface ItemSettings {
     companyId?: string;
     settingType?: 'item';
-
     requirePurchasePrice?: boolean;
     requireDiscount?: boolean;
     requireTax?: boolean;
     requireBarcode?: boolean;
     requireRestockQuantity?: boolean;
-
     autoGenerateBarcode?: boolean;
 }
 
@@ -52,7 +50,7 @@ const ItemSettingsPage: React.FC = () => {
 
     useEffect(() => {
         if (!currentUser?.companyId) {
-            setIsLoading(false);
+            setIsLoading(true); // Keep loading until user is ready
             setSettings({});
             console.warn("No currentUser or companyId found. Cannot load item settings.");
             return;
@@ -62,8 +60,11 @@ const ItemSettingsPage: React.FC = () => {
         const companyId = currentUser.companyId;
 
         const fetchOrCreateSettings = async () => {
-            const settingsCollectionRef = collection(db, 'settings');
-            const q = query(settingsCollectionRef, where('companyId', '==', companyId), where('settingType', '==', 'item'));
+            // --- FIX: Use the correct multi-tenant path ---
+            const settingsCollectionRef = collection(db, 'companies', companyId, 'settings');
+
+            // --- FIX: Remove the redundant where('companyId', ...) ---
+            const q = query(settingsCollectionRef, where('settingType', '==', 'item'));
 
             try {
                 const querySnapshot = await getDocs(q);
@@ -75,8 +76,12 @@ const ItemSettingsPage: React.FC = () => {
                 } else {
                     console.warn(`No item settings found for company ${companyId}. Creating defaults.`);
                     const defaultSettings = getDefaultItemSettings(companyId);
-                    const predictableDocId = `item-${companyId}`;
-                    const newDocRef = doc(db, 'settings', predictableDocId);
+
+                    // Use a predictable ID for the settings document
+                    const predictableDocId = `item-settings`;
+
+                    // --- FIX: Use the multi-tenant path to create the doc ---
+                    const newDocRef = doc(db, 'companies', companyId, 'settings', predictableDocId);
                     await setDoc(newDocRef, defaultSettings);
 
                     setSettings(defaultSettings);
@@ -101,13 +106,16 @@ const ItemSettingsPage: React.FC = () => {
             setModal({ message: 'Error: Cannot determine user or settings document.', type: State.ERROR });
             return;
         }
+        const companyId = currentUser.companyId; // Get companyId for the path
 
         setIsSaving(true);
         try {
-            const docToUpdateRef = doc(db, 'settings', settingsDocId);
+            // --- FIX: Use the correct multi-tenant path to update ---
+            const docToUpdateRef = doc(db, 'companies', companyId, 'settings', settingsDocId);
+
             const settingsToSave: ItemSettings = {
                 ...settings,
-                companyId: currentUser.companyId,
+                companyId: companyId,
                 settingType: 'item',
             };
             await updateDoc(docToUpdateRef, settingsToSave as { [key: string]: any });
@@ -219,4 +227,3 @@ const ItemSettingsPage: React.FC = () => {
 };
 
 export default ItemSettingsPage;
-

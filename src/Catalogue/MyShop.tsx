@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { useAuth, useDatabase } from '../context/auth-context';
+import { useAuth, useDatabase } from '../context/Auth-Context';
 import type { Item } from '../constants/models';
 // --- CHANGED --- Added FiPackage for the image placeholder
 import { FiSearch, FiEdit, FiStar, FiCheckSquare, FiLoader, FiEye, FiPackage } from 'react-icons/fi';

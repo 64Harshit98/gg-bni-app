@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth } from '../context/auth-context'; // Using your path alias
+import { useAuth } from '../context/Auth-Context'; // Using your path alias
 import { Permissions } from '../enums'; // Using your path alias
 import { ROUTES } from '../constants/routes.constants';
 

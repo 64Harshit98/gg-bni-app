@@ -3,9 +3,9 @@ import { FloatingLabelInput } from './ui/FloatingLabelInput';
 import { transactiontypes } from '../constants/Transactiontype';
 import { Modal } from '../constants/Modal';
 import { State } from '../enums';
-import { db } from '../lib/firebase';
+import { db } from '../lib/Firebase';
 import { doc, getDoc, setDoc, serverTimestamp, increment as firebaseIncrement } from 'firebase/firestore';
-import { useAuth } from '../context/auth-context';
+import { useAuth } from '../context/Auth-Context';
 
 export interface PaymentDetails {
     [key: string]: number;

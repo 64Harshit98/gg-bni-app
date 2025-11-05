@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getItemsByCompany, getItemGroupsByCompany } from '../lib/items_firebase';
+import { getItemsByCompany, getItemGroupsByCompany } from '../lib/ItemsFirebase';
 import type { Item, ItemGroup } from '../constants/models';
 import { FiSearch, FiPackage, FiShoppingBag } from 'react-icons/fi';
 import { Spinner } from '../constants/Spinner';

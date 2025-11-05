@@ -10,9 +10,9 @@ import {
 } from 'react-icons/fi';
 
 // --- Imports from old dashboard ---
-import { db } from '../lib/firebase';
+import { db } from '../lib/Firebase';
 import { doc, getDoc } from 'firebase/firestore';
-import { useAuth } from '../context/auth-context';
+import { useAuth } from '../context/Auth-Context';
 import { FilterProvider } from '../Components/Filter';
 import ShowWrapper from '../context/ShowWrapper';
 import { Permissions } from '../enums';

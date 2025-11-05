@@ -22,7 +22,7 @@ export const useAuth = () => {
   return context;
 };
 
-import { getFirestoreOperations } from '../lib/items_firebase';
+import { getFirestoreOperations } from '../lib/ItemsFirebase';
 
 // This automatically gets the correct type for our operations object
 type DbOperationsType = ReturnType<typeof getFirestoreOperations> | null;

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { db } from '../lib/firebase';
+import { db } from '../lib/Firebase';
 import {
   collection,
   query,
@@ -8,7 +8,7 @@ import {
   Timestamp,
   orderBy,
 } from 'firebase/firestore';
-import { useAuth } from '../context/auth-context';
+import { useAuth } from '../context/Auth-Context';
 import { Line, LineChart, CartesianGrid, YAxis } from 'recharts';
 import {
   Card,
@@ -75,9 +75,10 @@ export function SalesBarChartReport({ isDataVisible }: SalesBarChartReportProps)
       end.setHours(23, 59, 59, 999);
 
       try {
+        // --- FIX: Use the correct multi-tenant path ---
         const salesQuery = query(
-          collection(db, 'sales'),
-          where('companyId', '==', currentUser.companyId),
+          collection(db, 'companies', currentUser.companyId, 'sales'),
+          // --- FIX: The 'companyId' where clause is no longer needed ---
           where('createdAt', '>=', Timestamp.fromDate(start)),
           where('createdAt', '<=', Timestamp.fromDate(end)),
           orderBy('createdAt', 'asc'),
@@ -117,7 +118,7 @@ export function SalesBarChartReport({ isDataVisible }: SalesBarChartReportProps)
       }
     };
     fetchSalesData();
-  }, [currentUser, filters]);
+  }, [currentUser, filters]); // currentUser dependency is correct
 
   const { totalSales, totalBills } = useMemo(() => {
     return chartData.reduce((acc, data) => {
@@ -126,6 +127,7 @@ export function SalesBarChartReport({ isDataVisible }: SalesBarChartReportProps)
       return acc;
     }, { totalSales: 0, totalBills: 0 });
   }, [chartData]);
+
   const selectedPeriodText = useMemo(() => {
     if (!filters.startDate || !filters.endDate) {
       return 'for the selected period';

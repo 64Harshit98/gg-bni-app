@@ -5,8 +5,8 @@ import {
     where,
     onSnapshot,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import { useAuth } from './auth-context';
+import { db } from '../lib/Firebase';
+import { useAuth } from './Auth-Context';
 
 export interface SalesSettings {
     companyId?: string;
@@ -160,8 +160,11 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
         }
         setLoadingSalesSettings(true);
         const companyId = currentUser.companyId;
-        const settingsCollectionRef = collection(db, 'settings');
-        const qSales = query(settingsCollectionRef, where('companyId', '==', companyId), where('settingType', '==', 'sales'));
+
+        // --- FIX: Use the correct multi-tenant path ---
+        const settingsCollectionRef = collection(db, 'companies', companyId, 'settings');
+        // --- FIX: No longer need to query by companyId, as it's in the path ---
+        const qSales = query(settingsCollectionRef, where('settingType', '==', 'sales'));
 
         const unsubscribeSales = onSnapshot(qSales, (snapshot) => {
             if (!snapshot.empty) {
@@ -174,7 +177,8 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
             setLoadingSalesSettings(false);
         }, (error) => {
             console.error('Error fetching Sales Settings:', error);
-            setSalesSettings(getDefaultSalesSettings(companyId));
+            setSalesSettings(getDefaultSalesSettings(companyId)); // Fallback on error
+            setLoadingSalesSettings(false); // Also set loading to false on error
         });
 
         return () => unsubscribeSales();
@@ -188,8 +192,11 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
         }
         setLoadingPurchaseSettings(true);
         const companyId = currentUser.companyId;
-        const settingsCollectionRef = collection(db, 'settings');
-        const qPurchase = query(settingsCollectionRef, where('companyId', '==', companyId), where('settingType', '==', 'purchase'));
+
+        // --- FIX: Use the correct multi-tenant path ---
+        const settingsCollectionRef = collection(db, 'companies', companyId, 'settings');
+        // --- FIX: No longer need to query by companyId, as it's in the path ---
+        const qPurchase = query(settingsCollectionRef, where('settingType', '==', 'purchase'));
 
         const unsubscribePurchase = onSnapshot(qPurchase, (snapshot) => {
             if (!snapshot.empty) {
@@ -217,8 +224,11 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
         }
         setLoadingItemSettings(true);
         const companyId = currentUser.companyId;
-        const settingsCollectionRef = collection(db, 'settings');
-        const qItem = query(settingsCollectionRef, where('companyId', '==', companyId), where('settingType', '==', 'item'));
+
+        // --- FIX: Use the correct multi-tenant path ---
+        const settingsCollectionRef = collection(db, 'companies', companyId, 'settings');
+        // --- FIX: No longer need to query by companyId, as it's in the path ---
+        const qItem = query(settingsCollectionRef, where('settingType', '==', 'item'));
 
         const unsubscribeItem = onSnapshot(qItem, (snapshot) => {
             if (!snapshot.empty) {
@@ -231,7 +241,7 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
             setLoadingItemSettings(false);
         }, (error) => {
             console.error('Error fetching Item Settings:', error);
-            setItemSettings(getDefaultItemSettings(companyId));
+            setItemSettings(getDefaultItemSettings(companyId)); // Fallback on error
             setLoadingItemSettings(false);
         });
 
@@ -289,4 +299,3 @@ export const useIsLoadingSettings = () => {
     }
     return context.isLoadingSettings;
 }
-

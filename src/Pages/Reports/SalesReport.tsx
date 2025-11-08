@@ -8,7 +8,7 @@ import {
   Timestamp,
   orderBy, // Import orderBy
 } from 'firebase/firestore';
-import { useAuth } from '../../context/Auth-Context';
+import { useAuth } from '../../context/auth-context';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 

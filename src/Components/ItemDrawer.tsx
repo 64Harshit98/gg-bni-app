@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { Item } from '../constants/models'; // Adjust path as needed
-import { useDatabase } from '../context/Auth-Context'; // Adjust path as needed
+import { useDatabase } from '../context/auth-context'; // Adjust path as needed
 import { FieldValue, Timestamp } from 'firebase/firestore';
 import { storage } from '../lib/Firebase'; // <-- Make sure this path is correct
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
@@ -21,9 +21,8 @@ interface ItemEditDrawerProps {
 // Type for the update payload
 type ItemUpdatePayload = Partial<Omit<Item, 'id' | 'createdAt' | 'companyId'>> & {
     updatedAt?: FieldValue | Timestamp | number | null;
-    imageUrl?: string | null;
+    imageUrl?: string | null; // <-- FIX: Allow null
 };
-
 // --- Image preview component ---
 const ImagePreview: React.FC<{ imageUrl: string | null; alt: string }> = ({ imageUrl, alt }) => {
     if (!imageUrl) {
@@ -115,9 +114,9 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
 
         // Compression options
         const options = {
-            maxSizeMB: 5,          // Max size in MB
+            maxSizeMB: 5,       // Max size in MB
             maxWidthOrHeight: 1920, // Max dimensions
-            useWebWorker: true,    // Use a web worker for better performance
+            useWebWorker: true,     // Use a web worker for better performance
         };
 
         try {
@@ -137,22 +136,19 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
         } catch (error) {
             console.error("Image compression failed:", error);
             setError("Image compression failed. Please try a different file.");
-            // Fallback to original file if needed, or just show error
-            // setImageFile(file);
-            // setImagePreview(URL.createObjectURL(file));
         }
     };
 
     // Handle save action
     const handleSave = async () => {
-        if (!item || !item.id) return;
+        if (!item || !item.id || !dbOperations) return; // <-- Added check for dbOperations
 
         setIsSaving(true);
         setError(null);
         setUploadProgress(null);
 
         try {
-            let newImageUrl = formData.imageUrl || null;
+            let newImageUrl = formData.imageUrl || null; // Will be '' or a URL, then becomes null or a URL
 
             // Step 1: Upload image if a new one is selected
             if (imageFile) {
@@ -191,7 +187,9 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 itemGroupId: String(formData.itemGroupId || ''),
                 barcode: String(formData.barcode || ''),
                 isListed: formData.isListed ?? false,
-                imageUrl: newImageUrl || undefined, // Use new URL, convert null to undefined
+                // --- THIS IS THE FIX ---
+                // newImageUrl will be a URL string or null. Both are valid Firestore values.
+                imageUrl: newImageUrl,
             };
 
             // Step 3: Update Firestore
@@ -207,7 +205,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
             onClose();
 
         } catch (err: any) {
-            console.error("Failed to save item:", err);
+            console.error("Failed to save item:", err); // This is line 210
             setError(err.message || "Failed to save changes. Please try again.");
         } finally {
             setIsSaving(false);

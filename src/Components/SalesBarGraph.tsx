@@ -8,7 +8,7 @@ import {
   Timestamp,
   orderBy,
 } from 'firebase/firestore';
-import { useAuth } from '../context/Auth-Context';
+import { useAuth } from '../context/auth-context';
 import { Line, LineChart, CartesianGrid, YAxis } from 'recharts';
 import {
   Card,
@@ -171,7 +171,7 @@ export function SalesBarChartReport({ isDataVisible }: SalesBarChartReportProps)
           error ? <div className="flex h-[260px] items-center justify-center text-center"><p className="text-red-500">{error}</p></div> :
             isDataVisible ? (
               <ChartContainer config={chartConfig} className="h-[260px] w-full">
-                <LineChart data={chartData} margin={{ top: 30, left: -15, right: 12, bottom: 10 }}>
+                <LineChart data={chartData} margin={{ top: 30, left: -10, right: 12, bottom: 10 }}>
                   <CartesianGrid vertical={false} />
                   <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
                   <YAxis
@@ -179,7 +179,7 @@ export function SalesBarChartReport({ isDataVisible }: SalesBarChartReportProps)
                     fontSize={10}
                     tickLine={false}
                     axisLine={false}
-                    tickFormatter={(value) => viewMode === 'amount' ? `₹${value / 1000}k` : value.toString()}
+                    tickFormatter={(value) => viewMode === 'amount' ? `₹${value}` : value.toString()}
                   />
                   <Line
                     dataKey={viewMode === 'amount' ? 'sales' : 'bills'}
@@ -191,7 +191,7 @@ export function SalesBarChartReport({ isDataVisible }: SalesBarChartReportProps)
                 </LineChart>
               </ChartContainer>
             ) : (
-              <div className="flex h-[250px] w-full flex-col items-center justify-center rounded-lg bg-gray-100">
+              <div className="flex h-[250px] w-full flex-col items-center justify-center rounded-lg bg-white">
                 <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 mb-2"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" /><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" /><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" /><line x1="2" x2="22" y1="2" y2="22" /></svg>
                 <p className="text-gray-500">Data is hidden</p>
               </div>

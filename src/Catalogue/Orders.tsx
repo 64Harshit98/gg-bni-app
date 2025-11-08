@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
+// --- FIX: Import useLocation ---
+import { useLocation } from 'react-router-dom';
 import { db } from '../lib/Firebase'; // Adjust path if needed
 import {
     collection,
@@ -7,32 +9,29 @@ import {
     Timestamp,
     QuerySnapshot,
     doc,
-    where,
     updateDoc,
     orderBy // Import orderBy
 } from 'firebase/firestore';
-import { useAuth } from '../context/Auth-Context'; // Adjust path if needed
+import { useAuth } from '../context/auth-context'; // Adjust path if needed
 import { CustomCard } from '../Components/CustomCard'; // Adjust path if needed
 import { Spinner } from '../constants/Spinner'; // Adjust path if needed
 import { Modal } from '../constants/Modal'; // Adjust path if needed
-import { State, Variant } from '../enums'; // Adjust path if needed
-import { CustomButton } from '../Components/CustomButton'; // Adjust path if needed
+import { State } from '../enums'; // Adjust path if needed
 import { serverTimestamp } from 'firebase/firestore';
-import { FiSearch, FiX, FiPackage, FiTruck, FiThumbsUp } from 'react-icons/fi'; // Icons for status
+import { FiSearch, FiX, FiPackage, FiTruck, FiThumbsUp } from 'react-icons/fi'; // Icons
 
 // --- Data Types ---
-interface OrderItem {
+export interface OrderItem {
     id: string;
     name: string;
     quantity: number;
-    mrp: number; // Assuming mrp is stored
+    mrp: number;
 }
 
-// Define the possible order statuses
-type OrderStatus = 'Upcoming' | 'Confirmed' | 'Packed & Dispatched' | 'Completed';
+export type OrderStatus = 'Upcoming' | 'Confirmed' | 'Packed & Dispatched' | 'Completed';
 
-interface Order {
-    id: string;          // Firestore document ID
+export interface Order {
+    id: string;      // Firestore document ID
     orderId: string;     // Unique Order ID from data
     totalAmount: number;
     userName: string;
@@ -40,12 +39,10 @@ interface Order {
     createdAt: Date;
     time: string; // Formatted time string
     items?: OrderItem[];
-    // Add other fields from your customerOrders document if needed (e.g., userId, companyId)
 }
 
 const formatDate = (date: Date | null): string => {
     if (!date) return 'N/A';
-    // Simplified format for orders page
     return date.toLocaleDateString('en-IN', {
         day: '2-digit',
         month: 'short',
@@ -56,7 +53,7 @@ const formatDate = (date: Date | null): string => {
 };
 
 // --- Custom Hook for Orders Data ---
-const useOrdersData = (companyId?: string) => {
+export const useOrdersData = (companyId?: string) => {
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -70,24 +67,19 @@ const useOrdersData = (companyId?: string) => {
         }
 
         setLoading(true);
-        // Query orders collection, order by creation time descending
         const ordersQuery = query(
-            collection(db, 'customerOrders'),
-            where('companyId', '==', companyId),
-            orderBy('createdAt', 'desc') // Order by timestamp
+            collection(db, 'companies', companyId, 'Orders'),
+            orderBy('createdAt', 'desc')
         );
-
         const unsubscribe = onSnapshot(ordersQuery, (snapshot: QuerySnapshot) => {
             const ordersData = snapshot.docs.map((doc): Order => {
                 const data = doc.data();
-                const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(); // Convert Timestamp
-
-                // Default status to 'Upcoming' if missing
+                const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date();
                 const status: OrderStatus = data.status || 'Upcoming';
 
                 return {
                     id: doc.id,
-                    orderId: data.orderId || doc.id, // Use doc.id as fallback
+                    orderId: data.orderId || doc.id,
                     totalAmount: data.totalAmount || 0,
                     userName: data.userName || 'N/A',
                     status: status,
@@ -103,45 +95,47 @@ const useOrdersData = (companyId?: string) => {
             });
             setOrders(ordersData);
             setLoading(false);
-            setError(null); // Clear error on successful fetch
+            setError(null);
         }, (err) => {
             console.error("Error fetching orders:", err);
             setError("Failed to load orders data.");
             setLoading(false);
         });
 
-        // Cleanup subscription on unmount
         return () => unsubscribe();
-    }, [companyId]); // Rerun effect if companyId changes
+    }, [companyId]);
 
     return { orders, loading, error };
 };
 
 // --- Main Orders Page Component ---
 const OrdersPage: React.FC = () => {
-    // Define the order of statuses for tabs and progression
     const orderStatuses: OrderStatus[] = ['Upcoming', 'Confirmed', 'Packed & Dispatched', 'Completed'];
-    const [activeStatusTab, setActiveStatusTab] = useState<OrderStatus>('Upcoming'); // Default tab
+
+    // --- FIX: Get navigation state ---
+    const location = useLocation();
+    const defaultStatus = (location.state?.defaultStatus as OrderStatus) || 'Upcoming';
+
+    // --- FIX: Use defaultStatus to set the initial tab ---
+    const [activeStatusTab, setActiveStatusTab] = useState<OrderStatus>(defaultStatus);
 
     const [searchQuery, setSearchQuery] = useState('');
     const [showSearch, setShowSearch] = useState(false);
     const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
-    const [isUpdatingStatus, setIsUpdatingStatus] = useState<string | null>(null); // Track which order status is being updated
+    const [isUpdatingStatus, setIsUpdatingStatus] = useState<string | null>(null);
 
     const { currentUser, loading: authLoading } = useAuth();
     const { orders, loading: dataLoading, error } = useOrdersData(currentUser?.companyId);
 
-    // Filter orders based on the active status tab and search query
     const filteredOrders = useMemo(() => {
         return orders
-            .filter(order => order.status === activeStatusTab) // Filter by selected status tab
-            .filter(order => { // Then filter by search query
+            .filter(order => order.status === activeStatusTab)
+            .filter(order => {
                 const lowerCaseQuery = searchQuery.toLowerCase();
                 return (
                     order.orderId.toLowerCase().includes(lowerCaseQuery) ||
                     order.userName.toLowerCase().includes(lowerCaseQuery)
-                    // Add other searchable fields if needed (e.g., item names within order)
                 );
             });
     }, [orders, activeStatusTab, searchQuery]);
@@ -150,37 +144,42 @@ const OrdersPage: React.FC = () => {
         setExpandedOrderId(prevId => (prevId === orderId ? null : orderId));
     };
 
-    // Function to get the next status in the sequence
     const getNextStatus = (currentStatus: OrderStatus): OrderStatus | null => {
         const currentIndex = orderStatuses.indexOf(currentStatus);
         if (currentIndex === -1 || currentIndex === orderStatuses.length - 1) {
-            return null; // No next status if not found or already completed
+            return null;
         }
         return orderStatuses[currentIndex + 1];
     };
 
-    // Function to handle status updates
     const handleUpdateStatus = async (orderId: string, currentStatus: OrderStatus) => {
         const nextStatus = getNextStatus(currentStatus);
-        if (!nextStatus || isUpdatingStatus === orderId) return; // Don't update if no next status or already updating
 
+        if (!nextStatus || isUpdatingStatus === orderId || !currentUser?.companyId) {
+            if (!currentUser?.companyId) {
+                console.error("Cannot update status: user or companyId is missing.");
+                setModal({ message: "Error: Not logged in.", type: State.ERROR });
+            }
+            return;
+        }
+
+        const companyId = currentUser.companyId;
         setIsUpdatingStatus(orderId);
-        setModal(null); // Clear previous modals
-        const orderDocRef = doc(db, 'customerOrders', orderId);
+        setModal(null);
+
+        const orderDocRef = doc(db, 'companies', companyId, 'Orders', orderId);
 
         try {
             await updateDoc(orderDocRef, {
                 status: nextStatus,
-                updatedAt: serverTimestamp() // Optionally track updates
+                updatedAt: serverTimestamp()
             });
             setModal({ message: `Order moved to ${nextStatus}.`, type: State.SUCCESS });
-            // The local state will update automatically due to the onSnapshot listener
         } catch (err) {
             console.error("Error updating order status:", err);
             setModal({ message: `Failed to update status: ${err instanceof Error ? err.message : 'Unknown error'}`, type: State.ERROR });
         } finally {
             setIsUpdatingStatus(null);
-            // Optionally auto-close success modal
             setTimeout(() => setModal(null), 2000);
         }
     };
@@ -227,7 +226,7 @@ const OrdersPage: React.FC = () => {
                         {isExpanded && (
                             <div className="mt-4 pt-4 border-t border-slate-200">
                                 <h4 className="text-sm font-semibold text-slate-500 mb-2 uppercase tracking-wide">Items</h4>
-                                <div className="space-y-2 text-sm max-h-40 overflow-y-auto pr-2"> {/* Added max height and scroll */}
+                                <div className="space-y-2 text-sm max-h-40 overflow-y-auto pr-2">
                                     {(order.items && order.items.length > 0) ? order.items.map((item, index) => (
                                         <div key={item.id || index} className="flex justify-between items-center text-slate-700">
                                             <div className="flex-1 pr-4">
@@ -293,7 +292,6 @@ const OrdersPage: React.FC = () => {
                         {!showSearch ? (
                             <div>
                                 <h1 className="text-2xl font-bold text-slate-800">Customer Orders</h1>
-                                {/* Optional: Add date filter display here if needed */}
                             </div>
                         ) : (
                             <input
@@ -307,27 +305,60 @@ const OrdersPage: React.FC = () => {
                         )}
                     </div>
                 </div>
-                {/* Optional: Add Date Filter Button Here */}
-                {/* <div className="relative pl-4" ref={filterRef}>...</div> */}
             </div>
 
-            {/* Status Tabs */}
-            <div className="flex justify-center border-b border-gray-300 p-2 bg-white sticky top-[calc(4rem+1px)] z-10 grid grid-cols-2 gap-2"> {/* Adjust top based on header height */}
-                {orderStatuses.map(status => (
-                    <CustomButton
-                        key={status}
-                        variant={Variant.Transparent}
-                        active={activeStatusTab === status}
-                        onClick={() => setActiveStatusTab(status)}
-                        className="flex-shrink-0 text-sm md:text-base" // Responsive text
-                    >
-                        {status.replace('&', '& ')} {/* Add space for wrapping */}
-                    </CustomButton>
-                ))}
+            {/* Stepper */}
+            <div className="flex items-center w-full px-6 md:px-10 pt-12 pb-10 bg-white shadow-sm sticky top-[calc(4rem+1px)] z-10">
+                {orderStatuses.map((status, index) => {
+                    const activeIndex = orderStatuses.indexOf(activeStatusTab);
+                    const isCompleted = index < activeIndex;
+                    const isActive = index === activeIndex;
+
+                    const dotColor = isCompleted || isActive ? 'bg-orange-500' : 'bg-gray-300';
+                    const lineColor = isCompleted ? 'bg-orange-500' : 'bg-gray-300';
+                    const textColor = isActive
+                        ? 'text-orange-600 font-bold'
+                        : (isCompleted ? 'text-orange-500 font-medium' : 'text-gray-500 font-medium');
+                    const dotStateStyles = isActive ? 'scale-110 shadow-lg' : 'scale-100 shadow-sm';
+                    const isTopLabel = index % 2 === 0;
+                    const labelContent = status.replace(' & ', ' &\n');
+
+                    return (
+                        <React.Fragment key={status}>
+                            {/* Step (Dot + Labels) */}
+                            <div
+                                className="relative flex flex-col items-center flex-shrink-0 cursor-pointer px-2"
+                                onClick={() => setActiveStatusTab(status)}
+                            >
+                                {/* Top Label */}
+                                {isTopLabel && (
+                                    <span className={`absolute bottom-full mb-3 text-center text-sm md:text-base ${textColor} transition-colors whitespace-pre-line`}>
+                                        {labelContent}
+                                    </span>
+                                )}
+
+                                {/* Dot */}
+                                <div className={`w-7 h-7 rounded-full ${dotColor} transition-all duration-300 z-10 border-[5px] border-yellow-500 ${dotStateStyles}`} />
+
+                                {/* Bottom Label */}
+                                {!isTopLabel && (
+                                    <span className={`absolute top-full mt-3 text-center text-sm md:text-base ${textColor} transition-colors whitespace-pre-line`}>
+                                        {labelContent}
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* Connector Line */}
+                            {index < orderStatuses.length - 1 && (
+                                <div className={`flex-auto h-2 ${lineColor} transition-colors`} />
+                            )}
+                        </React.Fragment>
+                    );
+                })}
             </div>
 
             {/* Orders List */}
-            <div className="flex-grow overflow-y-auto bg-slate-100 space-y-3 p-2 md:p-4"> {/* Responsive Padding */}
+            <div className="flex-grow overflow-y-auto bg-slate-100 space-y-3 p-2 md:p-4">
                 {renderContent()}
             </div>
         </div>

@@ -1,87 +1,75 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link, useLocation } from 'react-router-dom'; // Added Link and useLocation
-import { ROUTES } from '../constants/routes.constants';
-import {
-    FiDollarSign,
-    FiShoppingCart,
-    FiPackage,
-    FiPlus,
-    FiArchive,
-} from 'react-icons/fi';
-
-// --- Imports from old dashboard ---
+import { Link, useLocation } from 'react-router-dom';
 import { db } from '../lib/Firebase';
 import { doc, getDoc } from 'firebase/firestore';
-import { useAuth } from '../context/Auth-Context';
+import { useAuth } from '../context/auth-context';
 import { FilterProvider } from '../Components/Filter';
 import ShowWrapper from '../context/ShowWrapper';
 import { Permissions } from '../enums';
 import { SiteItems } from '../routes/SiteRoutes';
+import { OrderTimeline } from '../Components/OrderTimeline';
+import { CompletedSalesCard } from '../Components/CatalougeSales'; // Assuming this is the correct path
 
-/**
- * NOTE: You will need to install react-icons if you haven't:
- * npm install react-icons
- */
-
-// --- Hook from old dashboard ---
-const useBusinessName = (userId?: string) => {
+// --- Custom Hook for Business Name ---
+const useBusinessName = (userId?: string, companyId?: string) => { // <-- FIX: Added companyId
     const [businessName, setBusinessName] = useState<string>('');
     const [loading, setLoading] = useState(true);
     useEffect(() => {
-        if (!userId) { setLoading(false); return; }
+        // --- FIX: Wait for both userId AND companyId ---
+        if (!userId || !companyId) {
+            setLoading(false);
+            return;
+        }
         const fetchBusinessInfo = async () => {
             try {
-                const docRef = doc(db, 'business_info', userId);
+                // --- FIX: Use the correct multi-tenant path ---
+                // (Assumes business_info doc ID is the companyId, as set in your Cloud Function)
+                const docRef = doc(db, 'companies', companyId, 'business_info', companyId);
                 const docSnap = await getDoc(docRef);
                 setBusinessName(docSnap.exists() ? docSnap.data().businessName || 'Business' : 'Business');
             } catch (err) {
+                console.error("Error fetching business name:", err);
                 setBusinessName('Business');
             } finally {
                 setLoading(false);
             }
         };
         fetchBusinessInfo();
-    }, [userId]);
+    }, [userId, companyId]); // <-- FIX: Add companyId dependency
     return { businessName, loading };
 };
 
 
 const HomePage: React.FC = () => {
-    const navigate = useNavigate();
-    const location = useLocation(); // Added to find current path
+    const location = useLocation();
 
-    // --- State from old dashboard ---
     const { currentUser, loading: authLoading } = useAuth();
-    const { businessName, loading: nameLoading } = useBusinessName(currentUser?.uid);
-    const [isDataVisible, setIsDataVisible] = useState<boolean>(false);
+
+    // --- FIX: Pass companyId to the hook ---
+    const { businessName, loading: nameLoading } = useBusinessName(currentUser?.uid, currentUser?.companyId);
+
+    const [isDataVisible, setIsDataVisible] = useState<boolean>(true); // Default to visible
     const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
     const isLoading = authLoading || nameLoading;
-
-    // --- Placeholder data for dashboard stats ---
-    const stats = {
-        todaySales: 12500.75,
-        todayPurchases: 4200.00,
-        lowStockItems: 5,
-    };
 
     const currentItem = SiteItems.find(item => item.to === location.pathname);
     const currentLabel = currentItem ? currentItem.label : "Menu";
 
-    // --- Logic for Data Visibility ---
-    const dataVisibilityClass = isDataVisible ? '' : 'blur-sm select-none';
+    // --- FIX: This class is no longer needed on the main container ---
+    // const dataVisibilityClass = isDataVisible ? '' : 'blur-sm select-none';
 
     return (
         <FilterProvider>
             <div className="flex min-h-screen w-full flex-col bg-gray-100">
 
-                {/* === HEADER (from old dashboard) === */}
+                {/* === HEADER === */}
                 <header className="flex flex-shrink-0 items-center justify-between border-b border-slate-300 bg-gray-100 p-2 ">
 
                     {/* Left Path Dropdown */}
                     <div className="relative w-14 flex justify-start">
                         <button
                             onClick={() => setIsMenuOpen(!isMenuOpen)}
-                            className="flex min-w-22 items-center justify-between gap-2 rounded-sm border border-slate-400 p-2 text-sm font-medium text-slate-700 hover:bg-slate-200 transition-colors" // Adjusted min-w and gap
+                            className="flex min-w-22 items-center justify-between gap-2 rounded-sm border border-slate-400 p-2 text-sm font-medium text-slate-700 hover:bg-slate-200 transition-colors"
                             title="Change Page"
                         >
                             <span className="font-medium">{currentLabel}</span>
@@ -104,7 +92,6 @@ const HomePage: React.FC = () => {
                         {isMenuOpen && (
                             <div className="absolute top-full left-0 mt-2 w-56 bg-white border border-slate-300 rounded-md shadow-lg z-10">
                                 <ul className="py-1">
-
                                     {SiteItems.map(({ to, label }) => (
                                         <li key={to}>
                                             <Link
@@ -119,7 +106,6 @@ const HomePage: React.FC = () => {
                                             </Link>
                                         </li>
                                     ))}
-
                                 </ul>
                             </div>
                         )}
@@ -127,14 +113,12 @@ const HomePage: React.FC = () => {
 
                     {/* Center Title */}
                     <div className="flex-1 text-center">
-                        {/* The h1 is here now */}
                         <h1 className="text-2xl font-bold text-slate-800">Dashboard</h1>
                         <p className="text-sm text-slate-500">{isLoading ? 'Loading...' : businessName}</p>
                     </div>
 
                     {/* Right-side Show/Hide Button */}
                     <div className="w-14 flex justify-end">
-                        {/* You may need to adjust this permission */}
                         <ShowWrapper requiredPermission={Permissions.ViewSalescard}>
                             <button
                                 onClick={() => setIsDataVisible(!isDataVisible)}
@@ -151,79 +135,13 @@ const HomePage: React.FC = () => {
                     </div>
                 </header>
 
-                {/* === MAIN CONTENT (from new file) === */}
-                <main className="flex-grow overflow-y-auto p-4">
-                    {/* The h1 was moved to the header */}
+                {/* === MAIN CONTENT === */}
+                <main className="flex-grow overflow-y-auto p-2">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
 
-                    {/* === KEY STATS GRID === */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                        <OrderTimeline isDataVisible={isDataVisible} />
+                        <CompletedSalesCard isDataVisible={isDataVisible} />
 
-                        {/* Today's Sales Card */}
-                        <div className="bg-white p-4 rounded-lg shadow-sm flex items-center gap-4">
-                            <div className="p-3 bg-green-100 rounded-full">
-                                <FiDollarSign className="h-6 w-6 text-green-600" />
-                            </div>
-                            <div>
-                                <p className="text-sm text-gray-500">Today's Sales</p>
-                                {/* Data is hidden/shown based on toggle state */}
-                                <p className={`text-2xl font-bold text-gray-900 transition-all ${dataVisibilityClass}`}>
-                                    ₹{stats.todaySales.toFixed(2)}
-                                </p>
-                            </div>
-                        </div>
-
-                        {/* Today's Purchases Card */}
-                        <div className="bg-white p-4 rounded-lg shadow-sm flex items-center gap-4">
-                            <div className="p-3 bg-blue-100 rounded-full">
-                                <FiShoppingCart className="h-6 w-6 text-blue-600" />
-                            </div>
-                            <div>
-                                <p className="text-sm text-gray-500">Today's Purchases</p>
-                                {/* Data is hidden/shown based on toggle state */}
-                                <p className={`text-2xl font-bold text-gray-900 transition-all ${dataVisibilityClass}`}>
-                                    ₹{stats.todayPurchases.toFixed(2)}
-                                </p>
-                            </div>
-                        </div>
-
-                        {/* Low Stock Items Card */}
-                        <div className="bg-white p-4 rounded-lg shadow-sm flex items-center gap-4">
-                            <div className="p-3 bg-red-100 rounded-full">
-                                <FiArchive className="h-6 w-6 text-red-600" />
-                            </div>
-                            <div>
-                                <p className="text-sm text-gray-500">Low Stock Items</p>
-                                {/* Data is hidden/shown based on toggle state */}
-                                <p className={`text-2xl font-bold text-gray-900 transition-all ${dataVisibilityClass}`}>
-                                    {stats.lowStockItems}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* === QUICK ACTIONS === */}
-                    <div className="flex flex-col sm:flex-row gap-3 mb-6">
-                        <button
-                            onClick={() => navigate(ROUTES.SALES)}
-                            className="flex-1 bg-blue-600 text-white font-semibold py-3 px-4 rounded-lg shadow-sm hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
-                        >
-                            <FiPlus className="h-5 w-5" />
-                            New Sale
-                        </button>
-                        <button
-                            onClick={() => navigate(ROUTES.PURCHASE)}
-                            className="flex-1 bg-gray-700 text-white font-semibold py-3 px-4 rounded-lg shadow-sm hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
-                        >
-                            <FiShoppingCart className="h-5 w-5" />
-                            New Purchase
-                        </button>
-                        <button
-                            onClick={() => navigate(ROUTES.ITEM_ADD)}
-                            className="flex-1 bg-gray-700 text-white font-semibold py-3 px-4 rounded-lg shadow-sm hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
-                        >
-                            <FiPackage className="h-5 w-5" />
-                            Add New Item
-                        </button>
                     </div>
                 </main>
             </div>

@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo, type ReactNode } from 'react';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/Firebase';
-import { AuthContext, DatabaseContext } from './Auth-Context';
+import { AuthContext, DatabaseContext } from './auth-context';
 import { Permissions } from '../enums';
 import type { User } from '../Role/permission';
 import Loading from '../Pages/Loading/Loading';

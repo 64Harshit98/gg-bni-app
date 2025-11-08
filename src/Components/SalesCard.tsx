@@ -8,7 +8,7 @@ import {
   onSnapshot
 } from 'firebase/firestore';
 import type { FirestoreError } from 'firebase/firestore';
-import { useAuth } from '../context/Auth-Context'; // <-- Uses the correct hook
+import { useAuth } from '../context/auth-context'; // <-- Uses the correct hook
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { useFilter } from './Filter';
 

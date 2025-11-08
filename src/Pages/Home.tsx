@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { db } from '../lib/Firebase';
 import { doc, getDoc } from 'firebase/firestore';
-import { useAuth } from '../context/Auth-Context';
+import { useAuth } from '../context/auth-context';
 import { AttendancePage } from '../Components/AttendaceCard';
 import { SalesBarChartReport } from '../Components/SalesBarGraph';
 import { SalesCard } from '../Components/SalesCard';

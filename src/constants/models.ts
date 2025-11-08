@@ -21,7 +21,7 @@ export interface Item {
   restockQuantity: number;
   stock: number;
   isListed?: boolean;
-  imageUrl?: string;
+  imageUrl?: string | null;
   description?: string;
 }
 

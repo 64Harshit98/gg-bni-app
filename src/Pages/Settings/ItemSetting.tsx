@@ -13,7 +13,7 @@ import {
 import { Spinner } from '../../constants/Spinner';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
-import { useAuth } from '../../context/Auth-Context';
+import { useAuth } from '../../context/auth-context';
 
 export interface ItemSettings {
     companyId?: string;

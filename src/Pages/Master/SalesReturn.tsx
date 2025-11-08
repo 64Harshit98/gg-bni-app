@@ -11,7 +11,7 @@ import {
   arrayUnion,
   serverTimestamp,
 } from 'firebase/firestore';
-import { useAuth, useDatabase } from '../../context/Auth-Context';
+import { useAuth, useDatabase } from '../../context/auth-context';
 import { ROUTES } from '../../constants/routes.constants';
 import BarcodeScanner from '../../UseComponents/BarcodeScanner';
 import type { Item, SalesItem as OriginalSalesItem } from '../../constants/models';

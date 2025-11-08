@@ -32,18 +32,19 @@ const PnlReport = lazy(() => import('../Pages/Reports/PNLReport'));
 const BusInfo = lazy(() => import('../Pages/Auth/BusInfo'));
 const BusAddress = lazy(() => import('../Pages/Auth/BusAddress'));
 const PrintQR = lazy(() => import('../Pages/Master/PrintQR'));
-const Permissionsetting = lazy(() => import('../Pages/Settings/PermissionSetting'));
+const Permissionsetting = lazy(() => import('../Pages/Settings/Permissionsetting'));
 const UnauthorizedPage = lazy(() => import('../Pages/Unauthorized'));
 const SalesSettingsPage = lazy(() => import('../Pages/Settings/SalesSetting'));
-const PurchaseSettingsPage = lazy(() => import('../Pages/Settings/PurchaseSetting'));
+const PurchaseSettingsPage = lazy(() => import('../Pages/Settings/Purchasesetting'));
 // const History = lazy(() => import('../UseComponents/historypage'));
-const CHome = lazy(() => import('../Catalogue/CHome'));
+const CHome = lazy(() => import('../Catalogue/CatalogueHome'));
 const MyShop = lazy(() => import('../Catalogue/MyShop'));
 const UserSetting = lazy(() => import('../Pages/Settings/UserSettings'));
 const ItemSetting = lazy(() => import('../Pages/Settings/ItemSetting'));
 const Order = lazy(() => import('../Catalogue/OrderingPage'));
 const OrderDetails = lazy(() => import('../Catalogue/Orders'));
 const Catalogue = lazy(() => import('../Catalogue/SharedCatalouge'));
+const CatalogueAccounts = lazy(() => import('../Catalogue/CatalougeAccount'));
 
 const router = createBrowserRouter([
   {
@@ -213,6 +214,11 @@ const router = createBrowserRouter([
           {
             index: true,
             element: <CHome />,
+            handle: { requiredPermission: null },
+          },
+          {
+            path: ROUTES.CATALOGUE_ACCOUNTS,
+            element: <CatalogueAccounts />,
             handle: { requiredPermission: null },
           },
           {

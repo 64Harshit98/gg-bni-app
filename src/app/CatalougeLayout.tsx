@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { Permissions } from '../enums';
 import ShowWrapper from '../context/ShowWrapper';
 import { CatItems } from '../routes/CatalougeRoutes';
-import { useAuth } from '../context/Auth-Context';
+import { useAuth } from '../context/auth-context';
 
 const CatalogueLayout = () => {
     const location = useLocation();

@@ -35,4 +35,5 @@ export const ROUTES = {
   ORDER: 'orders',
   ORDERDETAILS: 'order-details',
   CATALOGUE: 'catalogue',
+  CATALOGUE_ACCOUNTS: 'accounts',
 };

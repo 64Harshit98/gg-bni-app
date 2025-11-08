@@ -5,7 +5,7 @@ import { doc, updateDoc, collection, query, where, getDocs, addDoc } from 'fireb
 import { Spinner } from '../../constants/Spinner';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
-import { useAuth } from '../../context/Auth-Context';
+import { useAuth } from '../../context/auth-context';
 
 // --- THIS IS THE NEW INTERFACE ---
 // (Interface is correct, no changes needed)
@@ -224,7 +224,7 @@ const SalesSettingsPage: React.FC = () => {
                                 >
                                     <option value="none">None (Tax Disabled)</option>
                                     <option value="regular">Regular GST</option>
-                                    <option value="composition">Composition GST (Inclusive)</option>
+                                    <option value="composition">Composition GST</option>
                                 </select>
                             </div>
                         </div>
@@ -239,8 +239,8 @@ const SalesSettingsPage: React.FC = () => {
                                         onChange={(e) => handleChange('taxType', e.target.value)}
                                         className="w-full p-3 border border-gray-300 rounded-lg bg-white"
                                     >
-                                        <option value="exclusive">Tax Exclusive (GST extra)</option>
-                                        <option value="inclusive">Tax Inclusive (MRP includes GST)</option>
+                                        <option value="exclusive">Tax Exclusive (Sale Price + GST)</option>
+                                        <option value="inclusive">Tax Inclusive (Sale Price includes GST)</option>
                                     </select>
                                 </div>
                             </div>
@@ -304,16 +304,6 @@ const SalesSettingsPage: React.FC = () => {
                     {/* --- Card 6: Voucher Numbering & Options --- */}
                     <div className="bg-white rounded-lg p-6 shadow-md mb-2">
                         <h2 className="text-lg font-semibold text-gray-800 mb-4">Voucher Numbering & Options</h2>
-                        <div className="flex items-center mb-4">
-                            <input
-                                type="checkbox"
-                                id="copy-voucher"
-                                checked={settings.copyVoucherAfterSaving ?? false}
-                                onChange={(e) => handleCheckboxChange('copyVoucherAfterSaving', e.target.checked)}
-                                className="w-4 h-4 text-blue-600"
-                            />
-                            <label htmlFor="copy-voucher" className="ml-2 text-gray-700 text-sm font-medium">Keep items in cart after saving (Copy Voucher)</label>
-                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
                                 <label htmlFor="voucher-name" className="block text-gray-700 text-sm font-medium mb-1">Voucher Name</label>

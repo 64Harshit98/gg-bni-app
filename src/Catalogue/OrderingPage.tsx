@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, Fragment } from 'react';
-import { useAuth, useDatabase } from '../context/Auth-Context';
+import { useAuth, useDatabase } from '../context/auth-context';
 import type { Item } from '../constants/models';
 import { Modal } from '../constants/Modal';
 import { State } from '../enums';
@@ -8,13 +8,18 @@ import { Transition } from '@headlessui/react';
 import { Spinner } from '../constants/Spinner';
 import { ItemDetailDrawer } from '../Components/ItemDetails'; // <-- Make sure this path is correct
 
+// --- Firebase imports for saving the order ---
+import { db } from '../lib/Firebase'; // <-- Make sure this path is correct
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+
+
 // --- Cart Item Type ---
 interface CartItem {
     id: string;
     name: string;
     mrp: number;
     quantity: number;
-    imageUrl?: string;
+    imageUrl?: string | null;
 }
 
 // --- Cart Drawer Component ---
@@ -23,7 +28,7 @@ interface CartDrawerProps {
     onClose: () => void;
     cart: CartItem[];
     onUpdateQuantity: (id: string, delta: number) => void;
-    onPlaceOrder: () => void;
+    onPlaceOrder: () => void; // Renamed to onPlaceOrder, will trigger the customer modal
     isPlacingOrder: boolean;
 }
 
@@ -85,8 +90,9 @@ const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, cart, onUpdate
                                                 <p>Total Amount</p>
                                                 <p>₹{cartTotal.toFixed(2)}</p>
                                             </div>
+                                            {/* This button now just triggers the next step */}
                                             <button onClick={onPlaceOrder} disabled={isPlacingOrder} className="w-full bg-blue-600 text-white py-3 rounded-md font-bold hover:bg-blue-700 disabled:bg-gray-400" >
-                                                {isPlacingOrder ? 'Placing Order...' : 'Place Order'}
+                                                {isPlacingOrder ? 'Loading...' : 'Place Order'}
                                             </button>
                                         </div>
                                     )}
@@ -111,35 +117,29 @@ interface ItemCardQuantityControlProps {
 }
 
 const ItemCardQuantityControl: React.FC<ItemCardQuantityControlProps> = ({ item, cartItem, onAddToCart, onSetQuantity, onUpdateQuantity }) => {
-
-    // This local state is only for managing the text input
     const [inputValue, setInputValue] = useState<string | number>('');
 
     useEffect(() => {
-        // Sync the input value with the cart state
         setInputValue(cartItem?.quantity || '');
     }, [cartItem]);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = e.target.value;
-        setInputValue(val); // Update local state immediately
-
+        setInputValue(val);
         const num = parseInt(val, 10);
         if (!isNaN(num) && num > 0) {
-            onSetQuantity(item.id!, num); // Update global cart state
+            onSetQuantity(item.id!, num);
         }
     };
 
     const handleBlur = () => {
-        // If input is empty or invalid, reset it to the cart's quantity
         setInputValue(cartItem?.quantity || '');
         if (inputValue === '' || inputValue === 0) {
-            onSetQuantity(item.id!, 0); // Remove from cart
+            onSetQuantity(item.id!, 0);
         }
     };
 
     if (!cartItem) {
-        // Not in cart, show "ADD TO CART" button
         return (
             <button
                 onClick={() => onAddToCart(item, 1)}
@@ -150,13 +150,9 @@ const ItemCardQuantityControl: React.FC<ItemCardQuantityControlProps> = ({ item,
         );
     }
 
-    // Item is in the cart, show quantity selector
     return (
         <div className="flex items-center justify-center gap-2 text-lg mt-auto">
-            <button
-                onClick={() => onUpdateQuantity(item.id!, -1)}
-                className="px-3 py-1 rounded-md text-gray-700 border border-gray-300"
-            >
+            <button onClick={() => onUpdateQuantity(item.id!, -1)} className="px-3 py-1 rounded-md text-gray-700 border border-gray-300" >
                 <FiMinus size={16} />
             </button>
             <input
@@ -167,10 +163,7 @@ const ItemCardQuantityControl: React.FC<ItemCardQuantityControlProps> = ({ item,
                 className="font-bold text-gray-900 w-16 text-center text-base border border-gray-300 rounded-md py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 min="1"
             />
-            <button
-                onClick={() => onUpdateQuantity(item.id!, 1)}
-                className="px-3 py-1 rounded-md text-gray-700 border border-gray-300"
-            >
+            <button onClick={() => onUpdateQuantity(item.id!, 1)} className="px-3 py-1 rounded-md text-gray-700 border border-gray-300" >
                 <FiPlus size={16} />
             </button>
         </div>
@@ -183,18 +176,31 @@ const OrderingPage: React.FC = () => {
     const { currentUser, loading: authLoading } = useAuth();
     const dbOperations = useDatabase();
 
+    // Page state
     const [items, setItems] = useState<Item[]>([]);
     const [categories, setCategories] = useState<string[]>(['All']);
     const [selectedCategory, setSelectedCategory] = useState('All');
     const [searchQuery, setSearchQuery] = useState('');
-    const [cart, setCart] = useState<CartItem[]>([]);
-    const [isCartOpen, setIsCartOpen] = useState(false);
-    const [isPlacingOrder, setIsPlacingOrder] = useState(false);
-    const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
-    const [selectedItem, setSelectedItem] = useState<Item | null>(null);
-    const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
     const [pageIsLoading, setPageIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    // Cart state
+    const [cart, setCart] = useState<CartItem[]>([]);
+    const [isCartOpen, setIsCartOpen] = useState(false);
+
+    // Order state
+    const [isPlacingOrder, setIsPlacingOrder] = useState(false);
+    const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
+
+    // Item Detail state
+    const [selectedItem, setSelectedItem] = useState<Item | null>(null);
+    const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
+
+    // --- NEW: Customer Details State ---
+    const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
+    const [customerName, setCustomerName] = useState('');
+    const [customerPhone, setCustomerPhone] = useState('');
+
 
     // useEffect for fetching data
     useEffect(() => {
@@ -212,8 +218,11 @@ const OrderingPage: React.FC = () => {
                 ]);
                 const listedItems = fetchedItems.filter(item => item.isListed === true);
                 setItems(listedItems);
+
                 const categoryNames = fetchedItemGroups.map(group => group.name);
-                setCategories(['All', ...categoryNames]);
+                const uniqueCategoryNames = [...new Set(categoryNames)];
+                setCategories(['All', ...uniqueCategoryNames]);
+
             } catch (err: any) {
                 setError(err.message || 'Failed to load shop.');
             } finally {
@@ -235,7 +244,6 @@ const OrderingPage: React.FC = () => {
     };
 
     // --- Cart Handlers ---
-    // Adds a *specific quantity* to the cart
     const handleAddToCart = (item: Item, quantity: number) => {
         setCart(prevCart => {
             if (!item.id || quantity <= 0) return prevCart;
@@ -251,25 +259,20 @@ const OrderingPage: React.FC = () => {
                     name: item.name,
                     mrp: item.mrp,
                     quantity: quantity,
-                    imageUrl: item.imageUrl
+                    imageUrl: item.imageUrl || null // <-- THIS IS THE FIX
                 }];
             }
         });
     };
 
-    // Updates quantity by a *delta* (+1 or -1)
     const handleUpdateCartQuantity = (id: string, delta: number) => {
         setCart(prevCart => {
             const itemToUpdate = prevCart.find(item => item.id === id);
             if (!itemToUpdate) return prevCart;
-
             const newQuantity = itemToUpdate.quantity + delta;
-
             if (newQuantity <= 0) {
-                // Remove item from cart
                 return prevCart.filter(item => item.id !== id);
             } else {
-                // Update quantity
                 return prevCart.map(item =>
                     item.id === id ? { ...item, quantity: newQuantity } : item
                 );
@@ -277,14 +280,11 @@ const OrderingPage: React.FC = () => {
         });
     };
 
-    // Sets a *specific* quantity (from manual input)
     const handleSetCartQuantity = (id: string, newQuantity: number) => {
         setCart(prevCart => {
             if (newQuantity <= 0) {
-                // Remove item from cart
                 return prevCart.filter(item => item.id !== id);
             }
-
             return prevCart.map(item =>
                 item.id === id ? { ...item, quantity: newQuantity } : item
             );
@@ -306,30 +306,70 @@ const OrderingPage: React.FC = () => {
         });
     }, [items, selectedCategory, searchQuery]);
 
-    // Order placement logic
-    const handlePlaceOrder = async () => {
-        if (!dbOperations || !currentUser) {
-            setError("User not authenticated. Cannot place order.");
+    // --- (NEW) Step 1: Triggered by Cart Drawer "Place Order" button ---
+    const handleProceedToCheckout = () => {
+        if (cart.length === 0) {
+            setModal({ message: "Your cart is empty.", type: State.ERROR });
+            return;
+        }
+        setIsCartOpen(false); // Close cart
+        setIsCustomerModalOpen(true); // Open customer details modal
+    };
+
+    // --- (MODIFIED) Step 2: Triggered by "Confirm Order" button in the new modal ---
+    const handleConfirmAndSaveOrder = async () => {
+        // 1. Validation
+        if (customerName.trim() === '' || customerPhone.trim() === '') {
+            setModal({ message: 'Please enter both customer name and phone number.', type: State.ERROR });
+            return;
+        }
+        if (!currentUser) {
+            setModal({ message: "User not authenticated. Please log in again.", type: State.ERROR });
             return;
         }
         if (cart.length === 0) {
-            setError("Your cart is empty.");
+            setModal({ message: "Your cart is empty.", type: State.ERROR });
             return;
         }
 
         setIsPlacingOrder(true);
+        setModal(null);
+
         try {
-            // This is a placeholder for your 'createOrder' function
-            // await dbOperations.createOrder(cart, currentUser.uid); 
+            // 2. Calculate total
+            const totalAmount = cart.reduce((acc, item) => acc + item.mrp * item.quantity, 0);
 
-            console.log("Placing order:", cart);
-            await new Promise(res => setTimeout(res, 1500)); // Simulate API call
+            // 3. Create the order object with customer details
+            const orderToSave = {
+                items: cart,
+                totalAmount: totalAmount,
+                status: 'Upcoming', // Default status for a new order
+                createdAt: serverTimestamp(), // Use Firestore's timestamp
 
+                // --- Customer-entered details ---
+                userName: customerName.trim(),
+                userPhone: customerPhone.trim(),
+
+                // --- Internal tracking details ---
+                placedByUserId: currentUser.uid, // ID of the staff who placed the order
+                companyId: (currentUser as any).companyId || null, // Using 'as any' to bypass type-check for now
+            };
+
+            console.log("Placing order:", orderToSave); // This is line 372
+
+            // 4. Save to Firestore
+            const ordersCollectionRef = collection(db, 'companies', currentUser.companyId, 'Orders');
+            await addDoc(ordersCollectionRef, orderToSave);
+
+            // 5. Success feedback and cleanup
             setModal({ message: "Order placed successfully!", type: State.SUCCESS });
             setCart([]);
-            setIsCartOpen(false);
+            setIsCustomerModalOpen(false);
+            setCustomerName('');
+            setCustomerPhone('');
+
         } catch (err: any) {
-            console.error("Order Error:", err);
+            console.error("Order Error:", err); // This is where your error is caught
             setModal({ message: err.message || "Failed to place order.", type: State.ERROR });
         } finally {
             setIsPlacingOrder(false);
@@ -353,12 +393,68 @@ const OrderingPage: React.FC = () => {
         <div className="flex flex-col h-screen bg-gray-100 w-full overflow-hidden">
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
+            {/* --- NEW: Customer Details Modal --- */}
+            {isCustomerModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-500 bg-opacity-75 p-4">
+                    <div className="bg-white rounded-lg shadow-xl p-5 md:p-6 w-full max-w-md">
+                        <h3 className="text-xl font-bold mb-4 text-gray-900">Enter Customer Details</h3>
+                        <div className="space-y-4">
+                            <div>
+                                <label htmlFor="customerName" className="block text-sm font-medium text-gray-700">
+                                    Full Name <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    id="customerName"
+                                    value={customerName}
+                                    onChange={(e) => setCustomerName(e.target.value)}
+                                    className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                                    placeholder="Enter customer's name"
+                                />
+                            </div>
+                            <div>
+                                <label htmlFor="customerPhone" className="block text-sm font-medium text-gray-700">
+                                    Phone Number <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="tel"
+                                    id="customerPhone"
+                                    value={customerPhone}
+                                    onChange={(e) => setCustomerPhone(e.target.value)}
+                                    className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                                    placeholder="Enter 10-digit phone number"
+                                />
+                            </div>
+                        </div>
+                        <div className="mt-6 flex justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setIsCustomerModalOpen(false)}
+                                disabled={isPlacingOrder}
+                                className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmAndSaveOrder}
+                                disabled={isPlacingOrder}
+                                className="inline-flex justify-center rounded-md border border-transparent bg-blue-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400"
+                            >
+                                {isPlacingOrder ? <Spinner /> : 'Confirm Order'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* --- End of New Modal --- */}
+
             <CartDrawer
                 isOpen={isCartOpen}
                 onClose={() => setIsCartOpen(false)}
                 cart={cart}
                 onUpdateQuantity={handleUpdateCartQuantity}
-                onPlaceOrder={handlePlaceOrder}
+                onPlaceOrder={handleProceedToCheckout} // <-- This now triggers the new modal
                 isPlacingOrder={isPlacingOrder}
             />
             <ItemDetailDrawer
@@ -396,7 +492,7 @@ const OrderingPage: React.FC = () => {
                 <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
                     {categories.map(category => (
                         <button
-                            key={category}
+                            key={category} // This is now unique
                             onClick={() => setSelectedCategory(category)}
                             className={`px-4 py-1.5 text-sm font-medium rounded-full flex-shrink-0 transition-colors ${selectedCategory === category
                                 ? 'bg-blue-600 text-white'
@@ -416,7 +512,6 @@ const OrderingPage: React.FC = () => {
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                     {filteredItems.map(item => {
-                        // Find the corresponding cart item to pass to the control
                         const cartItem = cart.find(ci => ci.id === item.id);
 
                         return (
@@ -424,7 +519,6 @@ const OrderingPage: React.FC = () => {
                                 key={item.id}
                                 className="bg-white rounded-lg shadow-sm overflow-hidden flex flex-col"
                             >
-                                {/* This button handles opening the detail drawer */}
                                 <button
                                     onClick={() => handleItemClick(item)}
                                     className="block text-left"
@@ -442,7 +536,6 @@ const OrderingPage: React.FC = () => {
                                     </div>
                                 </button>
 
-                                {/* --- This is the new Quick Add component --- */}
                                 <div className="p-3 pt-0 mt-auto">
                                     <ItemCardQuantityControl
                                         item={item}

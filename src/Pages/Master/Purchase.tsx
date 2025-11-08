@@ -4,7 +4,7 @@ import type { Item, Purchase as OriginalPurchase, SalesItem } from '../../consta
 import { ROUTES } from '../../constants/routes.constants';
 import { db } from '../../lib/Firebase';
 import { collection, serverTimestamp, doc, increment as firebaseIncrement, getDoc, runTransaction, query, where, getDocs } from 'firebase/firestore';
-import { useAuth, useDatabase } from '../../context/Auth-Context';
+import { useAuth, useDatabase } from '../../context/auth-context';
 import BarcodeScanner from '../../UseComponents/BarcodeScanner';
 import PaymentDrawer, { type PaymentCompletionData } from '../../Components/PaymentDrawer';
 import { Modal } from '../../constants/Modal';

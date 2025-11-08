@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
-import { useAuth } from '../../context/Auth-Context';
+import { useAuth } from '../../context/auth-context';
 import type { Item } from '../../constants/models';
 import { getFirestoreOperations } from '../../lib/ItemsFirebase';
 import { Card, CardContent, CardHeader, CardTitle } from '../../Components/ui/card';
@@ -109,7 +109,7 @@ const QRCodeGeneratorPage: React.FC = () => {
         fetchData();
     }, [dbOperations]);
 
-    // ... (other useEffects remain the same)
+    // Effect to handle prefilled items from location state
     useEffect(() => {
         const prefilledItems = location.state?.prefilledItems as PrefilledItem[] | undefined;
         if (prefilledItems && allItems.length > 0 && !hasPrefilled.current) {
@@ -129,6 +129,7 @@ const QRCodeGeneratorPage: React.FC = () => {
         }
     }, [location.state, allItems]);
 
+    // Effect to update preview item when queue changes
     useEffect(() => {
         if (!itemForPreview && printQueue.length > 0) {
             setItemForPreview(printQueue[0]);
@@ -137,13 +138,15 @@ const QRCodeGeneratorPage: React.FC = () => {
         }
     }, [printQueue, itemForPreview]);
 
-    // ... (other handlers remain the same)
+    // Memoized search results
     const searchResults = useMemo(() => {
         if (!searchTerm.trim()) return [];
         const lowerCaseSearchTerm = searchTerm.toLowerCase();
         const itemIdsInQueue = new Set(printQueue.map(item => item.id));
         return allItems.filter(item => !itemIdsInQueue.has(item.id) && (item.name.toLowerCase().includes(lowerCaseSearchTerm) || item.barcode?.toLowerCase().includes(lowerCaseSearchTerm)));
     }, [searchTerm, allItems, printQueue]);
+
+    // --- Queue Management Handlers ---
 
     const handleAddItemToQueue = useCallback((item: Item) => {
         if (printQueue.some(queuedItem => queuedItem.id === item.id)) return;
@@ -173,8 +176,10 @@ const QRCodeGeneratorPage: React.FC = () => {
         try {
             const businessInfo = await dbOperations.getBusinessInfo();
             const companyName = businessInfo.name || 'Your Company';
-            const businessAddress = businessInfo.address || '';
-            const businessPhoneNumber = businessInfo.phoneNumber || '';
+            // Use 'pre-wrap' for address to handle newlines, but escape HTML
+            const businessAddress = (businessInfo.address || '').replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            const businessPhoneNumber = (businessInfo.phoneNumber || '').replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
 
             const printWindow = window.open('', '', 'height=600,width=800');
             if (!printWindow) {
@@ -211,9 +216,29 @@ const QRCodeGeneratorPage: React.FC = () => {
                     text-align: center; 
                     overflow: hidden;
                 }
-                .company-name { font-size: 7pt; font-weight: bold; margin: 0; }
-                .business-info { font-size: 5pt; margin:0; }
                 
+                /* --- MODIFIED STYLES --- */
+                .company-name { font-size: 7pt; font-weight: bold; margin: 0; text-align: center; }
+                .business-info { font-size: 5pt; margin:0; }
+                .info-row {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: flex-start; /* Align top */
+                    width: 100%;
+                    margin-top: 0.5mm; /* Add some space below company name */
+                }
+                .info-left {
+                    text-align: left;
+                    width: 60%; /* Give address more space */
+                    white-space: pre-wrap; /* Respect newlines in address */
+                    word-wrap: break-word;
+                }
+                .info-right {
+                    text-align: right;
+                    width: 40%;
+                }
+                /* --- END MODIFIED STYLES --- */
+
                 /* This container holds both barcodes */
                 .barcode-area {
                     display: flex;
@@ -221,11 +246,12 @@ const QRCodeGeneratorPage: React.FC = () => {
                     justify-content: center;
                     align-items: center;
                     width: 100%;
+                    margin-top: -1mm; /* Space from business info */
                 }
                 .qr-image { width: 14mm; height: 14mm; object-fit: contain; } /* Slightly smaller */
                 .barcode-image {
                     width: 30mm; /* The length of the barcode */
-                    height: 8mm; /* The height of the barcode bars */
+                    height: 10mm; /* The height of the barcode bars */
                     object-fit: contain;
                     margin-bottom:-2mm; /* Space between barcode and QR code */
                 }
@@ -256,8 +282,11 @@ const QRCodeGeneratorPage: React.FC = () => {
                         <div class="label-container">
                             <div>
                                 <p class="company-name">${companyName}</p>
-                                <p class="business-info">${businessAddress}</p>
-                                <p class="business-info">${businessPhoneNumber}</p>
+                                
+                                <div class="info-row">
+                                    <p class="business-info info-left">${businessAddress}</p>
+                                    <p class="business-info info-right">${businessPhoneNumber}</p>
+                                </div>
                             </div>
                             
                             <div class="barcode-area">

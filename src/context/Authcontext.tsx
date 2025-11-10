@@ -3,10 +3,11 @@ import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/Firebase';
 import { AuthContext, DatabaseContext } from './auth-context';
-import { Permissions } from '../enums';
+// Import ROLES from your enums
+import { Permissions, ROLES } from '../enums'; 
 import type { User } from '../Role/permission';
 import Loading from '../Pages/Loading/Loading';
-import { getFirestoreOperations } from '../lib/ItemsFirebase';
+import { getFirestoreOperations } from '../lib/ItemsFirebase'; // Corrected path
 
 interface AuthState {
   status: 'pending' | 'authenticated' | 'unauthenticated';
@@ -35,8 +36,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
           // 2. Check if the user has a companyId claim.
           if (!companyId) {
-            // This user is authenticated but not part of a company.
-            // This is an error state in a multi-tenant app.
             console.error("Auth Error: User is authenticated but has no companyId claim.");
             setAuthState({ status: 'unauthenticated', user: null });
             setDbOperations(null);
@@ -49,32 +48,37 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
           if (userDoc.exists()) {
             const docData = userDoc.data();
-
-            // 4. Fetch role-based permissions (this path is global and correct)
             let permissions: Permissions[] = [];
+
+            // --- THIS IS THE FIX ---
+            // 4. Fetch role-based permissions from the CORRECT multi-tenant path
             if (docData.role) {
-              const permissionDocRef = doc(db, 'permissions', docData.role);
+              // Use the new, secure path: companies/{companyId}/permissions/{role}
+              const permissionDocRef = doc(db, 'companies', companyId, 'permissions', docData.role);
               const permissionDoc = await getDoc(permissionDocRef);
+              
               if (permissionDoc.exists()) {
                 permissions = permissionDoc.data().allowedPermissions || [];
+              } else {
+                console.warn(`No permission document found for role "${docData.role}" in company "${companyId}"`);
               }
             }
+            // --- END OF FIX ---
 
             // 5. Construct the complete user object
             const userData: User = {
               uid: firebaseUser.uid,
               name: firebaseUser.displayName || docData.name || 'Anonymous',
               role: docData.role,
-              permissions: permissions,
+              permissions: permissions, // Permissions are now correctly loaded
               companyId: companyId, // Use the trusted companyId from the token
             };
-
+            
             // 6. Set state to authenticated
             setDbOperations(getFirestoreOperations(userData.companyId));
             setAuthState({ status: 'authenticated', user: userData });
 
           } else {
-            // This error means the user has a claim but no matching Firestore document.
             console.error("User document not found at path:", userDocRef.path);
             setAuthState({ status: 'unauthenticated', user: null });
             setDbOperations(null);
@@ -85,7 +89,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setDbOperations(null);
         }
       } catch (error) {
-        // This will catch Firestore permission errors or other network issues.
         console.error("Error during authentication check:", error);
         setAuthState({ status: 'unauthenticated', user: null });
         setDbOperations(null);
@@ -100,7 +103,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const authValue = useMemo(() => ({
     currentUser: authState.user,
     loading: authState.status === 'pending',
-    hasPermission: (permission: Permissions) => authState.user?.permissions?.includes(permission) ?? false,
+    
+    // --- FIX: Add special check for 'OWNER' role ---
+    hasPermission: (permission: Permissions) => {
+        // 1. If user is an Owner, they always have permission
+        if (authState.user?.role === ROLES.OWNER) {
+            return true;
+        }
+        // 2. Otherwise, check their permissions list
+        return authState.user?.permissions?.includes(permission) ?? false;
+    }
+    // --- END OF FIX ---
+    
   }), [authState]);
 
   // Show a loading screen while authentication is pending

@@ -5,7 +5,7 @@ import { Spinner } from '../constants/Spinner';
 import { useNavigate } from 'react-router-dom';
 import { ROUTES } from '../constants/routes.constants';
 
-const orderStatuses: OrderStatus[] = ['Upcoming', 'Confirmed', 'Packed & Dispatched', 'Completed'];
+const orderStatuses: OrderStatus[] = ['Upcoming', 'Confirmed', 'Packed', 'Completed'];
 
 
 const useGroupedOrders = () => {

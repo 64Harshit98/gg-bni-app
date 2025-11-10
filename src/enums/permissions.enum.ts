@@ -11,6 +11,8 @@ export enum Permissions {
     ViewPurchaseReport = 'ViewPurchaseReport',
     ViewPNLReport = 'ViewPNLReport',
     Viewrestockcard = 'Viewrestockcard',
+    ViewCatalogue = 'ViewCatalogue',
+    ViewTransactions = 'ViewTransactions',
     // Core Actions
     CreateSales = 'CreateSales',
     CreateSalesReturn = 'CreateSalesReturn',
@@ -26,7 +28,5 @@ export enum Permissions {
     CreateUsers = 'CreateUsers',
 
     // General Access
-    ViewTransactions = 'ViewTransactions',
     SetPermissions = 'SetPermissions',
-    ViewCatalogue = 'ViewCatalogue',
 }

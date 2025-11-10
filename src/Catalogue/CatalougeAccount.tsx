@@ -182,7 +182,7 @@ const Account: React.FC = () => {
                             requiredPermission={Permissions.ViewPNLReport}
                         >
                             <Link
-                                to={ROUTES.REPORTS}
+                                to={ROUTES.CATALOGUE_REPORTS}
                                 className="
                 flex justify-between items-center
                 bg-white p-4 rounded-sm shadow-md mb-2

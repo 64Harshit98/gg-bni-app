@@ -251,9 +251,10 @@ const QRCodeGeneratorPage: React.FC = () => {
                 .qr-image { width: 14mm; height: 14mm; object-fit: contain; } /* Slightly smaller */
                 .barcode-image {
                     width: 30mm; /* The length of the barcode */
-                    height: 10mm; /* The height of the barcode bars */
+                    height: 16mm; /* The height of the barcode bars */
                     object-fit: contain;
-                    margin-bottom:-2mm; /* Space between barcode and QR code */
+                    margin-bottom:-4mm; /* Space between barcode and QR code */
+                    margin-top: -2mm;
                 }
                 
                 .item-barcode { font-size: 6pt; font-weight: bold; margin: 0; }

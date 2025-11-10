@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../lib/Firebase';
+import { db } from '../lib/Firebase'; // Adjust path if needed
 import { useAuth } from '../context/auth-context';
 import {
     collection,
     query,
-    onSnapshot
-} from 'firebase/firestore';
-import type { FirestoreError } from 'firebase/firestore'; // Good practice to type errors
+    onSnapshot} from 'firebase/firestore';
+import type { FirestoreError } from 'firebase/firestore';
 import { Spinner } from '../constants/Spinner';
 import {
     Card,
@@ -14,6 +13,7 @@ import {
     CardHeader,
     CardTitle,
 } from './ui/card';
+import { FiChevronDown, FiChevronUp } from 'react-icons/fi'; // Import icons for the button
 
 // --- Data Types ---
 interface ItemDoc {
@@ -54,7 +54,7 @@ const useRestockAlerts = (companyId?: string) => {
 
             // Filter for items that need restocking (this client-side filter is correct)
             const filteredItems = allItems.filter(item =>
-                item.restockQuantity > 0 && item.amount <= item.restockQuantity
+                item.restockQuantity > 0 && (item.amount || 0) <= item.restockQuantity // Use (item.amount || 0) for safety
             );
 
             // Sort by urgency (how far below the threshold the item is)
@@ -75,9 +75,12 @@ const useRestockAlerts = (companyId?: string) => {
 };
 
 
-export const RestockAlertsCard: React.FC = ({ }) => {
+export const RestockAlertsCard: React.FC = () => {
     const { currentUser } = useAuth();
     const { itemsToRestock, loading, error } = useRestockAlerts(currentUser?.companyId);
+    
+    // --- 1. Add state for expansion ---
+    const [isExpanded, setIsExpanded] = useState(false);
 
     const renderContent = () => {
         if (loading) return <Spinner />;
@@ -87,28 +90,45 @@ export const RestockAlertsCard: React.FC = ({ }) => {
         if (itemsToRestock.length === 0) {
             return <p className="text-center text-gray-500">All items are well-stocked! 👍</p>;
         }
+        
+        // --- 2. Slice the array based on the isExpanded state ---
+        const itemsToDisplay = isExpanded ? itemsToRestock : itemsToRestock.slice(0, 4);
 
         return (
-            <ul className="space-y-4">
-                {itemsToRestock.map((item) => {
-                    const isOutOfStock = item.amount <= 0;
-                    return (
-                        <li key={item.id} className="flex items-center justify-between">
-                            <div className="flex items-center">
-                                <span className="font-medium text-gray-700">{item.name.slice(0, 15)}</span>
-                            </div>
-                            <div className="text-center flex grid grid-cols-2 gap-15">
-                                <span className={` text-xs font-semibold ${isOutOfStock ? 'text-red-600' : 'text-gray-800'}`}>
-                                    {item.amount}
-                                </span>
-                                <span className="text-xs text-gray-500 block">
-                                    {item.restockQuantity}
-                                </span>
-                            </div>
-                        </li>
-                    );
-                })}
-            </ul>
+            // --- 3. Add React.Fragment to hold list and button ---
+            <React.Fragment>
+                <ul className="space-y-4">
+                    {itemsToDisplay.map((item) => {
+                        const isOutOfStock = (item.amount || 0) <= 0;
+                        return (
+                            <li key={item.id} className="flex items-center justify-between">
+                                <div className="flex items-center">
+                                    <span className="font-medium text-gray-700">{item.name.slice(0, 15)}</span>
+                                </div>
+                                <div className="text-center flex grid grid-cols-2 gap-15">
+                                    <span className={`text-xs font-semibold ${isOutOfStock ? 'text-red-600' : 'text-gray-800'}`}>
+                                        {item.amount || 0}
+                                    </span>
+                                    <span className="text-xs text-gray-500 block">
+                                        {item.restockQuantity}
+                                    </span>
+                                </div>
+                            </li>
+                        );
+                    })}
+                </ul>
+
+                {/* --- 4. Add the "View All" / "Show Less" button --- */}
+                {itemsToRestock.length > 4 && (
+                    <button
+                        onClick={() => setIsExpanded(!isExpanded)}
+                        className="w-full flex justify-center items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-800 mt-4 pt-2 border-t border-gray-200"
+                    >
+                        {isExpanded ? 'Show Less' : `View All (${itemsToRestock.length} items)`}
+                        {isExpanded ? <FiChevronUp /> : <FiChevronDown />}
+                    </button>
+                )}
+            </React.Fragment>
         );
     };
 
@@ -118,7 +138,6 @@ export const RestockAlertsCard: React.FC = ({ }) => {
                 <CardTitle className="font-bold pr-10 " >Restock Alerts</CardTitle>
                 <CardTitle className="text-xs font-semibold text-black-500">Stock</CardTitle>
                 <CardTitle className="text-xs font-semibold text-gray-500">Restock</CardTitle>
-
             </CardHeader>
             <CardContent>{renderContent()}</CardContent>
         </Card>

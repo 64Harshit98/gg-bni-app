@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { ItemGroup } from '../../constants/models';
-import { useDatabase } from '../../context/Auth-Context';
+import { useDatabase } from '../../context/auth-context';
 import { ROUTES } from '../../constants/routes.constants';
 import { CustomButton } from '../../Components';
 import { Variant } from '../../enums';
+import { Spinner } from '../../constants/Spinner'; // <-- IMPORT SPINNER
 
 // --- Icon Components ---
 const EditIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z"></path></svg>;
@@ -12,7 +13,7 @@ const DeleteIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" heig
 
 const ItemGroupPage: React.FC = () => {
   const navigate = useNavigate();
-  const dbOperations = useDatabase();
+  const dbOperations = useDatabase(); // This is null on first render
 
   const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -26,31 +27,75 @@ const ItemGroupPage: React.FC = () => {
 
   const isActive = (path: string) => location.pathname === path;
 
+  // --- THIS IS THE FINAL, CORRECTED SYNC FUNCTION ---
   const fetchAndSyncGroups = useCallback(async () => {
-    if (!dbOperations) return;
+    // 1. Wait for dbOperations to be ready
+    if (!dbOperations) {
+      setLoading(true);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
+      // 2. Get all items and all existing groups
       const [allItems, existingGroups] = await Promise.all([
         dbOperations.getItems(),
         dbOperations.getItemGroups(),
       ]);
 
-      const distinctNamesFromItems = new Set<string>();
+      // 3. Create maps for efficient lookup
+      const groupMapById = new Map<string, ItemGroup>();
+      const groupMapByName = new Map<string, ItemGroup>();
+      existingGroups.forEach(g => {
+        if (g.id) groupMapById.set(g.id, g);
+        groupMapByName.set(g.name.toLowerCase(), g); // For case-insensitive matching
+      });
+
+      // 4. Find all unique identifiers used in items
+      const distinctIdentifiersFromItems = new Set<string>();
       allItems.forEach(item => {
         if (item.itemGroupId) {
-          distinctNamesFromItems.add(item.itemGroupId);
+          distinctIdentifiersFromItems.add(item.itemGroupId);
         }
       });
 
-      const existingGroupNames = new Set<string>(existingGroups.map(g => g.name));
+      // 5. Find orphaned names to create, and items to update
       const missingGroupNames: string[] = [];
-      distinctNamesFromItems.forEach(name => {
-        if (!existingGroupNames.has(name)) {
-          missingGroupNames.push(name);
-        }
-      });
+      const itemsToUpdate: { itemId: string, newGroupId: string }[] = [];
 
+      distinctIdentifiersFromItems.forEach(identifier => {
+        // Case 1: The identifier is a valid, existing Group ID.
+        if (groupMapById.has(identifier)) {
+          // This is correct. Do nothing.
+          return;
+        }
+
+        // Case 2: The identifier is a Name (e.g., "RG") that matches an existing group.
+        const lowerIdentifier = identifier.toLowerCase();
+        if (groupMapByName.has(lowerIdentifier)) {
+          // This is an item that needs to be fixed.
+          // It's storing the NAME "RG" instead of the ID "abc-123".
+          const correctGroupId = groupMapByName.get(lowerIdentifier)!.id!;
+          allItems.forEach(item => {
+            if (item.itemGroupId === identifier) {
+              itemsToUpdate.push({ itemId: item.id!, newGroupId: correctGroupId });
+            }
+          });
+          return;
+        }
+
+        // Case 3: The identifier is not an ID and not a Name.
+        // If it's not a 20-char ID, it's a new group name we should create.
+        if (identifier.length !== 20 && identifier) {
+          missingGroupNames.push(identifier);
+        }
+        // If it *is* a 20-char ID (like "i7moNbj..."), we IGNORE it.
+        // This is what stops the junk groups from being created.
+      });
+      // --- END FIX ---
+
+      // 6. Create any new groups
       if (missingGroupNames.length > 0) {
         showSuccessMessage(`Syncing... Found and created ${missingGroupNames.length} new group(s).`);
         const createPromises = missingGroupNames.map(name =>
@@ -59,6 +104,16 @@ const ItemGroupPage: React.FC = () => {
         await Promise.all(createPromises);
       }
 
+      // 7. Update items that were storing names instead of IDs
+      if (itemsToUpdate.length > 0) {
+        showSuccessMessage(`Syncing... Corrected ${itemsToUpdate.length} item(s) to use Group IDs.`);
+        // Run updates one by one to avoid Firestore transaction limits if list is large
+        for (const update of itemsToUpdate) {
+          await dbOperations.updateItem(update.itemId, { itemGroupId: update.newGroupId });
+        }
+      }
+
+      // 8. Fetch the final, clean list
       const finalGroups = await dbOperations.getItemGroups();
       finalGroups.sort((a, b) => a.name.localeCompare(b.name));
       setItemGroups(finalGroups);
@@ -70,8 +125,12 @@ const ItemGroupPage: React.FC = () => {
       setLoading(false);
     }
   }, [dbOperations]);
+  // --- END OF CORRECTED FUNCTION ---
+
 
   useEffect(() => {
+    // This effect will now run once when dbOperations is null,
+    // and then run AGAIN once dbOperations is loaded.
     fetchAndSyncGroups();
   }, [fetchAndSyncGroups]);
 
@@ -92,7 +151,7 @@ const ItemGroupPage: React.FC = () => {
       await dbOperations.createItemGroup({ name: newItemGroupName.trim(), description: '' });
       setNewItemGroupName('');
       showSuccessMessage('Group created successfully!');
-      await fetchAndSyncGroups();
+      await fetchAndSyncGroups(); // Re-fetch
     } catch (err) {
       console.error('Error adding item group:', err);
       setError('Failed to add item group.');
@@ -122,11 +181,11 @@ const ItemGroupPage: React.FC = () => {
     try {
       await dbOperations.updateGroupAndSyncItems(groupToUpdate, newName);
       handleCancelEdit();
-      await fetchAndSyncGroups();
+      await fetchAndSyncGroups(); // Re-fetch
       showSuccessMessage(`Group renamed to "${newName}" and items updated.`);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error updating item group:', err);
-      setError('Failed to update group.');
+      setError(err.message || 'Failed to update group.');
     }
   };
 
@@ -143,17 +202,18 @@ const ItemGroupPage: React.FC = () => {
     try {
       await dbOperations.deleteItemGroupIfUnused(groupToDelete);
       setConfirmingDeleteId(null);
-      await fetchAndSyncGroups();
+      await fetchAndSyncGroups(); // Re-fetch
       showSuccessMessage(`Group "${groupToDelete.name}" deleted.`);
     } catch (err: any) {
       console.error('Error deleting item group:', err);
+      // This is where your error "Cannot delete..." is caught
       setError(err.message || 'Failed to delete group.');
       setConfirmingDeleteId(null);
     }
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-100 w-full pt-25 ">
+    <div className="flex flex-col min-h-screen bg-gray-100 w-full pt-28 sm:pt-24">
 
       <div className="fixed top-0 left-0 right-0 z-10 p-4 bg-gray-100 border-b border-gray-300 flex flex-col">
         <h1 className="text-2xl font-bold text-gray-800 text-center mb-4">Item Groups</h1>
@@ -187,11 +247,14 @@ const ItemGroupPage: React.FC = () => {
 
           <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">Official Item Groups</h2>
           {loading ? (
-            <p className="text-gray-500 text-center py-8">Syncing and Loading Groups...</p>
+            <div className="flex justify-center items-center py-8">
+              <Spinner />
+              <p className="text-gray-500 ml-2">Syncing and Loading Groups...</p>
+            </div>
           ) : itemGroups.length === 0 ? (
             <p className="text-gray-500 text-center py-8">No item groups found.</p>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {itemGroups.map((group) => (
                 <div key={group.id} className="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm border" onMouseLeave={() => setConfirmingDeleteId(null)}>
                   {editingGroupId === group.id ? (

@@ -6,7 +6,7 @@ import {
     onSnapshot,
 } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
-import { useAuth } from './Auth-Context';
+import { useAuth } from './auth-context';
 
 export interface SalesSettings {
     companyId?: string;

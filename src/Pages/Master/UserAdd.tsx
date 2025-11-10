@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { ICONS } from '../../constants/icon.constants';
 import { ROUTES } from '../../constants/routes.constants';
 import { ROLES, Variant } from '../../enums';
-import { useAuth } from '../../context/Auth-Context';
+import { useAuth } from '../../context/auth-context';
 // --- FIX: Import the correct function ---
 import { inviteUser } from '../../lib/AuthOperations';
 

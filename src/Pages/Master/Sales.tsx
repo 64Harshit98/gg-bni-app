@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth, useDatabase } from '../../context/Auth-Context';
+import { useAuth, useDatabase } from '../../context/auth-context';
 import type { Item, SalesItem as OriginalSalesItem } from '../../constants/models';
 import { ROUTES } from '../../constants/routes.constants';
 import { db } from '../../lib/Firebase';
@@ -335,13 +335,13 @@ const Sales: React.FC = () => {
   };
   const handlePricePressStart = () => {
     if (salesSettings?.lockSalePriceEntry) return;
-    longPressTimer.current = setTimeout(() => setIsPriceLocked(false), 500);
+    longPressTimer.current = setTimeout(() => setIsPriceLocked(false), 200);
   };
   const handlePricePressEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
   const handlePriceClick = () => {
     if (salesSettings?.lockSalePriceEntry || isPriceLocked) {
       setPriceInfo("Cannot edit sale price");
-      setTimeout(() => setPriceInfo(null), 3000);
+      setTimeout(() => setPriceInfo(null), 1000);
     }
   };
 

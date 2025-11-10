@@ -13,7 +13,7 @@ import {
 import { Spinner } from '../../constants/Spinner';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
-import { useAuth } from '../../context/Auth-Context';
+import { useAuth } from '../../context/auth-context';
 
 // --- (Interface is correct, no changes needed) ---
 export interface PurchaseSettings {
@@ -212,7 +212,7 @@ const PurchaseSettingsPage: React.FC = () => {
                                         onChange={(e) => handleChange('taxType', e.target.value as 'inclusive' | 'exclusive')}
                                         className="w-full p-3 border border-gray-300 rounded-lg bg-white"
                                     >
-                                        <option value="exclusive">Tax Exclusive (GST extra on Purchase Price)</option>
+                                        <option value="exclusive">Tax Exclusive (Purchase Price + GST)</option>
                                         <option value="inclusive">Tax Inclusive (Purchase Price includes GST)</option>
                                     </select>
                                 </div>
@@ -261,13 +261,6 @@ const PurchaseSettingsPage: React.FC = () => {
                                 onChange={(e) => handleCheckboxChange('enableBarcodePrinting', e.target.checked)}
                                 className="w-4 h-4 text-blue-600" />
                             <label htmlFor="print-barcode" className="ml-2 text-gray-700 text-sm font-medium">Enable Barcode Printing Option</label>
-                        </div>
-                        <div className="flex items-center mb-6">
-                            <input type="checkbox" id="copy-voucher"
-                                checked={settings.copyVoucherAfterSaving ?? false}
-                                onChange={(e) => handleCheckboxChange('copyVoucherAfterSaving', e.target.checked)}
-                                className="w-4 h-4 text-blue-600" />
-                            <label htmlFor="copy-voucher" className="ml-2 text-gray-700 text-sm font-medium">Keep Items in Form After Saving (Copy Voucher)</label>
                         </div>
                     </div>
 

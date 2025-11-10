@@ -5,7 +5,7 @@ import { Modal } from '../constants/Modal';
 import { State } from '../enums';
 import { db } from '../lib/Firebase';
 import { doc, getDoc, setDoc, serverTimestamp, increment as firebaseIncrement } from 'firebase/firestore';
-import { useAuth } from '../context/Auth-Context';
+import { useAuth } from '../context/auth-context';
 
 export interface PaymentDetails {
     [key: string]: number;

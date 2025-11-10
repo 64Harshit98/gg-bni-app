@@ -11,7 +11,7 @@ import {
   arrayUnion,
   serverTimestamp, // <-- Import serverTimestamp
 } from 'firebase/firestore';
-import { useAuth, useDatabase } from '../../context/Auth-Context';
+import { useAuth, useDatabase } from '../../context/auth-context';
 import { ROUTES } from '../../constants/routes.constants';
 import type { Item, PurchaseItem as OriginalPurchaseItem } from '../../constants/models';
 import { Modal } from '../../constants/Modal';

@@ -1,5 +1,5 @@
 import React from 'react';
-import { useAuth } from './Auth-Context';
+import { useAuth } from './auth-context';
 import { Permissions } from '../enums';
 
 interface WrapperProps {

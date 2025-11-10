@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { useAuth, useDatabase } from '../context/Auth-Context';
-import type { Item } from '../constants/models';
-// --- CHANGED --- Added FiPackage for the image placeholder
+import { useAuth, useDatabase } from '../context/auth-context';
+import type { Item, ItemGroup } from '../constants/models'; // Import ItemGroup
 import { FiSearch, FiEdit, FiStar, FiCheckSquare, FiLoader, FiEye, FiPackage } from 'react-icons/fi';
 import { ItemEditDrawer } from '../Components/ItemDrawer';
 import { Spinner } from '../constants/Spinner';
 
-// ... (StockIndicator component remains the same)
+// --- StockIndicator (Unchanged) ---
 const StockIndicator: React.FC<{ stock: number }> = ({ stock }) => {
     let colorClass = 'text-green-600 bg-green-100';
     if (stock <= 10 && stock > 0) colorClass = 'text-yellow-600 bg-yellow-100';
@@ -19,7 +18,7 @@ const StockIndicator: React.FC<{ stock: number }> = ({ stock }) => {
     );
 };
 
-// ... (QuickListedToggle component remains the same)
+// --- QuickListedToggle (Unchanged) ---
 interface QuickListedToggleProps {
     itemId: string;
     isListed: boolean;
@@ -45,7 +44,7 @@ const QuickListedToggle: React.FC<QuickListedToggleProps> = ({ itemId, isListed,
         <button
             onClick={handleClick}
             disabled={disabled || isLoading}
-            className={`flex-1 p-2 text-xs md:text-sm font-medium flex items-center justify-center gap-1 md:gap-2 border-l transition-colors disabled:opacity-50 ${isListed
+            className={`flex-1 p-3 text-sm font-medium flex items-center justify-center gap-1 md:gap-2 border-l transition-colors disabled:opacity-50 ${isListed
                 ? 'bg-green-50 text-green-700 hover:bg-green-100'
                 : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
                 }`}
@@ -58,6 +57,7 @@ const QuickListedToggle: React.FC<QuickListedToggleProps> = ({ itemId, isListed,
             ) : (
                 <FiStar className="h-4 w-4" />
             )}
+            <span className="hidden sm:inline">{isListed ? 'Listed' : 'List'}</span>
         </button>
     );
 };
@@ -70,8 +70,11 @@ const MyShopPage: React.FC = () => {
 
     const [isViewMode, setIsViewMode] = useState(false);
     const [allItems, setAllItems] = useState<Item[]>([]);
-    const [categories, setCategories] = useState<string[]>(['All']);
-    const [selectedCategory, setSelectedCategory] = useState('All');
+
+    // --- Store the full ItemGroup objects, including duplicates ---
+    const [allItemGroups, setAllItemGroups] = useState<ItemGroup[]>([]);
+
+    const [selectedCategory, setSelectedCategory] = useState('All'); // Will store 'All' or a group ID
     const [searchQuery, setSearchQuery] = useState('');
     const [pageIsLoading, setPageIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -83,10 +86,9 @@ const MyShopPage: React.FC = () => {
     const observerRef = useRef<IntersectionObserver | null>(null);
     const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
-    // ... (useEffect for fetchData remains the same) ...
     useEffect(() => {
         if (authLoading || !currentUser || !dbOperations) {
-            setPageIsLoading(authLoading);
+            setPageIsLoading(authLoading || !dbOperations);
             return;
         }
 
@@ -95,11 +97,12 @@ const MyShopPage: React.FC = () => {
                 setPageIsLoading(true); setError(null); setAllItems([]);
                 setItemsToRenderCount(ITEMS_PER_BATCH_RENDER);
 
-                const fetchedItemGroups = await dbOperations.getItemGroups();
-                const categoryNames = fetchedItemGroups.map(group => group.name);
-                setCategories(['All', ...categoryNames]);
+                const [fetchedItemGroups, fetchedItems] = await Promise.all([
+                    dbOperations.getItemGroups(),
+                    dbOperations.getItems()
+                ]);
 
-                const fetchedItems = await dbOperations.getItems();
+                setAllItemGroups(fetchedItemGroups); // Store all groups
                 setAllItems(fetchedItems);
 
             } catch (err: any) {
@@ -111,37 +114,59 @@ const MyShopPage: React.FC = () => {
         fetchData();
     }, [authLoading, currentUser, dbOperations]);
 
-    // ... (useMemo for filteredItems remains the same) ...
+    // --- FIX: Create a DE-DUPLICATED list of groups for the filter buttons ---
+    const uniqueCategories = useMemo(() => {
+        const map = new Map<string, ItemGroup>();
+        allItemGroups.forEach(group => {
+            if (!map.has(group.name.toLowerCase())) { // Use lowercase name as the unique key
+                map.set(group.name.toLowerCase(), group);
+            }
+        });
+        const uniqueGroups = Array.from(map.values());
+        uniqueGroups.sort((a, b) => a.name.localeCompare(b.name)); // Sort them
+        return uniqueGroups;
+    }, [allItemGroups]);
+
+
     const filteredItems = useMemo(() => {
         return allItems.filter(item => {
             if (isViewMode && !item.isListed) {
                 return false;
             }
-            const matchesCategory = selectedCategory === 'All' || item.itemGroupId === selectedCategory;
+
+            // --- FIX: Filter by ID, not by name ---
+            // Get the group object that matches the selectedCategory ID
+            const selectedGroup = allItemGroups.find(g => g.id === selectedCategory);
+
+            const matchesCategory =
+                selectedCategory === 'All' || // "All" is selected
+                item.itemGroupId === selectedCategory || // Item's ID matches selected ID
+                (selectedGroup && item.itemGroupId === selectedGroup.name); // Legacy: Item's ID (which is a name) matches selected group's name
+
             const matchesSearch =
                 item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 (item.barcode && item.barcode.includes(searchQuery));
             return matchesCategory && matchesSearch;
         });
-    }, [allItems, selectedCategory, searchQuery, isViewMode]);
+    }, [allItems, selectedCategory, searchQuery, isViewMode, allItemGroups]); // Added allItemGroups
 
-    // ... (useMemo for itemsToDisplay remains the same) ...
+    const unlistedFilteredCount = useMemo(() => {
+        return filteredItems.filter(item => !item.isListed).length;
+    }, [filteredItems]);
+
     const itemsToDisplay = useMemo(() => {
         return filteredItems.slice(0, itemsToRenderCount);
     }, [filteredItems, itemsToRenderCount]);
 
-    // ... (useMemo for hasMoreItems remains the same) ...
     const hasMoreItems = useMemo(() => {
         return itemsToRenderCount < filteredItems.length;
     }, [itemsToRenderCount, filteredItems.length]);
 
-    // ... (useCallback for loadMoreItems remains the same) ...
     const loadMoreItems = useCallback(() => {
         if (!hasMoreItems) return;
         setItemsToRenderCount(prevCount => prevCount + ITEMS_PER_BATCH_RENDER);
     }, [hasMoreItems]);
 
-    // ... (useEffect for IntersectionObserver remains the same) ...
     useEffect(() => {
         if (observerRef.current) observerRef.current.disconnect();
 
@@ -164,7 +189,6 @@ const MyShopPage: React.FC = () => {
         };
     }, [loadMoreItems, hasMoreItems]);
 
-    // ... (All handler functions: handleOpenEditDrawer, handleCloseEditDrawer, handleSaveSuccess, handleToggleListed, handleListAllFiltered remain the same) ...
     const handleOpenEditDrawer = (item: Item) => {
         setSelectedItemForEdit(item);
         setIsDrawerOpen(true);
@@ -213,7 +237,6 @@ const MyShopPage: React.FC = () => {
         }
     };
 
-    // ... (Loading and Error states remain the same) ...
     if (authLoading || !dbOperations) {
         return <div className="flex items-center justify-center h-screen"><Spinner /> <span className="ml-2">Initializing...</span></div>;
     }
@@ -233,13 +256,10 @@ const MyShopPage: React.FC = () => {
         );
     }
 
-    const unlistedFilteredCount = filteredItems.filter(item => !item.isListed).length;
-
     return (
         <div className="flex flex-col h-screen bg-gray-100 w-full">
-            {/* --- HEADER --- */}
-            <div className="flex-shrink-0 p-4 bg-white shadow-sm">
-                <div className="flex justify-between items-center mb-2">
+            <div className="flex-shrink-0 p-4 bg-white shadow-sm border-b sticky top-0 z-20">
+                <div className="flex justify-between items-center">
                     <div>
                         <h1 className="text-2xl md:text-3xl font-bold text-gray-800">
                             {isViewMode ? 'Public Catalogue Preview' : 'My Shop Catalogue'}
@@ -248,17 +268,28 @@ const MyShopPage: React.FC = () => {
                             {isViewMode ? 'This is how customers see your listed items.' : 'Manage items and toggle listing status.'}
                         </p>
                     </div>
-
-                    <button
-                        onClick={() => setIsViewMode(!isViewMode)}
-                        className={`font-semibold py-2 px-4 rounded-lg shadow-sm transition-colors flex items-center gap-2 text-sm ${isViewMode
-                            ? 'bg-gray-700 text-white hover:bg-gray-800' // "View" mode
-                            : 'bg-green-600 text-white hover:bg-green-700' // "Edit" mode
-                            }`}
-                    >
-                        {isViewMode ? <FiEdit size={16} /> : <FiEye size={16} />}
-                        {isViewMode ? 'Switch to Edit Mode' : 'Preview Public Page'}
-                    </button>
+                    <div className="flex gap-2">
+                        {!isViewMode && (
+                            <button
+                                onClick={handleListAllFiltered}
+                                disabled={listAllLoading || filteredItems.length === 0 || unlistedFilteredCount === 0}
+                                className="font-semibold py-2 px-3 rounded-lg shadow-sm transition-colors flex items-center gap-2 text-sm bg-blue-500 text-white hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                            >
+                                {listAllLoading ? (<FiLoader className="h-4 w-4 animate-spin" />) : (<FiCheckSquare size={16} />)}
+                                List {unlistedFilteredCount > 0 ? `(${unlistedFilteredCount}) ` : ''}Filtered
+                            </button>
+                        )}
+                        <button
+                            onClick={() => setIsViewMode(!isViewMode)}
+                            className={`font-semibold py-2 px-3 rounded-lg shadow-sm transition-colors flex items-center gap-2 text-sm ${isViewMode
+                                ? 'bg-gray-700 text-white hover:bg-gray-800'
+                                : 'bg-green-600 text-white hover:bg-green-700'
+                                }`}
+                        >
+                            {isViewMode ? <FiEdit size={16} /> : <FiEye size={16} />}
+                            {isViewMode ? 'Edit Mode' : 'Preview'}
+                        </button>
+                    </div>
                 </div>
 
                 {updateError && <p className="text-red-500 bg-red-100 p-2 rounded text-sm mt-2">{updateError}</p>}
@@ -266,49 +297,75 @@ const MyShopPage: React.FC = () => {
             </div>
 
             {/* --- SEARCH & FILTER BAR --- */}
-            <div className="flex-shrink-0 p-2 bg-white border-b sticky top-0 z-10">
-                <div className="relative mb-2"> <input type="text" placeholder="Search by name or barcode..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full p-3 pl-10 border rounded-lg text-sm md:text-base" /> <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" /> </div>
-                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide"> {categories.map(category => (<button key={category} onClick={() => setSelectedCategory(category)} className={`px-3 md:px-4 py-1.5 text-xs md:text-sm font-medium rounded-full flex-shrink-0 transition-colors ${selectedCategory === category ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`} > {category} </button>))} </div>
+            <div className="flex-shrink-0 p-3 bg-white border-b sticky top-[88px] z-10 flex flex-col md:flex-row gap-2">
+                <div className="relative flex-grow">
+                    <input type="text" placeholder="Search by name or barcode..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full p-3 pl-10 border rounded-lg text-sm md:text-base" />
+                    <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                </div>
 
-                {!isViewMode && (
-                    <div className="pt-2 mt-2 border-t">
-                        <button onClick={handleListAllFiltered} disabled={listAllLoading || filteredItems.length === 0 || unlistedFilteredCount === 0} className="w-full bg-blue-500 text-white font-semibold py-2 px-4 rounded-md text-sm hover:bg-blue-600 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2" >
-                            {listAllLoading ? (<Spinner />) : (<FiCheckSquare size={16} />)}
-                            {listAllLoading ? 'Listing...' : `List ${unlistedFilteredCount > 0 ? `(${unlistedFilteredCount}) ` : ''}Filtered Items`}
+                {/* --- FIX: This is your button filter, now using uniqueCategories --- */}
+                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                    <button
+                        key="All" // Unique key for "All"
+                        onClick={() => setSelectedCategory('All')}
+                        className={`px-3 md:px-4 py-1.5 text-xs md:text-sm font-medium rounded-full flex-shrink-0 transition-colors ${selectedCategory === 'All'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
+                    >
+                        All
+                    </button>
+                    {/* Map over the DE-DUPLICATED list */}
+                    {uniqueCategories.map(group => (
+                        <button
+                            key={group.id!} // <-- Use the UNIQUE ID for the key
+                            onClick={() => setSelectedCategory(group.id!)} // <-- Set the UNIQUE ID
+                            className={`px-3 md:px-4 py-1.5 text-xs md:text-sm font-medium rounded-full flex-shrink-0 transition-colors ${selectedCategory === group.id
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                }`}
+                        >
+                            {group.name} {/* Display the name */}
                         </button>
-                    </div>
-                )}
+                    ))}
+                </div>
+                {/* --- END FIX --- */}
             </div>
 
             {/* --- ITEM GRID --- */}
-            <div className="flex-1 overflow-y-auto p-2 md:p-4">
-                <p className="text-xs md:text-sm text-gray-600 mb-3 px-2 md:px-0">
+            <div className="flex-1 overflow-y-auto p-3 md:p-4">
+                <p className="text-xs md:text-sm text-gray-600 mb-3 px-1 md:px-0">
                     Showing {itemsToDisplay.length} of {filteredItems.length} filtered items ({allItems.length} total)
                 </p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 md:gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4">
                     {itemsToDisplay.map(item => (
-                        <div key={item.id} className="bg-white rounded-lg shadow-sm overflow-hidden flex flex-col border border-gray-200 transition-shadow hover:shadow-md" >
-
-                            {/* --- CHANGED --- Added Image display section */}
-                            <div className="h-40 w-full bg-gray-200 flex items-center justify-center text-gray-400">
+                        <div key={item.id} className="bg-white rounded-lg shadow-sm overflow-hidden flex flex-col border border-gray-200 transition-shadow hover:shadow-lg" >
+                            <div className="relative h-40 w-full bg-gray-200 flex items-center justify-center text-gray-400">
                                 {item.imageUrl ? (
                                     <img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover" />
                                 ) : (
                                     <FiPackage className="h-12 w-12" />
                                 )}
+                                {item.isListed && (
+                                    <div className="absolute top-2 left-2 bg-green-100 text-green-700 text-xs font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
+                                        <FiStar size={10} /> Listed
+                                    </div>
+                                )}
                             </div>
-                            {/* --- End of Image Section --- */}
 
-                            <div className="p-3 md:p-4 flex-grow relative">
-                                <p className="font-semibold text-gray-800 break-words mb-2 text-sm md:text-base line-clamp-2 h-10 md:h-12">{item.name}</p>
-                                <p className="text-base md:text-lg font-bold text-gray-900 mb-3">₹{item.mrp.toFixed(2)}</p>
-                                <StockIndicator stock={item.stock || 0} />
-                                {item.isListed && (<div className="absolute top-2 right-2 bg-green-100 text-green-700 text-xs font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm"> <FiStar size={10} /> Listed </div>)}
+                            <div className="p-3 md:p-4 flex-grow flex flex-col">
+                                <div>
+                                    <p className="font-semibold text-gray-800 break-words mb-2 text-sm md:text-base line-clamp-2 h-10 md:h-12">{item.name}</p>
+                                    <StockIndicator stock={item.stock || 0} />
+                                </div>
+                                <p className="text-base md:text-lg font-bold text-gray-900 mt-auto pt-2">₹{item.mrp.toFixed(2)}</p>
                             </div>
 
                             {!isViewMode && (
                                 <div className="flex border-t">
-                                    <button onClick={() => handleOpenEditDrawer(item)} className="flex-1 bg-gray-50 hover:bg-gray-100 text-gray-700 p-2 text-xs md:text-sm font-medium flex items-center justify-center gap-1 md:gap-2 border-r" > <FiEdit className="h-3 w-3 md:h-4 md:w-4" /> Edit </button>
+                                    <button onClick={() => handleOpenEditDrawer(item)} className="flex-1 bg-gray-50 hover:bg-gray-100 text-gray-700 p-3 text-sm font-medium flex items-center justify-center gap-1 md:gap-2 border-r" >
+                                        <FiEdit className="h-4 w-4" /> Edit
+                                    </button>
                                     <QuickListedToggle itemId={item.id!} isListed={item.isListed ?? false} onToggle={handleToggleListed} disabled={listAllLoading} />
                                 </div>
                             )}
@@ -317,12 +374,12 @@ const MyShopPage: React.FC = () => {
                 </div>
 
                 {hasMoreItems && (
-                    <div ref={loadMoreRef} className="h-10 flex justify-center items-center mt-4">
-                        {/* Loader for infinite scroll */}
+                    <div ref={loadMoreRef} className="h-20 flex justify-center items-center mt-4">
+                        <Spinner />
                     </div>
                 )}
                 {!hasMoreItems && filteredItems.length > 0 && (
-                    <p className="text-center text-gray-500 text-sm mt-4">You've reached the end of the list.</p>
+                    <p className="text-center text-gray-500 text-sm mt-8">You've reached the end of the list.</p>
                 )}
 
                 {filteredItems.length === 0 && !pageIsLoading && (

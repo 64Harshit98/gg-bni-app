@@ -30,9 +30,12 @@ export const ROUTES = {
   HISTORY: '/history',
   USERSETTING: '/user-setting',
   ITEMSETTING: '/item-setting',
-  CHOME: '/catalogue-home',
-  MYSHOP: 'my-shop',
-  ORDER: 'orders',
-  ORDERDETAILS: 'order-details',
-  CATALOGUE: 'catalogue',
+  // Catalog / public storefront routes
+  CATALOGUE_HOME: '/catalogue',
+  MY_SHOP: '/catalogue/my-shop',
+  ORDERS: '/catalogue/orders',
+  ORDER_DETAILS: '/catalogue/order-details',
+  CATALOGUE_ACCOUNT: '/catalogue/account',
+  CATALOGUE: '/catalogue/:companyId',
+  // (POS) settings and misc - keep original keys for POS routes
 };

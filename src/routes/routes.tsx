@@ -32,10 +32,14 @@ const PnlReport = lazy(() => import('../Pages/Reports/PNLReport'));
 const BusInfo = lazy(() => import('../Pages/Auth/BusInfo'));
 const BusAddress = lazy(() => import('../Pages/Auth/BusAddress'));
 const PrintQR = lazy(() => import('../Pages/Master/PrintQR'));
-const Permissionsetting = lazy(() => import('../Pages/Settings/PermissionSetting'));
+const Permissionsetting = lazy(
+  () => import('../Pages/Settings/PermissionSetting'),
+);
 const UnauthorizedPage = lazy(() => import('../Pages/Unauthorized'));
 const SalesSettingsPage = lazy(() => import('../Pages/Settings/SalesSetting'));
-const PurchaseSettingsPage = lazy(() => import('../Pages/Settings/PurchaseSetting'));
+const PurchaseSettingsPage = lazy(
+  () => import('../Pages/Settings/PurchaseSetting'),
+);
 // const History = lazy(() => import('../UseComponents/historypage'));
 const CHome = lazy(() => import('../Catalogue/CHome'));
 const MyShop = lazy(() => import('../Catalogue/MyShop'));
@@ -89,7 +93,7 @@ const router = createBrowserRouter([
             handle: { requiredPermission: Permissions.ViewDashboard },
           },
           {
-            path: ROUTES.ACCOUNT.substring(1),
+            path: ROUTES.ACCOUNT,
             element: <Account />,
             handle: { requiredPermission: Permissions.ManageEditProfile },
           },
@@ -99,12 +103,12 @@ const router = createBrowserRouter([
             handle: { requiredPermission: Permissions.ManageEditProfile },
           },
           {
-            path: ROUTES.JOURNAL.substring(1),
+            path: ROUTES.JOURNAL,
             element: <Journal />,
             handle: { requiredPermission: Permissions.ViewTransactions },
           },
           {
-            path: ROUTES.MASTERS.substring(1),
+            path: ROUTES.MASTERS,
             element: <Masters />,
             handle: { requiredPermission: Permissions.ManageUsers },
           },
@@ -149,7 +153,7 @@ const router = createBrowserRouter([
             handle: { requiredPermission: Permissions.CreateUsers },
           },
           {
-            path: ROUTES.REPORTS.substring(1),
+            path: ROUTES.REPORTS,
             element: <Reports />,
             handle: { requiredPermission: Permissions.ViewItemReport },
           },
@@ -206,7 +210,7 @@ const router = createBrowserRouter([
         ],
       },
       {
-        path: ROUTES.CHOME,
+        path: ROUTES.CATALOGUE_HOME,
         element: <CatalogueLayout />,
         handle: { requiredPermission: null },
         children: [
@@ -216,24 +220,29 @@ const router = createBrowserRouter([
             handle: { requiredPermission: null },
           },
           {
-            path: ROUTES.ORDERDETAILS,
+            path: ROUTES.CATALOGUE_ACCOUNT,
+            element: <Account />,
+            handle: { requiredPermission: null },
+          },
+          {
+            path: ROUTES.ORDER_DETAILS,
             element: <OrderDetails />,
             handle: { requiredPermission: null },
           },
           {
-            path: ROUTES.MYSHOP,
+            path: ROUTES.MY_SHOP,
             element: <MyShop />,
             handle: { requiredPermission: null },
           },
           {
-            path: ROUTES.ORDER,
+            path: ROUTES.ORDERS,
             element: <Order />,
             handle: { requiredPermission: null },
           },
         ],
       },
       {
-        path: `/catalogue/:companyId`,
+        path: ROUTES.CATALOGUE,
         element: <Catalogue />,
         handle: { requiredPermission: null },
       },

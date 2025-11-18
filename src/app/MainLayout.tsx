@@ -14,7 +14,6 @@ const MainLayout = () => {
 
   return (
     <div className="h-dvh w-screen flex flex-col overflow-hidden bg-gray-100">
-
       <main className="flex-1 min-h-0 overflow-y-auto p-4">
         <Suspense fallback={<div>Loading...</div>}>
           <Outlet />
@@ -29,9 +28,7 @@ const MainLayout = () => {
         >
           Add Sales
         </Button>
-        <ShowWrapper
-          requiredPermission={Permissions.ViewTransactions}
-        >
+        <ShowWrapper requiredPermission={Permissions.ViewTransactions}>
           <Button
             variant="outline"
             className="w-full mb-2 rounded"
@@ -40,19 +37,16 @@ const MainLayout = () => {
             Add Purchase
           </Button>
         </ShowWrapper>
-        <ShowWrapper
-          requiredPermission={Permissions.ManagePayments}
-        >
+        <ShowWrapper requiredPermission={Permissions.ManagePayments}>
           <Button
             variant="outline"
             className="w-full mb-2 rounded"
-            onClick={() => navigate(`${ROUTES.PRINTQR}`)}
+            onClick={() => navigate(ROUTES.PRINTQR)}
           >
             Print Barcode
           </Button>
         </ShowWrapper>
-        <ShowWrapper
-          requiredPermission={Permissions.ViewTransactions}>
+        <ShowWrapper requiredPermission={Permissions.ViewTransactions}>
           <Button
             variant="outline"
             className="w-full mb-2 rounded"
@@ -61,9 +55,7 @@ const MainLayout = () => {
             Add Item
           </Button>
         </ShowWrapper>
-        <ShowWrapper
-          requiredPermission={Permissions.ViewPNLReport}
-        >
+        <ShowWrapper requiredPermission={Permissions.ViewPNLReport}>
           <Button
             variant="outline"
             className="w-full mb-2 rounded"

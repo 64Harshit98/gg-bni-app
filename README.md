@@ -12,6 +12,7 @@ This project is a comprehensive application designed to streamline inventory tra
 - [Usage](#usage)
 - [Scripts](#scripts)
 - [Project Structure](#project-structure)
+- [Docs](#docs)
 - [Commit Message Guidelines](#commit-message-guidelines)
 - [Contributing](#contributing)
 - [License](#license)
@@ -164,6 +165,18 @@ npm run build # or yarn build or pnpm build
 ├── tsconfig.node.json
 └── vite.config.ts
 ```
+
+---
+
+## Docs
+
+Important project planning and operational documents live in the `docs/` folder:
+
+- `docs/code-improvement.md` — code improvement plan & actionable PR ideas
+- `docs/plan.md` — repository improvement roadmap and CI recommendations
+- `docs/domain-provision.md` — domain provisioning guide (Firebase + GoDaddy)
+
+Open the `docs/` folder for more details.
 
 ---
 

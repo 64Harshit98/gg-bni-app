@@ -1,3 +1,4 @@
+````markdown
 ## Repository improvement & optimization plan
 
 Date: 2025-11-18
@@ -34,7 +35,12 @@ Concrete roadmap
   - Files to start: `src/store/api.ts`, `src/lib/AuthOperations.ts`, `src/constants/models.ts`.
   - Deliverable: zero critical lint/type errors (or documented exceptions) and a passing local `npm run type-check`.
 
-- Create `plan.md` (this file) and commit.
+- Router split & route-scope isolation (0.5-1 day)
+  - Split the router into two roots: POS (`/`) and Catalogue (`/catalogue`) so each root mounts its own layout (`MainLayout` and `CatalogueLayout`).
+  - Add `handle: { scope: 'pos'|'catalogue' }` to the root routes and create `src/hooks/useRouteScope.ts` to expose the current scope to layouts/components.
+  - Rename `CatalougeLayout.tsx` -> `CatalogueLayout.tsx` and update imports.
+  - Verification: run `npm run dev`, smoke-test navigation (catalogue vs pos), run `npm run type-check` and `npm run lint`.
+  - Deliverable: scoped router + hook + layout rename in a small PR. This reduces UI bleed and allows components to hide/show features by scope.
 
 ## Mid-term (1–2 weeks)
 
@@ -171,3 +177,8 @@ Notes
 
 - This conservative approach preserves the current, DRY architecture (shadcn primitives + thin adapters) while reducing accidental duplication and improving typing.
 - If you want a more aggressive cleanup (remove wrappers and migrate all pages to primitives), we can schedule that as a follow-up with a migration plan that targets small PRs.
+
+```
+
+```
+````

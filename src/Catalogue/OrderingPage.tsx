@@ -94,6 +94,7 @@ const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, cart, onUpdate
                                                 <p>Total Amount</p>
                                                 <p>₹{cartTotal.toFixed(2)}</p>
                                             </div>
+                                            {/* This button now just triggers the next step */}
                                             <button onClick={onPlaceOrder} disabled={isPlacingOrder} className="w-full bg-blue-600 text-white py-3 rounded-md font-bold hover:bg-blue-700 disabled:bg-gray-400" >
                                                 {isPlacingOrder ? 'Loading...' : 'Place Order'}
                                             </button>
@@ -384,7 +385,7 @@ const OrderingPage: React.FC = () => {
             setCustomerPhone('');
 
         } catch (err: any) {
-            console.error("Order Error:", err);
+            console.error("Order Error:", err); // This is where your error is caught
             setModal({ message: err.message || "Failed to place order.", type: State.ERROR });
         } finally {
             setIsPlacingOrder(false);

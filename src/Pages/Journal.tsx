@@ -12,7 +12,7 @@ import {
   runTransaction,
   increment,
 } from 'firebase/firestore';
-import { useAuth } from '../context/Auth-Context';
+import { useAuth } from '../context/auth-context';
 import { CustomToggle, CustomToggleItem } from '../Components/CustomToggle';
 import { CustomCard } from '../Components/CustomCard';
 import { CustomButton } from '../Components/CustomButton';

@@ -9,7 +9,7 @@ export const CatItems = [
     { to: ROUTES.ORDERDETAILS, icon: <IoDocumentTextOutline size={24} />, label: 'Orders' },
     { to: ROUTES.CHOME, icon: <AiOutlineHome size={24} />, label: 'Home' },
     {
-        to: ROUTES.ACCOUNT,
+        to: ROUTES.CATALOGUE_ACCOUNTS,
         icon: <AiOutlineUsergroupAdd size={24} />,
         label: 'Account',
     },

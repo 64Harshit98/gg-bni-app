@@ -28,4 +28,5 @@ export enum Permissions {
     // General Access
     ViewTransactions = 'ViewTransactions',
     SetPermissions = 'SetPermissions',
+    ViewCatalogue = 'ViewCatalogue',
 }

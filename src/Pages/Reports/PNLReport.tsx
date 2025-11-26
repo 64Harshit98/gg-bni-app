@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
-import { useAuth } from '../../context/Auth-Context';
+import { useAuth } from '../../context/auth-context';
 import {
   collection,
   query,

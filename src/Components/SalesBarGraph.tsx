@@ -8,7 +8,7 @@ import {
   Timestamp,
   orderBy,
 } from 'firebase/firestore';
-import { useAuth } from '../context/Auth-Context';
+import { useAuth } from '../context/auth-context';
 import { Line, LineChart, CartesianGrid, YAxis } from 'recharts';
 import {
   Card,

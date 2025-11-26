@@ -45,6 +45,11 @@ const Order = lazy(() => import('../Catalogue/OrderingPage'));
 const OrderDetails = lazy(() => import('../Catalogue/Orders'));
 const Catalogue = lazy(() => import('../Catalogue/SharedCatalouge'));
 const CatalogueAccounts = lazy(() => import('../Catalogue/CatalougeAccount'));
+const CatalogueReports = lazy(() => import('../Catalogue/CatalogueReports/CatalogueReports'));
+const CatalogueSales = lazy(() => import('../Catalogue/CatalogueReports/CatalogueSalesReport'));  
+
+
+
 
 const router = createBrowserRouter([
   {
@@ -234,6 +239,16 @@ const router = createBrowserRouter([
           {
             path: ROUTES.ORDER,
             element: <Order />,
+            handle: { requiredPermission: null },
+          },
+          {
+            path: ROUTES.CATALOGUE_REPORTS,
+            element: <CatalogueReports />,
+            handle: { requiredPermission: null },
+          },
+          {
+            path: ROUTES.CATALOGUE_SALES,
+            element: <CatalogueSales />,
             handle: { requiredPermission: null },
           },
         ],

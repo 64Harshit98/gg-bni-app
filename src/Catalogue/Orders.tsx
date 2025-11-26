@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from 'react';
-// --- FIX: Import useLocation ---
 import { useLocation } from 'react-router-dom';
 import { db } from '../lib/Firebase'; // Adjust path if needed
 import {
@@ -10,7 +9,8 @@ import {
     QuerySnapshot,
     doc,
     updateDoc,
-    orderBy // Import orderBy
+    orderBy,
+    where // --- IMPORT 'where' ---
 } from 'firebase/firestore';
 import { useAuth } from '../context/auth-context'; // Adjust path if needed
 import { CustomCard } from '../Components/CustomCard'; // Adjust path if needed
@@ -18,7 +18,8 @@ import { Spinner } from '../constants/Spinner'; // Adjust path if needed
 import { Modal } from '../constants/Modal'; // Adjust path if needed
 import { State } from '../enums'; // Adjust path if needed
 import { serverTimestamp } from 'firebase/firestore';
-import { FiSearch, FiX, FiPackage, FiTruck, FiThumbsUp } from 'react-icons/fi'; // Icons
+import { FiSearch, FiX, FiPackage, FiTruck, FiThumbsUp } from 'react-icons/fi'; // Added FiCheckCircle
+
 
 // --- Data Types ---
 export interface OrderItem {
@@ -28,7 +29,7 @@ export interface OrderItem {
     mrp: number;
 }
 
-export type OrderStatus = 'Upcoming' | 'Confirmed' | 'Packed & Dispatched' | 'Completed';
+export type OrderStatus = 'Upcoming' | 'Confirmed' | 'Packed' | 'Completed';
 
 export interface Order {
     id: string;      // Firestore document ID
@@ -52,8 +53,12 @@ const formatDate = (date: Date | null): string => {
     });
 };
 
-// --- Custom Hook for Orders Data ---
-export const useOrdersData = (companyId?: string) => {
+// --- FIX: Updated useOrdersData signature ---
+export const useOrdersData = (
+    companyId?: string,
+    startDate?: Date | null,
+    endDate?: Date | null
+) => {
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -67,10 +72,33 @@ export const useOrdersData = (companyId?: string) => {
         }
 
         setLoading(true);
-        const ordersQuery = query(
-            collection(db, 'companies', companyId, 'Orders'),
-            orderBy('createdAt', 'desc')
-        );
+        setError(null); // Clear error on new fetch
+
+        // --- FIX: Build the query ---
+        let ordersQuery;
+        
+        // 1. Base query
+        const baseQuery = collection(db, 'companies', companyId, 'Orders');
+
+        // 2. Add filters if they exist
+        if (startDate && endDate) {
+            const start = Timestamp.fromDate(startDate);
+            const end = Timestamp.fromDate(endDate);
+            
+            ordersQuery = query(
+                baseQuery,
+                where('createdAt', '>=', start),
+                where('createdAt', '<=', end),
+                orderBy('createdAt', 'desc') 
+                // NOTE: This query requires a composite index in Firestore.
+                // The error in your console will provide a link to create it.
+            );
+        } else {
+            // 3. Default query (no date filter)
+            ordersQuery = query(baseQuery, orderBy('createdAt', 'desc'));
+        }
+        // --- END FIX ---
+
         const unsubscribe = onSnapshot(ordersQuery, (snapshot: QuerySnapshot) => {
             const ordersData = snapshot.docs.map((doc): Order => {
                 const data = doc.data();
@@ -98,27 +126,28 @@ export const useOrdersData = (companyId?: string) => {
             setError(null);
         }, (err) => {
             console.error("Error fetching orders:", err);
-            setError("Failed to load orders data.");
+            setError("Failed to load orders data. (Check console for index link)");
             setLoading(false);
         });
 
         return () => unsubscribe();
-    }, [companyId]);
+    // --- FIX: Add filters to dependency array ---
+    }, [companyId, startDate, endDate]); 
 
     return { orders, loading, error };
 };
 
+// --- (Cart Components: Omitted for brevity) ---
+// ...
+
 // --- Main Orders Page Component ---
 const OrdersPage: React.FC = () => {
-    const orderStatuses: OrderStatus[] = ['Upcoming', 'Confirmed', 'Packed & Dispatched', 'Completed'];
-
-    // --- FIX: Get navigation state ---
+    const orderStatuses: OrderStatus[] = ['Upcoming', 'Confirmed', 'Packed', 'Completed'];
+    
     const location = useLocation();
     const defaultStatus = (location.state?.defaultStatus as OrderStatus) || 'Upcoming';
 
-    // --- FIX: Use defaultStatus to set the initial tab ---
     const [activeStatusTab, setActiveStatusTab] = useState<OrderStatus>(defaultStatus);
-
     const [searchQuery, setSearchQuery] = useState('');
     const [showSearch, setShowSearch] = useState(false);
     const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
@@ -126,8 +155,13 @@ const OrdersPage: React.FC = () => {
     const [isUpdatingStatus, setIsUpdatingStatus] = useState<string | null>(null);
 
     const { currentUser, loading: authLoading } = useAuth();
-    const { orders, loading: dataLoading, error } = useOrdersData(currentUser?.companyId);
+    
+    // --- FIX: This page fetches ALL orders (null, null for dates) ---
+    // The timeline component will fetch filtered data.
+    const { orders, loading: dataLoading, error } = useOrdersData(currentUser?.companyId, null, null);
 
+    // (All other logic and JSX in OrdersPage.tsx remains the same as you provided)
+    // ...
     const filteredOrders = useMemo(() => {
         return orders
             .filter(order => order.status === activeStatusTab)
@@ -165,18 +199,18 @@ const OrdersPage: React.FC = () => {
 
         const companyId = currentUser.companyId;
         setIsUpdatingStatus(orderId);
-        setModal(null);
+        setModal(null); 
 
         const orderDocRef = doc(db, 'companies', companyId, 'Orders', orderId);
 
         try {
             await updateDoc(orderDocRef, {
                 status: nextStatus,
-                updatedAt: serverTimestamp()
+                updatedAt: serverTimestamp() 
             });
             setModal({ message: `Order moved to ${nextStatus}.`, type: State.SUCCESS });
         } catch (err) {
-            console.error("Error updating order status:", err);
+            console.error("Error updating order status:", err); 
             setModal({ message: `Failed to update status: ${err instanceof Error ? err.message : 'Unknown error'}`, type: State.ERROR });
         } finally {
             setIsUpdatingStatus(null);
@@ -203,9 +237,9 @@ const OrdersPage: React.FC = () => {
                         onClick={() => handleOrderClick(order.id)}
                         className="cursor-pointer transition-shadow hover:shadow-md"
                     >
-                        {/* Card Header */}
+                        {/* (All card JSX is correct, no changes needed) */}
                         <div className="flex items-center justify-between">
-                            <div>
+                           <div>
                                 <p className="text-base font-semibold text-slate-800">{order.orderId}</p>
                                 <p className="text-sm text-slate-500 mt-1">{order.userName}</p>
                             </div>
@@ -221,8 +255,6 @@ const OrdersPage: React.FC = () => {
                                 </svg>
                             </div>
                         </div>
-
-                        {/* Expanded Content */}
                         {isExpanded && (
                             <div className="mt-4 pt-4 border-t border-slate-200">
                                 <h4 className="text-sm font-semibold text-slate-500 mb-2 uppercase tracking-wide">Items</h4>
@@ -241,8 +273,6 @@ const OrdersPage: React.FC = () => {
                                         </div>
                                     )) : <p className="text-xs text-slate-400">No item details available.</p>}
                                 </div>
-
-                                {/* Action Button to move to next status */}
                                 {nextStatus && (
                                     <div className="flex justify-end mt-4 pt-4 border-t border-slate-200">
                                         <button
@@ -252,7 +282,7 @@ const OrdersPage: React.FC = () => {
                                         >
                                             {isUpdatingStatus === order.id ? <Spinner /> :
                                                 (nextStatus === 'Confirmed' ? <FiThumbsUp size={16} /> :
-                                                    (nextStatus === 'Packed & Dispatched' ? <FiPackage size={16} /> :
+                                                    (nextStatus === 'Packed' ? <FiPackage size={16} /> :
                                                         (nextStatus === 'Completed' ? <FiTruck size={16} /> : null)))
                                             }
                                             {isUpdatingStatus === order.id ? 'Updating...' : `Mark as ${nextStatus}`}
@@ -282,9 +312,8 @@ const OrdersPage: React.FC = () => {
                 />
             )}
 
-            {/* Header with Search Toggle */}
             <div className="flex items-center justify-between p-4 px-6 bg-white shadow-sm sticky top-0 z-10">
-                <div className="flex flex-1 items-center">
+                 <div className="flex flex-1 items-center">
                     <button onClick={() => setShowSearch(!showSearch)} className="text-slate-500 hover:text-slate-800 transition-colors mr-4">
                         {showSearch ? <FiX className="w-6 h-6" /> : <FiSearch className="w-6 h-6" />}
                     </button>
@@ -307,7 +336,6 @@ const OrdersPage: React.FC = () => {
                 </div>
             </div>
 
-            {/* Stepper */}
             <div className="flex items-center w-full px-6 md:px-10 pt-12 pb-10 bg-white shadow-sm sticky top-[calc(4rem+1px)] z-10">
                 {orderStatuses.map((status, index) => {
                     const activeIndex = orderStatuses.indexOf(activeStatusTab);
@@ -325,30 +353,22 @@ const OrdersPage: React.FC = () => {
 
                     return (
                         <React.Fragment key={status}>
-                            {/* Step (Dot + Labels) */}
                             <div
                                 className="relative flex flex-col items-center flex-shrink-0 cursor-pointer px-2"
                                 onClick={() => setActiveStatusTab(status)}
                             >
-                                {/* Top Label */}
                                 {isTopLabel && (
                                     <span className={`absolute bottom-full mb-3 text-center text-sm md:text-base ${textColor} transition-colors whitespace-pre-line`}>
                                         {labelContent}
                                     </span>
                                 )}
-
-                                {/* Dot */}
                                 <div className={`w-7 h-7 rounded-full ${dotColor} transition-all duration-300 z-10 border-[5px] border-yellow-500 ${dotStateStyles}`} />
-
-                                {/* Bottom Label */}
                                 {!isTopLabel && (
                                     <span className={`absolute top-full mt-3 text-center text-sm md:text-base ${textColor} transition-colors whitespace-pre-line`}>
                                         {labelContent}
                                     </span>
                                 )}
                             </div>
-
-                            {/* Connector Line */}
                             {index < orderStatuses.length - 1 && (
                                 <div className={`flex-auto h-2 ${lineColor} transition-colors`} />
                             )}
@@ -357,7 +377,6 @@ const OrdersPage: React.FC = () => {
                 })}
             </div>
 
-            {/* Orders List */}
             <div className="flex-grow overflow-y-auto bg-slate-100 space-y-3 p-2 md:p-4">
                 {renderContent()}
             </div>

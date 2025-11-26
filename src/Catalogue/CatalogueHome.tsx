@@ -3,12 +3,15 @@ import { Link, useLocation } from 'react-router-dom';
 import { db } from '../lib/Firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
-import { FilterProvider } from '../Components/Filter';
+import { FilterControls, FilterProvider } from '../Components/Filter';
 import ShowWrapper from '../context/ShowWrapper';
 import { Permissions } from '../enums';
 import { SiteItems } from '../routes/SiteRoutes';
 import { OrderTimeline } from '../Components/OrderTimeline';
 import { CompletedSalesCard } from '../Components/CatalougeSales'; // Assuming this is the correct path
+import { RestockAlertsCard } from '../Components/RestockItems';
+import { TopSoldItemsCard } from '../Components/TopFiveOrder';
+import { OrderBarChartReport } from '../Components/OrderSalesGraph';
 
 // --- Custom Hook for Business Name ---
 const useBusinessName = (userId?: string, companyId?: string) => { // <-- FIX: Added companyId
@@ -48,7 +51,7 @@ const HomePage: React.FC = () => {
     // --- FIX: Pass companyId to the hook ---
     const { businessName, loading: nameLoading } = useBusinessName(currentUser?.uid, currentUser?.companyId);
 
-    const [isDataVisible, setIsDataVisible] = useState<boolean>(true); // Default to visible
+    const [isDataVisible, setIsDataVisible] = useState<boolean>(false); // Default to visible
     const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
     const isLoading = authLoading || nameLoading;
 
@@ -60,7 +63,7 @@ const HomePage: React.FC = () => {
 
     return (
         <FilterProvider>
-            <div className="flex min-h-screen w-full flex-col bg-gray-100">
+            <div className="flex min-h-screen w-full flex-col bg-gray-100 mb-16">
 
                 {/* === HEADER === */}
                 <header className="flex flex-shrink-0 items-center justify-between border-b border-slate-300 bg-gray-100 p-2 ">
@@ -137,10 +140,13 @@ const HomePage: React.FC = () => {
 
                 {/* === MAIN CONTENT === */}
                 <main className="flex-grow overflow-y-auto p-2">
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                        <FilterControls />
                         <OrderTimeline isDataVisible={isDataVisible} />
                         <CompletedSalesCard isDataVisible={isDataVisible} />
+                        <OrderBarChartReport isDataVisible={isDataVisible} />
+                        <TopSoldItemsCard isDataVisible={isDataVisible} />
+                        <RestockAlertsCard/>
 
                     </div>
                 </main>

@@ -36,4 +36,6 @@ export const ROUTES = {
   ORDERDETAILS: 'order-details',
   CATALOGUE: 'catalogue',
   CATALOGUE_ACCOUNTS: 'accounts',
+  CATALOGUE_REPORTS: 'reports',
+  CATALOGUE_SALES: 'sales',
 };

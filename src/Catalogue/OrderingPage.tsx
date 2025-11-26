@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, Fragment } from 'react';
 import { useAuth, useDatabase } from '../context/auth-context';
-import type { Item } from '../constants/models';
+// --- FIX: Import ItemGroup ---
+import type { Item, ItemGroup } from '../constants/models'; 
 import { Modal } from '../constants/Modal';
 import { State } from '../enums';
 import { FiSearch, FiShoppingCart, FiX, FiPackage, FiPlus, FiMinus } from 'react-icons/fi';
@@ -12,6 +13,9 @@ import { ItemDetailDrawer } from '../Components/ItemDetails'; // <-- Make sure t
 import { db } from '../lib/Firebase'; // <-- Make sure this path is correct
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 
+// --- 1. Import the Invoice Number generator ---
+import { OrderInvoiceNumber } from '../UseComponents/InvoiceCounter'; // <-- Adjust path as needed
+
 
 // --- Cart Item Type ---
 interface CartItem {
@@ -19,7 +23,7 @@ interface CartItem {
     name: string;
     mrp: number;
     quantity: number;
-    imageUrl?: string | null;
+    imageUrl?: string | null; // <-- Corrected type
 }
 
 // --- Cart Drawer Component ---
@@ -178,8 +182,9 @@ const OrderingPage: React.FC = () => {
 
     // Page state
     const [items, setItems] = useState<Item[]>([]);
-    const [categories, setCategories] = useState<string[]>(['All']);
-    const [selectedCategory, setSelectedCategory] = useState('All');
+    // --- FIX: Store full ItemGroup objects ---
+    const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]); 
+    const [selectedCategory, setSelectedCategory] = useState('All'); // Will be 'All' or a group ID
     const [searchQuery, setSearchQuery] = useState('');
     const [pageIsLoading, setPageIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -205,7 +210,7 @@ const OrderingPage: React.FC = () => {
     // useEffect for fetching data
     useEffect(() => {
         if (authLoading || !currentUser || !dbOperations) {
-            setPageIsLoading(authLoading);
+            setPageIsLoading(authLoading || !dbOperations);
             return;
         }
         const fetchData = async () => {
@@ -219,9 +224,17 @@ const OrderingPage: React.FC = () => {
                 const listedItems = fetchedItems.filter(item => item.isListed === true);
                 setItems(listedItems);
 
-                const categoryNames = fetchedItemGroups.map(group => group.name);
-                const uniqueCategoryNames = [...new Set(categoryNames)];
-                setCategories(['All', ...uniqueCategoryNames]);
+                // --- FIX: Store full group objects and de-duplicate by name ---
+                // This prevents the "double button" bug
+                const groupMap = new Map<string, ItemGroup>();
+                fetchedItemGroups.forEach(group => {
+                    if (!groupMap.has(group.name.toLowerCase())) {
+                        groupMap.set(group.name.toLowerCase(), group);
+                    }
+                });
+                const uniqueGroups = Array.from(groupMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+                setItemGroups(uniqueGroups);
+                // --- END FIX ---
 
             } catch (err: any) {
                 setError(err.message || 'Failed to load shop.');
@@ -259,7 +272,7 @@ const OrderingPage: React.FC = () => {
                     name: item.name,
                     mrp: item.mrp,
                     quantity: quantity,
-                    imageUrl: item.imageUrl || null // <-- THIS IS THE FIX
+                    imageUrl: item.imageUrl || null
                 }];
             }
         });
@@ -298,6 +311,7 @@ const OrderingPage: React.FC = () => {
     // Filtered items for display
     const filteredItems = useMemo(() => {
         return items.filter(item => {
+            // --- FIX: Filter by Group ID ---
             const matchesCategory = selectedCategory === 'All' || item.itemGroupId === selectedCategory;
             const matchesSearch =
                 item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -306,7 +320,7 @@ const OrderingPage: React.FC = () => {
         });
     }, [items, selectedCategory, searchQuery]);
 
-    // --- (NEW) Step 1: Triggered by Cart Drawer "Place Order" button ---
+    // --- Step 1: Triggered by Cart Drawer "Place Order" button ---
     const handleProceedToCheckout = () => {
         if (cart.length === 0) {
             setModal({ message: "Your cart is empty.", type: State.ERROR });
@@ -316,15 +330,15 @@ const OrderingPage: React.FC = () => {
         setIsCustomerModalOpen(true); // Open customer details modal
     };
 
-    // --- (MODIFIED) Step 2: Triggered by "Confirm Order" button in the new modal ---
+    // --- Step 2: Triggered by "Confirm Order" button in the new modal ---
     const handleConfirmAndSaveOrder = async () => {
         // 1. Validation
         if (customerName.trim() === '' || customerPhone.trim() === '') {
             setModal({ message: 'Please enter both customer name and phone number.', type: State.ERROR });
             return;
         }
-        if (!currentUser) {
-            setModal({ message: "User not authenticated. Please log in again.", type: State.ERROR });
+        if (!currentUser?.companyId) { // Check for companyId
+            setModal({ message: "User or company not found. Please log in again.", type: State.ERROR });
             return;
         }
         if (cart.length === 0) {
@@ -334,35 +348,37 @@ const OrderingPage: React.FC = () => {
 
         setIsPlacingOrder(true);
         setModal(null);
+        
+        const companyId = currentUser.companyId;
 
         try {
-            // 2. Calculate total
+            // 2. --- Generate Invoice Number ---
+            const newOrderId = await OrderInvoiceNumber(companyId);
+            
+            // 3. Calculate total
             const totalAmount = cart.reduce((acc, item) => acc + item.mrp * item.quantity, 0);
 
-            // 3. Create the order object with customer details
+            // 4. Create the order object
             const orderToSave = {
+                orderId: newOrderId, // <-- SAVED HERE
                 items: cart,
                 totalAmount: totalAmount,
-                status: 'Upcoming', // Default status for a new order
-                createdAt: serverTimestamp(), // Use Firestore's timestamp
+                status: 'Upcoming', 
+                createdAt: serverTimestamp(), 
 
-                // --- Customer-entered details ---
                 userName: customerName.trim(),
                 userPhone: customerPhone.trim(),
 
-                // --- Internal tracking details ---
-                placedByUserId: currentUser.uid, // ID of the staff who placed the order
-                companyId: (currentUser as any).companyId || null, // Using 'as any' to bypass type-check for now
+                placedByUserId: currentUser.uid, 
+                companyId: companyId,
             };
 
-            console.log("Placing order:", orderToSave); // This is line 372
-
-            // 4. Save to Firestore
-            const ordersCollectionRef = collection(db, 'companies', currentUser.companyId, 'Orders');
+            // 5. Save to Firestore
+            const ordersCollectionRef = collection(db, 'companies', companyId, 'Orders');
             await addDoc(ordersCollectionRef, orderToSave);
 
-            // 5. Success feedback and cleanup
-            setModal({ message: "Order placed successfully!", type: State.SUCCESS });
+            // 6. Success feedback and cleanup
+            setModal({ message: `Order ${newOrderId} placed successfully!`, type: State.SUCCESS });
             setCart([]);
             setIsCustomerModalOpen(false);
             setCustomerName('');
@@ -489,17 +505,30 @@ const OrderingPage: React.FC = () => {
                     />
                     <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                 </div>
+                {/* --- FIX: Filter buttons now use ItemGroup IDs --- */}
                 <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                    {categories.map(category => (
+                    <button
+                        key="All"
+                        onClick={() => setSelectedCategory('All')}
+                        className={`px-4 py-1.5 text-sm font-medium rounded-full flex-shrink-0 transition-colors ${
+                            selectedCategory === 'All'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-200 text-gray-700'
+                        }`}
+                    >
+                        All
+                    </button>
+                    {itemGroups.map(group => (
                         <button
-                            key={category} // This is now unique
-                            onClick={() => setSelectedCategory(category)}
-                            className={`px-4 py-1.5 text-sm font-medium rounded-full flex-shrink-0 transition-colors ${selectedCategory === category
+                            key={group.id} // <-- Use unique ID for key
+                            onClick={() => setSelectedCategory(group.id!)} // <-- Filter by ID
+                            className={`px-4 py-1.5 text-sm font-medium rounded-full flex-shrink-0 transition-colors ${
+                                selectedCategory === group.id
                                 ? 'bg-blue-600 text-white'
                                 : 'bg-gray-200 text-gray-700'
-                                }`}
+                            }`}
                         >
-                            {category}
+                            {group.name} {/* Display name */}
                         </button>
                     ))}
                 </div>

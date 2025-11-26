@@ -29,7 +29,7 @@ const Account: React.FC = () => {
             if (!currentUser) {
                 setLoadingProfile(false);
                 setError('No user is currently logged in.');
-                navigate(ROUTES.LOGIN);
+                navigate(ROUTES.LANDING);
                 return;
             }
 

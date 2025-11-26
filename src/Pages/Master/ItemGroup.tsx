@@ -213,7 +213,7 @@ const ItemGroupPage: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-100 w-full pt-28 sm:pt-24">
+    <div className="flex flex-col mb-10 bg-gray-100 w-full pt-24 sm:pt-24">
 
       <div className="fixed top-0 left-0 right-0 z-10 p-4 bg-gray-100 border-b border-gray-300 flex flex-col">
         <h1 className="text-2xl font-bold text-gray-800 text-center mb-4">Item Groups</h1>
@@ -242,7 +242,7 @@ const ItemGroupPage: React.FC = () => {
         <div className="p-4 sm:p-6 bg-white rounded-lg shadow-md">
           <div className="flex flex-col gap-2 mb-6">
             <input type="text" placeholder="Create a New Group" value={newItemGroupName} onChange={(e) => setNewItemGroupName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleAddItemGroup()} className="w-full p-3 border border-gray-300 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <button onClick={handleAddItemGroup} disabled={loading} className="bg-blue-600 text-white py-3 px-6 rounded-lg font-semibold shadow-sm transition hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed">Add New Group</button>
+            <button onClick={handleAddItemGroup} disabled={loading} className="bg-sky-500 text-white py-3 px-6 rounded-lg font-semibold shadow-sm transition hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed">Add New Group</button>
           </div>
 
           <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">Official Item Groups</h2>

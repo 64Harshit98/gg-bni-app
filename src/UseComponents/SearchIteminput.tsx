@@ -36,15 +36,30 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    // --- UPDATED SEARCH LOGIC ---
     // Memoized calculation for filtering items based on search query
     const filteredItems = useMemo(() => {
-        const query = searchQuery.toLowerCase().trim();
-        if (!query) return [];
+        const trimmedQuery = searchQuery.toLowerCase().trim();
 
-        return items.filter(item =>
-            item.name.toLowerCase().includes(query) ||
-            (item.barcode && item.barcode.toLowerCase().includes(query))
-        );
+        if (!trimmedQuery) return [];
+
+        // 1. Split the query into individual words (tokens)
+        // e.g., "red shirt" becomes ["red", "shirt"]
+        const searchTokens = trimmedQuery.split(/\s+/);
+
+        return items.filter(item => {
+            const lowerName = item.name.toLowerCase();
+            const lowerBarcode = item.barcode ? item.barcode.toLowerCase() : '';
+
+            // 2. Check if EVERY word typed exists in the item name
+            // This allows "shirt red" to find "Red Cotton Shirt"
+            const matchesName = searchTokens.every(token => lowerName.includes(token));
+
+            // 3. For barcodes, usually a direct match is preferred
+            const matchesBarcode = lowerBarcode.includes(trimmedQuery);
+
+            return matchesName || matchesBarcode;
+        });
     }, [items, searchQuery]);
 
     // Handler for when a user selects an item from the dropdown
@@ -70,20 +85,24 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
             />
             {isDropdownOpen && searchQuery && (
                 <div className="absolute top-full left-0 right-0 z-20 mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-52 overflow-y-auto">
-                    {isLoading ? <div className="p-3 text-gray-500">Loading...</div> :
-                        error ? <div className="p-3 text-red-600">{error}</div> :
-                            filteredItems.length === 0 ? <div className="p-3 text-gray-500">No items found.</div> :
-                                (filteredItems.map(item => (
-                                    <div
-                                        key={item.id}
-                                        className="p-3 cursor-pointer border-b last:border-b-0 hover:bg-gray-100 flex justify-between items-center"
-                                        onClick={() => handleSelect(item)}
-                                    >
-                                        <span className="font-medium text-gray-800">{item.name}</span>
-                                        <span className="text-sm font-semibold text-blue-600">₹{item.mrp.toFixed(2)}</span>
-                                    </div>
-                                )))
-                    }
+                    {isLoading ? (
+                        <div className="p-3 text-gray-500">Loading...</div>
+                    ) : error ? (
+                        <div className="p-3 text-red-600">{error}</div>
+                    ) : filteredItems.length === 0 ? (
+                        <div className="p-3 text-gray-500">No items found.</div>
+                    ) : (
+                        filteredItems.map(item => (
+                            <div
+                                key={item.id}
+                                className="p-3 cursor-pointer border-b last:border-b-0 hover:bg-gray-100 flex justify-between items-center"
+                                onClick={() => handleSelect(item)}
+                            >
+                                <span className="font-medium text-gray-800">{item.name}</span>
+                                <span className="text-sm font-semibold text-blue-600">₹{item.mrp.toFixed(2)}</span>
+                            </div>
+                        ))
+                    )}
                 </div>
             )}
         </div>

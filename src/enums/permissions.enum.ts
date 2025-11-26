@@ -18,7 +18,7 @@ export enum Permissions {
     CreateSalesReturn = 'CreateSalesReturn',
     CreatePurchase = 'CreatePurchase',
     CreatePurchaseReturn = 'CreatePurchaseReturn',
-    ManagePayments = 'ManagePayments',
+    PrintQR = 'PrintQR',
 
     // Inventory & User Management
     ManageItemGroup = 'ManageItemGroup',
@@ -29,5 +29,4 @@ export enum Permissions {
 
     // General Access
     SetPermissions = 'SetPermissions',
-    ViewCatalogue = 'ViewCatalogue',
 }

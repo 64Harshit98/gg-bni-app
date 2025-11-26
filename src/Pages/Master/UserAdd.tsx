@@ -1,14 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-// --- No 'db', 'doc', 'setDoc' imports needed! The Cloud Function does it. ---
-import { ICONS } from '../../constants/icon.constants';
 import { ROUTES } from '../../constants/routes.constants';
 import { ROLES, Variant } from '../../enums';
 import { useAuth } from '../../context/auth-context';
-// --- FIX: Import the correct function ---
 import { inviteUser } from '../../lib/AuthOperations';
-
-import { CustomIcon } from '../../Components';
+import { FiChevronLeft } from 'react-icons/fi';
 import { FloatingLabelInput } from '../../Components/ui/FloatingLabelInput';
 import { CustomButton } from '../../Components/CustomButton';
 import { ReusableDropdown, type Option } from '../../Components/Dropdown';
@@ -96,11 +92,11 @@ const UserAdd: React.FC = () => {
         className="self-start mb-8 transition-opacity hover:opacity-75"
         aria-label="Go back"
       >
-        <CustomIcon iconName={ICONS.BACK_CURVE} />
+        <FiChevronLeft className="w-7 h-7" />
       </button>
+      <h1 className="text-4xl font-bold mb-6">Add New User</h1>
 
       <div className="w-full max-w-lg mx-auto">
-        <h1 className="text-4xl font-bold mb-6">Add New User</h1>
 
         <form onSubmit={handleAddUser} className="flex flex-col space-y-6">
           <FloatingLabelInput
@@ -154,7 +150,7 @@ const UserAdd: React.FC = () => {
           {success && <p className="text-sm text-center text-green-600 font-medium">{success}</p>}
 
           <div className="pt-4">
-            <CustomButton type="submit" variant={Variant.Filled} disabled={isSubmitting}>
+            <CustomButton type="submit" variant={Variant.Save} disabled={isSubmitting}>
               {isSubmitting ? 'Adding User...' : 'Add User'}
             </CustomButton>
           </div>

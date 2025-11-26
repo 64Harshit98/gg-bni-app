@@ -24,19 +24,19 @@ const UserAdd = lazy(() => import('../Pages/Master/UserAdd'));
 const Landing = lazy(() => import('../Pages/Auth/Landing'));
 const Signup = lazy(() => import('../Pages/Auth/Signup'));
 const EditProfile = lazy(() => import('../Pages/Account/EditProfile'));
-const Login = lazy(() => import('../Pages/Auth/Login'));
+const ShopSetup2 = lazy(() => import('../Pages/Auth/ShopSetup2'));
 const ItemReport = lazy(() => import('../Pages/Reports/ItemReport'));
 const SalesReport = lazy(() => import('../Pages/Reports/SalesReport'));
 const PurchaseReport = lazy(() => import('../Pages/Reports/PurchaseReport'));
 const PnlReport = lazy(() => import('../Pages/Reports/PNLReport'));
 const BusInfo = lazy(() => import('../Pages/Auth/BusInfo'));
-const BusAddress = lazy(() => import('../Pages/Auth/BusAddress'));
+const Shopsetup = lazy(() => import('../Pages/Auth/ShopSetup'));
 const PrintQR = lazy(() => import('../Pages/Master/PrintQR'));
 const Permissionsetting = lazy(() => import('../Pages/Settings/Permissionsetting'));
 const UnauthorizedPage = lazy(() => import('../Pages/Unauthorized'));
 const SalesSettingsPage = lazy(() => import('../Pages/Settings/SalesSetting'));
 const PurchaseSettingsPage = lazy(() => import('../Pages/Settings/Purchasesetting'));
-// const History = lazy(() => import('../UseComponents/historypage'));
+const History = lazy(() => import('../UseComponents/historypage'));
 const CHome = lazy(() => import('../Catalogue/CatalogueHome'));
 const MyShop = lazy(() => import('../Catalogue/MyShop'));
 const UserSetting = lazy(() => import('../Pages/Settings/UserSettings'));
@@ -46,7 +46,7 @@ const OrderDetails = lazy(() => import('../Catalogue/Orders'));
 const Catalogue = lazy(() => import('../Catalogue/SharedCatalouge'));
 const CatalogueAccounts = lazy(() => import('../Catalogue/CatalougeAccount'));
 const CatalogueReports = lazy(() => import('../Catalogue/CatalogueReports/CatalogueReports'));
-const CatalogueSales = lazy(() => import('../Catalogue/CatalogueReports/CatalogueSalesReport'));  
+const CatalogueSales = lazy(() => import('../Catalogue/CatalogueReports/CatalogueSalesReport'));
 
 
 
@@ -73,13 +73,13 @@ const router = createBrowserRouter([
             handle: { isPublic: true },
           },
           {
-            path: ROUTES.BUSINESS_ADDRESS,
-            element: <BusAddress />,
+            path: ROUTES.SHOP_SETUP,
+            element: <Shopsetup />,
             handle: { isPublic: true },
           },
           {
-            path: ROUTES.LOGIN,
-            element: <Login />,
+            path: ROUTES.SHOP_SETUP2,
+            element: <ShopSetup2 />,
             handle: { isPublic: true },
           },
         ],
@@ -137,7 +137,7 @@ const router = createBrowserRouter([
           {
             path: ROUTES.PRINTQR,
             element: <PrintQR />,
-            handle: { requiredPermission: Permissions.ManagePayments },
+            handle: { requiredPermission: Permissions.PrintQR },
           },
           {
             path: ROUTES.ITEM_ADD,
@@ -184,11 +184,11 @@ const router = createBrowserRouter([
             element: <Permissionsetting />,
             handle: { requiredPermission: null },
           },
-          // {
-          //   path: ROUTES.HISTORY,
-          //   element: <History />,
-          //   handle: { requiredPermission: null },
-          // },
+          {
+            path: ROUTES.HISTORY,
+            element: <History />,
+            handle: { requiredPermission: null },
+          },
           {
             path: ROUTES.SALESETTING,
             element: <SalesSettingsPage />,

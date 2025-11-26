@@ -129,10 +129,14 @@ const PurchaseListTable: React.FC<{
   purchases: PurchaseRecord[];
   sortConfig: { key: keyof PurchaseRecord; direction: 'asc' | 'desc' };
   onSort: (key: keyof PurchaseRecord) => void;
+  
 }> = ({ purchases, sortConfig, onSort }) => {
+   const ASC_ICON = '∧'; // Up Arrow/Wedge for Ascending
+    const DESC_ICON = '∨'; // Down Arrow/Vel for Descending
+
   const SortableHeader: React.FC<{ sortKey: keyof PurchaseRecord; children: React.ReactNode; className?: string; }> = ({ sortKey, children, className }) => {
     const isSorted = sortConfig.key === sortKey;
-    const directionIcon = sortConfig.direction === 'asc' ? '▲' : '▼';
+    const directionIcon = sortConfig.direction === 'asc' ? ASC_ICON : DESC_ICON;
     return (
       <th className={`py-2 px-3 ${className || ''}`}>
         <button onClick={() => onSort(sortKey)} className="flex items-center gap-2 uppercase">
@@ -142,8 +146,8 @@ const PurchaseListTable: React.FC<{
               <span className="text-blue-600 text-xs">{directionIcon}</span>
             ) : (
               <span className="text-gray-400 hover:text-gray-600 text-xs inline-flex flex-col leading-3">
-                <span>▲</span>
-                <span className="-mt-1">▼</span>
+                <span>{ASC_ICON}</span> {/* Up arrow for unsorted state */}
+                <span className="-mt-1">{DESC_ICON}</span>
               </span>
             )}
           </span>

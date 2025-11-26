@@ -142,7 +142,7 @@ const ItemSettingsPage: React.FC = () => {
     }
 
     return (
-        <div className="flex flex-col min-h-screen bg-white w-full">
+        <div className="flex flex-col min-h-screen bg-gray-100 w-full">
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
             <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
@@ -165,35 +165,35 @@ const ItemSettingsPage: React.FC = () => {
                                 <input type="checkbox" id="req-purchasePrice"
                                     checked={settings.requirePurchasePrice ?? false}
                                     onChange={(e) => handleCheckboxChange('requirePurchasePrice', e.target.checked)}
-                                    className="w-4 h-4 text-blue-600" />
+                                    className="w-4 h-4 text-sky-500" />
                                 <label htmlFor="req-purchasePrice" className="ml-2 text-sm font-medium text-gray-700">Require Purchase Price</label>
                             </div>
                             <div className="flex items-center">
                                 <input type="checkbox" id="req-discount"
                                     checked={settings.requireDiscount ?? false}
                                     onChange={(e) => handleCheckboxChange('requireDiscount', e.target.checked)}
-                                    className="w-4 h-4 text-blue-600" />
+                                    className="w-4 h-4 text-sky-500" />
                                 <label htmlFor="req-discount" className="ml-2 text-sm font-medium text-gray-700">Require Discount (%)</label>
                             </div>
                             <div className="flex items-center">
                                 <input type="checkbox" id="req-tax"
                                     checked={settings.requireTax ?? false}
                                     onChange={(e) => handleCheckboxChange('requireTax', e.target.checked)}
-                                    className="w-4 h-4 text-blue-600" />
+                                    className="w-4 h-4 text-sky-500" />
                                 <label htmlFor="req-tax" className="ml-2 text-sm font-medium text-gray-700">Require Tax (%)</label>
                             </div>
                             <div className="flex items-center">
                                 <input type="checkbox" id="req-barcode"
                                     checked={settings.requireBarcode ?? false}
                                     onChange={(e) => handleCheckboxChange('requireBarcode', e.target.checked)}
-                                    className="w-4 h-4 text-blue-600" />
+                                    className="w-4 h-4 text-sky-500" />
                                 <label htmlFor="req-barcode" className="ml-2 text-sm font-medium text-gray-700">Require Barcode</label>
                             </div>
                             <div className="flex items-center">
                                 <input type="checkbox" id="req-restock"
                                     checked={settings.requireRestockQuantity ?? false}
                                     onChange={(e) => handleCheckboxChange('requireRestockQuantity', e.target.checked)}
-                                    className="w-4 h-4 text-blue-600" />
+                                    className="w-4 h-4 text-sky-500" />
                                 <label htmlFor="req-restock" className="ml-2 text-sm font-medium text-gray-700">Require Restock Quantity</label>
                             </div>
                         </div>
@@ -205,7 +205,7 @@ const ItemSettingsPage: React.FC = () => {
                             <input type="checkbox" id="auto-barcode"
                                 checked={settings.autoGenerateBarcode ?? false}
                                 onChange={(e) => handleCheckboxChange('autoGenerateBarcode', e.target.checked)}
-                                className="w-4 h-4 text-blue-600" />
+                                className="w-4 h-4 text-sky-500" />
                             <label htmlFor="auto-barcode" className="ml-2 text-sm font-medium text-gray-700">Automatically Generate Barcode if Empty</label>
                         </div>
                         <p className="text-xs text-gray-500 mt-1 pl-6">If checked, a unique barcode will be generated when adding an item if the barcode field is left blank.</p>
@@ -216,7 +216,7 @@ const ItemSettingsPage: React.FC = () => {
                     <button
                         type="submit"
                         disabled={isSaving || isLoading}
-                        className="w-full mt-6 flex items-center justify-center bg-blue-600 text-white font-bold py-3 px-4 rounded-xl hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                        className="w-full mt-6 flex items-center justify-center bg-sky-500 text-white font-bold py-3 px-4 rounded-xl hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
                     >
                         {isSaving ? <Spinner /> : 'Save Item Settings'}
                     </button>

@@ -4,7 +4,8 @@ import { useAuth } from '../context/auth-context';
 import {
     collection,
     query,
-    onSnapshot} from 'firebase/firestore';
+    onSnapshot
+} from 'firebase/firestore';
 import type { FirestoreError } from 'firebase/firestore';
 import { Spinner } from '../constants/Spinner';
 import {
@@ -22,6 +23,7 @@ interface ItemDoc {
     amount: number;         // The current stock quantity
     restockQuantity: number; // The alert threshold
     companyId: string;
+    stock: number;
 }
 
 /**
@@ -54,11 +56,11 @@ const useRestockAlerts = (companyId?: string) => {
 
             // Filter for items that need restocking (this client-side filter is correct)
             const filteredItems = allItems.filter(item =>
-                item.restockQuantity > 0 && (item.amount || 0) <= item.restockQuantity // Use (item.amount || 0) for safety
+                item.restockQuantity > 0 && (item.stock || 0) <= item.restockQuantity // Use (item.amount || 0) for safety
             );
 
             // Sort by urgency (how far below the threshold the item is)
-            filteredItems.sort((a, b) => (a.amount - a.restockQuantity) - (b.amount - b.restockQuantity));
+            filteredItems.sort((a, b) => (a.stock - a.restockQuantity) - (b.amount - b.restockQuantity));
 
             setItemsToRestock(filteredItems);
             setLoading(false);
@@ -78,7 +80,7 @@ const useRestockAlerts = (companyId?: string) => {
 export const RestockAlertsCard: React.FC = () => {
     const { currentUser } = useAuth();
     const { itemsToRestock, loading, error } = useRestockAlerts(currentUser?.companyId);
-    
+
     // --- 1. Add state for expansion ---
     const [isExpanded, setIsExpanded] = useState(false);
 
@@ -90,7 +92,7 @@ export const RestockAlertsCard: React.FC = () => {
         if (itemsToRestock.length === 0) {
             return <p className="text-center text-gray-500">All items are well-stocked! 👍</p>;
         }
-        
+
         // --- 2. Slice the array based on the isExpanded state ---
         const itemsToDisplay = isExpanded ? itemsToRestock : itemsToRestock.slice(0, 4);
 

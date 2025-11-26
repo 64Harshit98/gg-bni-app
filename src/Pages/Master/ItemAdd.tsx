@@ -12,11 +12,13 @@ import { Modal } from '../../constants/Modal';
 import { useItemSettings } from '../../context/SettingsContext';
 import { v4 as uuidv4 } from 'uuid';
 
+// --- CONFIGURATION ---
+const GOOGLE_SHEET_API_URL = "https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec";
 
 const ItemAdd: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const dbOperations = useDatabase(); // This will be null initially
+  const dbOperations = useDatabase(); 
   const { currentUser, loading: authLoading } = useAuth();
   const { itemSettings, loadingSettings: loadingItemSettings } = useItemSettings();
 
@@ -25,7 +27,7 @@ const ItemAdd: React.FC = () => {
   const [itemPurchasePrice, setItemPurchasePrice] = useState<string>('');
   const [itemDiscount, setItemDiscount] = useState<string>('');
   const [itemTax, setItemTax] = useState<string>('');
-  const [itemAmount, setItemAmount] = useState<string>('');
+  const [itemAmount, setItemAmount] = useState<string>(''); // We use this input for 'stock'
   const [restockQuantity, setRestockQuantity] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [itemBarcode, setItemBarcode] = useState<string>('');
@@ -42,11 +44,9 @@ const ItemAdd: React.FC = () => {
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
-
   useEffect(() => {
     setPageIsLoading(authLoading || loadingItemSettings || !dbOperations);
   }, [authLoading, loadingItemSettings, dbOperations]);
-
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -55,7 +55,6 @@ const ItemAdd: React.FC = () => {
       setLoading(true);
       return;
     }
-
     const fetchGroups = async () => {
       try {
         setLoading(true);
@@ -88,6 +87,35 @@ const ItemAdd: React.FC = () => {
     setSelectedCategory(itemGroups.length > 0 ? itemGroups[0].id! : '');
   };
 
+  // --- LOGIC: SYNC TO GOOGLE SHEETS ---
+  const syncToGoogleSheet = async (itemData: any) => {
+    if (!GOOGLE_SHEET_API_URL || GOOGLE_SHEET_API_URL.includes("YOUR_")) {
+      return;
+    }
+    try {
+      const response = await fetch(GOOGLE_SHEET_API_URL);
+      const sheetData = await response.json();
+
+      const isDuplicate = sheetData.some((row: any) => 
+        (row.barcode && String(row.barcode) === String(itemData.barcode)) || 
+        (row.name && String(row.name).toLowerCase() === String(itemData.name).toLowerCase())
+      );
+
+      if (isDuplicate) return;
+
+      await fetch(GOOGLE_SHEET_API_URL, {
+        method: 'POST',
+        mode: 'no-cors', 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(itemData) 
+      });
+      
+    } catch (sheetError) {
+      console.error("Error syncing to Google Sheets:", sheetError);
+    }
+  };
+
+  // --- LOGIC: ADD SINGLE ITEM ---
   const handleAddItem = async () => {
     if (!dbOperations || !currentUser || !itemSettings) {
       const errorMsg = 'Cannot add item. App is not ready. Try refreshing.';
@@ -117,29 +145,29 @@ const ItemAdd: React.FC = () => {
     let finalBarcode = itemBarcode.trim();
     if (!finalBarcode && itemSettings.autoGenerateBarcode) {
       finalBarcode = uuidv4();
-      console.log("Auto-generated barcode:", finalBarcode);
     } else if (!finalBarcode && itemSettings.requireBarcode) {
       setModal({ message: 'Barcode is required by settings.', type: State.ERROR }); return;
     }
 
-    // --- Check for barcode uniqueness if one is provided ---
+    // 1. Check Database for existing Barcode (UI Feedback only, DB will also prevent it)
     if (finalBarcode) {
       try {
         const existingItem = await dbOperations.getItemByBarcode(finalBarcode);
         if (existingItem) {
-          setModal({ message: `This barcode is already assigned to "${existingItem.name}". Barcodes must be unique.`, type: State.ERROR });
+          setModal({ message: `This barcode is already assigned to "${existingItem.name}". Please edit that item instead.`, type: State.ERROR });
           return;
         }
       } catch (err) {
-        console.error("Barcode check failed:", err);
-        setModal({ message: "Failed to verify barcode. Please try again.", type: State.ERROR });
-        return;
+        // Continue if check fails
       }
     }
 
-
     setIsSaving(true);
     try {
+      // 2. Deterministic ID: Use Barcode if available, else UUID
+      // This is the key fix for preventing duplicates
+      const customDocId = finalBarcode || uuidv4();
+
       const newItemData: Omit<Item, 'id' | 'createdAt' | 'updatedAt' | 'companyId'> = {
         name: itemName.trim(),
         mrp: parseFloat(itemMRP) || 0,
@@ -147,28 +175,37 @@ const ItemAdd: React.FC = () => {
         discount: parseFloat(itemDiscount) || 0,
         tax: parseFloat(itemTax) || 0,
         itemGroupId: selectedCategory,
+        
+        // 3. Correct Field Name: 'stock' (lowercase)
         stock: parseInt(itemAmount, 10) || 0,
+        
+        // Optional: Keep 'amount' if you use it for something else, otherwise safe to remove
         amount: parseInt(itemAmount, 10) || 0,
+        
         barcode: finalBarcode,
         restockQuantity: parseInt(restockQuantity, 10) || 0,
         taxRate: parseFloat(itemTax) || 0,
       };
 
-      await dbOperations.createItem(newItemData);
+      // 4. Create Item with Custom ID
+      await dbOperations.createItem(newItemData, customDocId);
+      
+      // Trigger Sync
+      await syncToGoogleSheet(newItemData);
+
       setSuccess(`Item "${itemName}" added successfully!`);
       resetForm();
       setTimeout(() => setSuccess(null), 3000);
 
-    } catch (err) {
-      console.error('Error adding item:', err);
+    } catch (err: any) {
       setError('Failed to add item. Please try again.');
-      setModal({ message: 'Failed to add item.', type: State.ERROR });
+      setModal({ message: `Failed to add item: ${err.message}`, type: State.ERROR });
     } finally {
       setIsSaving(false);
     }
   };
 
-  // --- THIS FUNCTION IS NOW UPDATED ---
+  // --- LOGIC: BULK UPLOAD (UPDATED) ---
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !dbOperations || !currentUser || !itemSettings) {
@@ -188,130 +225,128 @@ const ItemAdd: React.FC = () => {
         const workbook = XLSX.read(data, { type: 'array' });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
-        const json: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+        const rawJson: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: null });
 
-        if (json.length === 0) {
-          throw new Error("Excel file is empty or unreadable.");
-        }
+        if (rawJson.length === 0) throw new Error("Excel file is empty or unreadable.");
 
         let processedCount = 0;
-        let createdCount = 0; // Track new items
-        let updatedCount = 0; // Track updated items
+        let createdCount = 0;
+        let updatedCount = 0;
         const errors: string[] = [];
 
-        // --- NEW: Fetch all items once to create a barcode map ---
+        // We don't need to fetch all items anymore because we use Deterministic IDs
+        // But fetching gives us ItemGroup mapping
         const allItems = await dbOperations.getItems();
         const existingBarcodeMap = new Map<string, Item>();
         allItems.forEach(item => {
-          if (item.barcode) {
-            existingBarcodeMap.set(item.barcode, item);
-          }
+          if (item.barcode) existingBarcodeMap.set(String(item.barcode).trim(), item);
         });
-        // --- END NEW ---
 
-        for (let i = 0; i < json.length; i++) {
-          const row = json[i];
+        for (let i = 0; i < rawJson.length; i++) {
+          const rawRow = rawJson[i];
           const rowNum = i + 2;
 
-          const stockValue = row.Stock ?? row.amount;
-          if (!row.name || row.mrp == null || !row.itemGroupId || stockValue == null) {
-            errors.push(`Row ${rowNum}: Missing required field (Name, MRP, Item Group ID, or Stock/Amount).`);
+          const row: any = {};
+          Object.keys(rawRow).forEach(key => row[key.toLowerCase().trim()] = rawRow[key]);
+
+          const stockValue = row.stock ?? row.amount ?? row.qty;
+          
+          let targetGroupId = "";
+          const csvCategory = String(row.itemgroupid || row.category || "").trim();
+          const matchedGroup = itemGroups.find(g => g.id === csvCategory || g.name.toLowerCase() === csvCategory.toLowerCase());
+          
+          if (matchedGroup) targetGroupId = matchedGroup.id!;
+          else if (selectedCategory) targetGroupId = selectedCategory;
+
+          if (!row.name || row.mrp == null || stockValue == null) {
+            errors.push(`Row ${rowNum}: Missing Name, MRP, or Stock.`);
             continue;
           }
 
           try {
-            const currentStock = parseInt(String(stockValue ?? 0), 10);
+            const currentStock = parseInt(String(stockValue), 10);
             const itemTax = parseFloat(String(row.tax ?? 0));
+            const rowBarcode = String(row.barcode || '').trim();
+            
+            // Deterministic ID Logic for Bulk Upload
+            let customId = rowBarcode;
+            if (!customId && itemSettings?.autoGenerateBarcode) {
+                customId = uuidv4(); // Auto-gen if missing
+            } else if (!customId) {
+                // Skip if no barcode and not auto-generating
+                customId = uuidv4(); // Fallback to UUID if no barcode strictly required
+            }
 
-            // This is the data from the Excel row
-            const itemData: Omit<Item, 'id' | 'createdAt' | 'updatedAt' | 'companyId'> = {
+            const itemData: any = {
               name: String(row.name).trim(),
               mrp: parseFloat(String(row.mrp)),
-              purchasePrice: parseFloat(String(row.purchasePrice ?? 0)),
+              purchasePrice: parseFloat(String(row.purchaseprice ?? row.purchase_price ?? 0)),
               discount: parseFloat(String(row.discount ?? 0)),
               tax: itemTax,
-              itemGroupId: String(row.itemGroupId),
+              itemGroupId: targetGroupId,
+              
+              // CORRECT FIELD: stock
               stock: currentStock,
               amount: currentStock,
-              barcode: String(row.barcode || '').trim(),
-              restockQuantity: parseInt(String(row.restockQuantity ?? 0), 10),
+              
+              barcode: customId === rowBarcode ? rowBarcode : customId, // Ensure we save the generated barcode
+              restockQuantity: parseInt(String(row.restockquantity ?? 0), 10),
               taxRate: itemTax,
             };
 
-            if (isNaN(itemData.mrp) || isNaN(itemData.stock)) {
-              errors.push(`Row ${rowNum}: Invalid number format for MRP or Stock/Amount.`);
-              continue;
-            }
-
-            let finalBarcode = itemData.barcode;
-            let existingItem: Item | undefined = undefined;
-
-            if (finalBarcode) {
-              // Check if item with this barcode already exists
-              existingItem = existingBarcodeMap.get(finalBarcode);
-            }
-
-            // --- NEW LOGIC: UPDATE OR CREATE ---
-            if (existingItem) {
-              // --- UPDATE ---
-              // Item exists, update it with new data
-              await dbOperations.updateItem(existingItem.id!, itemData);
-              updatedCount++;
+            // Check if update or create
+            // Using dbOperations.createItem with the ID will overwrite/merge effectively
+            await dbOperations.createItem(itemData, customId);
+            
+            // Note: We count based on if we had it in memory, though createItem handles the merge
+            if (existingBarcodeMap.has(rowBarcode)) {
+                updatedCount++;
             } else {
-              // --- CREATE ---
-              // Item does not exist, create a new one
-
-              // Handle barcode generation if it was missing
-              if (!finalBarcode && itemSettings?.autoGenerateBarcode) {
-                finalBarcode = uuidv4();
-              } else if (!finalBarcode && itemSettings?.requireBarcode) {
-                errors.push(`Row ${rowNum} (${itemData.name}): Barcode is required but missing.`);
-                continue;
-              }
-
-              itemData.barcode = finalBarcode; // Set the final barcode
-              await dbOperations.createItem(itemData);
-              createdCount++;
+                createdCount++;
+                await syncToGoogleSheet(itemData);
             }
+            
             processedCount++;
-            // --- END NEW LOGIC ---
-
           } catch (itemError: any) {
-            errors.push(`Row ${rowNum} (${row.name || 'N/A'}): Error - ${itemError.message}`);
+            errors.push(`Row ${rowNum}: Error - ${itemError.message}`);
           }
         }
 
-        // --- NEW: Updated success message ---
         let successMsg = '';
         if (createdCount > 0) successMsg += `${createdCount} new items imported. `;
         if (updatedCount > 0) successMsg += `${updatedCount} existing items updated.`;
-        if (!successMsg) successMsg = "Import processed, but no changes were made.";
-
-        setSuccess(successMsg);
-
+        
         if (errors.length > 0) {
-          const errorMsg = `Import finished with ${errors.length} errors:\n${errors.slice(0, 5).join('\n')}${errors.length > 5 ? '\n...' : ''}`;
-          setError(errorMsg);
-          setModal({ message: `Import failed for ${errors.length} rows. Check console/details.`, type: State.ERROR })
-          console.error("Import Errors:", errors);
+          setError(`Finished with errors. Check console.`);
+          setModal({ message: `Import failed for ${errors.length} rows. First error: ${errors[0]}`, type: State.ERROR });
         } else if (createdCount === 0 && updatedCount === 0) {
-          setError("No valid items found to import in the file.");
+          setError("No valid items found to import.");
+        } else {
+          setSuccess(successMsg);
         }
-
         setTimeout(() => { setSuccess(null); setError(null); }, 7000);
 
       } catch (err: any) {
         console.error('Error processing Excel file:', err);
-        setError(`Failed to process file: ${err.message}. Check format and required columns.`);
+        setError(`Failed to process file: ${err.message}`);
         setModal({ message: "File processing error.", type: State.ERROR })
       } finally {
         setIsUploading(false);
-        if (fileInputRef.current) {
-          fileInputRef.current.value = '';
-        }
+        if (fileInputRef.current) fileInputRef.current.value = '';
       }
     };
     reader.readAsArrayBuffer(file);
+  };
+
+  const handleDownloadSample = () => {
+    const sampleData = [
+      { name: 'Sample T-Shirt', mrp: 599, purchasePrice: 250, discount: 10, tax: 5, itemGroupId: 'FASHION', stock: 50, barcode: '1234567890123' },
+      { name: 'Sample Electronics', mrp: 10000, purchasePrice: 8000, discount: 5, tax: 18, itemGroupId: 'ELECTRONICS', stock: 10, barcode: '9876543210987' },
+    ];
+    const ws = XLSX.utils.json_to_sheet(sampleData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Items');
+    XLSX.writeFile(wb, 'Sellar_Items_Sample.xlsx');
   };
 
   const handleBarcodeScanned = (barcode: string) => {
@@ -337,7 +372,6 @@ const ItemAdd: React.FC = () => {
       />
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
-
       <div className="fixed top-0 left-0 right-0 z-10 p-4 bg-gray-100 border-b border-gray-300 flex flex-col">
         <h1 className="text-2xl font-bold text-gray-800 text-center mb-4">Add Item</h1>
         <div className="flex items-center justify-center gap-6">
@@ -345,7 +379,6 @@ const ItemAdd: React.FC = () => {
           <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.ITEM_GROUP)} active={isActive(ROUTES.ITEM_GROUP)}>Item Groups</CustomButton>
         </div>
       </div>
-
 
       <div className="flex-grow p-2 md:p-6 mt-28 bg-gray-100 w-full overflow-y-auto mb-10">
         {error && <div className="mb-4 text-center p-3 bg-red-100 text-red-700 rounded-lg font-medium">{error}</div>}
@@ -366,6 +399,14 @@ const ItemAdd: React.FC = () => {
               className="w-full max-w-xs bg-sky-500 text-white py-2 px-4 rounded-lg font-semibold hover:bg-sky-600 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center text-lg"
             >
               {isUploading ? <Spinner /> : 'Import from Excel'}
+            </button>
+            <button
+              type="button"
+              onClick={handleDownloadSample}
+              disabled={isUploading}
+              className="w-full max-w-xs bg-white text-sky-500 border border-sky-500 py-2 px-4 rounded-lg font-semibold hover:bg-sky-50 transition-colors disabled:opacity-50 flex items-center justify-center text-lg mt-4"
+            >
+              Download Sample
             </button>
           </div>
         </div>

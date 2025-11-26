@@ -1,246 +1,358 @@
 import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
-// 1. Defines the structure for the invoice items
-interface InvoiceItem {
+// --- Interface ---
+export interface InvoiceData {
+  companyName: string;
+  companyAddress: string;
+  companyContact: string;
+  companyEmail?: string;
+  billTo: {
+    name: string;
+    address: string;
+    phone: string;
+    gstin?: string; // Customer GSTIN
+  };
+  invoice: {
+    number: string;
+    date: string;
+    billedBy: string;
+  };
+  items: {
     sno: number;
     name: string;
     hsn: string;
     quantity: number;
     unit: string;
-    listPrice: number;
-    gstPercent: number;
+    listPrice: number; // Inclusive Price
+    gstPercent?: number;
+    taxRate?: number;
+    tax?: number;
     discountAmount: number;
+    amount?: number;
+  }[];
+  terms: string;
+  subtotal?: number;
+  discount?: number;
+  finalAmount?: number;
+  bankDetails?: {
+    accountName?: string;
+    accountNumber?: string;
+    bankName?: string;
+    gstin?: string;
+  };
 }
 
-// 2. Defines the structure for the entire invoice data object
-interface InvoiceData {
-    companyName: string;
-    companyAddress: string;
-    companyContact: string;
-    companyEmail: string;
+export const generatePdf = async (data: InvoiceData, action: 'download' | 'print' = 'download') => {
+  const doc = new jsPDF('p', 'mm', 'a5');
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 10;
 
-    billTo: {
-        name: string;
-        address: string;
-        phone: string;
-    };
+  const primaryColor = '#083a5e';
+  const textColor = '#333333';
+  const lightText = '#666666';
 
-    invoice: {
-        number: string;
-        date: string;
-        billedBy: string;
-    };
+  // --- 1. HEADER BAR ---
+  doc.setFillColor(primaryColor);
+  doc.rect(0, 0, pageWidth, 25, 'F');
 
-    items: InvoiceItem[];
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(18);
+  doc.setTextColor(255, 255, 255);
+  const titleWidth = doc.getTextWidth(data.companyName);
+  doc.text(data.companyName, (pageWidth - titleWidth) / 2, 16);
 
-    paymentInfo: {
-        account: string;
-        accountName: string;
-        bankDetails: string;
-        gstin: string;
-    };
+  // --- 2. INFO SECTION ---
+  const startY = 40;
+  const leftColX = margin;
+  const leftValueX = margin + 14; // Adjusted spacing for labels
+  const rightColLabelX = 85;
+  const rightColValueX = pageWidth - margin;
 
-    terms: string;
-}
+  let cursorY = startY;
+
+  doc.setFontSize(10);
+  doc.setTextColor(primaryColor);
+  doc.setFont('helvetica', 'bold');
+  doc.text("Bill To:", leftColX, cursorY);
+  doc.text("Invoice Details:", rightColLabelX, cursorY);
+
+  cursorY += 6;
+
+  // Row 1: Name & Invoice No
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(lightText);
+  doc.text("Name:", leftColX, cursorY);
+
+  doc.setTextColor(textColor);
+  const maxNameWidth = rightColLabelX - leftValueX - 5;
+  const nameLines = doc.splitTextToSize(data.billTo.name, maxNameWidth);
+  doc.text(nameLines, leftValueX, cursorY);
+
+  doc.setTextColor(lightText);
+  doc.text("Invoice No:", rightColLabelX, cursorY);
+  doc.setTextColor(textColor);
+  doc.setFont('helvetica', 'bold');
+  doc.text(data.invoice.number, rightColValueX, cursorY, { align: 'right' });
+
+  const nameHeight = (nameLines.length - 1) * 4;
+  cursorY += 5 + nameHeight;
+
+  // Row 2: Address & Date
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(lightText);
+  doc.text("Address:", leftColX, cursorY);
+
+  const addressLines = doc.splitTextToSize(data.billTo.address, maxNameWidth);
+  doc.setTextColor(textColor);
+  doc.text(addressLines, leftValueX, cursorY);
+
+  doc.setTextColor(lightText);
+  doc.text("Date:", rightColLabelX, cursorY);
+  doc.setTextColor(textColor);
+  doc.text(data.invoice.date, rightColValueX, cursorY, { align: 'right' });
+
+  const addressHeight = addressLines.length * 4;
+  const row3Y = cursorY + 5;
+
+  // Billed By (Right Side)
+  doc.setTextColor(lightText);
+  doc.text("Billed By:", rightColLabelX, row3Y);
+  doc.setTextColor(textColor);
+  doc.text(data.invoice.billedBy, rightColValueX, row3Y, { align: 'right' });
+
+  // --- Left Side Details (Phone & GSTIN) ---
+  let leftContentY = cursorY + addressHeight + 1;
+
+  // Phone
+  data.billTo.phone
+  doc.setTextColor(lightText);
+  doc.text("Phone:", leftColX, leftContentY);
+  doc.setTextColor(textColor);
+  doc.text(`+91-${data.billTo.phone}`, leftValueX, leftContentY);
+  leftContentY += 5;
 
 
-export const generatePdf = (data: InvoiceData) => {
-    // Guard clause to prevent crashes if the entire data object is missing
-    if (!data) {
-        console.error("generatePdf was called with invalid data. Aborting PDF generation.");
-        return;
+  // Customer GSTIN
+  data.billTo.gstin
+  doc.setTextColor(lightText);
+  doc.text("GSTIN: ", leftColX, leftContentY);
+  doc.setTextColor(textColor);
+  doc.setFont('helvetica', 'normal'); // Bold GSTIN for visibility
+  doc.text(data.billTo.gstin, leftValueX, leftContentY);
+  doc.setFont('helvetica', 'normal'); // Reset font
+  leftContentY += 5;
+
+
+  const tableStartY = Math.max(leftContentY + 2, row3Y + 10);
+
+  // --- 3. PRODUCT TABLE ---
+  let calcTotal = 0;
+  let totalTaxAmount = 0; // Track total tax for footer
+
+  const tableBody: any[] = data.items.map(item => {
+    const taxRate = item.gstPercent || item.taxRate || item.tax || 0;
+    const qty = item.quantity;
+    const inclusivePrice = item.listPrice;
+
+    // Back Calculate Base Price & Tax
+    const basePrice = inclusivePrice / (1 + (taxRate / 100));
+    const taxVal = (inclusivePrice - basePrice) * qty;
+    const finalItemAmount = item.amount || (inclusivePrice * qty);
+
+    calcTotal += finalItemAmount;
+    totalTaxAmount += taxVal;
+
+    return [
+      item.sno,
+      item.name,
+      qty.toFixed(0),
+      basePrice.toFixed(2),
+      `${taxRate}%`,
+      taxVal.toFixed(2),
+      inclusivePrice.toFixed(2),
+      finalItemAmount.toFixed(2)
+    ];
+  });
+
+  const finalTotal = data.finalAmount || calcTotal;
+
+  // --- ADDING TOTAL TAX ROW ---
+  tableBody.push([
+    {
+      content: 'Total Tax Amount',
+      colSpan: 7,
+      styles: { textColor: lightText, fontStyle: 'bold', halign: 'right' }
+    },
+    {
+      content: totalTaxAmount.toFixed(2),
+      styles: { textColor: textColor, fontStyle: 'bold', halign: 'right' }
     }
+  ]);
 
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 15;
-    let y = 25;
+  // --- ADDING GRAND TOTAL ROW ---
+  tableBody.push([
+    {
+      content: 'GRAND TOTAL',
+      colSpan: 7,
+      styles: { textColor: primaryColor, fontStyle: 'bold', halign: 'right', fontSize: 9 }
+    },
+    {
+      content: finalTotal.toFixed(2),
+      styles: { textColor: primaryColor, fontStyle: 'bold', halign: 'right', fontSize: 9 }
+    }
+  ]);
 
-    // Define colors and styles based on Image 1
-    const primaryColor = '#002060'; // Dark Blue for header, footer background
-    const headerTextColor = '#FFFFFF'; // White for header text on blue background
-    const bodyTextColor = '#333333'; // Dark Gray for most body text
-    const tableHeaderBg = '#F2F2F2'; // Light Gray for table header background
-    const tableLineColor = '#DDDDDD'; // Light gray for table borders
+  autoTable(doc, {
+    startY: tableStartY,
+    head: [['S.No', 'Item', 'Qty', 'Base Rate', 'GST', 'Tax Amt', 'Net Rate', 'Total']],
+    body: tableBody,
+    theme: 'plain',
+    styles: {
+      fontSize: 6.5,
+      cellPadding: 2,
+      textColor: textColor,
+      lineWidth: 0.1,
+      lineColor: [200, 200, 200]
+    },
+    headStyles: {
+      textColor: primaryColor,
+      fontStyle: 'bold',
+      fillColor: [255, 255, 255],
+      lineWidth: 0.1,
+      lineColor: [100, 100, 100]
+    },
+    columnStyles: {
+      0: { cellWidth: 7 },
+      1: { cellWidth: 'auto' },
+      2: { cellWidth: 8 },
+      3: { cellWidth: 13, halign: 'right' },
+      4: { cellWidth: 9, halign: 'right' },
+      5: { cellWidth: 13, halign: 'right' },
+      6: { cellWidth: 13, halign: 'right' },
+      7: { cellWidth: 16, halign: 'right' }
+    },
+    margin: { left: margin, right: margin },
+    didParseCell: function (data) {
+      data.cell.styles.lineWidth = 0.1;
+      data.cell.styles.lineColor = [180, 180, 180];
+    }
+  });
 
-    // Outer border (Dark Blue)
-    doc.setDrawColor(primaryColor);
-    doc.setLineWidth(2); // Thicker border
-    doc.rect(2, 2, pageWidth - 4, pageHeight - 4);
+  // --- 4. PAYMENT & TERMS ---
+  // @ts-ignore
+  let finalY = doc.lastAutoTable.finalY + 8;
 
-    // === 1. HEADER (Company Name and Info) ===
-    doc.setFillColor(primaryColor);
-    doc.rect(0, 0, pageWidth, 40, 'F'); // Blue rectangle for the top header
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(26);
-    doc.setTextColor(headerTextColor); // White text for header
-    doc.text(data.companyName || 'Giftinguru.com', pageWidth / 2, 25, { align: 'center' });
-    y = 50; // Start content below the blue header
+  if (finalY > pageHeight - 50) {
+    doc.addPage();
+    finalY = 20;
+  }
 
-    // === 2. BILLING & INVOICE INFO (Two-column layout) ===
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.setTextColor(bodyTextColor); // Dark gray for body text
+  doc.setFontSize(9);
+  doc.setTextColor(textColor);
+  doc.setFont('helvetica', 'bold');
+  doc.text("Payment Information", margin, finalY);
 
-    const leftColX = margin;
-    const rightColX = pageWidth / 2 + 10;
-    const initialY = y;
+  const payY = finalY + 5;
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'bold');
 
-    // Left Column: Bill To
-    doc.setFont('helvetica', 'bold');
-    doc.text('Bill To', leftColX, y);
-    y += 6;
-    doc.setFont('helvetica', 'normal');
-    // Ensure all billTo fields have fallbacks
-    const billToAddress = doc.splitTextToSize(
-        `${data.billTo?.name || 'Customer Name'}\n${data.billTo?.address || 'Customer Address'}\n${data.billTo?.phone || 'N/A'}`,
-        (pageWidth / 2) - margin - 5
-    );
-    doc.text(billToAddress, leftColX, y);
-    const leftHeight = y + billToAddress.length * 5;
+  doc.text("Account:", margin, payY);
+  doc.text("Account Name:", margin, payY + 5);
 
-    // Right Column: Invoice Details
-    y = initialY; // Reset y for the right column
-    doc.setFont('helvetica', 'bold');
-    doc.text('Invoice No.', rightColX, y);
-    doc.text('Date', rightColX, y + 6);
-    doc.text('Billed By', rightColX, y + 12);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(lightText);
+  doc.text(data.bankDetails?.accountNumber || "------------------", margin + 25, payY);
+  doc.text(data.bankDetails?.accountName || "------------------", margin + 25, payY + 5);
 
-    doc.setFont('helvetica', 'normal');
-    doc.text(data.invoice?.number || 'N/A', rightColX + 30, y);
-    doc.text(data.invoice?.date || 'N/A', rightColX + 30, y + 6);
-    doc.text(data.invoice?.billedBy || 'N/A', rightColX + 30, y + 12);
-    const rightHeight = y + 18;
+  doc.setTextColor(textColor);
+  doc.setFont('helvetica', 'bold');
+  const col2X = pageWidth / 2 + 10;
+  doc.text("Bank Details:", col2X, payY);
+  doc.text("GSTIN:", col2X, payY + 5);
 
-    // Set y to the bottom of the taller column
-    y = Math.max(leftHeight, rightHeight) + 15; // Increased space after this section
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(lightText);
+  doc.text(data.bankDetails?.bankName || "------------------", col2X + 25, payY);
+  // Business GSTIN
+  doc.text(data.bankDetails?.gstin || "----------------", col2X + 25, payY + 5);
 
-    // === 3. ITEMS TABLE ===
-    const tableHeaders = ['S. No.', 'Product', 'HSN/SAC', 'Qty.', 'Unit', 'List Price', 'GST (%)', 'Disc. Amt.', 'Amount'];
-    const colWidths = [15, 45, 20, 15, 15, 20, 18, 20, 22]; // Adjusting widths to match image
-    let currentX = margin;
+  const termsY = payY + 15;
+  doc.setTextColor(textColor);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.text("Terms & Conditions", margin, termsY);
 
-    // Draw table header
-    doc.setFillColor(tableHeaderBg);
-    doc.rect(margin, y, pageWidth - 2 * margin, 8, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(bodyTextColor); // Table header text color
-    tableHeaders.forEach((header, i) => {
-        doc.text(header, currentX + 2, y + 6);
-        currentX += colWidths[i];
-    });
-    y += 8;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(lightText);
+  const splitTerms = doc.splitTextToSize(data.terms, pageWidth - (margin * 2));
+  doc.text(splitTerms, margin, termsY + 5);
 
-    // Draw table rows
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9); // Smaller font for table content
-    doc.setLineWidth(0.1);
-    doc.setDrawColor(tableLineColor); // Light gray lines for table
-    doc.setTextColor(bodyTextColor);
+  // --- 5. SIGNATURE ---
+  const signY = termsY + 25;
+  doc.setDrawColor(200);
+  doc.line(pageWidth - 50, signY, pageWidth - margin, signY);
+  doc.setFontSize(8);
+  doc.setTextColor(textColor);
+  doc.text("Authorised Sign", pageWidth - margin, signY + 5, { align: 'right' });
 
-    // Draw top line of the first row
-    doc.line(margin, y, pageWidth - margin, y);
+  // --- 6. FOOTER BAR ---
+  const footerHeight = 25;
+  doc.setFillColor(primaryColor);
+  doc.rect(0, pageHeight - footerHeight, pageWidth, footerHeight, 'F');
 
-    (data.items || []).forEach(item => {
-        const listPrice = item.listPrice || 0;
-        const quantity = item.quantity || 0;
-        const discountAmount = item.discountAmount || 0;
-        const itemAmount = (listPrice * quantity) - discountAmount;
+  doc.setFontSize(7);
+  doc.setTextColor(255, 255, 255);
 
-        const rowData = [
-            (item.sno || 0).toString(),
-            item.name || 'N/A',
-            item.hsn || 'N/A',
-            quantity.toFixed(2),
-            item.unit || 'Pcs',
-            listPrice.toFixed(2),
-            `${item.gstPercent || 0}%`,
-            discountAmount.toFixed(2),
-            itemAmount.toFixed(2)
-        ];
+  const footerTextY = pageHeight - footerHeight + 5;
+  const addressClean = data.companyAddress.replace(/\n/g, ", ");
+  const addressLinesFooter = doc.splitTextToSize(addressClean, 90);
+  doc.text(addressLinesFooter, margin, footerTextY + 3);
 
-        currentX = margin;
-        rowData.forEach((text, i) => {
-            doc.text(text, currentX + 2, y + 6);
-            currentX += colWidths[i];
-            // Draw vertical lines between columns
-            if (i < rowData.length - 1) { // Don't draw line after the last column
-                doc.line(currentX, y, currentX, y + 8);
-            }
-        });
-        doc.line(margin, y + 8, pageWidth - margin, y + 8); // Horizontal line after each row
-        y += 8;
-    });
+  const contactY = footerTextY + 3 + (addressLinesFooter.length * 3.5);
 
-    // === 4. GRAND TOTAL ===
-    const grandTotal = (data.items || []).reduce((sum, item) => {
-        const price = item.listPrice || 0;
-        const qty = item.quantity || 0;
-        const disc = item.discountAmount || 0;
-        return sum + (price * qty) - disc;
-    }, 0);
+  if (data.companyContact) {
+    doc.text(`Contact No. : ${data.companyContact}`, margin, contactY);
+  }
 
-    // Grand Total section background
-    doc.setFillColor(tableHeaderBg); // Use light gray background
-    doc.rect(pageWidth - margin - 80, y, 80, 12, 'F'); // Background for Grand Total line
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.setTextColor(bodyTextColor);
-    doc.text('GRAND TOTAL', pageWidth - margin - 75, y + 8);
-    doc.text(`₹ ${grandTotal.toFixed(2)}`, pageWidth - margin - 5, y + 8, { align: 'right' }); // Align right
-    y += 15; // Increased space after total
+  if (data.companyEmail) {
+    doc.text(data.companyEmail, margin, contactY + 3.5);
+  }
 
-    // === 5. PAYMENT INFORMATION ===
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.setTextColor(bodyTextColor);
-    doc.text('Payment Information', margin, y);
-    doc.setFont('helvetica', 'normal');
-    y += 6;
-    doc.text(`Account: ${data.paymentInfo?.account || 'N/A'}`, margin, y);
-    doc.text(`Bank Details: ${data.paymentInfo?.bankDetails || 'N/A'}`, pageWidth / 2 + 5, y); // Adjusted X for alignment
-    y += 6;
-    doc.text(`Account Name: ${data.paymentInfo?.accountName || 'N/A'}`, margin, y);
-    doc.text(`GSTIN: ${data.paymentInfo?.gstin || 'N/A'}`, pageWidth / 2 + 5, y); // Adjusted X for alignment
-    y += 15;
+  // --- BRANDING ---
+  const text1 = "Made With ";
+  const text2 = "Love";
+  const text3 = " By SELLAR.IN";
 
-    // === 6. TERMS & CONDITIONS ===
-    doc.setFont('helvetica', 'bold');
-    doc.text('Terms & Conditions', margin, y);
-    y += 6;
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    const termsLines = doc.splitTextToSize(data.terms || 'No terms specified.', pageWidth - 2 * margin);
-    doc.text(termsLines, margin, y);
-    y += termsLines.length * 3 + 20;
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'bold');
 
-    // === 7. AUTHORISED SIGN ===
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.setTextColor(bodyTextColor);
-    doc.line(pageWidth - margin - 60, y, pageWidth - margin, y);
-    y += 5;
-    doc.text('Authorised Sign', pageWidth - margin - 30, y, { align: 'center' }); // Centered under the line
-    y += 10;
+  const w1 = doc.getTextWidth(text1);
+  const w2 = doc.getTextWidth(text2);
+  const w3 = doc.getTextWidth(text3);
+  const totalW = w1 + w2 + w3;
 
-    // === 8. FOOTER ===
-    const footerHeight = 25; // Adjusted height for footer content
-    doc.setFillColor(primaryColor);
-    doc.rect(0, pageHeight - footerHeight, pageWidth, footerHeight, 'F');
-    doc.setFontSize(9);
-    doc.setTextColor(headerTextColor); // White text for footer
+  let cursorX = (pageWidth / 2) - (totalW / 2);
+  const textY = pageHeight - 5;
 
-    // Ensure all footer data has fallbacks
-    const companyAddress = data.companyAddress || 'Shop no. 59, Gaur Siddhartham, Siddharth Vihar, Ghaziabad - 201009';
-    const companyEmail = data.companyEmail || 'giftingurusiddharthvihar@gmail.com';
-    const companyContact = data.companyContact || '+91 9625796622';
+  doc.setTextColor(255, 255, 255);
+  doc.text(text1, cursorX, textY);
+  cursorX += w1;
 
-    doc.text(companyAddress, margin, pageHeight - 15);
-    doc.text(companyEmail, pageWidth / 2, pageHeight - 15, { align: 'center' });
-    doc.text(`Contact No. - ${companyContact}`, pageWidth - margin, pageHeight - 15, { align: 'right' });
-    doc.text('Generated through SELLAR', pageWidth / 2, pageHeight - 7, { align: 'center' }); // Added "Generated through SELLAR"
+  doc.setTextColor(255, 100, 100);
+  doc.text(text2, cursorX, textY);
+  cursorX += w2;
 
-    // === SAVE THE PDF ===
-    doc.save(`invoice_${data.invoice?.number || 'download'}.pdf`);
+  doc.setTextColor(255, 255, 255);
+  doc.text(text3, cursorX, textY);
+
+  if (action === 'print') {
+    doc.autoPrint();
+    window.open(doc.output('bloburl'), '_blank');
+  } else {
+    doc.save(`Invoice_${data.invoice.number}.pdf`);
+  }
 };

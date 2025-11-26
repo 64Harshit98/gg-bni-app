@@ -222,7 +222,7 @@ const PurchaseSettingsPage: React.FC = () => {
                             <input type="checkbox" id="rounding-off"
                                 checked={settings.roundingOff ?? false}
                                 onChange={(e) => handleCheckboxChange('roundingOff', e.target.checked)}
-                                className="w-4 h-4 text-blue-600" />
+                                className="w-4 h-4 text-sky-500" />
                             <label htmlFor="rounding-off" className="ml-2 text-gray-700 text-sm font-medium">Enable Rounding Off (Nearest Rupee)</label>
                         </div>
                     </div>
@@ -245,21 +245,21 @@ const PurchaseSettingsPage: React.FC = () => {
                             <input type="checkbox" id="input-mrp"
                                 checked={settings.inputMRP ?? false}
                                 onChange={(e) => handleCheckboxChange('inputMRP', e.target.checked)}
-                                className="w-4 h-4 text-blue-600" />
+                                className="w-4 h-4 text-sky-500" />
                             <label htmlFor="input-mrp" className="ml-2 text-gray-700 text-sm font-medium">Require MRP Input during Purchase</label>
                         </div>
                         <div className="flex items-center mb-4">
                             <input type="checkbox" id="zero-value"
                                 checked={settings.zeroValueValidation ?? false}
                                 onChange={(e) => handleCheckboxChange('zeroValueValidation', e.target.checked)}
-                                className="w-4 h-4 text-blue-600" />
+                                className="w-4 h-4 text-sky-500" />
                             <label htmlFor="zero-value" className="ml-2 text-gray-700 text-sm font-medium">Prevent Zero Value Purchase Price</label>
                         </div>
                         <div className="flex items-center mb-4">
                             <input type="checkbox" id="print-barcode"
                                 checked={settings.enableBarcodePrinting ?? false}
                                 onChange={(e) => handleCheckboxChange('enableBarcodePrinting', e.target.checked)}
-                                className="w-4 h-4 text-blue-600" />
+                                className="w-4 h-4 text-sky-500" />
                             <label htmlFor="print-barcode" className="ml-2 text-gray-700 text-sm font-medium">Enable Barcode Printing Option</label>
                         </div>
                     </div>
@@ -272,14 +272,14 @@ const PurchaseSettingsPage: React.FC = () => {
                             <input type="checkbox" id="req-supplier-name"
                                 checked={settings.requireSupplierName ?? false}
                                 onChange={(e) => handleCheckboxChange('requireSupplierName', e.target.checked)}
-                                className="w-4 h-4 text-blue-600" />
+                                className="w-4 h-4 text-sky-500" />
                             <label htmlFor="req-supplier-name" className="ml-2 text-gray-700 text-sm font-medium">Require Supplier Name</label>
                         </div>
                         <div className="flex items-center mb-4">
                             <input type="checkbox" id="req-supplier-mobile"
                                 checked={settings.requireSupplierMobile ?? false}
                                 onChange={(e) => handleCheckboxChange('requireSupplierMobile', e.target.checked)}
-                                className="w-4 h-4 text-blue-600" />
+                                className="w-4 h-4 text-sky-500" />
                             <label htmlFor="req-supplier-mobile" className="ml-2 text-gray-700 text-sm font-medium">Require Supplier Mobile</label>
                         </div>
                     </div>
@@ -336,7 +336,7 @@ const PurchaseSettingsPage: React.FC = () => {
                     <button
                         type="submit"
                         disabled={isSaving || isLoading}
-                        className="w-full mt-2 flex items-center justify-center bg-blue-600 text-white font-bold py-3 px-4 rounded-xl hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                        className="w-full mt-2 flex items-center justify-center bg-sky-500 text-white font-bold py-3 px-4 rounded-xl hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
                     >
                         {isSaving ? <Spinner /> : 'Save Settings'}
                     </button>

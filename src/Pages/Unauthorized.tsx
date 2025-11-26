@@ -15,7 +15,7 @@ const accessibleRoutes = [
     { name: 'Create Sales Return', path: ROUTES.SALES_RETURN, permission: Permissions.CreateSalesReturn },
     { name: 'Create Purchase', path: ROUTES.PURCHASE, permission: Permissions.CreatePurchase },
     { name: 'Create Purchase Return', path: ROUTES.PURCHASE_RETURN, permission: Permissions.CreatePurchaseReturn },
-    { name: 'Manage Payments', path: ROUTES.PRINTQR, permission: Permissions.ManagePayments },
+    { name: 'Manage Payments', path: ROUTES.PRINTQR, permission: Permissions.PrintQR },
     { name: 'Add New Item', path: ROUTES.ITEM_ADD, permission: Permissions.ManageItems },
     { name: 'Manage Item Groups', path: ROUTES.ITEM_GROUP, permission: Permissions.ManageItemGroup },
     { name: 'Add New User', path: ROUTES.USER_ADD, permission: Permissions.CreateUsers },

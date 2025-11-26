@@ -41,17 +41,6 @@ const MainLayout = () => {
           </Button>
         </ShowWrapper>
         <ShowWrapper
-          requiredPermission={Permissions.ManagePayments}
-        >
-          <Button
-            variant="outline"
-            className="w-full mb-2 rounded"
-            onClick={() => navigate(`${ROUTES.PRINTQR}`)}
-          >
-            Print Barcode
-          </Button>
-        </ShowWrapper>
-        <ShowWrapper
           requiredPermission={Permissions.ViewTransactions}>
           <Button
             variant="outline"
@@ -59,6 +48,17 @@ const MainLayout = () => {
             onClick={() => navigate(`${ROUTES.ITEM_ADD}`)}
           >
             Add Item
+          </Button>
+        </ShowWrapper>
+        <ShowWrapper
+          requiredPermission={Permissions.PrintQR}
+        >
+          <Button
+            variant="outline"
+            className="w-full mb-2 rounded"
+            onClick={() => navigate(`${ROUTES.PRINTQR}`)}
+          >
+            Add Barcode
           </Button>
         </ShowWrapper>
         <ShowWrapper

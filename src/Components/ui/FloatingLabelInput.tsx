@@ -20,7 +20,7 @@ const FloatingLabelInput = React.forwardRef<
       <Input
         id={inputId}
         className={cn(
-          'peer h-14 placeholder-transparent rounded-xs border-2 border-black',
+          'peer h-14 placeholder-transparent rounded-sm border border-gray-500',
           className,
         )}
         placeholder=" "

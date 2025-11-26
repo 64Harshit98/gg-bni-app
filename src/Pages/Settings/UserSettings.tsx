@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 import { useAuth } from '../../context/auth-context';
 import { ROUTES } from '../../constants/routes.constants';
 import { Spinner } from '../../constants/Spinner';
-import { Permissions, State, Variant } from '../../enums';
+import { Permissions, ROLES, State, Variant } from '../../enums'; // Import ROLES
 import { CustomButton } from '../../Components';
 import { Modal } from '../../constants/Modal';
 
@@ -39,6 +39,9 @@ const ManageUsersPage: React.FC = () => {
     const [editFormData, setEditFormData] = useState<EditFormData>({});
 
     const canManageUsers = hasPermission(Permissions.ManageUsers);
+
+    // Convert ROLES enum object into an array for mapping in the dropdown
+    const availableRoles = useMemo(() => Object.values(ROLES).filter(r => r !== ROLES.OWNER), []);
 
     useEffect(() => {
         if (authLoading) {
@@ -114,7 +117,7 @@ const ManageUsersPage: React.FC = () => {
         setEditFormData({});
     };
 
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setEditFormData(prev => ({ ...prev, [name]: value }));
     };
@@ -186,19 +189,19 @@ const ManageUsersPage: React.FC = () => {
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                 </button>
                 <h1 className="text-lg font-semibold text-gray-800">Manage Users</h1>
-                <CustomButton onClick={handleAddUser} variant={Variant.Filled}>
+                <CustomButton onClick={handleAddUser} variant={Variant.Save} className='flex justify-right ml-15'>
                     Add User
                 </CustomButton>
             </div>
 
 
-            <main className="flex-grow p-4 overflow-y-auto">
+            <main className="flex-grow p-2 overflow-y-auto">
                 {users.length === 0 ? (
                     <div className="text-center py-10 text-gray-500">No users found for this company.</div>
                 ) : (
-                    <div className="space-y-3">
+                    <div className="space-y-2">
                         {users.map((user) => (
-                            <div key={user.uid} className="bg-white rounded-lg shadow border p-4">
+                            <div key={user.uid} className="bg-white rounded-lg shadow border p-2">
                                 {editingUserId === user.uid ? (
                                     <div className="space-y-3">
                                         <div>
@@ -225,34 +228,49 @@ const ManageUsersPage: React.FC = () => {
                                         </div>
                                         <div>
                                             <label htmlFor={`role-${user.uid}`} className="block text-xs font-medium text-gray-500 mb-1">Role</label>
-                                            <input
-                                                type="text"
-                                                id={`role-${user.uid}`}
-                                                name="role"
-                                                value={editFormData.role || ''}
-                                                onChange={handleInputChange}
-                                                className="w-full p-2 border border-gray-300 rounded text-sm"
-                                            />
+                                            {/* --- DROPDOWN FIELD --- */}
+                                            {/* If the current user being edited is the OWNER, lock the role */}
+                                            {user.role === ROLES.OWNER ? (
+                                                <input
+                                                    type="text"
+                                                    value={user.role || 'OWNER'}
+                                                    readOnly
+                                                    className="w-full p-2 border border-gray-300 rounded text-sm bg-gray-200 cursor-not-allowed"
+                                                />
+                                            ) : (
+                                                <select
+                                                    id={`role-${user.uid}`}
+                                                    name="role"
+                                                    value={editFormData.role || ''}
+                                                    onChange={handleInputChange}
+                                                    className="w-full p-2 border border-gray-300 rounded text-sm bg-white"
+                                                >
+                                                    <option value="" disabled>Select Role</option>
+                                                    {availableRoles.map(role => (
+                                                        <option key={role} value={role}>{role.charAt(0).toUpperCase() + role.slice(1)}</option>
+                                                    ))}
+                                                </select>
+                                            )}
                                         </div>
                                         <p className="text-xs text-gray-500">Email: {user.email || 'N/A'} (Not editable)</p>
                                         <div className="flex justify-end gap-2 mt-2">
-                                            <CustomButton onClick={handleCancelEdit} variant={Variant.Outline} >Cancel</CustomButton>
-                                            <CustomButton onClick={handleSaveEdit} variant={Variant.Filled} disabled={isSaving}>
+                                            <CustomButton onClick={handleCancelEdit} variant={Variant.Transparent} >Cancel</CustomButton>
+                                            <CustomButton onClick={handleSaveEdit} variant={Variant.Save} disabled={isSaving}>
                                                 {isSaving ? <Spinner /> : 'Save'}
                                             </CustomButton>
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="flex justify-between items-center">
+                                    <div className="flex justify-between items-center p-2">
                                         <div>
                                             <p className="font-semibold text-gray-900">{user.name || 'No Name Provided'}</p>
                                             <p className="text-sm text-gray-600">{user.email || 'No Email'}</p>
                                             <p className="text-sm text-gray-600">Phone: {user.phoneNumber || 'Not Provided'}</p>
                                             <p className="text-xs text-gray-500 mt-1">Role: {user.role || 'Not Assigned'}</p>
                                         </div>
-                                        <CustomButton variant={Variant.Outline} onClick={() => handleEditClick(user)}>
+                                        <button onClick={() => handleEditClick(user)} className='flex p-2 justify-right bg-white text-black border border-gray-300 hover:bg-gray-100 border-2 rounded-sm '>
                                             Edit
-                                        </CustomButton>
+                                        </button>
                                     </div>
                                 )}
                             </div>

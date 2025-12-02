@@ -1,3 +1,5 @@
+// src/Pages/Journal.tsx
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../lib/Firebase';
@@ -68,7 +70,7 @@ const formatDate = (date: Date): string => {
   });
 };
 
-// --- Custom Hook for Journal Data (Kept same as before) ---
+// --- Custom Hook for Journal Data ---
 const useJournalData = (companyId?: string) => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -218,11 +220,19 @@ const Journal: React.FC = () => {
       })
       .filter((invoice) => {
         const lowerCaseQuery = searchQuery.toLowerCase();
-        return (
+
+        // Check Invoice Details
+        const matchesDetails =
           invoice.invoiceNumber.toLowerCase().includes(lowerCaseQuery) ||
           invoice.partyName.toLowerCase().includes(lowerCaseQuery) ||
-          (invoice.partyNumber && invoice.partyNumber.includes(searchQuery))
+          (invoice.partyNumber && invoice.partyNumber.includes(searchQuery));
+
+        // Check Items inside the invoice
+        const matchesItems = invoice.items?.some(item =>
+          item.name.toLowerCase().includes(lowerCaseQuery)
         );
+
+        return matchesDetails || matchesItems;
       })
       .filter((invoice) => invoice.type === activeType && invoice.status === activeTab);
   }, [invoices, activeType, activeTab, searchQuery, activeDateFilter]);
@@ -262,7 +272,7 @@ const Journal: React.FC = () => {
     setExpandedInvoiceId(prevId => (prevId === invoiceId ? null : invoiceId));
   };
 
-  // --- UPDATED: Handle PDF Action (Download or Print) ---
+  // --- Handle PDF Action (Download or Print) ---
   const handlePdfAction = async (invoice: Invoice, action: 'download' | 'print') => {
     setInvoiceToPrint(null); // Close modal
     setPdfGenerating(invoice.id); // Show spinner
@@ -444,12 +454,24 @@ const Journal: React.FC = () => {
     });
   };
 
+  // --- UPDATED RENDER CONTENT TO SHOW PAYMENT METHOD ---
   const renderContent = () => {
     if (authLoading || dataLoading) return <Spinner />;
     if (error) return <p className="p-8 text-center text-red-500">{error}</p>;
+
     if (filteredInvoices.length > 0) {
       return filteredInvoices.map((invoice) => {
         const isExpanded = expandedInvoiceId === invoice.id;
+
+        // --- Calculate Payment Method String ---
+        const paymentMethods = invoice.paymentMethods || {};
+        const activeModes = Object.entries(paymentMethods)
+          .filter(([key, value]) => key !== 'due' && Number(value) > 0)
+          .map(([key]) => {
+            if (key.toLowerCase() === 'upi') return 'UPI';
+            return key.charAt(0).toUpperCase() + key.slice(1);
+          });
+
         return (
           <CustomCard key={invoice.id} onClick={() => handleInvoiceClick(invoice.id)} className="cursor-pointer transition-shadow hover:shadow-md">
             <div className="flex items-center justify-between">
@@ -491,7 +513,21 @@ const Journal: React.FC = () => {
                   )) : <p className="text-xs text-slate-400">No item details available.</p>}
                 </div>
 
-                <div className="flex justify-end space-x-3 mt-4 pt-4 border-t border-slate-200">
+                {/* Detailed Breakdown inside Expanded View */}
+                {activeModes.length > 0 && (
+                  <div className="flex justify-end mt-3 pt-2 border-t border-slate-100 flex gap-2 text-xs text-slate-500">
+                    <span>Paid via:</span>
+                    {Object.entries(invoice.paymentMethods || {})
+                      .filter(([key, val]) => key !== 'due' && Number(val) > 0)
+                      .map(([key, val]) => (
+                        <span key={key} className="font-medium text-slate-700">
+                          {key === 'upi' ? 'UPI' : key.charAt(0).toUpperCase() + key.slice(1)}: {Number(val).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+                        </span>
+                      ))}
+                  </div>
+                )}
+
+                <div className="flex justify-end space-x-3 mt-2 pt-4 border-t border-slate-200">
                   {invoice.status === 'Unpaid' && (<button onClick={(e) => { e.stopPropagation(); openPaymentModal(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-emerald-500 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors">Settle</button>)}
                   {invoice.status === 'Paid' && (<button onClick={(e) => { e.stopPropagation(); promptDeleteInvoice(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors">Delete</button>)}
                   <button onClick={(e) => { e.stopPropagation(); handleEditInvoice(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-gray-400 rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors">Edit</button>
@@ -513,7 +549,7 @@ const Journal: React.FC = () => {
                   {invoice.type === 'Debit' && (
                     <>
                       <button onClick={(e) => { e.stopPropagation(); handlePurchaseReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-sky-500 rounded-lg hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-colors">Return</button>
-                      <button onClick={(e) => { e.stopPropagation(); handlePrintQr(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-black rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center gap-2">Print</button>
+                      <button onClick={(e) => { e.stopPropagation(); handlePrintQr(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-black rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center">Print</button>
                     </>
                   )}
                 </div>
@@ -578,8 +614,14 @@ const Journal: React.FC = () => {
                 <p className='text-center justify-center text-lg font-light text-slate-600'>{selectedPeriodText}</p>
               </div>
             ) : (
-              <input type="text" placeholder="Search by Invoice, Name, or Phone..." className="w-full text-xl font-light p-1 border-b-2 border-slate-300 focus:border-slate-800 outline-none transition-colors" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} autoFocus />
-            )}
+              <input
+                type="text"
+                placeholder="Search by Invoice, Party, Phone, or Item..."
+                className="w-full text-xl font-light p-1 border-b-2 border-slate-300 focus:border-slate-800 outline-none transition-colors"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                autoFocus
+              />)}
           </div>
         </div>
 

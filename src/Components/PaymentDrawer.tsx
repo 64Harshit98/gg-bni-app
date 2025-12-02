@@ -1,15 +1,24 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { FloatingLabelInput } from './ui/FloatingLabelInput';
 import { transactiontypes } from '../constants/Transactiontype';
 import { Modal } from '../constants/Modal';
 import { State } from '../enums';
 import { db } from '../lib/Firebase';
-import { doc, getDoc, setDoc, serverTimestamp, increment as firebaseIncrement } from 'firebase/firestore';
+import {
+    doc,
+    setDoc,
+    serverTimestamp,
+    increment as firebaseIncrement,
+    collection,
+    query,
+    where,
+    getDocs,
+    limit
+} from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
 
-export interface PaymentDetails {
-    [key: string]: number;
-}
+export interface PaymentDetails { [key: string]: number; }
 
 export interface PaymentCompletionData {
     paymentDetails: PaymentDetails;
@@ -21,13 +30,15 @@ export interface PaymentCompletionData {
     appliedDebit: number;
     partyAddress?: string;
     partyGST?: string;
-    revDiscount?: number; // <--- Added this field
+    revDiscount?: number;
 }
 
 interface PaymentDrawerProps {
     isOpen: boolean;
     onClose: () => void;
-    subtotal: number;
+    subtotal: number;        // Net Amount (after item discount)
+    totalQuantity?: number;
+    totalItemDiscount?: number;
     onPaymentComplete: (data: PaymentCompletionData) => Promise<void>;
     isPartyNameEditable?: boolean;
     initialPartyName?: string;
@@ -38,16 +49,29 @@ interface PaymentDrawerProps {
 const LOCAL_STORAGE_NAME_KEY = 'lastPartyName';
 const LOCAL_STORAGE_NUMBER_KEY = 'lastPartyNumber';
 
+interface CustomerSuggestion {
+    name: string;
+    number: string;
+    address?: string;
+    gstNumber?: string;
+    creditBalance?: number;
+    debitBalance?: number;
+}
+
 const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     isOpen,
     onClose,
     subtotal,
+    totalQuantity = 0,
+    totalItemDiscount = 0,
     onPaymentComplete,
     initialPartyName,
     initialPartyNumber,
     initialPaymentMethods,
 }) => {
     const { currentUser } = useAuth();
+
+    // --- STATE ---
     const [partyName, setPartyName] = useState('');
     const [partyNumber, setPartyNumber] = useState('');
     const [partyAddress, setPartyAddress] = useState('');
@@ -62,46 +86,46 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isDiscountLocked, setIsDiscountLocked] = useState(true);
-    const [isFetchingParty, setIsFetchingParty] = useState(false);
-    
+
+    const [suggestions, setSuggestions] = useState<CustomerSuggestion[]>([]);
+    const [showSuggestions, setShowSuggestions] = useState(false);
+    const searchTimeout = useRef<NodeJS.Timeout | null>(null);
+
     const shouldSaveToLocalStorage = useRef(true);
     const longPressTimer = useRef<NodeJS.Timeout | null>(null);
     const [discountInfo, setDiscountInfo] = useState<string | null>(null);
 
-    // --- EFFECTIVE SUBTOTAL ---
-    const effectiveSubtotal = useMemo(() => {
-        if (subtotal > 0) return subtotal;
-        const initialTotal = initialPaymentMethods 
-            ? Object.values(initialPaymentMethods).reduce((acc: number, val: any) => acc + (Number(val) || 0), 0)
-            : 0;
-        return initialTotal > 0 ? initialTotal : 0;
-    }, [subtotal, initialPaymentMethods]);
+    // --- CALCULATIONS ---
+    
+    // 1. Gross Subtotal (Visual only) = Net Subtotal + Item Discounts
+    const displayGrossSubtotal = useMemo(() => {
+        return subtotal + totalItemDiscount;
+    }, [subtotal, totalItemDiscount]);
 
-    // --- MATH & TOTALS ---
+    // 2. Final Payable (Logic)
+    const finalPayableAmount = useMemo(() => {
+        let payable = subtotal - discount;
+        if (useCredit) payable -= Math.min(payable, customerCredit);
+        if (useDebit) payable -= Math.min(payable, customerDebit);
+        return parseFloat(Math.max(0, payable).toFixed(2));
+    }, [subtotal, discount, useCredit, customerCredit, useDebit, customerDebit]);
+
+    // Logic: Credits applied
     const appliedCredit = useMemo(() => {
         if (!useCredit || customerCredit <= 0) return 0;
-        const amountAfterDiscount = effectiveSubtotal - discount;
-        return Math.min(amountAfterDiscount, customerCredit);
-    }, [useCredit, customerCredit, effectiveSubtotal, discount]);
+        return Math.min(subtotal - discount, customerCredit);
+    }, [useCredit, customerCredit, subtotal, discount]);
 
     const appliedDebit = useMemo(() => {
         if (!useDebit || customerDebit <= 0) return 0;
-        const amountAfterDiscountAndCredit = effectiveSubtotal - discount - appliedCredit;
-        return Math.min(amountAfterDiscountAndCredit, customerDebit);
-    }, [useDebit, customerDebit, effectiveSubtotal, discount, appliedCredit]);
-
-    const finalPayableAmount = useMemo(() => {
-        const val = Math.max(0, effectiveSubtotal - discount - appliedCredit - appliedDebit);
-        return parseFloat(val.toFixed(2));
-    }, [effectiveSubtotal, discount, appliedCredit, appliedDebit]);
+        return Math.min(subtotal - discount - appliedCredit, customerDebit);
+    }, [useDebit, customerDebit, subtotal, discount, appliedCredit]);
 
     const totalEnteredAmount = useMemo(() => {
         const sum = Object.values(selectedPayments).reduce((acc, amount) => acc + (amount || 0), 0);
         return parseFloat(sum.toFixed(2));
     }, [selectedPayments]);
 
-    // Any excess amount is considered "Change to Return" visually, 
-    // but will be saved as 'revDiscount' in the database.
     const changeToReturn = useMemo(() => {
         const diff = totalEnteredAmount - finalPayableAmount;
         return diff > 0.01 ? parseFloat(diff.toFixed(2)) : 0;
@@ -112,19 +136,19 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         return diff > 0.01 ? parseFloat(diff.toFixed(2)) : 0;
     }, [finalPayableAmount, totalEnteredAmount]);
 
-    // --- INITIALIZATION ---
+    // --- EFFECTS ---
     useEffect(() => {
         if (!isOpen) return;
-        
         shouldSaveToLocalStorage.current = true;
         setIsSubmitting(false);
-
         setDiscount(0);
         setIsDiscountLocked(true);
         setCustomerCredit(0);
         setUseCredit(false);
         setCustomerDebit(0);
         setUseDebit(false);
+        setSuggestions([]);
+        setShowSuggestions(false);
 
         let initialName = initialPartyName || '';
         let initialNumber = initialPartyNumber || '';
@@ -133,9 +157,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             try {
                 initialName = localStorage.getItem(LOCAL_STORAGE_NAME_KEY) || '';
                 initialNumber = localStorage.getItem(LOCAL_STORAGE_NUMBER_KEY) || '';
-            } catch (e) {
-                console.error("Failed to read localStorage:", e);
-            }
+            } catch (e) { }
         }
 
         if (initialPaymentMethods && Object.keys(initialPaymentMethods).length > 0) {
@@ -143,9 +165,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             Object.entries(initialPaymentMethods).forEach(([key, value]) => {
                 if (key === 'due') return;
                 const numVal = Number(value);
-                if (!isNaN(numVal) && numVal > 0) {
-                    loadedPayments[key] = numVal;
-                }
+                if (!isNaN(numVal) && numVal > 0) loadedPayments[key] = numVal;
             });
             setSelectedPayments(loadedPayments);
         } else {
@@ -157,57 +177,73 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         setPartyAddress('');
         setPartyGST('');
         setIsDetailsExpanded(false);
-
+        
+        if (initialNumber) searchCustomer(initialNumber, 'number');
     }, [isOpen]); 
 
-    // --- LOCAL STORAGE SAVE ---
     useEffect(() => {
         if (isOpen && !isSubmitting && shouldSaveToLocalStorage.current) {
             try {
                 if (partyName) localStorage.setItem(LOCAL_STORAGE_NAME_KEY, partyName);
                 if (partyNumber) localStorage.setItem(LOCAL_STORAGE_NUMBER_KEY, partyNumber);
-            } catch (e) {
-                console.error("Failed to write to localStorage:", e);
-            }
+            } catch (e) { }
         }
     }, [partyName, partyNumber, isOpen, isSubmitting]);
 
-    const handlePartyNumberBlur = async () => {
-        setCustomerCredit(0);
-        setUseCredit(false);
-        setCustomerDebit(0);
-        setUseDebit(false);
-
-        if (!partyNumber || partyNumber.length < 10 || !currentUser?.companyId) return;
-
-        setIsFetchingParty(true);
-        const companyId = currentUser.companyId;
-
-        try {
-            const customerDocRef = doc(db, 'companies', companyId, 'customers', partyNumber);
-            const customerDoc = await getDoc(customerDocRef);
-            if (customerDoc.exists()) {
-                const customerData = customerDoc.data();
-                setPartyName(customerData.name);
-                setPartyAddress(customerData.address || '');
-                setPartyGST(customerData.gstNumber || '');
-
-                const availableCredit = customerData.creditBalance || 0;
-                if (availableCredit > 0) {
-                    setCustomerCredit(availableCredit);
-                    setUseCredit(true);
-                }
-                const availableDebit = customerData.debitBalance || 0;
-                if (availableDebit > 0) {
-                    setCustomerDebit(availableDebit);
-                    setUseDebit(true);
-                }
-            }
-        } catch (error) {
-            console.error("Error fetching customer:", error);
-        } finally {
-            setIsFetchingParty(false);
+    // --- SEARCH LOGIC ---
+    const searchCustomer = async (term: string, type: 'name' | 'number') => {
+        if (!term || term.length < 3 || !currentUser?.companyId) {
+            setSuggestions([]);
+            setShowSuggestions(false);
+            return;
         }
+        const companyId = currentUser.companyId;
+        const customersRef = collection(db, 'companies', companyId, 'customers');
+        let q;
+        if (type === 'number') {
+            q = query(customersRef, where('number', '>=', term), where('number', '<=', term + '\uf8ff'), limit(5));
+        } else {
+            q = query(customersRef, where('name', '>=', term), where('name', '<=', term + '\uf8ff'), limit(5));
+        }
+        try {
+            const snapshot = await getDocs(q);
+            const results: CustomerSuggestion[] = [];
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                results.push({
+                    name: data.name || '',
+                    number: data.number || doc.id,
+                    address: data.address,
+                    gstNumber: data.gstNumber,
+                    creditBalance: data.creditBalance,
+                    debitBalance: data.debitBalance
+                });
+            });
+            setSuggestions(results);
+            setShowSuggestions(results.length > 0);
+        } catch (err) { console.error(err); }
+    };
+
+    const handleInputChange = (value: string, type: 'name' | 'number') => {
+        if (type === 'name') setPartyName(value);
+        else setPartyNumber(value);
+
+        if (searchTimeout.current) clearTimeout(searchTimeout.current);
+        searchTimeout.current = setTimeout(() => { searchCustomer(value, type); }, 400);
+    };
+
+    const selectCustomer = (customer: CustomerSuggestion) => {
+        setPartyName(customer.name);
+        setPartyNumber(customer.number);
+        setPartyAddress(customer.address || '');
+        setPartyGST(customer.gstNumber || '');
+        
+        if ((customer.creditBalance || 0) > 0) { setCustomerCredit(customer.creditBalance!); setUseCredit(true); } 
+        else { setCustomerCredit(0); setUseCredit(false); }
+
+        if ((customer.debitBalance || 0) > 0) { setCustomerDebit(customer.debitBalance!); setUseDebit(true); } 
+        else { setCustomerDebit(0); setUseDebit(false); }
+        setShowSuggestions(false);
     };
 
     const handleAmountChange = (modeId: string, amount: string) => {
@@ -221,250 +257,221 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         handleAmountChange(modeId, (currentAmount + amountToFill).toFixed(2));
     };
 
+    // --- SUBMIT LOGIC ---
     const handleConfirm = async () => {
-        // 1. Validate Pending Amount (Must be 0 or less)
         if (pendingAmount > 0.01) {
-            setModal({ message: `Amount mismatch. Remaining to pay: ₹${pendingAmount.toFixed(2)}`, type: State.ERROR });
+            setModal({ message: `Mismatch: ₹${pendingAmount.toFixed(2)} remaining.`, type: State.ERROR });
             return;
         }
-
-        // 2. Calculate Review Discount (Excess Amount)
         let revDiscount = 0;
-        if (changeToReturn > 0.01) {
-            revDiscount = changeToReturn;
-        }
+        if (changeToReturn > 0.01) revDiscount = changeToReturn;
 
-        // 3. CONSTRUCT PAYLOAD (AGGRESSIVE ZERO-FILL)
-        // This ensures old values are overwritten with 0 if they are removed.
         const payloadToSave: PaymentDetails = {};
-
-        // A. Start with 0 for ALL standard transaction types
-        transactiontypes.forEach((t) => {
-            payloadToSave[t.id] = 0;
-        });
-
-        // B. Start with 0 for ALL keys found in initial data (handling legacy/custom types)
+        transactiontypes.forEach((t) => { payloadToSave[t.id] = 0; });
         if (initialPaymentMethods) {
-            Object.keys(initialPaymentMethods).forEach((key) => {
-                if (key !== 'due') {
-                    payloadToSave[key] = 0;
-                }
-            });
+            Object.keys(initialPaymentMethods).forEach((key) => { if (key !== 'due') payloadToSave[key] = 0; });
         }
-
-        // C. Overlay the actual user input
-        Object.entries(selectedPayments).forEach(([key, value]) => {
-            payloadToSave[key] = value;
-        });
+        Object.entries(selectedPayments).forEach(([key, value]) => { payloadToSave[key] = value; });
 
         setIsSubmitting(true);
         shouldSaveToLocalStorage.current = false; 
 
         try {
+            // 1. Proceed with payment callback
             await onPaymentComplete({
-                paymentDetails: payloadToSave, // Sends {cash: 0, upi: 150, ...}
+                paymentDetails: payloadToSave,
                 partyName, partyNumber, discount,
                 finalAmount: finalPayableAmount,
-                appliedCredit,
-                appliedDebit,
-                partyAddress,
-                partyGST,
-                revDiscount, // <--- Sending the review discount here
+                appliedCredit, appliedDebit, partyAddress, partyGST, revDiscount,
             });
 
-            if (partyNumber && partyNumber.length >= 20 && currentUser?.companyId) {
-                const customerDocRef = doc(db, 'companies', currentUser.companyId, 'customers', partyNumber);
-                await setDoc(customerDocRef, {
-                    name: partyName, number: partyNumber, companyId: currentUser.companyId,
-                    lastSaleAt: serverTimestamp(),
-                    creditBalance: firebaseIncrement(-appliedCredit),
-                    debitBalance: firebaseIncrement(-appliedDebit),
-                    address: partyAddress,
-                    gstNumber: partyGST,
-                }, { merge: true });
+            // 2. Save Customer to DB (Robust Check)
+            if (currentUser?.companyId && partyNumber && partyNumber.trim().length > 0) {
+                const cleanNumber = partyNumber.trim();
+                const customerDocRef = doc(db, 'companies', currentUser.companyId, 'customers', cleanNumber);
+                
+                const customerData: any = {
+                    name: partyName.trim(), number: cleanNumber, companyId: currentUser.companyId,
+                    lastSaleAt: serverTimestamp(), address: partyAddress.trim(), gstNumber: partyGST.trim(),
+                };
+                if (appliedCredit > 0) customerData.creditBalance = firebaseIncrement(-appliedCredit);
+                if (appliedDebit > 0) customerData.debitBalance = firebaseIncrement(-appliedDebit);
+                
+                await setDoc(customerDocRef, customerData, { merge: true });
             }
 
             try {
                 localStorage.removeItem(LOCAL_STORAGE_NAME_KEY);
                 localStorage.removeItem(LOCAL_STORAGE_NUMBER_KEY);
-            } catch (e) {
-                console.error("Failed to clear localStorage:", e);
-            }
-            setPartyName('');
-            setPartyNumber('');
-            setSelectedPayments({});
-
+            } catch (e) {}
+            setPartyName(''); setPartyNumber(''); setSelectedPayments({});
         } catch (error) {
-            setModal({ message: (error as Error).message || 'Failed to save sale.', type: State.ERROR });
+            setModal({ message: (error as Error).message || 'Failed to save.', type: State.ERROR });
+        } finally {
             setIsSubmitting(false);
         }
     };
 
     const handleDiscountPressStart = () => longPressTimer.current = setTimeout(() => setIsDiscountLocked(false), 500);
     const handleDiscountPressEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
-    const handleDiscountClick = () => {
-        if (isDiscountLocked) {
-            setDiscountInfo("Cannot edit Discount.");
-            setTimeout(() => setDiscountInfo(null), 3000);
-        }
-    };
-    const handleDiscountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const newDiscount = parseFloat(e.target.value) || 0;
-        setDiscount(newDiscount);
-    };
+    const handleDiscountClick = () => { if (isDiscountLocked) { setDiscountInfo("Cannot edit discount"); setTimeout(() => setDiscountInfo(null), 3000); } };
+    const handleDiscountChange = (e: React.ChangeEvent<HTMLInputElement>) => { setDiscount(parseFloat(e.target.value) || 0); };
 
     if (!isOpen) return null;
 
-    return (
-        <div className="fixed inset-0 bg-black/50 z-40" onClick={onClose}>
-            {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
-            <div className="fixed bottom-0 left-0 right-0 bg-gray-50 rounded-t-2xl shadow-xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-                <div className="p-2 sticky top-0 bg-gray-50 z-10 border-b">
-                    <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto "></div>
-                    <button onClick={onClose} className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-gray-200 p-2 text-gray-900">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+    return createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-end justify-center sm:items-center" onClick={onClose}>
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" />
+
+            {modal && <div className="absolute z-[10000]"><Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} /></div>}
+            
+            <div 
+                className="relative w-full max-w-lg bg-gray-50 rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[90dvh] flex flex-col transform transition-transform duration-300 ease-out animate-slide-up"
+                onClick={(e) => e.stopPropagation()}
+                onTouchStart={(e) => e.stopPropagation()}
+            >
+                <div className="p-3 bg-white rounded-t-2xl border-b border-gray-200 sticky top-0 z-10 flex items-center justify-center relative shadow-sm">
+                    <div className="w-10 h-1 bg-gray-300 rounded-full absolute top-2"></div>
+                    <button onClick={onClose} className="absolute left-4 p-1.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
                     </button>
-                    <h2 className="text-xl font-bold text-center text-gray-800">Payment</h2>
+                    <h2 className="text-lg font-semibold text-gray-800 mt-2">Payment Details</h2>
                 </div>
-                <div className="p-2 space-y-2 overflow-y-auto">
-                    {/* ... (Customer Details Section remains same) ... */}
-                    <div className="bg-white rounded-sm shadow-sm p-2 space-y-1">
-                        <h3 className="font-semibold text-gray-800 text-sm">Customer Details</h3>
-                        <div className="grid grid-cols-2 md:grid-cols-2 gap-2">
-                            <div className="relative">
-                                <input
-                                    type="number"
-                                    placeholder="Party Number"
-                                    value={partyNumber}
-                                    onChange={(e) => setPartyNumber(e.target.value)}
-                                    onBlur={handlePartyNumberBlur}
-                                    className="w-full bg-gray-100 p-2 text-sm rounded-sm border-gray-300 focus:ring-blue-500 focus:border-blue-500"
-                                />
-                                {isFetchingParty && <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500">Searching...</div>}
-                            </div>
+
+                {/* SCROLLABLE CONTENT */}
+                <div className="flex-1 overflow-y-auto overscroll-y-contain bg-white">
+                    
+                    {/* CUSTOMER INFO */}
+                    <div className="p-4 space-y-2">
+                        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Customer Info</h3>
+                        <div className="grid grid-cols-2 gap-4 relative">
                             <input
-                                type="text"
-                                placeholder="Party Name"
-                                value={partyName}
-                                onChange={(e) => setPartyName(e.target.value)}
-                                className="w-full bg-gray-100 p-2 text-sm rounded-sm border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                                type="number" placeholder="Phone Number" value={partyNumber}
+                                onChange={(e) => handleInputChange(e.target.value, 'number')}
+                                onFocus={() => { if(partyNumber.length >=3) searchCustomer(partyNumber, 'number'); }}
+                                className="w-full bg-gray-50 p-3 text-sm rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                                autoComplete="off"
                             />
+                            <input
+                                type="text" placeholder="Name (Optional)" value={partyName}
+                                onChange={(e) => handleInputChange(e.target.value, 'name')}
+                                onFocus={() => { if(partyName.length >=3) searchCustomer(partyName, 'name'); }}
+                                className="w-full bg-gray-50 p-3 text-sm rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                                autoComplete="off"
+                            />
+                            {/* Suggestions */}
+                            {showSuggestions && suggestions.length > 0 && (
+                                <div className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-200 shadow-xl rounded-lg mt-1 max-h-48 overflow-y-auto">
+                                    {suggestions.map((customer, idx) => (
+                                        <div key={idx} className="p-3 hover:bg-blue-50 cursor-pointer border-b last:border-0 text-sm flex justify-between items-center" onClick={() => selectCustomer(customer)}>
+                                            <div><div className="font-bold text-gray-800">{customer.name}</div><div className="text-xs text-gray-500">{customer.number}</div></div>
+                                            {customer.creditBalance && customer.creditBalance > 0 && (<span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full">Credit: ₹{customer.creditBalance}</span>)}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
-                        <div className="col-span-full border-t mt-2 pt-2">
-                            <div
-                                onClick={() => setIsDetailsExpanded(!isDetailsExpanded)}
-                                className="flex items-center justify-between cursor-pointer text-gray-600 hover:text-gray-900 transition-colors"
-                            >
-                                <span className="text-sm font-medium">More Details</span>
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    className={`h-5 w-5 transform transition-transform duration-300 ${isDetailsExpanded ? 'rotate-180' : 'rotate-0'}`}
-                                    viewBox="0 0 20 20"
-                                    fill="currentColor"
-                                >
-                                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                                </svg>
+                        <div className="pt-1">
+                             <div onClick={() => setIsDetailsExpanded(!isDetailsExpanded)} className="flex items-center justify-start cursor-pointer text-blue-600 hover:text-blue-700 transition-colors text-xs font-semibold select-none">
+                                <span>{isDetailsExpanded ? 'Hide' : '+ Add'} GST & Address</span>
                             </div>
-
                             {isDetailsExpanded && (
-                                <div className="grid grid-cols-2 gap-2 mt-2">
-                                    <input
-                                        type="text"
-                                        placeholder="Party GST Number"
-                                        value={partyGST}
-                                        onChange={(e) => setPartyGST(e.target.value)}
-                                        className="w-full p-2 text-sm rounded-sm border-gray-300 focus:ring-blue-500 focus:border-blue-500"
-                                    />
-                                    <input
-                                        type="text"
-                                        placeholder="Party Address"
-                                        value={partyAddress}
-                                        onChange={(e) => setPartyAddress(e.target.value)}
-                                        className="w-full p-2 text-sm rounded-sm border-gray-300 focus:ring-blue-500 focus:border-blue-500"
-                                    />
+                                <div className="grid grid-cols-2 gap-3 mt-3 animate-in slide-in-from-top-2 fade-in duration-200">
+                                    <input type="text" placeholder="GST Number" value={partyGST} onChange={(e) => setPartyGST(e.target.value)} className="w-full p-2.5 text-sm rounded-lg border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none" />
+                                    <input type="text" placeholder="Address" value={partyAddress} onChange={(e) => setPartyAddress(e.target.value)} className="w-full p-2.5 text-sm rounded-lg border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none" />
                                 </div>
                             )}
                         </div>
                     </div>
-                    <div className="grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-2 grid">
-                        {transactiontypes.map((mode) => (
-                            <FloatingLabelInput
-                                key={mode.id}
-                                id={mode.id}
-                                label={mode.name}
-                                value={selectedPayments[mode.id]?.toString() || ''}
-                                onChange={(e) => handleAmountChange(mode.id, e.target.value)}
-                                onFill={() => handleFillRemaining(mode.id)}
-                                showFillButton={pendingAmount > 0.01}
-                            />
-                        ))}
+
+                    {/* TRANSACTION TYPE */}
+                    <div className="p-4 bg-gray-100">
+                        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Transaction Type</h3>
+                        <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
+                            {transactiontypes.map((mode) => (
+                                <FloatingLabelInput
+                                    key={mode.id}
+                                    id={mode.id}
+                                    label={mode.name}
+                                    value={selectedPayments[mode.id]?.toString() || ''}
+                                    onChange={(e) => handleAmountChange(mode.id, e.target.value)}
+                                    onFill={() => handleFillRemaining(mode.id)}
+                                    showFillButton={pendingAmount > 0.01}
+                                    className=""
+                                />
+                            ))}
+                        </div>
                     </div>
                 </div>
-                <div className="p-2 mt-auto sticky bottom-0 bg-white border-t">
-                    <div className="flex justify-between items-center mb-1">
-                        <span className="text-sm text-gray-600">Subtotal:</span>
-                        <span className="font-medium text-sm">₹{effectiveSubtotal.toFixed(2)}</span>
-                    </div>
-                    <div className="flex items-center justify-between mb-1 gap-2 p-2 -m-2 rounded-lg" onMouseDown={handleDiscountPressStart} onMouseUp={handleDiscountPressEnd} onMouseLeave={handleDiscountPressEnd} onTouchStart={handleDiscountPressStart} onTouchEnd={handleDiscountPressEnd} onClick={handleDiscountClick}>
-                        <label htmlFor="discount" className={`text-sm text-gray-600 ${isDiscountLocked ? 'cursor-pointer' : ''}`}>Discount (₹):</label>
-                        {discountInfo && <div className="flex items-center text-sm bg-red-100 text-red-800 rounded-lg"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" /></svg>
-                            {discountInfo}</div>}
-                        <input id="discount" type="number" placeholder="0.00" value={discount || ''} onChange={handleDiscountChange} readOnly={isDiscountLocked} className={`w-20 text-right bg-gray-100 p-1 text-sm rounded-md border-gray-300 focus:ring-blue-500 focus:border-blue-500 ${isDiscountLocked ? 'cursor-not-allowed text-gray-500' : ''}`} />
-                    </div>
-
-                    {customerCredit > 0 && (
-                        <div className="flex justify-between items-center mb-1 text-green-600">
-                            <label htmlFor="useCreditCheckbox" className="flex items-center text-sm cursor-pointer">
-                                <input type="checkbox" id="useCreditCheckbox" checked={useCredit} onChange={(e) => setUseCredit(e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                                <span className="ml-2">Credit Balance (Available: ₹{customerCredit.toFixed(2)})</span>
-                            </label>
-                            <span className="font-medium text-sm">- ₹{appliedCredit.toFixed(2)}</span>
+                
+                {/* --- FOOTER SUMMARY --- */}
+                <div className="p-5 bg-white border-t border-gray-200 rounded-b-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-20">
+                    
+                    <div className="flex justify-between items-center mb-1.5 text-sm text-gray-500">
+                        <span>Qty: <strong className="text-gray-800">{totalQuantity}</strong></span>
+                        <div className="flex items-center gap-2">
+                            <span>Subtotal:</span>
+                            {/* VISUAL LOGIC: Show Gross Subtotal (Net + Item Discount) to match visual expectations */}
+                            <span className="font-medium text-gray-800">₹{displayGrossSubtotal.toFixed(2)}</span>
                         </div>
-                    )}
-
-                    {customerDebit > 0 && (
-                        <div className="flex justify-between items-center mb-1 text-orange-600">
-                            <label htmlFor="useDebitCheckbox" className="flex items-center text-sm cursor-pointer">
-                                <input type="checkbox" id="useDebitCheckbox" checked={useDebit} onChange={(e) => setUseDebit(e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                                <span className="ml-2">Debit Note (Available: ₹{customerDebit.toFixed(2)})</span>
-                            </label>
-                            <span className="font-medium text-sm">- ₹{appliedDebit.toFixed(2)}</span>
-                        </div>
-                    )}
-
-                    <div className="flex justify-between items-center mb-1 border-t pt-1">
-                        <span className="text-gray-800 font-semibold">Total Payable:</span>
-                        <span className="font-bold text-lg text-blue-600">₹{finalPayableAmount.toFixed(2)}</span>
                     </div>
 
-                    {/* --- DYNAMIC STATUS ROW (Show excess as Review Discount) --- */}
-                    {changeToReturn > 0.01 ? (
-                        <div className="flex justify-between items-center mb-2 bg-yellow-50 p-2 rounded border border-yellow-200">
-                            <span className="text-yellow-700 font-semibold">Review Discount (Excess):</span>
-                            <span className="font-bold text-md text-yellow-700">
-                                ₹{changeToReturn.toFixed(2)}
-                            </span>
+                    <div className="flex justify-between items-center mb-4 text-sm"
+                         onMouseDown={handleDiscountPressStart} onMouseUp={handleDiscountPressEnd} onMouseLeave={handleDiscountPressEnd} onTouchStart={handleDiscountPressStart} onTouchEnd={handleDiscountPressEnd} onClick={handleDiscountClick}>
+                        <div className="flex items-center gap-2">
+                             <span className={`text-gray-500 ${isDiscountLocked ? '' : 'text-blue-600 font-semibold'}`}>Bill Discount (₹)</span>
+                             {isDiscountLocked && <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>}
+                             {discountInfo && <span className="text-xs text-red-500 bg-red-50 px-1 rounded animate-pulse">{discountInfo}</span>}
                         </div>
-                    ) : (
-                        <div className="flex justify-between items-center mb-2">
-                            <span className="text-gray-600">Remaining:</span>
-                            <span className={`font-bold text-md ${pendingAmount < 0.01 ? 'text-green-600' : 'text-red-600'}`}>
-                                ₹{pendingAmount.toFixed(2)}
-                            </span>
+                        <input 
+                            id="discount" type="number" placeholder="0" 
+                            value={discount || ''} onChange={handleDiscountChange} readOnly={isDiscountLocked} 
+                            className={`w-20 text-right bg-transparent text-gray-800 focus:outline-none ${isDiscountLocked ? 'cursor-not-allowed' : 'border-b border-blue-300 font-semibold'}`} 
+                        />
+                    </div>
+
+                    <div className="flex justify-between items-center mb-4 min-h-[24px]">
+                        {/* Status Badge */}
+                        <div>
+                            {changeToReturn > 0.01 ? (
+                                <span className="text-sm font-bold text-yellow-700 bg-yellow-50 px-2 py-1 rounded border border-yellow-100">Return: ₹{changeToReturn.toFixed(2)}</span>
+                            ) : (
+                                <span className={`text-sm font-bold ${pendingAmount < 0.01 ? 'text-green-600' : 'text-red-500'}`}>
+                                   {pendingAmount < 0.01 ? 'Paid' : `Due: ₹${pendingAmount.toFixed(2)}`}
+                                </span>
+                            )}
                         </div>
-                    )}
+
+                        {/* Item Discount Label */}
+                        {totalItemDiscount > 0 && (
+                             <span className="text-xs text-green-600 font-medium">Item Disc: -₹{totalItemDiscount.toFixed(2)}</span>
+                        )}
+                    </div>
+
+                    <div className="flex justify-center items-center mb-4 mt-2">
+                        <div className="flex flex-col items-center">
+                            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">Total Payable</span>
+                            <span className="text-3xl font-extrabold text-blue-600">₹{finalPayableAmount.toFixed(2)}</span>
+                        </div>
+                    </div>
 
                     <button
-                        onClick={handleConfirm}
-                        disabled={isSubmitting || pendingAmount > 0.01}
-                        className="w-full flex items-center justify-center bg-blue-600 text-white font-bold py-1 px-3 rounded-sm hover:bg-blue-700 transition-colors disabled:bg-gray-400"
-                    >
-                        {isSubmitting ? 'Submitting...' : 'Confirm & Save'}
+                            onClick={handleConfirm}
+                            disabled={isSubmitting || pendingAmount > 0.01}
+                            className="w-full py-3.5 text-white rounded-lg font-bold text-lg shadow active:scale-[0.98] transition-all disabled:bg-gray-300 disabled:shadow-none disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            style={{ backgroundColor: pendingAmount < 0.01 ? '#0ea5e9' : '#94a3b8' }} // Blue if paid, Gray if due
+                        >
+                            {isSubmitting ? (
+                                <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Processing...</>
+                            ) : (
+                                "Confirm Payment"
+                            )}
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
 

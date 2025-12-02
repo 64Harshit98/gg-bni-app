@@ -14,7 +14,7 @@ const businessTypeOptions = [
   { value: 'Wholesale', label: 'Wholesale' },
   { value: 'Services', label: 'Services' },
   { value: 'Manufacturing', label: 'Manufacturing' },
-  { value: 'Other', label: 'Other' }, 
+  { value: 'Other', label: 'Other' },
 ];
 
 const businessCategoryOptions = [
@@ -42,18 +42,18 @@ const BusinessInfoPage: React.FC = () => {
 
   // --- Form States ---
   const [businessName, setBusinessName] = useState('');
-  
+
   // Type & Category
   const [businessType, setBusinessType] = useState('');
   const [customBusinessType, setCustomBusinessType] = useState('');
-  
+
   const [businessCategory, setBusinessCategory] = useState('');
   const [customBusinessCategory, setCustomBusinessCategory] = useState('');
 
   // GST
   const [gstType, setGstType] = useState('NA');
   const [gstin, setGstin] = useState('');
-  
+
   // Address
   const [streetAddress, setStreetAddress] = useState('');
   const [city, setCity] = useState('');
@@ -116,7 +116,7 @@ const BusinessInfoPage: React.FC = () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-100 p-4">
-      <div className="mb-8">
+      <div className="sticky top-0 z-50 bg-gray-100 pb-4 mb-4">
         <Stepper totalSteps={4} currentStep={2} />
       </div>
 
@@ -124,7 +124,7 @@ const BusinessInfoPage: React.FC = () => {
 
       {/* Replaced onSubmit with simple div wrapper to avoid browser form quirks */}
       <div className="flex flex-col space-y-5 flex-grow">
-        
+
         <FloatingLabelInput
           id="businessName"
           label="Business Name"
@@ -185,81 +185,82 @@ const BusinessInfoPage: React.FC = () => {
 
         {/* GST */}
         <FloatingLabelSelect
-            id="gstType"
-            label="GST Registration Type"
-            value={gstType}
-            onChange={(e) => setGstType(e.target.value)}
-            options={gstTypeOptions}
-            required
-            icon={<FiHash size={20} />}
+          id="gstType"
+          label="GST Registration Type"
+          value={gstType}
+          onChange={(e) => setGstType(e.target.value)}
+          options={gstTypeOptions}
+          required
+          icon={<FiHash size={20} />}
         />
 
         {(gstType === 'Regular' || gstType === 'Composite') && (
-            <div className="animate-fade-in-down">
-                <FloatingLabelInput
-                    id="gstin"
-                    label="GSTIN Number"
-                    value={gstin}
-                    onChange={(e) => setGstin(e.target.value)}
-                    required
-                    className="pl-10"
-                />
-            </div>
+          <div className="animate-fade-in-down">
+            <FloatingLabelInput
+              id="gstin"
+              label="GSTIN Number"
+              value={gstin}
+              onChange={(e) => setGstin(e.target.value)}
+              required
+              className="pl-10"
+            />
+          </div>
         )}
 
         {/* Address */}
         <div className="relative">
-            <FiMapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-            <FloatingLabelInput
-                id="streetAddress"
-                label="Street Address / Area"
-                value={streetAddress}
-                onChange={(e) => setStreetAddress(e.target.value)}
-                required
-                className="pl-10"
-            />
+          <FiMapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+          <FloatingLabelInput
+            id="streetAddress"
+            label="Street Address / Area"
+            value={streetAddress}
+            onChange={(e) => setStreetAddress(e.target.value)}
+            required
+            className="pl-10"
+          />
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-            <FloatingLabelInput
-                id="city"
-                label="City"
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                required
-            />
-            <FloatingLabelInput
-                id="postalCode"
-                label="Pincode"
-                type="number"
-                value={postalCode}
-                onChange={(e) => setPostalCode(e.target.value)}
-                required
-            />
+          <FloatingLabelInput
+            id="city"
+            label="City"
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
+            required
+          />
+          <FloatingLabelInput
+            id="postalCode"
+            label="Pincode"
+            type="number"
+            value={postalCode}
+            onChange={(e) => setPostalCode(e.target.value)}
+            required
+          />
         </div>
 
         <div className="relative">
-                <FiGlobe className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                <FloatingLabelInput
-                id="state"
-                label="State"
-                value={state}
-                onChange={(e) => setState(e.target.value)}
-                required
-                className="pl-10"
-                />
+          <FiGlobe className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+          <FloatingLabelInput
+            id="state"
+            label="State"
+            value={state}
+            onChange={(e) => setState(e.target.value)}
+            required
+            className="pl-10"
+          />
         </div>
 
         {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-
-        <div className="mt-4 pt-2">
-          <CustomButton 
-            type="button" 
-            variant={Variant.Filled} 
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-100 border-t border-gray-200 z-50">
+          <div className="max-w-md mx-auto space-y-4">
+          <CustomButton
+            type="button"
+            variant={Variant.Filled}
             onClick={() => handleNext()}
           >
             Next Step
           </CustomButton>
+          </div>
         </div>
       </div>
     </div>

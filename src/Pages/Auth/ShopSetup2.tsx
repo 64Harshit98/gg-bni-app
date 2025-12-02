@@ -133,7 +133,9 @@ const FinalSetupPage: React.FC = () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-100 p-4">
-      <div className="mb-8"><Stepper totalSteps={4} currentStep={4} /></div>
+      <div className="sticky top-0 z-50 bg-gray-100 pb-4 mb-4">
+        <Stepper totalSteps={4} currentStep={4} />
+      </div>
       <h1 className="text-4xl font-bold mb-2">Final Touches</h1>
       <p className="text-gray-500 mb-6">Configuring your dashboard...</p>
 
@@ -173,20 +175,22 @@ const FinalSetupPage: React.FC = () => {
         )}
 
         {/* Submit Button */}
-        <div className="mt-auto pt-4">
-          <CustomButton type="submit" variant={Variant.Filled} disabled={isSubmitting} className="h-12 text-lg">
-            {isSubmitting ? (
-              <div className="flex items-center justify-center gap-2">
-                <Spinner />
-                <span>{statusMessage}</span>
-              </div>
-            ) : (
-              <div className="flex items-center justify-center gap-2">
-                <span>Complete Setup</span>
-                <FiCheckCircle />
-              </div>
-            )}
-          </CustomButton>
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-100 border-t border-gray-200 z-50">
+          <div className="max-w-md mx-auto space-y-4">
+            <CustomButton type="submit" variant={Variant.Filled} disabled={isSubmitting} className="h-12 text-lg">
+              {isSubmitting ? (
+                <div className="flex items-center justify-center gap-2">
+                  <Spinner />
+                  <span>{statusMessage}</span>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center gap-2">
+                  <span>Complete Setup</span>
+                  <FiCheckCircle />
+                </div>
+              )}
+            </CustomButton>
+          </div>
         </div>
       </form>
     </div>

@@ -103,9 +103,11 @@ const ShopSetupPage: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-100 p-4">
-      <div className="mb-8"><Stepper totalSteps={4} currentStep={3} /></div>
-      <h1 className="text-4xl font-bold mb-6">Shop Preferences</h1>
+    <div className="flex flex-col min-h-screen bg-gray-100 p-4 mb-10">
+      <div className="sticky top-0 z-50 bg-gray-100 pb-4 mb-4">
+        <Stepper totalSteps={4} currentStep={3} />
+      </div>
+      <h1 className="text-4xl font-bold mb-6">Shop Setup</h1>
 
       <div className="flex flex-col space-y-4 flex-grow">
 
@@ -144,15 +146,15 @@ const ShopSetupPage: React.FC = () => {
         <div className="bg-gary-100 p-4 rounded-lg shadow-sm border border-gray-200 space-y-4">
           <h2 className="text-lg font-semibold text-gray-800 border-b pb-2">Add Staff (Optional)</h2>
           <p className="text-sm text-gray-600">These users will be created when you finish setup.</p>
-                    <p className="text-sm text-gray-600">The user mail is PhoneNo@sellar.in </p>
-                      <p className="text-sm text-gray-600">Preset password is Welcome@123</p>
+          <p className="text-sm text-gray-600">The user mail is PhoneNo@sellar.in </p>
+          <p className="text-sm text-gray-600">Preset password is Welcome@123</p>
 
 
           <div className="space-y-4">
             <div className='grid grid-cols-2 gap-2'>
-            <FloatingLabelInput id="userFullName" label="Full Name" value={userFullName} onChange={(e) => setUserFullName(e.target.value)} />
-            <FloatingLabelInput id="userPhone" label="Phone Number" value={userPhoneNumber} onChange={(e) => setUserPhoneNumber(e.target.value)} type="tel" />
-              </div>
+              <FloatingLabelInput id="userFullName" label="Full Name" value={userFullName} onChange={(e) => setUserFullName(e.target.value)} />
+              <FloatingLabelInput id="userPhone" label="Phone Number" value={userPhoneNumber} onChange={(e) => setUserPhoneNumber(e.target.value)} type="tel" />
+            </div>
             <FloatingLabelSelect id="userRole" label="Role" value={userRole} onChange={(e) => setUserRole(e.target.value as ROLES)} options={roleOptions} />
 
             {userError && <p className="text-sm text-red-600 bg-red-50 p-2 rounded text-center">{userError}</p>}
@@ -182,8 +184,16 @@ const ShopSetupPage: React.FC = () => {
           )}
         </div>
 
-        <div className="pt-4">
-          <CustomButton type="button" variant={Variant.Filled} onClick={handleNext}>Next Step</CustomButton>
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-100 border-t border-gray-200 z-50">
+          <div className="max-w-md mx-auto space-y-4">
+            <CustomButton
+              type="button"
+              variant={Variant.Filled}
+              onClick={() => handleNext()}
+            >
+              Next Step
+            </CustomButton>
+          </div>
         </div>
       </div>
     </div>

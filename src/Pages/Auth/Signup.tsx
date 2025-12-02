@@ -51,8 +51,7 @@ const SignUpPage: React.FC = () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-100 p-4">
-      <div className="mb-8">
-        {/* Step 1 of 4 */}
+      <div className="sticky top-0 z-50 bg-gray-100 pb-4 mb-4">
         <Stepper totalSteps={4} currentStep={1} />
       </div>
 
@@ -157,20 +156,22 @@ const SignUpPage: React.FC = () => {
 
         {error && <p className="text-red-500 text-sm text-center">{error}</p>}
 
-        <div className="mt-4 space-y-4">
-          <CustomButton type="submit" variant={Variant.Filled}>
-            Next
-          </CustomButton>
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-100 border-t border-gray-200 z-50">
+          <div className="max-w-md mx-auto space-y-4"> {/* Optional container to keep button width controlled on large screens */}
+            <CustomButton type="submit" variant={Variant.Filled}>
+              Next
+            </CustomButton>
 
-          <p className="text-center text-sm text-gray-600">
-            Already have an account?{' '}
-            <Link
-              to={ROUTES.LANDING} // Make sure this route is correct
-              className="font-medium text-blue-600 hover:underline"
-            >
-              Log In
-            </Link>
-          </p>
+            <p className="text-center text-sm text-gray-600">
+              Already have an account?{' '}
+              <Link
+                to={ROUTES.LANDING}
+                className="font-medium text-blue-600 hover:underline"
+              >
+                Log In
+              </Link>
+            </p>
+          </div>
         </div>
       </form>
     </div>

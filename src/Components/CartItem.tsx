@@ -80,7 +80,7 @@ export const SalesCartList: React.FC<SalesCartListProps> = ({
 
             const displayPrice = item.customPrice !== undefined && item.customPrice !== null && item.customPrice !== ''
               ? String(item.customPrice)
-              : calculatedRoundedPrice.toFixed();
+              : calculatedRoundedPrice.toFixed(2);
 
             const discountLocked = (salesSettings?.lockDiscountEntry || isDiscountLocked) || !item.isEditable;
             const priceLocked = (salesSettings?.lockSalePriceEntry || isPriceLocked) || !item.isEditable;

@@ -71,6 +71,7 @@ const SalesSettingsPage: React.FC = () => {
                 settingsCollectionRef,
                 where('settingType', '==', 'sales')
             );
+            
 
       try {
         const querySnapshot = await getDocs(q);
@@ -125,6 +126,13 @@ const SalesSettingsPage: React.FC = () => {
 
     fetchOrCreateSettings();
   }, [currentUser?.companyId]);
+  // --- ADD THIS EFFECT ---
+  useEffect(() => {
+    if (settings.gstScheme === 'composition') {
+      // Composition dealers cannot charge tax separately, so it must be inclusive
+      setSettings(prev => ({ ...prev, taxType: 'inclusive' }));
+    }
+  }, [settings.gstScheme]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();

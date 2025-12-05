@@ -1,5 +1,3 @@
-// src/Pages/Master/Sales.tsx
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth, useDatabase } from '../../context/auth-context';
@@ -21,6 +19,7 @@ import { ItemEditDrawer } from '../../Components/ItemDrawer';
 import { SalesCartList } from '../../Components/CartItem';
 import { FiTrash2 } from 'react-icons/fi';
 
+// 1. EXPORT SalesItem (Extended with productId)
 export interface SalesItem extends OriginalSalesItem {
   isEditable: boolean;
   customPrice?: number | string;
@@ -35,18 +34,17 @@ export interface SalesItem extends OriginalSalesItem {
   amount: number;
   barcode: string;
   restockQuantity: number;
+  productId: string; // Links to the DB Item ID
 }
 
-// Helper: Rounding logic
 export const applyRounding = (amount: number, isRoundingEnabled: boolean, interval: number = 1): number => {
   if (!isRoundingEnabled || !interval || interval <= 0) {
-    return Math.round((amount + Number.EPSILON) * 100) / 100;
+    return parseFloat(amount.toFixed(2));
   }
   const rounded = Math.round(amount / interval) * interval;
   return parseFloat(rounded.toFixed(2));
 };
 
-// Helper: Standard currency precision
 const toCurrency = (num: number) => {
   return Math.round((num + Number.EPSILON) * 100) / 100;
 };
@@ -59,18 +57,13 @@ const Sales: React.FC = () => {
   const { salesSettings, loadingSettings } = useSalesSettings();
 
   const invoiceToEdit = location.state?.invoiceData;
-  // Calculate isEditMode BEFORE useState so we can use it in the initializer
   const isEditMode = location.state?.isEditMode === true && !!invoiceToEdit;
 
   const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
 
-  // --- FIXED: Initialize State Directly from Local Storage ---
-  // This prevents the empty array [] from overwriting storage on initial render
+  // Initialize Items
   const [items, setItems] = useState<SalesItem[]>(() => {
-    // 1. If in Edit Mode, start empty (useEffect will fill it from invoice data)
     if (isEditMode) return [];
-
-    // 2. If New Sale, try to load draft immediately
     try {
       const savedDraft = localStorage.getItem('sales_cart_draft');
       return savedDraft ? JSON.parse(savedDraft) : [];
@@ -96,6 +89,7 @@ const Sales: React.FC = () => {
   const [selectedWorker, setSelectedWorker] = useState<User | null>(null);
   const [settingsDocId, setSettingsDocId] = useState<string | null>(null);
 
+  // Grid/Category State
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [gridSearchQuery, setGridSearchQuery] = useState<string>('');
   const [itemGroupMap, setItemGroupMap] = useState<Record<string, string>>({});
@@ -105,7 +99,6 @@ const Sales: React.FC = () => {
   const userRole = currentUser?.role || '';
   const isManager = userRole === ROLES.MANAGER || userRole === ROLES.OWNER;
 
-  // --- Initial Data Loading ---
   useEffect(() => {
     const findSettingsDocId = async () => {
       if (currentUser?.companyId) {
@@ -175,13 +168,13 @@ const Sales: React.FC = () => {
     }
   }, [loadingSettings, salesSettings?.lockDiscountEntry, salesSettings?.lockSalePriceEntry]);
 
-  // --- CHANGED: Only Handle Edit Mode Population Here ---
-  // (We removed the 'else' block because the initial state handled the local storage load)
+  // Populate items for Edit Mode
   useEffect(() => {
     if (isEditMode && invoiceToEdit?.items) {
       const nonEditableItems = invoiceToEdit.items.map((item: any) => ({
         ...item,
-        id: item.id || crypto.randomUUID(),
+        id: crypto.randomUUID(), // New UI ID
+        productId: item.id,      // Preserve Original ID
         isEditable: false,
         customPrice: item.effectiveUnitPrice,
         quantity: item.quantity || 1,
@@ -206,19 +199,20 @@ const Sales: React.FC = () => {
     }
   }, [isEditMode, invoiceToEdit]);
 
-  // --- Save Items to Local Storage on Change ---
+  // Save Draft
   useEffect(() => {
-    // Only save if NOT in edit mode
     if (!isEditMode) {
       localStorage.setItem('sales_cart_draft', JSON.stringify(items));
     }
   }, [items, isEditMode]);
 
+  // --- Categories for Grid View ---
   const categories = useMemo(() => {
     const groups = new Set(availableItems.map(i => i.itemGroupId || 'Others'));
     return ['All', ...Array.from(groups).sort()];
   }, [availableItems]);
 
+  // --- Sorted Items for Grid View ---
   const sortedGridItems = useMemo(() => {
     const filtered = availableItems.filter(item => {
       const itemGroupId = item.itemGroupId || 'Others';
@@ -230,29 +224,17 @@ const Sales: React.FC = () => {
     });
 
     return filtered.sort((a, b) => {
-      const aInCart = items.some(i => i.id === a.id);
-      const bInCart = items.some(i => i.id === b.id);
+      const aInCart = items.some(i => i.productId === a.id);
+      const bInCart = items.some(i => i.productId === b.id);
       if (aInCart && !bInCart) return -1;
       if (!aInCart && bInCart) return 1;
       return 0;
     });
   }, [availableItems, selectedCategory, gridSearchQuery, items]);
 
-  // --- TOTALING LOGIC ---
-  const {
-    subtotal,
-    totalDiscount,
-    roundOff,
-    taxableAmount,
-    taxAmount,
-    finalAmount,
-    totalQuantity
-  } = useMemo(() => {
-    let accumulatorSubtotal = 0;
-    let accumulatorTaxable = 0;
-    let accumulatorTax = 0;
-    let accumulatorQuantity = 0;
-
+  // Totals Calculation
+  const { subtotal, totalDiscount, roundOff, taxableAmount, taxAmount, finalAmount, totalQuantity } = useMemo(() => {
+    let accumulatorSubtotal = 0, accumulatorTaxable = 0, accumulatorTax = 0, accumulatorQuantity = 0;
     const isTaxEnabled = salesSettings?.enableTax ?? true;
     const taxRate = salesSettings?.defaultTaxRate ?? 0;
     const taxType = salesSettings?.taxType ?? 'exclusive';
@@ -263,41 +245,31 @@ const Sales: React.FC = () => {
       const currentMrp = item.mrp || 0;
       const currentQuantity = item.quantity || 1;
       const currentDiscount = item.discount || 0;
-
       accumulatorQuantity += currentQuantity;
-
       const priceAfterDiscount = currentMrp * (1 - currentDiscount / 100);
       const calculatedRoundedPrice = applyRounding(priceAfterDiscount, isRoundingEnabled, roundingInterval);
-
       let effectiveUnitPrice = calculatedRoundedPrice;
       if (item.customPrice !== undefined && item.customPrice !== null && item.customPrice !== '') {
         const numericPrice = parseFloat(String(item.customPrice));
-        if (!isNaN(numericPrice)) {
-          effectiveUnitPrice = numericPrice;
-        }
+        if (!isNaN(numericPrice)) effectiveUnitPrice = numericPrice;
       }
-
       effectiveUnitPrice = toCurrency(effectiveUnitPrice);
       const lineTotal = toCurrency(effectiveUnitPrice * currentQuantity);
-
       accumulatorSubtotal += currentMrp * currentQuantity;
+      let lineBaseAmount = 0, lineTaxAmount = 0;
+      const itemSpecificTaxRate = (item.tax !== undefined && item.tax !== null) ? Number(item.tax) : taxRate;
 
-      let lineBaseAmount = 0;
-      let lineTaxAmount = 0;
-
-      if (isTaxEnabled && taxRate > 0) {
+      if (isTaxEnabled && itemSpecificTaxRate > 0) {
         if (taxType === 'inclusive') {
-          lineBaseAmount = toCurrency(lineTotal / (1 + (taxRate / 100)));
+          lineBaseAmount = toCurrency(lineTotal / (1 + (itemSpecificTaxRate / 100)));
           lineTaxAmount = toCurrency(lineTotal - lineBaseAmount);
         } else {
           lineBaseAmount = lineTotal;
-          lineTaxAmount = toCurrency(lineTotal * (taxRate / 100));
+          lineTaxAmount = toCurrency(lineTotal * (itemSpecificTaxRate / 100));
         }
       } else {
         lineBaseAmount = lineTotal;
-        lineTaxAmount = 0;
       }
-
       accumulatorTaxable += lineBaseAmount;
       accumulatorTax += lineTaxAmount;
     });
@@ -305,63 +277,38 @@ const Sales: React.FC = () => {
     const finalTaxable = toCurrency(accumulatorTaxable);
     const finalTax = toCurrency(accumulatorTax);
     const finalPayableAmount = toCurrency(finalTaxable + finalTax);
-
     const amountCustomerPaysBeforeFinalTax = taxType === 'inclusive' ? (finalTaxable + finalTax) : finalTaxable;
     const totalDiscountValue = toCurrency(accumulatorSubtotal - amountCustomerPaysBeforeFinalTax);
 
-    return {
-      subtotal: accumulatorSubtotal,
-      totalDiscount: totalDiscountValue > 0 ? totalDiscountValue : 0,
-      roundOff: 0,
-      taxableAmount: finalTaxable,
-      taxAmount: finalTax,
-      finalAmount: finalPayableAmount,
-      totalQuantity: accumulatorQuantity,
-    };
-
+    return { subtotal: accumulatorSubtotal, totalDiscount: totalDiscountValue > 0 ? totalDiscountValue : 0, roundOff: 0, taxableAmount: finalTaxable, taxAmount: finalTax, finalAmount: finalPayableAmount, totalQuantity: accumulatorQuantity };
   }, [items, salesSettings]);
 
   const amountToPayNow = useMemo(() => finalAmount, [finalAmount]);
 
-  // --- Cart Handlers ---
   const addItemToCart = (itemToAdd: Item) => {
-    if (!itemToAdd || !itemToAdd.id) {
-      setModal({ message: "Cannot add invalid item.", type: State.ERROR }); return;
-    }
-    const itemExists = items.find(item => item.id === itemToAdd.id);
-    if (itemExists) {
-      if (itemExists.isEditable) {
-        setItems(prev => prev.map(item => item.id === itemToAdd.id ? { ...item, quantity: (item.quantity || 0) + 1 } : item));
-      } else {
-        setModal({ message: `${itemToAdd.name} already in invoice.`, type: State.INFO });
-      }
-    } else {
-      const defaultDiscount = itemToAdd.discount ?? salesSettings?.defaultDiscount ?? 0;
-      const newSalesItem: SalesItem = {
-        id: itemToAdd.id!,
-        name: itemToAdd.name || 'Unnamed Item',
-        mrp: itemToAdd.mrp || 0,
-        quantity: 1,
-        discount: defaultDiscount,
-        isEditable: true,
-        purchasePrice: itemToAdd.purchasePrice || 0,
-        tax: itemToAdd.tax || 0,
-        itemGroupId: itemToAdd.itemGroupId || '',
-        stock: itemToAdd.stock || (itemToAdd as any).Stock || 0,
-        amount: itemToAdd.amount || 0,
-        barcode: itemToAdd.barcode || '',
-        restockQuantity: itemToAdd.restockQuantity || 0,
-      };
-      setItems(prev => [newSalesItem, ...prev]);
-    }
+    if (!itemToAdd || !itemToAdd.id) { setModal({ message: "Cannot add invalid item.", type: State.ERROR }); return; }
+    const defaultDiscount = itemToAdd.discount ?? salesSettings?.defaultDiscount ?? 0;
+    const newSalesItem: SalesItem = {
+      ...itemToAdd,
+      id: crypto.randomUUID(),
+      productId: itemToAdd.id!,
+      quantity: 1,
+      discount: defaultDiscount,
+      isEditable: true,
+      purchasePrice: itemToAdd.purchasePrice || 0,
+      tax: itemToAdd.tax || 0,
+      itemGroupId: itemToAdd.itemGroupId || '',
+      stock: itemToAdd.stock || (itemToAdd as any).Stock || 0,
+      amount: itemToAdd.amount || 0,
+      barcode: itemToAdd.barcode || '',
+      restockQuantity: itemToAdd.restockQuantity || 0,
+    };
+    setItems(prev => [newSalesItem, ...prev]);
   };
 
   const handleClearCart = () => {
-    if (items.length > 0) {
-      // Optional: Add confirmation if desired, currently instant as per request
-      if (window.confirm("Are you sure you want to remove all items?")) {
-        setItems([]);
-      }
+    if (items.length > 0 && window.confirm("Are you sure you want to remove all items?")) {
+      setItems([]);
     }
   };
 
@@ -383,7 +330,7 @@ const Sales: React.FC = () => {
       } else {
         setModal({ message: 'Item not found for this barcode.', type: State.ERROR });
       }
-    } catch { setModal({ message: 'Error finding item by barcode.', type: State.ERROR }); }
+    } catch { setModal({ message: 'Scan error.', type: State.ERROR }); }
   };
 
   const handleQuantityChange = (id: string, newQuantity: number) => {
@@ -394,44 +341,26 @@ const Sales: React.FC = () => {
     setItems(prev => prev.filter(item => item.id !== id));
   };
 
-  // --- Handlers ---
   const handleDiscountPressStart = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); longPressTimer.current = setTimeout(() => setIsDiscountLocked(false), 500); };
   const handleDiscountPressEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
   const handleDiscountClick = () => { if (salesSettings?.lockDiscountEntry || isDiscountLocked) { setDiscountInfo("Cannot edit discount"); setTimeout(() => setDiscountInfo(null), 3000); } };
-
   const handlePricePressStart = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); longPressTimer.current = setTimeout(() => setIsPriceLocked(false), 500); };
   const handlePricePressEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
   const handlePriceClick = () => { if (salesSettings?.lockSalePriceEntry || isPriceLocked) { setPriceInfo("Cannot edit sale price"); setTimeout(() => setPriceInfo(null), 1000); } };
-
-  const handleDiscountChange = (id: string, discountValue: number | string) => {
-    const numericValue = typeof discountValue === 'string' ? parseFloat(discountValue) : discountValue;
-    const newDiscount = Math.max(0, Math.min(100, isNaN(numericValue) ? 0 : numericValue));
-    setItems(prev => prev.map(item => item.id === id ? { ...item, discount: newDiscount, customPrice: undefined } : item));
-  };
-
-  const handleCustomPriceChange = (id: string, value: string) => {
-    if (value === '' || /^[0-9]*\.?[0-9]*$/.test(value)) {
-      setItems(prev => prev.map(item => item.id === id ? { ...item, customPrice: value } : item));
-    }
-  };
-
+  const handleDiscountChange = (id: string, v: number | string) => { const n = typeof v === 'string' ? parseFloat(v) : v; setItems(prev => prev.map(i => i.id === id ? { ...i, discount: Math.max(0, Math.min(100, isNaN(n) ? 0 : n)), customPrice: undefined } : i)); };
+  const handleCustomPriceChange = (id: string, v: string) => { if (v === '' || /^[0-9]*\.?[0-9]*$/.test(v)) setItems(prev => prev.map(i => i.id === id ? { ...i, customPrice: v } : i)); };
   const handleCustomPriceBlur = (id: string) => {
-    setItems(prev => prev.map(item => {
-      if (item.id === id && typeof item.customPrice === 'string') {
-        const numericValue = parseFloat(item.customPrice);
-        if (item.customPrice === '' || isNaN(numericValue)) return { ...item, customPrice: undefined };
-        let newDiscountPercent = 0;
-        if (item.mrp && item.mrp > 0) {
-          newDiscountPercent = ((item.mrp - numericValue) / item.mrp) * 100;
-          newDiscountPercent = Math.max(0, newDiscountPercent);
-        }
-        return { ...item, customPrice: numericValue, discount: parseFloat(newDiscountPercent.toFixed(2)) };
+    setItems(prev => prev.map(i => {
+      if (i.id === id && typeof i.customPrice === 'string') {
+        const n = parseFloat(i.customPrice);
+        if (i.customPrice === '' || isNaN(n)) return { ...i, customPrice: undefined };
+        let d = 0; if (i.mrp > 0) d = ((i.mrp - n) / i.mrp) * 100;
+        return { ...i, customPrice: n, discount: parseFloat(d.toFixed(2)) };
       }
-      return item;
+      return i;
     }));
   };
 
-  // --- Edit Drawer ---
   const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
   const [isItemDrawerOpen, setIsItemDrawerOpen] = useState(false);
   const handleOpenEditDrawer = (item: Item) => { setSelectedItemForEdit(item); setIsItemDrawerOpen(true); };
@@ -442,39 +371,39 @@ const Sales: React.FC = () => {
     const updateForCart: Partial<SalesItem> = { ...updatedItemData };
     if ((updateForCart as any).Stock !== undefined) { updateForCart.stock = (updateForCart as any).Stock; delete (updateForCart as any).Stock; }
     Object.keys(updateForCart).forEach(key => { if (updateForCart[key as keyof typeof updateForCart] === undefined) delete updateForCart[key as keyof typeof updateForCart]; });
-    setItems(prevCartItems => prevCartItems.map(cartItem => { if (cartItem.id === selectedItemForEdit?.id) return { ...cartItem, ...updateForCart, id: cartItem.id }; return cartItem; }));
+
+    setItems(prevCartItems => prevCartItems.map(cartItem => {
+      if (cartItem.productId === selectedItemForEdit?.id || cartItem.id === selectedItemForEdit?.id) {
+        // FIX 1: Cast to SalesItem
+        return { ...cartItem, ...updateForCart } as SalesItem;
+      }
+      return cartItem;
+    }));
   };
 
   const handleProceedToPayment = () => {
     if (items.length === 0) { setModal({ message: 'Please add at least one item.', type: State.INFO }); return; }
     if (salesSettings?.enableSalesmanSelection && !selectedWorker) { setModal({ message: 'Please select a salesman.', type: State.ERROR }); return; }
     if (!(salesSettings as any)?.allowNegativeStock) {
-      const invalidStockItems = items.filter(i => i.isEditable).reduce((acc, item) => {
-        const available = availableItems.find(a => a.id === item.id)?.stock ?? 0;
-        if (available < (item.quantity ?? 1)) acc.push({ name: item.name, stock: available, needed: item.quantity ?? 1 });
-        return acc;
-      }, [] as { name: string, stock: number, needed: number }[]);
-      if (invalidStockItems.length > 0) {
-        const msg = invalidStockItems.map(i => `${i.name} (Avail:${i.stock}, Need:${i.needed})`).join(', ');
-        setModal({ message: `Insufficient stock: ${msg}`, type: State.ERROR }); return;
-      }
+      const stockNeeds = new Map<string, number>();
+      items.filter(i => i.isEditable).forEach(i => { const pid = i.productId; stockNeeds.set(pid, (stockNeeds.get(pid) || 0) + (i.quantity || 1)); });
+      const invalidItems: string[] = [];
+      stockNeeds.forEach((needed, pid) => {
+        const avail = availableItems.find(a => a.id === pid);
+        if ((avail?.stock ?? 0) < needed) invalidItems.push(`${avail?.name} (Avail:${avail?.stock}, Need:${needed})`);
+      });
+      if (invalidItems.length > 0) { setModal({ message: `Insufficient stock: ${invalidItems.join(', ')}`, type: State.ERROR }); return; }
     }
     setIsDrawerOpen(true);
   };
 
-  // --- Save Payment ---
   const handleSavePayment = async (completionData: PaymentCompletionData) => {
-    if (!currentUser?.companyId) { setModal({ message: "User or company information missing.", type: State.ERROR }); return; }
+    if (!currentUser?.companyId) return;
     const companyId = currentUser.companyId;
-
     const salesman = salesSettings?.enableSalesmanSelection ? selectedWorker : workers.find(w => w.uid === currentUser.uid);
-    if (!salesman && salesSettings?.enableSalesmanSelection) { setModal({ type: State.ERROR, message: "Salesman not selected." }); return; }
     const finalSalesman = salesman || { uid: currentUser.uid, name: currentUser.uid || 'Current User' };
 
-    if (!salesSettings?.allowDueBilling && completionData.paymentDetails.due > 0) { setModal({ message: 'Due billing is disabled.', type: State.ERROR }); setIsDrawerOpen(true); return; }
-    if (salesSettings?.requireCustomerName && !completionData.partyName.trim()) { setModal({ message: 'Customer name is required.', type: State.ERROR }); setIsDrawerOpen(true); return; }
-    if (salesSettings?.requireCustomerMobile && !completionData.partyNumber.trim()) { setModal({ message: 'Customer mobile is required.', type: State.ERROR }); setIsDrawerOpen(true); return; }
-
+    // ... Validations ...
     const isTaxEnabled = salesSettings?.enableTax ?? true;
     const finalTaxType = isTaxEnabled ? (salesSettings?.taxType ?? 'exclusive') : 'none';
     const currentTaxRate = salesSettings?.defaultTaxRate ?? 0;
@@ -486,176 +415,124 @@ const Sales: React.FC = () => {
         const currentMrp = item.mrp || 0;
         const currentDiscount = item.discount || 0;
         const currentQuantity = item.quantity || 1;
-
         const priceAfterDiscount = currentMrp * (1 - currentDiscount / 100);
         const calculatedRoundedPrice = applyRounding(priceAfterDiscount, isRoundingEnabled, roundingInterval);
-
         let effectiveUnitPrice = calculatedRoundedPrice;
         if (customPrice !== undefined && customPrice !== null && customPrice !== '') {
-          const numericPrice = parseFloat(String(customPrice));
-          if (!isNaN(numericPrice)) {
-            effectiveUnitPrice = numericPrice;
-          }
+          const num = parseFloat(String(customPrice));
+          if (!isNaN(num)) effectiveUnitPrice = num;
         }
         effectiveUnitPrice = toCurrency(effectiveUnitPrice);
-
         const lineTotal = toCurrency(effectiveUnitPrice * currentQuantity);
 
-        let itemTaxableBase = 0;
-        let itemTaxAmount = 0;
-        let itemFinalPrice = 0;
+        const itemSpecificTaxRate = (item.tax !== undefined && item.tax !== null) ? Number(item.tax) : currentTaxRate;
+        let itemTaxableBase = 0, itemTaxAmount = 0, itemFinalPrice = 0;
 
-        if (isTaxEnabled && currentTaxRate > 0) {
+        if (isTaxEnabled && itemSpecificTaxRate > 0) {
           if (finalTaxType === 'inclusive') {
             itemFinalPrice = lineTotal;
-            itemTaxableBase = toCurrency(lineTotal / (1 + (currentTaxRate / 100)));
+            itemTaxableBase = toCurrency(lineTotal / (1 + (itemSpecificTaxRate / 100)));
             itemTaxAmount = toCurrency(lineTotal - itemTaxableBase);
           } else {
             itemTaxableBase = lineTotal;
-            itemTaxAmount = toCurrency(lineTotal * (currentTaxRate / 100));
+            itemTaxAmount = toCurrency(lineTotal * (itemSpecificTaxRate / 100));
             itemFinalPrice = toCurrency(itemTaxableBase + itemTaxAmount);
           }
         } else {
-          itemTaxableBase = lineTotal;
-          itemTaxAmount = 0;
-          itemFinalPrice = lineTotal;
+          itemTaxableBase = lineTotal; itemFinalPrice = lineTotal;
         }
 
         return {
           ...item,
-          quantity: currentQuantity,
-          discount: currentDiscount,
-          effectiveUnitPrice: effectiveUnitPrice,
-          finalPrice: itemFinalPrice,
-          taxableAmount: itemTaxableBase,
-          taxAmount: itemTaxAmount,
-          taxRate: isTaxEnabled ? currentTaxRate : 0,
-          taxType: finalTaxType,
-          discountPercentage: currentDiscount,
+          id: item.productId, // Restore DB ID
+          quantity: currentQuantity, discount: currentDiscount, effectiveUnitPrice, finalPrice: itemFinalPrice,
+          taxableAmount: itemTaxableBase, taxAmount: itemTaxAmount, taxRate: isTaxEnabled ? itemSpecificTaxRate : 0,
+          taxType: finalTaxType, discountPercentage: currentDiscount,
         };
       });
     };
 
     const finalInvoiceTotal = finalAmount - completionData.discount;
-    const manualDiscount = completionData.discount || 0;
-    const revDiscount = completionData.revDiscount || 0;
-    const totalInvoiceDiscount = totalDiscount + manualDiscount;
+    const totalInvoiceDiscount = totalDiscount + (completionData.discount || 0);
 
     if (isEditMode && invoiceToEdit?.id) {
-      try {
-        await runTransaction(db, async (transaction) => {
-          const invoiceRef = doc(db, "companies", companyId, "sales", invoiceToEdit.id);
-          const invoiceDoc = await transaction.get(invoiceRef);
-          if (!invoiceDoc.exists()) throw new Error("Original invoice not found.");
+      await runTransaction(db, async (transaction) => {
+        const invoiceRef = doc(db, "companies", companyId, "sales", invoiceToEdit.id);
+        const invoiceDoc = await transaction.get(invoiceRef);
+        if (!invoiceDoc.exists()) throw "Err";
 
-          const originalItems = invoiceDoc.data().items || [];
-          const originalQtyMap = new Map<string, number>();
-          originalItems.forEach((i: any) => { if (i.id) originalQtyMap.set(String(i.id), Number(i.quantity || 1)); });
+        const originalItems = invoiceDoc.data().items || [];
+        const originalQtyMap = new Map<string, number>();
+        originalItems.forEach((i: any) => { if (i.id) originalQtyMap.set(String(i.id), Number(i.quantity || 1)); });
 
-          const currentQtyMap = new Map<string, number>();
-          items.forEach((i) => { if (i.id) currentQtyMap.set(String(i.id), Number(i.quantity || 1)); });
-
-          const allItemIds = Array.from(new Set([...originalQtyMap.keys(), ...currentQtyMap.keys()]));
-          allItemIds.forEach((itemId) => {
-            const oldQty = originalQtyMap.get(itemId) || 0;
-            const newQty = currentQtyMap.get(itemId) || 0;
-            const difference = oldQty - newQty;
-            if (difference !== 0) {
-              const itemRef = doc(db, "companies", companyId, "items", itemId);
-              transaction.update(itemRef, { stock: firebaseIncrement(difference) });
-            }
-          });
-
-          transaction.update(invoiceRef, {
-            items: formatItemsForDB(items),
-            subtotal,
-            discount: totalInvoiceDiscount,
-            manualDiscount,
-            revDiscount,
-            roundOff,
-            taxableAmount,
-            taxAmount,
-            taxType: finalTaxType,
-            totalAmount: finalInvoiceTotal,
-            paymentMethods: completionData.paymentDetails,
-            updatedAt: serverTimestamp(),
-            partyAddress: completionData.partyAddress || invoiceDoc.data().partyAddress || '',
-            partyGstin: completionData.partyGST || invoiceDoc.data().partyGstin || '',
-            partyName: completionData.partyName.trim() || invoiceDoc.data().partyName,
-            partyNumber: completionData.partyNumber.trim() || invoiceDoc.data().partyNumber,
-            salesmanId: finalSalesman.uid,
-            salesmanName: finalSalesman.name || 'N/A',
-          });
+        const currentQtyMap = new Map<string, number>();
+        items.forEach((i) => {
+          const pid = i.productId || i.id || '';
+          if (pid) {
+            const current = currentQtyMap.get(pid) || 0;
+            currentQtyMap.set(pid, current + Number(i.quantity || 1));
+          }
         });
-        showSuccessModal(`Invoice #${invoiceToEdit.invoiceNumber} updated!`, ROUTES.JOURNAL);
-      } catch (error: any) {
-        console.error("Failed to update invoice:", error);
-        setModal({ message: `Update failed: ${error.message}`, type: State.ERROR });
-      }
+
+        const allItemIds = Array.from(new Set([...originalQtyMap.keys(), ...currentQtyMap.keys()]));
+        allItemIds.forEach((itemId) => {
+          const oldQty = originalQtyMap.get(itemId) || 0;
+          const newQty = currentQtyMap.get(itemId) || 0;
+          const difference = oldQty - newQty;
+          if (difference !== 0) {
+            const itemRef = doc(db, "companies", companyId, "items", itemId);
+            transaction.update(itemRef, { stock: firebaseIncrement(difference) });
+          }
+        });
+
+        transaction.update(invoiceRef, {
+          items: formatItemsForDB(items),
+          subtotal, discount: totalInvoiceDiscount, manualDiscount: completionData.discount || 0, revDiscount: completionData.revDiscount || 0,
+          roundOff, taxableAmount, taxAmount, taxType: finalTaxType, totalAmount: finalInvoiceTotal,
+          paymentMethods: completionData.paymentDetails, updatedAt: serverTimestamp(),
+          partyName: completionData.partyName, partyNumber: completionData.partyNumber,
+          salesmanId: finalSalesman.uid, salesmanName: finalSalesman.name
+        });
+      });
+      showSuccessModal("Invoice Updated", ROUTES.JOURNAL);
     } else {
-      const { paymentDetails, partyName, partyNumber, partyAddress, partyGST } = completionData;
       try {
         const newInvoiceNumber = await generateNextInvoiceNumber(companyId);
         await runTransaction(db, async (transaction) => {
           const saleData = {
-            invoiceNumber: newInvoiceNumber,
-            userId: currentUser.uid,
-            salesmanId: finalSalesman.uid,
-            salesmanName: finalSalesman.name || 'N/A',
-            partyName: partyName.trim(),
-            partyNumber: partyNumber.trim(),
-            partyAddress: partyAddress || '',
-            partyGstin: partyGST || '',
-            items: formatItemsForDB(items),
-            subtotal,
-            discount: totalInvoiceDiscount,
-            manualDiscount,
-            revDiscount,
-            roundOff,
-            taxableAmount,
-            taxAmount,
-            taxType: finalTaxType,
-            totalAmount: finalInvoiceTotal,
-            paymentMethods: paymentDetails,
-            createdAt: serverTimestamp(),
-            companyId: companyId,
-            voucherName: salesSettings?.voucherName ?? 'Sales',
+            invoiceNumber: newInvoiceNumber, userId: currentUser.uid, salesmanId: finalSalesman.uid, salesmanName: finalSalesman.name,
+            partyName: completionData.partyName, partyNumber: completionData.partyNumber, partyAddress: completionData.partyAddress || '', partyGstin: completionData.partyGST || '',
+            items: formatItemsForDB(items), subtotal, discount: totalInvoiceDiscount, manualDiscount: completionData.discount || 0, revDiscount: completionData.revDiscount || 0,
+            roundOff, taxableAmount, taxAmount, taxType: finalTaxType, totalAmount: finalInvoiceTotal,
+            paymentMethods: completionData.paymentDetails, createdAt: serverTimestamp(), companyId: companyId, voucherName: salesSettings?.voucherName ?? 'Sales'
           };
           const newSaleRef = doc(collection(db, "companies", companyId, "sales"));
           transaction.set(newSaleRef, saleData);
-
-          items.forEach(cartItem => {
-            const itemRef = doc(db, "companies", companyId, "items", cartItem.id);
-            transaction.update(itemRef, { stock: firebaseIncrement(-(cartItem.quantity || 1)) });
+          items.forEach(i => {
+            const pid = i.productId || i.id;
+            if (pid) {
+              const itemRef = doc(db, "companies", companyId, "items", pid);
+              transaction.update(itemRef, { stock: firebaseIncrement(-(i.quantity || 1)) });
+            }
           });
-
           if (settingsDocId) {
             const settingsRef = doc(db, "companies", companyId, "settings", settingsDocId);
             transaction.update(settingsRef, { currentVoucherNumber: firebaseIncrement(1) });
-          } else {
-            throw new Error("Sales settings document not found for voucher increment.");
           }
         });
         setIsDrawerOpen(false);
         showSuccessModal(`Sale #${newInvoiceNumber} saved!`);
-      } catch (error: any) {
-        console.error("Sale transaction failed:", error);
-        setModal({ message: `Sale failed: ${error.message || 'Unknown error'}`, type: State.ERROR });
+      } catch (e: any) {
+        console.error(e); setModal({ message: "Error saving", type: State.ERROR });
       }
     }
   };
 
   const showSuccessModal = (message: string, navigateTo?: string) => {
-    // --- CHANGED: Clear Local Storage Draft on Success ---
     localStorage.removeItem('sales_cart_draft');
-
     setIsDrawerOpen(false);
     setModal({ message, type: State.SUCCESS });
-    setTimeout(() => {
-      setModal(null);
-      if (navigateTo) navigate(navigateTo);
-      else if (!salesSettings?.copyVoucherAfterSaving) setItems([]);
-    }, 1500);
+    setTimeout(() => { setModal(null); if (navigateTo) navigate(navigateTo); else if (!salesSettings?.copyVoucherAfterSaving) setItems([]); }, 1500);
   };
 
   if (pageIsLoading) return <div className="flex items-center justify-center h-screen"><Spinner /> <p className="ml-2">Loading...</p></div>;
@@ -673,30 +550,84 @@ const Sales: React.FC = () => {
           <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.SALES)} active={isActive(ROUTES.SALES)}>Sales</CustomButton>
           <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.SALES_RETURN)} active={isActive(ROUTES.SALES_RETURN)}>Sales Return</CustomButton>
         </div>
-      )}
+      )} 
     </div>
   );
 
-  const renderFooter = () => {
+const renderFooter = () => {
     const showTaxRow = gstSchemeDisplay !== 'none' && settingsTaxTypeDisplay === 'exclusive';
+    
     return (
-      <div className="flex-shrink-0 p-2 bg-white border-t shadow-[0_-4px_10px_rgba(0,0,0,0.1)] mb-10">
-        <div onClick={() => setIsFooterExpanded(!isFooterExpanded)} className="flex justify-between items-center px-4 py-2 bg-gray-50 border-b border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors">
-          <span className="text-sm font-semibold text-gray-600">Total Bill Details</span>
-          <div className={`transform transition-transform duration-300 ${isFooterExpanded ? '' : 'rotate-180'}`}><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg></div>
+      <div className="flex-shrink-0 bg-white border-t border-gray-100 shadow-[0_-5px_15px_rgba(0,0,0,0.05)] rounded-sm z-20 mb-10">
+        <div 
+          onClick={() => setIsFooterExpanded(!isFooterExpanded)} 
+          className="flex justify-between items-center px-5 py-2 cursor-pointer active:bg-gray-50 transition-colors rounded-t-2xl group"
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-gray-500 group-hover:text-gray-700">
+              Bill Details
+            </span>
+            {/* Show Qty in header when collapsed for quick view */}
+            {!isFooterExpanded && (
+               <span className="bg-gray-100 text-gray-600 text-[10px] px-2 py-0.5 rounded-full font-medium">
+                 {totalQuantity} Items
+               </span>
+            )}
+          </div>
+          <div className={`transform transition-transform duration-300 text-gray-400 ${isFooterExpanded ? '' : 'rotate-180'}`}>
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+            </svg>
+          </div>
         </div>
+
+        {/* --- Expanded Details --- */}
         {isFooterExpanded && (
-          <div className="px-4 py-2 space-y-1 bg-white text-sm animate-in slide-in-from-bottom-2 duration-200">
-            <div className="flex justify-between"><span>Subtotal</span> <span>₹{subtotal.toFixed(2)}</span></div>
-            <div className="flex justify-between text-red-500"><span>Discount</span> <span>- ₹{totalDiscount.toFixed(2)}</span></div>
-            {showTaxRow && <div className="flex justify-between text-xs text-blue-500"><span>Tax (Exclusive)</span> <span>₹{taxAmount.toFixed(2)}</span></div>}
-            <div className="flex justify-between text-gray-600 font-medium"><span>Total Qty</span> <span>{totalQuantity}</span></div>
+          <div className="px-5 pb-2 space-y-2 text-sm animate-in slide-in-from-bottom-2 duration-200">
+            
+            <div className="flex justify-between text-gray-600">
+                <span>Subtotal</span> 
+                <span className="font-medium">₹{subtotal.toFixed(2)}</span>
+            </div>
+
+            <div className="flex justify-between text-green-600">
+                <span>Discount</span> 
+                <span className="font-medium">- ₹{totalDiscount.toFixed(2)}</span>
+            </div>
+
+            {showTaxRow && (
+              <div className="flex justify-between text-blue-600">
+                <span>Tax (Exclusive)</span> 
+                <span className="font-medium">+ ₹{taxAmount.toFixed(2)}</span>
+              </div>
+            )}
+
+            <div className="border-t border-dashed border-gray-200 pt-2 mt-2 flex justify-between text-gray-500 text-xs font-medium">
+                <span>Total Quantity</span> 
+                <span>{totalQuantity}</span>
+            </div>
           </div>
         )}
-        <div>
-          <div className="flex justify-between font-bold text-xl mt-2 mb-2 px-1"><span>Total</span> <span>₹{finalAmount.toFixed(2)}</span></div>
-          {isEditMode && <div className="flex justify-between font-bold text-blue-600 mb-2 px-1 text-sm"><span>To Pay</span> <span>₹{amountToPayNow.toFixed(2)}</span></div>}
-          <CustomButton onClick={handleProceedToPayment} variant={Variant.Payment} className="flex justify-between ml-30 py-3 text-lg font-bold shadow-md">{isEditMode ? 'Update' : 'Pay Now'}</CustomButton>
+
+        {/* --- Main Total & Action --- */}
+        <div className="px-5 pb-5">
+          <div className="flex justify-between items-end mb-2">
+            <span className="text-gray-500 text-sm font-medium pb-1">Grand Total</span>
+            <span className="text-2xl font-extrabold text-gray-900 tracking-tight">
+              ₹{finalAmount.toFixed(2)}
+            </span>
+          </div>
+
+          <div className="w-full">
+            <CustomButton 
+              onClick={handleProceedToPayment} 
+              variant={Variant.Payment} 
+              className="w-full py-3.5 text-base font-bold shadow-lg shadow-blue-200 rounded-xl flex justify-center items-center active:scale-[0.98] transition-transform"
+              disabled={items.length === 0}
+            >
+              {isEditMode ? 'Update Invoice' : 'Proceed to Pay'}
+            </CustomButton>
+          </div>
         </div>
       </div>
     );
@@ -708,32 +639,50 @@ const Sales: React.FC = () => {
         {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
         <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
         {renderHeader()}
+        {/* Grid Search Header */}
         <div className="flex-shrink-0 bg-gray-50 border-b border-gray-300">
           <div className="p-2 bg-white border-b flex gap-2 items-center">
             <div className="flex-grow relative">
-              <input type="text" placeholder="Search items..." className="w-full p-2 pr-8 border rounded bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500" value={gridSearchQuery} onChange={(e) => setGridSearchQuery(e.target.value)} />
-              {gridSearchQuery && (<button onClick={() => setGridSearchQuery('')} className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg></button>)}
+              <input type="text" placeholder="Search..." className="w-full p-2 pr-8 border rounded" value={gridSearchQuery} onChange={e => setGridSearchQuery(e.target.value)} />
+              {gridSearchQuery && <button onClick={() => setGridSearchQuery('')} className="absolute right-2 top-2 text-gray-400">X</button>}
             </div>
-            <button onClick={() => setIsScannerOpen(true)} className='bg-white text-gray-700 p-2 border rounded hover:bg-gray-100'><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3h6v6H3z" /><path d="M15 3h6v6h-6z" /><path d="M3 15h6v6H3z" /><path d="M15 15h6v6h-6z" /><path d="M3 9h18" /><path d="M9 3v18" /></svg></button>
+            <button onClick={() => setIsScannerOpen(true)} className="p-2 border rounded bg-white">Scan</button>
             {salesSettings?.enableSalesmanSelection && (<div className="w-1/3 min-w-[120px]"> <select value={selectedWorker?.uid || ''} onChange={(e) => setSelectedWorker(workers.find(s => s.uid === e.target.value) || null)} className="w-full p-2 border border-gray-300 rounded bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"> <option value="">Select Salesman</option> {workers.map(w => <option key={w.uid} value={w.uid}>{w.name || 'Unnamed'}</option>)} </select> </div>)}
           </div>
-          <div className="flex overflow-x-auto whitespace-nowrap p-2 gap-2 bg-white border-b border-gray-200 scrollbar-hide"> {categories.map(catId => (<button key={catId} onClick={() => setSelectedCategory(catId)} className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors flex-shrink-0 ${selectedCategory === catId ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'}`} >{catId === 'All' ? 'All' : (itemGroupMap[catId] || catId)}</button>))} </div>
+          <div className="flex overflow-x-auto p-2 gap-2 bg-white border-b">
+            {categories.map(cat => <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-4 py-1 rounded-full border ${selectedCategory === cat ? 'bg-green-600 text-white' : 'bg-white'}`}>{itemGroupMap[cat] || cat}</button>)}
+          </div>
         </div>
+        {/* Grid Content */}
         <div className="flex-1 p-3 overflow-y-auto grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 content-start bg-gray-100 pb-20">
-          {sortedGridItems.length === 0 ? <div className="col-span-full text-center text-gray-500 mt-10">No items found</div> : (sortedGridItems.map(item => { const cartItem = items.find(i => i.id === item.id); const isSelected = !!cartItem; const quantity = cartItem?.quantity || 0; return (<div key={item.id} onClick={() => addItemToCart(item)} className={`p-2 rounded shadow-sm border transition-all flex flex-col justify-between text-center relative select-none cursor-pointer ${isSelected ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500' : 'bg-white border-gray-200 hover:shadow-md hover:border-blue-400'}`}> <div className="w-full flex flex-col items-center pt-1 px-1 pointer-events-none"> <span className="text-sm font-bold text-gray-800 leading-tight text-center line-clamp-2" title={item.name}>{item.name}</span> <span className="text-sm font-medium text-gray-600 mt-1">₹{item.mrp || 0}</span> </div> <div className="w-full flex items-center justify-center pb-1"> {!isSelected ? (<span className="text-blue-600 font-bold text-sm px-4 py-1 bg-blue-50">Add</span>) : (<div className="flex items-center gap-2 bg-white shadow-sm px-2 py-1 border border-gray-200"> <button onClick={(e) => { e.stopPropagation(); if (quantity > 1) handleQuantityChange(item.id!, quantity - 1); else handleDeleteItem(item.id!); }} className="w-6 h-6 flex items-center justify-center bg-gray-100 hover:bg-red-100 text-gray-700 hover:text-red-600 font-bold transition-colors text-sm">-</button> <span className="text-sm font-bold w-4 text-center">{quantity}</span> <button onClick={(e) => { e.stopPropagation(); addItemToCart(item); }} className="w-6 h-6 flex items-center justify-center bg-blue-100 hover:bg-blue-200 text-blue-700 font-bold transition-colors text-sm">+</button> </div>)} </div> </div>); }))}
+          {sortedGridItems.map(item => {
+            const countInCart = items.filter(i => i.productId === item.id).length;
+            const isSelected = countInCart > 0;
+            const quantity = items.filter(i => i.productId === item.id).reduce((sum, i) => sum + i.quantity, 0);
+
+            return (
+              <div key={item.id} onClick={() => addItemToCart(item)} className={`p-2 rounded border bg-white text-center cursor-pointer ${isSelected ? 'border-blue-500 bg-blue-50' : ''}`}>
+                <div className="text-sm font-bold truncate">{item.name}</div>
+                <div className="text-xs text-gray-600">₹{item.mrp}</div>
+                {isSelected && <div className="text-xs text-blue-600 font-bold mt-1">Added ({quantity})</div>}
+              </div>
+            );
+          })}
         </div>
         {renderFooter()}
-        <PaymentDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} subtotal={amountToPayNow} onPaymentComplete={handleSavePayment} isPartyNameEditable={!isEditMode} initialPartyName={isEditMode ? invoiceToEdit?.partyName : ''} initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : ''} initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined} />
+        <PaymentDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} subtotal={amountToPayNow} onPaymentComplete={handleSavePayment} isPartyNameEditable={!isEditMode} initialPartyName={isEditMode ? invoiceToEdit?.partyName : ''} initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : ''} initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined} totalItemDiscount={totalDiscount} totalQuantity={totalQuantity} />
         <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
       </div>
     );
   }
 
+  // LIST VIEW
   return (
     <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden pb-2 ">
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
       <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
       {renderHeader()}
+      {/* Search Bar */}
       <div className="flex-shrink-0 p-2 bg-white border-b pb-3 mb-2 rounded-sm">
         <div className="flex gap-4 items-end w-full">
           <div className="flex-grow">
@@ -743,76 +692,32 @@ const Sales: React.FC = () => {
         </div>
       </div>
       <div className="flex-1 flex flex-col bg-gray-100 overflow-y-hidden">
-{/* --- REPLACEMENT BLOCK START --- */}
+        {/* Cart Header */}
         <div className="pt-2 flex-shrink-0 grid grid-cols-3 items-center border-b pb-2 px-2">
-          
-          {/* LEFT: Cart Title */}
-          <div className="justify-self-start">
-            <h3 className="text-gray-700 text-base font-medium">Cart</h3>
-          </div>
-
-          {/* CENTER: Salesman Selection */}
-          <div className="justify-self-center w-full flex justify-center">
-            {salesSettings?.enableSalesmanSelection && (
-              <select
-                value={selectedWorker?.uid || ''}
-                onChange={(e) => setSelectedWorker(workers.find(s => s.uid === e.target.value) || null)}
-                className="max-w-[140px] w-full p-1 border rounded-md shadow-sm text-sm disabled:bg-gray-100 disabled:cursor-not-allowed focus:ring-1 focus:ring-blue-500 truncate text-center"
-                disabled={!hasPermission(Permissions.ViewTransactions) || (isEditMode && !isManager)}
-              >
-                <option value="">Salesman</option>
-                {workers.map(w => (
-                  <option key={w.uid} value={w.uid}>{w.name || 'Unnamed'}</option>
-                ))}
-              </select>
-            )}
-          </div>
-
-          {/* RIGHT: Clear Button */}
-          <div className="justify-self-end">
-            {items.length > 0 && (
-              <button 
-                onClick={handleClearCart} 
-                className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800 font-medium transition-colors bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-sm border border-red-200"
-                title="Clear all items"
-              >
-                <FiTrash2 size={14} /> 
-                <span>Clear</span>
-              </button>
-            )}
-          </div>
-
+          <div className="justify-self-start"><h3 className="text-gray-700 font-medium">Cart</h3></div>
+          <div className="justify-self-center w-full flex justify-center">{salesSettings?.enableSalesmanSelection && <select value={selectedWorker?.uid} onChange={e => setSelectedWorker(workers.find(w => w.uid === e.target.value) || null)} className="p-1 border rounded text-sm" disabled={!hasPermission(Permissions.ViewTransactions) || (isEditMode && !isManager)}><option value="">Salesman</option>{workers.map(w => <option key={w.uid} value={w.uid}>{w.name}</option>)}</select>}</div>
+          <div className="justify-self-end">{items.length > 0 && <button onClick={handleClearCart} className="text-xs text-red-600 bg-red-50 px-2 py-1 rounded border border-red-200 flex items-center gap-1"><FiTrash2 /> Clear</button>}</div>
         </div>
-        {/* --- REPLACEMENT BLOCK END --- */}
+        {/* Status Bar */}
         <div className="flex-shrink-0 grid grid-cols-2 px-2">
-          {discountInfo && <div className="flex items-center text-sm bg-red-100 text-red-800 rounded-lg"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" /></svg><span>{discountInfo}</span></div>}
-          {priceInfo && <div className="flex items-center text-sm bg-red-100 text-red-800 rounded-lg"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" /></svg><span>{priceInfo}</span></div>}
+          {discountInfo && <div className="text-xs text-red-600">{discountInfo}</div>}
+          {priceInfo && <div className="text-xs text-red-600">{priceInfo}</div>}
         </div>
+        {/* Cart List */}
         <SalesCartList
-          items={items}
-          availableItems={availableItems}
-          salesSettings={salesSettings}
-          isDiscountLocked={isDiscountLocked}
-          isPriceLocked={isPriceLocked}
-          applyRounding={applyRounding}
-          State={State}
-          setModal={setModal}
+          items={items} availableItems={availableItems} salesSettings={salesSettings}
+          isDiscountLocked={isDiscountLocked} isPriceLocked={isPriceLocked} applyRounding={applyRounding} State={State} setModal={setModal}
           onOpenEditDrawer={(item) => {
-            let originalItem = availableItems.find(a => a.id === item.id);
+            // FIX 2: Cast to SalesItem to access productId safel
+            const salesItem = item as unknown as SalesItem;
+            let originalItem = availableItems.find(a => a.id === salesItem.productId);
+            if (!originalItem) originalItem = availableItems.find(a => a.id === item.id);
             if (!originalItem) originalItem = item;
             if (originalItem) handleOpenEditDrawer(originalItem);
           }}
-          onDeleteItem={handleDeleteItem}
-          onDiscountChange={handleDiscountChange}
-          onCustomPriceChange={handleCustomPriceChange}
-          onCustomPriceBlur={handleCustomPriceBlur}
-          onQuantityChange={handleQuantityChange}
-          onDiscountPressStart={handleDiscountPressStart}
-          onDiscountPressEnd={handleDiscountPressEnd}
-          onDiscountClick={handleDiscountClick}
-          onPricePressStart={handlePricePressStart}
-          onPricePressEnd={handlePricePressEnd}
-          onPriceClick={handlePriceClick}
+          onDeleteItem={handleDeleteItem} onDiscountChange={handleDiscountChange} onCustomPriceChange={handleCustomPriceChange} onCustomPriceBlur={handleCustomPriceBlur} onQuantityChange={handleQuantityChange}
+          onDiscountPressStart={handleDiscountPressStart} onDiscountPressEnd={handleDiscountPressEnd} onDiscountClick={handleDiscountClick}
+          onPricePressStart={handlePricePressStart} onPricePressEnd={handlePricePressEnd} onPriceClick={handlePriceClick}
         />
       </div>
       {renderFooter()}

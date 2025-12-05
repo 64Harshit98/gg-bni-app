@@ -31,7 +31,7 @@ interface SaleRecord {
 interface ChartData {
   date: string;
   sales: number;
-  bills: number; // To store the count of bills
+  bills: number;
 }
 
 // --- Chart Configuration ---
@@ -70,23 +70,30 @@ export function SalesBarChartReport({
       setIsLoading(true);
       setError(null);
 
-      const start = new Date(filters.startDate);
+      // --- MODIFIED SECTION START ---
+      // We use 'let' for start because we might modify it
+      let start = new Date(filters.startDate);
       start.setHours(0, 0, 0, 0);
+
       const end = new Date(filters.endDate);
       end.setHours(23, 59, 59, 999);
 
+      // Check if start and end are the same day (Single day selection like Today or Yesterday)
+      if (start.toDateString() === end.toDateString()) {
+        // Subtract one day from start to ensure we have at least 2 points for a line
+        start.setDate(start.getDate() - 1);
+      }
+      // --- MODIFIED SECTION END ---
+
       try {
-        // --- FIX: Use the correct multi-tenant path ---
         const salesQuery = query(
           collection(db, 'companies', currentUser.companyId, 'sales'),
-          // --- FIX: The 'companyId' where clause is no longer needed ---
           where('createdAt', '>=', Timestamp.fromDate(start)),
           where('createdAt', '<=', Timestamp.fromDate(end)),
           orderBy('createdAt', 'asc'),
         );
         const querySnapshot = await getDocs(salesQuery);
 
-        // This object will now store both sales and bill counts
         const salesByDate: { [key: string]: { sales: number; bills: number } } =
           {};
 
@@ -122,9 +129,13 @@ export function SalesBarChartReport({
       }
     };
     fetchSalesData();
-  }, [currentUser, filters]); // currentUser dependency is correct
+  }, [currentUser, filters]);
 
   const { totalSales, totalBills } = useMemo(() => {
+    // Note: If you want the "Total Sales" text at the bottom to ONLY show
+    // the selected day (and ignore the extra day we added for the line),
+    // you would need to filter chartData here. 
+    // However, usually showing the total of the visible chart points is preferred.
     return chartData.reduce(
       (acc, data) => {
         acc.totalSales += data.sales;

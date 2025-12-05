@@ -59,7 +59,7 @@ const LoginPage: React.FC = () => {
                     className="absolute inset-0 w-full h-full object-cover"
                 />
                 {/* Sellar Logo (Overlaid) */}
-                <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10">
+                <div className="absolute top-55 left-1/2 -translate-x-1/2 z-10">
                     <img src={sellarLogo} alt="Sellar Logo" className="w-48" />
                 </div>
             </div>

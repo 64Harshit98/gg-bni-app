@@ -1,5 +1,3 @@
-// src/Pages/Journal.tsx
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../lib/Firebase';
@@ -25,6 +23,7 @@ import { Modal, PaymentModal } from '../constants/Modal';
 
 import { generatePdf } from '../UseComponents/pdfGenerator';
 import { getFirestoreOperations } from '../lib/ItemsFirebase';
+import { useSalesSettings } from '../context/SettingsContext';
 
 // --- Data Types ---
 interface InvoiceItem {
@@ -36,6 +35,7 @@ interface InvoiceItem {
   barcode?: string;
   stock?: number;
   gst?: number;
+  taxRate?: number;
   hsnSac?: string;
   unit?: string;
   discount?: number;
@@ -105,6 +105,7 @@ const useJournalData = (companyId?: string) => {
           barcode: item.barcode || '',
           stock: item.stock ?? item.Stock ?? 0,
           gst: item.gst || 0,
+          taxRate: item.taxRate || item.gstPercent || 0,
           hsnSac: item.hsnSac || '',
           unit: item.unit || 'Pcs',
         }));
@@ -124,7 +125,7 @@ const useJournalData = (companyId?: string) => {
           partyName: data.partyName || 'N/A',
           partyNumber: data.partyNumber || '',
           partyAddress: data.partyAddress || '',
-          partyGstin: data.partyGstin || data.partyGstin || '',
+          partyGstin: data.partyGstin || '',
           salesmanId: data.salesmanId || null,
           salesmanName: data.salesmanName || '',
           createdAt,
@@ -182,9 +183,11 @@ const Journal: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
 
+  const { salesSettings } = useSalesSettings();
+
   // --- PDF States ---
   const [pdfGenerating, setPdfGenerating] = useState<string | null>(null);
-  const [invoiceToPrint, setInvoiceToPrint] = useState<Invoice | null>(null); // For Modal
+  const [invoiceToPrint, setInvoiceToPrint] = useState<Invoice | null>(null);
 
   const { currentUser, loading: authLoading } = useAuth();
   const { invoices, loading: dataLoading, error } = useJournalData(currentUser?.companyId);
@@ -220,14 +223,11 @@ const Journal: React.FC = () => {
       })
       .filter((invoice) => {
         const lowerCaseQuery = searchQuery.toLowerCase();
-
-        // Check Invoice Details
         const matchesDetails =
           invoice.invoiceNumber.toLowerCase().includes(lowerCaseQuery) ||
           invoice.partyName.toLowerCase().includes(lowerCaseQuery) ||
           (invoice.partyNumber && invoice.partyNumber.includes(searchQuery));
 
-        // Check Items inside the invoice
         const matchesItems = invoice.items?.some(item =>
           item.name.toLowerCase().includes(lowerCaseQuery)
         );
@@ -272,10 +272,9 @@ const Journal: React.FC = () => {
     setExpandedInvoiceId(prevId => (prevId === invoiceId ? null : invoiceId));
   };
 
-  // --- Handle PDF Action (Download or Print) ---
   const handlePdfAction = async (invoice: Invoice, action: 'download' | 'print') => {
-    setInvoiceToPrint(null); // Close modal
-    setPdfGenerating(invoice.id); // Show spinner
+    setInvoiceToPrint(null);
+    setPdfGenerating(invoice.id);
 
     if (!currentUser?.companyId) {
       setModal({ message: 'User company ID missing.', type: State.ERROR });
@@ -285,8 +284,6 @@ const Journal: React.FC = () => {
 
     try {
       const dbOps = getFirestoreOperations(currentUser.companyId);
-
-      // Fetch Business Info & Master Items
       const [businessInfo, fetchedItems] = await Promise.all([
         dbOps.getBusinessInfo(),
         dbOps.getItems(),
@@ -294,7 +291,8 @@ const Journal: React.FC = () => {
 
       const populatedItems = (invoice.items || []).map((item: any, index: number) => {
         const fullItem = fetchedItems.find((fi: any) => fi.id === item.id);
-        const finalTaxRate = item.taxRate || item.tax || fullItem?.tax || 0;
+        const finalTaxRate = item.taxRate || item.tax || item.gstPercent || fullItem?.tax || 0;
+
         return {
           sno: index + 1,
           name: item.name,
@@ -304,7 +302,7 @@ const Journal: React.FC = () => {
           gstPercent: finalTaxRate,
           hsn: fullItem?.hsnSac || item.hsnSac || "N/A",
           discountAmount: item.discount || 0,
-          amount: (item.mrp * item.quantity)
+          amount: item.finalPrice || (item.mrp * item.quantity)
         };
       });
 
@@ -313,39 +311,31 @@ const Journal: React.FC = () => {
         companyAddress: businessInfo?.address || 'Your Address',
         companyContact: businessInfo?.phoneNumber || 'Your Phone',
         companyEmail: businessInfo?.email || '',
-
         billTo: {
           name: invoice.partyName,
           address: invoice.partyAddress || '',
           phone: invoice.partyNumber || '',
           gstin: invoice.partyGstin || '',
         },
-
         invoice: {
           number: invoice.invoiceNumber,
           date: invoice.createdAt.toLocaleString('en-IN', {
-            day: 'numeric',
-            month: 'short',
-            year: 'numeric',
-            hour: 'numeric',
-            minute: 'numeric',
-            hour12: true
+            day: 'numeric', month: 'short', year: 'numeric',
+            hour: 'numeric', minute: 'numeric', hour12: true
           }),
-          billedBy: invoice.salesmanName || '',
+          billedBy: invoice.salesmanName || 'Admin',
         },
-        bankDetails: {
-          accountName: businessInfo.accountHolderName,
-          accountNumber: businessInfo.accountNumber,
-          bankName: businessInfo.bankName,
-          gstin: businessInfo.gstin,
-        },
-
         items: populatedItems,
         terms: 'Goods once sold will not be taken back.',
         finalAmount: invoice.amount,
+        bankDetails: {
+          accountName: businessInfo?.accountHolderName,
+          accountNumber: businessInfo?.accountNumber,
+          bankName: businessInfo?.bankName,
+          gstin: businessInfo?.gstin
+        }
       };
 
-      // Call the generator with the specific action
       await generatePdf(dataForPdf, action);
 
     } catch (err) {
@@ -454,7 +444,6 @@ const Journal: React.FC = () => {
     });
   };
 
-  // --- UPDATED RENDER CONTENT TO SHOW PAYMENT METHOD ---
   const renderContent = () => {
     if (authLoading || dataLoading) return <Spinner />;
     if (error) return <p className="p-8 text-center text-red-500">{error}</p>;
@@ -463,14 +452,9 @@ const Journal: React.FC = () => {
       return filteredInvoices.map((invoice) => {
         const isExpanded = expandedInvoiceId === invoice.id;
 
-        // --- Calculate Payment Method String ---
         const paymentMethods = invoice.paymentMethods || {};
         const activeModes = Object.entries(paymentMethods)
-          .filter(([key, value]) => key !== 'due' && Number(value) > 0)
-          .map(([key]) => {
-            if (key.toLowerCase() === 'upi') return 'UPI';
-            return key.charAt(0).toUpperCase() + key.slice(1);
-          });
+          .filter(([key, value]) => key !== 'due' && Number(value) > 0);
 
         return (
           <CustomCard key={invoice.id} onClick={() => handleInvoiceClick(invoice.id)} className="cursor-pointer transition-shadow hover:shadow-md">
@@ -513,21 +497,30 @@ const Journal: React.FC = () => {
                   )) : <p className="text-xs text-slate-400">No item details available.</p>}
                 </div>
 
-                {/* Detailed Breakdown inside Expanded View */}
+                {/* --- CONDITIONAL SALESMAN RENDERING & WRAPPED BUTTONS --- */}
                 {activeModes.length > 0 && (
-                  <div className="flex justify-end mt-3 pt-2 border-t border-slate-100 flex gap-2 text-xs text-slate-500">
-                    <span>Paid via:</span>
-                    {Object.entries(invoice.paymentMethods || {})
-                      .filter(([key, val]) => key !== 'due' && Number(val) > 0)
-                      .map(([key, val]) => (
-                        <span key={key} className="font-medium text-slate-700">
+                  <div className="flex justify-between items-start mt-3 pt-2 border-t border-slate-100 text-xs text-slate-500">
+
+                    {/* Hide Salesman if disabled */}
+                    {salesSettings?.enableSalesmanSelection ? (
+                      <p className="text-left whitespace-nowrap mr-2">
+                        Salesman: {invoice.salesmanName?.slice(0, 15) || 'N/A'}
+                      </p>
+                    ) : <div></div>}
+
+                    <div className="flex flex-wrap justify-end gap-x-2 gap-y-1 text-right">
+                      <span>Paid via:</span>
+                      {activeModes.map(([key, val]) => (
+                        <span key={key} className="font-medium text-slate-700 whitespace-nowrap">
                           {key === 'upi' ? 'UPI' : key.charAt(0).toUpperCase() + key.slice(1)}: {Number(val).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
                         </span>
                       ))}
+                    </div>
                   </div>
                 )}
 
-                <div className="flex justify-end space-x-3 mt-2 pt-4 border-t border-slate-200">
+                {/* --- UPDATED: BUTTON CONTAINER (Fixes Cut Off Issue) --- */}
+                <div className="flex justify-between gap-2 mt-4 pt-4 border-t border-slate-200">
                   {invoice.status === 'Unpaid' && (<button onClick={(e) => { e.stopPropagation(); openPaymentModal(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-emerald-500 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors">Settle</button>)}
                   {invoice.status === 'Paid' && (<button onClick={(e) => { e.stopPropagation(); promptDeleteInvoice(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors">Delete</button>)}
                   <button onClick={(e) => { e.stopPropagation(); handleEditInvoice(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-gray-400 rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors">Edit</button>
@@ -535,7 +528,6 @@ const Journal: React.FC = () => {
                   {invoice.type === 'Credit' && (
                     <>
                       <button onClick={(e) => { e.stopPropagation(); handleSalesReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-sky-500 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">Return</button>
-                      {/* OPEN PRINT MODAL */}
                       <button
                         onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }}
                         disabled={pdfGenerating === invoice.id}
@@ -549,7 +541,7 @@ const Journal: React.FC = () => {
                   {invoice.type === 'Debit' && (
                     <>
                       <button onClick={(e) => { e.stopPropagation(); handlePurchaseReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-sky-500 rounded-lg hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-colors">Return</button>
-                      <button onClick={(e) => { e.stopPropagation(); handlePrintQr(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-black rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center">Print</button>
+                      <button onClick={(e) => { e.stopPropagation(); handlePrintQr(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-black rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center gap-2">Print</button>
                     </>
                   )}
                 </div>
@@ -571,6 +563,7 @@ const Journal: React.FC = () => {
       {invoiceToPrint && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setInvoiceToPrint(null)}>
           <div className="bg-white rounded-lg p-6 w-full max-w-sm mx-4 shadow-xl animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+            {/* ... Modal Content (Same as before) ... */}
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-gray-800">Select Action</h3>
               <button onClick={() => setInvoiceToPrint(null)} className="text-gray-500 hover:text-gray-700">
@@ -579,20 +572,8 @@ const Journal: React.FC = () => {
             </div>
             <p className="text-gray-600 mb-6">Do you want to download the PDF file or open the print dialog?</p>
             <div className="flex flex-col gap-3">
-              <button
-                onClick={() => handlePdfAction(invoiceToPrint, 'download')}
-                className="w-full bg-blue-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                Download PDF
-              </button>
-              <button
-                onClick={() => handlePdfAction(invoiceToPrint, 'print')}
-                className="w-full bg-white text-gray-700 border border-gray-300 py-2.5 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
-                Print Directly
-              </button>
+              <button onClick={() => handlePdfAction(invoiceToPrint, 'download')} className="w-full bg-blue-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Download PDF</button>
+              <button onClick={() => handlePdfAction(invoiceToPrint, 'print')} className="w-full bg-white text-gray-700 border border-gray-300 py-2.5 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg> Print Directly</button>
             </div>
           </div>
         </div>
@@ -601,27 +582,10 @@ const Journal: React.FC = () => {
       <div className="flex items-center justify-between p-4 px-6">
         <div className="flex flex-1 items-center">
           <button onClick={() => setShowSearch(!showSearch)} className="text-slate-500 hover:text-slate-800 transition-colors mr-4">
-            {showSearch ? (
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-            ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>
-            )}
+            {showSearch ? (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>) : (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>)}
           </button>
           <div className="flex-1">
-            {!showSearch ? (
-              <div>
-                <h1 className="text-4xl font-light text-slate-800">Transactions</h1>
-                <p className='text-center justify-center text-lg font-light text-slate-600'>{selectedPeriodText}</p>
-              </div>
-            ) : (
-              <input
-                type="text"
-                placeholder="Search by Invoice, Party, Phone, or Item..."
-                className="w-full text-xl font-light p-1 border-b-2 border-slate-300 focus:border-slate-800 outline-none transition-colors"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                autoFocus
-              />)}
+            {!showSearch ? (<div> <h1 className="text-4xl font-light text-slate-800">Transactions</h1> <p className='text-center justify-center text-lg font-light text-slate-600'>{selectedPeriodText}</p> </div>) : (<input type="text" placeholder="Search by Invoice, Name, or Phone..." className="w-full text-xl font-light p-1 border-b-2 border-slate-300 focus:border-slate-800 outline-none transition-colors" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} autoFocus />)}
           </div>
         </div>
 
@@ -632,11 +596,7 @@ const Journal: React.FC = () => {
           {isFilterOpen && (
             <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10 border">
               <ul className="py-1">
-                {dateFilters.map((filter) => (
-                  <li key={filter.value}>
-                    <button onClick={() => handleDateFilterSelect(filter.value)} className={`w-full text-left px-4 py-2 text-sm ${activeDateFilter === filter.value ? 'bg-slate-100 text-slate-900' : 'text-slate-700'} hover:bg-slate-50`}>{filter.label}</button>
-                  </li>
-                ))}
+                {dateFilters.map((filter) => (<li key={filter.value}> <button onClick={() => handleDateFilterSelect(filter.value)} className={`w-full text-left px-4 py-2 text-sm ${activeDateFilter === filter.value ? 'bg-slate-100 text-slate-900' : 'text-slate-700'} hover:bg-slate-50`}>{filter.label}</button> </li>))}
               </ul>
             </div>
           )}
@@ -651,7 +611,8 @@ const Journal: React.FC = () => {
         <CustomToggleItem className="mr-2" onClick={() => setActiveTab('Paid')} data-state={activeTab === 'Paid' ? 'on' : 'off'}>Paid</CustomToggleItem>
         <CustomToggleItem onClick={() => setActiveTab('Unpaid')} data-state={activeTab === 'Unpaid' ? 'on' : 'off'}>Unpaid</CustomToggleItem>
       </CustomToggle>
-      <div className="flex-grow overflow-y-auto bg-slate-100 space-y-3 pt-4">
+      {/* --- UPDATED: ADDED PB-24 TO FIX CUT OFF --- */}
+      <div className="flex-grow overflow-y-auto bg-slate-100 space-y-3 pt-4 pb-24">
         {renderContent()}
       </div>
     </div >

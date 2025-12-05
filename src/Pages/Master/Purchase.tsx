@@ -625,7 +625,6 @@ const PurchasePage: React.FC = () => {
   };
 
   const showSuccessModal = (message: string, navigateTo?: string) => {
-    // --- CHANGED: Clear Draft from Local Storage ---
     localStorage.removeItem('purchase_cart_draft');
 
     setIsDrawerOpen(false);
@@ -746,7 +745,6 @@ const PurchasePage: React.FC = () => {
     </div>
   );
 
-  // ... (renderFooter remains the same, ensure totalQuantity is displayed)
   const renderFooter = () => {
     return (
       <div className="flex-shrink-0 p-2 bg-white border-t shadow-[0_-4px_10px_rgba(0,0,0,0.1)] mb-2">
@@ -788,9 +786,9 @@ const PurchasePage: React.FC = () => {
           <div className="flex justify-between font-bold text-xl mt-2 mb-2 px-1">
             <span>Total</span> <span>₹{finalAmount.toFixed(2)}</span>
           </div>
-          <div className="">
-            <CustomButton onClick={handleProceedToPayment} variant={Variant.Payment} className="flex justify-between py-3 text-lg font-bold shadow-md ml-16" disabled={items.length === 0}>
-              {editModeData ? 'Update Purchase' : 'Proceed to Payment'}
+          <div className="flex justify-center w-40 mx-auto mt-4">
+            <CustomButton onClick={handleProceedToPayment} variant={Variant.Payment} className="flex justify-center text-lg font-bold shadow-md w-full" disabled={items.length === 0}>
+              {editModeData ? 'Update' : 'Pay Now'}
             </CustomButton>
           </div>
         </div>

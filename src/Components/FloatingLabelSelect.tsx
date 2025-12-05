@@ -31,7 +31,7 @@ export const FloatingLabelSelect = React.forwardRef<
         value={value}
         className={cn(
           // Base styles from FloatingLabelInput
-          'peer h-14 w-full text-base bg-transparent rounded-sm border border-gray-500 focus:outline-none focus:border-gray-200',
+          'peer h-14 w-full text-base bg-transparent rounded-sm border border-gray-500 focus:outline-none focus:border-2 border-gray-500',
           // Padding adjusts for icon
           icon ? 'pl-10 pr-3' : 'px-3',
           className,
@@ -55,7 +55,7 @@ export const FloatingLabelSelect = React.forwardRef<
         className={cn(
           'absolute pointer-events-none bg-gray-100 px-1 transition-all',
           // Adjust label position based on icon
-          icon ? 'left-9' : 'left-3',
+          icon ? 'left-3' : 'left-3',
 
           // --- Logic to mimic peer-placeholder-shown ---
           // If it has a value, it's floated.

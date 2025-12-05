@@ -12,6 +12,7 @@ import { ReusableDropdown, type Option } from '../../Components/Dropdown';
 const roleOptions: Option<ROLES>[] = [
   { value: ROLES.SALESMAN, label: 'Salesman' },
   { value: ROLES.MANAGER, label: 'Manager' },
+  { value: ROLES.OWNER, label: 'Owner' }
 ];
 const UserAdd: React.FC = () => {
   const navigate = useNavigate();

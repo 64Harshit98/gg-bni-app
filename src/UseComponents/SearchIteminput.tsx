@@ -167,7 +167,7 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
                     onFocus={() => setIsDropdownOpen(true)}
                     onKeyDown={handleKeyDown}
                     placeholder={placeholder}
-                    className={`w-full pl-10 pr-10 py-3 bg-white border border-gray-300 rounded-lg shadow-sm 
+                    className={`w-full pl-10 pr-10 py-3 bg-white border border-gray-300 rounded-sm shadow-sm 
                                focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all 
                                text-gray-800 placeholder-gray-400 font-medium
                                ${error ? 'border-red-500 focus:border-red-500 focus:ring-red-100' : ''}`}

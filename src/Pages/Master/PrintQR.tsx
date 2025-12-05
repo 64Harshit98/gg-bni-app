@@ -9,14 +9,17 @@ import { Variant } from '../../enums';
 import { Input } from '../../Components/ui/input';
 import QRCodeLib from 'qrcode';
 import JsBarcode from 'jsbarcode';
-// --- 1. Import your custom component ---
-import SearchableItemInput from '../../UseComponents/SearchIteminput'; // Adjust path if necessary (e.g. ../../Components/SearchableItemInput)
+import SearchableItemInput from '../../UseComponents/SearchIteminput';
 
-// Helper types
-type PrintableItem = Item & { quantityToPrint: number };
+// --- Data Types ---
+type PrintableItem = Item & { 
+    quantityToPrint: number; 
+    queueId: string; // Unique ID for the UI list
+};
+
 type PrefilledItem = { id: string, quantity: number, name: string };
 
-// --- Preview Component (Kept exactly the same) ---
+// --- Preview Component ---
 const LabelPreview: React.FC<{ item: Item, companyName: string }> = ({ item, companyName }) => {
     const [qrDataUrl, setQrDataUrl] = useState('');
     const [barcodeDataUrl, setBarcodeDataUrl] = useState('');
@@ -60,7 +63,6 @@ const LabelPreview: React.FC<{ item: Item, companyName: string }> = ({ item, com
 const QRCodeGeneratorPage: React.FC = () => {
     const { currentUser } = useAuth();
     const [allItems, setAllItems] = useState<Item[]>([]);
-    // Removed searchTerm state (handled inside SearchableItemInput)
     const [printQueue, setPrintQueue] = useState<PrintableItem[]>([]);
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [isPrinting, setIsPrinting] = useState(false);
@@ -110,13 +112,19 @@ const QRCodeGeneratorPage: React.FC = () => {
         const prefilledItems = location.state?.prefilledItems as PrefilledItem[] | undefined;
         if (prefilledItems && allItems.length > 0 && !hasPrefilled.current) {
             const allItemsMap = new Map(allItems.map(item => [item.id, item]));
+            
             const itemsToPrint = prefilledItems.map((pItem: PrefilledItem) => {
                 const fullItem = allItemsMap.get(pItem.id);
                 if (fullItem) {
-                    return { ...fullItem, quantityToPrint: pItem.quantity };
+                    return { 
+                        ...fullItem, 
+                        quantityToPrint: pItem.quantity,
+                        queueId: crypto.randomUUID() as string // Explicit cast to fix Type Error
+                    };
                 }
                 return null;
-            }).filter((item): item is PrintableItem => item !== null);
+            }).filter((item) => item !== null) as PrintableItem[]; // FIX: Cast result array
+
             setPrintQueue(itemsToPrint);
             if (itemsToPrint.length > 0) {
                 setItemForPreview(itemsToPrint[0]);
@@ -125,7 +133,6 @@ const QRCodeGeneratorPage: React.FC = () => {
         }
     }, [location.state, allItems]);
 
-    // Effect to update preview item
     useEffect(() => {
         if (!itemForPreview && printQueue.length > 0) {
             setItemForPreview(printQueue[0]);
@@ -134,7 +141,6 @@ const QRCodeGeneratorPage: React.FC = () => {
         }
     }, [printQueue, itemForPreview]);
 
-    // --- 2. Calculate items available for search (Exclude items already in queue) ---
     const availableItemsForSearch = useMemo(() => {
         const itemIdsInQueue = new Set(printQueue.map(item => item.id));
         return allItems.filter(item => !itemIdsInQueue.has(item.id));
@@ -143,20 +149,25 @@ const QRCodeGeneratorPage: React.FC = () => {
     // --- Queue Management Handlers ---
 
     const handleAddItemToQueue = useCallback((item: Item) => {
-        // Double check to prevent duplicates (though filtering above helps)
+        // Prevent duplicates based on DB ID if desired, or allow multiple rows
         if (printQueue.some(queuedItem => queuedItem.id === item.id)) return;
 
-        setPrintQueue(prev => [...prev, { ...item, quantityToPrint: 1 }]);
-        // No need to manually clear search term or focus ref, component handles it
+        const newItem: PrintableItem = { 
+            ...item, 
+            quantityToPrint: 1,
+            queueId: crypto.randomUUID() as string
+        };
+
+        setPrintQueue(prev => [...prev, newItem]);
     }, [printQueue]);
 
-    const handleRemoveItemFromQueue = useCallback((itemId: string) => {
-        setPrintQueue(prev => prev.filter(item => item.id !== itemId));
+    const handleRemoveItemFromQueue = useCallback((queueId: string) => {
+        setPrintQueue(prev => prev.filter(item => item.queueId !== queueId));
     }, []);
 
-    const handleQuantityChange = useCallback((itemId: string, quantity: number) => {
+    const handleQuantityChange = useCallback((queueId: string, quantity: number) => {
         setPrintQueue(prev => prev.map(item =>
-            item.id === itemId ? { ...item, quantityToPrint: Math.max(1, quantity) } : item
+            item.queueId === queueId ? { ...item, quantityToPrint: Math.max(1, quantity) } : item
         ));
     }, []);
 
@@ -256,12 +267,11 @@ const QRCodeGeneratorPage: React.FC = () => {
         return (
             <div className="flex flex-col gap-4">
                 <div className="relative">
-                    {/* --- 3. Replaced Manual Input with SearchableItemInput --- */}
                     <SearchableItemInput
-                        label="" // No label needed here based on previous design
+                        label=""
                         placeholder="Search to add items to the print list..."
-                        items={availableItemsForSearch} // Pass filtered list
-                        onItemSelected={handleAddItemToQueue} // Pass handler
+                        items={availableItemsForSearch}
+                        onItemSelected={handleAddItemToQueue}
                     />
                 </div>
 
@@ -292,13 +302,13 @@ const QRCodeGeneratorPage: React.FC = () => {
 
                         {printQueue.map((item) => (
                             <div
-                                key={item.id}
+                                key={item.queueId}
                                 onClick={() => setItemForPreview(item)}
-                                className={`p-3 border rounded-lg bg-white shadow-sm flex flex-col gap-3 cursor-pointer transition-all ${itemForPreview?.id === item.id ? 'border-blue-500 ring-2 ring-blue-500' : 'border-gray-200'}`}
+                                className={`p-3 border rounded-lg bg-white shadow-sm flex flex-col gap-3 cursor-pointer transition-all ${itemForPreview?.queueId === item.queueId ? 'border-blue-500 ring-2 ring-blue-500' : 'border-gray-200'}`}
                             >
                                 <div className="flex justify-between items-start">
                                     <div className="flex flex-col text-sm text-gray-800 overflow-hidden pr-2"><span className="font-semibold text-base">{item.name}</span></div>
-                                    <button onClick={(e) => { e.stopPropagation(); handleRemoveItemFromQueue(item.id!); }} className="text-gray-400 hover:text-red-600 p-1 flex-shrink-0" aria-label={`Remove ${item.name}`}>
+                                    <button onClick={(e) => { e.stopPropagation(); handleRemoveItemFromQueue(item.queueId); }} className="text-gray-400 hover:text-red-600 p-1 flex-shrink-0" aria-label={`Remove ${item.name}`}>
                                         <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                                     </button>
                                 </div>
@@ -307,9 +317,9 @@ const QRCodeGeneratorPage: React.FC = () => {
                                     <div className="flex items-center gap-2">
                                         <span className="text-sm text-gray-500">Qty</span>
                                         <div className="flex items-center border border-gray-300 rounded-md">
-                                            <button onClick={(e) => { e.stopPropagation(); handleQuantityChange(item.id!, item.quantityToPrint - 1); }} className="px-3 py-1 text-xl font-bold text-gray-600 hover:bg-gray-100 rounded-l-md">-</button>
-                                            <Input type="number" value={item.quantityToPrint} onClick={(e) => e.stopPropagation()} onChange={(e) => { e.stopPropagation(); handleQuantityChange(item.id!, Number(e.target.value)); }} className="w-16 h-8 text-center border-l border-r rounded-none p-0 focus:ring-0" />
-                                            <button onClick={(e) => { e.stopPropagation(); handleQuantityChange(item.id!, item.quantityToPrint + 1); }} className="px-3 py-1 text-xl font-bold text-gray-600 hover:bg-gray-100 rounded-r-md">+</button>
+                                            <button onClick={(e) => { e.stopPropagation(); handleQuantityChange(item.queueId, item.quantityToPrint - 1); }} className="px-3 py-1 text-xl font-bold text-gray-600 hover:bg-gray-100 rounded-l-md">-</button>
+                                            <Input type="number" value={item.quantityToPrint} onClick={(e) => e.stopPropagation()} onChange={(e) => { e.stopPropagation(); handleQuantityChange(item.queueId, Number(e.target.value)); }} className="w-16 h-8 text-center border-l border-r rounded-none p-0 focus:ring-0" />
+                                            <button onClick={(e) => { e.stopPropagation(); handleQuantityChange(item.queueId, item.quantityToPrint + 1); }} className="px-3 py-1 text-xl font-bold text-gray-600 hover:bg-gray-100 rounded-r-md">+</button>
                                         </div>
                                     </div>
                                 </div>

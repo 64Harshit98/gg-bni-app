@@ -6,15 +6,10 @@ import type { Item, ItemGroup } from '../../constants/models';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Spinner } from '../../constants/Spinner';
+import { CustomCard } from '../../Components/CustomCard';
+import { CardVariant } from '../../enums';
 
 const UNASSIGNED_GROUP_NAME = 'Uncategorized';
-
-const SummaryCard: React.FC<{ title: string; value: string }> = ({ title, value }) => (
-  <div className="bg-white p-4 rounded-lg shadow-md text-center">
-    <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">{title}</h3>
-    <p className="text-2xl font-bold text-gray-900 mt-1">{value}</p>
-  </div>
-);
 
 const FilterSelect: React.FC<{
   label: string;
@@ -238,12 +233,12 @@ const ItemReport: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-2">
-        <SummaryCard title="Total Items" value={Math.round(summary.totalItems).toString()} />
-        <SummaryCard title="Average MRP" value={`₹${Math.round(summary.averageMrp).toFixed(0)}`} />
-        <SummaryCard title="Avg. Cost Price" value={`₹${Math.round(summary.averagePurchasePrice).toFixed(0)}`} />
-        <SummaryCard title="Avg. Sale Price" value={`₹${Math.round(summary.averageSalePrice).toFixed(0)}`} />
-        <SummaryCard title="Avg. Margin" value={`₹${Math.round(summary.averageProfitMargin).toFixed(0)}`} />
-        <SummaryCard title="Avg. Margin %" value={`${Math.round(summary.averageMarginPercentage).toFixed(0)} %`} />
+        <CustomCard variant={CardVariant.Summary} title="Total Items" value={Math.round(summary.totalItems).toString()} />
+        <CustomCard variant={CardVariant.Summary} title="Average MRP" value={`₹${Math.round(summary.averageMrp).toFixed(0)}`} />
+        <CustomCard variant={CardVariant.Summary} title="Avg. Cost Price" value={`₹${Math.round(summary.averagePurchasePrice).toFixed(0)}`} />
+        <CustomCard variant={CardVariant.Summary} title="Avg. Sale Price" value={`₹${Math.round(summary.averageSalePrice).toFixed(0)}`} />
+        <CustomCard variant={CardVariant.Summary} title="Avg. Margin" value={`₹${Math.round(summary.averageProfitMargin).toFixed(0)}`} />
+        <CustomCard variant={CardVariant.Summary} title="Avg. Margin %" value={`${Math.round(summary.averageMarginPercentage).toFixed(0)} %`} />
       </div>
 
       <div className="bg-white p-4 rounded-lg flex justify-between items-center">

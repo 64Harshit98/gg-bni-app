@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { ACTION } from '../enums';
 
 // --- Interface ---
 export interface InvoiceData {
@@ -17,6 +18,7 @@ export interface InvoiceData {
     number: string;
     date: string;
     billedBy: string;
+    roNumber?: string;
   };
   items: {
     sno: number;
@@ -43,7 +45,7 @@ export interface InvoiceData {
   };
 }
 
-export const generatePdf = async (data: InvoiceData, action: 'download' | 'print' = 'download') => {
+export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | ACTION.PRINT | ACTION.BLOB = ACTION.DOWNLOAD): Promise<Blob | void> => {
   const doc = new jsPDF('p', 'mm', 'a5');
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -66,7 +68,7 @@ export const generatePdf = async (data: InvoiceData, action: 'download' | 'print
   // --- 2. INFO SECTION ---
   const startY = 40;
   const leftColX = margin;
-  const leftValueX = margin + 14; // Adjusted spacing for labels
+  const leftValueX = margin + 14;
   const rightColLabelX = 85;
   const rightColValueX = pageWidth - margin;
 
@@ -80,7 +82,7 @@ export const generatePdf = async (data: InvoiceData, action: 'download' | 'print
 
   cursorY += 6;
 
-  // Row 1: Name & Invoice No
+  // Row 1
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(lightText);
@@ -100,7 +102,7 @@ export const generatePdf = async (data: InvoiceData, action: 'download' | 'print
   const nameHeight = (nameLines.length - 1) * 4;
   cursorY += 5 + nameHeight;
 
-  // Row 2: Address & Date
+  // Row 2
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(lightText);
   doc.text("Address:", leftColX, cursorY);
@@ -117,50 +119,68 @@ export const generatePdf = async (data: InvoiceData, action: 'download' | 'print
   const addressHeight = addressLines.length * 4;
   const row3Y = cursorY + 5;
 
-  // Billed By (Right Side)
+  // Billed By
   doc.setTextColor(lightText);
   doc.text("Billed By:", rightColLabelX, row3Y);
   doc.setTextColor(textColor);
   doc.text(data.invoice.billedBy, rightColValueX, row3Y, { align: 'right' });
 
-  // --- Left Side Details (Phone & GSTIN) ---
+  // Left Side Details
   let leftContentY = cursorY + addressHeight + 1;
+  
+  if (data.billTo.phone) {
+    doc.setTextColor(lightText);
+    doc.text("Phone:", leftColX, leftContentY);
+    doc.setTextColor(textColor);
+    doc.text(`+91-${data.billTo.phone}`, leftValueX, leftContentY);
+    leftContentY += 5;
+  }
 
-  // Phone
-  data.billTo.phone
-  doc.setTextColor(lightText);
-  doc.text("Phone:", leftColX, leftContentY);
-  doc.setTextColor(textColor);
-  doc.text(`+91-${data.billTo.phone}`, leftValueX, leftContentY);
-  leftContentY += 5;
+  if (data.billTo.gstin) {
+    doc.setTextColor(lightText);
+    doc.text("GSTIN:", leftColX, leftContentY);
+    doc.setTextColor(textColor);
+    doc.text(data.billTo.gstin, leftValueX, leftContentY);
+    leftContentY += 5;
+  } else {
+    doc.setTextColor(lightText);
+    doc.text("GSTIN:", leftColX, leftContentY);
+    leftContentY += 5;
+  }
 
+  let headerBottomY = Math.max(leftContentY, row3Y + 5);
 
-  // Customer GSTIN
-  data.billTo.gstin
-  doc.setTextColor(lightText);
-  doc.text("GSTIN: ", leftColX, leftContentY);
-  doc.setTextColor(textColor);
-  doc.setFont('helvetica', 'normal'); // Bold GSTIN for visibility
-  doc.text(data.billTo.gstin, leftValueX, leftContentY);
-  doc.setFont('helvetica', 'normal'); // Reset font
-  leftContentY += 5;
+  // RO Number
+  if (data.invoice.roNumber) {
+    headerBottomY += 4;
+    doc.setFontSize(10);
+    doc.setTextColor(textColor);
+    doc.setFont('helvetica', 'bold');
+    const roText = `RO No: ${data.invoice.roNumber}`;
+    doc.text(roText, pageWidth / 2, headerBottomY, { align: 'center' });
+    headerBottomY += 2;
+  }
 
-
-  const tableStartY = Math.max(leftContentY + 2, row3Y + 10);
+  const tableStartY = headerBottomY + 4;
 
   // --- 3. PRODUCT TABLE ---
   let calcTotal = 0;
-  let totalTaxAmount = 0; // Track total tax for footer
+  let totalTaxAmount = 0;
 
   const tableBody: any[] = data.items.map(item => {
     const taxRate = item.gstPercent || item.taxRate || item.tax || 0;
     const qty = item.quantity;
     const inclusivePrice = item.listPrice;
 
-    // Back Calculate Base Price & Tax
     const basePrice = inclusivePrice / (1 + (taxRate / 100));
     const taxVal = (inclusivePrice - basePrice) * qty;
-    const finalItemAmount = item.amount || (inclusivePrice * qty);
+
+    // --- CRITICAL FIX IS HERE ---
+    // We check if 'amount' is strictly NOT undefined/null.
+    // This allows '0' to be passed as a valid value.
+    const finalItemAmount = (item.amount !== undefined && item.amount !== null) 
+        ? item.amount 
+        : (inclusivePrice * qty);
 
     calcTotal += finalItemAmount;
     totalTaxAmount += taxVal;
@@ -173,13 +193,13 @@ export const generatePdf = async (data: InvoiceData, action: 'download' | 'print
       `${taxRate}%`,
       taxVal.toFixed(2),
       inclusivePrice.toFixed(2),
-      finalItemAmount.toFixed(2)
+      finalItemAmount.toFixed(2) // This will now correctly print 0.00
     ];
   });
 
-  const finalTotal = data.finalAmount || calcTotal;
+  const finalTotal = (data.finalAmount !== undefined) ? data.finalAmount : calcTotal;
 
-  // --- ADDING TOTAL TAX ROW ---
+  // Tax Total Row
   tableBody.push([
     {
       content: 'Total Tax Amount',
@@ -192,7 +212,7 @@ export const generatePdf = async (data: InvoiceData, action: 'download' | 'print
     }
   ]);
 
-  // --- ADDING GRAND TOTAL ROW ---
+  // Grand Total Row
   tableBody.push([
     {
       content: 'GRAND TOTAL',
@@ -276,7 +296,6 @@ export const generatePdf = async (data: InvoiceData, action: 'download' | 'print
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(lightText);
   doc.text(data.bankDetails?.bankName || "------------------", col2X + 25, payY);
-  // Business GSTIN
   doc.text(data.bankDetails?.gstin || "----------------", col2X + 25, payY + 5);
 
   const termsY = payY + 15;
@@ -349,10 +368,13 @@ export const generatePdf = async (data: InvoiceData, action: 'download' | 'print
   doc.setTextColor(255, 255, 255);
   doc.text(text3, cursorX, textY);
 
-  if (action === 'print') {
+  // --- ACTION HANDLER ---
+  if (action === ACTION.PRINT) {
     doc.autoPrint();
     window.open(doc.output('bloburl'), '_blank');
-  } else {
+  } else if (action === ACTION.DOWNLOAD) {
     doc.save(`Invoice_${data.invoice.number}.pdf`);
+  } else if (action === ACTION.BLOB) {
+    return doc.output('blob');
   }
 };

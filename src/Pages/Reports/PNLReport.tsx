@@ -10,6 +10,8 @@ import {
 } from 'firebase/firestore';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { CustomCard } from '../../Components/CustomCard';
+import { CardVariant } from '../../enums';
 
 // --- Data Types ---
 interface Transaction {
@@ -43,15 +45,6 @@ const formatDate = (date: Date): string => {
     year: '2-digit',
   });
 };
-
-
-const SummaryCard: React.FC<{ title: string; value: string; valueClassName?: string }> =
-  ({ title, value, valueClassName = 'text-gray-900' }) => (
-    <div className="bg-white p-4 rounded-lg shadow-md text-center">
-      <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">{title}</h3>
-      <p className={`text-3xl font-bold mt-2 ${valueClassName}`}>{value}</p>
-    </div>
-  );
 
 const FilterSelect: React.FC<{
   label?: string;
@@ -399,25 +392,25 @@ const PnlReportPage: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-2 gap-2">
-        <SummaryCard
+        <CustomCard variant={CardVariant.Summary}
           title="Total Sales"
           value={`₹${pnlSummary.totalRevenue.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
-          valueClassName="text-blue-600"
+          valueClassName="text-blue-600 text-3xl"
         />
-        <SummaryCard
+        <CustomCard variant={CardVariant.Summary}
           title="Total Cost"
           value={`₹${pnlSummary.totalCost.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
-          valueClassName="text-red-600"
+          valueClassName="text-red-600 text-3xl"
         />
-        <SummaryCard
+        <CustomCard variant={CardVariant.Summary}
           title="Profit / Loss"
           value={`₹${pnlSummary.grossProfit.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
-          valueClassName={pnlSummary.grossProfit >= 0 ? "text-green-600" : "text-red-600"}
+          valueClassName={pnlSummary.grossProfit >= 0 ? "text-green-600 text-3xl" : "text-red-600 text-3xl"}
         />
-        <SummaryCard
+        <CustomCard variant={CardVariant.Summary}
           title="Gross Profit %"
           value={`${Math.round(pnlSummary.grossProfitPercentage).toFixed(0)}%`}
-          valueClassName={pnlSummary.grossProfit >= 0 ? "text-green-600" : "text-red-600"}
+          valueClassName={pnlSummary.grossProfit >= 0 ? "text-green-600 text-3xl" : "text-red-600 text-3xl"}
         />
       </div>
 

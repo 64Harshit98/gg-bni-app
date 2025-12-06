@@ -11,6 +11,8 @@ import {
 import { useAuth } from '../../context/auth-context';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { CustomCard } from '../../Components/CustomCard';
+import { CardVariant } from '../../enums';
 
 // --- Data Types ---
 interface PurchaseItem {
@@ -45,15 +47,6 @@ const formatDate = (timestamp: number): string => {
 const formatDateForInput = (date: Date): string => {
   return date.toISOString().split('T')[0];
 };
-
-// --- Reusable Components (Unchanged) ---
-const SummaryCard: React.FC<{ title: string; value: string; note?: string }> = ({ title, value, note }) => (
-  <div className="bg-white p-4 rounded-lg shadow-md text-center">
-    <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">{title}</h3>
-    <p className="text-3xl font-bold text-gray-900 mt-2">{value}</p>
-    {note && <p className="text-xs text-gray-400 mt-1">{note}</p>}
-  </div>
-);
 
 const FilterSelect: React.FC<{
   label?: string;
@@ -397,10 +390,10 @@ const PurchaseReport: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-2">
-        <SummaryCard title="Total Cost" value={`₹${Math.round(summary.totalPurchases || 0)}`} />
-        <SummaryCard title="Total Orders" value={summary.totalOrders?.toString() || '0'} />
-        <SummaryCard title="Total Items" value={summary.totalItemsPurchased?.toString() || '0'} />
-        <SummaryCard title="Avg Purchase" value={`₹${Math.round(summary.averagePurchaseValue || 0)}`} />
+        <CustomCard variant={CardVariant.Summary} title="Total Cost" value={`₹${Math.round(summary.totalPurchases || 0)}`} />
+        <CustomCard variant={CardVariant.Summary} title="Total Orders" value={summary.totalOrders?.toString() || '0'} />
+        <CustomCard variant={CardVariant.Summary} title="Total Items" value={summary.totalItemsPurchased?.toString() || '0'} />
+        <CustomCard variant={CardVariant.Summary} title="Avg Purchase" value={`₹${Math.round(summary.averagePurchaseValue || 0)}`} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 mb-2">

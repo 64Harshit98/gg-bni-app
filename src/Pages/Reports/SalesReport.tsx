@@ -11,6 +11,8 @@ import {
 import { useAuth } from '../../context/auth-context';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { CustomCard } from '../../Components/CustomCard';
+import { CardVariant } from '../../enums';
 
 // --- Data Types ---
 interface SalesItem {
@@ -44,15 +46,6 @@ const formatDate = (timestamp: number): string => {
 const formatDateForInput = (date: Date): string => {
   return date.toISOString().split('T')[0];
 };
-
-// --- Reusable Components ---
-const SummaryCard: React.FC<{ title: string; value: string; note?: string }> = ({ title, value, note }) => (
-  <div className="bg-white p-4 rounded-lg shadow-md text-center">
-    <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">{title}</h3>
-    <p className="text-2xl font-bold text-gray-900 mt-2">{value}</p>
-    {note && <p className="text-xs text-gray-400 mt-1">{note}</p>}
-  </div>
-);
 
 const FilterSelect: React.FC<{
   label?: string;
@@ -404,10 +397,10 @@ const SalesReport: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-2 gap-2 mb-2">
-        <SummaryCard title="Total Sales" value={`₹${Math.round(summary.totalSales || 0).toLocaleString('en-IN')}`} />
-        <SummaryCard title="Total Bills" value={summary.totalTransactions?.toString() || '0'} />
-        <SummaryCard title="Items Sold" value={summary.totalItemsSold?.toString() || '0'} />
-        <SummaryCard title="Avg Sale Value" value={`₹${Math.round(summary.averageSaleValue || 0).toLocaleString('en-IN')}`} />
+        <CustomCard variant={CardVariant.Summary} title="Total Sales" value={`₹${Math.round(summary.totalSales || 0).toLocaleString('en-IN')}`} />
+        <CustomCard variant={CardVariant.Summary} title="Total Bills" value={summary.totalTransactions?.toString() || '0'} />
+        <CustomCard variant={CardVariant.Summary} title="Items Sold" value={summary.totalItemsSold?.toString() || '0'} />
+        <CustomCard variant={CardVariant.Summary} title="Avg Sale Value" value={`₹${Math.round(summary.averageSaleValue || 0).toLocaleString('en-IN')}`} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 mb-2">

@@ -14,7 +14,7 @@ import {
 } from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
 import { CustomToggle, CustomToggleItem } from '../Components/CustomToggle';
-import { CustomCard } from '../Components/CustomCard';
+import {CustomCard } from '../Components/CustomCard';
 import { CustomButton } from '../Components/CustomButton';
 import { Variant, State } from '../enums';
 import { Spinner } from '../constants/Spinner';
@@ -293,6 +293,13 @@ const Journal: React.FC = () => {
         const fullItem = fetchedItems.find((fi: any) => fi.id === item.id);
         const finalTaxRate = item.taxRate || item.tax || item.gstPercent || fullItem?.tax || 0;
 
+        // FIX: Check if finalPrice is defined, otherwise calculate.
+        // We use null check (??) so that if it is 0, we keep 0.
+        // If item.finalPrice is missing/undefined, then we calculate.
+        const itemAmount = (item.finalPrice !== undefined && item.finalPrice !== null)
+          ? item.finalPrice
+          : (item.mrp * item.quantity);
+
         return {
           sno: index + 1,
           name: item.name,
@@ -302,7 +309,7 @@ const Journal: React.FC = () => {
           gstPercent: finalTaxRate,
           hsn: fullItem?.hsnSac || item.hsnSac || "N/A",
           discountAmount: item.discount || 0,
-          amount: item.finalPrice || (item.mrp * item.quantity)
+          amount: itemAmount // Use the fixed amount logic
         };
       });
 
@@ -345,7 +352,6 @@ const Journal: React.FC = () => {
       setPdfGenerating(null);
     }
   };
-
   const promptDeleteInvoice = (invoice: Invoice) => {
     setInvoiceToDelete(invoice);
     setModal({ message: "Are you sure you want to delete this invoice? This action cannot be undone and will restore item stock.", type: State.INFO });

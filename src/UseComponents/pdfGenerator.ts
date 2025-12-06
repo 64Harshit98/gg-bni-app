@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { ACTION } from '../enums';
 
 // --- Interface ---
 export interface InvoiceData {
@@ -368,12 +369,12 @@ export const generatePdf = async (data: InvoiceData, action: 'download' | 'print
   doc.text(text3, cursorX, textY);
 
   // --- ACTION HANDLER ---
-  if (action === 'print') {
+  if (action === ACTION.PRINT) {
     doc.autoPrint();
     window.open(doc.output('bloburl'), '_blank');
-  } else if (action === 'download') {
+  } else if (action === ACTION.DOWNLOAD) {
     doc.save(`Invoice_${data.invoice.number}.pdf`);
-  } else if (action === 'blob') {
+  } else if (action === ACTION.BLOB) {
     return doc.output('blob');
   }
 };

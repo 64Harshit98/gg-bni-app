@@ -14,9 +14,9 @@ import {
 } from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
 import { CustomToggle, CustomToggleItem } from '../Components/CustomToggle';
-import {CustomCard } from '../Components/CustomCard';
+import { CustomCard } from '../Components/CustomCard';
 import { CustomButton } from '../Components/CustomButton';
-import { Variant, State } from '../enums';
+import { Variant, State, ACTION } from '../enums';
 import { Spinner } from '../constants/Spinner';
 import { ROUTES } from '../constants/routes.constants';
 import { Modal, PaymentModal } from '../constants/Modal';
@@ -272,7 +272,7 @@ const Journal: React.FC = () => {
     setExpandedInvoiceId(prevId => (prevId === invoiceId ? null : invoiceId));
   };
 
-  const handlePdfAction = async (invoice: Invoice, action: 'download' | 'print') => {
+  const handlePdfAction = async (invoice: Invoice, action: ACTION.DOWNLOAD | ACTION.PRINT) => {
     setInvoiceToPrint(null);
     setPdfGenerating(invoice.id);
 
@@ -569,7 +569,6 @@ const Journal: React.FC = () => {
       {invoiceToPrint && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setInvoiceToPrint(null)}>
           <div className="bg-white rounded-lg p-6 w-full max-w-sm mx-4 shadow-xl animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
-            {/* ... Modal Content (Same as before) ... */}
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-gray-800">Select Action</h3>
               <button onClick={() => setInvoiceToPrint(null)} className="text-gray-500 hover:text-gray-700">
@@ -578,8 +577,8 @@ const Journal: React.FC = () => {
             </div>
             <p className="text-gray-600 mb-6">Do you want to download the PDF file or open the print dialog?</p>
             <div className="flex flex-col gap-3">
-              <button onClick={() => handlePdfAction(invoiceToPrint, 'download')} className="w-full bg-blue-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Download PDF</button>
-              <button onClick={() => handlePdfAction(invoiceToPrint, 'print')} className="w-full bg-white text-gray-700 border border-gray-300 py-2.5 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg> Print Directly</button>
+              <button onClick={() => handlePdfAction(invoiceToPrint, ACTION.DOWNLOAD)} className="w-full bg-blue-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Download PDF</button>
+              <button onClick={() => handlePdfAction(invoiceToPrint, ACTION.PRINT)} className="w-full bg-white text-gray-700 border border-gray-300 py-2.5 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg> Print Directly</button>
             </div>
           </div>
         </div>
@@ -617,7 +616,6 @@ const Journal: React.FC = () => {
         <CustomToggleItem className="mr-2" onClick={() => setActiveTab('Paid')} data-state={activeTab === 'Paid' ? 'on' : 'off'}>Paid</CustomToggleItem>
         <CustomToggleItem onClick={() => setActiveTab('Unpaid')} data-state={activeTab === 'Unpaid' ? 'on' : 'off'}>Unpaid</CustomToggleItem>
       </CustomToggle>
-      {/* --- UPDATED: ADDED PB-24 TO FIX CUT OFF --- */}
       <div className="flex-grow overflow-y-auto bg-slate-100 space-y-3 pt-4 pb-24">
         {renderContent()}
       </div>

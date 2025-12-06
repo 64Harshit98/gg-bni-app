@@ -8,8 +8,7 @@ import { useAuth } from '../../context/auth-context';
 
 type RolePermissionsMap = Record<string, Permissions[]>;
 
-// --- 1. Define Permission Groups ---
-// (This structure will be used to render the groups inside each card)
+// --- CONFIGURATION: 1. Permission Groups for UI ---
 const permissionGroups = {
     dashboard: {
         title: 'Dashboard & General',
@@ -66,7 +65,7 @@ const permissionGroups = {
         permissions: [
             Permissions.ViewTransactions,
             Permissions.CreateUsers,
-            Permissions.ManagePayments,
+            Permissions.PrintQR,
         ],
     },
     Account: {
@@ -77,7 +76,34 @@ const permissionGroups = {
     },
 };
 
-// Function to get all permissions not in the defined groups
+// --- CONFIGURATION: 2. Ignored Permissions for Owner ---
+const IGNORED_OWNER_PERMISSIONS = [
+    Permissions.ViewAttendance,
+];
+
+// --- CONFIGURATION: 3. Default Forced Permissions ---
+const DEFAULT_SALESMAN_PERMISSIONS = [
+    Permissions.ViewAttendance,
+    Permissions.ViewDashboard,
+    Permissions.CreateSales,
+    Permissions.CreateSalesReturn,
+    Permissions.ManageEditProfile
+];
+
+const DEFAULT_MANAGER_PERMISSIONS = [
+    Permissions.ViewDashboard,
+    Permissions.ViewAttendance,
+    Permissions.Viewrestockcard,
+    Permissions.ViewTransactions,
+    Permissions.PrintQR,
+    Permissions.ManageItems,
+    Permissions.ManageItemGroup,
+    Permissions.CreateSales,
+    Permissions.CreateSalesReturn,
+    Permissions.CreatePurchase,
+    Permissions.CreatePurchaseReturn,
+];
+
 const getUngroupedPermissions = (allPermissions: Permissions[]): Permissions[] => {
     const grouped = new Set<Permissions>();
     Object.values(permissionGroups).forEach(group => {
@@ -85,7 +111,6 @@ const getUngroupedPermissions = (allPermissions: Permissions[]): Permissions[] =
     });
     return allPermissions.filter(perm => !grouped.has(perm));
 };
-
 
 const ManagePermissionsPage: React.FC = () => {
     const [rolePermissions, setRolePermissions] = useState<RolePermissionsMap>({});
@@ -96,10 +121,19 @@ const ManagePermissionsPage: React.FC = () => {
     const { currentUser } = useAuth();
 
     const allPermissions = useMemo(() => Object.values(Permissions), []);
-    // --- FIX: Filter out the Owner role from the list ---
-    const APP_ROLES = useMemo(() => Object.values(ROLES).filter(role => role !== ROLES.OWNER), []);
+    
+    // 1. ALL_ROLES: Used for the Background Sync logic (Includes Owner)
+    const ALL_ROLES = useMemo(() => Object.values(ROLES), []);
+
+    // 2. VISIBLE_ROLES: Used for the UI (Excludes Owner)
+    const VISIBLE_ROLES = useMemo(() => ALL_ROLES.filter(r => r !== ROLES.OWNER), [ALL_ROLES]);
+
     const ungroupedPermissions = useMemo(() => getUngroupedPermissions(allPermissions), [allPermissions]);
 
+    // Default to the first visible role (e.g., Manager)
+    const [selectedRole, setSelectedRole] = useState<string>(VISIBLE_ROLES[0] || 'Manager');
+
+    // --- EFFECT: Fetch and Enforce Permissions (Background Sync) ---
     useEffect(() => {
         if (!currentUser?.companyId) {
             setLoading(false);
@@ -112,31 +146,67 @@ const ManagePermissionsPage: React.FC = () => {
                 const permissionsMap: RolePermissionsMap = {};
                 const permissionsCollectionRef = collection(db, 'companies', companyId, 'permissions');
 
-                // Now only fetches for non-owner roles
-                for (const role of APP_ROLES) {
+                // Iterate over ALL roles to ensure Owner is synced in DB, even if hidden in UI
+                for (const role of ALL_ROLES) {
                     const docRef = doc(permissionsCollectionRef, role);
                     const docSnap = await getDoc(docRef);
 
-                    if (docSnap.exists()) {
-                        let permissionsData = docSnap.data().allowedPermissions || [];
-                        if (typeof permissionsData === 'string') {
-                            try {
-                                permissionsData = JSON.parse(permissionsData);
-                                if (!Array.isArray(permissionsData)) permissionsData = [];
-                            } catch (e) {
-                                permissionsData = [];
-                            }
+                    let finalPermissions: Permissions[] = [];
+                    let shouldUpdateDB = false;
+
+                    // 1. OWNER LOGIC (All permissions minus ignored ones)
+                    if (role === ROLES.OWNER) {
+                        finalPermissions = allPermissions.filter(
+                            perm => !IGNORED_OWNER_PERMISSIONS.includes(perm)
+                        );
+                        shouldUpdateDB = true; // Always force sync Owner
+                    }
+
+                    // 2. MANAGER LOGIC (Merge existing + Defaults)
+                    else if (role === ROLES.MANAGER) {
+                        const existing = docSnap.exists() ? (docSnap.data().allowedPermissions || []) : [];
+                        finalPermissions = [...new Set([...existing, ...DEFAULT_MANAGER_PERMISSIONS])];
+                        
+                        if (!docSnap.exists() || finalPermissions.length !== existing.length) {
+                            shouldUpdateDB = true;
                         }
-                        permissionsMap[role] = permissionsData;
-                    } else {
-                        // Create a new (empty) permission document
-                        permissionsMap[role] = [];
+                    }
+
+                    // 3. SALESMAN LOGIC (Merge existing + Defaults)
+                    else if (role === ROLES.SALESMAN) {
+                        const existing = docSnap.exists() ? (docSnap.data().allowedPermissions || []) : [];
+                        finalPermissions = [...new Set([...existing, ...DEFAULT_SALESMAN_PERMISSIONS])];
+
+                        if (!docSnap.exists() || finalPermissions.length !== existing.length) {
+                            shouldUpdateDB = true;
+                        }
+                    }
+
+                    // 4. OTHER ROLES (Standard Fetch)
+                    else {
+                        if (docSnap.exists()) {
+                            let data = docSnap.data().allowedPermissions || [];
+                            if (typeof data === 'string') {
+                                try { data = JSON.parse(data); } catch { data = []; }
+                            }
+                            finalPermissions = Array.isArray(data) ? data : [];
+                        } else {
+                            finalPermissions = [];
+                            shouldUpdateDB = true;
+                        }
+                    }
+
+                    // --- DB SYNC ---
+                    if (shouldUpdateDB) {
                         await setDoc(docRef, {
-                            allowedPermissions: [],
+                            allowedPermissions: finalPermissions,
                             companyId: companyId,
                             role: role
-                        });
+                        }, { merge: true });
                     }
+
+                    // --- LOCAL STATE UPDATE ---
+                    permissionsMap[role] = finalPermissions;
                 }
                 setRolePermissions(permissionsMap);
             } catch (err) {
@@ -148,14 +218,9 @@ const ManagePermissionsPage: React.FC = () => {
         };
 
         fetchAndEnsurePermissions();
-    }, [allPermissions, APP_ROLES, currentUser?.companyId]); // APP_ROLES is stable
+    }, [allPermissions, ALL_ROLES, currentUser?.companyId]);
 
     const handlePermissionChange = (role: string, permission: Permissions, isChecked: boolean) => {
-        // Owner role is already filtered from the UI, but this is a good safety check
-        if (role === ROLES.OWNER) {
-            return;
-        }
-
         setRolePermissions(prev => {
             const currentPermissions = prev[role] || [];
             if (isChecked) {
@@ -173,11 +238,6 @@ const ManagePermissionsPage: React.FC = () => {
     };
 
     const handleSaveChanges = async (role: string) => {
-        if (role === ROLES.OWNER) {
-            setError("Cannot modify owner permissions.");
-            return;
-        }
-
         if (!currentUser?.companyId) {
             setError("Cannot save: User/Company not found.");
             return;
@@ -205,79 +265,107 @@ const ManagePermissionsPage: React.FC = () => {
     }
 
     return (
-        <div className="p-2 bg-gray-50 min-h-screen mb-16">
-            <div className="flex items-center justify-between mb-2">
-                <h1 className="text-2xl md:text-3xl font-bold text-gray-800">Manage Permissions</h1>
+        <div className="bg-gray-100 min-h-screen mb-16">
+            <div className="flex items-center justify-between p-2 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30 mb-4">
                 <button
                     onClick={() => navigate(-1)}
                     className="rounded-full bg-gray-200 p-2 text-gray-700 transition hover:bg-gray-300"
                 >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M18 6 6 18" />
                         <path d="m6 6 12 12" />
                     </svg>
                 </button>
+                <h1 className="text-center text-2xl md:text-3xl font-bold text-gray-800">Manage Permissions</h1>
             </div>
-            {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">{error}</div>}
-            {successMessage && <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">{successMessage}</div>}
 
-            <div className="space-y-8 mt-4">
-                {/* --- FIX: Map over the filtered APP_ROLES --- */}
-                {APP_ROLES.map((role) => (
-                    <div key={role} className="bg-white p-2 rounded-lg shadow-md">
-                        <h2 className="text-2xl font-semibold mb-6 capitalize text-gray-700 border-b pb-4">{role}</h2>
+            {/* --- Role Toggle Switch (Visible Roles Only) --- */}
+            <div className="flex justify-center mb-6">
+                <div className="bg-gray-200 p-1 rounded-lg inline-flex flex-wrap justify-center">
+                    {VISIBLE_ROLES.map((role) => (
+                        <button
+                            key={role}
+                            onClick={() => setSelectedRole(role)}
+                            className={`px-6 py-2 rounded-md text-sm font-medium transition-all capitalize m-0.5 ${selectedRole === role
+                                ? 'bg-white text-sky-500 shadow-sm'
+                                : 'text-gray-600 hover:text-gray-900'
+                                }`}
+                        >
+                            {role}
+                        </button>
+                    ))}
+                </div>
+            </div>
 
-                        {/* --- FIX: Render permission groups *inside* the role card --- */}
-                        <div className="space-y-6">
-                            {Object.values(permissionGroups).map((group, index) => (
-                                <fieldset key={group.title} className={`p-4 border rounded-lg ${index > 0 ? 'pt-1' : ''}`}>
-                                    <legend className="text-lg font-medium text-gray-900 mb-1 ">{group.title}</legend>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-3">
-                                        {group.permissions.map((permission) => (
-                                            <label key={permission} className="flex items-center space-x-3 p-1 rounded hover:bg-gray-50">
-                                                <input
-                                                    type="checkbox"
-                                                    className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                                    checked={rolePermissions[role]?.includes(permission) || false}
-                                                    onChange={(e) => handlePermissionChange(role, permission, e.target.checked)}
-                                                />
-                                                <span className="text-gray-700 truncate">{permission}</span>
-                                            </label>
-                                        ))}
-                                    </div>
-                                </fieldset>
-                            ))}
+            {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4 mx-4">{error}</div>}
+            {successMessage && <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4 mx-4">{successMessage}</div>}
 
-                            {ungroupedPermissions.length > 0 && (
-                                <fieldset className="p-4 border rounded-lg pt-4">
-                                    <legend className="text-lg font-medium text-gray-900 mb-3 px-2">Other</legend>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
-                                        {ungroupedPermissions.map((permission) => (
-                                            <label key={permission} className="flex items-center space-x-3 p-1 rounded hover:bg-gray-50">
-                                                <input
-                                                    type="checkbox"
-                                                    className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                                    checked={rolePermissions[role]?.includes(permission) || false}
-                                                    onChange={(e) => handlePermissionChange(role, permission, e.target.checked)}
-                                                />
-                                                <span className="text-gray-700 truncate">{permission}</span>
-                                            </label>
-                                        ))}
-                                    </div>
-                                </fieldset>
-                            )}
-                        </div>
-
-                        <div className="mt-6 text-right border-t pt-4">
-                            <button
-                                onClick={() => handleSaveChanges(role)}
-                                className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                            >
-                                Save Changes for {role}
-                            </button>
-                        </div>
+            <div className="px-4">
+                <div className="bg-white p-4 rounded-lg shadow-md border border-gray-100">
+                    <div className="flex justify-between items-center border-b pb-4 mb-6">
+                        <h2 className="text-2xl font-semibold capitalize text-gray-800">{selectedRole} Permissions</h2>
+                        <span className="px-3 py-1 text-xs font-semibold tracking-wide text-blue-800 bg-blue-100 rounded-sm">
+                            {rolePermissions[selectedRole]?.length || 0} Active
+                        </span>
                     </div>
-                ))}
+
+                    <div className="space-y-6">
+                        {Object.values(permissionGroups).map((group, index) => (
+                            <fieldset key={group.title} className={`p-4 border border-gray-200 rounded-lg bg-gray-50/50 ${index > 0 ? 'pt-4' : ''}`}>
+                                <legend className="text-md font-bold text-gray-700 px-2 bg-white">
+                                    {group.title}
+                                </legend>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
+                                    {group.permissions.map((permission) => (
+                                        <label key={permission} className="flex items-center space-x-3 p-2 rounded transition hover:bg-white hover:shadow-sm cursor-pointer">
+                                            <div className="relative flex items-center">
+                                                <input
+                                                    type="checkbox"
+                                                    className="peer h-5 w-5 appearance-none rounded border border-gray-300 transition-all checked:border-sky-500 checked:bg-sky-500 hover:shadow-sm"
+                                                    checked={rolePermissions[selectedRole]?.includes(permission) || false}
+                                                    onChange={(e) => handlePermissionChange(selectedRole, permission, e.target.checked)}
+                                                />
+                                                <svg className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white opacity-0 peer-checked:opacity-100" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" width="12" height="12">
+                                                    <polyline points="20 6 9 17 4 12"></polyline>
+                                                </svg>
+                                            </div>
+                                            <span className="text-sm text-gray-600 select-none font-medium">{permission}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </fieldset>
+                        ))}
+
+                        {ungroupedPermissions.length > 0 && (
+                            <fieldset className="p-4 border border-gray-200 rounded-lg bg-gray-50/50">
+                                <legend className="text-md font-bold text-gray-700 px-2 bg-white border border-gray-200 rounded shadow-sm">Other</legend>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+                                    {ungroupedPermissions.map((permission) => (
+                                        <label key={permission} className="flex items-center space-x-3 p-2 rounded transition hover:bg-white hover:shadow-sm cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                className="h-5 w-5 rounded border-gray-300 text-sky-500 focus:ring-sky-500"
+                                                checked={rolePermissions[selectedRole]?.includes(permission) || false}
+                                                onChange={(e) => handlePermissionChange(selectedRole, permission, e.target.checked)}
+                                            />
+                                            <span className="text-sm text-gray-600 font-medium">{permission}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </fieldset>
+                        )}
+                    </div>
+
+                </div>
+            </div>
+
+            <div className="mt-4 text-center border rounded-sm pt-4 sticky bottom-10 bg-white pb-4 mx-4 shadow-lg z-20">
+                <button
+                    onClick={() => handleSaveChanges(selectedRole)}
+                    className="bg-sky-500 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-lg transition-transform active:scale-95"
+                >
+                    Save Changes for {selectedRole}
+                </button>
             </div>
         </div>
     );

@@ -3,5 +3,6 @@ export enum Variant {
     Filled = 'filled',
     Transparent = 'transparent',
     Payment = 'payment',
+    Save='Save',
 
 }

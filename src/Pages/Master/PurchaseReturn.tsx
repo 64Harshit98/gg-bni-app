@@ -9,7 +9,7 @@ import {
   writeBatch,
   increment as firebaseIncrement,
   arrayUnion,
-  serverTimestamp, // <-- Import serverTimestamp
+  serverTimestamp,
 } from 'firebase/firestore';
 import { useAuth, useDatabase } from '../../context/auth-context';
 import { ROUTES } from '../../constants/routes.constants';
@@ -48,11 +48,14 @@ const PurchaseReturnPage: React.FC = () => {
   const dbOperations = useDatabase();
   const { purchaseId } = useParams();
   const { state } = useLocation();
+  const location = useLocation();
+
   const [supplierName, setSupplierName] = useState<string>('');
   const [supplierNumber, setSupplierNumber] = useState<string>('');
   const [modeOfReturn, setModeOfReturn] = useState<string>('Exchange');
   const [newItemsReceived, setNewItemsReceived] = useState<TransactionItem[]>([]);
   const [returnDate, setReturnDate] = useState<string>(new Date().toISOString().split('T')[0]);
+
   const isActive = (path: string) => location.pathname === path;
 
   const [originalPurchaseItems, setOriginalPurchaseItems] = useState<TransactionItem[]>([]);
@@ -74,6 +77,7 @@ const PurchaseReturnPage: React.FC = () => {
     originalPurchaseItems.filter(item => selectedReturnIds.has(item.id)),
     [originalPurchaseItems, selectedReturnIds]
   );
+
   useEffect(() => {
     if (!currentUser || !currentUser.companyId || !dbOperations) {
       setIsLoading(false);
@@ -82,10 +86,8 @@ const PurchaseReturnPage: React.FC = () => {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        // --- FIX: Use multi-tenant path for 'purchases' ---
         const purchasesQuery = query(
           collection(db, 'companies', currentUser.companyId, 'purchases')
-          // No 'where' clause for companyId needed
         );
         const [purchasesSnapshot, allItems] = await Promise.all([
           getDocs(purchasesQuery),
@@ -94,6 +96,7 @@ const PurchaseReturnPage: React.FC = () => {
         const purchases: PurchaseData[] = purchasesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PurchaseData));
         setPurchaseList(purchases);
         setAvailableItems(allItems);
+
         if (state?.invoiceData) {
           handleSelectPurchase(state.invoiceData);
         } else if (purchaseId) {
@@ -104,7 +107,7 @@ const PurchaseReturnPage: React.FC = () => {
         }
       } catch (err) {
         setError('Failed to load initial data.');
-        console.error("Error fetching data:", err); // This is line 106
+        console.error("Error fetching data:", err);
       } finally {
         setIsLoading(false);
       }
@@ -139,7 +142,6 @@ const PurchaseReturnPage: React.FC = () => {
     setOriginalPurchaseItems(purchase.items.map((item: any) => {
       const itemData = item.data || item;
       const quantity = itemData.quantity || 1;
-
       // Handle both old 'finalPrice' and new 'purchasePrice'
       const unitPrice = itemData.purchasePrice ?? itemData.finalPrice ?? 0;
 
@@ -241,6 +243,7 @@ const PurchaseReturnPage: React.FC = () => {
     return { totalReturnValue, totalNewItemsValue, finalBalance };
   }, [itemsToReturn, newItemsReceived]);
 
+  // --- SAVE TRANSACTION LOGIC ---
   const saveReturnTransaction = async (completionData?: Partial<PaymentCompletionData>) => {
     if (!currentUser || !currentUser.companyId || !selectedPurchase) return;
 
@@ -250,11 +253,10 @@ const PurchaseReturnPage: React.FC = () => {
     }
 
     setIsLoading(true);
-    const companyId = currentUser.companyId; // Get companyId for all paths
+    const companyId = currentUser.companyId;
 
     try {
       const batch = writeBatch(db);
-      // --- FIX: Use multi-tenant path for 'purchases' ---
       const purchaseRef = doc(db, 'companies', companyId, 'purchases', selectedPurchase.id);
 
       const originalItemsMap = new Map(selectedPurchase.items.map(item => [item.id, { ...item }]));
@@ -277,7 +279,7 @@ const PurchaseReturnPage: React.FC = () => {
             name: newItem.name,
             quantity: newItem.quantity,
             purchasePrice: newItem.unitPrice,
-          });
+          } as any);
         }
       });
 
@@ -285,7 +287,7 @@ const PurchaseReturnPage: React.FC = () => {
       const newTotalAmount = newItemsList.reduce((sum, item) => sum + (item.quantity * (item.purchasePrice || 0)), 0);
 
       const returnHistoryRecord = {
-        returnedAt: serverTimestamp(), // Use server timestamp
+        returnedAt: new Date(),
         returnedItems: itemsToReturn.map(({ id, ...item }) => item),
         newItemsReceived: newItemsReceived.map(({ id, ...item }) => item),
         finalBalance,
@@ -299,25 +301,42 @@ const PurchaseReturnPage: React.FC = () => {
         returnHistory: arrayUnion(returnHistoryRecord),
       });
 
+      // --- INVENTORY UPDATES ---
+      // 1. Returning to Supplier -> DECREASE stock
       itemsToReturn.forEach(item => {
-        // --- FIX: Use multi-tenant path for 'items' ---
-        batch.update(doc(db, 'companies', companyId, 'items', item.originalItemId), { Stock: firebaseIncrement(-item.quantity) });
-      });
-      newItemsReceived.forEach(item => {
-        // --- FIX: Use multi-tenant path for 'items' ---
-        batch.update(doc(db, 'companies', companyId, 'items', item.originalItemId), { Stock: firebaseIncrement(item.quantity) });
+        batch.update(doc(db, 'companies', companyId, 'items', item.originalItemId), {
+          stock: firebaseIncrement(-item.quantity)
+        });
       });
 
-      if (modeOfReturn === 'Debit Note' && finalBalance > 0) {
-        // --- FIX: Use multi-tenant path for 'customers' ---
-        const customerRef = doc(db, 'companies', companyId, 'customers', supplierNumber);
-        batch.set(customerRef, {
-          name: supplierName,
-          phone: supplierNumber,
-          debitBalance: firebaseIncrement(finalBalance),
+      // 2. Receiving from Supplier -> INCREASE stock
+      newItemsReceived.forEach(item => {
+        batch.update(doc(db, 'companies', companyId, 'items', item.originalItemId), {
+          stock: firebaseIncrement(item.quantity)
+        });
+      });
+
+      // --- CUSTOMER (SUPPLIER) UPDATE FIX ---
+      // Always update supplier info (or create if new)
+      const cleanSupplierNumber = supplierNumber.trim() || selectedPurchase.partyNumber;
+      const cleanSupplierName = supplierName.trim() || selectedPurchase.partyName;
+
+      if (cleanSupplierNumber && cleanSupplierNumber.length >= 10) {
+        const customerRef = doc(db, 'companies', companyId, 'customers', cleanSupplierNumber);
+
+        const customerUpdateData: any = {
+          name: cleanSupplierName,
+          phone: cleanSupplierNumber,
           companyId: companyId,
           lastUpdatedAt: serverTimestamp()
-        }, { merge: true });
+        };
+
+        // Only add Debit Balance (money they owe US) if finalBalance > 0
+        if (modeOfReturn === 'Debit Note' && finalBalance > 0) {
+          customerUpdateData.debitBalance = firebaseIncrement(finalBalance);
+        }
+
+        batch.set(customerRef, customerUpdateData, { merge: true });
       }
 
       await batch.commit();
@@ -477,7 +496,7 @@ const PurchaseReturnPage: React.FC = () => {
                       />
                     </div>
                     <button onClick={() => setScannerPurpose('item')} className="p-3 bg-gray-700 text-white rounded-lg flex items-center justify-center">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-ท3l-2.5-3z"></path><circle cx="12" cy="13" r="3"></circle></svg>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"></path><circle cx="12" cy="13" r="3"></circle></svg>
                     </button>
                   </div>
                   {newItemsReceived.length > 0 && (

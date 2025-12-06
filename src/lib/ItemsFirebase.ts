@@ -2,6 +2,7 @@ import { db } from './Firebase';
 import {
   collection,
   addDoc,
+  setDoc, // <--- ADDED THIS IMPORT
   getDocs,
   doc,
   updateDoc,
@@ -16,19 +17,20 @@ import {
 import type { Item, ItemGroup } from '../constants/models';
 import { Role, type User } from '../Role/permission';
 
+// ================================================================================
+// PUBLIC STANDALONE FUNCTIONS (For Public Links/Invoices)
+// ================================================================================
+
 /**
  * Fetches all publicly listed items for a specific company.
- * @param companyId The company ID from the URL.
  */
 export const getItemsByCompany = async (companyId: string): Promise<Item[]> => {
-  if (!companyId) {
-    throw new Error("A valid companyId must be provided.");
-  }
-  // --- FIX: Use multi-tenant path ---
+  if (!companyId) throw new Error("A valid companyId must be provided.");
+
   const itemCollectionRef = collection(db, 'companies', companyId, 'items');
   const q = query(
     itemCollectionRef,
-    where('isListed', '==', true) // Only fetch items marked for public listing
+    where('isListed', '==', true)
   );
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map((doc) => ({ id: doc.id, ...(doc.data() as Item) }));
@@ -36,138 +38,133 @@ export const getItemsByCompany = async (companyId: string): Promise<Item[]> => {
 
 /**
  * Fetches all item groups for a specific company.
- * @param companyId The company ID from the URL.
  */
 export const getItemGroupsByCompany = async (companyId: string): Promise<ItemGroup[]> => {
-  if (!companyId) {
-    throw new Error("A valid companyId must be provided.");
-  }
-  // --- FIX: Use multi-tenant path ---
+  if (!companyId) throw new Error("A valid companyId must be provided.");
+
   const itemGroupCollectionRef = collection(db, 'companies', companyId, 'itemGroups');
-  const q = query(itemGroupCollectionRef); // No 'where' needed
+  const q = query(itemGroupCollectionRef);
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map((doc) => ({ id: doc.id, ...(doc.data() as ItemGroup) }));
 };
 
-//================================================================================
-// PATTERN 1: REMOVED
-// The old, module-level functions (initializeDbOperations, etc.) were
-// insecure and incompatible with your new multi-tenant rules.
-// Your app is correctly using the Pattern 2 factory function below.
-//================================================================================
+// ================================================================================
+// FACTORY FUNCTION (SECURE AUTHENTICATED OPERATIONS)
+// ================================================================================
 
-//================================================================================
-// PATTERN 2: FACTORY FUNCTION (RECOMMENDED)
-//================================================================================
-
-/**
- * ✅ RECOMMENDED: Factory Function for Firestore Operations.
- * Call this function with a companyId to get a set of database operations
- * that are securely scoped to that company.
- */
 export const getFirestoreOperations = (companyId: string) => {
   if (!companyId) {
     throw new Error("A valid companyId must be provided to initialize Firestore operations.");
   }
 
-  // --- FIX: All collection paths are now multi-tenant ---
+  // --- References ---
   const companyRef = doc(db, 'companies', companyId);
   const itemGroupRef = collection(companyRef, 'itemGroups');
   const itemRef = collection(companyRef, 'items');
   const usersRef = collection(companyRef, 'users');
-  /**
-   * Fetches the business info document.
-   * Assumes the business_info doc ID is the same as the companyId.
-   */
-  const getBusinessInfo = async () => {
-    // --- FIX: Simplified to fetch the specific doc ---
-    // This path comes from your 'registerCompanyAndUser' Cloud Function
-    const docRef = doc(db, 'companies', companyId, 'business_info', companyId);
-    const docSnap = await getDoc(docRef);
-
-    if (docSnap.exists()) {
-      const data = docSnap.data();
-      const businessPhoneNumber = data.phoneNumber || 'Your Phone Number';
-      // Builds the address from city, state, and postalCode fields
-      const address = `${data.city || ''}, ${data.state || ''} - ${data.postalCode || ''}`;
-
-      return {
-        name: data.businessName as string,
-        address: address,
-        phoneNumber: businessPhoneNumber,
-      };
-    } else {
-      throw new Error(`Business information document not found for companyID: ${companyId}`);
-    }
-  };
 
   return {
-    getBusinessInfo,
+    // --- Business Info ---
+    getBusinessInfo: async () => {
+      const docRef = doc(db, 'companies', companyId, 'business_info', companyId);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        // Safe address construction
+        const addressParts = [data.city, data.state, data.postalCode].filter(Boolean).join(' ');
+        const finalAddress = addressParts || data.address || "Address not available";
+
+        return {
+          name: (data.businessName as string) || "Company Name",
+          address: finalAddress,
+          phoneNumber: (data.phoneNumber as string) || "",
+          accountHolderName: (data.accountHolderName as string) || "",
+          accountNumber: (data.accountNumber as string) || "",
+          bankName: (data.bankName as string) || "",
+          // --- FIX: Added these fields to satisfy TypeScript in Invoice Page ---
+          email: (data.email as string) || "",
+          gstin: (data.gstin as string) || ""
+        };
+      } else {
+        // Return empty structure to prevent crashes if doc is missing
+        console.warn(`Business info not found for ${companyId}`);
+        return { name: "", address: "", phoneNumber: "", email: "", gstin: "" };
+      }
+    },
+
+    // --- Group Operations ---
 
     getDistinctItemGroupsFromItems: async (): Promise<ItemGroup[]> => {
-      // --- FIX: 'itemRef' is already the correct multi-tenant path ---
+      // 1. Get all items to find used Group Names
       const itemsSnapshot = await getDocs(itemRef);
-
       const groupNames = new Set<string>();
+
       itemsSnapshot.docs.forEach(doc => {
         const item = doc.data() as Item;
-        if (item.itemGroupId && typeof item.itemGroupId === 'string') {
+        if (item.itemGroupId) {
           groupNames.add(item.itemGroupId);
         }
       });
 
-      if (groupNames.size === 0) {
-        return [];
-      }
+      if (groupNames.size === 0) return [];
 
-      // --- FIX: 'itemGroupRef' is already the correct multi-tenant path ---
-      const groupsQuery = query(itemGroupRef, where('name', 'in', Array.from(groupNames)));
-      const groupsSnapshot = await getDocs(groupsQuery);
+      // 2. Fetch ALL groups
+      // FIX: Removed 'where name in' because it crashes if you have > 10 groups.
+      // Using memory filtering is safer here.
+      const allGroupsSnapshot = await getDocs(itemGroupRef);
+      const allGroups = allGroupsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ItemGroup));
 
-      return groupsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ItemGroup));
+      // 3. Filter locally
+      return allGroups.filter(group => groupNames.has(group.name));
     },
 
     createItemGroup: async (itemGroup: Omit<ItemGroup, 'id' | 'createdAt' | 'updatedAt' | 'companyId'>): Promise<string> => {
-      // 'companyId' field is redundant but harmless
-      const docRef = await addDoc(itemGroupRef, { ...itemGroup, companyId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      const docRef = await addDoc(itemGroupRef, {
+        ...itemGroup,
+        companyId,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
       return docRef.id;
     },
+
     getItemGroups: async (): Promise<ItemGroup[]> => {
-      // --- FIX: 'itemGroupRef' is already the correct multi-tenant path ---
       const snapshot = await getDocs(itemGroupRef);
       return snapshot.docs.map((doc) => ({ id: doc.id, ...(doc.data() as ItemGroup) }));
     },
+
     getItemGroupById: async (id: string): Promise<ItemGroup | null> => {
-      // --- FIX: Build doc path directly ---
-      const docRef = doc(db, 'companies', companyId, 'itemGroups', id);
+      const docRef = doc(itemGroupRef, id);
       const docSnap = await getDoc(docRef);
-      // Security rule handles permission, no 'verifyOwnership' needed
       return docSnap.exists() ? { id: docSnap.id, ...(docSnap.data() as ItemGroup) } : null;
     },
+
     updateItemGroup: async (id: string, updates: Partial<Omit<ItemGroup, 'id' | 'createdAt' | 'companyId'>>): Promise<void> => {
-      // --- FIX: Build doc path directly ---
-      const itemGroupDoc = doc(db, 'companies', companyId, 'itemGroups', id);
-      await updateDoc(itemGroupDoc, { ...updates, updatedAt: serverTimestamp() });
+      const docRef = doc(itemGroupRef, id);
+      await updateDoc(docRef, { ...updates, updatedAt: serverTimestamp() });
     },
+
     deleteItemGroup: async (id: string): Promise<void> => {
-      // --- FIX: Build doc path directly ---
-      const itemGroupDoc = doc(db, 'companies', companyId, 'itemGroups', id);
-      await deleteDoc(itemGroupDoc);
+      const docRef = doc(itemGroupRef, id);
+      await deleteDoc(docRef);
     },
 
     updateGroupAndSyncItems: async (group: ItemGroup, newName: string): Promise<void> => {
       const { id, name: oldName } = group;
       if (!id) throw new Error("Group ID is missing.");
 
-      // --- FIX: Build doc path directly ---
-      const groupDocRef = doc(db, 'companies', companyId, 'itemGroups', id);
-
+      const groupDocRef = doc(itemGroupRef, id);
       const batch = writeBatch(db);
+
+      // Update Group Name
       batch.update(groupDocRef, { name: newName, updatedAt: serverTimestamp() });
 
-      // --- FIX: 'itemRef' is already the correct multi-tenant path ---
+      // Find items using the old name
       const itemsQuery = query(itemRef, where('itemGroupId', '==', oldName));
       const itemsSnapshot = await getDocs(itemsQuery);
+
+      // Update items
       itemsSnapshot.forEach(itemDoc => {
         batch.update(itemDoc.ref, { itemGroupId: newName });
       });
@@ -179,10 +176,6 @@ export const getFirestoreOperations = (companyId: string) => {
       const { id, name } = group;
       if (!id) throw new Error("Group ID is missing.");
 
-      // --- FIX: Build doc path directly ---
-      const groupDocRef = doc(db, 'companies', companyId, 'itemGroups', id);
-
-      // --- FIX: 'itemRef' is already the correct multi-tenant path ---
       const itemsQuery = query(itemRef, where('itemGroupId', '==', name));
       const countSnapshot = await getCountFromServer(itemsQuery);
 
@@ -190,44 +183,63 @@ export const getFirestoreOperations = (companyId: string) => {
         throw new Error(`Cannot delete. This group is used by ${countSnapshot.data().count} item(s).`);
       }
 
+      const groupDocRef = doc(itemGroupRef, id);
       await deleteDoc(groupDocRef);
     },
 
     // --- Item Operations ---
-    createItem: async (item: Omit<Item, 'id' | 'createdAt' | 'updatedAt' | 'companyId'>): Promise<string> => {
-      // --- FIX: 'itemRef' is already the correct multi-tenant path ---
-      const docRef = await addDoc(itemRef, { ...item, companyId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-      return docRef.id;
+
+    // UPDATED: Now accepts optional customId to prevent duplicates
+    createItem: async (
+      item: Omit<Item, 'id' | 'createdAt' | 'updatedAt' | 'companyId'>,
+      customId?: string
+    ): Promise<string> => {
+      const payload = {
+        ...item,
+        companyId,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+
+      if (customId) {
+        // Use setDoc to enforce the barcode as the ID
+        await setDoc(doc(itemRef, customId), payload);
+        return customId;
+      } else {
+        // Use addDoc for random ID
+        const docRef = await addDoc(itemRef, payload);
+        return docRef.id;
+      }
     },
+
     getItems: async (): Promise<Item[]> => {
-      // --- FIX: 'itemRef' is already the correct multi-tenant path ---
       const snapshot = await getDocs(itemRef);
       return snapshot.docs.map((doc) => ({ id: doc.id, ...(doc.data() as Item) }));
     },
+
     getItemById: async (id: string): Promise<Item | null> => {
-      // --- FIX: Build doc path directly ---
-      const docRef = doc(db, 'companies', companyId, 'items', id);
+      const docRef = doc(itemRef, id);
       const docSnap = await getDoc(docRef);
       return docSnap.exists() ? { id: docSnap.id, ...(docSnap.data() as Item) } : null;
     },
+
     getItemsByItemGroupId: async (itemGroupId: string): Promise<Item[]> => {
-      // --- FIX: 'itemRef' is already the correct multi-tenant path ---
       const q = query(itemRef, where('itemGroupId', '==', itemGroupId));
       const snapshot = await getDocs(q);
       return snapshot.docs.map((doc) => ({ id: doc.id, ...(doc.data() as Item) }));
     },
+
     updateItem: async (id: string, updates: Partial<Omit<Item, 'id' | 'createdAt' | 'companyId'>>): Promise<void> => {
-      // --- FIX: Build doc path directly ---
-      const itemDoc = doc(db, 'companies', companyId, 'items', id);
-      await updateDoc(itemDoc, { ...updates, updatedAt: serverTimestamp() });
+      const docRef = doc(itemRef, id);
+      await updateDoc(docRef, { ...updates, updatedAt: serverTimestamp() });
     },
+
     deleteItem: async (id: string): Promise<void> => {
-      // --- FIX: Build doc path directly ---
-      const itemDoc = doc(db, 'companies', companyId, 'items', id);
-      await deleteDoc(itemDoc);
+      const docRef = doc(itemRef, id);
+      await deleteDoc(docRef);
     },
+
     getItemByBarcode: async (barcode: string): Promise<Item | null> => {
-      // --- FIX: 'itemRef' is already the correct multi-tenant path ---
       const q = query(itemRef, where('barcode', '==', barcode));
       const querySnapshot = await getDocs(q);
       if (!querySnapshot.empty) {
@@ -238,14 +250,14 @@ export const getFirestoreOperations = (companyId: string) => {
     },
 
     // --- User Operations ---
+
     getSalesmen: async (): Promise<User[]> => {
-      // --- FIX: 'usersRef' is already the correct multi-tenant path ---
       const q = query(usersRef, where("role", "==", Role.Salesman));
       const snapshot = await getDocs(q);
       return snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() })) as User[];
     },
+
     getWorkers: async (): Promise<User[]> => {
-      // --- FIX: THIS WAS THE BUG. 'usersRef' is now the correct multi-tenant path ---
       const q = query(usersRef, where("role", "in", [Role.Salesman, Role.Manager]));
       const snapshot = await getDocs(q);
       return snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() })) as User[];

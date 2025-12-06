@@ -8,10 +8,15 @@ import { CustomButton } from '../../Components';
 import { Variant } from '../../enums';
 import { Input } from '../../Components/ui/input';
 import QRCodeLib from 'qrcode';
-import JsBarcode from 'jsbarcode'; // Using JsBarcode
+import JsBarcode from 'jsbarcode';
+import SearchableItemInput from '../../UseComponents/SearchIteminput';
 
-// Helper types
-type PrintableItem = Item & { quantityToPrint: number };
+// --- Data Types ---
+type PrintableItem = Item & { 
+    quantityToPrint: number; 
+    queueId: string; // Unique ID for the UI list
+};
+
 type PrefilledItem = { id: string, quantity: number, name: string };
 
 // --- Preview Component ---
@@ -41,8 +46,6 @@ const LabelPreview: React.FC<{ item: Item, companyName: string }> = ({ item, com
     return (
         <div className="w-[200px] h-[200px] border border-dashed border-gray-400 p-2 flex flex-col items-center justify-around font-sans bg-white shadow-lg mt-4">
             <div className="text-xs font-bold text-center">{companyName}</div>
-
-            {/* Updated Preview Layout */}
             <div className="flex flex-col justify-center items-center h-28">
                 {barcodeDataUrl && (
                     <div className="w-24 h-8 flex items-center justify-center overflow-hidden mb-1">
@@ -51,18 +54,15 @@ const LabelPreview: React.FC<{ item: Item, companyName: string }> = ({ item, com
                 )}
                 {qrDataUrl && <img src={qrDataUrl} alt="QR Code Preview" className="w-24 h-24" />}
             </div>
-
             <div className="text-[10px] text-center">{item.barcode}</div>
             <div className="text-xs font-bold text-center">{`MRP: ₹${item.mrp}`}</div>
         </div>
     );
 };
 
-
 const QRCodeGeneratorPage: React.FC = () => {
     const { currentUser } = useAuth();
     const [allItems, setAllItems] = useState<Item[]>([]);
-    const [searchTerm, setSearchTerm] = useState<string>('');
     const [printQueue, setPrintQueue] = useState<PrintableItem[]>([]);
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [isPrinting, setIsPrinting] = useState(false);
@@ -71,10 +71,8 @@ const QRCodeGeneratorPage: React.FC = () => {
     const [companyName, setCompanyName] = useState<string>('Your Company');
     const [isPreviewOpen, setIsPreviewOpen] = useState(true);
 
-    const searchInputRef = useRef<HTMLInputElement>(null);
     const hasPrefilled = useRef(false);
     const location = useLocation();
-
     const printBarcodeCanvasRef = useRef<HTMLCanvasElement>(null);
 
     const dbOperations = useMemo(() => {
@@ -101,7 +99,7 @@ const QRCodeGeneratorPage: React.FC = () => {
                 setCompanyName(businessInfo.name || 'Your Company');
 
             } catch (err) {
-                // ... error handling
+                console.error(err);
             } finally {
                 setIsLoading(false);
             }
@@ -109,18 +107,24 @@ const QRCodeGeneratorPage: React.FC = () => {
         fetchData();
     }, [dbOperations]);
 
-    // Effect to handle prefilled items from location state
+    // Effect to handle prefilled items
     useEffect(() => {
         const prefilledItems = location.state?.prefilledItems as PrefilledItem[] | undefined;
         if (prefilledItems && allItems.length > 0 && !hasPrefilled.current) {
             const allItemsMap = new Map(allItems.map(item => [item.id, item]));
+            
             const itemsToPrint = prefilledItems.map((pItem: PrefilledItem) => {
                 const fullItem = allItemsMap.get(pItem.id);
                 if (fullItem) {
-                    return { ...fullItem, quantityToPrint: pItem.quantity };
+                    return { 
+                        ...fullItem, 
+                        quantityToPrint: pItem.quantity,
+                        queueId: crypto.randomUUID() as string // Explicit cast to fix Type Error
+                    };
                 }
                 return null;
-            }).filter((item): item is PrintableItem => item !== null);
+            }).filter((item) => item !== null) as PrintableItem[]; // FIX: Cast result array
+
             setPrintQueue(itemsToPrint);
             if (itemsToPrint.length > 0) {
                 setItemForPreview(itemsToPrint[0]);
@@ -129,7 +133,6 @@ const QRCodeGeneratorPage: React.FC = () => {
         }
     }, [location.state, allItems]);
 
-    // Effect to update preview item when queue changes
     useEffect(() => {
         if (!itemForPreview && printQueue.length > 0) {
             setItemForPreview(printQueue[0]);
@@ -138,36 +141,38 @@ const QRCodeGeneratorPage: React.FC = () => {
         }
     }, [printQueue, itemForPreview]);
 
-    // Memoized search results
-    const searchResults = useMemo(() => {
-        if (!searchTerm.trim()) return [];
-        const lowerCaseSearchTerm = searchTerm.toLowerCase();
+    const availableItemsForSearch = useMemo(() => {
         const itemIdsInQueue = new Set(printQueue.map(item => item.id));
-        return allItems.filter(item => !itemIdsInQueue.has(item.id) && (item.name.toLowerCase().includes(lowerCaseSearchTerm) || item.barcode?.toLowerCase().includes(lowerCaseSearchTerm)));
-    }, [searchTerm, allItems, printQueue]);
+        return allItems.filter(item => !itemIdsInQueue.has(item.id));
+    }, [allItems, printQueue]);
 
     // --- Queue Management Handlers ---
 
     const handleAddItemToQueue = useCallback((item: Item) => {
+        // Prevent duplicates based on DB ID if desired, or allow multiple rows
         if (printQueue.some(queuedItem => queuedItem.id === item.id)) return;
-        setPrintQueue(prev => [...prev, { ...item, quantityToPrint: 1 }]);
-        setSearchTerm('');
-        searchInputRef.current?.focus();
+
+        const newItem: PrintableItem = { 
+            ...item, 
+            quantityToPrint: 1,
+            queueId: crypto.randomUUID() as string
+        };
+
+        setPrintQueue(prev => [...prev, newItem]);
     }, [printQueue]);
 
-    const handleRemoveItemFromQueue = useCallback((itemId: string) => {
-        setPrintQueue(prev => prev.filter(item => item.id !== itemId));
+    const handleRemoveItemFromQueue = useCallback((queueId: string) => {
+        setPrintQueue(prev => prev.filter(item => item.queueId !== queueId));
     }, []);
 
-    const handleQuantityChange = useCallback((itemId: string, quantity: number) => {
+    const handleQuantityChange = useCallback((queueId: string, quantity: number) => {
         setPrintQueue(prev => prev.map(item =>
-            item.id === itemId ? { ...item, quantityToPrint: Math.max(1, quantity) } : item
+            item.queueId === queueId ? { ...item, quantityToPrint: Math.max(1, quantity) } : item
         ));
     }, []);
 
     const isPrintButtonDisabled = printQueue.length === 0 || isPrinting;
 
-    // --- UPDATED: handlePrint function with new layout ---
     const handlePrint = useCallback(async () => {
         if (isPrintButtonDisabled || !dbOperations || !printBarcodeCanvasRef.current) return;
 
@@ -176,10 +181,8 @@ const QRCodeGeneratorPage: React.FC = () => {
         try {
             const businessInfo = await dbOperations.getBusinessInfo();
             const companyName = businessInfo.name || 'Your Company';
-            // Use 'pre-wrap' for address to handle newlines, but escape HTML
             const businessAddress = (businessInfo.address || '').replace(/</g, "&lt;").replace(/>/g, "&gt;");
             const businessPhoneNumber = (businessInfo.phoneNumber || '').replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
 
             const printWindow = window.open('', '', 'height=600,width=800');
             if (!printWindow) {
@@ -189,75 +192,19 @@ const QRCodeGeneratorPage: React.FC = () => {
             printWindow.document.write('<html><head><title>Print QR Code Labels</title>');
             printWindow.document.write('<style>');
             printWindow.document.write(`
-                @page {
-                    size: 110mm 35mm;
-                    margin: 0;
-                }
-                body { 
-                    margin: 0; 
-                    padding-left: 2.5mm; 
-                    padding-right: 2.5mm; 
-                    box-sizing: border-box;
-                    font-family: sans-serif; 
-                    display: flex; 
-                    flex-wrap: wrap;
-                    justify-content: space-between;
-                }
-                .label-container { 
-                    width: 35mm; 
-                    height: 35mm; 
-                    box-sizing: border-box; 
-                    display: flex; 
-                    flex-direction: column; 
-                    align-items: center; 
-                    justify-content: space-between; 
-                    padding: 0.5mm;
-                    page-break-inside: avoid; 
-                    text-align: center; 
-                    overflow: hidden;
-                }
-                
-                /* --- MODIFIED STYLES --- */
+                @page { size: 110mm 35mm; margin: 0; }
+                body { margin: 0; padding-left: 2.5mm; padding-right: 2.5mm; box-sizing: border-box; font-family: sans-serif; display: flex; flex-wrap: wrap; justify-content: space-between; }
+                .label-container { width: 35mm; height: 35mm; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 0.5mm; page-break-inside: avoid; text-align: center; overflow: hidden; }
                 .company-name { font-size: 7pt; font-weight: bold; margin: 0; text-align: center; }
                 .business-info { font-size: 5pt; margin:0; }
-                .info-row {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: flex-start; /* Align top */
-                    width: 100%;
-                    margin-top: 0.5mm; /* Add some space below company name */
-                }
-                .info-left {
-                    text-align: left;
-                    width: 60%; /* Give address more space */
-                    white-space: pre-wrap; /* Respect newlines in address */
-                    word-wrap: break-word;
-                }
-                .info-right {
-                    text-align: right;
-                    width: 40%;
-                }
-                /* --- END MODIFIED STYLES --- */
-
-                /* This container holds both barcodes */
-                .barcode-area {
-                    display: flex;
-                    flex-direction: column; /* Stack them vertically */
-                    justify-content: center;
-                    align-items: center;
-                    width: 100%;
-                    margin-top: -1mm; /* Space from business info */
-                }
-                .qr-image { width: 14mm; height: 14mm; object-fit: contain; } /* Slightly smaller */
-                .barcode-image {
-                    width: 30mm; /* The length of the barcode */
-                    height: 16mm; /* The height of the barcode bars */
-                    object-fit: contain;
-                    margin-bottom:-4mm; /* Space between barcode and QR code */
-                    margin-top: -2mm;
-                }
-                
-                .item-barcode { font-size: 6pt; font-weight: bold; margin: 0; }
+                .info-row { display: flex; justify-content: space-between; align-items: flex-start; width: 100%; margin-top: 0.5mm; }
+                .info-left { text-align: left; width: 60%; white-space: pre-wrap; word-wrap: break-word; }
+                .info-right { text-align: right; width: 40%; }
+                .barcode-area { display: flex; flex-direction: column; justify-content: center; align-items: center; width: 100%; margin-top: -5mm; margin-bottom: -4mm; }
+                .qr-image { width: 14mm; height: 14mm; object-fit: contain; }
+                .barcode-image { width: 30mm; height: 16mm; object-fit: contain; margin-bottom:-6mm; margin-top: -2mm; }
+                .item-barcode { font-size: 4pt; font-weight: bold; margin: 0; }
+                .item-name { font-size: 6pt; font-weight: bold; margin: 0; }
                 .item-mrp { font-size: 7pt; font-weight: bold; margin: 0; }
             `);
             printWindow.document.write('</style></head><body>');
@@ -267,37 +214,32 @@ const QRCodeGeneratorPage: React.FC = () => {
 
                 const qrDataUrl = await QRCodeLib.toDataURL(item.barcode, { width: 150, margin: 1 });
 
-                // Generate 1D barcode data URL
                 JsBarcode(printBarcodeCanvasRef.current, item.barcode, {
                     format: 'CODE128',
                     displayValue: false,
-                    height: 40, // Your original height
-                    width: 1.5, // Your original width
+                    height: 40,
+                    width: 1.5,
                     margin: 0,
                 });
                 const barcodeDataUrl = printBarcodeCanvasRef.current.toDataURL('image/png');
-
 
                 for (let i = 0; i < item.quantityToPrint; i++) {
                     printWindow.document.write(`
                         <div class="label-container">
                             <div>
                                 <p class="company-name">${companyName}</p>
-                                
                                 <div class="info-row">
                                     <p class="business-info info-left">${businessAddress}</p>
                                     <p class="business-info info-right">${businessPhoneNumber}</p>
                                 </div>
                             </div>
-                            
                             <div class="barcode-area">
                                 <img class="barcode-image" src="${barcodeDataUrl}" alt="Barcode" />
                                 <img class="qr-image" src="${qrDataUrl}" alt="QR Code" />
                             </div>
-
                             <div>
                                 <p class="item-barcode">${item.barcode}</p>
-                                <p class="item-barcode">${item.name}</p>
+                                <p class="item-name">${item.name}</p>
                                 <p class="item-mrp">MRP: ₹${item.mrp}</p>
                             </div>
                         </div>
@@ -325,12 +267,12 @@ const QRCodeGeneratorPage: React.FC = () => {
         return (
             <div className="flex flex-col gap-4">
                 <div className="relative">
-                    <Input ref={searchInputRef} type="text" placeholder="Search to add items to the print list..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pr-4 py-2 border rounded-lg" />
-                    {searchResults.length > 0 && (
-                        <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                            {searchResults.map(item => (<button key={item.id} onClick={() => handleAddItemToQueue(item)} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">{item.name}</button>))}
-                        </div>
-                    )}
+                    <SearchableItemInput
+                        label=""
+                        placeholder="Search to add items to the print list..."
+                        items={availableItemsForSearch}
+                        onItemSelected={handleAddItemToQueue}
+                    />
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -356,17 +298,17 @@ const QRCodeGeneratorPage: React.FC = () => {
 
                     <div className="flex flex-col gap-3">
                         {printQueue.length > 0 && <h3 className="text-lg font-semibold text-gray-700">Cart</h3>}
-                        {printQueue.length === 0 && searchTerm.length === 0 && (<p className="text-center text-gray-500 py-8">Your cart is empty</p>)}
+                        {printQueue.length === 0 && (<p className="text-center text-gray-500 py-8">Your cart is empty</p>)}
 
                         {printQueue.map((item) => (
                             <div
-                                key={item.id}
+                                key={item.queueId}
                                 onClick={() => setItemForPreview(item)}
-                                className={`p-3 border rounded-lg bg-white shadow-sm flex flex-col gap-3 cursor-pointer transition-all ${itemForPreview?.id === item.id ? 'border-blue-500 ring-2 ring-blue-500' : 'border-gray-200'}`}
+                                className={`p-3 border rounded-lg bg-white shadow-sm flex flex-col gap-3 cursor-pointer transition-all ${itemForPreview?.queueId === item.queueId ? 'border-blue-500 ring-2 ring-blue-500' : 'border-gray-200'}`}
                             >
                                 <div className="flex justify-between items-start">
                                     <div className="flex flex-col text-sm text-gray-800 overflow-hidden pr-2"><span className="font-semibold text-base">{item.name}</span></div>
-                                    <button onClick={(e) => { e.stopPropagation(); handleRemoveItemFromQueue(item.id!); }} className="text-gray-400 hover:text-red-600 p-1 flex-shrink-0" aria-label={`Remove ${item.name}`}>
+                                    <button onClick={(e) => { e.stopPropagation(); handleRemoveItemFromQueue(item.queueId); }} className="text-gray-400 hover:text-red-600 p-1 flex-shrink-0" aria-label={`Remove ${item.name}`}>
                                         <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                                     </button>
                                 </div>
@@ -375,9 +317,9 @@ const QRCodeGeneratorPage: React.FC = () => {
                                     <div className="flex items-center gap-2">
                                         <span className="text-sm text-gray-500">Qty</span>
                                         <div className="flex items-center border border-gray-300 rounded-md">
-                                            <button onClick={(e) => { e.stopPropagation(); handleQuantityChange(item.id!, item.quantityToPrint - 1); }} className="px-3 py-1 text-xl font-bold text-gray-600 hover:bg-gray-100 rounded-l-md">-</button>
-                                            <Input type="number" value={item.quantityToPrint} onClick={(e) => e.stopPropagation()} onChange={(e) => { e.stopPropagation(); handleQuantityChange(item.id!, Number(e.target.value)); }} className="w-16 h-8 text-center border-l border-r rounded-none p-0 focus:ring-0" />
-                                            <button onClick={(e) => { e.stopPropagation(); handleQuantityChange(item.id!, item.quantityToPrint + 1); }} className="px-3 py-1 text-xl font-bold text-gray-600 hover:bg-gray-100 rounded-r-md">+</button>
+                                            <button onClick={(e) => { e.stopPropagation(); handleQuantityChange(item.queueId, item.quantityToPrint - 1); }} className="px-3 py-1 text-xl font-bold text-gray-600 hover:bg-gray-100 rounded-l-md">-</button>
+                                            <Input type="number" value={item.quantityToPrint} onClick={(e) => e.stopPropagation()} onChange={(e) => { e.stopPropagation(); handleQuantityChange(item.queueId, Number(e.target.value)); }} className="w-16 h-8 text-center border-l border-r rounded-none p-0 focus:ring-0" />
+                                            <button onClick={(e) => { e.stopPropagation(); handleQuantityChange(item.queueId, item.quantityToPrint + 1); }} className="px-3 py-1 text-xl font-bold text-gray-600 hover:bg-gray-100 rounded-r-md">+</button>
                                         </div>
                                     </div>
                                 </div>
@@ -399,10 +341,9 @@ const QRCodeGeneratorPage: React.FC = () => {
 
     return (
         <div>
-            {/* ADDED: Hidden canvas for generating 1D barcodes */}
             <canvas ref={printBarcodeCanvasRef} style={{ display: 'none' }}></canvas>
 
-            <Card className="max-w-4xl mx-auto">
+            <Card className="max-w-4xl mx-auto mb-16">
                 <CardHeader>
                     <CardTitle className="text-2xl text-center font-bold text-gray-800">Item QR Code Generator</CardTitle>
                 </CardHeader>

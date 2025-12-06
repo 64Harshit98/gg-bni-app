@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from 'react';
-// --- FIX: Import 'db' from firebase ---
 import { db } from '../lib/Firebase';
 import {
   collection,
@@ -8,7 +7,7 @@ import {
   onSnapshot
 } from 'firebase/firestore';
 import type { FirestoreError } from 'firebase/firestore';
-import { useAuth } from '../context/auth-context'; // <-- Uses the correct hook
+import { useAuth } from '../context/auth-context';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { useFilter } from './Filter';
 
@@ -31,35 +30,35 @@ const useSalesComparison = (companyId: string | undefined) => {
     setLoading(true);
     setError(null);
 
-    // --- FIX: The global 'salesCollection' is removed ---
-
     // --- Main Date Range (from filter) ---
     const startDate = new Date(filters.startDate);
     startDate.setHours(0, 0, 0, 0);
     const endDate = new Date(filters.endDate);
     endDate.setHours(23, 59, 59, 999);
 
-    // --- Comparison Date Range ---
-    const dateDiff = (endDate.getTime() - startDate.getTime()) / (1000 * 3600 * 24);
-    const comparisonStartDate = new Date(startDate);
-    comparisonStartDate.setDate(startDate.getDate() - (dateDiff + 1));
-    const comparisonEndDate = new Date(startDate);
-    comparisonEndDate.setDate(startDate.getDate() - 1);
-    comparisonEndDate.setHours(23, 59, 59, 999);
+    // --- Comparison Date Range FIX ---
 
-    // --- FIX: Update queries to use the multi-tenant path ---
+    // Calculate the length of the current period in milliseconds.
+    const periodLengthMs = endDate.getTime() - startDate.getTime();
+
+    // Comparison End Date: The millisecond before the current period began.
+    const comparisonEndDateMs = startDate.getTime() - 1;
+    const comparisonEndDate = new Date(comparisonEndDateMs);
+
+    // Comparison Start Date: Subtract the full period length from the comparison end point.
+    const comparisonStartDate = new Date(comparisonEndDateMs - periodLengthMs);
+    // Ensure it starts exactly at 00:00:00 of its start day (optional, but good practice)
+    comparisonStartDate.setHours(0, 0, 0, 0);
+
+    // --- Update queries to use the multi-tenant path ---
     const qSales = query(
-      collection(db, 'companies', companyId, 'sales'), // Correct path
-      // 'where('companyId', ...)' is no longer needed
+      collection(db, 'companies', companyId, 'sales'),
       where('createdAt', '>=', startDate),
       where('createdAt', '<=', endDate)
-      // Note: You may need to add orderBy back if you get an error
-      // orderBy('createdAt', 'asc') 
     );
 
     const qComparison = query(
-      collection(db, 'companies', companyId, 'sales'), // Correct path
-      // 'where('companyId', ...)' is no longer needed
+      collection(db, 'companies', companyId, 'sales'),
       where('createdAt', '>=', comparisonStartDate),
       where('createdAt', '<=', comparisonEndDate)
     );
@@ -81,14 +80,13 @@ const useSalesComparison = (companyId: string | undefined) => {
       setComparisonSales(total);
     }, (err: FirestoreError) => {
       console.error("Comparison sales snapshot error: ", err);
-      // Don't set loading/error for the comparison, it's less critical
     });
 
     return () => {
       unsubscribeSales();
       unsubscribeComparison();
     };
-  }, [companyId, filters]); // companyId is correctly in the dependency array
+  }, [companyId, filters]);
 
   return { sales, comparisonSales, loading, error };
 };
@@ -98,7 +96,7 @@ interface SalesCardProps {
 }
 
 export const SalesCard: React.FC<SalesCardProps> = ({ isDataVisible }) => {
-  const { currentUser } = useAuth(); // This uses the hook from auth-context
+  const { currentUser } = useAuth();
   const { sales, comparisonSales, loading, error } = useSalesComparison(
     currentUser?.companyId,
   );

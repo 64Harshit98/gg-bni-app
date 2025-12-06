@@ -1,9 +1,12 @@
-// src/lib/auth_operations.ts
 import { auth } from './Firebase'; // Import 'db'
 import {
   signInWithEmailAndPassword,
   signOut,
   sendPasswordResetEmail,
+  // --- NEW IMPORTS FOR PHONE AUTH ---
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
+  type ConfirmationResult,
 } from 'firebase/auth';
 import type { User } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
@@ -11,8 +14,14 @@ import type { ROLES } from '../enums';
 // Import the functions client
 import { getFunctions, httpsCallable } from 'firebase/functions';
 
+// --- Module-level state for phone auth flow ---
+let recaptchaVerifier: RecaptchaVerifier | null = null;
+let confirmationResult: ConfirmationResult | null = null;
+// ---------------------------------------------
+
 /**
  * Registers a new company and user by calling the secure Cloud Function.
+ * --- THIS FUNCTION IS NOW MODIFIED to accept items ---
  */
 export const registerUserWithDetails = async (
   name: string,
@@ -20,12 +29,16 @@ export const registerUserWithDetails = async (
   email: string,
   password: string,
   role: ROLES,
-  businessData: any // Pass business data
+  businessData: any, // Pass business data
+  items: any[] = [], // --- ADDED THIS LINE ---
 ): Promise<any> => {
   try {
     // 1. Get a reference to the Cloud Function
     const functions = getFunctions();
-    const registerCompanyAndUser = httpsCallable(functions, 'registerCompanyAndUser');
+    const registerCompanyAndUser = httpsCallable(
+      functions,
+      'registerCompanyAndUser',
+    );
 
     // 2. Call the function with all the form data
     const result = await registerCompanyAndUser({
@@ -34,26 +47,31 @@ export const registerUserWithDetails = async (
       email,
       password,
       role,
-      businessData: businessData // Pass it to the function
+      businessData: businessData, // Pass it to the function
+      items: items, // --- ADDED THIS LINE ---
     });
 
-    // 3. Return the successful result
-    return result.data;
+    // --- 3. NEW: Automatically log the user in ---
+    // After successful registration, sign them in
+    await loginUser(email, password);
 
+    // 4. Return the successful result from the cloud function
+    return result.data;
   } catch (error: any) {
     console.error('Error calling registration function:', error);
     // 'error.message' will now contain the friendly message from the Cloud Function
-    throw new Error(error.message || 'An unexpected error occurred during registration.');
+    throw new Error(
+      error.message || 'An unexpected error occurred during registration.',
+    );
   }
 };
-
 
 export const inviteUser = async (
   fullName: string,
   phoneNumber: string,
   email: string,
   password: string,
-  role: ROLES
+  role: ROLES,
 ): Promise<{ status: string; userId: string }> => {
   try {
     const functions = getFunctions();
@@ -68,10 +86,11 @@ export const inviteUser = async (
     });
 
     return result.data as { status: string; userId: string };
-
   } catch (error: any) {
     console.error('Error calling invite user function:', error);
-    throw new Error(error.message || 'An unexpected error occurred during registration.');
+    throw new Error(
+      error.message || 'An unexpected error occurred during registration.',
+    );
   }
 };
 /**
@@ -142,6 +161,84 @@ export const resetPassword = async (email: string): Promise<void> => {
   }
 };
 
+// --- NEW PHONE AUTH FUNCTIONS ---
+
+/**
+ * Sets up the reCAPTCHA verifier.
+ * Call this once in your component's useEffect.
+ * @param containerId The ID of the HTML element where reCAPTCHA should render (e.g., "recaptcha-container").
+ */
+export const setupRecaptcha = (containerId: string) => {
+  if (recaptchaVerifier) {
+    // Don't re-create if it already exists
+    return;
+  }
+  try {
+    recaptchaVerifier = new RecaptchaVerifier(auth, containerId, {
+      size: 'invisible',
+      callback: () => {
+        // reCAPTCHA solved
+        console.log('reCAPTCHA solved');
+      },
+      'expired-callback': () => {
+        console.error('reCAPTCHA expired');
+      },
+    });
+  } catch (error) {
+    console.error('Error setting up reCAPTCHA', error);
+    throw error;
+  }
+};
+
+/**
+ * Sends an OTP to the given phone number.
+ * @param phoneNumber The phone number in E.164 format (e.g., +911234567890).
+ */
+export const sendOtp = async (phoneNumber: string): Promise<void> => {
+  if (!recaptchaVerifier) {
+    throw new Error(
+      'reCAPTCHA verifier is not initialized. Call setupRecaptcha first.',
+    );
+  }
+  try {
+    confirmationResult = await signInWithPhoneNumber(
+      auth,
+      phoneNumber,
+      recaptchaVerifier,
+    );
+  } catch (error: unknown) {
+    if (error instanceof FirebaseError) {
+      console.error('Error sending OTP:', error.code, error.message);
+      throw new Error(getFriendlyErrorMessage(error.code));
+    }
+    throw new Error('An unexpected error occurred while sending the OTP.');
+  }
+};
+
+/**
+ * Confirms the OTP and signs in/signs up the user.
+ * If the user is new, you will need to redirect them
+ * to your `BusinessInfoPage` to complete their profile.
+ * @param otp The 6-digit code from the SMS.
+ * @returns Promise that resolves with the User.
+ */
+export const confirmOtp = async (otp: string): Promise<User> => {
+  if (!confirmationResult) {
+    throw new Error('No OTP confirmation in progress. Call sendOtp first.');
+  }
+  try {
+    const userCredential = await confirmationResult.confirm(otp);
+    return userCredential.user;
+  } catch (error: unknown) {
+    if (error instanceof FirebaseError) {
+      console.error('Error confirming OTP:', error.code, error.message);
+      throw new Error(getFriendlyErrorMessage(error.code));
+    }
+    throw new Error('An unexpected error occurred during OTP confirmation.');
+  }
+};
+// ------------------------------
+
 const getFriendlyErrorMessage = (errorCode: string): string => {
   switch (errorCode) {
     case 'auth/invalid-email':
@@ -158,6 +255,18 @@ const getFriendlyErrorMessage = (errorCode: string): string => {
       return 'Password should be at least 6 characters.';
     case 'auth/too-many-requests':
       return 'Too many requests. Please try again later.';
+
+    // --- NEW PHONE AUTH ERRORS ---
+    case 'auth/invalid-phone-number':
+      return 'The phone number is not valid.';
+    case 'auth/captcha-check-failed':
+      return 'reCAPTCHA verification failed. Please try again.';
+    case 'auth/code-expired':
+      return 'The OTP has expired. Please request a new one.';
+    case 'auth/invalid-verification-code':
+      return 'The OTP is incorrect. Please try again.';
+    // ----------------------------
+
     default:
       return 'An unknown error occurred. Please try again.';
   }

@@ -45,7 +45,7 @@ export interface InvoiceData {
   };
 }
 
-export const generatePdf = async (data: InvoiceData, action: 'download' | 'print' | 'blob' = 'download'): Promise<Blob | void> => {
+export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | ACTION.PRINT | ACTION.BLOB = ACTION.DOWNLOAD): Promise<Blob | void> => {
   const doc = new jsPDF('p', 'mm', 'a5');
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();

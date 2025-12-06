@@ -9,11 +9,13 @@ import { TopSoldItemsCard } from '../Components/TopFiveItemCard';
 import { TopSalespersonCard } from '../Components/TopSalesCard';
 import ShowWrapper from '../context/ShowWrapper';
 import { Permissions } from '../enums';
-import { FilterControls, FilterProvider } from '../Components/Filter';
+// Import useFilter hook here
+import { FilterControls, FilterProvider, useFilter } from '../Components/Filter';
 import { PaymentChart } from '../Components/PaymentChart';
 import { RestockAlertsCard } from '../Components/RestockItems';
-import { Link, useLocation } from 'react-router-dom'; // Added useLocation
+import { Link, useLocation } from 'react-router-dom'; 
 import { SiteItems } from '../routes/SiteRoutes';
+import { TopEntitiesList } from '../Components/TopFiveEntities';
 
 // --- FIXED HOOK ---
 const useBusinessName = () => {
@@ -22,7 +24,6 @@ const useBusinessName = () => {
   const { currentUser } = useAuth();
 
   useEffect(() => {
-    // FIX 1: Logic was inverted. We stop only if companyId is MISSING.
     if (!currentUser?.companyId) {
       setLoading(false);
       return;
@@ -30,14 +31,12 @@ const useBusinessName = () => {
 
     const fetchBusinessInfo = async () => {
       try {
-        // FIX 2: Correct path based on your factory: companies -> {id} -> business_info -> {id}
         const docRef = doc(db, 'companies', currentUser.companyId, 'business_info', currentUser.companyId);
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists() && docSnap.data().businessName) {
           setBusinessName(docSnap.data().businessName);
         } else {
-          // Fallback: Check root doc just in case
           const rootRef = doc(db, 'companies', currentUser.companyId);
           const rootSnap = await getDoc(rootRef);
           setBusinessName(rootSnap.exists() ? rootSnap.data().businessName || 'Business' : 'Business');
@@ -55,25 +54,26 @@ const useBusinessName = () => {
   return { businessName, loading };
 };
 
-
-const Home = () => {
+// --- NEW SUB-COMPONENT: Holds the actual dashboard content ---
+// This component sits INSIDE the FilterProvider, so it can use useFilter()
+const DashboardContent = () => {
   const { loading: authLoading } = useAuth();
-  // Removed argument, hook uses context internally
   const { businessName, loading: nameLoading } = useBusinessName();
+  
+  // Now we can safely use the hook because we are inside the provider
+  const { filters } = useFilter(); 
 
   const [isDataVisible, setIsDataVisible] = useState<boolean>(false);
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
 
-  const location = useLocation(); // Hook for current path
+  const location = useLocation();
   const isLoading = authLoading || nameLoading;
 
   const currentItem = SiteItems.find(item => item.to === location.pathname);
   const currentLabel = currentItem ? currentItem.label : "Menu";
 
-  return ( 
-    <FilterProvider>
-      <div className="flex min-h-screen w-full flex-col bg-gray-100">
-
+  return (
+    <div className="flex min-h-screen w-full flex-col bg-gray-100">
         <header className="flex flex-shrink-0 items-center justify-between border-b border-slate-300 bg-gray-100 p-2 ">
           <ShowWrapper requiredPermission={Permissions.CreateUsers}>
             <div className="relative w-14 flex justify-start">
@@ -159,7 +159,15 @@ const Home = () => {
                 <SalesBarChartReport isDataVisible={isDataVisible} />
               </ShowWrapper>
               <ShowWrapper requiredPermission={Permissions.ViewSalescard}>
-                <PaymentChart isDataVisible={isDataVisible} />
+                <PaymentChart 
+                  isDataVisible={isDataVisible} 
+                  type="sales"
+                  // filters is now defined because we are inside DashboardContent
+                  filters={{ 
+                    start: filters.startDate, 
+                    end: filters.endDate 
+                  }} 
+                />
               </ShowWrapper>
               <ShowWrapper requiredPermission={Permissions.ViewTopSoldItems} >
                 <TopSoldItemsCard isDataVisible={isDataVisible} />
@@ -167,6 +175,17 @@ const Home = () => {
               <ShowWrapper requiredPermission={Permissions.ViewSalescard}>
                 <TopSalespersonCard isDataVisible={isDataVisible} />
               </ShowWrapper>
+              <ShowWrapper requiredPermission={Permissions.ViewSalescard}>
+        <TopEntitiesList 
+            isDataVisible={isDataVisible} 
+            type="sales" 
+            filters={{ 
+                start: filters.startDate, 
+                end: filters.endDate 
+            }} 
+            titleOverride="Top Customers"
+        />
+    </ShowWrapper>
               <ShowWrapper requiredPermission={Permissions.ViewAttendance} >
                 <AttendancePage />
               </ShowWrapper>
@@ -177,6 +196,13 @@ const Home = () => {
           </div>
         </main>
       </div>
+  );
+}
+
+const Home = () => {
+  return ( 
+    <FilterProvider>
+      <DashboardContent />
     </FilterProvider>
   );
 };

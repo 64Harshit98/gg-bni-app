@@ -12,8 +12,8 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
+import { CustomTable, type TableColumn } from '../../Components/CustomTable';
 
-// --- Data Types ---
 interface Transaction {
   id: string;
   partyName: string;
@@ -25,7 +25,7 @@ interface Transaction {
 
 interface TransactionDetail extends Transaction {
   type: 'Revenue' | 'Cost';
-  profit?: number; // Added profit for sorting
+  profit?: number;
 }
 
 interface Item {
@@ -64,69 +64,6 @@ const FilterSelect: React.FC<{
   </div>
 );
 
-const PnlListTable: React.FC<{
-  transactions: TransactionDetail[];
-  sortConfig: { key: keyof TransactionDetail; direction: 'asc' | 'desc' };
-  onSort: (key: keyof TransactionDetail) => void;
-}> = ({ transactions, sortConfig, onSort }) => {
-  const ASC_ICON = '∧'; // Up Arrow/Wedge for Ascending
-  const DESC_ICON = '∨'; // Down Arrow/Vel for Descending
-
-  const SortableHeader: React.FC<{ sortKey: keyof TransactionDetail; children: React.ReactNode; className?: string; }> = ({ sortKey, children, className }) => {
-    const isSorted = sortConfig.key === sortKey;
-    const directionIcon = sortConfig.direction === 'asc' ? ASC_ICON : DESC_ICON;
-    return (
-      <th className={`py-2 px-3 ${className || ''}`}>
-        <button onClick={() => onSort(sortKey)} className="flex items-center gap-2 uppercase">
-          {children}
-          <span className="w-0">
-            {isSorted ? <span className="text-blue-600 text-xs">{directionIcon}</span> : <span className="text-gray-400 hover:text-gray-600 text-xs inline-flex flex-col leading-3"><span>{ASC_ICON}</span> {/* Up arrow for unsorted state */}
-              <span className="-mt-1">{DESC_ICON}</span></span>}
-          </span>
-        </button>
-      </th>
-    );
-  };
-
-  return (
-    <div className="bg-white p-2 rounded-lg shadow-md mt-2">
-      <div className="max-h-96 overflow-y-auto">
-        <table className="w-full text-sm text-center">
-          <thead className="text-xs text-slate-500 bg-slate-100 sticky top-0">
-            <tr>
-              <SortableHeader sortKey="createdAt">Date</SortableHeader>
-              <SortableHeader sortKey="invoiceNumber">Invoice</SortableHeader>
-              <SortableHeader sortKey="totalAmount" className="text-center">Sales</SortableHeader>
-              <SortableHeader sortKey="costOfGoodsSold" className="text-center">Cost</SortableHeader>
-              <SortableHeader sortKey="profit" className="text-center">Profit</SortableHeader>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {transactions.filter(t => t.type === 'Revenue').map(t => {
-              const profit = t.profit || 0;
-              return (
-                <tr key={t.id} className="hover:bg-slate-50">
-                  <td className="py-2 px-3 text-slate-600">{formatDate(t.createdAt)}</td>
-                  <td className="py-2 px-3 font-medium">{t.invoiceNumber}</td>
-                  <td className="py-2 px-3 text-green-600 ">
-                    {`₹${t.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
-                  </td>
-                  <td className="py-2 px-3 text-red-600">
-                    {`₹${(t.costOfGoodsSold || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
-                  </td>
-                  <td className={`py-2 px-3 font-medium ${profit >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                    {`₹${profit.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-};
-
 const usePnlReport = (companyId: string | undefined) => {
   const [sales, setSales] = useState<Transaction[]>([]);
   const [itemsMap, setItemsMap] = useState<Map<string, Item>>(new Map());
@@ -139,9 +76,7 @@ const usePnlReport = (companyId: string | undefined) => {
       return;
     }
 
-    // --- FIX 1: Use the correct multi-tenant path for 'items' ---
     const itemsCollectionRef = collection(db, 'companies', companyId, 'items');
-    // --- FIX 1: Remove the 'companyId' where clause ---
     const qItems = query(itemsCollectionRef);
 
     const unsubscribeItems = onSnapshot(qItems, (snapshot) => {
@@ -155,13 +90,10 @@ const usePnlReport = (companyId: string | undefined) => {
       setItemsMap(newItemsMap);
     }, (_err) => setError('Failed to fetch item data.'));
 
-    // --- FIX 2: Use the correct multi-tenant path for 'sales' ---
     const salesCollectionRef = collection(db, 'companies', companyId, 'sales');
-    // --- FIX 2: Remove the 'companyId' where clause ---
     const qSales = query(salesCollectionRef);
 
     const unsubscribeSales = onSnapshot(qSales, (snapshot) => {
-      // This logic to wait for itemsMap is correct
       if (itemsMap.size === 0 && snapshot.size > 0) return;
 
       setSales(snapshot.docs.map(doc => {
@@ -179,7 +111,7 @@ const usePnlReport = (companyId: string | undefined) => {
           invoiceNumber: saleData.invoiceNumber || 'N/A',
           partyName: saleData.partyName || 'N/A',
           costOfGoodsSold: costOfGoodsSold,
-          items: saleData.items || [], // Added items for useMemo
+          items: saleData.items || [],
         };
       }));
       setLoading(false);
@@ -189,11 +121,10 @@ const usePnlReport = (companyId: string | undefined) => {
       unsubscribeItems();
       unsubscribeSales();
     };
-  }, [companyId, itemsMap]); // itemsMap dependency is correct
+  }, [companyId, itemsMap]);
 
   return { sales, loading, error };
 };
-
 
 const PnlReportPage: React.FC = () => {
   const navigate = useNavigate();
@@ -341,6 +272,47 @@ const PnlReportPage: React.FC = () => {
     doc.save(`PNL-Report-${startDate}-to-${endDate}.pdf`);
   };
 
+  const tableColumns: TableColumn<TransactionDetail>[] = [
+    {
+      header: 'Date',
+      accessor: (row) => formatDate(row.createdAt),
+      sortKey: 'createdAt',
+      className: 'text-slate-600'
+    },
+    {
+      header: 'Invoice',
+      accessor: 'invoiceNumber',
+      sortKey: 'invoiceNumber',
+      className: 'font-medium'
+    },
+    {
+      header: 'Sales',
+      accessor: (row) => `₹${row.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`,
+      sortKey: 'totalAmount',
+      className: 'text-green-600'
+    },
+    {
+      header: 'Cost',
+      accessor: (row) => `₹${(row.costOfGoodsSold || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`,
+      sortKey: 'costOfGoodsSold',
+      className: 'text-red-600'
+    },
+    {
+      header: 'Profit',
+      sortKey: 'profit',
+      accessor: (row) => {
+        const profit = row.profit || 0;
+        const colorClass = profit >= 0 ? 'text-blue-600' : 'text-red-600';
+        return (
+          <span className={colorClass}>
+            {`₹${profit.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+          </span>
+        );
+      },
+      className: 'font-medium'
+    }
+  ];
+
   if (authLoading || dataLoading) {
     return <div className="p-4 text-center">Loading Report...</div>;
   }
@@ -357,7 +329,7 @@ const PnlReportPage: React.FC = () => {
       <div className="flex items-center justify-between pb-3 border-b mb-2">
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">Profit & Loss Report</h1>
         <button onClick={() => navigate(-1)} className="p-2">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
         </button>
       </div>
 
@@ -426,7 +398,16 @@ const PnlReportPage: React.FC = () => {
         </div>
       </div>
 
-      {isListVisible && <PnlListTable transactions={filteredTransactions} sortConfig={sortConfig} onSort={handleSort} />}
+      {isListVisible && (
+        <CustomTable<TransactionDetail>
+          data={filteredTransactions}
+          columns={tableColumns}
+          keyExtractor={(item) => item.id}
+          sortConfig={sortConfig}
+          onSort={handleSort}
+          emptyMessage="No transactions found for this period."
+        />
+      )}
     </div>
   );
 };

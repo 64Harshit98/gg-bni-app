@@ -13,9 +13,11 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
-import { CustomTable,type TableColumn } from '../../Components/CustomTable';
+import { CustomTable } from '../../Components/CustomTable';
 import { PaymentChart } from '../../Components/PaymentChart';
 import { TopEntitiesList } from '../../Components/TopFiveEntities';
+import { IconClose } from '../../constants/Icons';
+import { getPurchaseColumns } from '../../constants/TableColoumns';
 
 // --- Data Types ---
 interface PurchaseItem {
@@ -222,32 +224,7 @@ const PurchaseReport: React.FC = () => {
     doc.save('purchase_report.pdf');
   };
 
-  const tableColumns: TableColumn<PurchaseRecord>[] = [
-    {
-      header: 'Date',
-      accessor: (row) => formatDate(row.createdAt),
-      sortKey: 'createdAt',
-      className: 'text-slate-600'
-    },
-    {
-      header: 'Name',
-      accessor: 'partyName',
-      sortKey: 'partyName',
-      className: 'font-medium'
-    },
-    {
-      header: 'Items',
-      accessor: (row) => row.items.reduce((sum, i) => sum + i.quantity, 0),
-      sortKey: 'items',
-      className: 'text-slate-600'
-    },
-    {
-      header: 'Amount',
-      accessor: (row) => `₹${row.totalAmount.toLocaleString('en-IN')}`,
-      sortKey: 'totalAmount',
-      className: 'text-right text-slate-600'
-    }
-  ];
+const tableColumns = useMemo(() => getPurchaseColumns(), []);
 
   if (isLoading || authLoading) return <div className="p-4 text-center">Loading...</div>;
   if (error) return <div className="p-4 text-center text-red-500">{error}</div>;
@@ -257,9 +234,7 @@ const PurchaseReport: React.FC = () => {
       <div className="flex items-center justify-between pb-3 border-b mb-2">
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">Purchase Report</h1>
         <button onClick={() => navigate(-1)} className="p-2"> 
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 12H5M12 19l-7-7 7-7"/>
-          </svg>
+          <IconClose width={20} height={20} />
         </button>
       </div>
 

@@ -8,7 +8,9 @@ import autoTable from 'jspdf-autotable';
 import { Spinner } from '../../constants/Spinner';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
-import { CustomTable, type TableColumn } from '../../Components/CustomTable';
+import { CustomTable } from '../../Components/CustomTable';
+import { IconClose } from '../../constants/Icons';
+import { getItemColumns } from '../../constants/TableColoumns';
 
 const UNASSIGNED_GROUP_NAME = 'Uncategorized';
 
@@ -137,46 +139,17 @@ const ItemReport: React.FC = () => {
     doc.save('item_report.pdf');
   };
 
-  // Table Columns Configuration
-  const tableColumns: TableColumn<Item>[] = [
-    { 
-      header: 'Item Name', 
-      accessor: 'name', 
-      sortKey: 'name',
-      className: 'font-medium text-left' 
-    },
-    { 
-      header: 'Item Group', 
-      // Lookup logic: matching group ID to Name
-      accessor: (item) => {
-         const group = itemGroups.find(g => g.id === item.itemGroupId);
-         return group?.name || item.itemGroupId || UNASSIGNED_GROUP_NAME;
-      },
-      className: 'text-slate-600'
-    },
-    { 
-      header: 'MRP', 
-      accessor: (item) => `₹${item.mrp?.toFixed(2) || '0.00'}`, 
-      sortKey: 'mrp', 
-      className: 'text-right' 
-    },
-    { 
-      header: 'Cost Price', 
-      accessor: (item) => `₹${item.purchasePrice?.toFixed(2) || '0.00'}`, 
-      sortKey: 'purchasePrice', 
-      className: 'text-right' 
-    }
-  ];
+const tableColumns = useMemo(() => getItemColumns(itemGroups), [itemGroups]);
 
   if (isLoading) return <Spinner />;
   if (error) return <div className="p-4 text-red-500 font-semibold text-center">{error}</div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 p-2">
+    <div className="min-h-screen bg-gray-50 p-2 mb-12">
       <div className="flex items-center justify-between pb-3 border-b mb-2">
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">Item Report</h1>
         <button onClick={() => navigate(-1)} className="rounded-full bg-gray-200 p-2 text-gray-900 hover:bg-gray-300">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          <IconClose width={20} height={20} />
         </button>
       </div>
 

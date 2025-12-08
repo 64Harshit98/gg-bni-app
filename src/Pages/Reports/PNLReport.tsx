@@ -12,7 +12,9 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
-import { CustomTable, type TableColumn } from '../../Components/CustomTable';
+import { CustomTable } from '../../Components/CustomTable';
+import { IconClose } from '../../constants/Icons';
+import { getPnlColumns } from '../../constants/TableColoumns';
 
 interface Transaction {
   id: string;
@@ -272,46 +274,7 @@ const PnlReportPage: React.FC = () => {
     doc.save(`PNL-Report-${startDate}-to-${endDate}.pdf`);
   };
 
-  const tableColumns: TableColumn<TransactionDetail>[] = [
-    {
-      header: 'Date',
-      accessor: (row) => formatDate(row.createdAt),
-      sortKey: 'createdAt',
-      className: 'text-slate-600'
-    },
-    {
-      header: 'Invoice',
-      accessor: 'invoiceNumber',
-      sortKey: 'invoiceNumber',
-      className: 'font-medium'
-    },
-    {
-      header: 'Sales',
-      accessor: (row) => `₹${row.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`,
-      sortKey: 'totalAmount',
-      className: 'text-green-600'
-    },
-    {
-      header: 'Cost',
-      accessor: (row) => `₹${(row.costOfGoodsSold || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`,
-      sortKey: 'costOfGoodsSold',
-      className: 'text-red-600'
-    },
-    {
-      header: 'Profit',
-      sortKey: 'profit',
-      accessor: (row) => {
-        const profit = row.profit || 0;
-        const colorClass = profit >= 0 ? 'text-blue-600' : 'text-red-600';
-        return (
-          <span className={colorClass}>
-            {`₹${profit.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
-          </span>
-        );
-      },
-      className: 'font-medium'
-    }
-  ];
+  const tableColumns = useMemo(() => getPnlColumns(), []);
 
   if (authLoading || dataLoading) {
     return <div className="p-4 text-center">Loading Report...</div>;
@@ -329,7 +292,7 @@ const PnlReportPage: React.FC = () => {
       <div className="flex items-center justify-between pb-3 border-b mb-2">
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">Profit & Loss Report</h1>
         <button onClick={() => navigate(-1)} className="p-2">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          <IconClose width={20} height={20} />
         </button>
       </div>
 

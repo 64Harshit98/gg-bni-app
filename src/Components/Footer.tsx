@@ -19,7 +19,7 @@ interface GenericBillFooterProps {
 
   // --- Configuration ---
   showTaxRow?: boolean;
-  
+
   // --- Actions ---
   actionLabel: string;
   onActionClick: () => void;
@@ -37,6 +37,7 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
   totalDiscount = 0,
   taxAmount = 0,
   taxLabel = 'Tax',
+  roundingOffAmount = 0,
   finalAmount,
   showTaxRow = false,
   actionLabel,
@@ -46,24 +47,24 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
 }) => {
   return (
     <div className="flex-shrink-0 bg-white border-t border-gray-100 shadow-[0_-5px_15px_rgba(0,0,0,0.05)] rounded-sm z-20 mb-10">
-      
+
       {/* Optional Content (e.g. Tax Selector for Purchase) */}
       {children}
 
       {/* Toggle Header */}
-      <div 
-        onClick={onToggleExpand} 
+      <div
+        onClick={onToggleExpand}
         className="flex justify-between items-center px-5 py-2 cursor-pointer active:bg-gray-50 transition-colors rounded-t-2xl group border-b border-gray-100"
       >
         <div className="flex items-center gap-2">
-          <span className="text-sm font-bold tracking-wider text-gray-500 group-hover:text-gray-700">
+          <span className="text-xs font-bold uppercase tracking-wider text-gray-500 group-hover:text-gray-700">
             Bill Details
           </span>
           {/* Show Qty in header when collapsed for quick view */}
           {!isExpanded && (
-             <span className="bg-gray-100 text-gray-600 text-[10px] px-2 py-0.5 rounded-full font-medium">
-               {totalQuantity} Items
-             </span>
+            <span className="bg-gray-100 text-gray-600 text-[10px] px-2 py-0.5 rounded-full font-medium">
+              {totalQuantity} Items
+            </span>
           )}
         </div>
         <div className={`transform transition-transform duration-300 text-gray-400 ${isExpanded ? '' : 'rotate-180'}`}>
@@ -74,30 +75,36 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
       {/* Expanded Details */}
       {isExpanded && (
         <div className="px-5 pb-2 space-y-2 text-sm animate-in slide-in-from-bottom-2 duration-200 pt-2">
-          
+
           <div className="flex justify-between text-gray-600">
-              <span>Subtotal</span> 
-              <span className="font-medium">₹{subtotal.toFixed(2)}</span>
+            <span>Subtotal</span>
+            <span className="font-medium">₹{subtotal.toFixed(2)}</span>
           </div>
 
           {totalDiscount > 0 && (
             <div className="flex justify-between text-green-600">
-                <span>Discount</span> 
-                <span className="font-medium">- ₹{totalDiscount.toFixed(2)}</span>
+              <span>Discount</span>
+              <span className="font-medium">- ₹{totalDiscount.toFixed(2)}</span>
             </div>
           )}
 
           {showTaxRow && (
             <div className="flex justify-between text-blue-600">
-              <span>{taxLabel}</span> 
+              <span>{taxLabel}</span>
               <span className="font-medium">+ ₹{taxAmount.toFixed(2)}</span>
             </div>
           )}
 
+          {roundingOffAmount !== 0 && (
+            <div className="flex justify-between text-xs text-gray-500">
+              <span>Rounding Off</span>
+              <span>{roundingOffAmount > 0 ? '+' : ''}{roundingOffAmount.toFixed(2)}</span>
+            </div>
+          )}
 
           <div className="border-t border-dashed border-gray-200 pt-2 mt-2 flex justify-between text-gray-500 text-xs font-medium">
-              <span>Total Quantity</span> 
-              <span>{totalQuantity}</span>
+            <span>Total Quantity</span>
+            <span>{totalQuantity}</span>
           </div>
         </div>
       )}
@@ -112,10 +119,10 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
         </div>
 
         <div className="w-full">
-          <CustomButton 
-            onClick={onActionClick} 
-            variant={Variant.Payment} 
-            className="w-full py-3.5 text-base font-bold shadow-lg shadow-blue-200 rounded-sm flex justify-center items-center active:scale-[0.98] transition-transform"
+          <CustomButton
+            onClick={onActionClick}
+            variant={Variant.Payment}
+            className="w-full py-3.5 text-base font-bold shadow-lg shadow-blue-200 rounded-xl flex justify-center items-center active:scale-[0.98] transition-transform"
             disabled={disableAction}
           >
             {actionLabel}

@@ -11,7 +11,6 @@ export enum Permissions {
     ViewPurchaseReport = 'ViewPurchaseReport',
     ViewPNLReport = 'ViewPNLReport',
     Viewrestockcard = 'Viewrestockcard',
-    ViewCatalogue = 'ViewCatalogue',
     ViewTransactions = 'ViewTransactions',
     // Core Actions
     CreateSales = 'CreateSales',
@@ -19,14 +18,13 @@ export enum Permissions {
     CreatePurchase = 'CreatePurchase',
     CreatePurchaseReturn = 'CreatePurchaseReturn',
     PrintQR = 'PrintQR',
-
     // Inventory & User Management
     ManageItemGroup = 'ManageItemGroup',
     ManageItems = 'ManageItems',
     ManageUsers = 'ManageUsers',
     ManageEditProfile = 'ManageEditProfile',
     CreateUsers = 'CreateUsers',
-
     // General Access
     SetPermissions = 'SetPermissions',
+    ViewCatalogue = 'ViewCatalogue',
 }

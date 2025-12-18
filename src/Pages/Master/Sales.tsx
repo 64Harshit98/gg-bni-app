@@ -16,8 +16,10 @@ import type { User } from '../../Role/permission';
 import { useSalesSettings } from '../../context/SettingsContext';
 import { Spinner } from '../../constants/Spinner';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
-import { SalesCartList } from '../../Components/CartItem';
+import { GenericCartList } from '../../Components/CartItem';
 import { FiTrash2 } from 'react-icons/fi';
+import { GenericBillFooter } from '../../Components/Footer';
+import { IconScanCircle } from '../../constants/Icons';
 
 // 1. EXPORT SalesItem (Extended with productId)
 export interface SalesItem extends OriginalSalesItem {
@@ -542,6 +544,7 @@ const Sales: React.FC = () => {
   const settingsTaxTypeDisplay = salesSettings?.taxType ?? 'exclusive';
   const isCardView = salesSettings?.salesViewType === 'card';
 
+  const showTaxRow = gstSchemeDisplay !== 'none' && settingsTaxTypeDisplay === 'exclusive';
   const renderHeader = () => (
     <div className="flex flex-col bg-gray-100 border-b border-gray-200 shadow-sm flex-shrink-0 mb-2">
       <h1 className="text-2xl font-bold text-gray-800 text-center mb-2">{isEditMode ? `Editing #${invoiceToEdit.invoiceNumber}` : (salesSettings?.voucherName ?? 'Sales')}</h1>
@@ -550,88 +553,10 @@ const Sales: React.FC = () => {
           <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.SALES)} active={isActive(ROUTES.SALES)}>Sales</CustomButton>
           <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.SALES_RETURN)} active={isActive(ROUTES.SALES_RETURN)}>Sales Return</CustomButton>
         </div>
-      )} 
+      )}
     </div>
   );
 
-const renderFooter = () => {
-    const showTaxRow = gstSchemeDisplay !== 'none' && settingsTaxTypeDisplay === 'exclusive';
-    
-    return (
-      <div className="flex-shrink-0 bg-white border-t border-gray-100 shadow-[0_-5px_15px_rgba(0,0,0,0.05)] rounded-sm z-20 mb-10">
-        <div 
-          onClick={() => setIsFooterExpanded(!isFooterExpanded)} 
-          className="flex justify-between items-center px-5 py-2 cursor-pointer active:bg-gray-50 transition-colors rounded-t-2xl group"
-        >
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-gray-500 group-hover:text-gray-700">
-              Bill Details
-            </span>
-            {/* Show Qty in header when collapsed for quick view */}
-            {!isFooterExpanded && (
-               <span className="bg-gray-100 text-gray-600 text-[10px] px-2 py-0.5 rounded-full font-medium">
-                 {totalQuantity} Items
-               </span>
-            )}
-          </div>
-          <div className={`transform transition-transform duration-300 text-gray-400 ${isFooterExpanded ? '' : 'rotate-180'}`}>
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-            </svg>
-          </div>
-        </div>
-
-        {/* --- Expanded Details --- */}
-        {isFooterExpanded && (
-          <div className="px-5 pb-2 space-y-2 text-sm animate-in slide-in-from-bottom-2 duration-200">
-            
-            <div className="flex justify-between text-gray-600">
-                <span>Subtotal</span> 
-                <span className="font-medium">₹{subtotal.toFixed(2)}</span>
-            </div>
-
-            <div className="flex justify-between text-green-600">
-                <span>Discount</span> 
-                <span className="font-medium">- ₹{totalDiscount.toFixed(2)}</span>
-            </div>
-
-            {showTaxRow && (
-              <div className="flex justify-between text-blue-600">
-                <span>Tax (Exclusive)</span> 
-                <span className="font-medium">+ ₹{taxAmount.toFixed(2)}</span>
-              </div>
-            )}
-
-            <div className="border-t border-dashed border-gray-200 pt-2 mt-2 flex justify-between text-gray-500 text-xs font-medium">
-                <span>Total Quantity</span> 
-                <span>{totalQuantity}</span>
-            </div>
-          </div>
-        )}
-
-        {/* --- Main Total & Action --- */}
-        <div className="px-5 pb-5">
-          <div className="flex justify-between items-end mb-2">
-            <span className="text-gray-500 text-sm font-medium pb-1">Grand Total</span>
-            <span className="text-2xl font-extrabold text-gray-900 tracking-tight">
-              ₹{finalAmount.toFixed(2)}
-            </span>
-          </div>
-
-          <div className="w-full">
-            <CustomButton 
-              onClick={handleProceedToPayment} 
-              variant={Variant.Payment} 
-              className="w-full py-3.5 text-base font-bold shadow-lg shadow-blue-200 rounded-xl flex justify-center items-center active:scale-[0.98] transition-transform"
-              disabled={items.length === 0}
-            >
-              {isEditMode ? 'Update Invoice' : 'Proceed to Pay'}
-            </CustomButton>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   if (isCardView) {
     return (
@@ -669,7 +594,20 @@ const renderFooter = () => {
             );
           })}
         </div>
-        {renderFooter()}
+        <GenericBillFooter
+          isExpanded={isFooterExpanded}
+          onToggleExpand={() => setIsFooterExpanded(!isFooterExpanded)}
+          totalQuantity={totalQuantity}
+          subtotal={subtotal}
+          totalDiscount={totalDiscount}
+          taxAmount={taxAmount}
+          finalAmount={finalAmount}
+          showTaxRow={showTaxRow}
+          taxLabel="Tax (Exclusive)"
+          actionLabel={isEditMode ? 'Update Invoice' : 'Proceed to Pay'}
+          onActionClick={handleProceedToPayment}
+          disableAction={items.length === 0}
+        />
         <PaymentDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} subtotal={amountToPayNow} onPaymentComplete={handleSavePayment} isPartyNameEditable={!isEditMode} initialPartyName={isEditMode ? invoiceToEdit?.partyName : ''} initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : ''} initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined} totalItemDiscount={totalDiscount} totalQuantity={totalQuantity} />
         <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
       </div>
@@ -688,7 +626,9 @@ const renderFooter = () => {
           <div className="flex-grow">
             <SearchableItemInput label="Search Item" placeholder="Search by name or barcode..." items={availableItems} onItemSelected={handleItemSelected} isLoading={pageIsLoading} error={error} />
           </div>
-          <button onClick={() => setIsScannerOpen(true)} className='bg-transparent text-gray-700 p-3 border border-gray-700 rounded-md font-semibold transition hover:bg-gray-800' title="Scan Barcode"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"></path><circle cx="12" cy="13" r="3"></circle></svg></button>
+          <button onClick={() => setIsScannerOpen(true)} className='bg-transparent text-gray-700 p-3 border border-gray-700 rounded-md font-semibold transition hover:bg-gray-800' title="Scan Barcode">
+            <IconScanCircle width={20} height={20} />
+          </button>
         </div>
       </div>
       <div className="flex-1 flex flex-col bg-gray-100 overflow-y-hidden">
@@ -704,23 +644,50 @@ const renderFooter = () => {
           {priceInfo && <div className="text-xs text-red-600">{priceInfo}</div>}
         </div>
         {/* Cart List */}
-        <SalesCartList
-          items={items} availableItems={availableItems} salesSettings={salesSettings}
-          isDiscountLocked={isDiscountLocked} isPriceLocked={isPriceLocked} applyRounding={applyRounding} State={State} setModal={setModal}
-          onOpenEditDrawer={(item) => {
-            // FIX 2: Cast to SalesItem to access productId safel
-            const salesItem = item as unknown as SalesItem;
-            let originalItem = availableItems.find(a => a.id === salesItem.productId);
-            if (!originalItem) originalItem = availableItems.find(a => a.id === item.id);
-            if (!originalItem) originalItem = item;
-            if (originalItem) handleOpenEditDrawer(originalItem);
+        <GenericCartList
+          items={items}
+          availableItems={availableItems}
+          basePriceKey="mrp"
+          priceLabel="MRP"
+          settings={{
+            enableRounding: salesSettings?.enableRounding ?? true,
+            // FIX: Type cast to resolve 'roundingInterval' error
+            roundingInterval: (salesSettings as any)?.roundingInterval ?? 1,
+            enableItemWiseDiscount: salesSettings?.enableItemWiseDiscount ?? true,
+            lockDiscount: isDiscountLocked,
+            lockPrice: isPriceLocked
           }}
-          onDeleteItem={handleDeleteItem} onDiscountChange={handleDiscountChange} onCustomPriceChange={handleCustomPriceChange} onCustomPriceBlur={handleCustomPriceBlur} onQuantityChange={handleQuantityChange}
-          onDiscountPressStart={handleDiscountPressStart} onDiscountPressEnd={handleDiscountPressEnd} onDiscountClick={handleDiscountClick}
-          onPricePressStart={handlePricePressStart} onPricePressEnd={handlePricePressEnd} onPriceClick={handlePriceClick}
+          applyRounding={applyRounding}
+          State={State}
+          setModal={setModal}
+          onOpenEditDrawer={handleOpenEditDrawer}
+          onDeleteItem={handleDeleteItem}
+          onDiscountChange={handleDiscountChange}
+          onCustomPriceChange={handleCustomPriceChange}
+          onCustomPriceBlur={handleCustomPriceBlur}
+          onQuantityChange={handleQuantityChange}
+          onDiscountPressStart={handleDiscountPressStart}
+          onDiscountPressEnd={handleDiscountPressEnd}
+          onDiscountClick={handleDiscountClick}
+          onPricePressStart={handlePricePressStart}
+          onPricePressEnd={handlePricePressEnd}
+          onPriceClick={handlePriceClick}
+        />
+        <GenericBillFooter
+          isExpanded={isFooterExpanded}
+          onToggleExpand={() => setIsFooterExpanded(!isFooterExpanded)}
+          totalQuantity={totalQuantity}
+          subtotal={subtotal}
+          totalDiscount={totalDiscount}
+          taxAmount={taxAmount}
+          finalAmount={finalAmount}
+          showTaxRow={showTaxRow}
+          taxLabel="Tax (Exclusive)"
+          actionLabel={isEditMode ? 'Update Invoice' : 'Proceed to Pay'}
+          onActionClick={handleProceedToPayment}
+          disableAction={items.length === 0}
         />
       </div>
-      {renderFooter()}
       <PaymentDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} subtotal={amountToPayNow} onPaymentComplete={handleSavePayment} isPartyNameEditable={!isEditMode} initialPartyName={isEditMode ? invoiceToEdit?.partyName : ''} initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : ''} initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined} totalItemDiscount={totalDiscount} totalQuantity={totalQuantity} />
       <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
     </div>

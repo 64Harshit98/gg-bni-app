@@ -38,4 +38,6 @@ export const ROUTES = {
   CATALOGUE_ACCOUNTS: 'accounts',
   CATALOGUE_REPORTS: 'reports',
   CATALOGUE_SALES: 'sales',
+  SUBSCRIPTION_PAGE: '/subscription',
+  SUPPORT_PAGE: '/support',
 };

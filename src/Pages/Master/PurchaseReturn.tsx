@@ -20,12 +20,11 @@ import { CustomButton } from '../../Components';
 import SearchableItemInput from '../../UseComponents/SearchIteminput';
 import PaymentDrawer, { type PaymentCompletionData } from '../../Components/PaymentDrawer';
 import BarcodeScanner from '../../UseComponents/BarcodeScanner';
-import {ReturnListItem} from '../../Components/ReturnListItem';
+import { ReturnListItem } from '../../Components/ReturnListItem';
 import { IconScanCircle } from '../../constants/Icons';
 
 // --- IMPORT THE GENERIC COMPONENT ---
-// Ensure this path is correct based on your project structure
-import { GenericCartList,type CartItem } from '../../Components/CartItem';
+import { GenericCartList, type CartItem } from '../../Components/CartItem';
 
 // --- Interfaces ---
 interface PurchaseData {
@@ -33,13 +32,15 @@ interface PurchaseData {
   invoiceNumber: string;
   partyName: string;
   partyNumber?: string;
+  // Added Address and GSTIN to interface
+  partyAddress?: string;
+  partyGstin?: string;
   items: OriginalPurchaseItem[];
   totalAmount: number;
   createdAt: any;
   isReturned?: boolean;
 }
 
-// Used for "Items to Return" (Read-only list logic)
 interface TransactionItem {
   id: string;
   originalItemId: string;
@@ -49,12 +50,10 @@ interface TransactionItem {
   amount: number;
 }
 
-// Used for "New Items Received" (Editable via GenericCartList)
-// FIX: Ensure this extends CartItem correctly
 interface ReturnCartItem extends CartItem {
-    originalItemId: string;
-    unitPrice: number;
-    amount: number;
+  originalItemId: string;
+  unitPrice: number;
+  amount: number;
 }
 
 const PurchaseReturnPage: React.FC = () => {
@@ -67,10 +66,14 @@ const PurchaseReturnPage: React.FC = () => {
 
   const [supplierName, setSupplierName] = useState<string>('');
   const [supplierNumber, setSupplierNumber] = useState<string>('');
+  // Added State for Address and GSTIN
+  const [supplierAddress, setSupplierAddress] = useState<string>('');
+  const [supplierGstin, setSupplierGstin] = useState<string>('');
+  
   const [modeOfReturn, setModeOfReturn] = useState<string>('Exchange');
-  
+
   const [newItemsReceived, setNewItemsReceived] = useState<ReturnCartItem[]>([]);
-  
+
   const [returnDate, setReturnDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
   const isActive = (path: string) => location.pathname === path;
@@ -159,7 +162,10 @@ const PurchaseReturnPage: React.FC = () => {
     setSelectedPurchase(purchase);
     setSupplierName(purchase.partyName);
     setSupplierNumber(purchase.partyNumber || '');
-    
+    // Set Address and GSTIN from the selected purchase
+    setSupplierAddress(purchase.partyAddress || '');
+    setSupplierGstin(purchase.partyGstin || '');
+
     setOriginalPurchaseItems(purchase.items.map((item: any) => {
       const itemData = item.data || item;
       const quantity = itemData.quantity || 1;
@@ -174,7 +180,7 @@ const PurchaseReturnPage: React.FC = () => {
         amount: unitPrice * quantity,
       };
     }));
-    
+
     setSelectedReturnIds(new Set());
     setNewItemsReceived([]);
     setSearchQuery(purchase.invoiceNumber || purchase.partyName);
@@ -195,6 +201,10 @@ const PurchaseReturnPage: React.FC = () => {
 
   const handleClear = () => {
     setSelectedPurchase(null);
+    setSupplierName('');
+    setSupplierNumber('');
+    setSupplierAddress('');
+    setSupplierGstin('');
     setSelectedReturnIds(new Set());
     setNewItemsReceived([]);
     setSearchQuery('');
@@ -224,19 +234,48 @@ const PurchaseReturnPage: React.FC = () => {
     setNewItemsReceived(prev => prev.filter(item => item.id !== id));
   };
 
-  // FIX: Provide all required fields for CartItem
   const handleNewItemQuantity = (id: string, newQty: number) => {
-     setNewItemsReceived(prev => prev.map(item => {
-         if(item.id === id) {
-             const qty = Math.max(1, newQty);
-             return { 
-                 ...item, 
-                 quantity: qty, 
-                 amount: qty * item.unitPrice 
-             };
-         }
-         return item;
-     }));
+    setNewItemsReceived(prev => prev.map(item => {
+      if (item.id === id) {
+        const qty = Math.max(1, newQty);
+        return {
+          ...item,
+          quantity: qty,
+          amount: qty * item.unitPrice
+        };
+      }
+      return item;
+    }));
+  };
+
+  const handleNewItemPriceChange = (id: string, val: string) => {
+    setNewItemsReceived(prev => prev.map(item => {
+      if (item.id === id) {
+        return { ...item, customPrice: val };
+      }
+      return item;
+    }));
+  };
+
+  const handleNewItemPriceBlur = (id: string) => {
+    setNewItemsReceived(prev => prev.map(item => {
+      if (item.id === id) {
+        const rawVal = item.customPrice;
+        const parsed = parseFloat(String(rawVal));
+        
+        if (isNaN(parsed) || parsed < 0) {
+            return { ...item, customPrice: item.unitPrice };
+        }
+
+        return { 
+            ...item, 
+            unitPrice: parsed, 
+            amount: parsed * item.quantity,
+            customPrice: parsed 
+        };
+      }
+      return item;
+    }));
   };
 
   const handleNewItemSelected = (item: Item) => {
@@ -249,9 +288,8 @@ const PurchaseReturnPage: React.FC = () => {
       unitPrice: item.purchasePrice || 0,
       amount: item.purchasePrice || 0,
       isEditable: true,
-      // Required for GenericCartList
       customPrice: item.purchasePrice,
-      discount: 0, 
+      discount: 0,
       productId: item.id
     }]);
   };
@@ -351,12 +389,17 @@ const PurchaseReturnPage: React.FC = () => {
 
       const cleanSupplierNumber = supplierNumber.trim() || selectedPurchase.partyNumber;
       const cleanSupplierName = supplierName.trim() || selectedPurchase.partyName;
+      // Updated: Use state for address/gstin or fallback to original purchase data
+      const cleanSupplierAddress = supplierAddress.trim() || selectedPurchase.partyAddress || '';
+      const cleanSupplierGstin = supplierGstin.trim() || selectedPurchase.partyGstin || '';
 
       if (cleanSupplierNumber && cleanSupplierNumber.length >= 10) {
         const customerRef = doc(db, 'companies', companyId, 'customers', cleanSupplierNumber);
         const customerUpdateData: any = {
           name: cleanSupplierName,
           phone: cleanSupplierNumber,
+          address: cleanSupplierAddress, // Update address
+          gstin: cleanSupplierGstin,     // Update GSTIN
           companyId: companyId,
           lastUpdatedAt: serverTimestamp()
         };
@@ -401,7 +444,7 @@ const PurchaseReturnPage: React.FC = () => {
 
       <div className="flex flex-col p-1 bg-gray-100 border-b border-gray-300 flex-shrink-0">
         <div className='flex items-center gap-2 mb-2'>
-            <h1 className="text-2xl font-bold text-gray-800 text-center flex-grow pr-8">Purchase Return</h1>
+          <h1 className="text-2xl font-bold text-gray-800 text-center flex-grow pr-8">Purchase Return</h1>
         </div>
         <div className="flex justify-center gap-x-6">
           <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.PURCHASE)} active={isActive(ROUTES.PURCHASE)}>Purchase</CustomButton>
@@ -466,15 +509,15 @@ const PurchaseReturnPage: React.FC = () => {
               <h3 className="text-sm font-semibold mt-4 mb-2">Select Items to Return</h3>
               <div className="flex flex-col gap-3">
                 {originalPurchaseItems.map((item) => (
-    <ReturnListItem
-      key={item.id}
-      item={item}
-      isSelected={selectedReturnIds.has(item.id)}
-      onToggle={handleToggleReturnItem}
-      onQuantityChange={(id, val) => handleItemChange(setOriginalPurchaseItems, id, 'quantity', val)}
-      showMrp={false} // Purchase usually doesn't focus on MRP strike-through
-    />
-  ))}
+                  <ReturnListItem
+                    key={item.id}
+                    item={item}
+                    isSelected={selectedReturnIds.has(item.id)}
+                    onToggle={handleToggleReturnItem}
+                    onQuantityChange={(id, val) => handleItemChange(setOriginalPurchaseItems, id, 'quantity', val)}
+                    showMrp={false}
+                  />
+                ))}
               </div>
             </div>
 
@@ -508,35 +551,34 @@ const PurchaseReturnPage: React.FC = () => {
                     <div className="flex flex-col gap-3 mt-4">
                       <h3 className="text-sm font-semibold">New Items Received</h3>
                       <div className="max-h-96 overflow-y-auto">
-                          {/* GENERIC CART LIST REPLACED MANUAL MAP */}
-                          <GenericCartList<ReturnCartItem>
-                                items={newItemsReceived} 
-                                availableItems={availableItems} 
-                                basePriceKey="unitPrice" // Display the purchase cost
-                                priceLabel="Cost"
-                                settings={{
-                                    enableRounding: false,
-                                    roundingInterval: 1,
-                                    enableItemWiseDiscount: false, 
-                                    lockDiscount: true,
-                                    lockPrice: false 
-                                }}
-                                applyRounding={(v) => v} 
-                                State={State} 
-                                setModal={setModal} 
-                                onOpenEditDrawer={() => {}} 
-                                onDeleteItem={handleRemoveNewItem} 
-                                onDiscountChange={() => {}} 
-                                onCustomPriceChange={() => {}} 
-                                onCustomPriceBlur={() => {}} 
-                                onQuantityChange={handleNewItemQuantity} 
-                                onDiscountPressStart={() => {}} 
-                                onDiscountPressEnd={() => {}} 
-                                onDiscountClick={() => {}} 
-                                onPricePressStart={() => {}} 
-                                onPricePressEnd={() => {}} 
-                                onPriceClick={() => {}} 
-                            />
+                        <GenericCartList<ReturnCartItem>
+                          items={newItemsReceived}
+                          availableItems={availableItems}
+                          basePriceKey="unitPrice"
+                          priceLabel="Cost"
+                          settings={{
+                            enableRounding: false,
+                            roundingInterval: 1,
+                            enableItemWiseDiscount: false,
+                            lockDiscount: true,
+                            lockPrice: false
+                          }}
+                          applyRounding={(v) => v}
+                          State={State}
+                          setModal={setModal}
+                          onOpenEditDrawer={() => { }}
+                          onDeleteItem={handleRemoveNewItem}
+                          onDiscountChange={() => { }}
+                          onCustomPriceChange={handleNewItemPriceChange}
+                          onCustomPriceBlur={handleNewItemPriceBlur}
+                          onQuantityChange={handleNewItemQuantity}
+                          onDiscountPressStart={() => { }}
+                          onDiscountPressEnd={() => { }}
+                          onDiscountClick={() => { }}
+                          onPricePressStart={() => { }}
+                          onPricePressEnd={() => { }}
+                          onPriceClick={() => { }}
+                        />
                       </div>
                     </div>
                   )}
@@ -570,6 +612,8 @@ const PurchaseReturnPage: React.FC = () => {
         onClose={() => setIsDrawerOpen(false)}
         subtotal={Math.abs(finalBalance)}
         onPaymentComplete={saveReturnTransaction}
+        initialPartyName={supplierName}
+        initialPartyNumber={supplierNumber}
       />
     </div>
   );

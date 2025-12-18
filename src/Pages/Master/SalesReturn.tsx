@@ -1,3 +1,4 @@
+// src/Pages/SalesReturnPage.tsx
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
@@ -393,9 +394,11 @@ const SalesReturnPage: React.FC = () => {
       const batch = writeBatch(db);
       const saleRef = doc(db, 'companies', companyId, 'sales', selectedSale.id);
 
+      // Create a map of existing items to update quantities or remove them
       const originalItemsMap = new Map(selectedSale.items.map(item => [item.id, { ...item }]));
       const validInventoryIds = new Set(availableItems.map(i => i.id));
 
+      // 1. Process Returns (Deduct quantity from sale)
       itemsToReturn.forEach(returnItem => {
         const originalItem = originalItemsMap.get(returnItem.originalItemId);
         if (originalItem) {
@@ -404,30 +407,56 @@ const SalesReturnPage: React.FC = () => {
         }
       });
 
+      // 2. Process Exchanges (Add quantity to sale)
       exchangeItems.forEach(exchangeItem => {
         const originalItem = Array.from(originalItemsMap.values()).find(i => i.id === exchangeItem.originalItemId);
         if (originalItem) {
+          // If item exists, just increase quantity
           originalItem.quantity += exchangeItem.quantity;
         } else {
+          // If new item added in exchange
           const itemMaster = availableItems.find(i => i.id === exchangeItem.originalItemId);
+          
+          // Use exchangeItem.discount and exchangeItem.amount to respect CART changes
           originalItemsMap.set(exchangeItem.originalItemId, {
-            id: exchangeItem.originalItemId, name: exchangeItem.name, mrp: exchangeItem.mrp,
-            quantity: exchangeItem.quantity, discount: itemMaster?.discount || 0,
-            discountPercentage: itemMaster?.discount || 0, finalPrice: exchangeItem.amount,
-            purchasePrice: itemMaster?.purchasePrice || 0, tax: itemMaster?.tax || 0,
-            itemGroupId: itemMaster?.itemGroupId || '', stock: 0, amount: exchangeItem.amount,
-            barcode: itemMaster?.barcode || '', restockQuantity: 0, isEditable: false
+            id: exchangeItem.originalItemId,
+            name: exchangeItem.name,
+            mrp: exchangeItem.mrp,
+            quantity: exchangeItem.quantity,
+            // Use cart discount
+            discount: exchangeItem.discount || 0,
+            discountPercentage: exchangeItem.discount || 0,
+            // Use cart amount (custom price) as finalPrice
+            finalPrice: exchangeItem.amount,
+            // Add 'amount' for consistency, though finalPrice is primary
+            amount: exchangeItem.amount,
+            purchasePrice: itemMaster?.purchasePrice || 0,
+            tax: itemMaster?.tax || 0,
+            itemGroupId: itemMaster?.itemGroupId || '',
+            stock: 0,
+            barcode: itemMaster?.barcode || '',
+            restockQuantity: 0,
+            isEditable: false
           } as any);
         }
       });
 
       const newItemsList = Array.from(originalItemsMap.values());
+
+      // FIX: TS Error & Calculation Logic
       const updatedTotals = newItemsList.reduce((acc, item) => {
-        const itemTotal = item.mrp * (item.quantity || 0);
-        const disc = item.discountPercentage || item.discount || 0;
-        const itemDiscountAmt = (itemTotal * disc) / 100;
-        acc.subtotal += itemTotal;
-        acc.totalDiscount += itemDiscountAmt;
+        const qty = item.quantity || 0;
+        const itemGross = (item.mrp || 0) * qty;
+
+        // Cast to any to avoid "Property 'amount' does not exist" TS error
+        // checking both finalPrice and amount to ensure we catch the correct value
+        const runtimeItem = item as any;
+        const itemFinal = runtimeItem.finalPrice ?? runtimeItem.amount ?? itemGross;
+
+        const itemDiscount = itemGross - itemFinal;
+
+        acc.subtotal += itemGross;
+        acc.totalDiscount += itemDiscount;
         return acc;
       }, { subtotal: 0, totalDiscount: 0 });
 
@@ -436,10 +465,27 @@ const SalesReturnPage: React.FC = () => {
 
       const updatedFinalAmount = updatedTotals.subtotal - updatedTotals.totalDiscount - newManualDiscount;
 
+      // FIX: Explicitly construct objects to avoid 'undefined' error in Firebase
+      // Do NOT use spread operator (...item) here.
       const returnHistoryRecord = {
         returnedAt: new Date(),
-        returnedItems: itemsToReturn.map(({ id, ...item }) => item),
-        exchangeItems: exchangeItems.map(({ id, ...item }) => item),
+        returnedItems: itemsToReturn.map(i => ({
+          originalItemId: i.originalItemId,
+          name: i.name || '',
+          mrp: i.mrp || 0,
+          quantity: i.quantity || 0,
+          unitPrice: i.unitPrice || 0,
+          amount: i.amount || 0
+        })),
+        exchangeItems: exchangeItems.map(i => ({
+          originalItemId: i.originalItemId,
+          name: i.name || '',
+          mrp: i.mrp || 0,
+          quantity: i.quantity || 0,
+          unitPrice: i.unitPrice || 0,
+          amount: i.amount || 0,
+          discount: i.discount || 0
+        })),
         finalBalance,
         discountDeducted,
         modeOfReturn,
@@ -455,6 +501,7 @@ const SalesReturnPage: React.FC = () => {
         returnHistory: arrayUnion(returnHistoryRecord),
       }, { merge: true });
 
+      // 3. Batch Updates for Inventory
       itemsToReturn.forEach(item => {
         if (item.originalItemId && validInventoryIds.has(item.originalItemId)) {
           batch.update(doc(db, 'companies', companyId, 'items', item.originalItemId), { stock: firebaseIncrement(item.quantity) });
@@ -466,6 +513,7 @@ const SalesReturnPage: React.FC = () => {
         }
       });
 
+      // 4. Update Customer Credit
       const cleanPartyNumber = partyNumber.trim() || selectedSale.partyNumber;
       const cleanPartyName = partyName.trim() || selectedSale.partyName;
       if (cleanPartyNumber && cleanPartyNumber.length >= 10) {
@@ -483,7 +531,10 @@ const SalesReturnPage: React.FC = () => {
     } catch (err: any) {
       console.error(err);
       setModal({ type: State.ERROR, message: `Failed: ${err.message}` });
-    } finally { setIsLoading(false); setIsDrawerOpen(false); }
+    } finally {
+      setIsLoading(false);
+      setIsDrawerOpen(false);
+    }
   };
 
   const handleProcessReturn = () => {

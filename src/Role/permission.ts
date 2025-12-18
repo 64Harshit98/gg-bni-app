@@ -34,4 +34,9 @@ export interface User {
     role: Role;
     permissions: Permissions[];
     companyId: string;
+    Subscription?: {
+        pack: string;
+        isActive: boolean;
+        expiryDate?: Date
+    };
 }

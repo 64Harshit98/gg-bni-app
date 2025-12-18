@@ -37,7 +37,6 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
   totalDiscount = 0,
   taxAmount = 0,
   taxLabel = 'Tax',
-  roundingOffAmount = 0,
   finalAmount,
   showTaxRow = false,
   actionLabel,
@@ -57,7 +56,7 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
         className="flex justify-between items-center px-5 py-2 cursor-pointer active:bg-gray-50 transition-colors rounded-t-2xl group border-b border-gray-100"
       >
         <div className="flex items-center gap-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-gray-500 group-hover:text-gray-700">
+          <span className="text-sm font-bold tracking-wider text-gray-500 group-hover:text-gray-700">
             Bill Details
           </span>
           {/* Show Qty in header when collapsed for quick view */}
@@ -95,12 +94,6 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
             </div>
           )}
 
-          {roundingOffAmount !== 0 && (
-             <div className="flex justify-between text-xs text-gray-500">
-               <span>Rounding Off</span> 
-               <span>{roundingOffAmount > 0 ? '+' : ''}{roundingOffAmount.toFixed(2)}</span>
-             </div>
-          )}
 
           <div className="border-t border-dashed border-gray-200 pt-2 mt-2 flex justify-between text-gray-500 text-xs font-medium">
               <span>Total Quantity</span> 

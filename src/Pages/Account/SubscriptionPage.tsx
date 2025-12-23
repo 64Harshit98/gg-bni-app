@@ -309,8 +309,8 @@ const SubscriptionPage: React.FC = () => {
                                             <button
                                                 onClick={() => alert(`Contact Admin for ${tier.name} (${billingCycle})`)}
                                                 className={`mt-3 w-full py-1.5 rounded-sm text-xs sm:text-sm font-bold transition-colors ${tier.recommended
-                                                        ? activeTab === 'pos' ? 'bg-gray-900 text-white hover:bg-gray-800' : 'bg-sky-600 text-white hover:bg-sky-700'
-                                                        : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                                                    ? activeTab === 'pos' ? 'bg-gray-900 text-white hover:bg-gray-800' : 'bg-sky-600 text-white hover:bg-sky-700'
+                                                    : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
                                                     }`}
                                             >
                                                 Choose
@@ -341,7 +341,7 @@ const SubscriptionPage: React.FC = () => {
                                                             </svg>
                                                         </button>
                                                         {selectedTooltip === feature && (
-                                                            <div 
+                                                            <div
                                                                 className="absolute left-full ml-2 top-1/2 -translate-y-1/2 w-48 p-2 bg-gray-900 text-white text-[10px] leading-tight rounded-md shadow-lg z-50 animate-in fade-in zoom-in duration-200"
                                                                 onClick={(e) => e.stopPropagation()}
                                                             >

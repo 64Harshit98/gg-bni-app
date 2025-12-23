@@ -68,7 +68,7 @@ const PurchaseReturnPage: React.FC = () => {
   const [supplierNumber, setSupplierNumber] = useState<string>('');
   const [supplierAddress, setSupplierAddress] = useState<string>('');
   const [supplierGstin, setSupplierGstin] = useState<string>('');
-  
+
   const [modeOfReturn, setModeOfReturn] = useState<string>('Exchange');
 
   const [newItemsReceived, setNewItemsReceived] = useState<ReturnCartItem[]>([]);
@@ -260,16 +260,16 @@ const PurchaseReturnPage: React.FC = () => {
       if (item.id === id) {
         const rawVal = item.customPrice;
         const parsed = parseFloat(String(rawVal));
-        
+
         if (isNaN(parsed) || parsed < 0) {
-            return { ...item, customPrice: item.unitPrice };
+          return { ...item, customPrice: item.unitPrice };
         }
 
-        return { 
-            ...item, 
-            unitPrice: parsed, 
-            amount: parsed * item.quantity,
-            customPrice: parsed 
+        return {
+          ...item,
+          unitPrice: parsed,
+          amount: parsed * item.quantity,
+          customPrice: parsed
         };
       }
       return item;
@@ -373,7 +373,7 @@ const PurchaseReturnPage: React.FC = () => {
         returnedAt: new Date(),
         returnedItems: itemsToReturn.map(({ id, ...item }) => item),
         newItemsReceived: newItemsReceived.map(({ id, ...item }) => item),
-        finalBalance, 
+        finalBalance,
         modeOfReturn,
         paymentDetails: completionData?.paymentDetails || null,
       };
@@ -385,9 +385,9 @@ const PurchaseReturnPage: React.FC = () => {
       };
 
       if (newTotalAmount === 0) {
-          updateData.paymentMethods = {}; 
+        updateData.paymentMethods = {};
       } else if (completionData?.paymentDetails) {
-          updateData.paymentMethods = completionData.paymentDetails;
+        updateData.paymentMethods = completionData.paymentDetails;
       }
 
       batch.update(purchaseRef, updateData);
@@ -395,12 +395,12 @@ const PurchaseReturnPage: React.FC = () => {
       // 3. Update Stock
       itemsToReturn.forEach(returnItem => {
         batch.update(doc(db, 'companies', companyId, 'items', returnItem.originalItemId), {
-            stock: firebaseIncrement(-returnItem.quantity)
+          stock: firebaseIncrement(-returnItem.quantity)
         });
       });
       newItemsReceived.forEach(newItem => {
         batch.update(doc(db, 'companies', companyId, 'items', newItem.originalItemId), {
-            stock: firebaseIncrement(newItem.quantity)
+          stock: firebaseIncrement(newItem.quantity)
         });
       });
 
@@ -424,13 +424,13 @@ const PurchaseReturnPage: React.FC = () => {
         // --- CASH REFUND LOGIC ---
         // If "Cash Refund", supplier paid us back. Debit balance does NOT increase.
         if (modeOfReturn === 'Cash Refund') {
-           // No balance update
+          // No balance update
         } else {
-           if (finalBalance > 0) {
-             customerUpdateData.debitBalance = firebaseIncrement(finalBalance);
-           }
+          if (finalBalance > 0) {
+            customerUpdateData.debitBalance = firebaseIncrement(finalBalance);
+          }
         }
-        
+
         batch.set(customerRef, customerUpdateData, { merge: true });
       }
 
@@ -454,15 +454,15 @@ const PurchaseReturnPage: React.FC = () => {
 
     // Cash Refund: If balance > 0 (Supplier owes us), and we selected Cash Refund, treat as done.
     if (modeOfReturn === 'Cash Refund' && finalBalance > 0) {
-        saveReturnTransaction();
+      saveReturnTransaction();
     }
     // Debit Note / Exchange: If balance > 0 (Supplier owes us), save as debit note.
     else if (finalBalance >= 0) {
-        saveReturnTransaction();
-    } 
+      saveReturnTransaction();
+    }
     // If balance < 0 (We owe supplier), open drawer to pay.
     else {
-        setIsDrawerOpen(true);
+      setIsDrawerOpen(true);
     }
   };
 
@@ -632,8 +632,8 @@ const PurchaseReturnPage: React.FC = () => {
                 <div className="flex justify-between items-center text-md text-green-700"><p>Total New Items Value (Credit)</p><p className="font-medium">₹{totalNewItemsValue.toFixed(2)}</p></div>
                 <div className="border-t border-gray-300 !my-2"></div>
                 <div className={`flex justify-between items-center text-2xl font-bold ${finalBalance >= 0 ? 'text-green-600' : 'text-orange-600'}`}>
-                    <p>{getBalanceLabel()}</p>
-                    <p>₹{Math.abs(finalBalance).toFixed(2)}</p>
+                  <p>{getBalanceLabel()}</p>
+                  <p>₹{Math.abs(finalBalance).toFixed(2)}</p>
                 </div>
               </div>
             </div>

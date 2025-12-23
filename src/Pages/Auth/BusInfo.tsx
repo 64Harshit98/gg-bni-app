@@ -148,20 +148,20 @@ const BusinessInfoPage: React.FC = () => {
 
     // 2. GSTIN Validation (Standard regex for 15-digit Indian GSTIN)
     if (gstType === 'Regular' || gstType === 'Composite') {
-        if (!gstin.trim()) {
-            setError('Please enter your GSTIN.');
-            return false;
-        }
-        if (gstin.length !== 15) {
-            setError('GSTIN must be exactly 15 characters.');
-            return false;
-        }
+      if (!gstin.trim()) {
+        setError('Please enter your GSTIN.');
+        return false;
+      }
+      if (gstin.length !== 15) {
+        setError('GSTIN must be exactly 15 characters.');
+        return false;
+      }
     }
 
     // 3. Pincode Validation (6 digits)
     if (postalCode.length !== 6) {
-        setError('Pincode must be exactly 6 digits.');
-        return false;
+      setError('Pincode must be exactly 6 digits.');
+      return false;
     }
 
     return true;
@@ -280,9 +280,9 @@ const BusinessInfoPage: React.FC = () => {
                   label="GSTIN Number"
                   value={gstin}
                   onChange={(e) => {
-                      if (e.target.value.length <= 15) {
-                          setGstin(e.target.value.toUpperCase());
-                      }
+                    if (e.target.value.length <= 15) {
+                      setGstin(e.target.value.toUpperCase());
+                    }
                   }}
                   required
                   className="pl-10"
@@ -316,9 +316,9 @@ const BusinessInfoPage: React.FC = () => {
                 type="number"
                 value={postalCode}
                 onChange={(e) => {
-                    if (e.target.value.length <= 6) {
-                        setPostalCode(e.target.value);
-                    }
+                  if (e.target.value.length <= 6) {
+                    setPostalCode(e.target.value);
+                  }
                 }}
                 icon={<PinIcon size={20} />}
                 required

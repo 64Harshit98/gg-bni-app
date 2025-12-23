@@ -40,7 +40,9 @@ const DEFAULT_PERMISSIONS_MAP = {
         Permissions.CreatePurchaseReturn,
     ],
     // Owner gets EVERYTHING by default (we filter later)
-    [ROLES.OWNER]: Object.values(Permissions), 
+    [ROLES.OWNER]: Object.values(Permissions).filter(
+        (permission) => !EXCLUDED_OWNER_PERMISSIONS.includes(permission)
+    ),
 };
 
 // 3. Helper: Get Defaults
@@ -199,7 +201,7 @@ const ManagePermissionsPage: React.FC = () => {
                     } else {
                         // SCENARIO B: Document Missing -> USE SHARED FUNCTIONS
                         console.warn(`No permissions for ${role}, using defaults.`);
-                        
+
                         const defaults = getDefaultPermissions(role);
                         finalPermissions = getSafePermissionsToSave(role, defaults);
                         shouldUpdateDB = true;
@@ -216,7 +218,7 @@ const ManagePermissionsPage: React.FC = () => {
 
                     permissionsMap[role] = finalPermissions;
                 }
-                
+
                 setRolePermissions(permissionsMap);
             } catch (err) {
                 console.error("Error fetching permissions:", err);
@@ -245,7 +247,7 @@ const ManagePermissionsPage: React.FC = () => {
 
         try {
             setSuccessMessage(null); setError(null);
-            
+
             // USE SHARED FUNCTION for safety
             const rawPermissions = rolePermissions[role] || [];
             const permissionsToSave = getSafePermissionsToSave(role, rawPermissions);

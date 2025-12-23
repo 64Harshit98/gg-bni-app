@@ -1,109 +1,107 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { db } from '../../lib/Firebase';
+import { db } from '../../lib/Firebase'; // Adjust path if necessary
 import {
     doc,
-    getDocs,
+    getDoc,
     updateDoc,
     setDoc,
-    collection,
-    query,
-    where,
 } from 'firebase/firestore';
-import { Spinner } from '../../constants/Spinner';
-import { Modal } from '../../constants/Modal';
-import { State } from '../../enums';
-import { useAuth } from '../../context/auth-context';
+import { Spinner } from '../../constants/Spinner'; // Adjust path
+import { Modal } from '../../constants/Modal';     // Adjust path
+import { State } from '../../enums';               // Adjust path
+import { useAuth } from '../../context/auth-context'; // Adjust path
 
-// --- (Interface is correct, no changes needed) ---
+// ==========================================
+// 1. EXPORTABLE INTERFACE
+// ==========================================
 export interface PurchaseSettings {
     companyId?: string;
-    settingType?: 'purchase';
-    gstScheme?: 'regular' | 'composition' | 'none';
-    taxType?: 'inclusive' | 'exclusive';
-    defaultDiscount?: number;
-    inputMRP?: boolean;
-    zeroValueValidation?: boolean;
-    enableBarcodePrinting?: boolean;
-    copyVoucherAfterSaving?: boolean;
-    roundingOff?: boolean;
-    voucherName?: string;
-    voucherPrefix?: string;
-    currentVoucherNumber?: number;
-    purchaseViewType?: 'card' | 'list';
-    requireSupplierName?: boolean;
-    requireSupplierMobile?: boolean;
+    settingType: 'purchase';
+    gstScheme: 'regular' | 'composition' | 'none';
+    taxType: 'inclusive' | 'exclusive';
+    defaultDiscount: number;
+    inputMRP: boolean;
+    zeroValueValidation: boolean;
+    enableBarcodePrinting: boolean;
+    copyVoucherAfterSaving: boolean;
+    roundingOff: boolean;
+    voucherName: string;
+    voucherPrefix: string;
+    currentVoucherNumber: number;
+    purchaseViewType: 'card' | 'list';
+    requireSupplierName: boolean;
+    requireSupplierMobile: boolean;
 }
 
+// ==========================================
+// 2. EXPORTABLE DEFAULT FUNCTION
+// ==========================================
+export const getDefaultPurchaseSettings = (companyId: string): PurchaseSettings => ({
+    companyId: companyId,
+    settingType: 'purchase',
+    gstScheme: 'none',
+    taxType: 'inclusive',
+    defaultDiscount: 0,
+    inputMRP: true,
+    zeroValueValidation: true,
+    enableBarcodePrinting: true,
+    copyVoucherAfterSaving: false,
+    roundingOff: true,
+    voucherName: 'Purchase',
+    voucherPrefix: 'PRC-',
+    currentVoucherNumber: 1,
+    purchaseViewType: 'list',
+    requireSupplierName: true,
+    requireSupplierMobile: false,
+});
+
+// ==========================================
+// 3. MAIN COMPONENT
+// ==========================================
 const PurchaseSettingsPage: React.FC = () => {
     const navigate = useNavigate();
     const { currentUser } = useAuth();
-    const [settings, setSettings] = useState<PurchaseSettings>({});
+    
+    const [settings, setSettings] = useState<PurchaseSettings | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [isSaving, setIsSaving] = useState<boolean>(false);
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
 
-    const [settingsDocId, setSettingsDocId] = useState<string | null>(null);
-
+    // --- Load Settings on Mount ---
     useEffect(() => {
         if (!currentUser?.companyId) {
-            setIsLoading(true); // Keep loading until we have a companyId
-            setSettings({});
-            console.warn("No currentUser or companyId found. Cannot load purchase settings.");
+            setIsLoading(true);
             return;
         }
 
-        setIsLoading(true);
-        const companyId = currentUser.companyId;
-
         const fetchOrCreateSettings = async () => {
-            // --- FIX: Use the correct multi-tenant path ---
-            const settingsCollectionRef = collection(db, 'companies', companyId, 'settings');
-
-            // --- FIX: Remove the redundant where('companyId', ...) ---
-            const q = query(settingsCollectionRef, where('settingType', '==', 'purchase'));
+            setIsLoading(true);
+            const companyId = currentUser.companyId!;
+            
+            // We use a fixed ID 'purchase-settings' for simplicity
+            const settingsDocRef = doc(db, 'companies', companyId, 'settings', 'purchase-settings');
 
             try {
-                const querySnapshot = await getDocs(q);
+                const docSnap = await getDoc(settingsDocRef);
 
-                if (!querySnapshot.empty) {
-                    const docSnap = querySnapshot.docs[0];
+                if (docSnap.exists()) {
+                    // A. Settings exist - Load them
                     setSettings(docSnap.data() as PurchaseSettings);
-                    setSettingsDocId(docSnap.id);
                 } else {
-                    console.warn(`No purchase settings found for company ${companyId}. Creating defaults.`);
-
-                    const defaultSettings: PurchaseSettings = {
-                        companyId: companyId,
-                        settingType: 'purchase',
-                        gstScheme: 'regular',
-                        taxType: 'exclusive',
-                        defaultDiscount: 0,
-                        inputMRP: true,
-                        zeroValueValidation: true,
-                        enableBarcodePrinting: true,
-                        copyVoucherAfterSaving: false,
-                        roundingOff: true,
-                        voucherName: 'Purchase',
-                        voucherPrefix: 'PRC-',
-                        currentVoucherNumber: 1,
-                        purchaseViewType: 'list',
-                        requireSupplierName: true,
-                        requireSupplierMobile: false,
-                    };
-
-                    const predictableDocId = `purchase-settings`; // Use a predictable ID for settings
-                    // --- FIX: Use the multi-tenant path to create the new doc ---
-                    const newDocRef = doc(db, 'companies', companyId, 'settings', predictableDocId);
-                    await setDoc(newDocRef, defaultSettings);
-
+                    // B. Settings do not exist - Create defaults
+                    console.log(`No purchase settings found. Creating defaults...`);
+                    const defaultSettings = getDefaultPurchaseSettings(companyId);
+                    
+                    // Save to DB
+                    await setDoc(settingsDocRef, defaultSettings);
+                    
+                    // Update State
                     setSettings(defaultSettings);
-                    setSettingsDocId(newDocRef.id);
                 }
             } catch (err) {
                 console.error('Failed to fetch/create purchase settings:', err);
-                setModal({ message: 'Failed to load settings. Please try again.', type: State.ERROR });
-                setSettings({});
+                setModal({ message: 'Failed to load settings.', type: State.ERROR });
             } finally {
                 setIsLoading(false);
             }
@@ -112,23 +110,23 @@ const PurchaseSettingsPage: React.FC = () => {
         fetchOrCreateSettings();
     }, [currentUser?.companyId]);
 
+    // --- Save Handler ---
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (!settingsDocId || !currentUser?.companyId) {
-            setModal({ message: 'Error: Cannot determine user or settings document.', type: State.ERROR });
+        if (!currentUser?.companyId || !settings) {
+            setModal({ message: 'Error: Missing data.', type: State.ERROR });
             return;
         }
-        const companyId = currentUser.companyId; // Get companyId for the path
 
         setIsSaving(true);
         try {
-            // --- FIX: Use the correct multi-tenant path to update ---
-            const docToUpdateRef = doc(db, 'companies', companyId, 'settings', settingsDocId);
+            const companyId = currentUser.companyId;
+            const docToUpdateRef = doc(db, 'companies', companyId, 'settings', 'purchase-settings');
 
             const settingsToSave = {
                 ...settings,
-                companyId: companyId, // Ensure companyId is saved
+                companyId: companyId,
                 settingType: 'purchase'
             };
 
@@ -142,26 +140,32 @@ const PurchaseSettingsPage: React.FC = () => {
         }
     };
 
-    // (handleChange and handleCheckboxChange are correct, no changes needed)
+    // --- Input Change Handlers ---
     const handleChange = (field: keyof PurchaseSettings, value: string | number | boolean) => {
+        if (!settings) return;
+
         if (field === 'defaultDiscount' || field === 'currentVoucherNumber') {
+            // Handle number inputs specifically
             if (value === '') {
-                setSettings(prev => ({ ...prev, [field]: undefined }));
+                setSettings({ ...settings, [field]: 0 }); 
             } else {
                 const numValue = parseFloat(String(value));
-                setSettings(prev => ({ ...prev, [field]: isNaN(numValue) ? 0 : numValue }));
+                setSettings({ ...settings, [field]: isNaN(numValue) ? 0 : numValue });
             }
         } else {
-            setSettings(prev => ({ ...prev, [field]: value }));
+            // Handle strings (selects, text inputs)
+            setSettings({ ...settings, [field]: value });
         }
     };
 
     const handleCheckboxChange = (field: keyof PurchaseSettings, checked: boolean) => {
-        setSettings(prev => ({ ...prev, [field]: checked }));
+        if (settings) {
+            setSettings({ ...settings, [field]: checked });
+        }
     };
 
-
-    if (isLoading) {
+    // --- Render Loading ---
+    if (isLoading || !settings) {
         return (
             <div className="flex flex-col min-h-screen items-center justify-center">
                 <Spinner />
@@ -170,6 +174,7 @@ const PurchaseSettingsPage: React.FC = () => {
         );
     }
 
+    // --- Render Main ---
     return (
         <div className="flex flex-col min-h-screen bg-white w-full mb-16">
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
@@ -192,7 +197,7 @@ const PurchaseSettingsPage: React.FC = () => {
                                 <select
                                     id="gst-scheme"
                                     value={settings.gstScheme || 'none'}
-                                    onChange={(e) => handleChange('gstScheme', e.target.value as 'regular' | 'composition' | 'none')}
+                                    onChange={(e) => handleChange('gstScheme', e.target.value)}
                                     className="w-full p-3 border border-gray-300 rounded-lg bg-white"
                                 >
                                     <option value="none">None (Tax Disabled)</option>
@@ -209,7 +214,7 @@ const PurchaseSettingsPage: React.FC = () => {
                                     <select
                                         id="tax-type"
                                         value={settings.taxType || 'exclusive'}
-                                        onChange={(e) => handleChange('taxType', e.target.value as 'inclusive' | 'exclusive')}
+                                        onChange={(e) => handleChange('taxType', e.target.value)}
                                         className="w-full p-3 border border-gray-300 rounded-lg bg-white"
                                     >
                                         <option value="exclusive">Tax Exclusive (Purchase Price + GST)</option>
@@ -220,9 +225,9 @@ const PurchaseSettingsPage: React.FC = () => {
                         )}
                         <div className="flex items-center mb-4">
                             <input type="checkbox" id="rounding-off"
-                                checked={settings.roundingOff ?? false}
+                                checked={settings.roundingOff}
                                 onChange={(e) => handleCheckboxChange('roundingOff', e.target.checked)}
-                                className="w-4 h-4 text-sky-500" />
+                                className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
                             <label htmlFor="rounding-off" className="ml-2 text-gray-700 text-sm font-medium">Enable Rounding Off (Nearest Rupee)</label>
                         </div>
                     </div>
@@ -234,7 +239,7 @@ const PurchaseSettingsPage: React.FC = () => {
                             <label htmlFor="discount" className="block text-gray-700 text-sm font-medium mb-1">Default Discount (%)</label>
                             <input
                                 type="number" id="discount"
-                                value={settings.defaultDiscount ?? ''} // Use empty string
+                                value={settings.defaultDiscount}
                                 onChange={(e) => handleChange('defaultDiscount', e.target.value)}
                                 className="w-full p-3 border border-gray-300 rounded-lg"
                                 placeholder="e.g., 0"
@@ -243,23 +248,23 @@ const PurchaseSettingsPage: React.FC = () => {
                         </div>
                         <div className="flex items-center mb-4">
                             <input type="checkbox" id="input-mrp"
-                                checked={settings.inputMRP ?? false}
+                                checked={settings.inputMRP}
                                 onChange={(e) => handleCheckboxChange('inputMRP', e.target.checked)}
-                                className="w-4 h-4 text-sky-500" />
+                                className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
                             <label htmlFor="input-mrp" className="ml-2 text-gray-700 text-sm font-medium">Require MRP Input during Purchase</label>
                         </div>
                         <div className="flex items-center mb-4">
                             <input type="checkbox" id="zero-value"
-                                checked={settings.zeroValueValidation ?? false}
+                                checked={settings.zeroValueValidation}
                                 onChange={(e) => handleCheckboxChange('zeroValueValidation', e.target.checked)}
-                                className="w-4 h-4 text-sky-500" />
+                                className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
                             <label htmlFor="zero-value" className="ml-2 text-gray-700 text-sm font-medium">Prevent Zero Value Purchase Price</label>
                         </div>
                         <div className="flex items-center mb-4">
                             <input type="checkbox" id="print-barcode"
-                                checked={settings.enableBarcodePrinting ?? false}
+                                checked={settings.enableBarcodePrinting}
                                 onChange={(e) => handleCheckboxChange('enableBarcodePrinting', e.target.checked)}
-                                className="w-4 h-4 text-sky-500" />
+                                className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
                             <label htmlFor="print-barcode" className="ml-2 text-gray-700 text-sm font-medium">Enable Barcode Printing Option</label>
                         </div>
                     </div>
@@ -270,16 +275,16 @@ const PurchaseSettingsPage: React.FC = () => {
                         <p className="text-sm text-gray-500 mb-2">Select fields that must be filled before saving a purchase.</p>
                         <div className="flex items-center mb-4">
                             <input type="checkbox" id="req-supplier-name"
-                                checked={settings.requireSupplierName ?? false}
+                                checked={settings.requireSupplierName}
                                 onChange={(e) => handleCheckboxChange('requireSupplierName', e.target.checked)}
-                                className="w-4 h-4 text-sky-500" />
+                                className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
                             <label htmlFor="req-supplier-name" className="ml-2 text-gray-700 text-sm font-medium">Require Supplier Name</label>
                         </div>
                         <div className="flex items-center mb-4">
                             <input type="checkbox" id="req-supplier-mobile"
-                                checked={settings.requireSupplierMobile ?? false}
+                                checked={settings.requireSupplierMobile}
                                 onChange={(e) => handleCheckboxChange('requireSupplierMobile', e.target.checked)}
-                                className="w-4 h-4 text-sky-500" />
+                                className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
                             <label htmlFor="req-supplier-mobile" className="ml-2 text-gray-700 text-sm font-medium">Require Supplier Mobile</label>
                         </div>
                     </div>
@@ -291,7 +296,7 @@ const PurchaseSettingsPage: React.FC = () => {
                             <div>
                                 <label htmlFor="voucher-name" className="block text-gray-700 text-sm font-medium mb-1">Voucher Name</label>
                                 <input type="text" id="voucher-name"
-                                    value={settings.voucherName || ''}
+                                    value={settings.voucherName}
                                     onChange={(e) => handleChange('voucherName', e.target.value)}
                                     className="w-full p-3 border border-gray-300 rounded-lg"
                                     placeholder="e.g., Main Purchase" />
@@ -299,7 +304,7 @@ const PurchaseSettingsPage: React.FC = () => {
                             <div>
                                 <label htmlFor="voucher-prefix" className="block text-gray-700 text-sm font-medium mb-1">Voucher Prefix</label>
                                 <input type="text" id="voucher-prefix"
-                                    value={settings.voucherPrefix || ''}
+                                    value={settings.voucherPrefix}
                                     onChange={(e) => handleChange('voucherPrefix', e.target.value)}
                                     className="w-full p-3 border border-gray-300 rounded-lg"
                                     placeholder="e.g., PRC-" />
@@ -307,7 +312,7 @@ const PurchaseSettingsPage: React.FC = () => {
                             <div>
                                 <label htmlFor="current-number" className="block text-gray-700 text-sm font-medium mb-1">Next Voucher Number</label>
                                 <input type="number" id="current-number"
-                                    value={settings.currentVoucherNumber ?? ''}
+                                    value={settings.currentVoucherNumber}
                                     onChange={(e) => handleChange('currentVoucherNumber', e.target.value)}
                                     className="w-full p-3 border border-gray-300 rounded-lg"
                                     placeholder="e.g., 1" min="1" />
@@ -323,7 +328,7 @@ const PurchaseSettingsPage: React.FC = () => {
                             <select
                                 id="purchase-view-type"
                                 value={settings.purchaseViewType || 'list'}
-                                onChange={(e) => handleChange('purchaseViewType', e.target.value as 'card' | 'list')}
+                                onChange={(e) => handleChange('purchaseViewType', e.target.value)}
                                 className="w-full p-3 border border-gray-300 rounded-lg bg-white"
                             >
                                 <option value="list">List View</option>
@@ -336,7 +341,7 @@ const PurchaseSettingsPage: React.FC = () => {
                     <button
                         type="submit"
                         disabled={isSaving || isLoading}
-                        className="w-full mt-2 flex items-center justify-center bg-sky-500 text-white font-bold py-3 px-4 rounded-xl hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                        className="w-full mt-2 flex items-center justify-center bg-sky-500 text-white font-bold py-3 px-4 rounded-xl hover:bg-sky-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
                     >
                         {isSaving ? <Spinner /> : 'Save Settings'}
                     </button>

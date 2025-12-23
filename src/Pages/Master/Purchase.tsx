@@ -860,6 +860,8 @@ const PurchasePage: React.FC = () => {
         initialPartyName={editModeData ? editModeData.partyName : ''}
         initialPartyNumber={editModeData ? editModeData.partyNumber : ''}
         totalQuantity={totalQuantity}
+        requireCustomerName={purchaseSettings?.requireSupplierName}
+        requireCustomerMobile={purchaseSettings?.requireSupplierMobile}
       />
       <ItemEditDrawer
         item={selectedItemForEdit}

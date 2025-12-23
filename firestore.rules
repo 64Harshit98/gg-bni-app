@@ -4,107 +4,75 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // --- Helper Functions ---
-
-    // Checks if the user is authenticated.
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // Checks if the user is a member of the company they are trying to access.
-    // This is the core of multi-tenant security.
     function isCompanyMember(companyId) {
       return isAuthenticated() && request.auth.token.companyId == companyId;
     }
     
-    // Checks if the user is the specific user in the path (e.g., for their own profile).
     function isSelf(companyId, userId) {
       return isCompanyMember(companyId) && request.auth.uid == userId;
     }
+    match /{document=**} {
+      allow read, write: if request.auth.uid == "1AKioGfop8PmHhry6uXOz8Rw6qT2";
+    }
 
-    // --- Tenant Data (All company data lives here) ---
+    // --- Tenant Data ---
     match /companies/{companyId} {
+    
+    allow read: if isCompanyMember(companyId);
+    allow update: if isCompanyMember(companyId);
 
-      // Rule for tenant-specific user profiles.
       match /users/{userId} {
-        // Any member of the company can read other user profiles.
         allow read: if isCompanyMember(companyId);
-        
-        // A user can only create or update their *own* profile.
         allow create, update: if isSelf(companyId, userId);
-        
-        // Prevent users from deleting their own (or other's) profiles.
-        // This is safer and should be an admin-only backend operation.
         allow delete: if false;
       }
       
-      // Rule for user-private artifacts, nested under their company profile.
-      // e.g., /companies/{companyId}/users/{userId}/artifacts/{appId}/...
       match /users/{userId}/artifacts/{appId}/{collectionId}/{document=**} {
-        // Only the user themselves can access their own artifacts.
         allow read, write: if isSelf(companyId, userId);
       }
       
-      // Rule for company-wide settings (e.g., sales-settings).
       match /settings/{settingId} {
-        // All company members can read settings.
-        allow read: if isCompanyMember(companyId);
-        
-        // Only company members can write (e.g., update settings).
-        // **Recommendation**: Add an "admin" role for better security here.
-        allow write: if isCompanyMember(companyId);
+        allow read, write: if isCompanyMember(companyId);
       }
 
-      // Rule for company-wide business info.
       match /business_info/{infoId} {
         allow read, write: if isCompanyMember(companyId);
       }
 
-      // Rule for counters (e.g., invoice numbers)
-      // Note: 'counters' and 'counter' are now collections in the company doc.
       match /counters/{counterId} {
         allow read, write: if isCompanyMember(companyId);
       }
+      
       match /counter/{counterId} {
         allow read, write: if isCompanyMember(companyId);
       }
       
-      // Rule for attendance (recursive wildcard).
       match /attendance/{document=**} {
         allow read, write: if isCompanyMember(companyId);
       }
+      
+      match /permissions/{role} {
+         allow read: if isCompanyMember(companyId);
+         allow write: if isCompanyMember(companyId); 
+      }
 
-      // --- CATCH-ALL for other business collections ---
-      // This single rule secures all your other collections by ensuring
-      // only company members can access them.
-      // This includes:
-      //   - /itemGroups/{itemGroupId}
-      //   - /items/{itemId}
-      //   - /sales/{saleId}
-      //   - /purchases/{purchaseId}
-      //   - /customers/{customerId}
+      // Catch-all
       match /{collection}/{docId} {
         allow read, write: if isCompanyMember(companyId);
       }
     }
 
-
-    // --- Global Data (Shared across all tenants) ---
-
-    // Rule for app-level permissions/roles (e.g., "admin", "user").
-    // All signed-in users can see what roles exist.
+    // --- Global Data ---
     match /permissions/{role} {
       allow read: if isAuthenticated();
-      
-      // NO client can write to permissions. This is done
-      // via the Firebase Console or an Admin SDK.
       allow write: if false;
     }
     
-    // Rule for a global, backend-only counter (e.g., creating new Company IDs).
-    // Your original rule 'if true' was a critical security risk.
     match /CompanyID/{counterId} {
-      // NO client can read or write to this.
-      // This must be managed by a secure backend (e.g., Cloud Function).
       allow read, write: if false;
     }
   }

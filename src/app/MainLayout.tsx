@@ -30,7 +30,7 @@ const MainLayout = () => {
           Add Sales
         </Button>
         <ShowWrapper
-          requiredPermission={Permissions.ViewTransactions}
+          requiredPermission={Permissions.CreatePurchase}
         >
           <Button
             variant="outline"
@@ -41,7 +41,7 @@ const MainLayout = () => {
           </Button>
         </ShowWrapper>
         <ShowWrapper
-          requiredPermission={Permissions.ViewTransactions}>
+          requiredPermission={Permissions.ManageItems}>
           <Button
             variant="outline"
             className="w-full mb-2 rounded"
@@ -62,7 +62,7 @@ const MainLayout = () => {
           </Button>
         </ShowWrapper>
         <ShowWrapper
-          requiredPermission={Permissions.ViewPNLReport}
+          requiredPermission={Permissions.CreateUsers}
         >
           <Button
             variant="outline"

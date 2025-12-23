@@ -51,8 +51,8 @@ const CatalogueSales = lazy(() => import('../Catalogue/CatalogueReports/Catalogu
 const SuperAdminCompanies = lazy(() => import('../Pages/Account/SuperAdmin'));
 const SubscriptionPage = lazy(() => import('../Pages/Account/SubscriptionPage'));
 const SupportPage = lazy(() => import('../Pages/Account/SupportPage'));
-
-
+const ForgotPasswordPage = lazy(() => import('../Pages/Auth/ForgotPassword'));
+const ResetPasswordPage = lazy(() => import('../Pages/Auth/ResetPassword'));
 
 
 const router = createBrowserRouter([
@@ -88,6 +88,16 @@ const router = createBrowserRouter([
           {
             path: ROUTES.SHOP_SETUP2,
             element: <ShopSetup2 />,
+            handle: { isPublic: true },
+          },
+          {
+            path: ROUTES.FORGOT_PASSWORD,
+            element: <ForgotPasswordPage />,
+            handle: { isPublic: true },
+          },
+          {
+            path: ROUTES.RESET_PASSWORD,
+            element: <ResetPasswordPage />,
             handle: { isPublic: true },
           },
           {

@@ -44,6 +44,10 @@ interface PaymentDrawerProps {
     initialPartyName?: string;
     initialPartyNumber?: string;
     initialPaymentMethods?: PaymentDetails | { [key: string]: any };
+    
+    // --- NEW PROPS FOR VALIDATION ---
+    requireCustomerName?: boolean;
+    requireCustomerMobile?: boolean;
 }
 
 const LOCAL_STORAGE_NAME_KEY = 'lastPartyName';
@@ -68,6 +72,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     initialPartyName,
     initialPartyNumber,
     initialPaymentMethods,
+    requireCustomerName = false,   // Default false
+    requireCustomerMobile = false, // Default false
 }) => {
     const { currentUser } = useAuth();
 
@@ -238,11 +244,21 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         setPartyAddress(customer.address || '');
         setPartyGST(customer.gstNumber || '');
 
-        if ((customer.creditBalance || 0) > 0) { setCustomerCredit(customer.creditBalance!); setUseCredit(true); }
-        else { setCustomerCredit(0); setUseCredit(false); }
+        if ((customer.creditBalance || 0) > 0) { 
+            setCustomerCredit(customer.creditBalance!); 
+            setUseCredit(false);
+        } else { 
+            setCustomerCredit(0); 
+            setUseCredit(false); 
+        }
 
-        if ((customer.debitBalance || 0) > 0) { setCustomerDebit(customer.debitBalance!); setUseDebit(true); }
-        else { setCustomerDebit(0); setUseDebit(false); }
+        if ((customer.debitBalance || 0) > 0) { 
+            setCustomerDebit(customer.debitBalance!); 
+            setUseDebit(false);
+        } else { 
+            setCustomerDebit(0); 
+            setUseDebit(false); 
+        }
         setShowSuggestions(false);
     };
 
@@ -277,7 +293,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         shouldSaveToLocalStorage.current = false;
 
         try {
-            // 1. Proceed with payment callback
             await onPaymentComplete({
                 paymentDetails: payloadToSave,
                 partyName, partyNumber, discount,
@@ -285,7 +300,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 appliedCredit, appliedDebit, partyAddress, partyGST, revDiscount,
             });
 
-            // 2. Save Customer to DB (Robust Check)
             if (currentUser?.companyId && partyNumber && partyNumber.trim().length > 0) {
                 const cleanNumber = partyNumber.trim();
                 const customerDocRef = doc(db, 'companies', currentUser.companyId, 'customers', cleanNumber);
@@ -344,21 +358,37 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                     {/* CUSTOMER INFO */}
                     <div className="p-4 space-y-2">
                         <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Customer Info</h3>
+                        
+                        {/* --- MODIFIED INPUT GRID WITH RED STAR INDICATOR --- */}
                         <div className="grid grid-cols-2 gap-4 relative">
-                            <input
-                                type="number" placeholder="Phone Number" value={partyNumber}
-                                onChange={(e) => handleInputChange(e.target.value, 'number')}
-                                onFocus={() => { if (partyNumber.length >= 3) searchCustomer(partyNumber, 'number'); }}
-                                className="w-full bg-gray-50 p-3 text-sm rounded-xs border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
-                                autoComplete="off"
-                            />
-                            <input
-                                type="text" placeholder="Name" value={partyName}
-                                onChange={(e) => handleInputChange(e.target.value, 'name')}
-                                onFocus={() => { if (partyName.length >= 3) searchCustomer(partyName, 'name'); }}
-                                className="w-full bg-gray-50 p-3 text-sm rounded-xs border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
-                                autoComplete="off"
-                            />
+                            {/* NUMBER INPUT */}
+                            <div className="relative">
+                                <input
+                                    type="number" 
+                                    placeholder={requireCustomerMobile ? "Phone Number *" : "Phone Number"}
+                                    value={partyNumber}
+                                    onChange={(e) => handleInputChange(e.target.value, 'number')}
+                                    onFocus={() => { if (partyNumber.length >= 3) searchCustomer(partyNumber, 'number'); }}
+                                    className={`w-full bg-gray-50 p-3 text-sm rounded-xs border ${requireCustomerMobile && !partyNumber ? 'border-red-300 focus:border-red-500' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none transition-all`}
+                                    autoComplete="off"
+                                />
+                                {requireCustomerMobile && <span className="absolute right-3 top-3 text-red-500 font-bold">*</span>}
+                            </div>
+
+                            {/* NAME INPUT */}
+                            <div className="relative">
+                                <input
+                                    type="text" 
+                                    placeholder={requireCustomerName ? "Name *" : "Name"}
+                                    value={partyName}
+                                    onChange={(e) => handleInputChange(e.target.value, 'name')}
+                                    onFocus={() => { if (partyName.length >= 3) searchCustomer(partyName, 'name'); }}
+                                    className={`w-full bg-gray-50 p-3 text-sm rounded-xs border ${requireCustomerName && !partyName ? 'border-red-300 focus:border-red-500' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none transition-all`}
+                                    autoComplete="off"
+                                />
+                                {requireCustomerName && <span className="absolute right-3 top-3 text-red-500 font-bold">*</span>}
+                            </div>
+
                             {/* Suggestions */}
                             {showSuggestions && suggestions.length > 0 && (
                                 <div className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-200 shadow-xl rounded-lg mt-1 max-h-48 overflow-y-auto">
@@ -384,6 +414,49 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                             )}
                         </div>
                     </div>
+
+                    {/* NEW: BALANCE ADJUSTMENTS (OPT-IN) */}
+                    {(customerCredit > 0 || customerDebit > 0) && (
+                        <div className="px-4 pb-2">
+                            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Available Balances</h3>
+                            
+                            {customerCredit > 0 && (
+                                <div className="flex items-center justify-between p-3 bg-green-50 border border-green-100 rounded-lg mb-2">
+                                    <div className="flex flex-col">
+                                        <span className="text-sm font-semibold text-green-800">Credit Note Balance</span>
+                                        <span className="text-xs text-green-600">Available: ₹{customerCredit.toFixed(2)}</span>
+                                    </div>
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={useCredit} 
+                                            onChange={(e) => setUseCredit(e.target.checked)}
+                                            className="w-5 h-5 text-green-600 rounded focus:ring-green-500 border-gray-300"
+                                        />
+                                        <span className="text-sm font-medium text-gray-700">Apply</span>
+                                    </label>
+                                </div>
+                            )}
+
+                            {customerDebit > 0 && (
+                                <div className="flex items-center justify-between p-3 bg-red-50 border border-red-100 rounded-lg">
+                                    <div className="flex flex-col">
+                                        <span className="text-sm font-semibold text-red-800">Debit Balance</span>
+                                        <span className="text-xs text-red-600">Available: ₹{customerDebit.toFixed(2)}</span>
+                                    </div>
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={useDebit} 
+                                            onChange={(e) => setUseDebit(e.target.checked)}
+                                            className="w-5 h-5 text-red-600 rounded focus:ring-red-500 border-gray-300"
+                                        />
+                                        <span className="text-sm font-medium text-gray-700">Apply</span>
+                                    </label>
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     {/* TRANSACTION TYPE */}
                     <div className="p-4 bg-gray-100">
@@ -412,7 +485,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                         <span>Qty: <strong className="text-gray-800">{totalQuantity}</strong></span>
                         <div className="flex items-center gap-2">
                             <span>Subtotal:</span>
-                            {/* VISUAL LOGIC: Show Gross Subtotal (Net + Item Discount) to match visual expectations */}
                             <span className="font-medium text-gray-800">₹{displayGrossSubtotal.toFixed(2)}</span>
                         </div>
                     </div>

@@ -115,7 +115,7 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
           <CustomButton 
             onClick={onActionClick} 
             variant={Variant.Payment} 
-            className="w-full py-3.5 text-base font-bold shadow-lg shadow-blue-200 rounded-xl flex justify-center items-center active:scale-[0.98] transition-transform"
+            className="w-full py-3.5 text-base font-bold shadow-lg shadow-blue-200 rounded-sm flex justify-center items-center active:scale-[0.98] transition-transform"
             disabled={disableAction}
           >
             {actionLabel}

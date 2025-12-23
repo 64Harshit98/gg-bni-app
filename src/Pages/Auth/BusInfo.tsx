@@ -24,6 +24,7 @@ const businessTypeOptions = [
 
 const businessCategoryOptions = [
   { value: 'Electronics', label: 'Electronics' },
+  { value: 'Gifts & Stationery', label: 'Gifts & Stationery' },
   { value: 'Grocery', label: 'Grocery' },
   { value: 'Fashion', label: 'Fashion & Apparel' },
   { value: 'Health & Beauty', label: 'Health & Beauty' },
@@ -209,141 +210,141 @@ const BusinessInfoPage: React.FC = () => {
       <div className="flex-grow px-4 pb-24 overflow-y-auto">
         <h1 className="text-4xl font-bold mb-4 mt-4">Business Details</h1>
 
-<div className='bg-white p-4 rounded-lg shadow-sm border border-gray-200 space-y-2 pt-8 pb-8'>
-        <div className="flex flex-col space-y-5">
+        <div className='bg-white p-4 rounded-lg shadow-sm border border-gray-200 space-y-2 pt-8 pb-8'>
+          <div className="flex flex-col space-y-5">
 
-          <FloatingLabelInput
-            id="businessName"
-            label="Business Name"
-            value={businessName}
-            onChange={(e) => setBusinessName(e.target.value)}
-            icon={<FiAtSign size={20} />}
-            required
-          />
-
-          {/* Business Type */}
-          <div className="flex flex-col gap-2">
-            <FloatingLabelSelect
-              id="businessType"
-              label="Business Type"
-              value={businessType}
-              onChange={(e) => setBusinessType(e.target.value)}
-              options={businessTypeOptions}
+            <FloatingLabelInput
+              id="businessName"
+              label="Business Name"
+              value={businessName}
+              onChange={(e) => setBusinessName(e.target.value)}
+              icon={<FiAtSign size={20} />}
               required
-              icon={<FiHome size={20} />}
             />
-            {businessType === 'Other' && (
+
+            {/* Business Type */}
+            <div className="flex flex-col gap-2">
+              <FloatingLabelSelect
+                id="businessType"
+                label="Business Type"
+                value={businessType}
+                onChange={(e) => setBusinessType(e.target.value)}
+                options={businessTypeOptions}
+                required
+                icon={<FiHome size={20} />}
+              />
+              {businessType === 'Other' && (
+                <div className="animate-fade-in-down">
+                  <FloatingLabelInput
+                    id="customBusinessType"
+                    label="Specify Business Type"
+                    value={customBusinessType}
+                    onChange={(e) => setCustomBusinessType(e.target.value)}
+                    required
+                    placeholder="e.g. Consultancy"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Business Category */}
+            <div className="flex flex-col gap-2">
+              <FloatingLabelSelect
+                id="businessCategory"
+                label="Category"
+                value={businessCategory}
+                onChange={(e) => setBusinessCategory(e.target.value)}
+                options={businessCategoryOptions}
+                required
+                icon={<FiTag size={20} />}
+              />
+              {businessCategory === 'Other' && (
+                <div className="animate-fade-in-down">
+                  <FloatingLabelInput
+                    id="customBusinessCategory"
+                    label="Specify Category"
+                    value={customBusinessCategory}
+                    onChange={(e) => setCustomBusinessCategory(e.target.value)}
+                    required
+                    placeholder="e.g. Toys"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* GST */}
+            <FloatingLabelSelect
+              id="gstType"
+              label="GST Registration Type"
+              value={gstType}
+              onChange={(e) => setGstType(e.target.value)}
+              options={gstTypeOptions}
+              required
+              icon={<Scale size={20} />}
+            />
+
+            {(gstType === 'Regular' || gstType === 'Composite') && (
               <div className="animate-fade-in-down">
                 <FloatingLabelInput
-                  id="customBusinessType"
-                  label="Specify Business Type"
-                  value={customBusinessType}
-                  onChange={(e) => setCustomBusinessType(e.target.value)}
+                  id="gstin"
+                  label="GSTIN Number"
+                  value={gstin}
+                  onChange={(e) => setGstin(e.target.value)}
                   required
-                  placeholder="e.g. Consultancy"
+                  className="pl-10"
+                  icon={<FiHash size={20} />}
                 />
               </div>
             )}
-          </div>
 
-          {/* Business Category */}
-          <div className="flex flex-col gap-2">
-            <FloatingLabelSelect
-              id="businessCategory"
-              label="Category"
-              value={businessCategory}
-              onChange={(e) => setBusinessCategory(e.target.value)}
-              options={businessCategoryOptions}
-              required
-              icon={<FiTag size={20} />}
-            />
-            {businessCategory === 'Other' && (
-              <div className="animate-fade-in-down">
-                <FloatingLabelInput
-                  id="customBusinessCategory"
-                  label="Specify Category"
-                  value={customBusinessCategory}
-                  onChange={(e) => setCustomBusinessCategory(e.target.value)}
-                  required
-                  placeholder="e.g. Toys"
-                />
-              </div>
-            )}
-          </div>
-
-          {/* GST */}
-          <FloatingLabelSelect
-            id="gstType"
-            label="GST Registration Type"
-            value={gstType}
-            onChange={(e) => setGstType(e.target.value)}
-            options={gstTypeOptions}
-            required
-            icon={<Scale size={20} />}
-          />
-
-          {(gstType === 'Regular' || gstType === 'Composite') && (
-            <div className="animate-fade-in-down">
+            {/* Address */}
+            <div className="relative">
               <FloatingLabelInput
-                id="gstin"
-                label="GSTIN Number"
-                value={gstin}
-                onChange={(e) => setGstin(e.target.value)}
+                id="streetAddress"
+                label="Street Address / Area"
+                value={streetAddress}
+                onChange={(e) => setStreetAddress(e.target.value)}
                 required
                 className="pl-10"
-                icon={<FiHash size={20} />}
+                icon={<Building2Icon size={20} />}
               />
             </div>
-          )}
 
-          {/* Address */}
-          <div className="relative">
-            <FloatingLabelInput
-              id="streetAddress"
-              label="Street Address / Area"
-              value={streetAddress}
-              onChange={(e) => setStreetAddress(e.target.value)}
-              required
-              className="pl-10"
-              icon={<Building2Icon size={20} />}
-            />
+            <div className="grid grid-cols-2 gap-4">
+              <FloatingLabelInput
+                id="city"
+                label="City"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                icon={<FiMapPin size={20} />}
+                required
+              />
+              <FloatingLabelInput
+                id="postalCode"
+                label="Pincode"
+                type="number"
+                value={postalCode}
+                onChange={(e) => setPostalCode(e.target.value)}
+                icon={<PinIcon size={20} />}
+                required
+              />
+            </div>
+
+            <div className="relative">
+              <FloatingLabelInput
+                id="state"
+                label="State"
+                value={state}
+                onChange={(e) => setState(e.target.value)}
+                required
+                className="pl-10"
+                icon={<FiMap size={20} />}
+              />
+            </div>
+
+            {error && <p className="text-red-500 text-sm text-center bg-red-50 p-2 rounded">{error}</p>}
           </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <FloatingLabelInput
-              id="city"
-              label="City"
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              icon={<FiMapPin size={20} />}
-              required
-            />
-            <FloatingLabelInput
-              id="postalCode"
-              label="Pincode"
-              type="number"
-              value={postalCode}
-              onChange={(e) => setPostalCode(e.target.value)}
-              icon={<PinIcon size={20} />}
-              required
-            />
-          </div>
-
-          <div className="relative">
-            <FloatingLabelInput
-              id="state"
-              label="State"
-              value={state}
-              onChange={(e) => setState(e.target.value)}
-              required
-              className="pl-10"
-              icon={<FiMap size={20} />}
-            />
-          </div>
-
-          {error && <p className="text-red-500 text-sm text-center bg-red-50 p-2 rounded">{error}</p>}
         </div>
-      </div>
       </div>
 
       {/* Fixed Bottom Button */}

@@ -114,22 +114,22 @@ const ShopSetupPage: React.FC = () => {
     setIsSaving(true);
     const allData = getCombinedData();
     try {
-        await saveLeadProgress(allData.email, {
-            salesSettings: {
-                gstScheme,
-                taxType: gstScheme === 'Regular' ? taxType : 'exclusive',
-                enableItemWiseDiscount,
-                allowDueBilling
-            },
-            staffCount: staffList.length,
-            currentStep: 'Step 4: Final Review',
-            status: 'Onboarding'
-        });
-        navigate(ROUTES.SHOP_SETUP2, { state: allData });
+      await saveLeadProgress(allData.email, {
+        salesSettings: {
+          gstScheme,
+          taxType: gstScheme === 'Regular' ? taxType : 'exclusive',
+          enableItemWiseDiscount,
+          allowDueBilling
+        },
+        staffCount: staffList.length,
+        currentStep: 'Step 4: Final Review',
+        status: 'Onboarding'
+      });
+      navigate(ROUTES.SHOP_SETUP2, { state: allData });
     } catch (err) {
-        navigate(ROUTES.SHOP_SETUP2, { state: allData });
+      navigate(ROUTES.SHOP_SETUP2, { state: allData });
     } finally {
-        setIsSaving(false);
+      setIsSaving(false);
     }
   };
 
@@ -152,19 +152,19 @@ const ShopSetupPage: React.FC = () => {
         <div className="flex flex-col space-y-4">
           <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 space-y-6 pt-6 pb-6">
             <div className="flex items-center justify-between border-b pb-2">
-               <h2 className="text-lg font-semibold text-gray-800">Sales & Tax</h2>
+              <h2 className="text-lg font-semibold text-gray-800">Sales & Tax</h2>
             </div>
 
             <div className="flex items-center">
-                <div className="flex-grow">
-                  <FloatingLabelInput
-                    id="gstSchemeDisplay"
-                    label="GST Scheme"
-                    value={gstScheme === 'NA' ? 'Not Registered / NA' : gstScheme.toUpperCase()}
-                    disabled
-                  />
-                </div>
-                <InfoTooltip text="Based on your selection in the previous step. Regular dealers can file tax invoices." />
+              <div className="flex-grow">
+                <FloatingLabelInput
+                  id="gstSchemeDisplay"
+                  label="GST Scheme"
+                  value={gstScheme === 'NA' ? 'Not Registered / NA' : gstScheme.toUpperCase()}
+                  disabled
+                />
+              </div>
+              <InfoTooltip text="Based on your selection in the previous step. Regular dealers can file tax invoices." />
             </div>
 
             {gstScheme === 'Regular' && (
@@ -183,33 +183,33 @@ const ShopSetupPage: React.FC = () => {
             )}
 
             <div className="space-y-3 pt-2">
-              <CheckboxRow 
-                id="itemDiscount" 
-                label="Enable Item-wise Discount" 
-                checked={enableItemWiseDiscount} 
-                onChange={setEnableItemWiseDiscount} 
+              <CheckboxRow
+                id="itemDiscount"
+                label="Enable Item-wise Discount"
+                checked={enableItemWiseDiscount}
+                onChange={setEnableItemWiseDiscount}
                 tooltip="Allows you to give different discounts for each product while billing."
               />
-              <CheckboxRow 
-                id="creditSale" 
-                label="Allow Credit Sale (Due Billing)" 
-                checked={allowDueBilling} 
-                onChange={setAllowDueBilling} 
+              <CheckboxRow
+                id="creditSale"
+                label="Allow Credit Sale (Due Billing)"
+                checked={allowDueBilling}
+                onChange={setAllowDueBilling}
                 tooltip="Allows you to create bills where the customer pays later (Udhaar)."
               />
               <div className="border-t space-y-3 pt-2 mt-2">
-                <CheckboxRow 
-                  id="reqCustomerName" 
-                  label="Require Customer Name" 
-                  checked={requireCustomerName} 
-                  onChange={setRequireCustomerName} 
+                <CheckboxRow
+                  id="reqCustomerName"
+                  label="Require Customer Name"
+                  checked={requireCustomerName}
+                  onChange={setRequireCustomerName}
                   tooltip="You cannot save a bill without entering a customer name."
                 />
-                <CheckboxRow 
-                  id="reqCustomerMobile" 
-                  label="Require Customer Mobile" 
-                  checked={requireCustomerMobile} 
-                  onChange={setRequireCustomerMobile} 
+                <CheckboxRow
+                  id="reqCustomerMobile"
+                  label="Require Customer Mobile"
+                  checked={requireCustomerMobile}
+                  onChange={setRequireCustomerMobile}
                   tooltip="You cannot save a bill without entering a phone number."
                 />
               </div>
@@ -219,8 +219,8 @@ const ShopSetupPage: React.FC = () => {
           {/* Staff Section */}
           <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 space-y-2 pt-6 pb-6">
             <div className="flex items-center border-b pb-2">
-                <h2 className="text-lg font-semibold text-gray-800">Add Staff (Optional)</h2>
-                <InfoTooltip text="Create accounts for your employees. Salesmen can only bill, Managers can edit stock." />
+              <h2 className="text-lg font-semibold text-gray-800">Add Staff (Optional)</h2>
+              <InfoTooltip text="Create accounts for your employees. Salesmen can only bill, Managers can edit stock." />
             </div>
             <div className="text-sm text-gray-600 space-y-1">
               <p>User Login: <span className="font-bold bg-gray-100 px-1">PhoneNo@sellar.in</span></p>

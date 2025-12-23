@@ -150,20 +150,20 @@ const BusinessInfoPage: React.FC = () => {
 
     // 2. GSTIN Validation (Standard regex for 15-digit Indian GSTIN)
     if (gstType === 'Regular' || gstType === 'Composite') {
-        if (!gstin.trim()) {
-            setError('Please enter your GSTIN.');
-            return false;
-        }
-        if (gstin.length !== 15) {
-            setError('GSTIN must be exactly 15 characters.');
-            return false;
-        }
+      if (!gstin.trim()) {
+        setError('Please enter your GSTIN.');
+        return false;
+      }
+      if (gstin.length !== 15) {
+        setError('GSTIN must be exactly 15 characters.');
+        return false;
+      }
     }
 
     // 3. Pincode Validation (6 digits)
     if (postalCode.length !== 6) {
-        setError('Pincode must be exactly 6 digits.');
-        return false;
+      setError('Pincode must be exactly 6 digits.');
+      return false;
     }
 
     return true;
@@ -184,44 +184,44 @@ const BusinessInfoPage: React.FC = () => {
     const finalGstin = gstType === 'NA' ? '' : gstin.toUpperCase();
 
     try {
-        // --- 1. SAVE LEAD PROGRESS TO FIRESTORE ---
-        await saveLeadProgress(allData.email, {
-            businessName,
-            businessType: finalBusinessType,
-            businessCategory: finalBusinessCategory,
-            gstType,
-            gstin: finalGstin,
-            streetAddress,
-            city,
-            state,
-            postalCode,
-            currentStep: 'Step 3: Shop Setup', // Adjust this name based on your next page
-            status: 'Onboarding'
-        });
+      // --- 1. SAVE LEAD PROGRESS TO FIRESTORE ---
+      await saveLeadProgress(allData.email, {
+        businessName,
+        businessType: finalBusinessType,
+        businessCategory: finalBusinessCategory,
+        gstType,
+        gstin: finalGstin,
+        streetAddress,
+        city,
+        state,
+        postalCode,
+        currentStep: 'Step 3: Shop Setup', // Adjust this name based on your next page
+        status: 'Onboarding'
+      });
 
-        const payload = {
-            ...allData,
-            businessType: finalBusinessType,
-            businessCategory: finalBusinessCategory,
-            gstin: finalGstin,
-            fullAddress: `${streetAddress}, ${city}, ${state} - ${postalCode}`,
-        };
+      const payload = {
+        ...allData,
+        businessType: finalBusinessType,
+        businessCategory: finalBusinessCategory,
+        gstin: finalGstin,
+        fullAddress: `${streetAddress}, ${city}, ${state} - ${postalCode}`,
+      };
 
-        navigate(ROUTES.SHOP_SETUP, { state: payload });
+      navigate(ROUTES.SHOP_SETUP, { state: payload });
 
     } catch (err) {
-        console.error("Error saving progress:", err);
-        // Navigate anyway so the user doesn't get stuck
-        const payload = {
-            ...allData,
-            businessType: finalBusinessType,
-            businessCategory: finalBusinessCategory,
-            gstin: finalGstin,
-            fullAddress: `${streetAddress}, ${city}, ${state} - ${postalCode}`,
-        };
-        navigate(ROUTES.SHOP_SETUP, { state: payload });
+      console.error("Error saving progress:", err);
+      // Navigate anyway so the user doesn't get stuck
+      const payload = {
+        ...allData,
+        businessType: finalBusinessType,
+        businessCategory: finalBusinessCategory,
+        gstin: finalGstin,
+        fullAddress: `${streetAddress}, ${city}, ${state} - ${postalCode}`,
+      };
+      navigate(ROUTES.SHOP_SETUP, { state: payload });
     } finally {
-        setIsSaving(false);
+      setIsSaving(false);
     }
   };
 
@@ -236,7 +236,7 @@ const BusinessInfoPage: React.FC = () => {
   return (
     // FIX: Using 'h-screen overflow-hidden' to prevent main page scrolling
     <div className="flex flex-col h-screen overflow-hidden bg-gray-100">
-      
+
       {/* Sticky Header */}
       <div className="flex-shrink-0 bg-gray-100 pt-4 pb-2 px-4 shadow-sm z-40">
         <Stepper totalSteps={4} currentStep={2} onStepClick={handleStepClick} />
@@ -319,9 +319,9 @@ const BusinessInfoPage: React.FC = () => {
                   label="GSTIN Number"
                   value={gstin}
                   onChange={(e) => {
-                      if (e.target.value.length <= 15) {
-                          setGstin(e.target.value.toUpperCase());
-                      }
+                    if (e.target.value.length <= 15) {
+                      setGstin(e.target.value.toUpperCase());
+                    }
                   }}
                   required
                   className="pl-10"
@@ -355,9 +355,9 @@ const BusinessInfoPage: React.FC = () => {
                 type="number"
                 value={postalCode}
                 onChange={(e) => {
-                    if (e.target.value.length <= 6) {
-                        setPostalCode(e.target.value);
-                    }
+                  if (e.target.value.length <= 6) {
+                    setPostalCode(e.target.value);
+                  }
                 }}
                 icon={<PinIcon size={20} />}
                 required

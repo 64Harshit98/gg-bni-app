@@ -1,15 +1,17 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/auth-context';
-import { ROUTES } from '../constants/routes.constants';
+import Loading from '../Pages/Loading/Loading';
 
 export const RequireSubscription = () => {
     const { currentUser, loading } = useAuth();
 
-    if (loading) return null; // Or a spinner
+    if (loading) return <Loading />;
 
-    // If plan is NOT active, force redirect to plans page
+    // LOCKOUT LOGIC:
+    // If subscription is NOT active, redirect immediately to plans page.
+    // The user cannot access any child route (Dashboard, Sales, etc.)
     if (!currentUser?.Subscription?.isActive) {
-        return <Navigate to={ROUTES.SUBSCRIPTION_PAGE} replace />;
+        return <Navigate to="/subscription" replace />;
     }
 
     return <Outlet />;

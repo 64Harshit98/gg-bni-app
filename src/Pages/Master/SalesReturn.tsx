@@ -395,11 +395,9 @@ const SalesReturnPage: React.FC = () => {
       const batch = writeBatch(db);
       const saleRef = doc(db, 'companies', companyId, 'sales', selectedSale.id);
 
-      // Create a map of existing items to update quantities or remove them
       const originalItemsMap = new Map(selectedSale.items.map(item => [item.id, { ...item }]));
       const validInventoryIds = new Set(availableItems.map(i => i.id));
 
-      // 1. Process Returns (Deduct quantity from sale)
       itemsToReturn.forEach(returnItem => {
         const originalItem = originalItemsMap.get(returnItem.originalItemId);
         if (originalItem) {
@@ -408,14 +406,11 @@ const SalesReturnPage: React.FC = () => {
         }
       });
 
-      // 2. Process Exchanges (Add quantity to sale)
       exchangeItems.forEach(exchangeItem => {
         const originalItem = Array.from(originalItemsMap.values()).find(i => i.id === exchangeItem.originalItemId);
         if (originalItem) {
-          // If item exists, just increase quantity
           originalItem.quantity += exchangeItem.quantity;
         } else {
-          // If new item added in exchange
           const itemMaster = availableItems.find(i => i.id === exchangeItem.originalItemId);
 
           // Use exchangeItem.discount and exchangeItem.amount to respect CART changes
@@ -471,8 +466,6 @@ const SalesReturnPage: React.FC = () => {
       const newManualDiscount = Math.max(0, currentManualDiscount - discountDeducted);
       const updatedFinalAmount = updatedTotals.subtotal - updatedTotals.totalDiscount - newManualDiscount;
 
-      // FIX: Explicitly construct objects to avoid 'undefined' error in Firebase
-      // Do NOT use spread operator (...item) here.
       const returnHistoryRecord = {
         returnedAt: new Date(),
         returnedItems: itemsToReturn.map(i => ({

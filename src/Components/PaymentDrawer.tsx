@@ -44,6 +44,8 @@ interface PaymentDrawerProps {
     initialPartyName?: string;
     initialPartyNumber?: string;
     initialPaymentMethods?: PaymentDetails | { [key: string]: any };
+
+    // --- NEW PROPS FOR VALIDATION ---
     requireCustomerName?: boolean;
     requireCustomerMobile?: boolean;
 }
@@ -71,8 +73,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     initialPartyName,
     initialPartyNumber,
     initialPaymentMethods,
-    requireCustomerName = false,
-    requireCustomerMobile = false,
+    requireCustomerName = false,   // Default false
+    requireCustomerMobile = false, // Default false
 }) => {
     const { currentUser } = useAuth();
 
@@ -354,7 +356,10 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 <div className="flex-1 overflow-y-auto overscroll-y-contain bg-white">
                     <div className="p-4 space-y-2">
                         <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Customer Info</h3>
+
+                        {/* --- MODIFIED INPUT GRID WITH RED STAR INDICATOR --- */}
                         <div className="grid grid-cols-2 gap-4 relative">
+                            {/* NUMBER INPUT */}
                             <div className="relative">
                                 <input
                                     type="number"
@@ -362,24 +367,27 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                     value={partyNumber}
                                     onChange={(e) => handleInputChange(e.target.value, 'number')}
                                     onFocus={() => { if (partyNumber.length >= 3) searchCustomer(partyNumber); }}
-                                    className={`w-full bg-gray-50 p-3 text-sm rounded-xs border ${requireCustomerMobile && !partyNumber ? '' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none transition-all`}
+                                    className={`w-full bg-gray-50 p-3 text-sm rounded-xs border ${requireCustomerMobile && !partyNumber ? 'border-red-300 focus:border-red-500' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none transition-all`}
                                     autoComplete="off"
                                 />
                                 {requireCustomerMobile && <span className="absolute right-3 top-3 text-red-500 font-bold">*</span>}
                             </div>
 
+                            {/* NAME INPUT */}
                             <div className="relative">
                                 <input
                                     type="text"
                                     placeholder={requireCustomerName ? "Name *" : "Name"}
                                     value={partyName}
                                     onChange={(e) => handleInputChange(e.target.value, 'name')}
-                                    className={`w-full bg-gray-50 p-3 text-sm rounded-xs border ${requireCustomerName && !partyName ? '' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none transition-all`}
+                                    onFocus={() => { if (partyName.length >= 3) searchCustomer(partyName); }}
+                                    className={`w-full bg-gray-50 p-3 text-sm rounded-xs border ${requireCustomerName && !partyName ? 'border-red-300 focus:border-red-500' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none transition-all`}
                                     autoComplete="off"
                                 />
                                 {requireCustomerName && <span className="absolute right-3 top-3 text-red-500 font-bold">*</span>}
                             </div>
 
+                            {/* Suggestions */}
                             {showSuggestions && suggestions.length > 0 && (
                                 <div className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-200 shadow-xl rounded-lg mt-1 max-h-48 overflow-y-auto">
                                     {suggestions.map((customer, idx) => (
@@ -405,9 +413,11 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                         </div>
                     </div>
 
+                    {/* NEW: BALANCE ADJUSTMENTS (OPT-IN) */}
                     {(customerCredit > 0 || customerDebit > 0) && (
                         <div className="px-4 pb-2">
                             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Available Balances</h3>
+
                             {customerCredit > 0 && (
                                 <div className="flex items-center justify-between p-3 bg-green-50 border border-green-100 rounded-lg mb-2">
                                     <div className="flex flex-col">
@@ -415,11 +425,17 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                         <span className="text-xs text-green-600">Available: ₹{customerCredit.toFixed(2)}</span>
                                     </div>
                                     <label className="flex items-center gap-2 cursor-pointer">
-                                        <input type="checkbox" checked={useCredit} onChange={(e) => setUseCredit(e.target.checked)} className="w-5 h-5 text-green-600 rounded focus:ring-green-500 border-gray-300" />
+                                        <input
+                                            type="checkbox"
+                                            checked={useCredit}
+                                            onChange={(e) => setUseCredit(e.target.checked)}
+                                            className="w-5 h-5 text-green-600 rounded focus:ring-green-500 border-gray-300"
+                                        />
                                         <span className="text-sm font-medium text-gray-700">Apply</span>
                                     </label>
                                 </div>
                             )}
+
                             {customerDebit > 0 && (
                                 <div className="flex items-center justify-between p-3 bg-red-50 border border-red-100 rounded-lg">
                                     <div className="flex flex-col">
@@ -427,7 +443,12 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                         <span className="text-xs text-red-600">Available: ₹{customerDebit.toFixed(2)}</span>
                                     </div>
                                     <label className="flex items-center gap-2 cursor-pointer">
-                                        <input type="checkbox" checked={useDebit} onChange={(e) => setUseDebit(e.target.checked)} className="w-5 h-5 text-red-600 rounded focus:ring-red-500 border-gray-300" />
+                                        <input
+                                            type="checkbox"
+                                            checked={useDebit}
+                                            onChange={(e) => setUseDebit(e.target.checked)}
+                                            className="w-5 h-5 text-red-600 rounded focus:ring-red-500 border-gray-300"
+                                        />
                                         <span className="text-sm font-medium text-gray-700">Apply</span>
                                     </label>
                                 </div>
@@ -435,6 +456,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                         </div>
                     )}
 
+                    {/* TRANSACTION TYPE */}
                     <div className="p-4 bg-gray-100">
                         <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Transaction Type</h3>
                         <div className="grid grid-cols-2 gap-4">

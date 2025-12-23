@@ -167,10 +167,10 @@ const useProfileData = (userId?: string, companyId?: string) => {
       Object.entries(businessData).filter(([_, v]) => v !== undefined)
     );
 
-    promises.push(setDoc(businessDocRef, { 
-      ...cleanBusinessData, 
-      ownerName: name, 
-      updatedAt: serverTimestamp() 
+    promises.push(setDoc(businessDocRef, {
+      ...cleanBusinessData,
+      ownerName: name,
+      updatedAt: serverTimestamp()
     }, { merge: true }));
 
     await Promise.all(promises);

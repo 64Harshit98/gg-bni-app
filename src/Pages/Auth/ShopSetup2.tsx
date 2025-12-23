@@ -1,4 +1,3 @@
-// src/Pages/FinalSetupPage.tsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { ROUTES } from '../../constants/routes.constants';
@@ -10,7 +9,7 @@ import { Spinner } from '../../constants/Spinner';
 import * as XLSX from 'xlsx';
 import { registerUserWithDetails, inviteUser } from '../../lib/AuthOperations';
 import { saveLeadProgress } from '../../lib/Lead'; // Ensure this matches your file name (leads.ts vs Lead.ts)
-import { auth } from '../../lib/Firebase'; 
+import { auth } from '../../lib/Firebase';
 import { InfoTooltip } from '../../Components/InfoToolTip'; // <--- IMPORT ADDED
 
 const FinalSetupPage: React.FC = () => {
@@ -41,7 +40,7 @@ const FinalSetupPage: React.FC = () => {
         ...previousData,
         salesSettings: {
           ...(previousData.salesSettings || {}),
-          salesViewType: salesViewType 
+          salesViewType: salesViewType
         }
       };
 
@@ -101,15 +100,15 @@ const FinalSetupPage: React.FC = () => {
 
       // 3. CALL REGISTER FUNCTION (Creates User in Auth & Firestore)
       await registerUserWithDetails(
-        fullName, 
-        phoneNumber, 
-        email, 
-        password, 
-        ROLES.OWNER, 
-        businessInfoPayload, 
-        planPayload,        
+        fullName,
+        phoneNumber,
+        email,
+        password,
+        ROLES.OWNER,
+        businessInfoPayload,
+        planPayload,
         salesSettingsPayload,
-        initialStaff || []  
+        initialStaff || []
       );
 
       // 4. INVITE STAFF
@@ -128,19 +127,19 @@ const FinalSetupPage: React.FC = () => {
 
       // --- 5. UPDATE LEAD STATUS (The Conversion Event) ---
       const currentUid = auth.currentUser?.uid;
-      
+
       await saveLeadProgress(email, {
-          status: 'Trial Plan',
-          currentStep: 'Completed',
-          userId: currentUid,
-          convertedAt: new Date(),
-          plan: 'Pro Trial'
+        status: 'Trial Plan',
+        currentStep: 'Completed',
+        userId: currentUid,
+        convertedAt: new Date(),
+        plan: 'Pro Trial'
       });
 
       // 6. CLEANUP & REDIRECT
       localStorage.removeItem('sellar_onboarding_data');
       setStatusMessage('Setup Complete!');
-      navigate(ROUTES.HOME); 
+      navigate(ROUTES.HOME);
 
     } catch (err: any) {
       console.error('Final setup failed:', err);
@@ -152,7 +151,7 @@ const FinalSetupPage: React.FC = () => {
   return (
     // FIX: Main container set to h-screen and overflow-hidden
     <div className="flex flex-col h-screen overflow-hidden bg-gray-100">
-      
+
       {/* Sticky Header */}
       <div className="flex-shrink-0 bg-gray-100 pt-4 pb-2 px-4 shadow-sm z-40">
         <Stepper totalSteps={4} currentStep={4} onStepClick={handleStepClick} />
@@ -170,9 +169,9 @@ const FinalSetupPage: React.FC = () => {
               <FiLayout /> Items View (while Billing)
             </h2>
             <div className="grid grid-cols-2 gap-4">
-              
+
               {/* List View Option */}
-              <div 
+              <div
                 onClick={() => setSalesViewType('list')}
                 className={`cursor-pointer relative rounded-xl border-2 p-4 flex flex-col items-center gap-3 transition-all duration-200 ${salesViewType === 'list' ? 'border-blue-600 bg-blue-50 shadow-md' : 'border-gray-200 hover:border-blue-300'}`}
               >
@@ -184,26 +183,26 @@ const FinalSetupPage: React.FC = () => {
                 </div>
                 {/* TOOLTIP ADDED HERE */}
                 <div className="flex items-center justify-center">
-                    <p className="font-bold text-gray-800 text-center">List View</p>
-                    <InfoTooltip text="Compact table view. Best for Desktop & Barcode Scanning users." />
+                  <p className="font-bold text-gray-800 text-center">List View</p>
+                  <InfoTooltip text="Compact table view. Best for Desktop & Barcode Scanning users." />
                 </div>
               </div>
 
               {/* Card View Option */}
-              <div 
+              <div
                 onClick={() => setSalesViewType('card')}
                 className={`cursor-pointer relative rounded-xl border-2 p-4 flex flex-col items-center gap-3 transition-all duration-200 ${salesViewType === 'card' ? 'border-blue-600 bg-blue-50 shadow-md' : 'border-gray-200 hover:border-blue-300'}`}
               >
                 {salesViewType === 'card' && <div className="absolute top-2 right-2 bg-blue-600 text-white rounded-full p-0.5"><FiCheck size={12} /></div>}
                 <div className="w-full h-20 bg-white border border-gray-200 rounded p-2 grid grid-cols-3 gap-2 shadow-inner">
-                   <div className="bg-gray-200 rounded aspect-square"></div>
-                   <div className="bg-gray-200 rounded aspect-square"></div>
-                   <div className="bg-gray-200 rounded aspect-square"></div>
+                  <div className="bg-gray-200 rounded aspect-square"></div>
+                  <div className="bg-gray-200 rounded aspect-square"></div>
+                  <div className="bg-gray-200 rounded aspect-square"></div>
                 </div>
                 {/* TOOLTIP ADDED HERE */}
                 <div className="flex items-center justify-center">
-                    <p className="font-bold text-gray-800 text-center">Card View</p>
-                    <InfoTooltip text="Visual grid view with images. Best for Touchscreens & Tablets." />
+                  <p className="font-bold text-gray-800 text-center">Card View</p>
+                  <InfoTooltip text="Visual grid view with images. Best for Touchscreens & Tablets." />
                 </div>
               </div>
 
@@ -213,7 +212,7 @@ const FinalSetupPage: React.FC = () => {
           {/* Bulk Import */}
           <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-6">
             <h2 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4 flex items-center gap-2">
-              <FiDownload /> 
+              <FiDownload />
               <span>Bulk Import</span>
               {/* TOOLTIP ADDED HERE */}
               <InfoTooltip text="Download our Excel template, fill in your product list, and upload it later in the Item Add to add items instantly." />
@@ -230,10 +229,10 @@ const FinalSetupPage: React.FC = () => {
       {/* Fixed Footer */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-100 border-t border-gray-200 z-50 shadow-lg">
         <div className="max-w-md mx-auto space-y-4">
-          <CustomButton 
-            onClick={handleFinishSetup} 
-            variant={Variant.Filled} 
-            disabled={isSubmitting} 
+          <CustomButton
+            onClick={handleFinishSetup}
+            variant={Variant.Filled}
+            disabled={isSubmitting}
             className="h-12 text-lg w-full"
           >
             {isSubmitting ? (

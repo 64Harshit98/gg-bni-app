@@ -364,17 +364,18 @@ const SalesReturnPage: React.FC = () => {
 
 
   // --- CALCULATION LOGIC ---
-  const { totalReturnGross, totalReturnValue, totalExchangeValue, finalBalance, discountDeducted } = useMemo(() => {
+  const { totalReturnGross, totalExchangeValue, finalBalance, discountDeducted } = useMemo(() => {
     const totalReturnGross = itemsToReturn.reduce((sum, item) => sum + item.amount, 0);
     const totalExchangeValue = exchangeItems.reduce((sum, item) => sum + item.amount, 0);
 
     let discountDeducted = 0;
 
-    if (selectedSale && selectedSale.manualDiscount) {
-      const availableManualDiscount = Number(selectedSale.manualDiscount) || 0;
-      if (availableManualDiscount > 0 && itemsToReturn.length > 0) {
-        discountDeducted = Math.min(totalReturnGross, availableManualDiscount);
-      }
+    // Logic: If returning items from a bill that had a Manual Discount, we reverse that discount proportionally.
+    if (selectedSale && selectedSale.subtotal > 0 && (selectedSale.manualDiscount || 0) > 0) {
+        const originalDiscount = selectedSale.manualDiscount || 0;
+        const ratio = totalReturnGross / selectedSale.subtotal; // e.g. Returning 500 out of 1000 = 0.5
+        discountDeducted = originalDiscount * ratio; // Reverse 50% of discount
+        discountDeducted = Math.round(discountDeducted * 100) / 100;
     }
 
     const totalReturnValue = totalReturnGross - discountDeducted;
@@ -394,11 +395,9 @@ const SalesReturnPage: React.FC = () => {
       const batch = writeBatch(db);
       const saleRef = doc(db, 'companies', companyId, 'sales', selectedSale.id);
 
-      // Create a map of existing items to update quantities or remove them
       const originalItemsMap = new Map(selectedSale.items.map(item => [item.id, { ...item }]));
       const validInventoryIds = new Set(availableItems.map(i => i.id));
 
-      // 1. Process Returns (Deduct quantity from sale)
       itemsToReturn.forEach(returnItem => {
         const originalItem = originalItemsMap.get(returnItem.originalItemId);
         if (originalItem) {
@@ -407,28 +406,20 @@ const SalesReturnPage: React.FC = () => {
         }
       });
 
-      // 2. Process Exchanges (Add quantity to sale)
       exchangeItems.forEach(exchangeItem => {
         const originalItem = Array.from(originalItemsMap.values()).find(i => i.id === exchangeItem.originalItemId);
         if (originalItem) {
-          // If item exists, just increase quantity
           originalItem.quantity += exchangeItem.quantity;
         } else {
-          // If new item added in exchange
           const itemMaster = availableItems.find(i => i.id === exchangeItem.originalItemId);
-          
-          // Use exchangeItem.discount and exchangeItem.amount to respect CART changes
           originalItemsMap.set(exchangeItem.originalItemId, {
             id: exchangeItem.originalItemId,
             name: exchangeItem.name,
             mrp: exchangeItem.mrp,
             quantity: exchangeItem.quantity,
-            // Use cart discount
             discount: exchangeItem.discount || 0,
             discountPercentage: exchangeItem.discount || 0,
-            // Use cart amount (custom price) as finalPrice
             finalPrice: exchangeItem.amount,
-            // Add 'amount' for consistency, though finalPrice is primary
             amount: exchangeItem.amount,
             purchasePrice: itemMaster?.purchasePrice || 0,
             tax: itemMaster?.tax || 0,
@@ -441,18 +432,28 @@ const SalesReturnPage: React.FC = () => {
         }
       });
 
-      const newItemsList = Array.from(originalItemsMap.values());
+      // Recalculate totals based on NEW quantities
+      const newItemsList = Array.from(originalItemsMap.values()).map((item: any) => {
+        const discPercent = item.discountPercentage ?? item.discount ?? 0;
+        const mrp = item.mrp || 0;
+        
+        let lineTotal = 0;
+        const unitPrice = mrp * (1 - (discPercent / 100));
+        lineTotal = unitPrice * item.quantity;
 
-      // FIX: TS Error & Calculation Logic
+        // Use stored amount if it matches logic (for custom prices), otherwise calc
+        const finalAmount = (item.amount && item.quantity > 0 && Math.abs(item.amount - lineTotal) > 1) ? item.amount : lineTotal;
+
+        return {
+            ...item,
+            finalPrice: finalAmount,
+            amount: finalAmount 
+        };
+      });
+
       const updatedTotals = newItemsList.reduce((acc, item) => {
-        const qty = item.quantity || 0;
-        const itemGross = (item.mrp || 0) * qty;
-
-        // Cast to any to avoid "Property 'amount' does not exist" TS error
-        // checking both finalPrice and amount to ensure we catch the correct value
-        const runtimeItem = item as any;
-        const itemFinal = runtimeItem.finalPrice ?? runtimeItem.amount ?? itemGross;
-
+        const itemGross = (item.mrp || 0) * (item.quantity || 0);
+        const itemFinal = item.finalPrice || 0; 
         const itemDiscount = itemGross - itemFinal;
 
         acc.subtotal += itemGross;
@@ -462,29 +463,15 @@ const SalesReturnPage: React.FC = () => {
 
       const currentManualDiscount = Number(selectedSale.manualDiscount) || 0;
       const newManualDiscount = Math.max(0, currentManualDiscount - discountDeducted);
-
       const updatedFinalAmount = updatedTotals.subtotal - updatedTotals.totalDiscount - newManualDiscount;
 
-      // FIX: Explicitly construct objects to avoid 'undefined' error in Firebase
-      // Do NOT use spread operator (...item) here.
       const returnHistoryRecord = {
         returnedAt: new Date(),
         returnedItems: itemsToReturn.map(i => ({
-          originalItemId: i.originalItemId,
-          name: i.name || '',
-          mrp: i.mrp || 0,
-          quantity: i.quantity || 0,
-          unitPrice: i.unitPrice || 0,
-          amount: i.amount || 0
+          originalItemId: i.originalItemId, name: i.name||'', mrp: i.mrp||0, quantity: i.quantity||0, unitPrice: i.unitPrice||0, amount: i.amount||0 
         })),
         exchangeItems: exchangeItems.map(i => ({
-          originalItemId: i.originalItemId,
-          name: i.name || '',
-          mrp: i.mrp || 0,
-          quantity: i.quantity || 0,
-          unitPrice: i.unitPrice || 0,
-          amount: i.amount || 0,
-          discount: i.discount || 0
+          originalItemId: i.originalItemId, name: i.name||'', mrp: i.mrp||0, quantity: i.quantity||0, unitPrice: i.unitPrice||0, amount: i.amount||0, discount: i.discount||0 
         })),
         finalBalance,
         discountDeducted,
@@ -492,16 +479,26 @@ const SalesReturnPage: React.FC = () => {
         paymentDetails: completionData?.paymentDetails || null,
       };
 
-      batch.set(saleRef, {
+      const updateData: any = {
         items: newItemsList,
         subtotal: updatedTotals.subtotal,
         discount: updatedTotals.totalDiscount + newManualDiscount,
         manualDiscount: newManualDiscount,
         totalAmount: updatedFinalAmount,
         returnHistory: arrayUnion(returnHistoryRecord),
-      }, { merge: true });
+      };
 
-      // 3. Batch Updates for Inventory
+      // FIX: If bill total is now 0 (Full Return), clear the payment methods on the document
+      // to avoid it looking like "Paid 500, Total 0".
+      if (updatedFinalAmount === 0) {
+          updateData.paymentMethods = {}; 
+      } else if (completionData?.paymentDetails) {
+          // If we took new payment, update it
+          updateData.paymentMethods = completionData.paymentDetails;
+      }
+
+      batch.set(saleRef, updateData, { merge: true });
+
       itemsToReturn.forEach(item => {
         if (item.originalItemId && validInventoryIds.has(item.originalItemId)) {
           batch.update(doc(db, 'companies', companyId, 'items', item.originalItemId), { stock: firebaseIncrement(item.quantity) });
@@ -513,15 +510,27 @@ const SalesReturnPage: React.FC = () => {
         }
       });
 
-      // 4. Update Customer Credit
-      const cleanPartyNumber = partyNumber.trim() || selectedSale.partyNumber;
-      const cleanPartyName = partyName.trim() || selectedSale.partyName;
-      if (cleanPartyNumber && cleanPartyNumber.length >= 10) {
+      // Update Customer DB
+      const finalPartyName = completionData?.partyName || partyName || selectedSale.partyName;
+      const finalPartyNumber = completionData?.partyNumber || partyNumber || selectedSale.partyNumber;
+      
+      const cleanPartyNumber = finalPartyNumber?.trim();
+      const cleanPartyName = finalPartyName?.trim();
+
+      if (cleanPartyNumber && cleanPartyNumber.length >= 3) {
         const customerRef = doc(db, 'companies', companyId, 'customers', cleanPartyNumber);
-        const customerUpdateData: any = { name: cleanPartyName, phone: cleanPartyNumber, companyId, lastUpdatedAt: serverTimestamp() };
+        
+        const customerUpdateData: any = { 
+            name: cleanPartyName, 
+            phone: cleanPartyNumber, 
+            companyId, 
+            lastUpdatedAt: serverTimestamp() 
+        };
+        
         if (finalBalance > 0) {
           customerUpdateData.creditBalance = firebaseIncrement(finalBalance);
         }
+        
         batch.set(customerRef, customerUpdateData, { merge: true });
       }
 
@@ -539,8 +548,11 @@ const SalesReturnPage: React.FC = () => {
 
   const handleProcessReturn = () => {
     if (itemsToReturn.length === 0 && exchangeItems.length === 0) return setModal({ type: State.ERROR, message: 'No items selected.' });
-    if (modeOfReturn === 'Exchange' && finalBalance < 0) setIsDrawerOpen(true);
-    else saveReturnTransaction();
+    if (finalBalance >= 0) {
+        saveReturnTransaction();
+    } else {
+        setIsDrawerOpen(true);
+    }
   };
 
   if (isLoading) return <div className="flex min-h-screen items-center justify-center">Loading...</div>;
@@ -600,7 +612,7 @@ const SalesReturnPage: React.FC = () => {
                     isSelected={selectedReturnIds.has(item.id)}
                     onToggle={handleToggleReturnItem}
                     onQuantityChange={(id, val) => handleListChange(setOriginalSaleItems, id, 'quantity', val)}
-                    showMrp={true} // Sales usually show MRP
+                    showMrp={true}
                   />
                 ))}
               </div>
@@ -631,7 +643,6 @@ const SalesReturnPage: React.FC = () => {
                         {priceInfo && <span className="text-red-500 bg-red-50 px-2 rounded">{priceInfo}</span>}
                       </div>
                       <div className="max-h-96 overflow-y-auto">
-                        {/* FIX: Use GenericCartList with Sales settings */}
                         <GenericCartList<SalesItem>
                           items={mappedExchangeItems}
                           availableItems={availableItems}
@@ -647,7 +658,7 @@ const SalesReturnPage: React.FC = () => {
                           applyRounding={applyRounding}
                           State={State}
                           setModal={setModal}
-                          onOpenEditDrawer={() => { }} // No editing master items from return page
+                          onOpenEditDrawer={() => { }}
                           onDeleteItem={(id) => handleRemoveFromList(setExchangeItems, id)}
                           onDiscountChange={handleDiscountChange}
                           onCustomPriceChange={handleCustomPriceChange}
@@ -682,11 +693,6 @@ const SalesReturnPage: React.FC = () => {
                   </div>
                 )}
 
-                <div className="flex justify-between items-center text-md text-blue-700 font-semibold border-t border-dashed pt-2">
-                  <p>Net Return Value</p>
-                  <p className="font-medium">₹{totalReturnValue.toFixed(2)}</p>
-                </div>
-
                 {modeOfReturn === 'Exchange' && (
                   <div className="flex justify-between items-center text-md text-blue-700">
                     <p>Total Exchange Value</p>
@@ -710,7 +716,14 @@ const SalesReturnPage: React.FC = () => {
         {selectedSale && (<CustomButton onClick={handleProcessReturn} variant={Variant.Payment} className="w-full py-4 text-xl font-semibold">Process Transaction</CustomButton>)}
       </div>
 
-      <PaymentDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} subtotal={Math.abs(finalBalance)} onPaymentComplete={saveReturnTransaction} initialPartyName={partyName} initialPartyNumber={partyNumber} />
+      <PaymentDrawer
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        subtotal={Math.abs(finalBalance)}
+        onPaymentComplete={saveReturnTransaction}
+        initialPartyName={partyName}
+        initialPartyNumber={partyNumber}
+      />
     </div>
   );
 };

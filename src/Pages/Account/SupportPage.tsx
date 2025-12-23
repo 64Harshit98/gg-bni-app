@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 // --- ICONS ---
 // (Assuming you use Lucide-React like standard Tailwind projects. 
@@ -14,6 +14,7 @@ import {
   FileText, 
   Send 
 } from 'lucide-react';
+import { ROUTES } from '../../constants/routes.constants';
 
 // --- TYPES ---
 interface AccordionItemProps {
@@ -100,7 +101,7 @@ const SupportPage: React.FC = () => {
             isOpen={openSection === 'faq-1'}
             onClick={() => toggleSection('faq-1')}
           >
-            Go to the <strong>Subscription</strong> page from your account menu. Toggle between Monthly or Yearly billing, select the plan that suits you (Basic or Pro), and click "Choose". Your benefits will be active after your payment is verified.
+            Go to the <Link to={ROUTES.SUBSCRIPTION_PAGE}><strong>Subscription</strong></Link> page from your account menu. Toggle between Monthly or Yearly billing, select the plan that suits you (Basic or Pro), and click "Choose". Your benefits will be active after your payment is verified.
           </AccordionItem>
 
           <AccordionItem 
@@ -176,8 +177,8 @@ const SupportPage: React.FC = () => {
             onClick={() => toggleSection('contact-2')}
           >
             <p className="font-medium text-gray-800">Sellar HQ</p>
-            <p>123 Startup Hub, Tech Park,</p>
-            <p>Bangalore, India - 560001</p>
+            <p>Ground Floor, Harsha City Mall, G-46, Plot number 2B, Shakti Khand 2,</p>
+            <p> Indirapuram, Ghaziabad, Uttar Pradesh 201014</p>
             <p className="mt-2 text-xs text-gray-400">(Visits by appointment only)</p>
           </AccordionItem>
         </div>

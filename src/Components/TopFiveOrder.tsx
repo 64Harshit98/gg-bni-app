@@ -182,7 +182,7 @@ export const TopSoldItemsCard: React.FC<TopSoldItemsCardProps> = ({ isDataVisibl
     return (
         <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Top 5 Items (Completed)</CardTitle>
+                <CardTitle>Top 5 Items Sold</CardTitle>
                 <div className="flex items-center p-1 bg-gray-100 rounded-lg">
                     <button
                         onClick={() => setViewMode('amount')}

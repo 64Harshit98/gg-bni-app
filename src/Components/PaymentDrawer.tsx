@@ -354,8 +354,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 <div className="flex-1 overflow-y-auto overscroll-y-contain bg-white">
                     <div className="p-4 space-y-2">
                         <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Customer Info</h3>
-
-                        {/* --- MODIFIED INPUT GRID WITH RED STAR INDICATOR --- */}
                         <div className="grid grid-cols-2 gap-4 relative">
                             <div className="relative">
                                 <input

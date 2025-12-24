@@ -83,7 +83,6 @@ const ItemReport: React.FC = () => {
     let newFilteredItems = items.filter(item => {
       if (!appliedItemGroupId) return true;
       const itemGroupName = item.itemGroupId || UNASSIGNED_GROUP_NAME;
-      // We are comparing names here as per your request
       return itemGroupName === appliedItemGroupId;
     });
 
@@ -158,7 +157,7 @@ const tableColumns = useMemo(() => getItemColumns(itemGroups), [itemGroups]);
         <div className="flex space-x-3 items-end">
           <FilterSelect label="Item Group" value={itemGroupId} onChange={(e) => setItemGroupId(e.target.value)}>
             <option value="">All Groups</option>
-            {itemGroups.map((group) => (<option key={group.id} value={group.name}>{group.name}</option>))}
+            {itemGroups.map((group) => (<option key={group.id} value={group.id}>{group.name}</option>))}
             <option value={UNASSIGNED_GROUP_NAME}>Uncategorized</option>
           </FilterSelect>
           <button onClick={handleApplyFilters} className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 transition">Apply</button>

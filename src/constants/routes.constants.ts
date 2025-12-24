@@ -14,6 +14,7 @@ export const ROUTES = {
   SHOP_SETUP2: '/shop--setup',
   SIGNUP: '/signup',
   FORGOT_PASSWORD: '/forgot-password',
+  RESET_PASSWORD: '/reset-password',
   EDIT_PROFILE: '/edit-profile',
   LANDING: '/landing',
   ITEM_REPORT: '/item-report',
@@ -38,4 +39,6 @@ export const ROUTES = {
   CATALOGUE_ACCOUNTS: 'accounts',
   CATALOGUE_REPORTS: 'reports',
   CATALOGUE_SALES: 'sales',
+  SUBSCRIPTION_PAGE: '/subscription',
+  SUPPORT_PAGE: '/support',
 };

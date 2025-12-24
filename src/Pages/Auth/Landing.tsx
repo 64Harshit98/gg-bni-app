@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { ROUTES } from '../../constants/routes.constants';
-import { CustomButton } from '../../Components'; // Assuming CustomButton handles basic styling
+import { CustomButton } from '../../Components';
 import sellarLogo from '../../assets/sellar-logo-heading.png';
-import bgMain from '../../assets/bg-main.png'; // This is now a foreground image
+import bgMain from '../../assets/bg-main.png';
 import { Variant } from '../../enums';
-import { FloatingLabelInput } from '../../Components/ui/FloatingLabelInput'; // Assuming this path
-import { Spinner } from '../../constants/Spinner'; // Assuming this path
-import { loginUser } from '../../lib/AuthOperations'; // Assuming this path
+import { FloatingLabelInput } from '../../Components/ui/FloatingLabelInput';
+import { Spinner } from '../../constants/Spinner';
+import { loginUser } from '../../lib/AuthOperations';
 import { useAuth } from '../../context/auth-context';
-import { FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi'; // Import eye icons
+import { FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
 
 const LoginPage: React.FC = () => {
     const { currentUser, loading: authLoading } = useAuth();
@@ -17,7 +17,7 @@ const LoginPage: React.FC = () => {
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [showPassword, setShowPassword] = useState(false); // State for password visibility
+    const [showPassword, setShowPassword] = useState(false);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -66,7 +66,7 @@ const LoginPage: React.FC = () => {
             {/* ---------------------------------- */}
 
             {/* Login Form Section */}
-            <div className="w-full bg-gray-100 p-6 py-8 shadow-t-lg rounded-t-2xl flex-shrink-0 z-20 mt-[-50px]"> {/* Negative margin pulls this up */}
+            <div className="w-full bg-gray-100 p-6 py-8 shadow-t-lg rounded-t-2xl flex-shrink-0 z-20 mt-[-50px]">
                 <div className="w-full max-w-sm mx-auto">
                     <form onSubmit={handleLogin} className="space-y-4">
                         <div className="relative">
@@ -103,6 +103,16 @@ const LoginPage: React.FC = () => {
                             >
                                 {showPassword ? <FiEye size={20} /> : <FiEyeOff size={20} />}
                             </button>
+                        </div>
+
+                        {/* --- Forgot Password Link --- */}
+                        <div className="flex justify-end mt-1">
+                            <Link
+                                to={ROUTES.FORGOT_PASSWORD || '/forgot-password'} 
+                                className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                            >
+                                Forgot Password?
+                            </Link>
                         </div>
 
                         {error && (

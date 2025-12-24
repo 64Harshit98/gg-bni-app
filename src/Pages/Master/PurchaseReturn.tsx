@@ -1,3 +1,4 @@
+// src/Pages/PurchaseReturnPage.tsx
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
@@ -20,6 +21,11 @@ import { CustomButton } from '../../Components';
 import SearchableItemInput from '../../UseComponents/SearchIteminput';
 import PaymentDrawer, { type PaymentCompletionData } from '../../Components/PaymentDrawer';
 import BarcodeScanner from '../../UseComponents/BarcodeScanner';
+import { ReturnListItem } from '../../Components/ReturnListItem';
+import { IconScanCircle } from '../../constants/Icons';
+
+// --- IMPORT THE GENERIC COMPONENT ---
+import { GenericCartList, type CartItem } from '../../Components/CartItem';
 
 // --- Interfaces ---
 interface PurchaseData {
@@ -27,11 +33,14 @@ interface PurchaseData {
   invoiceNumber: string;
   partyName: string;
   partyNumber?: string;
+  partyAddress?: string;
+  partyGstin?: string;
   items: OriginalPurchaseItem[];
   totalAmount: number;
   createdAt: any;
   isReturned?: boolean;
 }
+
 interface TransactionItem {
   id: string;
   originalItemId: string;
@@ -41,7 +50,12 @@ interface TransactionItem {
   amount: number;
 }
 
-// --- Main Purchase Return Page Component ---
+interface ReturnCartItem extends CartItem {
+  originalItemId: string;
+  unitPrice: number;
+  amount: number;
+}
+
 const PurchaseReturnPage: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
@@ -52,8 +66,13 @@ const PurchaseReturnPage: React.FC = () => {
 
   const [supplierName, setSupplierName] = useState<string>('');
   const [supplierNumber, setSupplierNumber] = useState<string>('');
+  const [supplierAddress, setSupplierAddress] = useState<string>('');
+  const [supplierGstin, setSupplierGstin] = useState<string>('');
+  
   const [modeOfReturn, setModeOfReturn] = useState<string>('Exchange');
-  const [newItemsReceived, setNewItemsReceived] = useState<TransactionItem[]>([]);
+
+  const [newItemsReceived, setNewItemsReceived] = useState<ReturnCartItem[]>([]);
+
   const [returnDate, setReturnDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
   const isActive = (path: string) => location.pathname === path;
@@ -73,11 +92,13 @@ const PurchaseReturnPage: React.FC = () => {
   const [scannerPurpose, setScannerPurpose] = useState<'purchase' | 'item' | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
+  // --- Derived State ---
   const itemsToReturn = useMemo(() =>
     originalPurchaseItems.filter(item => selectedReturnIds.has(item.id)),
     [originalPurchaseItems, selectedReturnIds]
   );
 
+  // --- Effects ---
   useEffect(() => {
     if (!currentUser || !currentUser.companyId || !dbOperations) {
       setIsLoading(false);
@@ -135,14 +156,17 @@ const PurchaseReturnPage: React.FC = () => {
     [purchaseList, searchQuery]
   );
 
+  // --- Selection Handlers ---
   const handleSelectPurchase = (purchase: PurchaseData) => {
     setSelectedPurchase(purchase);
     setSupplierName(purchase.partyName);
     setSupplierNumber(purchase.partyNumber || '');
+    setSupplierAddress(purchase.partyAddress || '');
+    setSupplierGstin(purchase.partyGstin || '');
+
     setOriginalPurchaseItems(purchase.items.map((item: any) => {
       const itemData = item.data || item;
       const quantity = itemData.quantity || 1;
-      // Handle both old 'finalPrice' and new 'purchasePrice'
       const unitPrice = itemData.purchasePrice ?? itemData.finalPrice ?? 0;
 
       return {
@@ -154,6 +178,7 @@ const PurchaseReturnPage: React.FC = () => {
         amount: unitPrice * quantity,
       };
     }));
+
     setSelectedReturnIds(new Set());
     setNewItemsReceived([]);
     setSearchQuery(purchase.invoiceNumber || purchase.partyName);
@@ -174,6 +199,10 @@ const PurchaseReturnPage: React.FC = () => {
 
   const handleClear = () => {
     setSelectedPurchase(null);
+    setSupplierName('');
+    setSupplierNumber('');
+    setSupplierAddress('');
+    setSupplierGstin('');
     setSelectedReturnIds(new Set());
     setNewItemsReceived([]);
     setSearchQuery('');
@@ -198,8 +227,53 @@ const PurchaseReturnPage: React.FC = () => {
     }));
   };
 
-  const handleRemoveItem = (listSetter: React.Dispatch<React.SetStateAction<TransactionItem[]>>, id: string) => {
-    listSetter(prev => prev.filter(item => item.id !== id));
+  // --- Handlers for GenericCartList (New Items) ---
+  const handleRemoveNewItem = (id: string) => {
+    setNewItemsReceived(prev => prev.filter(item => item.id !== id));
+  };
+
+  const handleNewItemQuantity = (id: string, newQty: number) => {
+    setNewItemsReceived(prev => prev.map(item => {
+      if (item.id === id) {
+        const qty = Math.max(1, newQty);
+        return {
+          ...item,
+          quantity: qty,
+          amount: qty * item.unitPrice
+        };
+      }
+      return item;
+    }));
+  };
+
+  const handleNewItemPriceChange = (id: string, val: string) => {
+    setNewItemsReceived(prev => prev.map(item => {
+      if (item.id === id) {
+        return { ...item, customPrice: val };
+      }
+      return item;
+    }));
+  };
+
+  const handleNewItemPriceBlur = (id: string) => {
+    setNewItemsReceived(prev => prev.map(item => {
+      if (item.id === id) {
+        const rawVal = item.customPrice;
+        const parsed = parseFloat(String(rawVal));
+        
+        if (isNaN(parsed) || parsed < 0) {
+            return { ...item, customPrice: item.unitPrice };
+        }
+
+        return { 
+            ...item, 
+            unitPrice: parsed, 
+            amount: parsed * item.quantity,
+            customPrice: parsed 
+        };
+      }
+      return item;
+    }));
   };
 
   const handleNewItemSelected = (item: Item) => {
@@ -211,6 +285,10 @@ const PurchaseReturnPage: React.FC = () => {
       quantity: 1,
       unitPrice: item.purchasePrice || 0,
       amount: item.purchasePrice || 0,
+      isEditable: true,
+      customPrice: item.purchasePrice,
+      discount: 0,
+      productId: item.id
     }]);
   };
 
@@ -247,7 +325,10 @@ const PurchaseReturnPage: React.FC = () => {
   const saveReturnTransaction = async (completionData?: Partial<PaymentCompletionData>) => {
     if (!currentUser || !currentUser.companyId || !selectedPurchase) return;
 
-    if (modeOfReturn === 'Debit Note' && !supplierNumber) {
+    const finalSupplierName = completionData?.partyName || supplierName || selectedPurchase.partyName;
+    const finalSupplierNumber = completionData?.partyNumber || supplierNumber || selectedPurchase.partyNumber;
+
+    if (modeOfReturn === 'Debit Note' && !finalSupplierNumber) {
       setModal({ type: State.ERROR, message: 'Cannot create Debit Note: Party Number is missing.' });
       return;
     }
@@ -261,6 +342,7 @@ const PurchaseReturnPage: React.FC = () => {
 
       const originalItemsMap = new Map(selectedPurchase.items.map(item => [item.id, { ...item }]));
 
+      // 1. Process Returns (Decrement Qty from Purchase)
       itemsToReturn.forEach(returnItem => {
         const originalItem = originalItemsMap.get(returnItem.originalItemId);
         if (originalItem) {
@@ -269,6 +351,7 @@ const PurchaseReturnPage: React.FC = () => {
         }
       });
 
+      // 2. Process New Items (Increment Qty in Purchase)
       newItemsReceived.forEach(newItem => {
         const originalItem = originalItemsMap.get(newItem.originalItemId);
         if (originalItem) {
@@ -290,52 +373,64 @@ const PurchaseReturnPage: React.FC = () => {
         returnedAt: new Date(),
         returnedItems: itemsToReturn.map(({ id, ...item }) => item),
         newItemsReceived: newItemsReceived.map(({ id, ...item }) => item),
-        finalBalance,
+        finalBalance, 
         modeOfReturn,
         paymentDetails: completionData?.paymentDetails || null,
       };
 
-      batch.update(purchaseRef, {
+      const updateData: any = {
         items: newItemsList,
         totalAmount: newTotalAmount,
         returnHistory: arrayUnion(returnHistoryRecord),
-      });
+      };
 
-      // --- INVENTORY UPDATES ---
-      // 1. Returning to Supplier -> DECREASE stock
-      itemsToReturn.forEach(item => {
-        batch.update(doc(db, 'companies', companyId, 'items', item.originalItemId), {
-          stock: firebaseIncrement(-item.quantity)
+      if (newTotalAmount === 0) {
+          updateData.paymentMethods = {}; 
+      } else if (completionData?.paymentDetails) {
+          updateData.paymentMethods = completionData.paymentDetails;
+      }
+
+      batch.update(purchaseRef, updateData);
+
+      // 3. Update Stock
+      itemsToReturn.forEach(returnItem => {
+        batch.update(doc(db, 'companies', companyId, 'items', returnItem.originalItemId), {
+            stock: firebaseIncrement(-returnItem.quantity)
+        });
+      });
+      newItemsReceived.forEach(newItem => {
+        batch.update(doc(db, 'companies', companyId, 'items', newItem.originalItemId), {
+            stock: firebaseIncrement(newItem.quantity)
         });
       });
 
-      // 2. Receiving from Supplier -> INCREASE stock
-      newItemsReceived.forEach(item => {
-        batch.update(doc(db, 'companies', companyId, 'items', item.originalItemId), {
-          stock: firebaseIncrement(item.quantity)
-        });
-      });
+      // 4. Save Customer/Supplier Info
+      const cleanSupplierNumber = finalSupplierNumber?.trim();
+      const cleanSupplierName = finalSupplierName?.trim();
+      const cleanAddress = completionData?.partyAddress || supplierAddress || selectedPurchase.partyAddress || '';
+      const cleanGstin = completionData?.partyGST || supplierGstin || selectedPurchase.partyGstin || '';
 
-      // --- CUSTOMER (SUPPLIER) UPDATE FIX ---
-      // Always update supplier info (or create if new)
-      const cleanSupplierNumber = supplierNumber.trim() || selectedPurchase.partyNumber;
-      const cleanSupplierName = supplierName.trim() || selectedPurchase.partyName;
-
-      if (cleanSupplierNumber && cleanSupplierNumber.length >= 10) {
+      if (cleanSupplierNumber && cleanSupplierNumber.length >= 3) {
         const customerRef = doc(db, 'companies', companyId, 'customers', cleanSupplierNumber);
-
         const customerUpdateData: any = {
           name: cleanSupplierName,
           phone: cleanSupplierNumber,
+          address: cleanAddress,
+          gstin: cleanGstin,
           companyId: companyId,
           lastUpdatedAt: serverTimestamp()
         };
 
-        // Only add Debit Balance (money they owe US) if finalBalance > 0
-        if (modeOfReturn === 'Debit Note' && finalBalance > 0) {
-          customerUpdateData.debitBalance = firebaseIncrement(finalBalance);
+        // --- CASH REFUND LOGIC ---
+        // If "Cash Refund", supplier paid us back. Debit balance does NOT increase.
+        if (modeOfReturn === 'Cash Refund') {
+           // No balance update
+        } else {
+           if (finalBalance > 0) {
+             customerUpdateData.debitBalance = firebaseIncrement(finalBalance);
+           }
         }
-
+        
         batch.set(customerRef, customerUpdateData, { merge: true });
       }
 
@@ -356,11 +451,26 @@ const PurchaseReturnPage: React.FC = () => {
     if (itemsToReturn.length === 0 && newItemsReceived.length === 0) {
       return setModal({ type: State.ERROR, message: 'No items have been returned or received.' });
     }
-    if (modeOfReturn === 'Exchange' && finalBalance < 0) {
-      setIsDrawerOpen(true);
-    } else {
-      saveReturnTransaction();
+
+    // Cash Refund: If balance > 0 (Supplier owes us), and we selected Cash Refund, treat as done.
+    if (modeOfReturn === 'Cash Refund' && finalBalance > 0) {
+        saveReturnTransaction();
     }
+    // Debit Note / Exchange: If balance > 0 (Supplier owes us), save as debit note.
+    else if (finalBalance >= 0) {
+        saveReturnTransaction();
+    } 
+    // If balance < 0 (We owe supplier), open drawer to pay.
+    else {
+        setIsDrawerOpen(true);
+    }
+  };
+
+  // Helper Label for Bottom Summary
+  const getBalanceLabel = () => {
+    if (finalBalance < 0) return 'Payment Due'; // We owe supplier
+    if (modeOfReturn === 'Cash Refund') return 'Refund Received'; // Supplier paid us cash
+    return 'Debit Note'; // Supplier owes us credit
   };
 
   if (isLoading) return <div className="flex min-h-screen items-center justify-center">Loading...</div>;
@@ -371,15 +481,17 @@ const PurchaseReturnPage: React.FC = () => {
       <BarcodeScanner isOpen={scannerPurpose !== null} onClose={() => setScannerPurpose(null)} onScanSuccess={handleBarcodeScanned} />
 
       <div className="flex flex-col p-1 bg-gray-100 border-b border-gray-300 flex-shrink-0">
-        <h1 className="text-2xl font-bold text-gray-800 text-center mb-2">Purchase Return</h1>
+        <div className='flex items-center gap-2 mb-2'>
+          <h1 className="text-2xl font-bold text-gray-800 text-center flex-grow pr-8">Purchase Return</h1>
+        </div>
         <div className="flex justify-center gap-x-6">
           <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.PURCHASE)} active={isActive(ROUTES.PURCHASE)}>Purchase</CustomButton>
           <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.PURCHASE_RETURN)} active={isActive(ROUTES.PURCHASE_RETURN)}>Purchase Return</CustomButton>
         </div>
-        <div className="w-6"></div>
       </div>
 
       <div className="flex-grow p-2 bg-gray-100 ">
+        {/* Search Purchase */}
         <div className="bg-white p-6 rounded-lg shadow-md mb-2">
           <div className="relative" ref={dropdownRef}>
             <label htmlFor="search-purchase" className="block text-base font-medium mb-2">Search Original Purchase</label>
@@ -412,6 +524,7 @@ const PurchaseReturnPage: React.FC = () => {
 
         {selectedPurchase && (
           <>
+            {/* Purchase Details */}
             <div className="bg-white p-6 rounded-lg shadow-md mt-2">
               <div className="space-y-4">
                 <div className='grid grid-cols-2 gap-4'>
@@ -430,56 +543,30 @@ const PurchaseReturnPage: React.FC = () => {
                 </div>
               </div>
 
+              {/* Items to Return List */}
               <h3 className="text-sm font-semibold mt-4 mb-2">Select Items to Return</h3>
               <div className="flex flex-col gap-3">
-                {originalPurchaseItems.map((item) => {
-                  const isSelected = selectedReturnIds.has(item.id);
-                  return (
-                    <div
-                      key={item.id}
-                      className={`p-3 border rounded-lg flex items-center gap-3 transition-all ${isSelected ? 'bg-red-50 shadow-sm' : 'bg-gray-50'}`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => handleToggleReturnItem(item.id)}
-                        className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 flex-shrink-0"
-                      />
-                      <div className="flex-grow flex flex-col gap-2">
-                        <div>
-                          <p className="font-semibold text-gray-800 text-sm leading-tight">{item.name}</p>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <div className="flex items-center gap-1">
-                            <label className="text-xs text-gray-600">Qty:</label>
-                            <input
-                              type="number"
-                              value={item.quantity}
-                              onChange={(e) => handleItemChange(setOriginalPurchaseItems, item.id, 'quantity', Number(e.target.value))}
-                              className="w-16 p-1 border border-gray-300 rounded text-center text-sm"
-                              disabled={!isSelected}
-                            />
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <label className="text-xs text-gray-600">Price:</label>
-                            <p className="w-20 text-center font-semibold p-1 border border-gray-300 rounded bg-white text-sm">
-                              ₹{item.unitPrice.toFixed(2)}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                {originalPurchaseItems.map((item) => (
+                  <ReturnListItem
+                    key={item.id}
+                    item={item}
+                    isSelected={selectedReturnIds.has(item.id)}
+                    onToggle={handleToggleReturnItem}
+                    onQuantityChange={(id, val) => handleItemChange(setOriginalPurchaseItems, id, 'quantity', val)}
+                    showMrp={false}
+                  />
+                ))}
               </div>
             </div>
 
+            {/* Return Mode & New Items */}
             <div className="bg-white p-6 rounded-lg shadow-md mt-2">
               <div>
                 <label htmlFor="mode-of-return" className="block font-medium mb-1">Transaction Type</label>
                 <select id="mode-of-return" value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-2 border rounded bg-white">
                   <option>Exchange</option>
                   <option>Debit Note</option>
+                  <option>Cash Refund</option>
                 </select>
               </div>
               {modeOfReturn === 'Exchange' && (
@@ -496,62 +583,58 @@ const PurchaseReturnPage: React.FC = () => {
                       />
                     </div>
                     <button onClick={() => setScannerPurpose('item')} className="p-3 bg-gray-700 text-white rounded-lg flex items-center justify-center">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"></path><circle cx="12" cy="13" r="3"></circle></svg>
+                      <IconScanCircle width={24} height={24} />
                     </button>
                   </div>
                   {newItemsReceived.length > 0 && (
                     <div className="flex flex-col gap-3 mt-4">
                       <h3 className="text-sm font-semibold">New Items Received</h3>
-                      {newItemsReceived.map((item) => (
-                        <div key={item.id} className="relative flex flex-col p-2 border rounded-lg bg-white shadow-sm">
-                          <p className="font-semibold text-gray-800 pr-8">{item.name}</p>
-                          <div className="flex justify-between items-center mt-2"><p className="text-sm text-gray-500">₹{item.unitPrice.toFixed(2)}</p></div>
-
-                          <button
-                            onClick={() => handleRemoveItem(setNewItemsReceived, item.id)}
-                            className="absolute top-3 right-3 text-red-500 font-bold text-lg hover:text-red-700"
-                          >
-                            &times;
-                          </button>
-                          <div className="border-t w-full my-2"></div>
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <label className="text-sm font-medium text-gray-600">Qty</label>
-                              <div className="flex items-center">
-                                <button
-                                  type="button"
-                                  onClick={() => handleItemChange(setNewItemsReceived, item.id, 'quantity', Math.max(1, item.quantity - 1))}
-                                  className="px-3 py-1 text-lg font-bold text-gray-500"
-                                >
-                                  -
-                                </button>
-                                <span className="px-4 py-1 text-center font-semibold text-gray-800">
-                                  {item.quantity}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleItemChange(setNewItemsReceived, item.id, 'quantity', item.quantity + 1)}
-                                  className="px-3 py-1 text-lg font-bold text-gray-500"
-                                >
-                                  +
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+                      <div className="max-h-96 overflow-y-auto">
+                        <GenericCartList<ReturnCartItem>
+                          items={newItemsReceived}
+                          availableItems={availableItems}
+                          basePriceKey="unitPrice"
+                          priceLabel="Cost"
+                          settings={{
+                            enableRounding: false,
+                            roundingInterval: 1,
+                            enableItemWiseDiscount: false,
+                            lockDiscount: true,
+                            lockPrice: false
+                          }}
+                          applyRounding={(v) => v}
+                          State={State}
+                          setModal={setModal}
+                          onOpenEditDrawer={() => { }}
+                          onDeleteItem={handleRemoveNewItem}
+                          onDiscountChange={() => { }}
+                          onCustomPriceChange={handleNewItemPriceChange}
+                          onCustomPriceBlur={handleNewItemPriceBlur}
+                          onQuantityChange={handleNewItemQuantity}
+                          onDiscountPressStart={() => { }}
+                          onDiscountPressEnd={() => { }}
+                          onDiscountClick={() => { }}
+                          onPricePressStart={() => { }}
+                          onPricePressEnd={() => { }}
+                          onPriceClick={() => { }}
+                        />
+                      </div>
                     </div>
                   )}
                 </div>
               )}
             </div>
 
+            {/* Summary */}
             <div className="bg-white p-6 rounded-lg shadow-md mt-2">
               <div className="p-4 bg-gray-100 rounded-lg space-y-3">
                 <div className="flex justify-between items-center text-md text-red-700"><p>Total Return Value (Debit)</p><p className="font-medium">₹{totalReturnValue.toFixed(2)}</p></div>
                 <div className="flex justify-between items-center text-md text-green-700"><p>Total New Items Value (Credit)</p><p className="font-medium">₹{totalNewItemsValue.toFixed(2)}</p></div>
                 <div className="border-t border-gray-300 !my-2"></div>
-                <div className={`flex justify-between items-center text-2xl font-bold ${finalBalance >= 0 ? 'text-green-600' : 'text-orange-600'}`}><p>{finalBalance >= 0 ? 'Debit Note' : 'Payment Due'}</p><p>₹{Math.abs(finalBalance).toFixed(2)}</p></div>
+                <div className={`flex justify-between items-center text-2xl font-bold ${finalBalance >= 0 ? 'text-green-600' : 'text-orange-600'}`}>
+                    <p>{getBalanceLabel()}</p>
+                    <p>₹{Math.abs(finalBalance).toFixed(2)}</p>
+                </div>
               </div>
             </div>
           </>
@@ -571,6 +654,8 @@ const PurchaseReturnPage: React.FC = () => {
         onClose={() => setIsDrawerOpen(false)}
         subtotal={Math.abs(finalBalance)}
         onPaymentComplete={saveReturnTransaction}
+        initialPartyName={supplierName}
+        initialPartyNumber={supplierNumber}
       />
     </div>
   );

@@ -109,7 +109,7 @@ export const RestockAlertsCard: React.FC = () => {
                                 </div>
                                 <div className="text-center flex grid grid-cols-2 gap-15">
                                     <span className={`text-xs font-semibold ${isOutOfStock ? 'text-red-600' : 'text-gray-800'}`}>
-                                        {item.amount || 0}
+                                        {item.stock || 0}
                                     </span>
                                     <span className="text-xs text-gray-500 block">
                                         {item.restockQuantity}

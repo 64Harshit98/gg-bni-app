@@ -197,8 +197,8 @@ const ShopSetupPage: React.FC = () => {
 
             <div className="space-y-3 pt-2">
               <CheckboxRow id="itemDiscount" label="Enable Item-wise Discount" checked={enableItemWiseDiscount} onChange={setEnableItemWiseDiscount} />
-              <CheckboxRow id="creditSale" label="Allow Due Billing (Credit)" checked={allowDueBilling} onChange={setAllowDueBilling} />
-              <div className="border-t pt-2 mt-2">
+              <CheckboxRow id="creditSale" label="Allow Credit Sale (Due Billing)" checked={allowDueBilling} onChange={setAllowDueBilling} />
+              <div className="border-t space-y-3 pt-2 mt-2">
                 <CheckboxRow id="reqCustomerName" label="Require Customer Name" checked={requireCustomerName} onChange={setRequireCustomerName} />
                 <CheckboxRow id="reqCustomerMobile" label="Require Customer Mobile" checked={requireCustomerMobile} onChange={setRequireCustomerMobile} />
               </div>

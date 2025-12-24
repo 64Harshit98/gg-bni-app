@@ -168,7 +168,7 @@ const Account: React.FC = () => {
           <div className="w-full flex grid grid-cols-2 gap-4 justify-center mt-2 space-y-2 flex-col">
 
             <ShowWrapper
-              requiredPermission={Permissions.ViewPNLReport}
+              requiredPermission={Permissions.ViewReports}
             >
               <Link
                 to={ROUTES.REPORTS}
@@ -195,6 +195,30 @@ const Account: React.FC = () => {
                 <span className="text-xl text-gray-600">→</span>
               </Link>
             </ShowWrapper>
+             <Link
+                to={ROUTES.SUBSCRIPTION_PAGE}
+                className="
+                flex justify-between items-center
+                bg-white p-4 rounded-sm shadow-md mb-2
+                border border-gray-200 text-gray-800
+                hover:shadow-lg
+              "
+              >
+                <span className="text-lg font-medium">Plans</span>
+                <span className="text-xl text-gray-600">→</span>
+              </Link>
+              <Link
+                to={ROUTES.SUPPORT_PAGE}
+                className="
+                flex justify-between items-center
+                bg-white p-4 rounded-sm shadow-md mb-2
+                border border-gray-200 text-gray-800
+                hover:shadow-lg
+              "
+              >
+                <span className="text-lg font-medium">Support</span>
+                <span className="text-xl text-gray-600">→</span>
+              </Link>
           </div>
           <div className="mt-2 flex justify-center">
             <button

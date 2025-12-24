@@ -6,8 +6,10 @@ import { AuthProvider } from './context/AuthContext';
 import { store } from './store/store';
 import AppRouter from '../src/routes/routes';
 import './global.css';
+import ErrorBoundary from './context/ErrorBoundary';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
+  <ErrorBoundary>
   <React.StrictMode>
     <Provider store={store}>
       <AuthProvider>
@@ -16,5 +18,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         </SettingsProvider>
       </AuthProvider>
     </Provider>
-  </React.StrictMode>,
+  </React.StrictMode>
+  </ErrorBoundary>
 );

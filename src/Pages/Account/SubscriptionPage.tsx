@@ -1,9 +1,59 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../../context/auth-context';
 import { PLANS } from '../../enums';
 import { useNavigate } from 'react-router-dom';
 
-// --- HELPER: Full Feature List from Image ---
+// --- HELPER: Feature Descriptions ---
+const FEATURE_DESCRIPTIONS: Record<string, string> = {
+    'Vendor POS Dashboard Access': 'A central hub to manage sales, inventory, and staff from any device.',
+    'Total Sale Board': 'Real-time overview of your total revenue and transaction counts.',
+    'Automated Sales Reports': 'Detailed insights into what is selling, when, and to whom, generated automatically.',
+    'Custom Voucher Numbering': 'Define your own series for invoices (e.g., SAL/2024/001).',
+    'Bar Code + QR Code Scanner': 'Quickly add items to bills using your device camera or a physical scanner.',
+    'Autofill Bill Amount & Balances': 'Automatically calculates change and tracks pending customer balances.',
+    'Bulk Import Items': 'Upload your entire inventory at once using an Excel/CSV file.',
+    'Parent Categorisation of Items': 'Organize products into main categories and sub-categories for better tracking.',
+    'Automated Invoice Generation': 'Create professional GST or non-GST bills instantly after a sale.',
+    'GST composition': 'Handles specific tax rules for businesses under the GST Composition Scheme.',
+    'Daily Performance Board': 'Compare today\'s sales against previous days to track growth.',
+    'Payment Methods Board': 'Track revenue split by Cash, Card, UPI, and other custom modes.',
+    'Top Items Sold Board': 'Identify your best-selling products to manage stock efficiently.',
+    'Top Salesman Board': 'Monitor sales performance of individual staff members.',
+    'Restock Items Board': 'Alerts you when items fall below their minimum stock levels.',
+    'Hide Data Functionality': 'Hide sensitive financial data from staff views.',
+    'Amount vs Quantity in Boards': 'Toggle between volume-based and value-based data visualizations.',
+    'Sales return voucher': 'Process customer returns and automatically update inventory.',
+    'Voucher/Invoice modification': 'Ability to edit and correct invoices after they have been saved.',
+    'Purchase voucher': 'Record stock entry and update purchase prices.',
+    'Shortcut Barcode Printing': 'Quickly generate and print labels for new stock.',
+    'Purchase return voucher': 'Record and track returns made to your suppliers.',
+    'Payment reminder feature': 'Track credit sales and notify customers of pending dues.',
+    'Transaction filter & search': 'Find any past invoice instantly by number, date, or customer.',
+    'Multi-store functionality': 'Manage multiple branch locations and stock transfers from one account.',
+    'Automated business card making': 'Generate digital visiting cards for your business.',
+    'Automated purchase reports': 'Comprehensive logs of all stock buying history.',
+    'Automated Item reports': 'Performance and history logs for every item in your store.',
+    'Automated PnL reports': 'Instant Profit and Loss statements based on your operations.',
+    'Downloadable reports': 'Export any data to Excel or PDF for offline use.',
+    'List vs Card view': 'Choose between a fast list layout or a visual card layout with product images.',
+    'Salesman wise billing': 'Tag specific salesmen to invoices for commission tracking.',
+    'Automated rounding off (upto ₹100)': 'Smartly rounds off bill totals to avoid change issues.',
+    'Item-wise discount setting': 'Set specific discount rules for individual products.',
+    'Negative inventory billing': 'Continue selling items even if they are out of stock in the system.',
+    'Customer database management': 'Store customer names, numbers, and purchase history.',
+    'Custom barcode generation': 'Create unique barcodes for items that don\'t have them.',
+    'Supplier database management': 'Maintain records of your vendors and purchase history.',
+    'Custom users management': 'Add staff members with unique logins.',
+    'Custom user app permissions': 'Control exactly what each staff member can see or edit.',
+    'Discount/Sale amount secret editor': 'A secure tool to adjust past totals for bookkeeping.',
+    'Credit Note functionality': 'Issue credit to customers instead of cash refunds.',
+    'Exchange items functionality': 'Streamlined process for item-for-item swapping.',
+    'Multi-tax Purchase vouchering': 'Handle multiple tax brackets in a single purchase entry.',
+    'Individual barcode printing': 'Print specific barcodes for individual items as needed.',
+    'Credit sales setting': 'Enable or disable the ability to sell items on credit.',
+    'Multiple owners in same company': 'Grant full administrative access to business partners.'
+};
+
 const BASIC_FEATURES = [
     'Vendor POS Dashboard Access',
     'Total Sale Board',
@@ -18,7 +68,7 @@ const BASIC_FEATURES = [
 ];
 
 const PRO_FEATURES = [
-    ...BASIC_FEATURES, // Includes everything in Basic
+    ...BASIC_FEATURES,
     'Daily Performance Board',
     'Payment Methods Board',
     'Top Items Sold Board',
@@ -26,39 +76,38 @@ const PRO_FEATURES = [
     'Restock Items Board',
     'Hide Data Functionality',
     'Amount vs Quantity in Boards',
-    'Sales Return Voucher',
+    'Sales return voucher',
     'Voucher/Invoice modification',
-    'Purchase Voucher',
+    'Purchase voucher',
     'Shortcut Barcode Printing',
-    'Purchase Return Voucher',
-    'Payment Reminder Feature',
-    'Transaction Filter & Search',
-    'Multi-Store Functionality',
-    'Automated Business Card Making',
-    'Automated Purchase Reports',
-    'Automated Item Reports',
-    'Automated PnL Reports',
-    'Downloadable Reports',
-    'List vs Card View',
-    'Salesman wise Billing',
-    'Automated Rounding Off (upto ₹100)',
-    'Item-wise Discount Setting',
-    'Negative Inventory Billing',
-    'Customer Database Management',
-    'Custom Barcode Generation',
-    'Supplier Database Management',
-    'Custom Users Management',
-    'Custom User App Permissions',
-    'Discount/Sale Amount Secret Editor',
+    'Purchase return voucher',
+    'Payment reminder feature',
+    'Transaction filter & search',
+    'Multi-store functionality',
+    'Automated business card making',
+    'Automated purchase reports',
+    'Automated Item reports',
+    'Automated PnL reports',
+    'Downloadable reports',
+    'List vs Card view',
+    'Salesman wise billing',
+    'Automated rounding off (upto ₹100)',
+    'Item-wise discount setting',
+    'Negative inventory billing',
+    'Customer database management',
+    'Custom barcode generation',
+    'Supplier database management',
+    'Custom users management',
+    'Custom user app permissions',
+    'Discount/Sale amount secret editor',
     'Credit Note functionality',
-    'Exchange Items Functionality',
-    'Multi-tax Purchase Vouchering',
-    'Individual Barcode Printing',
-    'Credit Sales Setting',
-    'Multiple Owners in Same Company'
+    'Exchange items functionality',
+    'Multi-tax Purchase vouchering',
+    'Individual barcode printing',
+    'Credit sales setting',
+    'Multiple owners in same company'
 ];
 
-// --- DATA: POS Plans ---
 const POS_TIERS = [
     {
         id: PLANS.BASIC,
@@ -78,7 +127,6 @@ const POS_TIERS = [
     }
 ];
 
-// --- DATA: Catalogue Plans ---
 const CATALOGUE_TIERS = [
     {
         id: 'cat_starter',
@@ -102,42 +150,38 @@ const SubscriptionPage: React.FC = () => {
     const { currentUser } = useAuth();
     const navigate = useNavigate();
 
-    // --- STATE ---
     const [activeTab, setActiveTab] = useState<'pos' | 'catalogue'>('pos');
     const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
     const [isDetailsOpen] = useState(true);
+    const [selectedTooltip, setSelectedTooltip] = useState<string | null>(null);
 
-    // --- DATA ACCESS ---
     const subData = (currentUser as any)?.subscription || (currentUser as any)?.Subscription;
     const currentPack = subData?.pack || PLANS.BASIC;
     const isPlanActive = subData?.isActive || false;
     const expiryDate = subData?.expiryDate;
 
     const showActiveView = currentPack !== 'free' && currentPack !== PLANS.BASIC && isPlanActive;
-
-    // Select Tiers
     const currentTiers = activeTab === 'pos' ? POS_TIERS : CATALOGUE_TIERS;
 
-    // Generate Unique Feature List for the table rows
     const allFeatures = useMemo(() => {
-        // We want the rows to follow the order of PRO features primarily
-        // If we just use a Set, order might be lost. 
-        // Since Pro contains everything in Basic, we can just use the Pro list for the rows.
         if (activeTab === 'pos') return PRO_FEATURES;
-
-        // For catalogue, merge them
         const features = new Set<string>();
         currentTiers.forEach(tier => tier.features.forEach(f => features.add(f)));
         return Array.from(features);
     }, [currentTiers, activeTab]);
 
-    // --- COMPONENT: COLLAPSIBLE ACTIVE CARD ---
+    useEffect(() => {
+        const handleOutsideClick = () => setSelectedTooltip(null);
+        if (selectedTooltip) {
+            window.addEventListener('click', handleOutsideClick);
+        }
+        return () => window.removeEventListener('click', handleOutsideClick);
+    }, [selectedTooltip]);
+
     const ActivePlanCollapsible = () => (
         <div className="max-w-4xl mx-auto mb-8 transition-all duration-300">
             <div className="bg-white rounded-sm shadow-md border border-green-100 overflow-hidden">
-                <div
-                    className="bg-green-600 p-4 flex justify-between items-center cursor-pointer hover:bg-green-700 transition-colors"
-                >
+                <div className="bg-green-600 p-4 flex justify-between items-center cursor-pointer hover:bg-green-700 transition-colors">
                     <div className="flex items-center gap-3">
                         <div className="bg-white/20 p-2 rounded-sm">
                             <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -181,7 +225,6 @@ const SubscriptionPage: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-gray-50 pb-20 font-sans">
-            {/* Header */}
             <div className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-20">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex justify-between h-16 items-center">
@@ -202,7 +245,6 @@ const SubscriptionPage: React.FC = () => {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
                 {showActiveView && <ActivePlanCollapsible />}
 
-                {/* 1. Tab Switcher (POS / Catalogue) */}
                 <div className="flex justify-center w-full mb-6">
                     <div className="bg-white p-1 rounded-sm shadow-sm border border-gray-200 inline-flex">
                         <button
@@ -220,7 +262,6 @@ const SubscriptionPage: React.FC = () => {
                     </div>
                 </div>
 
-                {/* 2. Billing Cycle Toggle (Monthly / Yearly) */}
                 <div className="flex justify-center w-full items-center mb-8 gap-4">
                     <span className={`text-sm font-medium ${billingCycle === 'monthly' ? 'text-gray-900 font-bold' : 'text-gray-500'}`}>
                         4 Weeks
@@ -236,21 +277,20 @@ const SubscriptionPage: React.FC = () => {
                     </span>
                 </div>
 
-                {/* 3. COMPARISON TABLE */}
                 <div className="bg-white rounded-sm shadow-xl border border-gray-200 max-w-5xl mx-auto overflow-visible">
                     <div className="relative">
-                        <table className="w-full table-fixed border-collapse">
-                            {/* TABLE HEADER - Sticky Implementation */}
+                        {/* Changed table-fixed to auto-layout to prevent truncation */}
+                        <table className="w-full border-collapse">
                             <thead className="sticky top-16 z-30 shadow-sm">
                                 <tr>
-                                    <th className="p-4 text-left w-1/3 bg-gray-50 border-b border-gray-200 align-bottom">
+                                    {/* Increased width for Features column */}
+                                    <th className="p-4 text-left w-1/2 bg-gray-50 border-b border-gray-200 align-bottom">
                                         <span className="text-gray-500 font-medium text-xs sm:text-sm uppercase tracking-wider">Features</span>
                                     </th>
                                     {currentTiers.map(tier => (
                                         <th
                                             key={tier.id}
-                                            className={`p-4 text-center border-b border-gray-200 relative ${tier.recommended ? 'bg-yellow-50' : 'bg-white'
-                                                }`}
+                                            className={`p-4 text-center border-b border-gray-200 relative ${tier.recommended ? 'bg-yellow-50' : 'bg-white'}`}
                                         >
                                             {tier.recommended && (
                                                 <span className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-yellow-400 text-yellow-900 text-[9px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wide shadow-sm whitespace-nowrap z-10">
@@ -280,12 +320,38 @@ const SubscriptionPage: React.FC = () => {
                                 </tr>
                             </thead>
 
-                            {/* FEATURE ROWS */}
                             <tbody className="divide-y divide-gray-100">
                                 {allFeatures.map((feature, idx) => (
                                     <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
                                         <td className="p-3 text-xs sm:text-sm font-medium text-gray-700 pl-4 sm:pl-8">
-                                            {feature}
+                                            <div className="flex items-center gap-2">
+                                                {/* Removed truncate class to show full text */}
+                                                <span className="whitespace-normal leading-tight">{feature}</span>
+                                                {FEATURE_DESCRIPTIONS[feature] && (
+                                                    <div className="relative inline-block leading-none flex-shrink-0">
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setSelectedTooltip(selectedTooltip === feature ? null : feature);
+                                                            }}
+                                                            className="text-gray-400 hover:text-blue-500 transition-colors focus:outline-none"
+                                                        >
+                                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                            </svg>
+                                                        </button>
+                                                        {selectedTooltip === feature && (
+                                                            <div 
+                                                                className="absolute left-full ml-2 top-1/2 -translate-y-1/2 w-48 p-2 bg-gray-900 text-white text-[10px] leading-tight rounded-md shadow-lg z-50 animate-in fade-in zoom-in duration-200"
+                                                                onClick={(e) => e.stopPropagation()}
+                                                            >
+                                                                {FEATURE_DESCRIPTIONS[feature]}
+                                                                <div className="absolute top-1/2 -left-1 -translate-y-1/2 w-2 h-2 bg-gray-900 rotate-45"></div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
                                         </td>
                                         {currentTiers.map(tier => {
                                             const hasFeature = tier.features.includes(feature);

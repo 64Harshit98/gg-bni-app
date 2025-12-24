@@ -34,7 +34,6 @@ const SignUpPage: React.FC = () => {
       if (savedData.email) setEmail(savedData.email);
       if (savedData.phoneNumber) setPhoneNumber(savedData.phoneNumber);
       if (savedData.password) setPassword(savedData.password);
-      // We generally don't save confirmPassword, but we can if you want exact restoration
       if (savedData.password) setConfirmPassword(savedData.password); 
     }
   }, []);
@@ -57,6 +56,9 @@ const SignUpPage: React.FC = () => {
 
   // --- Validation Helper ---
   const validateForm = (): boolean => {
+    // Standard Email Regex
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
     if (
       !fullName.trim() ||
       !email.trim() ||
@@ -67,6 +69,19 @@ const SignUpPage: React.FC = () => {
       setError('Please fill out all fields.');
       return false;
     }
+
+    // Email Format Check
+    if (!emailRegex.test(email)) {
+      setError('Please enter a valid email address.');
+      return false;
+    }
+
+    // Phone Number Length Check
+    if (phoneNumber.length !== 10) {
+      setError('Phone number must be exactly 10 digits long.');
+      return false;
+    }
+
     if (password !== confirmPassword) {
       setError('Passwords do not match.');
       return false;
@@ -84,8 +99,6 @@ const SignUpPage: React.FC = () => {
     setError(null);
 
     if (validateForm()) {
-      // Data is already saved by the useEffect, just navigate
-      // We pass state just in case, but the next page primarily reads from LS/State merger
       navigate(ROUTES.BUSINESS_INFO, {
         state: { fullName, email, phoneNumber, password },
       });
@@ -94,12 +107,9 @@ const SignUpPage: React.FC = () => {
 
   // --- Stepper Handler ---
   const handleStepClick = (targetStep: number) => {
-    // If clicking current step (1), do nothing
     if (targetStep === 1) return;
-
-    // If trying to go forward (2, 3, 4), validate first
     if (targetStep > 1) {
-        handleNext(); // This will validate and move to Step 2 if valid
+        handleNext(); 
     }
   };
 
@@ -116,7 +126,7 @@ const SignUpPage: React.FC = () => {
       </div>
 
       {/* Scrollable Content */}
-      <div className="flex-grow px-4 pb-24 overflow-y-auto">
+      <div className="flex-grow px-4 pb-32 overflow-y-auto">
         <h1 className="text-4xl font-bold mb-6 mt-4">Create Account</h1>
 
       <div className='bg-white p-4 rounded-lg shadow-sm border border-gray-200 space-y-2 pt-8 pb-8'>
@@ -141,7 +151,12 @@ const SignUpPage: React.FC = () => {
               type="tel"
               label="Phone Number"
               value={phoneNumber}
-              onChange={(e) => setPhoneNumber(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value.replace(/\D/g, '');
+                if (val.length <= 10) {
+                    setPhoneNumber(val);
+                }
+              }}
               required
               className="pl-10"
             />

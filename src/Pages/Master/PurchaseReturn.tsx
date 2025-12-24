@@ -384,7 +384,6 @@ const PurchaseReturnPage: React.FC = () => {
         returnHistory: arrayUnion(returnHistoryRecord),
       };
 
-      // FIX: Clear Payment Methods if Total is 0
       if (newTotalAmount === 0) {
           updateData.paymentMethods = {}; 
       } else if (completionData?.paymentDetails) {
@@ -422,8 +421,14 @@ const PurchaseReturnPage: React.FC = () => {
           lastUpdatedAt: serverTimestamp()
         };
 
-        if (finalBalance > 0) {
+        // --- CASH REFUND LOGIC ---
+        // If "Cash Refund", supplier paid us back. Debit balance does NOT increase.
+        if (modeOfReturn === 'Cash Refund') {
+           // No balance update
+        } else {
+           if (finalBalance > 0) {
              customerUpdateData.debitBalance = firebaseIncrement(finalBalance);
+           }
         }
         
         batch.set(customerRef, customerUpdateData, { merge: true });
@@ -446,13 +451,26 @@ const PurchaseReturnPage: React.FC = () => {
     if (itemsToReturn.length === 0 && newItemsReceived.length === 0) {
       return setModal({ type: State.ERROR, message: 'No items have been returned or received.' });
     }
-    // If supplier owes us money (Debit Note), we don't need payment drawer.
-    // If we owe supplier money (Balance < 0), we need to pay via drawer.
-    if (finalBalance >= 0) {
+
+    // Cash Refund: If balance > 0 (Supplier owes us), and we selected Cash Refund, treat as done.
+    if (modeOfReturn === 'Cash Refund' && finalBalance > 0) {
         saveReturnTransaction();
-    } else {
+    }
+    // Debit Note / Exchange: If balance > 0 (Supplier owes us), save as debit note.
+    else if (finalBalance >= 0) {
+        saveReturnTransaction();
+    } 
+    // If balance < 0 (We owe supplier), open drawer to pay.
+    else {
         setIsDrawerOpen(true);
     }
+  };
+
+  // Helper Label for Bottom Summary
+  const getBalanceLabel = () => {
+    if (finalBalance < 0) return 'Payment Due'; // We owe supplier
+    if (modeOfReturn === 'Cash Refund') return 'Refund Received'; // Supplier paid us cash
+    return 'Debit Note'; // Supplier owes us credit
   };
 
   if (isLoading) return <div className="flex min-h-screen items-center justify-center">Loading...</div>;
@@ -548,6 +566,7 @@ const PurchaseReturnPage: React.FC = () => {
                 <select id="mode-of-return" value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-2 border rounded bg-white">
                   <option>Exchange</option>
                   <option>Debit Note</option>
+                  <option>Cash Refund</option>
                 </select>
               </div>
               {modeOfReturn === 'Exchange' && (
@@ -612,7 +631,10 @@ const PurchaseReturnPage: React.FC = () => {
                 <div className="flex justify-between items-center text-md text-red-700"><p>Total Return Value (Debit)</p><p className="font-medium">₹{totalReturnValue.toFixed(2)}</p></div>
                 <div className="flex justify-between items-center text-md text-green-700"><p>Total New Items Value (Credit)</p><p className="font-medium">₹{totalNewItemsValue.toFixed(2)}</p></div>
                 <div className="border-t border-gray-300 !my-2"></div>
-                <div className={`flex justify-between items-center text-2xl font-bold ${finalBalance >= 0 ? 'text-green-600' : 'text-orange-600'}`}><p>{finalBalance >= 0 ? 'Debit Note' : 'Payment Due'}</p><p>₹{Math.abs(finalBalance).toFixed(2)}</p></div>
+                <div className={`flex justify-between items-center text-2xl font-bold ${finalBalance >= 0 ? 'text-green-600' : 'text-orange-600'}`}>
+                    <p>{getBalanceLabel()}</p>
+                    <p>₹{Math.abs(finalBalance).toFixed(2)}</p>
+                </div>
               </div>
             </div>
           </>

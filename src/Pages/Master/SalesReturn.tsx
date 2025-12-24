@@ -373,8 +373,8 @@ const SalesReturnPage: React.FC = () => {
     // Logic: If returning items from a bill that had a Manual Discount, we reverse that discount proportionally.
     if (selectedSale && selectedSale.subtotal > 0 && (selectedSale.manualDiscount || 0) > 0) {
         const originalDiscount = selectedSale.manualDiscount || 0;
-        const ratio = totalReturnGross / selectedSale.subtotal; // e.g. Returning 500 out of 1000 = 0.5
-        discountDeducted = originalDiscount * ratio; // Reverse 50% of discount
+        const ratio = totalReturnGross / selectedSale.subtotal; 
+        discountDeducted = originalDiscount * ratio; 
         discountDeducted = Math.round(discountDeducted * 100) / 100;
     }
 
@@ -441,7 +441,6 @@ const SalesReturnPage: React.FC = () => {
         const unitPrice = mrp * (1 - (discPercent / 100));
         lineTotal = unitPrice * item.quantity;
 
-        // Use stored amount if it matches logic (for custom prices), otherwise calc
         const finalAmount = (item.amount && item.quantity > 0 && Math.abs(item.amount - lineTotal) > 1) ? item.amount : lineTotal;
 
         return {
@@ -488,17 +487,16 @@ const SalesReturnPage: React.FC = () => {
         returnHistory: arrayUnion(returnHistoryRecord),
       };
 
-      // FIX: If bill total is now 0 (Full Return), clear the payment methods on the document
-      // to avoid it looking like "Paid 500, Total 0".
+      // FIX: Handle Payment Methods
       if (updatedFinalAmount === 0) {
           updateData.paymentMethods = {}; 
       } else if (completionData?.paymentDetails) {
-          // If we took new payment, update it
           updateData.paymentMethods = completionData.paymentDetails;
       }
 
       batch.set(saleRef, updateData, { merge: true });
 
+      // Inventory Updates
       itemsToReturn.forEach(item => {
         if (item.originalItemId && validInventoryIds.has(item.originalItemId)) {
           batch.update(doc(db, 'companies', companyId, 'items', item.originalItemId), { stock: firebaseIncrement(item.quantity) });
@@ -510,7 +508,7 @@ const SalesReturnPage: React.FC = () => {
         }
       });
 
-      // Update Customer DB
+      // Customer Logic
       const finalPartyName = completionData?.partyName || partyName || selectedSale.partyName;
       const finalPartyNumber = completionData?.partyNumber || partyNumber || selectedSale.partyNumber;
       
@@ -527,8 +525,17 @@ const SalesReturnPage: React.FC = () => {
             lastUpdatedAt: serverTimestamp() 
         };
         
-        if (finalBalance > 0) {
-          customerUpdateData.creditBalance = firebaseIncrement(finalBalance);
+        // --- LOGIC FIX FOR CASH REFUND ---
+        // If "Cash Refund", we DON'T add to credit balance, because we paid them out.
+        // If "Credit Note", we ADD positive balance.
+        // If "Exchange", balance is handled by the new items (if new items < return, rest is credit).
+        
+        if (modeOfReturn === 'Cash Refund') {
+           // Do not increase credit balance, as cash was given back.
+        } else {
+           if (finalBalance > 0) {
+             customerUpdateData.creditBalance = firebaseIncrement(finalBalance);
+           }
         }
         
         batch.set(customerRef, customerUpdateData, { merge: true });
@@ -548,11 +555,25 @@ const SalesReturnPage: React.FC = () => {
 
   const handleProcessReturn = () => {
     if (itemsToReturn.length === 0 && exchangeItems.length === 0) return setModal({ type: State.ERROR, message: 'No items selected.' });
-    if (finalBalance >= 0) {
+    
+    // If Cash Refund, we can just save immediately (assuming cash was given from drawer)
+    if (modeOfReturn === 'Cash Refund' && finalBalance > 0) {
+        // We treat positive final balance as "Amount to Refund"
+        saveReturnTransaction();
+    } 
+    // If Credit Note or Exchange (where customer owes us money, i.e. finalBalance < 0)
+    else if (finalBalance >= 0) {
         saveReturnTransaction();
     } else {
         setIsDrawerOpen(true);
     }
+  };
+
+  // Helper Label for Bottom Summary
+  const getBalanceLabel = () => {
+      if (finalBalance < 0) return 'Payment Due'; // Customer owes us
+      if (modeOfReturn === 'Cash Refund') return 'Refund Amount'; // We owe customer cash now
+      return 'Credit Due'; // We owe customer store credit
   };
 
   if (isLoading) return <div className="flex min-h-screen items-center justify-center">Loading...</div>;
@@ -625,6 +646,7 @@ const SalesReturnPage: React.FC = () => {
                 <select value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-2 border rounded bg-white">
                   <option>Credit Note</option>
                   <option>Exchange</option>
+                  <option>Cash Refund</option>
                 </select>
               </div>
               {modeOfReturn === 'Exchange' && (
@@ -703,7 +725,7 @@ const SalesReturnPage: React.FC = () => {
                 <div className="border-t border-gray-300 !my-2"></div>
 
                 <div className={`flex justify-between items-center text-lg font-bold ${finalBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  <p>{finalBalance >= 0 ? 'Credit Due' : 'Payment Due'}</p>
+                  <p>{getBalanceLabel()}</p>
                   <p>₹{Math.abs(finalBalance).toFixed(2)}</p>
                 </div>
               </div>

@@ -9,6 +9,7 @@ import { Permissions } from '../enums';
 import { RequireSubscription } from '../UseComponents/RequiredSubscription';
 
 import Loading from '../Pages/Loading/Loading';
+import GlobalError from '../Components/GlobalError';
 
 const Home = lazy(() => import('../Pages/Home'));
 const Account = lazy(() => import('../Pages/Account'));
@@ -58,6 +59,7 @@ const ResetPasswordPage = lazy(() => import('../Pages/Auth/ResetPassword'));
 const router = createBrowserRouter([
   {
     element: <PermissionWrapper />,
+    errorElement: <GlobalError />,
     children: [
       {
         children: [

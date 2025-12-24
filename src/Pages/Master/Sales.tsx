@@ -177,7 +177,7 @@ const Sales: React.FC = () => {
         ...item,
         id: crypto.randomUUID(), // New UI ID
         productId: item.id,      // Preserve Original ID
-        isEditable: false,
+        isEditable: true,
         customPrice: item.effectiveUnitPrice,
         quantity: item.quantity || 1,
         mrp: item.mrp || 0,

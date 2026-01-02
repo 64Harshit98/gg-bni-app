@@ -142,6 +142,8 @@ const useProfileData = (userId?: string, companyId?: string) => {
 
     const promises = [];
 
+    // --- FIX APPLIED HERE ---
+    // 1. Auth Updates (Only if changed)
     const authUpdates: { displayName?: string; photoURL?: string } = {};
     if (name && auth.currentUser.displayName !== name) authUpdates.displayName = name;
     if (profilePicture && auth.currentUser.photoURL !== profilePicture) authUpdates.photoURL = profilePicture;
@@ -150,8 +152,26 @@ const useProfileData = (userId?: string, companyId?: string) => {
       promises.push(updateProfile(auth.currentUser, authUpdates));
     }
 
-    if (promises.push(setDoc(userDocRef, { name, profilePicture }, { merge: true })) > 0 )
-    promises.push(setDoc(businessDocRef, { ...businessData, ownerName: name, updatedAt: serverTimestamp() }, { merge: true }));
+    // 2. User Doc Update (Sanitize data to ensure no undefined values)
+    const userUpdateData: Record<string, any> = {};
+    if (name) userUpdateData.name = name;
+    // Only include profilePicture if it is defined (avoid Firestore crash)
+    if (profilePicture !== undefined) userUpdateData.profilePicture = profilePicture;
+
+    if (Object.keys(userUpdateData).length > 0) {
+      promises.push(setDoc(userDocRef, userUpdateData, { merge: true }));
+    }
+
+    // 3. Business Info Update (Filter out undefined)
+    const cleanBusinessData = Object.fromEntries(
+      Object.entries(businessData).filter(([_, v]) => v !== undefined)
+    );
+
+    promises.push(setDoc(businessDocRef, { 
+      ...cleanBusinessData, 
+      ownerName: name, 
+      updatedAt: serverTimestamp() 
+    }, { merge: true }));
 
     await Promise.all(promises);
   };

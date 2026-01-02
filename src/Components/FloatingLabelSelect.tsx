@@ -53,19 +53,21 @@ export const FloatingLabelSelect = React.forwardRef<
       <label
         htmlFor={inputId}
         className={cn(
-          'absolute pointer-events-none bg-gray-100 px-1 transition-all',
-          // Adjust label position based on icon
-          icon ? 'left-3' : 'left-3',
+          'absolute pointer-events-none bg-gray-100 px-1 transition-all duration-200 ease-out origin-[0]',
+          
+          // --- LOGIC FIX START ---
+          // When floated (hasValue or focus): Always reset left position to align with border
+          // When inside (no value): If icon exists, push left to avoid overlap.
+          
+          hasValue 
+            ? '-top-2.5 left-3 scale-90 text-sm text-gray-600' 
+            : icon 
+                ? 'top-4 left-10 text-base text-gray-600' // Push right if icon exists
+                : 'top-4 left-3 text-base text-gray-600',
 
-          // --- Logic to mimic peer-placeholder-shown ---
-          // If it has a value, it's floated.
-          // Otherwise, it's in the center.
-          hasValue
-            ? '-top-2.5 text-sm text-gray-600' // Floated
-            : 'top-4 text-base text-gray-600', // Un-floated
-
-          // peer-focus handles the click-to-float animation
-          'peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-blue-600',
+          // Peer Focus State (Always float to top)
+          'peer-focus:-top-2.5 peer-focus:left-3 peer-focus:scale-90 peer-focus:text-sm peer-focus:text-gray-600'
+          // --- LOGIC FIX END ---
         )}
       >
         {label}

@@ -19,6 +19,11 @@ service cloud.firestore {
       allow read, write: if request.auth.uid == "1AKioGfop8PmHhry6uXOz8Rw6qT2";
     }
 
+    match /leads/{leadId} {
+      allow create, update: if true; // Anyone can create a lead (Sign Up)
+      allow read: if request.auth != null; // Only admins/users can read
+    }
+
     // --- Tenant Data ---
     match /companies/{companyId} {
     

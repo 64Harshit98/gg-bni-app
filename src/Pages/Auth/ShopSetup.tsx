@@ -6,15 +6,16 @@ import { CustomButton } from '../../Components/CustomButton';
 import { FloatingLabelInput } from '../../Components/ui/FloatingLabelInput';
 import { Stepper } from '../../Components/Stepper';
 import { FloatingLabelSelect } from '../../Components/FloatingLabelSelect';
+import { InfoTooltip } from '../../Components/InfoToolTip'; // <--- IMPORT TOOLTIP
 import { Variant, ROLES } from '../../enums';
 import { FiUser, FiTrash2, FiPlus } from 'react-icons/fi';
+import { saveLeadProgress } from '../../lib/Lead';
 
 const LOCAL_STORAGE_KEY = 'sellar_onboarding_data';
 
-// --- Options ---
 const taxTypeOptions = [
-  { value: 'exclusive', label: 'Tax Exclusive (Sale Price + GST)' },
-  { value: 'inclusive', label: 'Tax Inclusive (Sale Price includes GST)' },
+  { value: 'exclusive', label: 'Tax Exclusive (Price + GST)' },
+  { value: 'inclusive', label: 'Tax Inclusive (Price includes GST)' },
 ];
 
 const roleOptions = [
@@ -26,8 +27,6 @@ const ShopSetupPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // --- States: Sales Settings ---
-  // We initialize with defaults, then useEffect will overwrite them from LS or Route
   const [gstScheme, setGstScheme] = useState('NA');
   const [taxType, setTaxType] = useState('exclusive');
   const [enableItemWiseDiscount, setEnableItemWiseDiscount] = useState(true);
@@ -35,32 +34,21 @@ const ShopSetupPage: React.FC = () => {
   const [requireCustomerName, setRequireCustomerName] = useState(true);
   const [requireCustomerMobile, setRequireCustomerMobile] = useState(false);
 
-  // --- States: Staff (Local Only) ---
   const [staffList, setStaffList] = useState<any[]>([]);
   const [userFullName, setUserFullName] = useState('');
   const [userPhoneNumber, setUserPhoneNumber] = useState('');
   const [userRole, setUserRole] = useState<ROLES>(ROLES.SALESMAN);
   const [userError, setUserError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
-  // --- 1. Load Data on Mount ---
   useEffect(() => {
     const routeData = location.state || {};
     const savedDataString = localStorage.getItem(LOCAL_STORAGE_KEY);
     const savedData = savedDataString ? JSON.parse(savedDataString) : {};
-
-    // Merge: Route Data takes priority for fresh navigation, Saved Data fills gaps
     const mergedData = { ...savedData, ...routeData };
 
-    // If we still don't have businessName, it means the user skipped Step 1/2 completely
-    // But we allow loading from LS just in case of refresh
-    if (!mergedData.businessName) {
-      // navigate(ROUTES.BUSINESS_INFO); // Uncomment to strict enforce
-    }
-
-    // Restore Settings
     if (mergedData.gstType) setGstScheme(mergedData.gstType);
 
-    // If settings were saved previously in LS, restore them
     if (mergedData.salesSettings) {
       setTaxType(mergedData.salesSettings.taxType || 'exclusive');
       setEnableItemWiseDiscount(mergedData.salesSettings.enableItemWiseDiscount ?? true);
@@ -68,33 +56,25 @@ const ShopSetupPage: React.FC = () => {
       setRequireCustomerName(mergedData.salesSettings.requireCustomerName ?? true);
       setRequireCustomerMobile(mergedData.salesSettings.requireCustomerMobile ?? false);
     }
-
-    // Restore Staff List
     if (mergedData.initialStaff && Array.isArray(mergedData.initialStaff)) {
       setStaffList(mergedData.initialStaff);
     }
-
-    // Save merged state back to ensure consistency
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(mergedData));
   }, []);
 
-  // --- 2. Save Data on Change ---
   useEffect(() => {
     const saveData = () => {
       const currentSaved = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '{}');
-
-      const salesSettings = {
-        gstScheme,
-        taxType: gstScheme === 'Regular' ? taxType : 'exclusive',
-        enableItemWiseDiscount,
-        allowDueBilling,
-        requireCustomerName,
-        requireCustomerMobile,
-      };
-
       const updatedData = {
         ...currentSaved,
-        salesSettings,
+        salesSettings: {
+          gstScheme,
+          taxType: gstScheme === 'Regular' ? taxType : 'exclusive',
+          enableItemWiseDiscount,
+          allowDueBilling,
+          requireCustomerName,
+          requireCustomerMobile,
+        },
         initialStaff: staffList
       };
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updatedData));
@@ -102,8 +82,6 @@ const ShopSetupPage: React.FC = () => {
     saveData();
   }, [gstScheme, taxType, enableItemWiseDiscount, allowDueBilling, requireCustomerName, requireCustomerMobile, staffList]);
 
-
-  // --- Handlers ---
   const handleAddStaffLocal = () => {
     setUserError(null);
     if (!userFullName.trim() || !userPhoneNumber.trim()) {
@@ -129,92 +107,127 @@ const ShopSetupPage: React.FC = () => {
     setStaffList(updatedList);
   };
 
-  const getCombinedData = () => {
-    return JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '{}');
-  };
+  const getCombinedData = () => JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '{}');
 
-  const handleNext = (e?: React.FormEvent) => {
+  const handleNext = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-
-    // Data is already saved by useEffect
+    setIsSaving(true);
     const allData = getCombinedData();
-    navigate(ROUTES.SHOP_SETUP2, {
-      state: allData,
-    });
-  };
-
-  // --- Stepper Click Handler ---
-  const handleStepClick = (targetStep: number) => {
-    const currentData = getCombinedData();
-
-    if (targetStep === 1) {
-      navigate(ROUTES.SIGNUP, { state: currentData });
-    } else if (targetStep === 2) {
-      navigate(ROUTES.BUSINESS_INFO, { state: currentData });
-    } else if (targetStep === 3) {
-      return; // Already here
-    } else if (targetStep === 4) {
-      handleNext(); // Move forward logic
+    try {
+        await saveLeadProgress(allData.email, {
+            salesSettings: {
+                gstScheme,
+                taxType: gstScheme === 'Regular' ? taxType : 'exclusive',
+                enableItemWiseDiscount,
+                allowDueBilling
+            },
+            staffCount: staffList.length,
+            currentStep: 'Step 4: Final Review',
+            status: 'Onboarding'
+        });
+        navigate(ROUTES.SHOP_SETUP2, { state: allData });
+    } catch (err) {
+        navigate(ROUTES.SHOP_SETUP2, { state: allData });
+    } finally {
+        setIsSaving(false);
     }
   };
 
-  return (
-    <div className="flex flex-col min-h-screen bg-gray-100">
+  const handleStepClick = (targetStep: number) => {
+    const currentData = getCombinedData();
+    if (targetStep === 1) navigate(ROUTES.SIGNUP, { state: currentData });
+    else if (targetStep === 2) navigate(ROUTES.BUSINESS_INFO, { state: currentData });
+    else if (targetStep === 4) handleNext();
+  };
 
-      <div className="sticky top-0 z-40 bg-gray-100 pt-4 pb-2 px-4 shadow-sm">
-        <Stepper
-          totalSteps={4}
-          currentStep={3}
-          onStepClick={handleStepClick}
-        />
+  return (
+    <div className="flex flex-col h-screen overflow-hidden bg-gray-100">
+      <div className="flex-shrink-0 bg-gray-100 pt-4 pb-2 px-4 shadow-sm z-40">
+        <Stepper totalSteps={4} currentStep={3} onStepClick={handleStepClick} />
       </div>
 
-      <div className="flex-grow px-4 pb-24 overflow-y-auto">
+      <div className="flex-grow px-4 pb-32 overflow-y-auto scrollbar-hide">
         <h1 className="text-4xl font-bold mb-4 mt-4">Shop Setup</h1>
 
         <div className="flex flex-col space-y-4">
-
-          {/* --- Card 1: Sales Settings --- */}
           <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 space-y-6 pt-6 pb-6">
-            <h2 className="text-lg font-semibold text-gray-800 border-b pb-2">Sales & Tax</h2>
+            <div className="flex items-center justify-between border-b pb-2">
+               <h2 className="text-lg font-semibold text-gray-800">Sales & Tax</h2>
+            </div>
 
-            <FloatingLabelInput
-              id="gstSchemeDisplay"
-              label="GST Scheme"
-              value={gstScheme === 'NA' ? 'Not Registered / NA' : gstScheme.toUpperCase()}
-              disabled
-            />
+            <div className="flex items-center">
+                <div className="flex-grow">
+                  <FloatingLabelInput
+                    id="gstSchemeDisplay"
+                    label="GST Scheme"
+                    value={gstScheme === 'NA' ? 'Not Registered / NA' : gstScheme.toUpperCase()}
+                    disabled
+                  />
+                </div>
+                <InfoTooltip text="Based on your selection in the previous step. Regular dealers can file tax invoices." />
+            </div>
 
             {gstScheme === 'Regular' && (
-              <FloatingLabelSelect
-                id="taxType"
-                label="Tax Calculation"
-                value={taxType}
-                onChange={(e) => setTaxType(e.target.value)}
-                options={taxTypeOptions}
-              />
+              <div className="flex items-center">
+                <div className="flex-grow">
+                  <FloatingLabelSelect
+                    id="taxType"
+                    label="Tax Calculation"
+                    value={taxType}
+                    onChange={(e) => setTaxType(e.target.value)}
+                    options={taxTypeOptions}
+                  />
+                </div>
+                <InfoTooltip text="Exclusive adds tax ON TOP of your price. Inclusive means the price ALREADY contains tax." />
+              </div>
             )}
 
             <div className="space-y-3 pt-2">
-              <CheckboxRow id="itemDiscount" label="Enable Item-wise Discount" checked={enableItemWiseDiscount} onChange={setEnableItemWiseDiscount} />
-              <CheckboxRow id="creditSale" label="Allow Credit Sale (Due Billing)" checked={allowDueBilling} onChange={setAllowDueBilling} />
+              <CheckboxRow 
+                id="itemDiscount" 
+                label="Enable Item-wise Discount" 
+                checked={enableItemWiseDiscount} 
+                onChange={setEnableItemWiseDiscount} 
+                tooltip="Allows you to give different discounts for each product while billing."
+              />
+              <CheckboxRow 
+                id="creditSale" 
+                label="Allow Credit Sale (Due Billing)" 
+                checked={allowDueBilling} 
+                onChange={setAllowDueBilling} 
+                tooltip="Allows you to create bills where the customer pays later (Udhaar)."
+              />
               <div className="border-t space-y-3 pt-2 mt-2">
-                <CheckboxRow id="reqCustomerName" label="Require Customer Name" checked={requireCustomerName} onChange={setRequireCustomerName} />
-                <CheckboxRow id="reqCustomerMobile" label="Require Customer Mobile" checked={requireCustomerMobile} onChange={setRequireCustomerMobile} />
+                <CheckboxRow 
+                  id="reqCustomerName" 
+                  label="Require Customer Name" 
+                  checked={requireCustomerName} 
+                  onChange={setRequireCustomerName} 
+                  tooltip="You cannot save a bill without entering a customer name."
+                />
+                <CheckboxRow 
+                  id="reqCustomerMobile" 
+                  label="Require Customer Mobile" 
+                  checked={requireCustomerMobile} 
+                  onChange={setRequireCustomerMobile} 
+                  tooltip="You cannot save a bill without entering a phone number."
+                />
               </div>
             </div>
           </div>
 
-          {/* --- Card 2: Add Staff --- */}
+          {/* Staff Section */}
           <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 space-y-2 pt-6 pb-6">
-            <h2 className="text-lg font-semibold text-gray-800 border-b pb-2">Add Staff (Optional)</h2>
+            <div className="flex items-center border-b pb-2">
+                <h2 className="text-lg font-semibold text-gray-800">Add Staff (Optional)</h2>
+                <InfoTooltip text="Create accounts for your employees. Salesmen can only bill, Managers can edit stock." />
+            </div>
             <div className="text-sm text-gray-600 space-y-1">
-              <p>These users will be created when you finish setup.</p>
               <p>User Login: <span className="font-bold bg-gray-100 px-1">PhoneNo@sellar.in</span></p>
               <p>Default Password: <span className="font-bold bg-gray-100 px-1">Welcome@123</span></p>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-4 pt-2">
               <div className='grid grid-cols-2 gap-2'>
                 <FloatingLabelInput id="userFullName" label="Full Name" value={userFullName} onChange={(e) => setUserFullName(e.target.value)} />
                 <FloatingLabelInput id="userPhone" label="Phone Number" value={userPhoneNumber} onChange={(e) => setUserPhoneNumber(e.target.value)} type="tel" />
@@ -228,7 +241,6 @@ const ShopSetupPage: React.FC = () => {
               </CustomButton>
             </div>
 
-            {/* List Display */}
             {staffList.length > 0 && (
               <div className="mt-4 space-y-2 bg-gray-50 p-3 rounded-lg">
                 <h4 className="font-medium text-sm text-gray-700">Staff to be added:</h4>
@@ -250,23 +262,23 @@ const ShopSetupPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Fixed Bottom Button */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 z-50 shadow-lg">
         <div className="max-w-md mx-auto">
-          <CustomButton type="button" variant={Variant.Filled} onClick={() => handleNext()} className="w-full">
-            Next Step
+          <CustomButton type="button" variant={Variant.Filled} onClick={() => handleNext()} disabled={isSaving} className="w-full">
+            {isSaving ? 'Saving...' : 'Next Step'}
           </CustomButton>
         </div>
       </div>
-
     </div>
   );
 };
 
-const CheckboxRow = ({ id, label, checked, onChange }: any) => (
-  <div className="flex items-center h-6 cursor-pointer">
+// Updated CheckboxRow to accept tooltip
+const CheckboxRow = ({ id, label, checked, onChange, tooltip }: any) => (
+  <div className="flex items-center h-6 cursor-pointer group">
     <input id={id} type="checkbox" className="h-4 w-4 mr-2 rounded text-sky-500 cursor-pointer" checked={checked} onChange={(e) => onChange(e.target.checked)} />
-    <label htmlFor={id} className="text-gray-600 font-medium text-sm cursor-pointer">{label}</label>
+    <label htmlFor={id} className="text-gray-600 font-medium text-sm cursor-pointer flex-grow">{label}</label>
+    {tooltip && <InfoTooltip text={tooltip} />}
   </div>
 );
 

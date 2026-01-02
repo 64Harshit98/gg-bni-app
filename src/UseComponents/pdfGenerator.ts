@@ -344,7 +344,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   // --- BRANDING ---
   const text1 = "Made With ";
   const text2 = "Love";
-  const text3 = " By SELLAR.IN";
+  const text3 = ", in India, By SELLAR.IN";
 
   doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');

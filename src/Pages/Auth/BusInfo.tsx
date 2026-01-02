@@ -9,6 +9,7 @@ import { FloatingLabelSelect } from '../../Components/FloatingLabelSelect';
 import { Variant } from '../../enums';
 import { FiTag, FiHash, FiMapPin, FiMap, FiAtSign, FiHome } from 'react-icons/fi';
 import { Building2Icon, PinIcon, Scale } from 'lucide-react';
+import { saveLeadProgress } from '../../lib/Lead'; // <--- IMPORT LEAD HELPER
 
 // --- Constants ---
 const LOCAL_STORAGE_KEY = 'sellar_onboarding_data';
@@ -95,6 +96,7 @@ const BusinessInfoPage: React.FC = () => {
   const [state, setState] = useState('');
   const [postalCode, setPostalCode] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   // --- 1. Load Data on Mount ---
   useEffect(() => {
@@ -169,25 +171,58 @@ const BusinessInfoPage: React.FC = () => {
 
   const getCombinedData = () => JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '{}');
 
-  const handleNext = (e?: React.FormEvent) => {
+  const handleNext = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setError(null);
 
     if (!validateForm()) return;
 
+    setIsSaving(true);
     const allData = getCombinedData();
     const finalBusinessType = businessType === 'Other' ? customBusinessType : businessType;
     const finalBusinessCategory = businessCategory === 'Other' ? customBusinessCategory : businessCategory;
+    const finalGstin = gstType === 'NA' ? '' : gstin.toUpperCase();
 
-    const payload = {
-      ...allData,
-      businessType: finalBusinessType,
-      businessCategory: finalBusinessCategory,
-      gstin: gstType === 'NA' ? '' : gstin.toUpperCase(),
-      fullAddress: `${streetAddress}, ${city}, ${state} - ${postalCode}`,
-    };
+    try {
+        // --- 1. SAVE LEAD PROGRESS TO FIRESTORE ---
+        await saveLeadProgress(allData.email, {
+            businessName,
+            businessType: finalBusinessType,
+            businessCategory: finalBusinessCategory,
+            gstType,
+            gstin: finalGstin,
+            streetAddress,
+            city,
+            state,
+            postalCode,
+            currentStep: 'Step 3: Shop Setup', // Adjust this name based on your next page
+            status: 'Onboarding'
+        });
 
-    navigate(ROUTES.SHOP_SETUP, { state: payload });
+        const payload = {
+            ...allData,
+            businessType: finalBusinessType,
+            businessCategory: finalBusinessCategory,
+            gstin: finalGstin,
+            fullAddress: `${streetAddress}, ${city}, ${state} - ${postalCode}`,
+        };
+
+        navigate(ROUTES.SHOP_SETUP, { state: payload });
+
+    } catch (err) {
+        console.error("Error saving progress:", err);
+        // Navigate anyway so the user doesn't get stuck
+        const payload = {
+            ...allData,
+            businessType: finalBusinessType,
+            businessCategory: finalBusinessCategory,
+            gstin: finalGstin,
+            fullAddress: `${streetAddress}, ${city}, ${state} - ${postalCode}`,
+        };
+        navigate(ROUTES.SHOP_SETUP, { state: payload });
+    } finally {
+        setIsSaving(false);
+    }
   };
 
   const handleStepClick = (targetStep: number) => {
@@ -199,12 +234,16 @@ const BusinessInfoPage: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-100">
-      <div className="sticky top-0 z-40 bg-gray-100 pt-4 pb-2 px-4 shadow-sm">
+    // FIX: Using 'h-screen overflow-hidden' to prevent main page scrolling
+    <div className="flex flex-col h-screen overflow-hidden bg-gray-100">
+      
+      {/* Sticky Header */}
+      <div className="flex-shrink-0 bg-gray-100 pt-4 pb-2 px-4 shadow-sm z-40">
         <Stepper totalSteps={4} currentStep={2} onStepClick={handleStepClick} />
       </div>
 
-      <div className="flex-grow px-4 pb-32 overflow-y-auto">
+      {/* Scrollable Content */}
+      <div className="flex-grow px-4 pb-32 overflow-y-auto scrollbar-hide">
         <h1 className="text-4xl font-bold mb-4 mt-4">Business Details</h1>
 
         <div className='bg-white p-4 rounded-lg shadow-sm border border-gray-200 space-y-2 pt-8 pb-8'>
@@ -342,8 +381,8 @@ const BusinessInfoPage: React.FC = () => {
 
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 z-50 shadow-lg">
         <div className="max-w-md mx-auto">
-          <CustomButton type="button" variant={Variant.Filled} onClick={() => handleNext()} className="w-full">
-            Next Step
+          <CustomButton type="button" variant={Variant.Filled} onClick={() => handleNext()} disabled={isSaving} className="w-full">
+            {isSaving ? 'Saving...' : 'Next Step'}
           </CustomButton>
         </div>
       </div>

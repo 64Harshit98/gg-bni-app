@@ -1,3 +1,4 @@
+// src/Pages/FinalSetupPage.tsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { ROUTES } from '../../constants/routes.constants';

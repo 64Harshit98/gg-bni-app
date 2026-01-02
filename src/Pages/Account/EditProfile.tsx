@@ -142,8 +142,6 @@ const useProfileData = (userId?: string, companyId?: string) => {
 
     const promises = [];
 
-    // --- FIX APPLIED HERE ---
-    // 1. Auth Updates (Only if changed)
     const authUpdates: { displayName?: string; photoURL?: string } = {};
     if (name && auth.currentUser.displayName !== name) authUpdates.displayName = name;
     if (profilePicture && auth.currentUser.photoURL !== profilePicture) authUpdates.photoURL = profilePicture;

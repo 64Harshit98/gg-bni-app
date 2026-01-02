@@ -349,6 +349,9 @@ const PurchaseReturnPage: React.FC = () => {
           originalItem.quantity -= returnItem.quantity;
           if (originalItem.quantity <= 0) originalItemsMap.delete(returnItem.originalItemId);
         }
+        batch.update(doc(db, 'companies', companyId, 'items', returnItem.originalItemId), {
+            stock: firebaseIncrement(-returnItem.quantity)
+        });
       });
 
       // 2. Process New Items (Increment Qty in Purchase)
@@ -364,6 +367,9 @@ const PurchaseReturnPage: React.FC = () => {
             purchasePrice: newItem.unitPrice,
           } as any);
         }
+        batch.update(doc(db, 'companies', companyId, 'items', newItem.originalItemId), {
+            stock: firebaseIncrement(newItem.quantity)
+        });
       });
 
       const newItemsList = Array.from(originalItemsMap.values());

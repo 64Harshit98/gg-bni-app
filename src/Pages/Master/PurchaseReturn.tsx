@@ -1,3 +1,4 @@
+// src/Pages/PurchaseReturnPage.tsx
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
@@ -32,7 +33,6 @@ interface PurchaseData {
   invoiceNumber: string;
   partyName: string;
   partyNumber?: string;
-  // Added Address and GSTIN to interface
   partyAddress?: string;
   partyGstin?: string;
   items: OriginalPurchaseItem[];
@@ -66,10 +66,9 @@ const PurchaseReturnPage: React.FC = () => {
 
   const [supplierName, setSupplierName] = useState<string>('');
   const [supplierNumber, setSupplierNumber] = useState<string>('');
-  // Added State for Address and GSTIN
   const [supplierAddress, setSupplierAddress] = useState<string>('');
   const [supplierGstin, setSupplierGstin] = useState<string>('');
-  
+
   const [modeOfReturn, setModeOfReturn] = useState<string>('Exchange');
 
   const [newItemsReceived, setNewItemsReceived] = useState<ReturnCartItem[]>([]);
@@ -162,7 +161,6 @@ const PurchaseReturnPage: React.FC = () => {
     setSelectedPurchase(purchase);
     setSupplierName(purchase.partyName);
     setSupplierNumber(purchase.partyNumber || '');
-    // Set Address and GSTIN from the selected purchase
     setSupplierAddress(purchase.partyAddress || '');
     setSupplierGstin(purchase.partyGstin || '');
 
@@ -262,16 +260,16 @@ const PurchaseReturnPage: React.FC = () => {
       if (item.id === id) {
         const rawVal = item.customPrice;
         const parsed = parseFloat(String(rawVal));
-        
+
         if (isNaN(parsed) || parsed < 0) {
-            return { ...item, customPrice: item.unitPrice };
+          return { ...item, customPrice: item.unitPrice };
         }
 
-        return { 
-            ...item, 
-            unitPrice: parsed, 
-            amount: parsed * item.quantity,
-            customPrice: parsed 
+        return {
+          ...item,
+          unitPrice: parsed,
+          amount: parsed * item.quantity,
+          customPrice: parsed
         };
       }
       return item;
@@ -327,7 +325,10 @@ const PurchaseReturnPage: React.FC = () => {
   const saveReturnTransaction = async (completionData?: Partial<PaymentCompletionData>) => {
     if (!currentUser || !currentUser.companyId || !selectedPurchase) return;
 
-    if (modeOfReturn === 'Debit Note' && !supplierNumber) {
+    const finalSupplierName = completionData?.partyName || supplierName || selectedPurchase.partyName;
+    const finalSupplierNumber = completionData?.partyNumber || supplierNumber || selectedPurchase.partyNumber;
+
+    if (modeOfReturn === 'Debit Note' && !finalSupplierNumber) {
       setModal({ type: State.ERROR, message: 'Cannot create Debit Note: Party Number is missing.' });
       return;
     }
@@ -341,6 +342,7 @@ const PurchaseReturnPage: React.FC = () => {
 
       const originalItemsMap = new Map(selectedPurchase.items.map(item => [item.id, { ...item }]));
 
+      // 1. Process Returns (Decrement Qty from Purchase)
       itemsToReturn.forEach(returnItem => {
         const originalItem = originalItemsMap.get(returnItem.originalItemId);
         if (originalItem) {
@@ -348,10 +350,11 @@ const PurchaseReturnPage: React.FC = () => {
           if (originalItem.quantity <= 0) originalItemsMap.delete(returnItem.originalItemId);
         }
         batch.update(doc(db, 'companies', companyId, 'items', returnItem.originalItemId), {
-            stock: firebaseIncrement(-returnItem.quantity)
+          stock: firebaseIncrement(-returnItem.quantity)
         });
       });
 
+      // 2. Process New Items (Increment Qty in Purchase)
       newItemsReceived.forEach(newItem => {
         const originalItem = originalItemsMap.get(newItem.originalItemId);
         if (originalItem) {
@@ -365,7 +368,7 @@ const PurchaseReturnPage: React.FC = () => {
           } as any);
         }
         batch.update(doc(db, 'companies', companyId, 'items', newItem.originalItemId), {
-            stock: firebaseIncrement(newItem.quantity)
+          stock: firebaseIncrement(newItem.quantity)
         });
       });
 
@@ -381,31 +384,57 @@ const PurchaseReturnPage: React.FC = () => {
         paymentDetails: completionData?.paymentDetails || null,
       };
 
-      batch.update(purchaseRef, {
+      const updateData: any = {
         items: newItemsList,
         totalAmount: newTotalAmount,
         returnHistory: arrayUnion(returnHistoryRecord),
+      };
+
+      if (newTotalAmount === 0) {
+        updateData.paymentMethods = {};
+      } else if (completionData?.paymentDetails) {
+        updateData.paymentMethods = completionData.paymentDetails;
+      }
+
+      batch.update(purchaseRef, updateData);
+
+      // 3. Update Stock
+      itemsToReturn.forEach(returnItem => {
+        batch.update(doc(db, 'companies', companyId, 'items', returnItem.originalItemId), {
+          stock: firebaseIncrement(-returnItem.quantity)
+        });
+      });
+      newItemsReceived.forEach(newItem => {
+        batch.update(doc(db, 'companies', companyId, 'items', newItem.originalItemId), {
+          stock: firebaseIncrement(newItem.quantity)
+        });
       });
 
-      const cleanSupplierNumber = supplierNumber.trim() || selectedPurchase.partyNumber;
-      const cleanSupplierName = supplierName.trim() || selectedPurchase.partyName;
-      // Updated: Use state for address/gstin or fallback to original purchase data
-      const cleanSupplierAddress = supplierAddress.trim() || selectedPurchase.partyAddress || '';
-      const cleanSupplierGstin = supplierGstin.trim() || selectedPurchase.partyGstin || '';
+      // 4. Save Customer/Supplier Info
+      const cleanSupplierNumber = finalSupplierNumber?.trim();
+      const cleanSupplierName = finalSupplierName?.trim();
+      const cleanAddress = completionData?.partyAddress || supplierAddress || selectedPurchase.partyAddress || '';
+      const cleanGstin = completionData?.partyGST || supplierGstin || selectedPurchase.partyGstin || '';
 
-      if (cleanSupplierNumber && cleanSupplierNumber.length >= 10) {
+      if (cleanSupplierNumber && cleanSupplierNumber.length >= 3) {
         const customerRef = doc(db, 'companies', companyId, 'customers', cleanSupplierNumber);
         const customerUpdateData: any = {
           name: cleanSupplierName,
           phone: cleanSupplierNumber,
-          address: cleanSupplierAddress, // Update address
-          gstin: cleanSupplierGstin,     // Update GSTIN
+          address: cleanAddress,
+          gstin: cleanGstin,
           companyId: companyId,
           lastUpdatedAt: serverTimestamp()
         };
 
-        if (modeOfReturn === 'Debit Note' && finalBalance > 0) {
-          customerUpdateData.debitBalance = firebaseIncrement(finalBalance);
+        // --- CASH REFUND LOGIC ---
+        // If "Cash Refund", supplier paid us back. Debit balance does NOT increase.
+        if (modeOfReturn === 'Cash Refund') {
+          // No balance update
+        } else {
+          if (finalBalance > 0) {
+            customerUpdateData.debitBalance = firebaseIncrement(finalBalance);
+          }
         }
 
         batch.set(customerRef, customerUpdateData, { merge: true });
@@ -428,11 +457,26 @@ const PurchaseReturnPage: React.FC = () => {
     if (itemsToReturn.length === 0 && newItemsReceived.length === 0) {
       return setModal({ type: State.ERROR, message: 'No items have been returned or received.' });
     }
-    if (modeOfReturn === 'Exchange' && finalBalance < 0) {
-      setIsDrawerOpen(true);
-    } else {
+
+    // Cash Refund: If balance > 0 (Supplier owes us), and we selected Cash Refund, treat as done.
+    if (modeOfReturn === 'Cash Refund' && finalBalance > 0) {
       saveReturnTransaction();
     }
+    // Debit Note / Exchange: If balance > 0 (Supplier owes us), save as debit note.
+    else if (finalBalance >= 0) {
+      saveReturnTransaction();
+    }
+    // If balance < 0 (We owe supplier), open drawer to pay.
+    else {
+      setIsDrawerOpen(true);
+    }
+  };
+
+  // Helper Label for Bottom Summary
+  const getBalanceLabel = () => {
+    if (finalBalance < 0) return 'Payment Due'; // We owe supplier
+    if (modeOfReturn === 'Cash Refund') return 'Refund Received'; // Supplier paid us cash
+    return 'Debit Note'; // Supplier owes us credit
   };
 
   if (isLoading) return <div className="flex min-h-screen items-center justify-center">Loading...</div>;
@@ -528,6 +572,7 @@ const PurchaseReturnPage: React.FC = () => {
                 <select id="mode-of-return" value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-2 border rounded bg-white">
                   <option>Exchange</option>
                   <option>Debit Note</option>
+                  <option>Cash Refund</option>
                 </select>
               </div>
               {modeOfReturn === 'Exchange' && (
@@ -592,7 +637,10 @@ const PurchaseReturnPage: React.FC = () => {
                 <div className="flex justify-between items-center text-md text-red-700"><p>Total Return Value (Debit)</p><p className="font-medium">₹{totalReturnValue.toFixed(2)}</p></div>
                 <div className="flex justify-between items-center text-md text-green-700"><p>Total New Items Value (Credit)</p><p className="font-medium">₹{totalNewItemsValue.toFixed(2)}</p></div>
                 <div className="border-t border-gray-300 !my-2"></div>
-                <div className={`flex justify-between items-center text-2xl font-bold ${finalBalance >= 0 ? 'text-green-600' : 'text-orange-600'}`}><p>{finalBalance >= 0 ? 'Debit Note' : 'Payment Due'}</p><p>₹{Math.abs(finalBalance).toFixed(2)}</p></div>
+                <div className={`flex justify-between items-center text-2xl font-bold ${finalBalance >= 0 ? 'text-green-600' : 'text-orange-600'}`}>
+                  <p>{getBalanceLabel()}</p>
+                  <p>₹{Math.abs(finalBalance).toFixed(2)}</p>
+                </div>
               </div>
             </div>
           </>

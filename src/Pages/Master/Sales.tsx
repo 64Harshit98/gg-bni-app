@@ -177,7 +177,7 @@ const Sales: React.FC = () => {
         ...item,
         id: crypto.randomUUID(), // New UI ID
         productId: item.id,      // Preserve Original ID
-        isEditable: false,
+        isEditable: true,
         customPrice: item.effectiveUnitPrice,
         quantity: item.quantity || 1,
         mrp: item.mrp || 0,
@@ -376,7 +376,6 @@ const Sales: React.FC = () => {
 
     setItems(prevCartItems => prevCartItems.map(cartItem => {
       if (cartItem.productId === selectedItemForEdit?.id || cartItem.id === selectedItemForEdit?.id) {
-        // FIX 1: Cast to SalesItem
         return { ...cartItem, ...updateForCart } as SalesItem;
       }
       return cartItem;
@@ -401,6 +400,15 @@ const Sales: React.FC = () => {
 
   const handleSavePayment = async (completionData: PaymentCompletionData) => {
     if (!currentUser?.companyId) return;
+
+    // --- VALIDATION: ENFORCE SETTINGS ---
+    if (salesSettings?.requireCustomerName && !completionData.partyName?.trim()) {
+      throw new Error("Customer Name is required.");
+    }
+    if (salesSettings?.requireCustomerMobile && !completionData.partyNumber?.trim()) {
+      throw new Error("Customer Mobile Number is required.");
+    }
+
     const companyId = currentUser.companyId;
     const salesman = salesSettings?.enableSalesmanSelection ? selectedWorker : workers.find(w => w.uid === currentUser.uid);
     const finalSalesman = salesman || { uid: currentUser.uid, name: currentUser.uid || 'Current User' };
@@ -608,7 +616,10 @@ const Sales: React.FC = () => {
           onActionClick={handleProceedToPayment}
           disableAction={items.length === 0}
         />
-        <PaymentDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} subtotal={amountToPayNow} onPaymentComplete={handleSavePayment} isPartyNameEditable={!isEditMode} initialPartyName={isEditMode ? invoiceToEdit?.partyName : ''} initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : ''} initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined} totalItemDiscount={totalDiscount} totalQuantity={totalQuantity} />
+        <PaymentDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} subtotal={amountToPayNow} onPaymentComplete={handleSavePayment} isPartyNameEditable={!isEditMode} initialPartyName={isEditMode ? invoiceToEdit?.partyName : ''} initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : ''} initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined} totalItemDiscount={totalDiscount} totalQuantity={totalQuantity}
+          requireCustomerName={salesSettings?.requireCustomerName}
+          requireCustomerMobile={salesSettings?.requireCustomerMobile}
+        />
         <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
       </div>
     );
@@ -688,7 +699,13 @@ const Sales: React.FC = () => {
           disableAction={items.length === 0}
         />
       </div>
-      <PaymentDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} subtotal={amountToPayNow} onPaymentComplete={handleSavePayment} isPartyNameEditable={!isEditMode} initialPartyName={isEditMode ? invoiceToEdit?.partyName : ''} initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : ''} initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined} totalItemDiscount={totalDiscount} totalQuantity={totalQuantity} />
+      <PaymentDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} subtotal={amountToPayNow}
+        onPaymentComplete={handleSavePayment} isPartyNameEditable={!isEditMode}
+        initialPartyName={isEditMode ? invoiceToEdit?.partyName : ''} initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : ''}
+        initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined} totalItemDiscount={totalDiscount}
+        totalQuantity={totalQuantity}
+        requireCustomerName={salesSettings?.requireCustomerName}
+        requireCustomerMobile={salesSettings?.requireCustomerMobile} />
       <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
     </div>
   );

@@ -14,6 +14,7 @@ export const ROUTES = {
   SHOP_SETUP2: '/shop--setup',
   SIGNUP: '/signup',
   FORGOT_PASSWORD: '/forgot-password',
+  RESET_PASSWORD: '/reset-password',
   EDIT_PROFILE: '/edit-profile',
   LANDING: '/landing',
   ITEM_REPORT: '/item-report',

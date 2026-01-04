@@ -33,13 +33,13 @@ const compressImage = (file: File): Promise<Blob> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.src = URL.createObjectURL(file);
-    
+
     img.onload = () => {
       // 1. Aggressive Resizing: Profile pics don't need to be huge.
       // 500px is sufficient for almost all avatar use cases.
       const MAX_WIDTH = 500;
       const MAX_HEIGHT = 500;
-      
+
       let width = img.width;
       let height = img.height;
 
@@ -59,13 +59,13 @@ const compressImage = (file: File): Promise<Blob> => {
       const canvas = document.createElement('canvas');
       canvas.width = width;
       canvas.height = height;
-      
+
       const ctx = canvas.getContext('2d');
       if (!ctx) {
         reject(new Error("Canvas context failed"));
         return;
       }
-      
+
       // Draw image
       ctx.drawImage(img, 0, 0, width, height);
 
@@ -80,7 +80,7 @@ const compressImage = (file: File): Promise<Blob> => {
           }
           URL.revokeObjectURL(img.src); // Cleanup
         },
-        'image/jpeg', 
+        'image/jpeg',
         0.5 // <--- Aggressive quality setting (0.1 to 1.0)
       );
     };
@@ -150,8 +150,26 @@ const useProfileData = (userId?: string, companyId?: string) => {
       promises.push(updateProfile(auth.currentUser, authUpdates));
     }
 
-    promises.push(setDoc(userDocRef, { name, profilePicture }, { merge: true }));
-    promises.push(setDoc(businessDocRef, { ...businessData, ownerName: name, updatedAt: serverTimestamp() }, { merge: true }));
+    // 2. User Doc Update (Sanitize data to ensure no undefined values)
+    const userUpdateData: Record<string, any> = {};
+    if (name) userUpdateData.name = name;
+    // Only include profilePicture if it is defined (avoid Firestore crash)
+    if (profilePicture !== undefined) userUpdateData.profilePicture = profilePicture;
+
+    if (Object.keys(userUpdateData).length > 0) {
+      promises.push(setDoc(userDocRef, userUpdateData, { merge: true }));
+    }
+
+    // 3. Business Info Update (Filter out undefined)
+    const cleanBusinessData = Object.fromEntries(
+      Object.entries(businessData).filter(([_, v]) => v !== undefined)
+    );
+
+    promises.push(setDoc(businessDocRef, {
+      ...cleanBusinessData,
+      ownerName: name,
+      updatedAt: serverTimestamp()
+    }, { merge: true }));
 
     await Promise.all(promises);
   };
@@ -192,7 +210,7 @@ const EditProfilePage: React.FC = () => {
       const file = e.target.files[0];
       setImageFile(file);
       // We show the raw file in preview instantly for better UX
-      setPreviewUrl(URL.createObjectURL(file)); 
+      setPreviewUrl(URL.createObjectURL(file));
     }
   };
 
@@ -212,7 +230,7 @@ const EditProfilePage: React.FC = () => {
 
         // --- COMPRESSION STEP ---
         const compressedBlob = await compressImage(imageFile);
-        
+
         // Debugging logs to see savings
         console.log(`Original: ${(imageFile.size / 1024).toFixed(2)} KB`);
         console.log(`Compressed: ${(compressedBlob.size / 1024).toFixed(2)} KB`);
@@ -289,9 +307,8 @@ const EditProfilePage: React.FC = () => {
               </div>
               <FloatingLabelInput type="text" name="businessType" value={formData.businessType || ''} onChange={handleInputChange} label="Business Type" />
               <FloatingLabelInput type="text" name="businessCategory" value={formData.businessCategory || ''} onChange={handleInputChange} label="Business Category" />
-              <FloatingLabelInput type="text" name="registrationNumber" value={formData.registrationNumber || ''} onChange={handleInputChange} label="Registration No." />
+              <FloatingLabelInput type="text" name="gstin" value={formData.gstin || ''} onChange={handleInputChange} label="GSTIN" />
             </div>
-            <FloatingLabelInput type="text" name="gstin" value={formData.gstin || ''} onChange={handleInputChange} label="GSTIN (Optional)" />
           </fieldset>
 
           <fieldset>
@@ -308,14 +325,14 @@ const EditProfilePage: React.FC = () => {
 
           <fieldset>
             <legend className="text-xl font-semibold text-gray-700 mb-2">Bank Details</legend>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-2 md:grid-cols-2 gap-6">
               <div className="md:col-span-2">
-                <FloatingLabelInput type="text" name="accountHolderName" value={formData.accountHolderName || ''} onChange={handleInputChange} label="Account Holder Name" />
+                <FloatingLabelInput type="text" name="accountHolderName" value={formData.accountHolderName || ''} onChange={handleInputChange} label="Account Name" />
               </div>
               <FloatingLabelInput type="text" name="bankName" value={formData.bankName || ''} onChange={handleInputChange} label="Bank Name" />
               <FloatingLabelInput type="text" name="ifscCode" value={formData.ifscCode || ''} onChange={handleInputChange} label="IFSC Code" />
               <div className="md:col-span-2">
-                <FloatingLabelInput type="text" name="accountNumber" value={formData.accountNumber || ''} onChange={handleInputChange} label="Account Number" />
+                <FloatingLabelInput type="text" name="accountNumber" value={formData.accountNumber || ''} onChange={handleInputChange} label="Account No." />
               </div>
             </div>
           </fieldset>

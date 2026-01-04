@@ -168,7 +168,7 @@ const Account: React.FC = () => {
           <div className="w-full flex grid grid-cols-2 gap-4 justify-center mt-2 space-y-2 flex-col">
 
             <ShowWrapper
-              requiredPermission={Permissions.ViewPNLReport}
+              requiredPermission={Permissions.ViewReports}
             >
               <Link
                 to={ROUTES.REPORTS}

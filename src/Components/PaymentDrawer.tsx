@@ -44,10 +44,13 @@ interface PaymentDrawerProps {
     initialPartyName?: string;
     initialPartyNumber?: string;
     initialPaymentMethods?: PaymentDetails | { [key: string]: any };
+    requireCustomerName?: boolean;
+    requireCustomerMobile?: boolean;
 }
 
-const LOCAL_STORAGE_NAME_KEY = 'lastPartyName';
-const LOCAL_STORAGE_NUMBER_KEY = 'lastPartyNumber';
+// FIX: Switched to Session Storage keys to isolate data per tab
+const SESSION_STORAGE_NAME_KEY = 'sessionPartyName';
+const SESSION_STORAGE_NUMBER_KEY = 'sessionPartyNumber';
 
 interface CustomerSuggestion {
     name: string;
@@ -68,6 +71,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     initialPartyName,
     initialPartyNumber,
     initialPaymentMethods,
+    requireCustomerName = false,
+    requireCustomerMobile = false,
 }) => {
     const { currentUser } = useAuth();
 
@@ -96,13 +101,10 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const [discountInfo, setDiscountInfo] = useState<string | null>(null);
 
     // --- CALCULATIONS ---
-
-    // 1. Gross Subtotal (Visual only) = Net Subtotal + Item Discounts
     const displayGrossSubtotal = useMemo(() => {
         return subtotal + totalItemDiscount;
     }, [subtotal, totalItemDiscount]);
 
-    // 2. Final Payable (Logic)
     const finalPayableAmount = useMemo(() => {
         let payable = subtotal - discount;
         if (useCredit) payable -= Math.min(payable, customerCredit);
@@ -110,7 +112,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         return parseFloat(Math.max(0, payable).toFixed(2));
     }, [subtotal, discount, useCredit, customerCredit, useDebit, customerDebit]);
 
-    // Logic: Credits applied
     const appliedCredit = useMemo(() => {
         if (!useCredit || customerCredit <= 0) return 0;
         return Math.min(subtotal - discount, customerCredit);
@@ -155,8 +156,9 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
 
         if (!initialName && !initialNumber) {
             try {
-                initialName = localStorage.getItem(LOCAL_STORAGE_NAME_KEY) || '';
-                initialNumber = localStorage.getItem(LOCAL_STORAGE_NUMBER_KEY) || '';
+                // FIX: Retrieve from sessionStorage instead of localStorage
+                initialName = sessionStorage.getItem(SESSION_STORAGE_NAME_KEY) || '';
+                initialNumber = sessionStorage.getItem(SESSION_STORAGE_NUMBER_KEY) || '';
             } catch (e) { }
         }
 
@@ -178,20 +180,21 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         setPartyGST('');
         setIsDetailsExpanded(false);
 
-        if (initialNumber) searchCustomer(initialNumber, 'number');
+        if (initialNumber) searchCustomer(initialNumber);
     }, [isOpen]);
 
     useEffect(() => {
         if (isOpen && !isSubmitting && shouldSaveToLocalStorage.current) {
             try {
-                if (partyName) localStorage.setItem(LOCAL_STORAGE_NAME_KEY, partyName);
-                if (partyNumber) localStorage.setItem(LOCAL_STORAGE_NUMBER_KEY, partyNumber);
+                // FIX: Save to sessionStorage instead of localStorage
+                if (partyName) sessionStorage.setItem(SESSION_STORAGE_NAME_KEY, partyName);
+                if (partyNumber) sessionStorage.setItem(SESSION_STORAGE_NUMBER_KEY, partyNumber);
             } catch (e) { }
         }
     }, [partyName, partyNumber, isOpen, isSubmitting]);
 
-    // --- SEARCH LOGIC ---
-    const searchCustomer = async (term: string, type: 'name' | 'number') => {
+    // --- SEARCH LOGIC (MODIFIED TO NUMBER ONLY) ---
+    const searchCustomer = async (term: string) => {
         if (!term || term.length < 3 || !currentUser?.companyId) {
             setSuggestions([]);
             setShowSuggestions(false);
@@ -199,12 +202,10 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         }
         const companyId = currentUser.companyId;
         const customersRef = collection(db, 'companies', companyId, 'customers');
-        let q;
-        if (type === 'number') {
-            q = query(customersRef, where('number', '>=', term), where('number', '<=', term + '\uf8ff'), limit(5));
-        } else {
-            q = query(customersRef, where('name', '>=', term), where('name', '<=', term + '\uf8ff'), limit(5));
-        }
+
+        // Only querying by number
+        const q = query(customersRef, where('number', '>=', term), where('number', '<=', term + '\uf8ff'), limit(5));
+
         try {
             const snapshot = await getDocs(q);
             const results: CustomerSuggestion[] = [];
@@ -225,11 +226,15 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     };
 
     const handleInputChange = (value: string, type: 'name' | 'number') => {
-        if (type === 'name') setPartyName(value);
-        else setPartyNumber(value);
-
-        if (searchTimeout.current) clearTimeout(searchTimeout.current);
-        searchTimeout.current = setTimeout(() => { searchCustomer(value, type); }, 400);
+        if (type === 'name') {
+            setPartyName(value);
+            setSuggestions([]);
+            setShowSuggestions(false);
+        } else {
+            setPartyNumber(value);
+            if (searchTimeout.current) clearTimeout(searchTimeout.current);
+            searchTimeout.current = setTimeout(() => { searchCustomer(value); }, 400);
+        }
     };
 
     const selectCustomer = (customer: CustomerSuggestion) => {
@@ -238,11 +243,21 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         setPartyAddress(customer.address || '');
         setPartyGST(customer.gstNumber || '');
 
-        if ((customer.creditBalance || 0) > 0) { setCustomerCredit(customer.creditBalance!); setUseCredit(true); }
-        else { setCustomerCredit(0); setUseCredit(false); }
+        if ((customer.creditBalance || 0) > 0) {
+            setCustomerCredit(customer.creditBalance!);
+            setUseCredit(false);
+        } else {
+            setCustomerCredit(0);
+            setUseCredit(false);
+        }
 
-        if ((customer.debitBalance || 0) > 0) { setCustomerDebit(customer.debitBalance!); setUseDebit(true); }
-        else { setCustomerDebit(0); setUseDebit(false); }
+        if ((customer.debitBalance || 0) > 0) {
+            setCustomerDebit(customer.debitBalance!);
+            setUseDebit(false);
+        } else {
+            setCustomerDebit(0);
+            setUseDebit(false);
+        }
         setShowSuggestions(false);
     };
 
@@ -257,7 +272,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         handleAmountChange(modeId, (currentAmount + amountToFill).toFixed(2));
     };
 
-    // --- SUBMIT LOGIC ---
     const handleConfirm = async () => {
         if (pendingAmount > 0.01) {
             setModal({ message: `Mismatch: ₹${pendingAmount.toFixed(2)} remaining.`, type: State.ERROR });
@@ -277,7 +291,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         shouldSaveToLocalStorage.current = false;
 
         try {
-            // 1. Proceed with payment callback
             await onPaymentComplete({
                 paymentDetails: payloadToSave,
                 partyName, partyNumber, discount,
@@ -285,7 +298,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 appliedCredit, appliedDebit, partyAddress, partyGST, revDiscount,
             });
 
-            // 2. Save Customer to DB (Robust Check)
             if (currentUser?.companyId && partyNumber && partyNumber.trim().length > 0) {
                 const cleanNumber = partyNumber.trim();
                 const customerDocRef = doc(db, 'companies', currentUser.companyId, 'customers', cleanNumber);
@@ -301,8 +313,9 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             }
 
             try {
-                localStorage.removeItem(LOCAL_STORAGE_NAME_KEY);
-                localStorage.removeItem(LOCAL_STORAGE_NUMBER_KEY);
+                // FIX: Remove from sessionStorage instead of localStorage
+                sessionStorage.removeItem(SESSION_STORAGE_NAME_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_NUMBER_KEY);
             } catch (e) { }
             setPartyName(''); setPartyNumber(''); setSelectedPayments({});
         } catch (error) {
@@ -338,28 +351,35 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                     <h2 className="text-lg font-semibold text-gray-800 mt-2">Payment Details</h2>
                 </div>
 
-                {/* SCROLLABLE CONTENT */}
                 <div className="flex-1 overflow-y-auto overscroll-y-contain bg-white">
-
-                    {/* CUSTOMER INFO */}
                     <div className="p-4 space-y-2">
                         <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Customer Info</h3>
                         <div className="grid grid-cols-2 gap-4 relative">
-                            <input
-                                type="number" placeholder="Phone Number" value={partyNumber}
-                                onChange={(e) => handleInputChange(e.target.value, 'number')}
-                                onFocus={() => { if (partyNumber.length >= 3) searchCustomer(partyNumber, 'number'); }}
-                                className="w-full bg-gray-50 p-3 text-sm rounded-xs border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
-                                autoComplete="off"
-                            />
-                            <input
-                                type="text" placeholder="Name" value={partyName}
-                                onChange={(e) => handleInputChange(e.target.value, 'name')}
-                                onFocus={() => { if (partyName.length >= 3) searchCustomer(partyName, 'name'); }}
-                                className="w-full bg-gray-50 p-3 text-sm rounded-xs border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
-                                autoComplete="off"
-                            />
-                            {/* Suggestions */}
+                            <div className="relative">
+                                <input
+                                    type="number"
+                                    placeholder={requireCustomerMobile ? "Phone Number *" : "Phone Number"}
+                                    value={partyNumber}
+                                    onChange={(e) => handleInputChange(e.target.value, 'number')}
+                                    onFocus={() => { if (partyNumber.length >= 3) searchCustomer(partyNumber); }}
+                                    className={`w-full bg-gray-50 p-3 text-sm rounded-xs border ${requireCustomerMobile && !partyNumber ? 'border-red-300 focus:border-red-500' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none transition-all`}
+                                    autoComplete="off"
+                                />
+                                {requireCustomerMobile && <span className="absolute right-3 top-3 text-red-500 font-bold">*</span>}
+                            </div>
+
+                            <div className="relative">
+                                <input
+                                    type="text"
+                                    placeholder={requireCustomerName ? "Name *" : "Name"}
+                                    value={partyName}
+                                    onChange={(e) => handleInputChange(e.target.value, 'name')}
+                                    className={`w-full bg-gray-50 p-3 text-sm rounded-xs border ${requireCustomerName && !partyName ? '' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none transition-all`}
+                                    autoComplete="off"
+                                />
+                                {requireCustomerName && <span className="absolute right-3 top-3 text-red-500 font-bold">*</span>}
+                            </div>
+
                             {showSuggestions && suggestions.length > 0 && (
                                 <div className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-200 shadow-xl rounded-lg mt-1 max-h-48 overflow-y-auto">
                                     {suggestions.map((customer, idx) => (
@@ -385,10 +405,39 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                         </div>
                     </div>
 
-                    {/* TRANSACTION TYPE */}
+                    {(customerCredit > 0 || customerDebit > 0) && (
+                        <div className="px-4 pb-2">
+                            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Available Balances</h3>
+                            {customerCredit > 0 && (
+                                <div className="flex items-center justify-between p-3 bg-green-50 border border-green-100 rounded-lg mb-2">
+                                    <div className="flex flex-col">
+                                        <span className="text-sm font-semibold text-green-800">Credit Note Balance</span>
+                                        <span className="text-xs text-green-600">Available: ₹{customerCredit.toFixed(2)}</span>
+                                    </div>
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" checked={useCredit} onChange={(e) => setUseCredit(e.target.checked)} className="w-5 h-5 text-green-600 rounded focus:ring-green-500 border-gray-300" />
+                                        <span className="text-sm font-medium text-gray-700">Apply</span>
+                                    </label>
+                                </div>
+                            )}
+                            {customerDebit > 0 && (
+                                <div className="flex items-center justify-between p-3 bg-red-50 border border-red-100 rounded-lg">
+                                    <div className="flex flex-col">
+                                        <span className="text-sm font-semibold text-red-800">Debit Balance</span>
+                                        <span className="text-xs text-red-600">Available: ₹{customerDebit.toFixed(2)}</span>
+                                    </div>
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" checked={useDebit} onChange={(e) => setUseDebit(e.target.checked)} className="w-5 h-5 text-red-600 rounded focus:ring-red-500 border-gray-300" />
+                                        <span className="text-sm font-medium text-gray-700">Apply</span>
+                                    </label>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     <div className="p-4 bg-gray-100">
                         <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Transaction Type</h3>
-                        <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-2 gap-4">
                             {transactiontypes.map((mode) => (
                                 <FloatingLabelInput
                                     key={mode.id}
@@ -405,14 +454,11 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                     </div>
                 </div>
 
-                {/* --- FOOTER SUMMARY --- */}
                 <div className="p-4 bg-white border-t border-gray-200 rounded-b-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-20">
-
                     <div className="flex justify-between items-center mb-2 text-sm text-gray-500">
                         <span>Qty: <strong className="text-gray-800">{totalQuantity}</strong></span>
                         <div className="flex items-center gap-2">
                             <span>Subtotal:</span>
-                            {/* VISUAL LOGIC: Show Gross Subtotal (Net + Item Discount) to match visual expectations */}
                             <span className="font-medium text-gray-800">₹{displayGrossSubtotal.toFixed(2)}</span>
                         </div>
                     </div>
@@ -432,7 +478,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                     </div>
 
                     <div className="flex justify-between items-center mb-1.5 min-h-[24px]">
-                        {/* Status Badge */}
                         <div>
                             {changeToReturn > 0.01 ? (
                                 <span className="text-sm font-bold text-yellow-700 bg-yellow-50 px-2 py-1 rounded border border-yellow-100">Return: ₹{changeToReturn.toFixed(2)}</span>
@@ -442,8 +487,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                 </span>
                             )}
                         </div>
-
-                        {/* Item Discount Label */}
                         {totalItemDiscount > 0 && (
                             <span className="text-sm text-green-600 font-medium">Discount: -₹{totalItemDiscount.toFixed(2)}</span>
                         )}
@@ -460,7 +503,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                         onClick={handleConfirm}
                         disabled={isSubmitting || pendingAmount > 0.01}
                         className="w-full py-3.5 text-white rounded-sm font-bold text-lg shadow active:scale-[0.98] transition-all disabled:bg-gray-300 disabled:shadow-none disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                        style={{ backgroundColor: pendingAmount < 0.01 ? '#0ea5e9' : '#94a3b8' }} // Blue if paid, Gray if due
+                        style={{ backgroundColor: pendingAmount < 0.01 ? '#0ea5e9' : '#94a3b8' }}
                     >
                         {isSubmitting ? (
                             <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Processing...</>

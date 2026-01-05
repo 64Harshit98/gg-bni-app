@@ -7,7 +7,7 @@ import { Permissions, PLANS } from '../enums';
 import type { User } from '../Role/permission';
 import Loading from '../Pages/Loading/Loading';
 import { getFirestoreOperations } from '../lib/ItemsFirebase';
-import { getPackPermissions } from '../context/Plan';
+import { getPackPermissions } from './Plan';
 
 // --- Existing Import ---
 import { getDefaultPermissions } from '../Pages/Settings/Permissionsetting';

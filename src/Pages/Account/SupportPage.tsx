@@ -15,6 +15,7 @@ import {
   Send
 } from 'lucide-react';
 import { ROUTES } from '../../constants/routes.constants';
+import { IconClose } from '../../constants/Icons';
 
 // --- TYPES ---
 interface AccordionItemProps {
@@ -57,8 +58,6 @@ const AccordionItem: React.FC<AccordionItemProps> = ({ title, icon, children, is
 const SupportPage: React.FC = () => {
   const navigate = useNavigate();
 
-  // State to track which item is open (null = all closed)
-  // Use a string ID to track specific sections
   const [openSection, setOpenSection] = useState<string | null>('faq-1');
 
   const toggleSection = (id: string) => {
@@ -76,8 +75,7 @@ const SupportPage: React.FC = () => {
               onClick={() => navigate(-1)}
               className="flex items-center gap-2 text-gray-500 hover:text-gray-900 transition-colors"
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
-              Back
+              <IconClose />
             </button>
             <h1 className="text-xl font-bold text-gray-800">Help & Support</h1>
             <div className="w-10"></div>

@@ -11,6 +11,7 @@ import { Spinner } from '../../constants/Spinner';
 import { Modal } from '../../constants/Modal';
 import { useItemSettings } from '../../context/SettingsContext';
 import { v4 as uuidv4 } from 'uuid';
+import { IconScanCircle } from '../../constants/Icons';
 
 // --- CONFIGURATION ---
 const GOOGLE_SHEET_API_URL = "https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec";
@@ -372,7 +373,7 @@ const ItemAdd: React.FC = () => {
               <label className="block text-sm font-medium text-gray-600 mb-1">Barcode</label>
               <div className="flex gap-2">
                 <input type="text" value={itemBarcode} onChange={(e) => setItemBarcode(e.target.value)} className="flex-grow p-3 border border-gray-300 rounded-md focus:ring-sky-500" placeholder="Scan or type" />
-                <button type="button" onClick={() => setIsScannerOpen(true)} className="bg-gray-700 text-white p-3 rounded-md">SCAN</button>
+                <button type="button" onClick={() => setIsScannerOpen(true)} className="bg-gray-700 text-white p-3 rounded-md"><IconScanCircle width={20} height={20} /></button>
               </div>
             </div>
             <div className='grid grid-cols-2 gap-4'>

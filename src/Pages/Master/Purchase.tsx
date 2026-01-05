@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo} from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import type { Item, SalesItem } from '../../constants/models';
 import { ROUTES } from '../../constants/routes.constants';
@@ -16,9 +16,9 @@ import { Spinner } from '../../constants/Spinner';
 import { FiTrash2 } from 'react-icons/fi';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
 import { usePurchaseSettings } from '../../context/SettingsContext';
-import { GenericCartList } from '../../Components/CartItem'; 
+import { GenericCartList } from '../../Components/CartItem';
 import { GenericBillFooter } from '../../Components/Footer';
-import { IconScanCircle,IconScan } from '../../constants/Icons';
+import { IconScanCircle, IconScan } from '../../constants/Icons';
 
 // --- Interfaces ---
 interface PurchaseItem extends Omit<SalesItem, 'finalPrice' | 'effectiveUnitPrice' | 'discountPercentage'> {
@@ -30,7 +30,7 @@ interface PurchaseItem extends Omit<SalesItem, 'finalPrice' | 'effectiveUnitPric
   taxableAmount?: number;
   stock: number;
   productId?: string;
-  customPrice?: number | string; 
+  customPrice?: number | string;
   isEditable?: boolean;
 }
 
@@ -75,7 +75,7 @@ const PurchasePage: React.FC = () => {
   const { purchaseSettings, loadingSettings: loadingPurchaseSettings } = usePurchaseSettings();
 
   const purchaseIdToEdit = location.state?.purchaseId as string | undefined;
-  const isEditMode = !!purchaseIdToEdit; 
+  const isEditMode = !!purchaseIdToEdit;
 
   const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
 
@@ -98,7 +98,7 @@ const PurchasePage: React.FC = () => {
   const [isScannerOpen, setIsScannerOpen] = useState(false);
 
   const [invoiceNumber, setInvoiceNumber] = useState<string>('');
-  
+
   const [billTaxType, setBillTaxType] = useState<TaxOption>('exclusive');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [gridSearchQuery, setGridSearchQuery] = useState<string>('');
@@ -121,19 +121,6 @@ const PurchasePage: React.FC = () => {
   useEffect(() => {
     setPageIsLoading(authLoading || loadingPurchaseSettings);
   }, [authLoading, loadingPurchaseSettings]);
-
-  useEffect(() => {
-    if (!loadingPurchaseSettings) {
-      if (editModeData && editModeData.taxType) {
-        const savedTaxType: TaxOption = editModeData.taxType === 'none'
-          ? 'exclusive'
-          : editModeData.taxType as TaxOption;
-        setBillTaxType(savedTaxType);
-      } else if (purchaseSettings?.taxType) {
-        setBillTaxType(purchaseSettings.taxType as TaxOption);
-      }
-    }
-  }, [loadingPurchaseSettings, purchaseSettings, editModeData]);
 
   useEffect(() => {
     if (pageIsLoading || !dbOperations || !currentUser?.companyId) return;
@@ -190,22 +177,43 @@ const PurchasePage: React.FC = () => {
             const purchaseData = { id: docSnap.id, ...docSnap.data() } as Purchase;
             setInvoiceNumber(purchaseData.invoiceNumber);
 
-            const validatedItems = (purchaseData.items || []).map((item: any) => ({
-              id: item.id || crypto.randomUUID(),
-              name: item.name || 'Unknown Item',
-              purchasePrice: item.purchasePrice || 0,
-              quantity: item.quantity || 1,
-              mrp: item.mrp || 0,
-              discount: item.discount || 0,
-              barcode: item.barcode || '',
-              taxRate: item.taxRate || 0,
-              taxType: item.taxType,
-              taxAmount: item.taxAmount,
-              taxableAmount: item.taxableAmount,
-              stock: item.stock ?? item.Stock ?? 0,
-              productId: item.productId || item.id,
-              isEditable: true 
-            }));
+            // Set Initial Bill Type from saved data
+            if (purchaseData.taxType) {
+              const savedTaxType: TaxOption = purchaseData.taxType === 'none'
+                ? 'exclusive'
+                : purchaseData.taxType as TaxOption;
+              setBillTaxType(savedTaxType);
+            }
+
+            // --- FIX: RECOVER TAX RATE FROM MASTER LIST IF SAVED AS 0 ---
+            const validatedItems = (purchaseData.items || []).map((item: any) => {
+              // Find the original product in the master list
+              const masterItem = fetchedItems.find(i => i.id === (item.productId || item.id));
+
+              // If item has a saved tax rate > 0, use it. 
+              // If it's 0 (because it was exempt), fallback to master item tax rate.
+              const recoveredTaxRate = (item.taxRate && item.taxRate > 0)
+                ? item.taxRate
+                : (masterItem?.taxRate || 0);
+
+              return {
+                id: item.id || crypto.randomUUID(),
+                name: item.name || 'Unknown Item',
+                purchasePrice: item.purchasePrice || 0,
+                quantity: item.quantity || 1,
+                mrp: item.mrp || 0,
+                discount: item.discount || 0,
+                barcode: item.barcode || '',
+                taxRate: recoveredTaxRate, // Use recovered rate
+                taxType: item.taxType,
+                taxAmount: item.taxAmount,
+                taxableAmount: item.taxableAmount,
+                stock: item.stock ?? item.Stock ?? 0,
+                productId: item.productId || item.id,
+                isEditable: true
+              };
+            });
+
             setEditModeData(purchaseData);
             setItems(validatedItems);
           } else {
@@ -214,6 +222,9 @@ const PurchasePage: React.FC = () => {
         } else {
           setEditModeData(null);
           fetchInvoiceNumber();
+          if (purchaseSettings?.taxType) {
+            setBillTaxType(purchaseSettings.taxType as TaxOption);
+          }
         }
         setError(null);
       } catch (err: any) {
@@ -229,17 +240,17 @@ const PurchasePage: React.FC = () => {
   // --- Adapters for GenericCartList ---
   const cartItemsAdapter = useMemo(() => {
     return items.map(item => ({
-        ...item,
-        customPrice: item.purchasePrice, 
-        isEditable: true
+      ...item,
+      customPrice: item.purchasePrice,
+      isEditable: true
     }));
   }, [items]);
 
   const handlePriceChange = (id: string, val: string) => {
     if (val === '' || /^[0-9]*\.?[0-9]*$/.test(val)) {
-        setItems(prev => prev.map(item => 
-            item.id === id ? { ...item, purchasePrice: parseFloat(val) || 0 } : item
-        ));
+      setItems(prev => prev.map(item =>
+        item.id === id ? { ...item, purchasePrice: parseFloat(val) || 0 } : item
+      ));
     }
   };
 
@@ -275,8 +286,6 @@ const PurchasePage: React.FC = () => {
     }
     const defaultDiscount = purchaseSettings?.defaultDiscount ?? 0;
 
-    // Check if item already exists to just increment quantity (Optional logic, usually separate rows for batches)
-    // But for this logic, we append new rows.
     setItems((prevItems) => [
       {
         id: crypto.randomUUID(),
@@ -306,7 +315,7 @@ const PurchasePage: React.FC = () => {
     totalQuantity
   } = useMemo(() => {
     const gstScheme = purchaseSettings?.gstScheme ?? 'none';
-    const taxType = billTaxType;
+    const taxType = billTaxType; // FIX: Rely purely on the state variable 'billTaxType'
     const isRoundingEnabled = purchaseSettings?.roundingOff ?? true;
 
     let mrpTotalAgg = 0;
@@ -331,19 +340,23 @@ const PurchasePage: React.FC = () => {
       let itemTax = 0;
       let itemFinalTotal = 0;
 
+      // FIX: Determine effective scheme based on current Tax Toggle state
       const effectiveScheme = taxType === 'exempt' ? 'none' : gstScheme;
 
       if (effectiveScheme === 'regular' || effectiveScheme === 'composition') {
         if (taxType === 'exclusive') {
+          // Exclusive: Price is base, Tax is added on top
           itemTaxableBase = itemTotalPurchasePrice;
           itemTax = itemTaxableBase * (itemTaxRate / 100);
           itemFinalTotal = itemTaxableBase + itemTax;
         } else {
+          // Inclusive: Price includes Tax, back-calculate base
           itemFinalTotal = itemTotalPurchasePrice;
           itemTaxableBase = itemTotalPurchasePrice / (1 + (itemTaxRate / 100));
           itemTax = itemTotalPurchasePrice - itemTaxableBase;
         }
       } else {
+        // Exempt or None: No Tax calculation
         itemTaxableBase = itemTotalPurchasePrice;
         itemTax = 0;
         itemFinalTotal = itemTaxableBase;
@@ -367,10 +380,9 @@ const PurchasePage: React.FC = () => {
       finalAmount: roundedAmount,
       totalQuantity: qtyAgg
     };
-  }, [items, purchaseSettings, billTaxType]);
+  }, [items, purchaseSettings, billTaxType]); // Dependency on billTaxType ensures recalc on toggle
 
   // --- FIXED QUANTITY HANDLER ---
-  // Now accepts the NEW Absolute quantity, not a delta
   const handleQuantityChange = (id: string, newQuantity: number) => {
     setItems((prevItems) =>
       prevItems.map((item) =>
@@ -455,7 +467,7 @@ const PurchasePage: React.FC = () => {
           itemTaxableBase = itemTotalPurchasePrice;
           itemTax = 0;
         }
-        
+
         const { customPrice, isEditable, ...dbItem } = item;
 
         return {
@@ -497,7 +509,7 @@ const PurchasePage: React.FC = () => {
           partyNumber: completionData.partyNumber.trim(),
           partyAddress: completionData.partyAddress || '',
           partyGstin: completionData.partyGST || '',
-          invoiceNumber: finalInvoiceNumber, 
+          invoiceNumber: finalInvoiceNumber,
           items: formattedItemsForDB,
           subtotal: subtotal,
           totalDiscount: totalDiscount,
@@ -694,9 +706,9 @@ const PurchasePage: React.FC = () => {
     <div className="flex flex-col p-1 bg-gray-100 border-b border-gray-300">
       <div className="flex justify-between items-end mb-3 px-1">
         <div className='flex items-center gap-2'>
-            <h1 className="text-2xl font-bold text-gray-800 text-center">
+          <h1 className="text-2xl font-bold text-gray-800 text-center">
             {editModeData ? 'Edit Purchase' : (purchaseSettings?.voucherName ?? 'Purchase')}
-            </h1>
+          </h1>
         </div>
         <div className="flex items-center justify-center mt-1 gap-2">
           <span className="text-xs text-gray-500 font-medium uppercase tracking-wide">Inv No:</span>
@@ -754,46 +766,46 @@ const PurchasePage: React.FC = () => {
       </div>
       <div className='flex-grow overflow-y-auto p-2'>
         <div className="flex justify-between items-center px-2 mb-2">
-            <h3 className="text-gray-700 text-lg font-medium">Cart</h3>
-            {items.length > 0 && (
-                <button
-                    onClick={handleClearCart}
-                    className="flex items-center gap-1 text-sm text-red-500 hover:text-red-700 font-medium transition-colors"
-                >
-                    <FiTrash2 size={16} />
-                    <span>Clear Cart</span>
-                </button>
-            )}
+          <h3 className="text-gray-700 text-lg font-medium">Cart</h3>
+          {items.length > 0 && (
+            <button
+              onClick={handleClearCart}
+              className="flex items-center gap-1 text-sm text-red-500 hover:text-red-700 font-medium transition-colors"
+            >
+              <FiTrash2 size={16} />
+              <span>Clear Cart</span>
+            </button>
+          )}
         </div>
         <div className="flex flex-col gap-2">
-            {/* Generic Cart List for Purchases */}
-            <GenericCartList
-                items={cartItemsAdapter} 
-                availableItems={availableItems}
-                basePriceKey="mrp"
-                priceLabel="MRP"
-                settings={{
-                    enableRounding: false, // Purchase usually exact
-                    roundingInterval: 1,
-                    enableItemWiseDiscount: false, // No discounts in purchase UI
-                    lockDiscount: true,
-                    lockPrice: false // Price is editable
-                }}
-                applyRounding={applyPurchaseRounding}
-                State={State}
-                setModal={setModal}
-                onOpenEditDrawer={handleOpenEditDrawer}
-                onDeleteItem={handleDeleteItem}
-                onDiscountChange={() => {}} // No-op
-                onCustomPriceChange={handlePriceChange} // Updates purchasePrice
-                onCustomPriceBlur={() => {}} // No-op
-                onQuantityChange={(id, qty) => handleQuantityChange(id, qty)} // Passed directly
-            />
+          {/* Generic Cart List for Purchases */}
+          <GenericCartList
+            items={cartItemsAdapter}
+            availableItems={availableItems}
+            basePriceKey="mrp"
+            priceLabel="MRP"
+            settings={{
+              enableRounding: false, // Purchase usually exact
+              roundingInterval: 1,
+              enableItemWiseDiscount: false, // No discounts in purchase UI
+              lockDiscount: true,
+              lockPrice: false // Price is editable
+            }}
+            applyRounding={applyPurchaseRounding}
+            State={State}
+            setModal={setModal}
+            onOpenEditDrawer={handleOpenEditDrawer}
+            onDeleteItem={handleDeleteItem}
+            onDiscountChange={() => { }} // No-op
+            onCustomPriceChange={handlePriceChange} // Updates purchasePrice
+            onCustomPriceBlur={() => { }} // No-op
+            onQuantityChange={(id, qty) => handleQuantityChange(id, qty)} // Passed directly
+          />
         </div>
       </div>
     </>
   );
-  
+
 
   return (
     <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden  ">
@@ -821,36 +833,35 @@ const PurchasePage: React.FC = () => {
       {isCardView ? renderCardView() : renderListView()}
 
       <GenericBillFooter
-          isExpanded={isFooterExpanded}
-          onToggleExpand={() => setIsFooterExpanded(!isFooterExpanded)}
-          totalQuantity={totalQuantity}
-          subtotal={subtotal}
-          totalDiscount={totalDiscount}
-          taxAmount={taxAmount}
-          finalAmount={finalAmount}
-          roundingOffAmount={roundingOffAmount}
-          showTaxRow={displayTaxTotal}
-          taxLabel="Total Tax"
-          actionLabel={isEditMode ? 'Update' : 'Pay Now'}
-          onActionClick={handleProceedToPayment}
-          disableAction={items.length === 0}
-       >
-          {/* Injecting Purchase Specific Tax Selector */}
-          {showTaxToggle && (
-            <div className="flex justify-between items-center p-2 bg-white border-b border-gray-200 px-5">
-              <p className="text-sm font-semibold text-gray-600">Tax Calculation</p>
-              <select 
-                value={billTaxType} 
-                onChange={(e) => setBillTaxType(e.target.value as TaxOption)} 
-                className="border border-gray-300 rounded-md p-1 text-sm bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium"
-              >
-                <option value="exclusive">Tax Exclusive</option>
-                <option value="inclusive">Tax Inclusive</option>
-                <option value="exempt">Tax Exempt</option>
-              </select>
-            </div>
-          )}
-       </GenericBillFooter>
+        isExpanded={isFooterExpanded}
+        onToggleExpand={() => setIsFooterExpanded(!isFooterExpanded)}
+        totalQuantity={totalQuantity}
+        subtotal={subtotal}
+        taxAmount={taxAmount}
+        finalAmount={finalAmount}
+        roundingOffAmount={roundingOffAmount}
+        showTaxRow={displayTaxTotal}
+        taxLabel="Total Tax"
+        actionLabel={isEditMode ? 'Update' : 'Pay Now'}
+        onActionClick={handleProceedToPayment}
+        disableAction={items.length === 0}
+      >
+        {/* Injecting Purchase Specific Tax Selector */}
+        {showTaxToggle && (
+          <div className="flex justify-between items-center p-2 bg-white border-b border-gray-200 px-5">
+            <p className="text-sm font-semibold text-gray-600">Tax Calculation</p>
+            <select
+              value={billTaxType}
+              onChange={(e) => setBillTaxType(e.target.value as TaxOption)}
+              className="border border-gray-300 rounded-md p-1 text-sm bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium"
+            >
+              <option value="exclusive">Tax Exclusive</option>
+              <option value="inclusive">Tax Inclusive</option>
+              <option value="exempt">Tax Exempt</option>
+            </select>
+          </div>
+        )}
+      </GenericBillFooter>
       <PaymentDrawer
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}

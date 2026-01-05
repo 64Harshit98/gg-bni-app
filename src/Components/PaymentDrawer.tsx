@@ -333,7 +333,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     if (!isOpen) return null;
 
     return createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-end justify-center sm:items-center" onClick={onClose}>
+        <div className="fixed inset-0 z-[99] flex items-end justify-center sm:items-center" onClick={onClose}>
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" />
 
             {modal && <div className="absolute z-[10000]"><Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} /></div>}

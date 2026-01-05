@@ -1,0 +1,39 @@
+# This file handles the automated deployment to your Dev project on merge
+name: Deploy to Firebase on merge
+on:
+  push:
+    branches:
+      - stage
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        # Installs root deps and function-specific deps required by your firebase.json
+        run: |
+          npm ci
+          npm ci --prefix functions
+
+      - name: Build Frontend
+        # Mapping the specific DEV secrets from your screenshot to the build process
+        run: npm run build
+        env:
+          VITE_API_KEY: ${{ secrets.DEV_VITE_API_KEY }}
+          VITE_APP_ID: ${{ secrets.DEV_VITE_APP_ID }}
+          VITE_AUTH_DOMAIN: ${{ secrets.DEV_VITE_AUTH_DOMAIN }}
+          VITE_MEASUREMENT_ID: ${{ secrets.DEV_VITE_MEASUREMENT_ID }}
+          VITE_MESSAGING_SENDER_ID: ${{ secrets.DEV_VITE_MESSAGING_SENDER_ID }}
+          VITE_PROJECT_ID: ${{ secrets.DEV_VITE_PROJECT_ID }}
+          VITE_STORAGE_BUCKET: ${{ secrets.DEV_VITE_STORAGE_BUCKET }}
+
+      - name: Deploy All Services
+        # Using the full CLI action ensures Firestore Rules and Functions are also deployed
+        uses: w9jds/firebase-action@v13.4.0
+        with:
+          args: deploy --project ${{ secrets.DEV_VITE_PROJECT_ID }}
+        env:
+          # Replace this with the specific Service Account name in your GitHub Secrets
+          GCP_SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}

@@ -1,0 +1,69 @@
+name: Deploy to Firebase Hosting on PR
+on: pull_request
+
+permissions:
+  checks: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  build_and_preview:
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Frontend
+        # Vite needs these secrets to successfully compile the PR preview
+        run: npm run build
+        env:
+          VITE_API_KEY: ${{ secrets.DEV_VITE_API_KEY }}
+          VITE_APP_ID: ${{ secrets.DEV_VITE_APP_ID }}
+          VITE_AUTH_DOMAIN: ${{ secrets.DEV_VITE_AUTH_DOMAIN }}
+          VITE_MEASUREMENT_ID: ${{ secrets.DEV_VITE_MEASUREMENT_ID }}
+          VITE_MESSAGING_SENDER_ID: ${{ secrets.DEV_VITE_MESSAGING_SENDER_ID }}
+          VITE_PROJECT_ID: ${{ secrets.DEV_VITE_PROJECT_ID }}
+          VITE_STORAGE_BUCKET: ${{ secrets.DEV_VITE_STORAGE_BUCKET }}
+
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_SELLAR_DEV }}
+          projectId: sellar-88ced # Ensure this is your Dev Project Iname: Deploy to Firebase Hosting on PR
+on: pull_request
+
+permissions:
+  checks: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  build_and_preview:
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Frontend
+        # Vite needs these secrets to successfully compile the PR preview
+        run: npm run build
+        env:
+          VITE_API_KEY: ${{ secrets.DEV_VITE_API_KEY }}
+          VITE_APP_ID: ${{ secrets.DEV_VITE_APP_ID }}
+          VITE_AUTH_DOMAIN: ${{ secrets.DEV_VITE_AUTH_DOMAIN }}
+          VITE_MEASUREMENT_ID: ${{ secrets.DEV_VITE_MEASUREMENT_ID }}
+          VITE_MESSAGING_SENDER_ID: ${{ secrets.DEV_VITE_MESSAGING_SENDER_ID }}
+          VITE_PROJECT_ID: ${{ secrets.DEV_VITE_PROJECT_ID }}
+          VITE_STORAGE_BUCKET: ${{ secrets.DEV_VITE_STORAGE_BUCKET }}
+
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_SELLAR_DEV }}
+          projectId: ${{ secrets.DEV_VITE_PROJECT_ID }} 

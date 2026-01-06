@@ -1,20 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { db } from '../../lib/Firebase'; // Adjust path if necessary
+import { db } from '../../lib/Firebase';
 import {
     doc,
     getDoc,
     updateDoc,
     setDoc,
 } from 'firebase/firestore';
-import { Spinner } from '../../constants/Spinner'; // Adjust path
-import { Modal } from '../../constants/Modal';     // Adjust path
-import { State } from '../../enums';               // Adjust path
-import { useAuth } from '../../context/auth-context'; // Adjust path
+import { Spinner } from '../../constants/Spinner';
+import { Modal } from '../../constants/Modal';
+import { State } from '../../enums';
+import { useAuth } from '../../context/auth-context';
 
-// ==========================================
-// 1. EXPORTABLE INTERFACE
-// ==========================================
+
 export interface PurchaseSettings {
     companyId?: string;
     settingType: 'purchase';
@@ -34,9 +32,6 @@ export interface PurchaseSettings {
     requireSupplierMobile: boolean;
 }
 
-// ==========================================
-// 2. EXPORTABLE DEFAULT FUNCTION
-// ==========================================
 export const getDefaultPurchaseSettings = (companyId: string): PurchaseSettings => ({
     companyId: companyId,
     settingType: 'purchase',
@@ -56,19 +51,15 @@ export const getDefaultPurchaseSettings = (companyId: string): PurchaseSettings 
     requireSupplierMobile: false,
 });
 
-// ==========================================
-// 3. MAIN COMPONENT
-// ==========================================
 const PurchaseSettingsPage: React.FC = () => {
     const navigate = useNavigate();
     const { currentUser } = useAuth();
-    
+
     const [settings, setSettings] = useState<PurchaseSettings | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [isSaving, setIsSaving] = useState<boolean>(false);
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
 
-    // --- Load Settings on Mount ---
     useEffect(() => {
         if (!currentUser?.companyId) {
             setIsLoading(true);
@@ -78,25 +69,20 @@ const PurchaseSettingsPage: React.FC = () => {
         const fetchOrCreateSettings = async () => {
             setIsLoading(true);
             const companyId = currentUser.companyId!;
-            
-            // We use a fixed ID 'purchase-settings' for simplicity
+
             const settingsDocRef = doc(db, 'companies', companyId, 'settings', 'purchase-settings');
 
             try {
                 const docSnap = await getDoc(settingsDocRef);
 
                 if (docSnap.exists()) {
-                    // A. Settings exist - Load them
                     setSettings(docSnap.data() as PurchaseSettings);
                 } else {
-                    // B. Settings do not exist - Create defaults
                     console.log(`No purchase settings found. Creating defaults...`);
                     const defaultSettings = getDefaultPurchaseSettings(companyId);
-                    
-                    // Save to DB
+
                     await setDoc(settingsDocRef, defaultSettings);
-                    
-                    // Update State
+
                     setSettings(defaultSettings);
                 }
             } catch (err) {
@@ -110,7 +96,6 @@ const PurchaseSettingsPage: React.FC = () => {
         fetchOrCreateSettings();
     }, [currentUser?.companyId]);
 
-    // --- Save Handler ---
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
 
@@ -140,20 +125,17 @@ const PurchaseSettingsPage: React.FC = () => {
         }
     };
 
-    // --- Input Change Handlers ---
     const handleChange = (field: keyof PurchaseSettings, value: string | number | boolean) => {
         if (!settings) return;
 
         if (field === 'defaultDiscount' || field === 'currentVoucherNumber') {
-            // Handle number inputs specifically
             if (value === '') {
-                setSettings({ ...settings, [field]: 0 }); 
+                setSettings({ ...settings, [field]: 0 });
             } else {
                 const numValue = parseFloat(String(value));
                 setSettings({ ...settings, [field]: isNaN(numValue) ? 0 : numValue });
             }
         } else {
-            // Handle strings (selects, text inputs)
             setSettings({ ...settings, [field]: value });
         }
     };
@@ -164,7 +146,6 @@ const PurchaseSettingsPage: React.FC = () => {
         }
     };
 
-    // --- Render Loading ---
     if (isLoading || !settings) {
         return (
             <div className="flex flex-col min-h-screen items-center justify-center">
@@ -174,9 +155,8 @@ const PurchaseSettingsPage: React.FC = () => {
         );
     }
 
-    // --- Render Main ---
     return (
-        <div className="flex flex-col min-h-screen bg-white w-full mb-16">
+        <div className="flex flex-col min-h-screen bg-white w-full">
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
             <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
@@ -185,44 +165,31 @@ const PurchaseSettingsPage: React.FC = () => {
                 <div className="w-6"></div>
             </div>
 
-            <main className="flex-grow p-4 bg-gray-50 w-full overflow-y-auto box-border">
+            <main className="flex-grow p-4 bg-gray-50 w-full overflow-y-auto box-border pb-30">
                 <form onSubmit={handleSave} className="max-w-3xl mx-auto">
 
-                    {/* --- Card 1: Pricing & Tax --- */}
-                    <div className="bg-white rounded-lg p-6 shadow-md mb-2">
-                        <h2 className="text-lg font-semibold text-gray-800 mb-4">Pricing & Tax</h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                            <div>
-                                <label htmlFor="gst-scheme" className="block text-gray-700 text-sm font-medium mb-1">GST Scheme</label>
-                                <select
-                                    id="gst-scheme"
-                                    value={settings.gstScheme || 'none'}
-                                    onChange={(e) => handleChange('gstScheme', e.target.value)}
-                                    className="w-full p-3 border border-gray-300 rounded-lg bg-white"
-                                >
-                                    <option value="none">None (Tax Disabled)</option>
-                                    <option value="regular">Regular GST</option>
-                                    <option value="composition">Composition GST</option>
-                                </select>
-                            </div>
+                    {/* --- Card 1: Display Settings --- */}
+                    <div className="bg-white rounded-sm p-4 shadow-md mb-2">
+                        <h2 className="text-lg font-semibold text-gray-800 mb-4">Display Settings</h2>
+                        <div className="mb-4">
+                            <label htmlFor="purchase-view-type" className="block text-gray-700 text-sm font-medium mb-1">Purchase History View</label>
+                            <select
+                                id="purchase-view-type"
+                                value={settings.purchaseViewType || 'list'}
+                                onChange={(e) => handleChange('purchaseViewType', e.target.value)}
+                                className="w-full p-3 border border-gray-300 rounded-lg bg-white"
+                            >
+                                <option value="list">List View</option>
+                                <option value="card">Card View</option>
+                            </select>
                         </div>
+                    </div>
 
-                        {(settings.gstScheme === 'regular' || settings.gstScheme === 'composition') && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                                <div>
-                                    <label htmlFor="tax-type" className="block text-gray-700 text-sm font-medium mb-1">Tax Calculation Type</label>
-                                    <select
-                                        id="tax-type"
-                                        value={settings.taxType || 'exclusive'}
-                                        onChange={(e) => handleChange('taxType', e.target.value)}
-                                        className="w-full p-3 border border-gray-300 rounded-lg bg-white"
-                                    >
-                                        <option value="exclusive">Tax Exclusive (Purchase Price + GST)</option>
-                                        <option value="inclusive">Tax Inclusive (Purchase Price includes GST)</option>
-                                    </select>
-                                </div>
-                            </div>
-                        )}
+                    {/* --- Card 2: Pricing & Tax --- */}
+                    <div className="bg-white rounded-sm p-4 shadow-md mb-2">
+                        <h2 className="text-lg font-semibold text-gray-800 mb-2">Pricing</h2>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
+                        </div>
                         <div className="flex items-center mb-4">
                             <input type="checkbox" id="rounding-off"
                                 checked={settings.roundingOff}
@@ -232,20 +199,10 @@ const PurchaseSettingsPage: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* --- Card 2: Defaults & Behavior --- */}
-                    <div className="bg-white rounded-lg p-6 shadow-md mb-2">
+                    {/* --- Card 3: Defaults & Behavior --- */}
+                    <div className="bg-white rounded-sm p-4 shadow-md mb-2">
                         <h2 className="text-lg font-semibold text-gray-800 mb-4">Defaults & Behavior</h2>
-                        <div className="mb-4">
-                            <label htmlFor="discount" className="block text-gray-700 text-sm font-medium mb-1">Default Discount (%)</label>
-                            <input
-                                type="number" id="discount"
-                                value={settings.defaultDiscount}
-                                onChange={(e) => handleChange('defaultDiscount', e.target.value)}
-                                className="w-full p-3 border border-gray-300 rounded-lg"
-                                placeholder="e.g., 0"
-                                step="any"
-                            />
-                        </div>
+
                         <div className="flex items-center mb-4">
                             <input type="checkbox" id="input-mrp"
                                 checked={settings.inputMRP}
@@ -269,8 +226,8 @@ const PurchaseSettingsPage: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* --- Card 3: Required Fields --- */}
-                    <div className="bg-white rounded-lg p-6 shadow-md mb-2">
+                    {/* --- Card 4: Required Fields --- */}
+                    <div className="bg-white rounded-sm p-4 shadow-md mb-2">
                         <h2 className="text-lg font-semibold text-gray-800 mb-4">Required Fields</h2>
                         <p className="text-sm text-gray-500 mb-2">Select fields that must be filled before saving a purchase.</p>
                         <div className="flex items-center mb-4">
@@ -289,8 +246,8 @@ const PurchaseSettingsPage: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* --- Card 4: Voucher Numbering --- */}
-                    <div className="bg-white rounded-lg p-6 shadow-md mb-2">
+                    {/* --- Card 5: Voucher Numbering --- */}
+                    <div className="bg-white rounded-sm p-4 shadow-md mb-2">
                         <h2 className="text-lg font-semibold text-gray-800 mb-4">Voucher Numbering</h2>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                             <div>
@@ -319,34 +276,19 @@ const PurchaseSettingsPage: React.FC = () => {
                             </div>
                         </div>
                     </div>
-
-                    {/* --- Card 5: Display Settings --- */}
-                    <div className="bg-white rounded-lg p-6 shadow-md mb-2">
-                        <h2 className="text-lg font-semibold text-gray-800 mb-4">Display Settings</h2>
-                        <div className="mb-4">
-                            <label htmlFor="purchase-view-type" className="block text-gray-700 text-sm font-medium mb-1">Purchase History View</label>
-                            <select
-                                id="purchase-view-type"
-                                value={settings.purchaseViewType || 'list'}
-                                onChange={(e) => handleChange('purchaseViewType', e.target.value)}
-                                className="w-full p-3 border border-gray-300 rounded-lg bg-white"
-                            >
-                                <option value="list">List View</option>
-                                <option value="card">Card View</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    {/* --- Save Button --- */}
+                </form>
+            </main>
+            <div className="fixed bottom-15 left-0 right-0 p-4 bg-transparent shadow-md">
+                <div className="max-w-3xl mx-auto flex justify-center">
                     <button
-                        type="submit"
+                        onClick={handleSave}
                         disabled={isSaving || isLoading}
-                        className="w-full mt-2 flex items-center justify-center bg-sky-500 text-white font-bold py-3 px-4 rounded-xl hover:bg-sky-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                        className="w-auto min-w-[150px] flex items-center justify-center bg-sky-500 text-white font-bold py-3 px-6 rounded-sm hover:bg-sky-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed shadow-lg"
                     >
                         {isSaving ? <Spinner /> : 'Save Settings'}
                     </button>
-                </form>
-            </main>
+                </div>
+            </div>
         </div>
     );
 };

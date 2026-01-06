@@ -8,16 +8,10 @@ import { useAuth } from '../../context/auth-context';
 
 type RolePermissionsMap = Record<string, Permissions[]>;
 
-// ============================================================================
-// SHARED CONSTANTS & FUNCTIONS (Exported for AuthContext)
-// ============================================================================
-
-// 1. Config: Permissions hidden/excluded for the Owner
 export const EXCLUDED_OWNER_PERMISSIONS = [
     Permissions.ViewAttendance,
 ];
 
-// 2. Config: Default Permissions for each Role
 const DEFAULT_PERMISSIONS_MAP = {
     [ROLES.SALESMAN]: [
         Permissions.ViewAttendance,
@@ -39,13 +33,11 @@ const DEFAULT_PERMISSIONS_MAP = {
         Permissions.CreatePurchase,
         Permissions.CreatePurchaseReturn,
     ],
-    // Owner gets EVERYTHING by default (we filter later)
     [ROLES.OWNER]: Object.values(Permissions).filter(
         (permission) => !EXCLUDED_OWNER_PERMISSIONS.includes(permission)
     ),
 };
 
-// 3. Helper: Get Defaults
 export const getDefaultPermissions = (role: string): Permissions[] => {
     // @ts-ignore - allows string indexing if ROLES enum types mismatch slightly
     if (DEFAULT_PERMISSIONS_MAP[role]) {
@@ -56,7 +48,6 @@ export const getDefaultPermissions = (role: string): Permissions[] => {
     return [];
 };
 
-// 4. Helper: Clean Permissions for Saving (Removes Exclusions)
 export const getSafePermissionsToSave = (role: string, currentPermissions: Permissions[]): Permissions[] => {
     if (role === ROLES.OWNER) {
         return currentPermissions.filter(p => !EXCLUDED_OWNER_PERMISSIONS.includes(p));
@@ -64,22 +55,22 @@ export const getSafePermissionsToSave = (role: string, currentPermissions: Permi
     return currentPermissions;
 };
 
-// ============================================================================
-// UI COMPONENT
-// ============================================================================
-
-// ... UI Configuration (permissionGroups) stays local ...
 const permissionGroups = {
     dashboard: {
         title: 'Dashboard & General',
         permissions: [
             Permissions.ViewDashboard,
+            Permissions.ViewCatalogue,
+            Permissions.ViewFilter,
+            Permissions.ViewHidebutton,
             Permissions.ViewTopSalesperson,
             Permissions.ViewAttendance,
             Permissions.ViewSalescard,
             Permissions.ViewSalesbarchart,
             Permissions.Viewrestockcard,
             Permissions.ViewTopSoldItems,
+            Permissions.ViewTopCustomers,
+
         ],
     },
     sales: {
@@ -152,10 +143,8 @@ const ManagePermissionsPage: React.FC = () => {
     const navigate = useNavigate();
     const { currentUser } = useAuth();
 
-    // 1. ALL_ROLES: Used for Background Sync (Includes Owner)
     const ALL_ROLES = useMemo(() => Object.values(ROLES), []);
 
-    // 2. VISIBLE_ROLES: Used for UI Buttons (Excludes Owner)
     const VISIBLE_ROLES = useMemo(() => ALL_ROLES.filter(r => r !== ROLES.OWNER), [ALL_ROLES]);
 
     const allPermissions = useMemo(() => Object.values(Permissions), []);
@@ -163,7 +152,6 @@ const ManagePermissionsPage: React.FC = () => {
 
     const [selectedRole, setSelectedRole] = useState<string>(VISIBLE_ROLES[0] || 'Manager');
 
-    // --- EFFECT: Fetch and Ensure Permissions (Background Sync) ---
     useEffect(() => {
         if (!currentUser?.companyId) {
             setLoading(false);
@@ -184,14 +172,12 @@ const ManagePermissionsPage: React.FC = () => {
                     let shouldUpdateDB = false;
 
                     if (docSnap.exists()) {
-                        // SCENARIO A: Document exists
                         let data = docSnap.data().allowedPermissions || [];
                         if (typeof data === 'string') {
                             try { data = JSON.parse(data); } catch { data = []; }
                         }
 
                         if (role === ROLES.OWNER) {
-                            // Enforce exclusion rules on existing Owner docs
                             finalPermissions = getSafePermissionsToSave(role, Object.values(Permissions));
                             shouldUpdateDB = true;
                         } else {
@@ -199,7 +185,6 @@ const ManagePermissionsPage: React.FC = () => {
                         }
 
                     } else {
-                        // SCENARIO B: Document Missing -> USE SHARED FUNCTIONS
                         console.warn(`No permissions for ${role}, using defaults.`);
 
                         const defaults = getDefaultPermissions(role);
@@ -207,7 +192,6 @@ const ManagePermissionsPage: React.FC = () => {
                         shouldUpdateDB = true;
                     }
 
-                    // --- DB SYNC ---
                     if (shouldUpdateDB) {
                         await setDoc(docRef, {
                             allowedPermissions: finalPermissions,
@@ -248,7 +232,6 @@ const ManagePermissionsPage: React.FC = () => {
         try {
             setSuccessMessage(null); setError(null);
 
-            // USE SHARED FUNCTION for safety
             const rawPermissions = rolePermissions[role] || [];
             const permissionsToSave = getSafePermissionsToSave(role, rawPermissions);
 
@@ -345,10 +328,10 @@ const ManagePermissionsPage: React.FC = () => {
                 </div>
             </div>
 
-            <div className="mt-4 text-center border rounded-sm pt-4 sticky bottom-10 bg-white pb-4 mx-4 shadow-lg z-20">
+            <div className="mt-4 text-center rounded-sm pt-4 sticky bottom-10 bg-transparent pb-4 mx-4">
                 <button
                     onClick={() => handleSaveChanges(selectedRole)}
-                    className="bg-sky-500 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-lg transition-transform active:scale-95"
+                    className="w-auto bg-sky-500 text-white font-bold py-3 px-4 rounded-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-lg transition-transform active:scale-95"
                 >
                     Save Changes for {selectedRole}
                 </button>

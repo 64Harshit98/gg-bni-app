@@ -100,6 +100,7 @@ const Sales: React.FC = () => {
   const isActive = (path: string) => location.pathname === path;
   const userRole = currentUser?.role || '';
   const isManager = userRole === ROLES.MANAGER || userRole === ROLES.OWNER;
+  const hideMrp = (salesSettings as any)?.hideMrp ?? false;
 
   useEffect(() => {
     const findSettingsDocId = async () => {
@@ -666,7 +667,9 @@ const Sales: React.FC = () => {
             roundingInterval: (salesSettings as any)?.roundingInterval ?? 1,
             enableItemWiseDiscount: salesSettings?.enableItemWiseDiscount ?? true,
             lockDiscount: isDiscountLocked,
-            lockPrice: isPriceLocked
+            lockPrice: isPriceLocked,
+            hideMrp: hideMrp
+
           }}
           applyRounding={applyRounding}
           State={State}

@@ -8,6 +8,7 @@ import { Spinner } from '../../constants/Spinner';
 import { Permissions, ROLES, State, Variant } from '../../enums'; // Import ROLES
 import { CustomButton } from '../../Components';
 import { Modal } from '../../constants/Modal';
+import { IconClose } from '../../constants/Icons';
 
 
 interface AppUser {
@@ -186,10 +187,10 @@ const ManageUsersPage: React.FC = () => {
 
             <div className="flex items-center justify-between p-3 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
                 <button onClick={() => navigate(-1)} className="text-gray-600 hover:text-gray-900 p-1">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                    <IconClose />
                 </button>
                 <h1 className="text-lg font-semibold text-gray-800">Manage Users</h1>
-                <CustomButton onClick={handleAddUser} variant={Variant.Save} className='flex justify-right ml-15'>
+                <CustomButton onClick={handleAddUser} variant={Variant.Save} className='flex justify-right ml-10'>
                     Add User
                 </CustomButton>
             </div>
@@ -201,7 +202,7 @@ const ManageUsersPage: React.FC = () => {
                 ) : (
                     <div className="space-y-2">
                         {users.map((user) => (
-                            <div key={user.uid} className="bg-white rounded-lg shadow border p-2">
+                            <div key={user.uid} className="bg-white rounded-sm shadow border p-2">
                                 {editingUserId === user.uid ? (
                                     <div className="space-y-3">
                                         <div>

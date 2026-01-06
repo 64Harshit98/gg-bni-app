@@ -119,15 +119,15 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   const addressHeight = addressLines.length * 4;
   const row3Y = cursorY + 5;
 
-  // Billed By
-  doc.setTextColor(lightText);
-  doc.text("Billed By:", rightColLabelX, row3Y);
-  doc.setTextColor(textColor);
-  doc.text(data.invoice.billedBy, rightColValueX, row3Y, { align: 'right' });
-
+  if (data.invoice.billedBy) {
+    doc.setTextColor(lightText);
+    doc.text("Billed By:", rightColLabelX, row3Y);
+    doc.setTextColor(textColor);
+    doc.text(data.invoice.billedBy, rightColValueX, row3Y, { align: 'right' });
+  }
   // Left Side Details
   let leftContentY = cursorY + addressHeight + 1;
-  
+
   if (data.billTo.phone) {
     doc.setTextColor(lightText);
     doc.text("Phone:", leftColX, leftContentY);
@@ -136,15 +136,11 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     leftContentY += 5;
   }
 
-  if (data.billTo.gstin) {
+  if (data.billTo.gstin && data.billTo.gstin.trim() !== '') {
     doc.setTextColor(lightText);
     doc.text("GSTIN:", leftColX, leftContentY);
     doc.setTextColor(textColor);
     doc.text(data.billTo.gstin, leftValueX, leftContentY);
-    leftContentY += 5;
-  } else {
-    doc.setTextColor(lightText);
-    doc.text("GSTIN:", leftColX, leftContentY);
     leftContentY += 5;
   }
 
@@ -174,13 +170,9 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
 
     const basePrice = inclusivePrice / (1 + (taxRate / 100));
     const taxVal = (inclusivePrice - basePrice) * qty;
-
-    // --- CRITICAL FIX IS HERE ---
-    // We check if 'amount' is strictly NOT undefined/null.
-    // This allows '0' to be passed as a valid value.
-    const finalItemAmount = (item.amount !== undefined && item.amount !== null) 
-        ? item.amount 
-        : (inclusivePrice * qty);
+    const finalItemAmount = (item.amount !== undefined && item.amount !== null)
+      ? item.amount
+      : (inclusivePrice * qty);
 
     calcTotal += finalItemAmount;
     totalTaxAmount += taxVal;
@@ -193,7 +185,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
       `${taxRate}%`,
       taxVal.toFixed(2),
       inclusivePrice.toFixed(2),
-      finalItemAmount.toFixed(2) // This will now correctly print 0.00
+      finalItemAmount.toFixed(2)
     ];
   });
 
@@ -261,7 +253,6 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     }
   });
 
-  // --- 4. PAYMENT & TERMS ---
   // @ts-ignore
   let finalY = doc.lastAutoTable.finalY + 8;
 

@@ -1,5 +1,22 @@
 {
   "projects": {
-    "default": "sellar-88ced"
+    "production": "sellar-88ced",
+    "staging": "dev-sellar"
+  },
+  "targets": {
+    "sellar-88ced": {
+      "hosting": {
+        "site-content": [
+          "sellar-88ced"
+        ]
+      }
+    },
+    "dev-sellar": {
+      "hosting": {
+        "site-content": [
+          "dev-sellar"
+        ]
+      }
+    }
   }
 }

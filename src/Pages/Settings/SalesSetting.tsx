@@ -1,19 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { db } from '../../lib/Firebase'; // Adjust path as needed
+import { db } from '../../lib/Firebase';
 import {
     doc,
     getDoc,
     setDoc,
 } from 'firebase/firestore';
-import { Spinner } from '../../constants/Spinner'; // Adjust path
-import { Modal } from '../../constants/Modal';     // Adjust path
-import { State } from '../../enums';               // Adjust path
-import { useAuth } from '../../context/auth-context'; // Adjust path
+import { Spinner } from '../../constants/Spinner';
+import { Modal } from '../../constants/Modal';
+import { State } from '../../enums';
+import { useAuth } from '../../context/auth-context';
 
-// ==========================================
-// 1. EXPORTABLE INTERFACE
-// ==========================================
 export interface SalesSettings {
     settingType: 'sales';
     salesViewType?: 'card' | 'list';
@@ -21,8 +18,9 @@ export interface SalesSettings {
     gstScheme?: 'regular' | 'composition' | 'none';
     taxType?: 'inclusive' | 'exclusive';
     enableRounding?: boolean;
-    roundingInterval?: number; 
+    roundingInterval?: number;
     enforceExactMRP?: boolean;
+    hideMrp?: boolean;
     enableItemWiseDiscount?: boolean;
     lockDiscountEntry?: boolean;
     lockSalePriceEntry?: boolean;
@@ -38,22 +36,21 @@ export interface SalesSettings {
     companyId?: string;
 }
 
-// ==========================================
-// 2. EXPORTABLE DEFAULT FUNCTION
-// ==========================================
+
 export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     companyId: companyId,
     settingType: 'sales',
     salesViewType: 'list',
     enableSalesmanSelection: true,
     gstScheme: 'none',
-    taxType: 'exclusive', 
+    taxType: 'exclusive',
 
-    // Default Rounding
+
     enableRounding: true,
-    roundingInterval: 1, // Default round to nearest 1.00
+    roundingInterval: 1,
 
     enforceExactMRP: false,
+    hideMrp: false,
     enableItemWiseDiscount: true,
     lockDiscountEntry: false,
     lockSalePriceEntry: false,
@@ -68,9 +65,6 @@ export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     copyVoucherAfterSaving: false,
 });
 
-// ==========================================
-// 3. MAIN COMPONENT
-// ==========================================
 const SalesSettingsPage: React.FC = () => {
     const navigate = useNavigate();
     const { currentUser } = useAuth();
@@ -80,7 +74,6 @@ const SalesSettingsPage: React.FC = () => {
     const [isSaving, setIsSaving] = useState<boolean>(false);
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
 
-    // --- Load Settings on Mount ---
     useEffect(() => {
         if (!currentUser?.companyId) {
             setIsLoading(true);
@@ -91,7 +84,6 @@ const SalesSettingsPage: React.FC = () => {
             setIsLoading(true);
             const companyId = currentUser.companyId!;
 
-            // ✅ CRITICAL FIX: Use fixed ID 'sales-settings'
             const settingsDocRef = doc(db, 'companies', companyId, 'settings', 'sales-settings');
 
             try {
@@ -99,10 +91,6 @@ const SalesSettingsPage: React.FC = () => {
                 const defaultSettings = getDefaultSalesSettings(companyId);
 
                 if (docSnap.exists()) {
-                    // ✅ MERGE STRATEGY: 
-                    // 1. Load defaults (Bottom Layer)
-                    // 2. Overwrite with saved data (Top Layer)
-                    // This preserves registration choices while adding missing default fields.
                     const savedData = docSnap.data();
                     const mergedSettings = {
                         ...defaultSettings,
@@ -110,7 +98,6 @@ const SalesSettingsPage: React.FC = () => {
                     };
                     setSettings(mergedSettings as SalesSettings);
                 } else {
-                    // Create completely new if missing
                     console.log(`Creating default sales settings...`);
                     await setDoc(settingsDocRef, defaultSettings);
                     setSettings(defaultSettings);
@@ -126,17 +113,14 @@ const SalesSettingsPage: React.FC = () => {
         fetchOrCreateSettings();
     }, [currentUser?.companyId]);
 
-    // --- Special Logic: GST Composition Check ---
     useEffect(() => {
         if (settings?.gstScheme === 'composition') {
-            // Composition dealers cannot charge tax separately, so it must be inclusive
             if (settings.taxType !== 'inclusive') {
                 setSettings(prev => prev ? ({ ...prev, taxType: 'inclusive' }) : null);
             }
         }
     }, [settings?.gstScheme]);
 
-    // --- Save Handler ---
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
 
@@ -148,7 +132,6 @@ const SalesSettingsPage: React.FC = () => {
         setIsSaving(true);
         try {
             const companyId = currentUser.companyId;
-            // ✅ Target the exact same fixed document ID
             const docToUpdateRef = doc(db, 'companies', companyId, 'settings', 'sales-settings');
 
             const settingsToSave = {
@@ -158,9 +141,8 @@ const SalesSettingsPage: React.FC = () => {
                 updatedAt: new Date()
             };
 
-            // Use setDoc with merge: true to safely update or create
             await setDoc(docToUpdateRef, settingsToSave, { merge: true });
-            
+
             setModal({ message: 'Settings saved successfully!', type: State.SUCCESS });
         } catch (err) {
             console.error('Failed to save settings:', err);
@@ -170,7 +152,6 @@ const SalesSettingsPage: React.FC = () => {
         }
     };
 
-    // --- Input Change Handlers ---
     const handleChange = (field: keyof SalesSettings, value: any) => {
         if (!settings) return;
 
@@ -194,7 +175,6 @@ const SalesSettingsPage: React.FC = () => {
         }
     };
 
-    // --- Render Loading ---
     if (isLoading || !settings) {
         return (
             <div className="flex flex-col min-h-screen items-center justify-center">
@@ -204,9 +184,8 @@ const SalesSettingsPage: React.FC = () => {
         );
     }
 
-    // --- Render Main ---
     return (
-        <div className="flex flex-col min-h-screen bg-white w-full mb-16">
+        <div className="flex flex-col min-h-screen bg-white w-full">
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
             <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
@@ -220,7 +199,7 @@ const SalesSettingsPage: React.FC = () => {
                 <div className="w-6"></div>
             </div>
 
-            <main className="flex-grow p-4 bg-gray-50 w-full overflow-y-auto box-border">
+            <main className="flex-grow p-4 bg-gray-50 w-full overflow-y-auto box-border pb-30">
                 <form onSubmit={handleSave} className="max-w-3xl mx-auto">
 
                     {/* --- Card 1: General Settings --- */}
@@ -286,8 +265,6 @@ const SalesSettingsPage: React.FC = () => {
                             <input type="checkbox" id="enable-rounding" checked={settings.enableRounding ?? false} onChange={(e) => handleCheckboxChange('enableRounding', e.target.checked)} className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
                             <label htmlFor="enable-rounding" className="ml-2 text-gray-700 text-sm font-medium">Enable Rounding Off</label>
                         </div>
-
-                        {/* --- Rounding Configuration --- */}
                         {settings.enableRounding && (
                             <div className="ml-6 mt-2 mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-4">
                                 <div>
@@ -314,6 +291,16 @@ const SalesSettingsPage: React.FC = () => {
                         <div className="flex items-center mb-4">
                             <input type="checkbox" id="enforce-mrp" checked={settings.enforceExactMRP ?? false} onChange={(e) => handleCheckboxChange('enforceExactMRP', e.target.checked)} className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
                             <label htmlFor="enforce-mrp" className="ml-2 text-gray-700 text-sm font-medium">Enforce Selling Price == MRP</label>
+                        </div>
+                        <div className="flex items-center mb-4">
+                            <input
+                                type="checkbox"
+                                id="hide-mrp"
+                                checked={settings.hideMrp ?? false}
+                                onChange={(e) => handleCheckboxChange('hideMrp', e.target.checked)}
+                                className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500"
+                            />
+                            <label htmlFor="hide-mrp" className="ml-2 text-gray-700 text-sm font-medium">Hide MRP in Sales List</label>
                         </div>
                     </div>
 
@@ -413,17 +400,20 @@ const SalesSettingsPage: React.FC = () => {
                             </div>
                         </div>
                     </div>
+                </form>
+            </main>
 
-                    {/* Save Button */}
+            <div className="fixed bottom-15 left-0 right-0 p-4 bg-transparent shadow-md">
+                <div className="max-w-3xl mx-auto flex justify-center">
                     <button
-                        type="submit"
+                        onClick={handleSave}
                         disabled={isSaving || isLoading}
-                        className="w-full flex items-center justify-center bg-sky-500 text-white font-bold py-3 px-4 rounded-xl hover:bg-sky-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                        className="w-auto min-w-[150px] flex items-center justify-center bg-sky-500 text-white font-bold py-3 px-6 rounded-sm hover:bg-sky-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed shadow-lg"
                     >
                         {isSaving ? <Spinner /> : 'Save Settings'}
                     </button>
-                </form>
-            </main>
+                </div>
+            </div>
         </div>
     );
 };

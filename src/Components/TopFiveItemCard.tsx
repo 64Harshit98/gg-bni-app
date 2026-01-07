@@ -1,17 +1,12 @@
-import React, { useState, useEffect, } from 'react';
-import { db } from '../lib/Firebase';
-import { useAuth } from '../context/auth-context';
-import {
-  collection,
-  query,
-  onSnapshot,
-  where,
-  Timestamp,
-  orderBy // Added orderBy just in case, though your original didn't have it
-} from 'firebase/firestore';
+import React, { useState, useMemo } from 'react';
+import { useDashboard } from '../context/DashboardContext'; // 1. Import Global Context
 import { Spinner } from '../constants/Spinner';
-import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
-import { useFilter } from './Filter';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from './ui/card';
 
 // --- Interfaces ---
 interface SalesItem {
@@ -20,94 +15,17 @@ interface SalesItem {
   quantity: number;
   finalPrice: number;
 }
+
 interface SaleDoc {
-  items: SalesItem[];
-  createdAt: Timestamp;
-  companyId: string;
+  items?: SalesItem[];
+  // other fields exist on the doc but aren't needed here
 }
+
 interface TopItem {
   name: string;
   quantitySold: number;
-  unitPrice: number; // Storing the individual price
+  unitPrice: number;
 }
-
-// --- Custom Hook to Fetch and Process Top Items ---
-const useTopItems = () => {
-  const { currentUser } = useAuth();
-  const { filters } = useFilter();
-
-  const [topItemsByQuantity, setTopItemsByQuantity] = useState<TopItem[]>([]);
-  const [topItemsByPrice, setTopItemsByPrice] = useState<TopItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!currentUser?.companyId || !filters.startDate || !filters.endDate) {
-      setLoading(!currentUser);
-      return;
-    }
-
-    setLoading(true);
-    setError(null); // Reset error on new fetch
-    const start = new Date(filters.startDate);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(filters.endDate);
-    end.setHours(23, 59, 59, 999);
-
-    // --- FIX: Use the correct multi-tenant path ---
-    const salesQuery = query(
-      collection(db, 'companies', currentUser.companyId, 'sales'),
-      // --- FIX: No longer need the companyId filter ---
-      where('createdAt', '>=', start),
-      where('createdAt', '<=', end),
-      orderBy('createdAt', 'asc') // Added for query consistency
-    );
-
-    const unsubscribe = onSnapshot(salesQuery, (snapshot) => {
-      const stats = new Map<string, { name: string; quantitySold: number; unitPrice: number }>();
-
-      snapshot.docs.forEach((doc) => {
-        const sale = doc.data() as SaleDoc;
-        sale.items?.forEach((item) => {
-          // Ensure item is valid before processing
-          if (!item || !item.id || !item.name) return;
-
-          const currentStats = stats.get(item.id) || { name: item.name, quantitySold: 0, unitPrice: 0 };
-          const itemUnitPrice = (item.finalPrice / item.quantity) || 0;
-
-          stats.set(item.id, {
-            name: item.name,
-            quantitySold: currentStats.quantitySold + (item.quantity || 0),
-            // Store the highest price this item was sold for
-            unitPrice: Math.max(currentStats.unitPrice, itemUnitPrice),
-          });
-        });
-      });
-
-      const allItems = Array.from(stats.values());
-
-      // Sort by Quantity
-      const sortedByQuantity = [...allItems].sort((a, b) => b.quantitySold - a.quantitySold).slice(0, 5);
-      setTopItemsByQuantity(sortedByQuantity);
-
-      // Sort by Individual Price
-      const sortedByPrice = [...allItems].sort((a, b) => b.unitPrice - a.unitPrice).slice(0, 5);
-      setTopItemsByPrice(sortedByPrice);
-
-      setLoading(false);
-      setError(null);
-    }, (err) => {
-      console.error("Error fetching top items:", err);
-      setError("Failed to load top items.");
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [currentUser, filters]); // Using currentUser ensures it re-runs when auth is ready
-
-  return { topItemsByQuantity, topItemsByPrice, loading, error };
-};
-
 
 // --- Main Card Component ---
 interface TopSoldItemsCardProps {
@@ -116,15 +34,65 @@ interface TopSoldItemsCardProps {
 
 export const TopSoldItemsCard: React.FC<TopSoldItemsCardProps> = ({ isDataVisible }) => {
   const [viewMode, setViewMode] = useState<'quantity' | 'price'>('price');
-  const { topItemsByQuantity, topItemsByPrice, loading, error } = useTopItems();
+
+  // 1. Consume Global Data (0 Reads)
+  const { salesData, loading, error } = useDashboard();
+
+  // 2. Client-Side Aggregation (CPU Work)
+  // We process the "Top Items" from the sales data already in memory.
+  const { topItemsByQuantity, topItemsByPrice } = useMemo(() => {
+    if (!salesData) return { topItemsByQuantity: [], topItemsByPrice: [] };
+
+    const stats = new Map<string, TopItem>();
+
+    salesData.forEach((sale) => {
+      // Cast to expected type since context data might be generic
+      const saleItems = (sale as SaleDoc).items;
+
+      if (saleItems && Array.isArray(saleItems)) {
+        saleItems.forEach((item) => {
+          if (!item || !item.id || !item.name) return;
+
+          const currentStats = stats.get(item.id) || { name: item.name, quantitySold: 0, unitPrice: 0 };
+
+          // Calculate unit price for this specific transaction
+          // Avoid division by zero
+          const itemUnitPrice = item.quantity > 0 ? (item.finalPrice / item.quantity) : 0;
+
+          stats.set(item.id, {
+            name: item.name,
+            quantitySold: currentStats.quantitySold + (item.quantity || 0),
+            // We track the highest unit price seen for this item
+            unitPrice: Math.max(currentStats.unitPrice, itemUnitPrice),
+          });
+        });
+      }
+    });
+
+    const allItems = Array.from(stats.values());
+
+    // Sort by Quantity
+    const byQuantity = [...allItems]
+      .sort((a, b) => b.quantitySold - a.quantitySold)
+      .slice(0, 5);
+
+    // Sort by Individual Price (Highest Value Item)
+    const byPrice = [...allItems]
+      .sort((a, b) => b.unitPrice - a.unitPrice)
+      .slice(0, 5);
+
+    return { topItemsByQuantity: byQuantity, topItemsByPrice: byPrice };
+
+  }, [salesData]); // Recalculate only when global data changes
 
   const renderContent = () => {
     if (loading) return <Spinner />;
     if (error) return <p className="text-center text-red-500">{error}</p>;
+
     if (!isDataVisible) {
       return (
         <div className="flex flex-col items-center justify-center text-center text-gray-500 py-8">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mb-1"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" /><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" /><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" /><line x1="2" x2="22" y1="2" y2="22" /></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mb-1 opacity-50"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" /><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" /><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" /><line x1="2" x2="22" y1="2" y2="22" /></svg>
           Data is hidden
         </div>
       );

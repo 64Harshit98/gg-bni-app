@@ -4,12 +4,15 @@ import {
   collection,
   query,
   where,
-  getDocs,
-  Timestamp,
-  orderBy,
+  getAggregateFromServer,
+  sum,
+  count,
+  Timestamp
 } from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
-import { Line, LineChart, CartesianGrid, YAxis } from 'recharts';
+import { useDashboard } from '../context/DashboardContext';
+import { useFilter } from './Filter';
+import { Line, LineChart, CartesianGrid, YAxis, XAxis } from 'recharts';
 import {
   Card,
   CardContent,
@@ -20,21 +23,15 @@ import {
 } from './ui/card';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from './ui/chart';
 import type { ChartConfig } from './ui/chart';
-import { useFilter } from './Filter';
 
 // --- Interfaces ---
-interface SaleRecord {
-  totalAmount: number;
-  createdAt: { toDate: () => Date };
-  companyId: string;
-}
 interface ChartData {
   date: string;
   sales: number;
   bills: number;
+  label: string;
 }
 
-// --- Chart Configuration ---
 const chartConfig = {
   sales: {
     label: 'Sales',
@@ -46,6 +43,60 @@ const chartConfig = {
   },
 } satisfies ChartConfig;
 
+/**
+ * Helper Hook for the "Yesterday Dot" (Visual Padding)
+ */
+const usePaddingDayStats = (companyId: string | undefined, targetDate: Date | null) => {
+  const [stats, setStats] = useState<{ sales: number, bills: number } | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!db || !companyId || !targetDate) {
+      setStats(null);
+      return;
+    }
+
+    let isMounted = true;
+    setLoading(true);
+
+    const fetchPadding = async () => {
+      try {
+        const start = new Date(targetDate);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(targetDate);
+        end.setHours(23, 59, 59, 999);
+
+        const q = query(
+          collection(db, 'companies', companyId, 'sales'),
+          where('createdAt', '>=', Timestamp.fromDate(start)),
+          where('createdAt', '<=', Timestamp.fromDate(end))
+        );
+
+        const snapshot = await getAggregateFromServer(q, {
+          sales: sum('totalAmount'),
+          bills: count()
+        });
+
+        if (isMounted) {
+          setStats({
+            sales: snapshot.data().sales || 0,
+            bills: snapshot.data().bills || 0
+          });
+        }
+      } catch (e) {
+        console.error("Padding fetch failed", e);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    fetchPadding();
+    return () => { isMounted = false; };
+  }, [companyId, targetDate ? targetDate.toISOString() : null]);
+
+  return { stats, loading };
+};
+
 interface SalesBarChartReportProps {
   isDataVisible: boolean;
 }
@@ -55,123 +106,101 @@ export function SalesBarChartReport({
 }: SalesBarChartReportProps) {
   const { currentUser } = useAuth();
   const { filters } = useFilter();
-  const [chartData, setChartData] = useState<ChartData[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'amount' | 'quantity'>('amount');
 
-  useEffect(() => {
-    const fetchSalesData = async () => {
-      if (!currentUser?.companyId || !filters.startDate || !filters.endDate) {
-        setIsLoading(false);
-        setChartData([]);
-        return;
-      }
-      setIsLoading(true);
-      setError(null);
+  // 1. Get Global Data
+  const { salesData, loading: dashboardLoading } = useDashboard();
 
-      // --- MODIFIED SECTION START ---
-      // We use 'let' for start because we might modify it
-      let start = new Date(filters.startDate);
-      start.setHours(0, 0, 0, 0);
+  // 2. Padding Logic
+  const paddingDate = useMemo(() => {
+    if (!filters.startDate || !filters.endDate) return null;
+    const start = new Date(filters.startDate);
+    const end = new Date(filters.endDate);
 
-      const end = new Date(filters.endDate);
-      end.setHours(23, 59, 59, 999);
+    if (start.toDateString() === end.toDateString()) {
+      const yesterday = new Date(start);
+      yesterday.setDate(yesterday.getDate() - 1);
+      return yesterday;
+    }
+    return null;
+  }, [filters.startDate, filters.endDate]);
 
-      // Check if start and end are the same day (Single day selection like Today or Yesterday)
-      if (start.toDateString() === end.toDateString()) {
-        // Subtract one day from start to ensure we have at least 2 points for a line
-        start.setDate(start.getDate() - 1);
-      }
-      // --- MODIFIED SECTION END ---
+  const { stats: paddingStats, loading: paddingLoading } = usePaddingDayStats(currentUser?.companyId, paddingDate);
 
-      try {
-        const salesQuery = query(
-          collection(db, 'companies', currentUser.companyId, 'sales'),
-          where('createdAt', '>=', Timestamp.fromDate(start)),
-          where('createdAt', '<=', Timestamp.fromDate(end)),
-          orderBy('createdAt', 'asc'),
-        );
-        const querySnapshot = await getDocs(salesQuery);
+  // 3. Process Data
+  const chartData = useMemo(() => {
+    if (!filters.startDate || !filters.endDate) return [];
 
-        const salesByDate: { [key: string]: { sales: number; bills: number } } =
-          {};
+    const start = new Date(filters.startDate);
+    const end = new Date(filters.endDate);
 
-        // Initialize all dates in the range with 0 sales and 0 bills
-        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-          const dateKey = d.toLocaleDateString('en-CA'); // YYYY-MM-DD
-          salesByDate[dateKey] = { sales: 0, bills: 0 };
+    const dataMap = new Map<string, ChartData>();
+    const getKey = (d: Date) => d.toLocaleDateString('en-CA');
+
+    let current = new Date(start);
+    while (current <= end) {
+      dataMap.set(getKey(current), {
+        date: getKey(current),
+        label: current.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+        sales: 0,
+        bills: 0
+      });
+      current.setDate(current.getDate() + 1);
+    }
+
+    if (salesData) {
+      salesData.forEach(sale => {
+        const saleDate = sale.createdAt.toDate();
+        const key = getKey(saleDate);
+        const entry = dataMap.get(key);
+        if (entry) {
+          entry.sales += sale.totalAmount || 0;
+          entry.bills += 1;
         }
+      });
+    }
 
-        querySnapshot.forEach((doc) => {
-          const sale = doc.data() as SaleRecord;
-          const dateKey = sale.createdAt.toDate().toLocaleDateString('en-CA');
-          if (salesByDate[dateKey]) {
-            salesByDate[dateKey].sales += sale.totalAmount;
-            salesByDate[dateKey].bills += 1;
-          }
-        });
+    let results = Array.from(dataMap.values());
 
-        const newChartData: ChartData[] = Object.keys(salesByDate).map(
-          (date) => ({
-            date,
-            sales: salesByDate[date].sales,
-            bills: salesByDate[date].bills,
-          }),
-        );
+    if (paddingDate && paddingStats) {
+      const padKey = getKey(paddingDate);
+      results.unshift({
+        date: padKey,
+        label: paddingDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+        sales: paddingStats.sales,
+        bills: paddingStats.bills
+      });
+    }
 
-        setChartData(newChartData);
-      } catch (err) {
-        console.error('Error fetching sales data:', err);
-        setError('Failed to fetch sales data.');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchSalesData();
-  }, [currentUser, filters]);
+    return results;
+  }, [salesData, filters.startDate, filters.endDate, paddingDate, paddingStats]);
 
+  // 4. Calculate Total
   const { totalSales, totalBills } = useMemo(() => {
-    // Note: If you want the "Total Sales" text at the bottom to ONLY show
-    // the selected day (and ignore the extra day we added for the line),
-    // you would need to filter chartData here. 
-    // However, usually showing the total of the visible chart points is preferred.
-    return chartData.reduce(
-      (acc, data) => {
-        acc.totalSales += data.sales;
-        acc.totalBills += data.bills;
+    if (!salesData) return { totalSales: 0, totalBills: 0 };
+    return salesData.reduce(
+      (acc, sale) => {
+        acc.totalSales += sale.totalAmount || 0;
+        acc.totalBills += 1;
         return acc;
       },
-      { totalSales: 0, totalBills: 0 },
+      { totalSales: 0, totalBills: 0 }
     );
-  }, [chartData]);
+  }, [salesData]);
+
+  const isLoading = dashboardLoading || paddingLoading;
 
   const selectedPeriodText = useMemo(() => {
-    if (!filters.startDate || !filters.endDate) {
-      return 'for the selected period';
-    }
-    const options: Intl.DateTimeFormatOptions = {
-      day: 'numeric',
-      month: 'numeric',
-      year: '2-digit',
-    };
-    const startDate = new Date(filters.startDate).toLocaleDateString(
-      'en-IN',
-      options,
-    );
-    const endDate = new Date(filters.endDate).toLocaleDateString(
-      'en-IN',
-      options,
-    );
-
-    if (startDate === endDate) {
-      return `for ${startDate}`;
-    }
-    return `from ${startDate} to ${endDate}`;
+    if (!filters.startDate || !filters.endDate) return 'for the selected period';
+    const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'numeric', year: '2-digit' };
+    const start = new Date(filters.startDate).toLocaleDateString('en-IN', options);
+    const end = new Date(filters.endDate).toLocaleDateString('en-IN', options);
+    return start === end ? `for ${start}` : `from ${start} to ${end}`;
   }, [filters.startDate, filters.endDate]);
 
   return (
     <Card>
+      {/* Header always visible */}
       <CardHeader className="flex flex-row items-center justify-between -mb-6">
         <div className="mb-2">
           <CardTitle>Daily Performance</CardTitle>
@@ -181,83 +210,40 @@ export function SalesBarChartReport({
           </CardDescription>
         </div>
         <div className="flex items-center p-1 bg-gray-100 rounded-lg">
-          <button
-            onClick={() => setViewMode('amount')}
-            className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${viewMode === 'amount' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}
-          >
-            Amt
-          </button>
-          <button
-            onClick={() => setViewMode('quantity')}
-            className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${viewMode === 'quantity' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}
-          >
-            Qty
-          </button>
+          <button onClick={() => setViewMode('amount')} className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${viewMode === 'amount' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}>Amt</button>
+          <button onClick={() => setViewMode('quantity')} className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${viewMode === 'quantity' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}>Qty</button>
         </div>
       </CardHeader>
+
       <CardContent>
         {isLoading ? (
-          <div className="flex h-[260px] items-center justify-center"></div>
-        ) : error ? (
-          <div className="flex h-[260px] items-center justify-center text-center">
-            <p className="text-red-500">{error}</p>
-          </div>
-        ) : isDataVisible ? (
-          <ChartContainer config={chartConfig} className="h-[260px] w-full">
-            <LineChart
-              data={chartData}
-              margin={{ top: 30, left: -15, right: 12, bottom: 10 }}
-            >
-              <CartesianGrid vertical={false} />
-              <ChartTooltip
-                cursor={false}
-                content={<ChartTooltipContent hideLabel />}
-              />
-              <YAxis
-                stroke="#888888"
-                fontSize={10}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={(value) =>
-                  viewMode === 'amount' ? `₹${value / 1000}k` : value.toString()
-                }
-              />
-              <Line
-                dataKey={viewMode === 'amount' ? 'sales' : 'bills'}
-                type="monotone"
-                stroke={
-                  viewMode === 'amount'
-                    ? chartConfig.sales.color
-                    : chartConfig.bills.color
-                }
-                strokeWidth={2}
-                dot={{ r: 4 }}
-              />
-            </LineChart>
-          </ChartContainer>
-        ) : (
-          <div className="flex h-[250px] w-full flex-col items-center justify-center rounded-lg bg-gray-100">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="48"
-              height="48"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="text-gray-400 mb-2"
-            >
+          <div className="flex h-[260px] items-center justify-center text-sm text-gray-400">Loading daily stats...</div>
+        ) : !isDataVisible ? (
+          // --- HIDDEN STATE (Replaces Chart) ---
+          <div className="flex h-[260px] w-full flex-col items-center justify-center rounded-lg bg-gray-50 border border-gray-100">
+            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-300 mb-2">
               <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
               <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
               <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
               <line x1="2" x2="22" y1="2" y2="22" />
             </svg>
-            <p className="text-gray-500">Data is hidden</p>
+            <p className="text-gray-400 font-medium">Data Hidden</p>
           </div>
+        ) : (
+          // --- VISIBLE STATE (Shows Chart) ---
+          <ChartContainer config={chartConfig} className="h-[260px] w-full">
+            <LineChart data={chartData} margin={{ top: 30, left: 10, right: 10, bottom: 10 }}>
+              <CartesianGrid vertical={false} />
+              <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} fontSize={12} minTickGap={32} />
+              <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
+              <YAxis stroke="#888888" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => viewMode === 'amount' ? `₹${value / 1000}k` : value.toString()} />
+              <Line dataKey={viewMode === 'amount' ? 'sales' : 'bills'} type="monotone" stroke={viewMode === 'amount' ? chartConfig.sales.color : chartConfig.bills.color} strokeWidth={2} dot={{ r: 4 }} />
+            </LineChart>
+          </ChartContainer>
         )}
       </CardContent>
+
+      {/* Footer always visible */}
       <CardFooter className="flex-col items-start gap-2 text-sm">
         <div className="flex gap-2 leading-none font-medium">
           Total {viewMode === 'amount' ? 'Sales' : 'Bills'}:

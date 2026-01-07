@@ -4,110 +4,106 @@ import {
   collection,
   query,
   where,
-  onSnapshot
+  getAggregateFromServer,
+  sum
 } from 'firebase/firestore';
-import type { FirestoreError } from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
-import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
+import { useDashboard } from '../context/DashboardContext'; // 1. Import Global Context
 import { useFilter } from './Filter';
-
+import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 
 /**
- * Custom hook to fetch and compare sales data for a specific company over two date ranges.
+ * Helper Hook: Only fetches the PREVIOUS period data.
+ * The Current period data comes from the Global Dashboard Context.
  */
-const useSalesComparison = (companyId: string | undefined) => {
+const usePreviousPeriodSales = (companyId: string | undefined) => {
   const { filters } = useFilter();
-  const [sales, setSales] = useState(0);
   const [comparisonSales, setComparisonSales] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!db || !companyId || !filters.startDate || !filters.endDate) {
       setLoading(false);
       return;
     }
+
+    let isMounted = true;
     setLoading(true);
-    setError(null);
 
-    // --- Main Date Range (from filter) ---
-    const startDate = new Date(filters.startDate);
-    startDate.setHours(0, 0, 0, 0);
-    const endDate = new Date(filters.endDate);
-    endDate.setHours(23, 59, 59, 999);
+    const fetchPreviousSales = async () => {
+      try {
+        // --- Calculate Previous Date Range ---
+        const startDate = new Date(filters.startDate);
+        startDate.setHours(0, 0, 0, 0);
+        const endDate = new Date(filters.endDate);
+        endDate.setHours(23, 59, 59, 999);
 
-    // --- Comparison Date Range FIX ---
+        const periodLengthMs = endDate.getTime() - startDate.getTime();
+        const comparisonEndDateMs = startDate.getTime() - 1;
+        const comparisonEndDate = new Date(comparisonEndDateMs);
+        const comparisonStartDate = new Date(comparisonEndDateMs - periodLengthMs);
+        comparisonStartDate.setHours(0, 0, 0, 0);
 
-    // Calculate the length of the current period in milliseconds.
-    const periodLengthMs = endDate.getTime() - startDate.getTime();
+        // --- Fetch ONLY the previous period (Cost: 1 Read) ---
+        const salesCollection = collection(db, 'companies', companyId, 'sales');
+        const qComparison = query(
+          salesCollection,
+          where('createdAt', '>=', comparisonStartDate),
+          where('createdAt', '<=', comparisonEndDate)
+        );
 
-    // Comparison End Date: The millisecond before the current period began.
-    const comparisonEndDateMs = startDate.getTime() - 1;
-    const comparisonEndDate = new Date(comparisonEndDateMs);
+        const snapshot = await getAggregateFromServer(qComparison, {
+          total: sum('totalAmount')
+        });
 
-    // Comparison Start Date: Subtract the full period length from the comparison end point.
-    const comparisonStartDate = new Date(comparisonEndDateMs - periodLengthMs);
-    // Ensure it starts exactly at 00:00:00 of its start day (optional, but good practice)
-    comparisonStartDate.setHours(0, 0, 0, 0);
-
-    // --- Update queries to use the multi-tenant path ---
-    const qSales = query(
-      collection(db, 'companies', companyId, 'sales'),
-      where('createdAt', '>=', startDate),
-      where('createdAt', '<=', endDate)
-    );
-
-    const qComparison = query(
-      collection(db, 'companies', companyId, 'sales'),
-      where('createdAt', '>=', comparisonStartDate),
-      where('createdAt', '<=', comparisonEndDate)
-    );
-
-    const unsubscribeSales = onSnapshot(qSales, (snapshot) => {
-      let total = 0;
-      snapshot.forEach((doc) => total += doc.data().totalAmount || 0);
-      setSales(total);
-      setLoading(false);
-    }, (err: FirestoreError) => {
-      console.error("Sales snapshot error: ", err);
-      setError(`Failed to load sales data: ${err.message}`);
-      setLoading(false);
-    });
-
-    const unsubscribeComparison = onSnapshot(qComparison, (snapshot) => {
-      let total = 0;
-      snapshot.forEach((doc) => total += doc.data().totalAmount || 0);
-      setComparisonSales(total);
-    }, (err: FirestoreError) => {
-      console.error("Comparison sales snapshot error: ", err);
-    });
-
-    return () => {
-      unsubscribeSales();
-      unsubscribeComparison();
+        if (isMounted) {
+          setComparisonSales(snapshot.data().total || 0);
+        }
+      } catch (err) {
+        console.error("Error fetching comparison sales:", err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
     };
-  }, [companyId, filters]);
 
-  return { sales, comparisonSales, loading, error };
+    fetchPreviousSales();
+
+    return () => { isMounted = false; };
+  }, [companyId, filters.startDate, filters.endDate]);
+
+  return { comparisonSales, loading };
 };
 
+
+// --- Main Component ---
 interface SalesCardProps {
   isDataVisible: boolean;
 }
 
 export const SalesCard: React.FC<SalesCardProps> = ({ isDataVisible }) => {
   const { currentUser } = useAuth();
-  const { sales, comparisonSales, loading, error } = useSalesComparison(
-    currentUser?.companyId,
-  );
 
+  // 1. Get Current Sales from Global State (Instant, 0 Reads)
+  const { salesData, loading: dashboardLoading } = useDashboard();
+
+  // 2. Get Previous Sales from local optimized fetch (1 Read)
+  const { comparisonSales, loading: comparisonLoading } = usePreviousPeriodSales(currentUser?.companyId);
+
+  // 3. Calculate Current Total from Global Data
+  const currentSales = useMemo(() => {
+    if (!salesData) return 0;
+    return salesData.reduce((acc, sale) => acc + (sale.totalAmount || 0), 0);
+  }, [salesData]);
+
+  // Combined Loading State
+  const isLoading = dashboardLoading || comparisonLoading;
+
+  // 4. Calculate Percentage
   const percentageChange = useMemo(() => {
-    if (loading || error) return 0;
-    if (comparisonSales === 0) {
-      return sales > 0 ? 100 : 0;
-    }
-    return ((sales - comparisonSales) / comparisonSales) * 100;
-  }, [sales, comparisonSales, loading, error]);
+    if (isLoading) return 0;
+    if (comparisonSales === 0) return currentSales > 0 ? 100 : 0;
+    return ((currentSales - comparisonSales) / comparisonSales) * 100;
+  }, [currentSales, comparisonSales, isLoading]);
 
   const isPositive = percentageChange >= 0;
 
@@ -117,14 +113,12 @@ export const SalesCard: React.FC<SalesCardProps> = ({ isDataVisible }) => {
         <CardTitle>Total Sales</CardTitle>
       </CardHeader>
       <CardContent>
-        {loading ? (
+        {isLoading ? (
           <div className="text-center text-gray-500">Loading...</div>
-        ) : error ? (
-          <div className="text-center text-red-500">{error}</div>
         ) : (
           <div className="text-center">
             <p className="text-4xl font-bold text-blue-600">
-              {isDataVisible ? `₹${sales.toLocaleString('en-IN')}` : '₹ ******'}
+              {isDataVisible ? `₹${currentSales.toLocaleString('en-IN')}` : '₹ ******'}
             </p>
             <p className="text-md text-gray-500 mt-2">
               <span className={`font-bold ${isDataVisible ? (isPositive ? 'text-green-600' : 'text-red-600') : 'text-gray-500'}`}>

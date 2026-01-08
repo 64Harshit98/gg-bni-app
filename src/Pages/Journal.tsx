@@ -24,7 +24,9 @@ import { Modal, PaymentModal } from '../constants/Modal';
 import { generatePdf } from '../UseComponents/pdfGenerator';
 import { getFirestoreOperations } from '../lib/ItemsFirebase';
 import { useSalesSettings } from '../context/SettingsContext';
-import { IconChevronDown, IconClose, IconFilter, IconSearch, IconDownload, IconPrint } from '../constants/Icons';
+import { IconChevronDown, IconClose, IconFilter, IconSearch, IconDownload, IconPrint, IconScanCircle } from '../constants/Icons'; // Added IconScanCircle
+import QRCode from 'react-qr-code';
+import { FiX } from 'react-icons/fi';
 
 interface InvoiceItem {
   id: string;
@@ -185,6 +187,7 @@ const Journal: React.FC = () => {
 
   const [pdfGenerating, setPdfGenerating] = useState<string | null>(null);
   const [invoiceToPrint, setInvoiceToPrint] = useState<Invoice | null>(null);
+  const [showQrModal, setShowQrModal] = useState<Invoice | null>(null);
 
   const { currentUser, loading: authLoading } = useAuth();
   const { invoices, loading: dataLoading, error } = useJournalData(currentUser?.companyId);
@@ -345,6 +348,12 @@ const Journal: React.FC = () => {
       setPdfGenerating(null);
     }
   };
+
+  const handleShowQr = (invoice: Invoice) => {
+      setInvoiceToPrint(null); 
+      setShowQrModal(invoice);
+  };
+
   const promptDeleteInvoice = (invoice: Invoice) => {
     setInvoiceToDelete(invoice);
     setModal({ message: "Are you sure you want to delete this invoice? This action cannot be undone and will restore item stock.", type: State.INFO });
@@ -464,6 +473,7 @@ const Journal: React.FC = () => {
 
         return (
           <CustomCard key={invoice.id} onClick={() => handleInvoiceClick(invoice.id)} className="cursor-pointer transition-shadow hover:shadow-md">
+            {/* ... (Existing Card Content) ... */}
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-base font-semibold text-slate-800">{invoice.invoiceNumber}</p>
@@ -505,13 +515,11 @@ const Journal: React.FC = () => {
 
                 {activeModes.length > 0 && (
                   <div className="flex justify-between items-start mt-3 pt-2 border-t border-slate-100 text-xs text-slate-500">
-
                     {salesSettings?.enableSalesmanSelection ? (
                       <p className="text-left whitespace-nowrap mr-2">
                         Salesman: {invoice.salesmanName?.slice(0, 15) || 'N/A'}
                       </p>
                     ) : <div></div>}
-
                     <div className="flex flex-wrap justify-end gap-x-2 gap-y-1 text-right">
                       <span>Paid via:</span>
                       {activeModes.map(([key, val]) => (
@@ -562,6 +570,7 @@ const Journal: React.FC = () => {
       {modal && <Modal message={modal.message} type={modal.type} onClose={cancelDelete} onConfirm={confirmDeleteInvoice} showConfirmButton={invoiceToDelete !== null} />}
       <PaymentModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} invoice={selectedInvoice} onSubmit={handleSettlePayment} />
 
+      {/* --- ACTION SELECTION MODAL --- */}
       {invoiceToPrint && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setInvoiceToPrint(null)}>
           <div className="bg-white rounded-lg p-6 w-full max-w-sm mx-4 shadow-xl animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
@@ -571,16 +580,59 @@ const Journal: React.FC = () => {
                 <IconClose />
               </button>
             </div>
-            <p className="text-gray-600 mb-6">Do you want to download the PDF file or open the print dialog?</p>
+            <p className="text-gray-600 mb-6">Choose how you want to provide the bill.</p>
             <div className="flex flex-col gap-3">
-              <button onClick={() => handlePdfAction(invoiceToPrint, ACTION.DOWNLOAD)} className="w-full bg-blue-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"><IconDownload /> Download PDF</button>
-              <button onClick={() => handlePdfAction(invoiceToPrint, ACTION.PRINT)} className="w-full bg-white text-gray-700 border border-gray-300 py-2.5 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"><IconPrint /> Print Directly</button>
+              <button onClick={() => handlePdfAction(invoiceToPrint, ACTION.DOWNLOAD)} className="w-full bg-blue-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2">
+                <IconDownload /> Download PDF
+              </button>
+              <button onClick={() => handlePdfAction(invoiceToPrint, ACTION.PRINT)} className="w-full bg-white text-gray-700 border border-gray-300 py-2.5 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
+                <IconPrint /> Print Directly
+              </button>
+              
+              {/* --- NEW BUTTON: GENERATE QR CODE --- */}
+              <button onClick={() => handleShowQr(invoiceToPrint)} className="w-full bg-gray-900 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2">
+                <IconScanCircle width={20} height={20} /> Generate QR Code
+              </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* --- QR CODE DISPLAY MODAL --- */}
+      {showQrModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm flex flex-col items-center animate-in fade-in zoom-in duration-300 relative">
+                <button onClick={() => setShowQrModal(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+                    <FiX size={24} />
+                </button>
+                
+                <h3 className="text-xl font-bold text-gray-800 mb-1">Download Bill</h3>
+                <p className="text-sm text-gray-500 mb-4">Invoice #{showQrModal.invoiceNumber}</p>
+                
+                <div className="bg-white p-2 border-2 border-gray-100 rounded-lg shadow-inner mb-4">
+                    <QRCode 
+                        value={`${window.location.origin}/download-bill/${currentUser?.companyId}/${showQrModal.id}`} 
+                        size={200}
+                        viewBox={`0 0 256 256`}
+                    />
+                </div>
+                
+                <p className="text-center text-sm text-gray-600 mb-4">
+                    Scan to download PDF
+                </p>
+                
+                <button 
+                    onClick={() => setShowQrModal(null)}
+                    className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+                >
+                    Close
+                </button>
+            </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between p-2 px-2">
+        {/* ... (Existing Header and Search Logic) ... */}
         <div className="flex flex-1 items-center">
           <button onClick={() => setShowSearch(!showSearch)} className="text-slate-500 hover:text-slate-800 transition-colors mr-4">
             {showSearch ? (

@@ -14,8 +14,8 @@ import autoTable from 'jspdf-autotable';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
-import { PaymentChart } from '../../Components/PaymentChart';
-import { TopEntitiesList } from '../../Components/TopFiveEntities';
+// import { PaymentChart } from '../../Components/PaymentChart';
+// import { TopEntitiesList } from '../../Components/TopFiveEntities';
 import { IconClose } from '../../constants/Icons';
 import { getSalesColumns } from '../../constants/TableColoumns';
 
@@ -228,7 +228,7 @@ const SalesReport: React.FC = () => {
     doc.save(`sales_report_${formatDateForInput(new Date())}.pdf`);
   };
 
-const tableColumns = useMemo(() => getSalesColumns(), []);
+  const tableColumns = useMemo(() => getSalesColumns(), []);
 
   if (isLoading || authLoading) return <div className="p-4 text-center">Loading...</div>;
   if (error) return <div className="p-4 text-center text-red-500">{error}</div>;
@@ -237,7 +237,7 @@ const tableColumns = useMemo(() => getSalesColumns(), []);
     <div className="min-h-screen bg-gray-100 p-2 pb-16">
       <div className="flex items-center justify-between pb-3 border-b mb-2">
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">Sales Report</h1>
-        <button onClick={() => navigate(-1)} className="p-2"> 
+        <button onClick={() => navigate(-1)} className="p-2">
           <IconClose width={20} height={20} />
         </button>
       </div>
@@ -265,7 +265,7 @@ const tableColumns = useMemo(() => getSalesColumns(), []);
         <CustomCard variant={CardVariant.Summary} title="Items Sold" value={summary.totalItemsSold?.toString() || '0'} />
         <CustomCard variant={CardVariant.Summary} title="Avg Sale Value" value={`₹${Math.round(summary.averageSaleValue || 0).toLocaleString('en-IN')}`} />
       </div>
-
+      {/* 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 mb-2">
         <div className="lg:col-span-2">
           <TopEntitiesList 
@@ -276,7 +276,7 @@ const tableColumns = useMemo(() => getSalesColumns(), []);
           />
         </div>
         <PaymentChart isDataVisible={true} type="sales" filters={appliedFilters} />
-      </div>
+      </div> */}
 
       <div className="bg-white p-4 rounded-lg shadow-md flex justify-between items-center">
         <h2 className="text-lg font-semibold text-gray-700">Report Details</h2>

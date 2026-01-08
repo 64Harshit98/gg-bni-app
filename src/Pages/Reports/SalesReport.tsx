@@ -58,7 +58,11 @@ const FilterSelect: React.FC<{
   children: React.ReactNode;
 }> = ({ label, value, onChange, children }) => (
   <div className="flex-1 min-w-0">
-    {label && <label className="block text-xs text-center font-medium text-gray-600 mb-1">{label}</label>}
+    {label && (
+      <label className="block text-xs text-center font-medium text-gray-600 mb-1">
+        {label}
+      </label>
+    )}
     <select
       value={value}
       onChange={onChange}
@@ -79,9 +83,15 @@ const SalesReport: React.FC = () => {
   const [datePreset, setDatePreset] = useState<string>('today');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
-  const [appliedFilters, setAppliedFilters] = useState<{ start: number; end: number } | null>(null);
+  const [appliedFilters, setAppliedFilters] = useState<{
+    start: number;
+    end: number;
+  } | null>(null);
   const [isListVisible, setIsListVisible] = useState(false);
-  const [sortConfig, setSortConfig] = useState<{ key: keyof SaleRecord; direction: 'asc' | 'desc' }>({ key: 'createdAt', direction: 'desc' });
+  const [sortConfig, setSortConfig] = useState<{
+    key: keyof SaleRecord;
+    direction: 'asc' | 'desc';
+  }>({ key: 'createdAt', direction: 'desc' });
 
   useEffect(() => {
     const today = new Date();
@@ -111,24 +121,27 @@ const SalesReport: React.FC = () => {
       try {
         const q = query(
           collection(db, 'companies', companyId, 'sales'),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
         );
 
         const querySnapshot = await getDocs(q);
-        const fetchedSales: SaleRecord[] = querySnapshot.docs.map(doc => {
+        const fetchedSales: SaleRecord[] = querySnapshot.docs.map((doc) => {
           const data = doc.data();
           return {
             id: doc.id,
             partyName: data.partyName || 'N/A',
             totalAmount: data.totalAmount || 0,
             paymentMethods: data.paymentMethods || {},
-            createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toMillis() : Date.now(),
+            createdAt:
+              data.createdAt instanceof Timestamp
+                ? data.createdAt.toMillis()
+                : Date.now(),
             items: data.items || [],
           };
         });
         setSales(fetchedSales);
       } catch (err) {
-        console.error("Error fetching sales:", err);
+        console.error('Error fetching sales:', err);
         setError('Failed to load sales report.');
       } finally {
         setIsLoading(false);
@@ -142,11 +155,20 @@ const SalesReport: React.FC = () => {
     let start = new Date();
     let end = new Date();
     switch (preset) {
-      case 'today': break;
-      case 'yesterday': start.setDate(start.getDate() - 1); end.setDate(end.getDate() - 1); break;
-      case 'last7': start.setDate(start.getDate() - 6); break;
-      case 'last30': start.setDate(start.getDate() - 29); break;
-      case 'custom': return;
+      case 'today':
+        break;
+      case 'yesterday':
+        start.setDate(start.getDate() - 1);
+        end.setDate(end.getDate() - 1);
+        break;
+      case 'last7':
+        start.setDate(start.getDate() - 6);
+        break;
+      case 'last30':
+        start.setDate(start.getDate() - 29);
+        break;
+      case 'custom':
+        return;
     }
     setCustomStartDate(formatDateForInput(start));
     setCustomEndDate(formatDateForInput(end));
@@ -170,36 +192,66 @@ const SalesReport: React.FC = () => {
 
   const { filteredSales, summary } = useMemo(() => {
     if (!appliedFilters) {
-      return { filteredSales: [], summary: { totalSales: 0, totalTransactions: 0, totalItemsSold: 0, averageSaleValue: 0 } };
+      return {
+        filteredSales: [],
+        summary: {
+          totalSales: 0,
+          totalTransactions: 0,
+          totalItemsSold: 0,
+          averageSaleValue: 0,
+        },
+      };
     }
 
-    let newFilteredSales = sales.filter(sale =>
-      sale.createdAt >= appliedFilters.start && sale.createdAt <= appliedFilters.end
+    let newFilteredSales = sales.filter(
+      (sale) =>
+        sale.createdAt >= appliedFilters.start &&
+        sale.createdAt <= appliedFilters.end,
     );
 
     newFilteredSales.sort((a, b) => {
       const key = sortConfig.key;
       const direction = sortConfig.direction === 'asc' ? 1 : -1;
       if (key === 'items') {
-        const totalItemsA = a.items.reduce((sum, item) => sum + item.quantity, 0);
-        const totalItemsB = b.items.reduce((sum, item) => sum + item.quantity, 0);
+        const totalItemsA = a.items.reduce(
+          (sum, item) => sum + item.quantity,
+          0,
+        );
+        const totalItemsB = b.items.reduce(
+          (sum, item) => sum + item.quantity,
+          0,
+        );
         return (totalItemsA - totalItemsB) * direction;
       }
       const valA = a[key] ?? '';
       const valB = b[key] ?? '';
-      if (typeof valA === 'string' && typeof valB === 'string') return valA.localeCompare(valB) * direction;
-      if (typeof valA === 'number' && typeof valB === 'number') return (valA - valB) * direction;
+      if (typeof valA === 'string' && typeof valB === 'string')
+        return valA.localeCompare(valB) * direction;
+      if (typeof valA === 'number' && typeof valB === 'number')
+        return (valA - valB) * direction;
       return 0;
     });
 
-    const totalSales = newFilteredSales.reduce((acc, sale) => acc + sale.totalAmount, 0);
-    const totalItemsSold = newFilteredSales.reduce((acc, sale) => acc + sale.items.reduce((iAcc, i) => iAcc + i.quantity, 0), 0);
+    const totalSales = newFilteredSales.reduce(
+      (acc, sale) => acc + sale.totalAmount,
+      0,
+    );
+    const totalItemsSold = newFilteredSales.reduce(
+      (acc, sale) => acc + sale.items.reduce((iAcc, i) => iAcc + i.quantity, 0),
+      0,
+    );
     const totalTransactions = newFilteredSales.length;
-    const averageSaleValue = totalTransactions > 0 ? totalSales / totalTransactions : 0;
+    const averageSaleValue =
+      totalTransactions > 0 ? totalSales / totalTransactions : 0;
 
     return {
       filteredSales: newFilteredSales,
-      summary: { totalSales, totalTransactions, totalItemsSold, averageSaleValue },
+      summary: {
+        totalSales,
+        totalTransactions,
+        totalItemsSold,
+        averageSaleValue,
+      },
     };
   }, [appliedFilters, sales, sortConfig]);
 
@@ -210,7 +262,11 @@ const SalesReport: React.FC = () => {
     doc.text('Sales Report', 14, 22);
     doc.setFontSize(11);
     doc.setTextColor(100);
-    doc.text(`Date Range: ${formatDate(appliedFilters.start)} to ${formatDate(appliedFilters.end)}`, 14, 29);
+    doc.text(
+      `Date Range: ${formatDate(appliedFilters.start)} to ${formatDate(appliedFilters.end)}`,
+      14,
+      29,
+    );
     autoTable(doc, {
       startY: 35,
       head: [['Date', 'Party Name', 'Items', 'Amount']],
@@ -221,7 +277,12 @@ const SalesReport: React.FC = () => {
         `₹ ${sale.totalAmount.toLocaleString('en-IN')}`,
       ]),
       foot: [
-        ['Total', '', `${summary.totalItemsSold}`, `₹ ${summary.totalSales.toLocaleString('en-IN')}`]
+        [
+          'Total',
+          '',
+          `${summary.totalItemsSold}`,
+          `₹ ${summary.totalSales.toLocaleString('en-IN')}`,
+        ],
       ],
       footStyles: { fontStyle: 'bold' },
     });
@@ -230,13 +291,16 @@ const SalesReport: React.FC = () => {
 
   const tableColumns = useMemo(() => getSalesColumns(), []);
 
-  if (isLoading || authLoading) return <div className="p-4 text-center">Loading...</div>;
+  if (isLoading || authLoading)
+    return <div className="p-4 text-center">Loading...</div>;
   if (error) return <div className="p-4 text-center text-red-500">{error}</div>;
 
   return (
     <div className="min-h-screen bg-gray-100 p-2 pb-16">
       <div className="flex items-center justify-between pb-3 border-b mb-2">
-        <h1 className="flex-1 text-xl text-center font-bold text-gray-800">Sales Report</h1>
+        <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
+          Sales Report
+        </h1>
         <button onClick={() => navigate(-1)} className="p-2">
           <IconClose width={20} height={20} />
         </button>
@@ -244,26 +308,68 @@ const SalesReport: React.FC = () => {
 
       <div className="bg-white p-2 rounded-lg shadow-md mb-2">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          <FilterSelect value={datePreset} onChange={(e) => handleDatePresetChange(e.target.value)}>
+          <FilterSelect
+            value={datePreset}
+            onChange={(e) => handleDatePresetChange(e.target.value)}
+          >
             <option value="today">Today</option>
             <option value="yesterday">Yesterday</option>
             <option value="last7">Last 7 Days</option>
             <option value="last30">Last 30 Days</option>
             <option value="custom">Custom</option>
           </FilterSelect>
-          <div className='grid grid-cols-2 sm:grid-cols-2 gap-4'>
-            <input type="date" value={customStartDate} onChange={e => { setCustomStartDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border rounded-md" placeholder="Start Date" />
-            <input type="date" value={customEndDate} onChange={e => { setCustomEndDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border rounded-md" placeholder="End Date" />
+          <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
+            <input
+              type="date"
+              value={customStartDate}
+              onChange={(e) => {
+                setCustomStartDate(e.target.value);
+                setDatePreset('custom');
+              }}
+              className="w-full p-2 text-sm bg-gray-50 border rounded-md"
+              placeholder="Start Date"
+            />
+            <input
+              type="date"
+              value={customEndDate}
+              onChange={(e) => {
+                setCustomEndDate(e.target.value);
+                setDatePreset('custom');
+              }}
+              className="w-full p-2 text-sm bg-gray-50 border rounded-md"
+              placeholder="End Date"
+            />
           </div>
         </div>
-        <button onClick={handleApplyFilters} className="w-full mt-2 px-3 py-1 bg-blue-600 text-white text-lg font-semibold rounded-lg shadow-sm hover:bg-blue-700">Apply</button>
+        <button
+          onClick={handleApplyFilters}
+          className="w-full mt-2 px-3 py-1 bg-blue-600 text-white text-lg font-semibold rounded-lg shadow-sm hover:bg-blue-700"
+        >
+          Apply
+        </button>
       </div>
 
       <div className="grid grid-cols-2 gap-2 mb-2">
-        <CustomCard variant={CardVariant.Summary} title="Total Sales" value={`₹${Math.round(summary.totalSales || 0).toLocaleString('en-IN')}`} />
-        <CustomCard variant={CardVariant.Summary} title="Total Bills" value={summary.totalTransactions?.toString() || '0'} />
-        <CustomCard variant={CardVariant.Summary} title="Items Sold" value={summary.totalItemsSold?.toString() || '0'} />
-        <CustomCard variant={CardVariant.Summary} title="Avg Sale Value" value={`₹${Math.round(summary.averageSaleValue || 0).toLocaleString('en-IN')}`} />
+        <CustomCard
+          variant={CardVariant.Summary}
+          title="Total Sales"
+          value={`₹${Math.round(summary.totalSales || 0).toLocaleString('en-IN')}`}
+        />
+        <CustomCard
+          variant={CardVariant.Summary}
+          title="Total Bills"
+          value={summary.totalTransactions?.toString() || '0'}
+        />
+        <CustomCard
+          variant={CardVariant.Summary}
+          title="Items Sold"
+          value={summary.totalItemsSold?.toString() || '0'}
+        />
+        <CustomCard
+          variant={CardVariant.Summary}
+          title="Avg Sale Value"
+          value={`₹${Math.round(summary.averageSaleValue || 0).toLocaleString('en-IN')}`}
+        />
       </div>
       {/* 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 mb-2">
@@ -281,8 +387,19 @@ const SalesReport: React.FC = () => {
       <div className="bg-white p-4 rounded-lg shadow-md flex justify-between items-center">
         <h2 className="text-lg font-semibold text-gray-700">Report Details</h2>
         <div className="flex items-center space-x-3">
-          <button onClick={() => setIsListVisible(!isListVisible)} className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition">{isListVisible ? 'Hide List' : 'Show List'}</button>
-          <button onClick={downloadAsPdf} disabled={filteredSales.length === 0} className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 ">Download PDF</button>
+          <button
+            onClick={() => setIsListVisible(!isListVisible)}
+            className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition"
+          >
+            {isListVisible ? 'Hide List' : 'Show List'}
+          </button>
+          <button
+            onClick={downloadAsPdf}
+            disabled={filteredSales.length === 0}
+            className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 "
+          >
+            Download PDF
+          </button>
         </div>
       </div>
 

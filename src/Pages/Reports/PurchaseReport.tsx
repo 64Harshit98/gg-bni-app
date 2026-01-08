@@ -14,8 +14,8 @@ import autoTable from 'jspdf-autotable';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
-import { PaymentChart } from '../../Components/PaymentChart';
-import { TopEntitiesList } from '../../Components/TopFiveEntities';
+// import { PaymentChart } from '../../Components/PaymentChart';
+// import { TopEntitiesList } from '../../Components/TopFiveEntities';
 import { IconClose } from '../../constants/Icons';
 import { getPurchaseColumns } from '../../constants/TableColoumns';
 
@@ -187,9 +187,9 @@ const PurchaseReport: React.FC = () => {
       const key = sortConfig.key;
       const direction = sortConfig.direction === 'asc' ? 1 : -1;
       if (key === 'items') {
-         const totalItemsA = a.items.reduce((sum, item) => sum + item.quantity, 0);
-         const totalItemsB = b.items.reduce((sum, item) => sum + item.quantity, 0);
-         return (totalItemsA - totalItemsB) * direction;
+        const totalItemsA = a.items.reduce((sum, item) => sum + item.quantity, 0);
+        const totalItemsB = b.items.reduce((sum, item) => sum + item.quantity, 0);
+        return (totalItemsA - totalItemsB) * direction;
       }
       const valA = a[key] ?? '';
       const valB = b[key] ?? '';
@@ -224,7 +224,7 @@ const PurchaseReport: React.FC = () => {
     doc.save('purchase_report.pdf');
   };
 
-const tableColumns = useMemo(() => getPurchaseColumns(), []);
+  const tableColumns = useMemo(() => getPurchaseColumns(), []);
 
   if (isLoading || authLoading) return <div className="p-4 text-center">Loading...</div>;
   if (error) return <div className="p-4 text-center text-red-500">{error}</div>;
@@ -233,7 +233,7 @@ const tableColumns = useMemo(() => getPurchaseColumns(), []);
     <div className="min-h-screen bg-gray-100 p-2 pb-16">
       <div className="flex items-center justify-between pb-3 border-b mb-2">
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">Purchase Report</h1>
-        <button onClick={() => navigate(-1)} className="p-2"> 
+        <button onClick={() => navigate(-1)} className="p-2">
           <IconClose width={20} height={20} />
         </button>
       </div>
@@ -262,7 +262,7 @@ const tableColumns = useMemo(() => getPurchaseColumns(), []);
         <CustomCard variant={CardVariant.Summary} title="Avg Purchase" value={`₹${Math.round(summary.averagePurchaseValue || 0)}`} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 mb-2">
+      {/* <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 mb-2">
         <div className="lg:col-span-2">
           <TopEntitiesList 
              isDataVisible={true} 
@@ -272,7 +272,7 @@ const tableColumns = useMemo(() => getPurchaseColumns(), []);
           />
         </div>
         <PaymentChart isDataVisible={true} type="purchases" filters={appliedFilters} />
-      </div>
+      </div> */}
 
       <div className="bg-white p-4 rounded-lg shadow-md flex justify-between items-center">
         <h2 className="text-lg font-semibold text-gray-700">Report Details</h2>

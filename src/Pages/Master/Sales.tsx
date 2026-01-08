@@ -17,9 +17,10 @@ import { useSalesSettings } from '../../context/SettingsContext';
 import { Spinner } from '../../constants/Spinner';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
 import { GenericCartList } from '../../Components/CartItem';
-import { FiTrash2 } from 'react-icons/fi';
+import { FiTrash2, FiX } from 'react-icons/fi';
 import { GenericBillFooter } from '../../Components/Footer';
 import { IconScanCircle } from '../../constants/Icons';
+import QRCode from 'react-qr-code'; // <--- 1. IMPORT THIS
 
 // 1. EXPORT SalesItem (Extended with productId)
 export interface SalesItem extends OriginalSalesItem {
@@ -62,6 +63,10 @@ const Sales: React.FC = () => {
   const isEditMode = location.state?.isEditMode === true && !!invoiceToEdit;
 
   const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
+
+  // --- NEW STATE FOR BILL QR ---
+  // Stores the ID and Number of the just-saved bill to show the QR code
+  const [savedBillData, setSavedBillData] = useState<{ id: string, number: string } | null>(null);
 
   // Initialize Items
   const [items, setItems] = useState<SalesItem[]>(() => {
@@ -509,6 +514,8 @@ const Sales: React.FC = () => {
     } else {
       try {
         const newInvoiceNumber = await generateNextInvoiceNumber(companyId);
+        let newSaleId = ''; // Variable to hold the new ID
+
         await runTransaction(db, async (transaction) => {
           const saleData = {
             invoiceNumber: newInvoiceNumber, userId: currentUser.uid, salesmanId: finalSalesman.uid, salesmanName: finalSalesman.name,
@@ -518,6 +525,7 @@ const Sales: React.FC = () => {
             paymentMethods: completionData.paymentDetails, createdAt: serverTimestamp(), companyId: companyId, voucherName: salesSettings?.voucherName ?? 'Sales'
           };
           const newSaleRef = doc(collection(db, "companies", companyId, "sales"));
+          newSaleId = newSaleRef.id; // Capture the ID
           transaction.set(newSaleRef, saleData);
           items.forEach(i => {
             const pid = i.productId || i.id;
@@ -531,8 +539,13 @@ const Sales: React.FC = () => {
             transaction.update(settingsRef, { currentVoucherNumber: firebaseIncrement(1) });
           }
         });
+
+        // --- 2. SHOW QR CODE AFTER SAVE ---
         setIsDrawerOpen(false);
-        showSuccessModal(`Sale #${newInvoiceNumber} saved!`);
+        setSavedBillData({ id: newSaleId, number: newInvoiceNumber });
+        localStorage.removeItem('sales_cart_draft');
+        setItems([]);
+
       } catch (e: any) {
         console.error(e); setModal({ message: "Error saving", type: State.ERROR });
       }
@@ -544,6 +557,11 @@ const Sales: React.FC = () => {
     setIsDrawerOpen(false);
     setModal({ message, type: State.SUCCESS });
     setTimeout(() => { setModal(null); if (navigateTo) navigate(navigateTo); else if (!salesSettings?.copyVoucherAfterSaving) setItems([]); }, 1500);
+  };
+  console.log("QR Link:", `${window.location.origin}/download-bill/${currentUser?.companyId}/${savedBillData?.id}`);
+  const handleCloseQrModal = () => {
+    setSavedBillData(null);
+    // Optional: Generate next number here if needed, but usually done on mount
   };
 
   if (pageIsLoading) return <div className="flex items-center justify-center h-screen"><Spinner /> <p className="ml-2">Loading...</p></div>;
@@ -597,7 +615,8 @@ const Sales: React.FC = () => {
             return (
               <div key={item.id} onClick={() => addItemToCart(item)} className={`p-2 rounded border bg-white text-center cursor-pointer ${isSelected ? 'border-blue-500 bg-blue-50' : ''}`}>
                 <div className="text-sm font-bold truncate">{item.name}</div>
-                <div className="text-xs text-gray-600">₹{item.mrp}</div>
+                {/* CHECK HIDE MRP SETTING */}
+                {!hideMrp && <div className="text-xs text-gray-600">₹{item.mrp}</div>}
                 {isSelected && <div className="text-xs text-blue-600 font-bold mt-1">Added ({quantity})</div>}
               </div>
             );
@@ -622,6 +641,40 @@ const Sales: React.FC = () => {
           requireCustomerMobile={salesSettings?.requireCustomerMobile}
         />
         <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
+
+        {/* --- 3. QR CODE MODAL --- */}
+        {savedBillData && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm flex flex-col items-center animate-in fade-in zoom-in duration-300">
+              <button onClick={handleCloseQrModal} className="self-end text-gray-400 hover:text-gray-600 mb-2">
+                <FiX size={24} />
+              </button>
+              <h3 className="text-xl font-bold text-gray-800 mb-1">Bill Saved!</h3>
+              <p className="text-sm text-gray-500 mb-4">Invoice #{savedBillData.number}</p>
+
+              <div className="bg-white p-2 border-2 border-gray-100 rounded-lg shadow-inner mb-4">
+                <QRCode
+                  // FIX: Include companyId in the URL so the download page can find the record
+                  value={`${window.location.origin}/download-bill/${currentUser?.companyId}/${savedBillData.id}`}
+                  size={200}
+                  viewBox={`0 0 256 256`}
+                />
+              </div>
+
+              <p className="text-center text-sm text-gray-600 mb-4">
+                Ask customer to scan this QR code to download their bill.
+              </p>
+
+              <button
+                onClick={handleCloseQrModal}
+                className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        )}
+
       </div>
     );
   }
@@ -632,7 +685,6 @@ const Sales: React.FC = () => {
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
       <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
       {renderHeader()}
-      {/* Search Bar */}
       <div className="flex-shrink-0 p-2 bg-white border-b pb-3 mb-2 rounded-sm">
         <div className="flex gap-4 items-end w-full">
           <div className="flex-grow">
@@ -644,18 +696,15 @@ const Sales: React.FC = () => {
         </div>
       </div>
       <div className="flex-1 flex flex-col bg-gray-100 overflow-y-hidden">
-        {/* Cart Header */}
         <div className="pt-2 flex-shrink-0 grid grid-cols-3 items-center border-b pb-2 px-2">
           <div className="justify-self-start"><h3 className="text-gray-700 font-medium">Cart</h3></div>
           <div className="justify-self-center w-full flex justify-center">{salesSettings?.enableSalesmanSelection && <select value={selectedWorker?.uid} onChange={e => setSelectedWorker(workers.find(w => w.uid === e.target.value) || null)} className="p-1 border rounded text-sm" disabled={!hasPermission(Permissions.ViewTransactions) || (isEditMode && !isManager)}><option value="">Salesman</option>{workers.map(w => <option key={w.uid} value={w.uid}>{w.name}</option>)}</select>}</div>
           <div className="justify-self-end">{items.length > 0 && <button onClick={handleClearCart} className="text-xs text-red-600 bg-red-50 px-2 py-1 rounded border border-red-200 flex items-center gap-1"><FiTrash2 /> Clear</button>}</div>
         </div>
-        {/* Status Bar */}
         <div className="flex-shrink-0 grid grid-cols-2 px-2">
           {discountInfo && <div className="text-xs text-red-600">{discountInfo}</div>}
           {priceInfo && <div className="text-xs text-red-600">{priceInfo}</div>}
         </div>
-        {/* Cart List */}
         <GenericCartList
           items={items}
           availableItems={availableItems}
@@ -663,13 +712,11 @@ const Sales: React.FC = () => {
           priceLabel="MRP"
           settings={{
             enableRounding: salesSettings?.enableRounding ?? true,
-            // FIX: Type cast to resolve 'roundingInterval' error
             roundingInterval: (salesSettings as any)?.roundingInterval ?? 1,
             enableItemWiseDiscount: salesSettings?.enableItemWiseDiscount ?? true,
             lockDiscount: isDiscountLocked,
             lockPrice: isPriceLocked,
             hideMrp: hideMrp
-
           }}
           applyRounding={applyRounding}
           State={State}
@@ -710,6 +757,38 @@ const Sales: React.FC = () => {
         requireCustomerName={salesSettings?.requireCustomerName}
         requireCustomerMobile={salesSettings?.requireCustomerMobile} />
       <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
+
+      {/* --- 3. QR CODE MODAL (LIST VIEW) --- */}
+      {savedBillData && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm flex flex-col items-center animate-in fade-in zoom-in duration-300">
+            <button onClick={handleCloseQrModal} className="self-end text-gray-400 hover:text-gray-600 mb-2">
+              <FiX size={24} />
+            </button>
+            <h3 className="text-xl font-bold text-gray-800 mb-1">Bill Saved!</h3>
+            <p className="text-sm text-gray-500 mb-4">Invoice #{savedBillData.number}</p>
+
+            <div className="bg-white p-2 border-2 border-gray-100 rounded-lg shadow-inner mb-4">
+              <QRCode
+                value={`${window.location.origin}/download-bill/${currentUser?.companyId}/${savedBillData?.id}`} size={200}
+                viewBox={`0 0 256 256`}
+              />
+            </div>
+
+            <p className="text-center text-sm text-gray-600 mb-4">
+              Ask customer to scan this QR code to download their bill.
+            </p>
+
+            <button
+              onClick={handleCloseQrModal}
+              className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

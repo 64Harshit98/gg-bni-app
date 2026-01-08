@@ -15,20 +15,56 @@ service cloud.firestore {
     function isSelf(companyId, userId) {
       return isCompanyMember(companyId) && request.auth.uid == userId;
     }
+
+    // --- Master Admin Access ---
     match /{document=**} {
       allow read, write: if request.auth.uid == "1AKioGfop8PmHhry6uXOz8Rw6qT2";
     }
 
+    // --- Public Leads (Sign Up) ---
     match /leads/{leadId} {
-      allow create, update: if true; // Anyone can create a lead (Sign Up)
-      allow read: if request.auth != null; // Only admins/users can read
+      allow create, update: if true; 
+      allow read: if request.auth != null; 
     }
 
-    // --- Tenant Data ---
+    // --- Tenant Data (Company Specific) ---
     match /companies/{companyId} {
-    
-    allow read: if isCompanyMember(companyId);
-    allow update: if isCompanyMember(companyId);
+      
+      // Default rule: Must be a member to read/update the company doc itself
+      allow read: if isCompanyMember(companyId);
+      allow update: if isCompanyMember(companyId);
+
+      // =========================================================
+      // PUBLIC READ ACCESS (For QR Bill Download)
+      // =========================================================
+      
+      // 1. Sales: Public needs to read the invoice details
+      match /sales/{document=**} {
+        allow read: if true;
+        allow write: if isCompanyMember(companyId);
+      }
+
+      // 2. Items: Public needs to read item details (Tax/HSN) for the PDF
+      match /items/{document=**} {
+        allow read: if true;
+        allow write: if isCompanyMember(companyId);
+      }
+
+      // 3. Business Info: Public needs Company Address/Logo for the PDF header
+      match /business_info/{document=**} {
+        allow read: if true;
+        allow write: if isCompanyMember(companyId);
+      }
+
+      // 4. Sales Settings: Public needs to know if "Salesman Name" should be hidden
+      match /settings/sales-settings {
+        allow read: if true;
+        allow write: if isCompanyMember(companyId);
+      }
+      
+      // =========================================================
+      // AUTHENTICATED ONLY SECTIONS
+      // =========================================================
 
       match /users/{userId} {
         allow read: if isCompanyMember(companyId);
@@ -40,11 +76,8 @@ service cloud.firestore {
         allow read, write: if isSelf(companyId, userId);
       }
       
+      // General Settings (catch-all for other settings like Purchase, etc.)
       match /settings/{settingId} {
-        allow read, write: if isCompanyMember(companyId);
-      }
-
-      match /business_info/{infoId} {
         allow read, write: if isCompanyMember(companyId);
       }
 
@@ -65,7 +98,12 @@ service cloud.firestore {
          allow write: if isCompanyMember(companyId); 
       }
 
-      // Catch-all
+      // Purchases remain private
+      match /purchases/{document=**} {
+        allow read, write: if isCompanyMember(companyId);
+      }
+
+      // Catch-all for any other collections not explicitly listed above
       match /{collection}/{docId} {
         allow read, write: if isCompanyMember(companyId);
       }

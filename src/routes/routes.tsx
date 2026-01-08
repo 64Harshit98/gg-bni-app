@@ -54,6 +54,9 @@ const SubscriptionPage = lazy(() => import('../Pages/Account/SubscriptionPage'))
 const SupportPage = lazy(() => import('../Pages/Account/SupportPage'));
 const ForgotPasswordPage = lazy(() => import('../Pages/Auth/ForgotPassword'));
 const ResetPasswordPage = lazy(() => import('../Pages/Auth/ResetPassword'));
+const RestockReportPage = lazy(() => import('../Pages/Reports/RestockReport'));
+const TaxReport = lazy(() => import('../Pages/Reports/TaxReport'));
+
 
 
 const router = createBrowserRouter([
@@ -190,6 +193,16 @@ const router = createBrowserRouter([
               {
                 path: ROUTES.ITEM_REPORT,
                 element: <ItemReport />,
+                handle: { requiredPermission: Permissions.ViewItemReport },
+              },
+              {
+                path: ROUTES.RESTOCK_REPORT,
+                element: <RestockReportPage />,
+                handle: { requiredPermission: Permissions.ViewItemReport },
+              },
+              {
+                path: ROUTES.TAX_REPORT,
+                element: <TaxReport />,
                 handle: { requiredPermission: Permissions.ViewItemReport },
               },
               {

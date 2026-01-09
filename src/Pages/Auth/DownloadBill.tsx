@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
-import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore'; 
 import { generatePdf, type InvoiceData } from '../../UseComponents/pdfGenerator';
 import { ACTION } from '../../enums';
 import { Spinner } from '../../constants/Spinner';
@@ -21,77 +21,48 @@ const DownloadBill: React.FC = () => {
       }
 
       try {
-        // --- 1. MANUALLY CONSTRUCT QUERIES (Based on your helper) ---
-        
-        // A. Invoice Reference
-        // Path: companies/{companyId}/sales/{invoiceId}
         const invoiceRef = doc(db, 'companies', companyId, 'sales', invoiceId);
-
-        // B. Business Info Reference
-        // Path: companies/{companyId}/business_info/{companyId}  <-- Crucial: Doc ID is companyId
         const businessRef = doc(db, 'companies', companyId, 'business_info', companyId);
-
-        // C. Sales Settings Reference
-        // Path: companies/{companyId}/settings/sales-settings
         const settingsRef = doc(db, 'companies', companyId, 'settings', 'sales-settings');
-
-        // D. Items Collection (for Master Data lookup)
-        // Path: companies/{companyId}/items
-        const itemsRef = collection(db, 'companies', companyId, 'items');
-
-        // --- 2. FETCH ALL DATA IN PARALLEL ---
-        const [invoiceSnap, businessSnap, settingsSnap, itemsSnap] = await Promise.all([
+        
+        const [invoiceSnap, businessSnap, settingsSnap] = await Promise.all([
           getDoc(invoiceRef),
           getDoc(businessRef),
           getDoc(settingsRef),
-          getDocs(itemsRef)
         ]);
 
         if (!invoiceSnap.exists()) {
           throw new Error('Invoice not found');
         }
-
-        // --- 3. EXTRACT DATA ---
         const invoiceData = invoiceSnap.data();
         const businessInfo = businessSnap.exists() ? businessSnap.data() : {};
         const salesSettings = settingsSnap.exists() ? settingsSnap.data() : {};
-        
-        // Create a lookup map for Master Items
-        const masterItemsMap = new Map(itemsSnap.docs.map(d => [d.id, d.data()]));
 
         setStatus('generating');
 
-        // --- 4. PREPARE INVOICE ITEMS ---
         const populatedItems = (invoiceData.items || []).map((item: any, index: number) => {
-          // Find master item to fallback for missing details
-          const fullItem = masterItemsMap.get(item.id) || {};
-          
-          // Logic: Use saved finalPrice, or calculate from MRP
           const itemAmount = (item.finalPrice !== undefined && item.finalPrice !== null)
             ? item.finalPrice
             : (item.mrp * item.quantity);
 
-          // Logic: Fallback to master item tax if invoice item lacks it
-          const finalTaxRate = item.taxRate || item.tax || item.gstPercent || fullItem?.tax || 0;
+          const finalTaxRate = item.taxRate || item.tax || item.gstPercent || 0;
 
           return {
             sno: index + 1,
             name: item.name,
             quantity: item.quantity,
-            unit: item.unit || fullItem.unit || "Pcs",
+            unit: item.unit || "Pcs",
             listPrice: item.mrp,
             gstPercent: finalTaxRate,
-            hsn: item.hsnSac || fullItem.hsnSac || "N/A",
+            hsn: item.hsnSac || "N/A",
             discountAmount: item.discount || 0,
             amount: itemAmount
           };
         });
 
-        // --- 5. HANDLE SALESMAN VISIBILITY ---
         const showSalesman = salesSettings.enableSalesmanSelection ?? true; 
         const billedBy = showSalesman ? (invoiceData.salesmanName || 'Admin') : '';
 
-        // --- 6. HANDLE DATE ---
         const invoiceDate = invoiceData.createdAt?.toDate 
           ? invoiceData.createdAt.toDate().toLocaleDateString('en-IN') 
           : new Date(invoiceData.createdAt).toLocaleDateString('en-IN');
@@ -123,7 +94,6 @@ const DownloadBill: React.FC = () => {
           }
         };
 
-        // --- 7. GENERATE PDF ---
         await generatePdf(pdfData, ACTION.DOWNLOAD);
         setStatus('success');
 

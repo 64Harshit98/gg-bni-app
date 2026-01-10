@@ -34,7 +34,7 @@ jobs:
         uses: w9jds/firebase-action@v13.4.0
         with:
           # Using 'deploy' without --only hosting if you want to include Functions/Firestore
-          args: deploy -P staging
+          args: deploy --only hosting,functions,firestore -P staging
         env:
           # Ensure this matches the Secret name you saved in GitHub Settings
           GCP_SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}

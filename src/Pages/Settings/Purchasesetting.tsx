@@ -16,8 +16,6 @@ import { useAuth } from '../../context/auth-context';
 export interface PurchaseSettings {
     companyId?: string;
     settingType: 'purchase';
-    gstScheme: 'regular' | 'composition' | 'none';
-    taxType: 'inclusive' | 'exclusive';
     defaultDiscount: number;
     inputMRP: boolean;
     zeroValueValidation: boolean;
@@ -35,8 +33,6 @@ export interface PurchaseSettings {
 export const getDefaultPurchaseSettings = (companyId: string): PurchaseSettings => ({
     companyId: companyId,
     settingType: 'purchase',
-    gstScheme: 'none',
-    taxType: 'inclusive',
     defaultDiscount: 0,
     inputMRP: true,
     zeroValueValidation: true,

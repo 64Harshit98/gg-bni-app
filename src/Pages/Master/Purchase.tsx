@@ -20,7 +20,6 @@ import { GenericCartList } from '../../Components/CartItem';
 import { GenericBillFooter } from '../../Components/Footer';
 import { IconScanCircle, IconScan } from '../../constants/Icons';
 
-// --- Interfaces ---
 interface PurchaseItem extends Omit<SalesItem, 'finalPrice' | 'effectiveUnitPrice' | 'discountPercentage'> {
   purchasePrice: number;
   barcode?: string;
@@ -79,7 +78,6 @@ const PurchasePage: React.FC = () => {
 
   const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
 
-  // --- Initialize State ---
   const [items, setItems] = useState<PurchaseItem[]>(() => {
     if (isEditMode) return [];
     try {
@@ -111,7 +109,6 @@ const PurchasePage: React.FC = () => {
 
   const isActive = (path: string) => location.pathname === path;
 
-  // --- Effects ---
   useEffect(() => {
     if (!isEditMode) {
       localStorage.setItem('purchase_cart_draft', JSON.stringify(items));
@@ -177,7 +174,6 @@ const PurchasePage: React.FC = () => {
             const purchaseData = { id: docSnap.id, ...docSnap.data() } as Purchase;
             setInvoiceNumber(purchaseData.invoiceNumber);
 
-            // Set Initial Bill Type from saved data
             if (purchaseData.taxType) {
               const savedTaxType: TaxOption = purchaseData.taxType === 'none'
                 ? 'exclusive'
@@ -185,16 +181,11 @@ const PurchasePage: React.FC = () => {
               setBillTaxType(savedTaxType);
             }
 
-            // --- FIX: RECOVER TAX RATE FROM MASTER LIST IF SAVED AS 0 ---
             const validatedItems = (purchaseData.items || []).map((item: any) => {
-              // Find the original product in the master list
               const masterItem = fetchedItems.find(i => i.id === (item.productId || item.id));
-
-              // If item has a saved tax rate > 0, use it. 
-              // If it's 0 (because it was exempt), fallback to master item tax rate.
-              const recoveredTaxRate = (item.taxRate && item.taxRate > 0)
-                ? item.taxRate
-                : (masterItem?.taxRate || 0);
+             const recoveredTaxRate = (item.taxRate && item.taxRate > 0)
+    ? item.taxRate
+    : (masterItem?.tax ?? masterItem?.taxRate ?? 0);
 
               return {
                 id: item.id || crypto.randomUUID(),
@@ -204,7 +195,7 @@ const PurchasePage: React.FC = () => {
                 mrp: item.mrp || 0,
                 discount: item.discount || 0,
                 barcode: item.barcode || '',
-                taxRate: recoveredTaxRate, // Use recovered rate
+                taxRate: recoveredTaxRate, 
                 taxType: item.taxType,
                 taxAmount: item.taxAmount,
                 taxableAmount: item.taxableAmount,
@@ -237,7 +228,6 @@ const PurchasePage: React.FC = () => {
     initializePage();
   }, [dbOperations, currentUser, purchaseIdToEdit, pageIsLoading, navigate]);
 
-  // --- Adapters for GenericCartList ---
   const cartItemsAdapter = useMemo(() => {
     return items.map(item => ({
       ...item,
@@ -254,7 +244,6 @@ const PurchasePage: React.FC = () => {
     }
   };
 
-  // --- Categories & Sorting ---
   const categories = useMemo(() => {
     const groups = new Set(availableItems.map(i => i.itemGroupId || 'Others'));
     return ['All', ...Array.from(groups).sort()];
@@ -285,7 +274,8 @@ const PurchasePage: React.FC = () => {
       return;
     }
     const defaultDiscount = purchaseSettings?.defaultDiscount ?? 0;
-
+const resolvedTax = itemToAdd.tax ?? itemToAdd.taxRate ?? 0;
+    
     setItems((prevItems) => [
       {
         id: crypto.randomUUID(),
@@ -296,7 +286,7 @@ const PurchasePage: React.FC = () => {
         barcode: itemToAdd.barcode || '',
         quantity: 1,
         discount: defaultDiscount,
-        taxRate: itemToAdd.taxRate || 0,
+        taxRate: resolvedTax,
         stock: itemToAdd.stock || (itemToAdd as any).Stock || 0,
         isEditable: true
       },
@@ -304,7 +294,6 @@ const PurchasePage: React.FC = () => {
     ]);
   };
 
-  // --- Totals Calculation ---
   const {
     subtotal,
     taxableAmount,
@@ -315,7 +304,7 @@ const PurchasePage: React.FC = () => {
     totalQuantity
   } = useMemo(() => {
     const gstScheme = purchaseSettings?.gstScheme ?? 'none';
-    const taxType = billTaxType; // FIX: Rely purely on the state variable 'billTaxType'
+    const taxType = billTaxType; 
     const isRoundingEnabled = purchaseSettings?.roundingOff ?? true;
 
     let mrpTotalAgg = 0;
@@ -325,6 +314,7 @@ const PurchasePage: React.FC = () => {
     let finalAmountAggPreRounding = 0;
     let qtyAgg = 0;
 
+    
     items.forEach(item => {
       const purchasePrice = item.purchasePrice || 0;
       const quantity = item.quantity || 1;
@@ -340,23 +330,18 @@ const PurchasePage: React.FC = () => {
       let itemTax = 0;
       let itemFinalTotal = 0;
 
-      // FIX: Determine effective scheme based on current Tax Toggle state
       const effectiveScheme = taxType === 'exempt' ? 'none' : gstScheme;
-
       if (effectiveScheme === 'regular' || effectiveScheme === 'composition') {
         if (taxType === 'exclusive') {
-          // Exclusive: Price is base, Tax is added on top
           itemTaxableBase = itemTotalPurchasePrice;
           itemTax = itemTaxableBase * (itemTaxRate / 100);
           itemFinalTotal = itemTaxableBase + itemTax;
         } else {
-          // Inclusive: Price includes Tax, back-calculate base
           itemFinalTotal = itemTotalPurchasePrice;
           itemTaxableBase = itemTotalPurchasePrice / (1 + (itemTaxRate / 100));
           itemTax = itemTotalPurchasePrice - itemTaxableBase;
         }
       } else {
-        // Exempt or None: No Tax calculation
         itemTaxableBase = itemTotalPurchasePrice;
         itemTax = 0;
         itemFinalTotal = itemTaxableBase;
@@ -370,6 +355,7 @@ const PurchasePage: React.FC = () => {
     const roundedAmount = applyPurchaseRounding(finalAmountAggPreRounding, isRoundingEnabled);
     const currentRoundingOffAmount = roundedAmount - finalAmountAggPreRounding;
     const currentTotalDiscount = mrpTotalAgg - purchasePriceTotalAgg;
+    
 
     return {
       subtotal: purchasePriceTotalAgg,
@@ -379,10 +365,11 @@ const PurchasePage: React.FC = () => {
       roundingOffAmount: currentRoundingOffAmount,
       finalAmount: roundedAmount,
       totalQuantity: qtyAgg
+      
     };
-  }, [items, purchaseSettings, billTaxType]); // Dependency on billTaxType ensures recalc on toggle
+  }, [items, purchaseSettings, billTaxType]); 
+  
 
-  // --- FIXED QUANTITY HANDLER ---
   const handleQuantityChange = (id: string, newQuantity: number) => {
     setItems((prevItems) =>
       prevItems.map((item) =>
@@ -428,7 +415,6 @@ const PurchasePage: React.FC = () => {
     setIsDrawerOpen(true);
   };
 
-  // --- SAVE LOGIC ---
   const handleSavePurchase = async (completionData: PaymentCompletionData) => {
     if (!currentUser?.companyId) {
       setModal({ message: 'User or company information missing.', type: State.ERROR });
@@ -703,18 +689,17 @@ const PurchasePage: React.FC = () => {
   const isCardView = purchaseSettings?.purchaseViewType === 'card';
 
   const renderHeader = () => (
-    <div className="flex flex-col p-1 bg-gray-100 border-b border-gray-300">
-      <div className="flex justify-between items-end mb-3 px-1">
-        <div className='flex items-center gap-2'>
-          <h1 className="text-2xl font-bold text-gray-800 text-center">
-            {editModeData ? 'Edit Purchase' : (purchaseSettings?.voucherName ?? 'Purchase')}
-          </h1>
-        </div>
-        <div className="flex items-center justify-center mt-1 gap-2">
+    <div className="flex flex-col md:flex-row md:justify-between md:items-center bg-gray-100 md:bg-white border-b border-gray-200 shadow-sm flex-shrink-0 p-2 md:px-4 md:py-3 mb-2 md:mb-0">
+      <div className="flex justify-between items-center w-full md:w-auto mb-2 md:mb-0">
+        <h1 className="text-2xl font-bold text-gray-800 text-center md:text-left">
+          {editModeData ? 'Edit Purchase' : (purchaseSettings?.voucherName ?? 'Purchase')}
+        </h1>
+        <div className="flex items-center gap-2 md:ml-6">
           <span className="text-xs text-gray-500 font-medium uppercase tracking-wide">Inv No:</span>
           <input type="text" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-24 text-sm outline-none transition-colors" />
         </div>
       </div>
+      
       {!editModeData && (
         <div className="flex items-center justify-center gap-6">
           <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.PURCHASE)} active={isActive(ROUTES.PURCHASE)}>Purchase</CustomButton>
@@ -724,144 +709,182 @@ const PurchasePage: React.FC = () => {
     </div>
   );
 
-
-
-  const renderCardView = () => (
-    <>
-      <div className="flex-shrink-0 bg-gray-50 border-b border-gray-300">
-        <div className="p-2 bg-white border-b flex gap-2 items-center">
-          <input type="text" placeholder="Search items..." className="w-full p-2 pr-8 border rounded bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500" value={gridSearchQuery} onChange={(e) => setGridSearchQuery(e.target.value)} />
-          {gridSearchQuery && (<button onClick={() => setGridSearchQuery('')} className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600">
-            <IconScan width={20} height={20} />
-          </button>)}
-          <button onClick={() => setIsScannerOpen(true)} className='bg-white text-gray-700 p-2 border rounded hover:bg-gray-100'>
-            <IconScanCircle width={20} height={20} />
-          </button>
-        </div>
-        <div className="flex overflow-x-auto whitespace-nowrap p-2 gap-2 bg-white border-b border-gray-200 scrollbar-hide"> {categories.map(catId => (<CustomButton key={catId} onClick={() => setSelectedCategory(catId)} variant={selectedCategory === catId ? Variant.Filled : Variant.Outline} className={`text-sm flex-shrink-0 ${selectedCategory === catId ? 'bg-blue-600 border-blue-600 text-white' : 'border-gray-300 text-gray-700'}`} >{itemGroupMap[catId] || catId}</CustomButton>))} </div>
-      </div>
-      <div className="flex-1 p-3 overflow-y-auto grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 content-start bg-gray-100 pb-20">
-        {sortedGridItems.length === 0 ? <div className="col-span-full text-center text-gray-500 mt-10">No items found</div> : (sortedGridItems.map(item => {
-          const matchingCartItems = items.filter(i => i.productId === item.id);
-          const lastAddedCartItem = matchingCartItems[matchingCartItems.length - 1];
-          const isSelected = matchingCartItems.length > 0;
-          const quantity = lastAddedCartItem?.quantity || 0;
-          return (<div key={item.id} onClick={() => addItemToCart(item)} className={`p-2 rounded shadow-sm border transition-all flex flex-col justify-between text-center relative select-none cursor-pointer ${isSelected ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500' : 'bg-white border-gray-200 hover:shadow-md hover:border-blue-400'}`}> <div className="w-full flex flex-col items-center pt-1 px-1 pointer-events-none"> <span className="text-sm font-bold text-gray-800 leading-tight text-center line-clamp-2" title={item.name}>{item.name}</span> <span className="text-sm font-medium text-gray-600 mt-1">₹{item.purchasePrice || 0}</span> <span className="text-xs text-gray-400">MRP: ₹{item.mrp || 0}</span> </div> <div className="w-full flex items-center justify-center pb-1 mt-auto"> {!isSelected ? (<span className="text-blue-600 font-bold text-sm px-4 py-1 bg-blue-50 rounded-lg">Add</span>) : (<div className="flex items-center gap-1 bg-white shadow-sm px-1 py-0.5 border border-gray-200 rounded-full text-lg"> <button onClick={(e) => { e.stopPropagation(); if (quantity > 1) handleQuantityChange(lastAddedCartItem.id, quantity - 1); else handleDeleteItem(lastAddedCartItem.id); }} className="w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 hover:bg-red-100 text-gray-700 hover:text-red-600 font-bold transition-colors text-sm">-</button> <span className="text-sm font-bold w-4 text-center">{quantity}</span> <button onClick={(e) => { e.stopPropagation(); addItemToCart(item); }} className="w-6 h-6 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-700 font-bold transition-colors text-sm">+</button> </div>)} </div> </div>);
-        }))}
-      </div>
-    </>
-  );
-
-  const renderListView = () => (
-    <>
-      <div className="flex-shrink-0 p-2 bg-white border-b mt-2 rounded-sm">
-        <div className="flex gap-2 items-end">
-          <div className="flex-grow">
-            <SearchableItemInput label="Search & Add Item" placeholder="Search by name or barcode..." items={availableItems} onItemSelected={handleItemSelected} isLoading={pageIsLoading} error={error} />
+  // --- CARD VIEW RENDER (GRID) ---
+  if (isCardView) {
+    return (
+      <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden pb-2">
+        {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+        <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
+        {renderHeader()}
+        <div className="flex-shrink-0 bg-gray-50 border-b border-gray-300">
+          <div className="p-2 bg-white border-b flex gap-2 items-center">
+            <input type="text" placeholder="Search items..." className="w-full p-2 pr-8 border rounded bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500" value={gridSearchQuery} onChange={(e) => setGridSearchQuery(e.target.value)} />
+            {gridSearchQuery && (<button onClick={() => setGridSearchQuery('')} className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"><IconScan width={20} height={20} /></button>)}
+            <button onClick={() => setIsScannerOpen(true)} className='bg-white text-gray-700 p-2 border rounded hover:bg-gray-100'><IconScanCircle width={20} height={20} /></button>
           </div>
-          <button onClick={() => setIsScannerOpen(true)} className="p-3 bg-gray-700 text-white rounded-md font-semibold transition hover:bg-gray-800" title="Scan Barcode">
-            <IconScanCircle width={20} height={20} />
-          </button>
+          <div className="flex overflow-x-auto whitespace-nowrap p-2 gap-2 bg-white border-b border-gray-200 scrollbar-hide"> {categories.map(catId => (<CustomButton key={catId} onClick={() => setSelectedCategory(catId)} variant={selectedCategory === catId ? Variant.Filled : Variant.Outline} className={`text-sm flex-shrink-0 ${selectedCategory === catId ? 'bg-blue-600 border-blue-600 text-white' : 'border-gray-300 text-gray-700'}`} >{itemGroupMap[catId] || catId}</CustomButton>))} </div>
         </div>
+        <div className="flex-1 p-3 overflow-y-auto grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 content-start bg-gray-100 pb-20">
+             {sortedGridItems.length === 0 ? <div className="col-span-full text-center text-gray-500 mt-10">No items found</div> : (sortedGridItems.map(item => {
+              const matchingCartItems = items.filter(i => i.productId === item.id);
+              const lastAddedCartItem = matchingCartItems[matchingCartItems.length - 1];
+              const isSelected = matchingCartItems.length > 0;
+              const quantity = lastAddedCartItem?.quantity || 0;
+              return (<div key={item.id} onClick={() => addItemToCart(item)} className={`p-2 rounded shadow-sm border transition-all flex flex-col justify-between text-center relative select-none cursor-pointer ${isSelected ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500' : 'bg-white border-gray-200 hover:shadow-md hover:border-blue-400'}`}> <div className="w-full flex flex-col items-center pt-1 px-1 pointer-events-none"> <span className="text-sm font-bold text-gray-800 leading-tight text-center line-clamp-2" title={item.name}>{item.name}</span> <span className="text-sm font-medium text-gray-600 mt-1">₹{item.purchasePrice || 0}</span> <span className="text-xs text-gray-400">MRP: ₹{item.mrp || 0}</span> </div> <div className="w-full flex items-center justify-center pb-1 mt-auto"> {!isSelected ? (<span className="text-blue-600 font-bold text-sm px-4 py-1 bg-blue-50 rounded-lg">Add</span>) : (<div className="flex items-center gap-1 bg-white shadow-sm px-1 py-0.5 border border-gray-200 rounded-full text-lg"> <button onClick={(e) => { e.stopPropagation(); if (quantity > 1) handleQuantityChange(lastAddedCartItem.id, quantity - 1); else handleDeleteItem(lastAddedCartItem.id); }} className="w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 hover:bg-red-100 text-gray-700 hover:text-red-600 font-bold transition-colors text-sm">-</button> <span className="text-sm font-bold w-4 text-center">{quantity}</span> <button onClick={(e) => { e.stopPropagation(); addItemToCart(item); }} className="w-6 h-6 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-700 font-bold transition-colors text-sm">+</button> </div>)} </div> </div>);
+            }))}
+        </div>
+        
+        <GenericBillFooter
+          isExpanded={isFooterExpanded}
+          onToggleExpand={() => setIsFooterExpanded(!isFooterExpanded)}
+          totalQuantity={totalQuantity}
+          subtotal={subtotal}
+          taxAmount={taxAmount}
+          finalAmount={finalAmount}
+          roundingOffAmount={roundingOffAmount}
+          showTaxRow={displayTaxTotal}
+          taxLabel="Total Tax"
+          actionLabel={isEditMode ? 'Update' : 'Pay Now'}
+          onActionClick={handleProceedToPayment}
+          disableAction={items.length === 0}
+        />
+        <PaymentDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} subtotal={finalAmount} onPaymentComplete={handleSavePurchase} isPartyNameEditable={!editModeData} initialPartyName={editModeData ? editModeData.partyName : ''} initialPartyNumber={editModeData ? editModeData.partyNumber : ''} totalQuantity={totalQuantity} requireCustomerName={purchaseSettings?.requireSupplierName} requireCustomerMobile={purchaseSettings?.requireSupplierMobile} />
+        <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
       </div>
-      <div className='flex-grow overflow-y-auto p-2'>
-        <div className="flex justify-between items-center px-2 mb-2">
-          <h3 className="text-gray-700 text-lg font-medium">Cart</h3>
-          {items.length > 0 && (
-            <button
-              onClick={handleClearCart}
-              className="flex items-center gap-1 text-sm text-red-500 hover:text-red-700 font-medium transition-colors"
-            >
-              <FiTrash2 size={16} />
-              <span>Clear Cart</span>
-            </button>
-          )}
-        </div>
-        <div className="flex flex-col gap-2">
-          {/* Generic Cart List for Purchases */}
-          <GenericCartList
-            items={cartItemsAdapter}
-            availableItems={availableItems}
-            basePriceKey="mrp"
-            priceLabel="MRP"
-            settings={{
-              enableRounding: false, // Purchase usually exact
-              roundingInterval: 1,
-              enableItemWiseDiscount: false, // No discounts in purchase UI
-              lockDiscount: true,
-              lockPrice: false // Price is editable
-            }}
-            applyRounding={applyPurchaseRounding}
-            State={State}
-            setModal={setModal}
-            onOpenEditDrawer={handleOpenEditDrawer}
-            onDeleteItem={handleDeleteItem}
-            onDiscountChange={() => { }} // No-op
-            onCustomPriceChange={handlePriceChange} // Updates purchasePrice
-            onCustomPriceBlur={() => { }} // No-op
-            onQuantityChange={(id, qty) => handleQuantityChange(id, qty)} // Passed directly
-          />
-        </div>
-      </div>
-    </>
-  );
+    );
+  }
 
-
+  // --- LIST VIEW (Desktop Split / Mobile Stack) ---
   return (
-    <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden  ">
+    <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden">
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
       <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
 
-      {showPrintQrModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm mx-4">
-            <h3 className="text-lg font-bold text-gray-800">Purchase Saved!</h3>
-            <p className="my-4 text-gray-600">Print barcodes/QR codes for the items?</p>
-            <div className="flex justify-end gap-4 mt-6">
-              <CustomButton variant={Variant.Outline} onClick={handleCloseQrModal}>No</CustomButton>
-              <CustomButton variant={Variant.Filled} onClick={handleNavigateToQrPage}>Yes, Print</CustomButton>
-            </div>
-          </div>
-        </div>
-      )}
+      {renderHeader()}
 
-      <div className="flex-shrink-0">
-        {renderHeader()}
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+          
+          <div className="flex flex-col w-full md:w-3/4 h-full relative min-w-0 border-r border-gray-200">
+            
+             <div className="flex-shrink-0 p-2 bg-white border-b mt-2 rounded-sm md:mt-0">
+                <div className="flex gap-2 items-end">
+                  <div className="flex-grow">
+                    <SearchableItemInput label="Search & Add Item" placeholder="Search by name or barcode..." items={availableItems} onItemSelected={handleItemSelected} isLoading={pageIsLoading} error={error} />
+                  </div>
+                  <button onClick={() => setIsScannerOpen(true)} className="p-3 bg-gray-700 text-white rounded-md font-semibold transition hover:bg-gray-800" title="Scan Barcode">
+                    <IconScanCircle width={20} height={20} />
+                  </button>
+                </div>
+              </div>
+
+              <div className='flex-grow overflow-y-auto p-2 bg-gray-100'>
+                 <div className="flex justify-between items-center px-2 mb-2">
+                    <h3 className="text-gray-700 text-lg font-medium">Cart</h3>
+                    {items.length > 0 && (
+                      <button onClick={handleClearCart} className="flex items-center gap-1 text-sm text-red-500 hover:text-red-700 font-medium transition-colors">
+                        <FiTrash2 size={16} />
+                        <span>Clear Cart</span>
+                      </button>
+                    )}
+                 </div>
+
+                 <div className="flex flex-col gap-2">
+                    <GenericCartList
+                      items={cartItemsAdapter}
+                      availableItems={availableItems}
+                      basePriceKey="mrp"
+                      priceLabel="MRP"
+                      settings={{
+                        enableRounding: false, 
+                        roundingInterval: 1,
+                        enableItemWiseDiscount: false, 
+                        lockDiscount: true,
+                        lockPrice: false 
+                      }}
+                      applyRounding={applyPurchaseRounding}
+                      State={State}
+                      setModal={setModal}
+                      onOpenEditDrawer={handleOpenEditDrawer}
+                      onDeleteItem={handleDeleteItem}
+                      onDiscountChange={() => { }} 
+                      onCustomPriceChange={handlePriceChange} 
+                      onCustomPriceBlur={() => { }} 
+                      onQuantityChange={(id, qty) => handleQuantityChange(id, qty)} 
+                    />
+                 </div>
+              </div>
+
+              <div className="md:hidden">
+                 <GenericBillFooter
+                    isExpanded={isFooterExpanded}
+                    onToggleExpand={() => setIsFooterExpanded(!isFooterExpanded)}
+                    totalQuantity={totalQuantity}
+                    subtotal={subtotal}
+                    taxAmount={taxAmount}
+                    finalAmount={finalAmount}
+                    roundingOffAmount={roundingOffAmount}
+                    showTaxRow={displayTaxTotal}
+                    taxLabel="Total Tax"
+                    actionLabel={isEditMode ? 'Update' : 'Pay Now'}
+                    onActionClick={handleProceedToPayment}
+                    disableAction={items.length === 0}
+                  >
+                    {showTaxToggle && (
+                      <div className="flex justify-between items-center p-2 bg-white border-b border-gray-200 px-5">
+                        <p className="text-sm font-semibold text-gray-600">Tax Calculation</p>
+                        <select
+                          value={billTaxType}
+                          onChange={(e) => setBillTaxType(e.target.value as TaxOption)}
+                          className="border border-gray-300 rounded-md p-1 text-sm bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium"
+                        >
+                          <option value="exclusive">Tax Exclusive</option>
+                          <option value="inclusive">Tax Inclusive</option>
+                          <option value="exempt">Tax Exempt</option>
+                        </select>
+                      </div>
+                    )}
+                  </GenericBillFooter>
+              </div>
+
+          </div>
+
+          <div className="hidden md:flex w-1/4 flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
+               <div className="flex-1 p-6 flex flex-col justify-end">
+                  <h2 className="text-xl font-bold text-gray-800 mb-6 border-b pb-2">Purchase Summary</h2>
+                   
+                   <GenericBillFooter
+                      isExpanded={true} 
+                      onToggleExpand={() => {}} 
+                      totalQuantity={totalQuantity}
+                      subtotal={subtotal}
+                      taxAmount={taxAmount}
+                      finalAmount={finalAmount}
+                      roundingOffAmount={roundingOffAmount}
+                      showTaxRow={displayTaxTotal}
+                      taxLabel="Total Tax"
+                      actionLabel={isEditMode ? 'Update' : 'Pay Now'}
+                      onActionClick={handleProceedToPayment}
+                      disableAction={items.length === 0}
+                    >
+                      {showTaxToggle && (
+                        <div className="flex justify-between items-center py-2 bg-transparent border-b border-gray-100 mb-4">
+                          <p className="text-sm font-semibold text-gray-600">Tax Calculation</p>
+                          <select
+                            value={billTaxType}
+                            onChange={(e) => setBillTaxType(e.target.value as TaxOption)}
+                            className="border border-gray-300 rounded-md p-1 text-sm bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium"
+                          >
+                            <option value="exclusive">Tax Exclusive</option>
+                            <option value="inclusive">Tax Inclusive</option>
+                            <option value="exempt">Tax Exempt</option>
+                          </select>
+                        </div>
+                      )}
+                    </GenericBillFooter>
+               </div>
+          </div>
       </div>
 
-      {/* CONDITIONAL CONTENT RENDERING */}
-      {isCardView ? renderCardView() : renderListView()}
-
-      <GenericBillFooter
-        isExpanded={isFooterExpanded}
-        onToggleExpand={() => setIsFooterExpanded(!isFooterExpanded)}
-        totalQuantity={totalQuantity}
-        subtotal={subtotal}
-        taxAmount={taxAmount}
-        finalAmount={finalAmount}
-        roundingOffAmount={roundingOffAmount}
-        showTaxRow={displayTaxTotal}
-        taxLabel="Total Tax"
-        actionLabel={isEditMode ? 'Update' : 'Pay Now'}
-        onActionClick={handleProceedToPayment}
-        disableAction={items.length === 0}
-      >
-        {/* Injecting Purchase Specific Tax Selector */}
-        {showTaxToggle && (
-          <div className="flex justify-between items-center p-2 bg-white border-b border-gray-200 px-5">
-            <p className="text-sm font-semibold text-gray-600">Tax Calculation</p>
-            <select
-              value={billTaxType}
-              onChange={(e) => setBillTaxType(e.target.value as TaxOption)}
-              className="border border-gray-300 rounded-md p-1 text-sm bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium"
-            >
-              <option value="exclusive">Tax Exclusive</option>
-              <option value="inclusive">Tax Inclusive</option>
-              <option value="exempt">Tax Exempt</option>
-            </select>
-          </div>
-        )}
-      </GenericBillFooter>
       <PaymentDrawer
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
@@ -880,6 +903,19 @@ const PurchasePage: React.FC = () => {
         onClose={handleCloseEditDrawer}
         onSaveSuccess={handleSaveSuccess}
       />
+
+       {showPrintQrModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm mx-4">
+            <h3 className="text-lg font-bold text-gray-800">Purchase Saved!</h3>
+            <p className="my-4 text-gray-600">Print barcodes/QR codes for the items?</p>
+            <div className="flex justify-end gap-4 mt-6">
+              <CustomButton variant={Variant.Outline} onClick={handleCloseQrModal}>No</CustomButton>
+              <CustomButton variant={Variant.Filled} onClick={handleNavigateToQrPage}>Yes, Print</CustomButton>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

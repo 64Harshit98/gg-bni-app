@@ -1,4 +1,3 @@
-// src/Pages/PurchaseReturnPage.tsx
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
@@ -23,11 +22,8 @@ import PaymentDrawer, { type PaymentCompletionData } from '../../Components/Paym
 import BarcodeScanner from '../../UseComponents/BarcodeScanner';
 import { ReturnListItem } from '../../Components/ReturnListItem';
 import { IconScanCircle } from '../../constants/Icons';
-
-// --- IMPORT THE GENERIC COMPONENT ---
 import { GenericCartList, type CartItem } from '../../Components/CartItem';
 
-// --- Interfaces ---
 interface PurchaseData {
   id: string;
   invoiceNumber: string;
@@ -92,13 +88,11 @@ const PurchaseReturnPage: React.FC = () => {
   const [scannerPurpose, setScannerPurpose] = useState<'purchase' | 'item' | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
-  // --- Derived State ---
   const itemsToReturn = useMemo(() =>
     originalPurchaseItems.filter(item => selectedReturnIds.has(item.id)),
     [originalPurchaseItems, selectedReturnIds]
   );
 
-  // --- Effects ---
   useEffect(() => {
     if (!currentUser || !currentUser.companyId || !dbOperations) {
       setIsLoading(false);
@@ -156,7 +150,6 @@ const PurchaseReturnPage: React.FC = () => {
     [purchaseList, searchQuery]
   );
 
-  // --- Selection Handlers ---
   const handleSelectPurchase = (purchase: PurchaseData) => {
     setSelectedPurchase(purchase);
     setSupplierName(purchase.partyName);
@@ -227,7 +220,6 @@ const PurchaseReturnPage: React.FC = () => {
     }));
   };
 
-  // --- Handlers for GenericCartList (New Items) ---
   const handleRemoveNewItem = (id: string) => {
     setNewItemsReceived(prev => prev.filter(item => item.id !== id));
   };
@@ -321,7 +313,6 @@ const PurchaseReturnPage: React.FC = () => {
     return { totalReturnValue, totalNewItemsValue, finalBalance };
   }, [itemsToReturn, newItemsReceived]);
 
-  // --- SAVE TRANSACTION LOGIC ---
   const saveReturnTransaction = async (completionData?: Partial<PaymentCompletionData>) => {
     if (!currentUser || !currentUser.companyId || !selectedPurchase) return;
 
@@ -342,7 +333,6 @@ const PurchaseReturnPage: React.FC = () => {
 
       const originalItemsMap = new Map(selectedPurchase.items.map(item => [item.id, { ...item }]));
 
-      // 1. Process Returns (Decrement Qty from Purchase)
       itemsToReturn.forEach(returnItem => {
         const originalItem = originalItemsMap.get(returnItem.originalItemId);
         if (originalItem) {
@@ -354,7 +344,6 @@ const PurchaseReturnPage: React.FC = () => {
         });
       });
 
-      // 2. Process New Items (Increment Qty in Purchase)
       newItemsReceived.forEach(newItem => {
         const originalItem = originalItemsMap.get(newItem.originalItemId);
         if (originalItem) {
@@ -398,7 +387,6 @@ const PurchaseReturnPage: React.FC = () => {
 
       batch.update(purchaseRef, updateData);
 
-      // 3. Update Stock
       itemsToReturn.forEach(returnItem => {
         batch.update(doc(db, 'companies', companyId, 'items', returnItem.originalItemId), {
           stock: firebaseIncrement(-returnItem.quantity)
@@ -410,7 +398,6 @@ const PurchaseReturnPage: React.FC = () => {
         });
       });
 
-      // 4. Save Customer/Supplier Info
       const cleanSupplierNumber = finalSupplierNumber?.trim();
       const cleanSupplierName = finalSupplierName?.trim();
       const cleanAddress = completionData?.partyAddress || supplierAddress || selectedPurchase.partyAddress || '';
@@ -427,10 +414,7 @@ const PurchaseReturnPage: React.FC = () => {
           lastUpdatedAt: serverTimestamp()
         };
 
-        // --- CASH REFUND LOGIC ---
-        // If "Cash Refund", supplier paid us back. Debit balance does NOT increase.
         if (modeOfReturn === 'Cash Refund') {
-          // No balance update
         } else {
           if (finalBalance > 0) {
             customerUpdateData.debitBalance = firebaseIncrement(finalBalance);
@@ -458,201 +442,251 @@ const PurchaseReturnPage: React.FC = () => {
       return setModal({ type: State.ERROR, message: 'No items have been returned or received.' });
     }
 
-    // Cash Refund: If balance > 0 (Supplier owes us), and we selected Cash Refund, treat as done.
     if (modeOfReturn === 'Cash Refund' && finalBalance > 0) {
       saveReturnTransaction();
     }
-    // Debit Note / Exchange: If balance > 0 (Supplier owes us), save as debit note.
     else if (finalBalance >= 0) {
       saveReturnTransaction();
     }
-    // If balance < 0 (We owe supplier), open drawer to pay.
     else {
       setIsDrawerOpen(true);
     }
   };
 
-  // Helper Label for Bottom Summary
   const getBalanceLabel = () => {
-    if (finalBalance < 0) return 'Payment Due'; // We owe supplier
-    if (modeOfReturn === 'Cash Refund') return 'Refund Received'; // Supplier paid us cash
-    return 'Debit Note'; // Supplier owes us credit
+    if (finalBalance < 0) return 'Payment Due'; 
+    if (modeOfReturn === 'Cash Refund') return 'Refund Received'; 
+    return 'Debit Note'; 
   };
 
   if (isLoading) return <div className="flex min-h-screen items-center justify-center">Loading...</div>;
 
+  const renderHeader = () => (
+    <div className="flex flex-col md:flex-row md:justify-between md:items-center bg-gray-100 md:bg-white border-b border-gray-300 shadow-sm flex-shrink-0 p-2 md:px-4 md:py-3 mb-2 md:mb-0">
+      <h1 className="text-2xl font-bold text-gray-800 text-center md:text-left mb-2 md:mb-0">
+        Purchase Return
+      </h1>
+      <div className="flex justify-center gap-x-6">
+        <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.PURCHASE)} active={isActive(ROUTES.PURCHASE)}>Purchase</CustomButton>
+        <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.PURCHASE_RETURN)} active={isActive(ROUTES.PURCHASE_RETURN)}>Purchase Return</CustomButton>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="flex flex-col min-h-screen bg-white w-full ">
+    <div className="flex flex-col h-screen w-full bg-gray-100 overflow-hidden">
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
       <BarcodeScanner isOpen={scannerPurpose !== null} onClose={() => setScannerPurpose(null)} onScanSuccess={handleBarcodeScanned} />
 
-      <div className="flex flex-col p-1 bg-gray-100 border-b border-gray-300 flex-shrink-0">
-        <div className='flex items-center gap-2 mb-2'>
-          <h1 className="text-2xl font-bold text-gray-800 text-center flex-grow pr-8">Purchase Return</h1>
-        </div>
-        <div className="flex justify-center gap-x-6">
-          <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.PURCHASE)} active={isActive(ROUTES.PURCHASE)}>Purchase</CustomButton>
-          <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.PURCHASE_RETURN)} active={isActive(ROUTES.PURCHASE_RETURN)}>Purchase Return</CustomButton>
-        </div>
-      </div>
+      {/* HEADER */}
+      {renderHeader()}
 
-      <div className="flex-grow p-2 bg-gray-100 ">
-        {/* Search Purchase */}
-        <div className="bg-white p-6 rounded-lg shadow-md mb-2">
-          <div className="relative" ref={dropdownRef}>
-            <label htmlFor="search-purchase" className="block text-base font-medium mb-2">Search Original Purchase</label>
-            <div className="flex gap-2">
-              <input
-                type="text" id="search-purchase" value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); setIsDropdownOpen(true); }}
-                onFocus={() => setIsDropdownOpen(true)}
-                placeholder={selectedPurchase ? `${selectedPurchase.partyName} (${selectedPurchase.invoiceNumber})` : "Search by Supplier or Invoice"}
-                className="flex-grow p-2 border rounded-lg" autoComplete="off" readOnly={!!selectedPurchase}
-              />
-              {selectedPurchase && (
-                <button onClick={handleClear} className="py-2 px-4 bg-sky-500 text-white font-semibold rounded-lg">
-                  Clear
-                </button>
-              )}
-            </div>
-            {isDropdownOpen && !selectedPurchase && (
-              <div className="absolute top-full w-full z-20 mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
-                {filteredList.map(item => (
-                  <div key={item.id} className="p-3 cursor-pointer hover:bg-gray-100" onClick={() => handleSelectPurchase(item)}>
-                    <p className="font-semibold">{item.partyName} ({item.invoiceNumber})</p>
-                    <p className="text-sm text-gray-600">Total: ₹{item.totalAmount.toFixed(2)}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
 
-        {selectedPurchase && (
-          <>
-            {/* Purchase Details */}
-            <div className="bg-white p-6 rounded-lg shadow-md mt-2">
-              <div className="space-y-4">
-                <div className='grid grid-cols-2 gap-4'>
-                  <div>
-                    <label htmlFor="return-date" className="block font-medium text-sm mb-1">Return Date</label>
-                    <input type="date" id="return-date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="w-full p-2 border rounded" />
-                  </div>
-                  <div>
-                    <label htmlFor="supplier-name" className="block font-medium text-sm mb-1">Party Name</label>
-                    <input type="text" id="supplier-name" value={supplierName} onChange={(e) => setSupplierName(e.target.value)} className="w-full p-2 border rounded bg-white" />
-                  </div>
-                </div>
-                <div>
-                  <label htmlFor="supplier-number" className="block font-medium text-sm mb-1">Party Number</label>
-                  <input type="text" id="supplier-number" value={supplierNumber} onChange={(e) => setSupplierNumber(e.target.value)} className="w-full p-2 border rounded bg-white" />
-                </div>
-              </div>
-
-              {/* Items to Return List */}
-              <h3 className="text-sm font-semibold mt-4 mb-2">Select Items to Return</h3>
-              <div className="flex flex-col gap-3">
-                {originalPurchaseItems.map((item) => (
-                  <ReturnListItem
-                    key={item.id}
-                    item={item}
-                    isSelected={selectedReturnIds.has(item.id)}
-                    onToggle={handleToggleReturnItem}
-                    onQuantityChange={(id, val) => handleItemChange(setOriginalPurchaseItems, id, 'quantity', val)}
-                    showMrp={false}
+        <div className="flex-1 w-full md:w-[65%] bg-gray-100 md:bg-white md:border-r border-gray-200 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 relative">
+            
+            {/* Search */}
+            <div className="bg-white p-4 rounded-sm shadow-md mb-4 border border-gray-200">
+              <div className="relative" ref={dropdownRef}>
+                <label htmlFor="search-purchase" className="block text-sm font-medium mb-1 text-gray-700">Search Original Purchase</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text" id="search-purchase" value={searchQuery}
+                    onChange={(e) => { setSearchQuery(e.target.value); setIsDropdownOpen(true); }}
+                    onFocus={() => setIsDropdownOpen(true)}
+                    placeholder={selectedPurchase ? `${selectedPurchase.partyName} (${selectedPurchase.invoiceNumber})` : "Supplier or Invoice..."}
+                    className="flex-grow p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" autoComplete="off" readOnly={!!selectedPurchase}
                   />
-                ))}
-              </div>
-            </div>
-
-            {/* Return Mode & New Items */}
-            <div className="bg-white p-6 rounded-lg shadow-md mt-2">
-              <div>
-                <label htmlFor="mode-of-return" className="block font-medium mb-1">Transaction Type</label>
-                <select id="mode-of-return" value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-2 border rounded bg-white">
-                  <option>Exchange</option>
-                  <option>Debit Note</option>
-                  <option>Cash Refund</option>
-                </select>
-              </div>
-              {modeOfReturn === 'Exchange' && (
-                <div className="pt-3 border-t mt-3">
-                  <div className="flex gap-2 items-end">
-                    <div className="flex-grow">
-                      <SearchableItemInput
-                        label="Add New Item Received"
-                        placeholder="Search inventory..."
-                        items={availableItems}
-                        onItemSelected={handleNewItemSelected}
-                        isLoading={isLoading}
-                        error={error}
-                      />
-                    </div>
-                    <button onClick={() => setScannerPurpose('item')} className="p-3 bg-gray-700 text-white rounded-lg flex items-center justify-center">
-                      <IconScanCircle width={24} height={24} />
+                  {selectedPurchase && (
+                    <button onClick={handleClear} className="py-2 px-3 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300">
+                      Clear
                     </button>
-                  </div>
-                  {newItemsReceived.length > 0 && (
-                    <div className="flex flex-col gap-3 mt-4">
-                      <h3 className="text-sm font-semibold">New Items Received</h3>
-                      <div className="max-h-96 overflow-y-auto">
-                        <GenericCartList<ReturnCartItem>
-                          items={newItemsReceived}
-                          availableItems={availableItems}
-                          basePriceKey="unitPrice"
-                          priceLabel="Cost"
-                          settings={{
-                            enableRounding: false,
-                            roundingInterval: 1,
-                            enableItemWiseDiscount: false,
-                            lockDiscount: true,
-                            lockPrice: false
-                          }}
-                          applyRounding={(v) => v}
-                          State={State}
-                          setModal={setModal}
-                          onOpenEditDrawer={() => { }}
-                          onDeleteItem={handleRemoveNewItem}
-                          onDiscountChange={() => { }}
-                          onCustomPriceChange={handleNewItemPriceChange}
-                          onCustomPriceBlur={handleNewItemPriceBlur}
-                          onQuantityChange={handleNewItemQuantity}
-                          onDiscountPressStart={() => { }}
-                          onDiscountPressEnd={() => { }}
-                          onDiscountClick={() => { }}
-                          onPricePressStart={() => { }}
-                          onPricePressEnd={() => { }}
-                          onPriceClick={() => { }}
-                        />
-                      </div>
-                    </div>
                   )}
                 </div>
-              )}
-            </div>
-
-            {/* Summary */}
-            <div className="bg-white p-6 rounded-lg shadow-md mt-2">
-              <div className="p-4 bg-gray-100 rounded-lg space-y-3">
-                <div className="flex justify-between items-center text-md text-red-700"><p>Total Return Value (Debit)</p><p className="font-medium">₹{totalReturnValue.toFixed(2)}</p></div>
-                <div className="flex justify-between items-center text-md text-green-700"><p>Total New Items Value (Credit)</p><p className="font-medium">₹{totalNewItemsValue.toFixed(2)}</p></div>
-                <div className="border-t border-gray-300 !my-2"></div>
-                <div className={`flex justify-between items-center text-2xl font-bold ${finalBalance >= 0 ? 'text-green-600' : 'text-orange-600'}`}>
-                  <p>{getBalanceLabel()}</p>
-                  <p>₹{Math.abs(finalBalance).toFixed(2)}</p>
-                </div>
+                {isDropdownOpen && !selectedPurchase && (
+                  <div className="absolute top-full w-full z-20 mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
+                    {filteredList.map(item => (
+                      <div key={item.id} className="p-3 cursor-pointer hover:bg-gray-100 border-b border-gray-50 last:border-0" onClick={() => handleSelectPurchase(item)}>
+                        <p className="font-semibold text-sm">{item.partyName} <span className="text-gray-500 font-normal">({item.invoiceNumber})</span></p>
+                        <p className="text-xs text-gray-500">Amount: ₹{item.totalAmount.toFixed(2)}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
-          </>
-        )}
-      </div>
 
-      <div className="sticky bottom-0 p-4 bg-gray-100 pb-16 items-center px-16">
-        {selectedPurchase && (
-          <CustomButton onClick={handleProcessReturn} variant={Variant.Payment} className="w-full py-4 text-xl font-semibold">
-            Process Transaction
-          </CustomButton>
-        )}
+            {selectedPurchase && (
+              <>
+                {/* Purchase Details */}
+                <div className="bg-white p-4 rounded-sm shadow-md mb-4 border border-gray-200">
+                  <div className="space-y-3 mb-4">
+                    <div className='grid grid-cols-2 gap-4'>
+                      <div><label className="block text-xs font-bold text-gray-500 uppercase">Date</label><input type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm" /></div>
+                      <div><label className="block text-xs font-bold text-gray-500 uppercase">Party</label><input type="text" value={supplierName} onChange={(e) => setSupplierName(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm" /></div>
+                    </div>
+                    <div><label className="block text-xs font-bold text-gray-500 uppercase">Party Number</label><input type="text" value={supplierNumber} onChange={(e) => setSupplierNumber(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm" /></div>
+                  </div>
+
+                  <h3 className="text-sm font-bold text-gray-700 mb-2 border-b pb-1">Select Return Items</h3>
+                  <div className="flex flex-col gap-2">
+                    {originalPurchaseItems.map((item) => (
+                      <ReturnListItem
+                        key={item.id}
+                        item={item}
+                        isSelected={selectedReturnIds.has(item.id)}
+                        onToggle={handleToggleReturnItem}
+                        onQuantityChange={(id, val) => handleItemChange(setOriginalPurchaseItems, id, 'quantity', val)}
+                        showMrp={false}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Exchange / New Items (Input + List) */}
+                <div className="bg-white p-4 rounded-sm shadow-md mb-20 md:mb-0 border border-gray-200">
+                   {/* Mobile View: Mode Select Here */}
+                   <div className="md:hidden mb-4">
+                      <label className="block font-medium text-sm mb-1">Transaction Type</label>
+                      <select value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-2 border rounded bg-white">
+                        <option>Exchange</option>
+                        <option>Debit Note</option>
+                        <option>Cash Refund</option>
+                      </select>
+                   </div>
+
+                   {modeOfReturn === 'Exchange' && (
+                    <div className="mt-2">
+                      <div className="flex items-end gap-2 mb-3">
+                        <div className="flex-grow">
+                          <SearchableItemInput
+                            label="Add New Item Received"
+                            placeholder="Search inventory..."
+                            items={availableItems}
+                            onItemSelected={handleNewItemSelected}
+                            isLoading={isLoading}
+                            error={error}
+                          />
+                        </div>
+                        <button onClick={() => setScannerPurpose('item')} className="p-2.5 bg-gray-800 text-white rounded-md flex items-center justify-center">
+                          <IconScanCircle width={24} height={24} />
+                        </button>
+                      </div>
+                      
+                      {newItemsReceived.length > 0 && (
+                        <div className="border rounded-md overflow-hidden">
+                           <div className="bg-gray-50 px-3 py-2 border-b text-xs font-bold text-gray-500 uppercase">Received Items</div>
+                           <div className="max-h-60 overflow-y-auto p-2 bg-gray-50">
+                              <GenericCartList<ReturnCartItem>
+                                items={newItemsReceived}
+                                availableItems={availableItems}
+                                basePriceKey="unitPrice"
+                                priceLabel="Cost"
+                                settings={{
+                                  enableRounding: false,
+                                  roundingInterval: 1,
+                                  enableItemWiseDiscount: false,
+                                  lockDiscount: true,
+                                  lockPrice: false
+                                }}
+                                applyRounding={(v) => v}
+                                State={State}
+                                setModal={setModal}
+                                onOpenEditDrawer={() => { }}
+                                onDeleteItem={handleRemoveNewItem}
+                                onDiscountChange={() => { }}
+                                onCustomPriceChange={handleNewItemPriceChange}
+                                onCustomPriceBlur={handleNewItemPriceBlur}
+                                onQuantityChange={handleNewItemQuantity}
+                                onDiscountPressStart={() => { }}
+                                onDiscountPressEnd={() => { }}
+                                onDiscountClick={() => { }}
+                                onPricePressStart={() => { }}
+                                onPricePressEnd={() => { }}
+                                onPriceClick={() => { }}
+                              />
+                           </div>
+                        </div>
+                      )}
+                    </div>
+                   )}
+                </div>
+
+                {/* Mobile Only: Inline Summary */}
+                <div className="md:hidden bg-white p-4 rounded-sm shadow-md mt-2">
+                    <div className="flex justify-between items-center text-sm text-red-700">
+                      <p>Return Value</p><p className="font-medium">₹{totalReturnValue.toFixed(2)}</p>
+                    </div>
+                    {modeOfReturn === 'Exchange' && (
+                      <div className="flex justify-between items-center text-sm text-green-700 mt-1">
+                        <p>New Items Value</p><p className="font-medium">₹{totalNewItemsValue.toFixed(2)}</p>
+                      </div>
+                    )}
+                    <div className="border-t border-gray-200 my-2"></div>
+                    <div className={`flex justify-between items-center text-lg font-bold ${finalBalance >= 0 ? 'text-green-600' : 'text-orange-600'}`}>
+                      <p>{getBalanceLabel()}</p><p>₹{Math.abs(finalBalance).toFixed(2)}</p>
+                    </div>
+                </div>
+              </>
+            )}
+        </div>
+
+        {/* --- RIGHT PANEL (Desktop Only: 35%) --- */}
+        <div className="hidden md:flex w-[35%] flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10 p-6">
+            {selectedPurchase ? (
+              <div className="flex flex-col h-full">
+                 <h2 className="text-xl font-bold text-gray-800 mb-6 border-b pb-2">Return Summary</h2>
+                 
+                 {/* Transaction Type */}
+                 <div className="mb-6">
+                    <label className="block text-sm font-semibold text-gray-600 mb-2">Transaction Type</label>
+                    <select value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none">
+                      <option>Exchange</option>
+                      <option>Debit Note</option>
+                      <option>Cash Refund</option>
+                    </select>
+                 </div>
+
+                 {/* Financials */}
+                 <div className="space-y-4 text-sm text-gray-700 bg-gray-50 p-4 rounded-xl border border-gray-100 flex-grow">
+                    <div className="flex justify-between font-semibold border-b border-gray-200 pb-2">
+                      <span>Total Return Value</span>
+                      <span className="text-red-600">₹{totalReturnValue.toFixed(2)}</span>
+                    </div>
+                    
+                    {modeOfReturn === 'Exchange' && (
+                       <div className="flex justify-between text-green-600 mt-2">
+                        <span>New Items Value</span>
+                        <span>- ₹{totalNewItemsValue.toFixed(2)}</span>
+                      </div>
+                    )}
+                 </div>
+
+                 {/* Final Total */}
+                 <div className="mt-auto pt-4 border-t border-gray-100">
+                    <div className="flex justify-between items-end mb-4">
+                        <span className="text-gray-500 font-medium">{getBalanceLabel()}</span>
+                        <span className={`text-3xl font-bold ${finalBalance >= 0 ? 'text-green-600' : 'text-orange-600'}`}>
+                          ₹{Math.abs(finalBalance).toFixed(2)}
+                        </span>
+                    </div>
+                    <button onClick={handleProcessReturn} className="w-full bg-blue-600 text-white py-4 px-4 rounded-xl shadow-lg shadow-blue-200 transition-all active:scale-[0.98] text-lg font-bold hover:bg-blue-700">
+                      Process Transaction
+                    </button>
+                 </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                 <p>Select a purchase to begin return</p>
+              </div>
+            )}
+        </div>
+
+        {/* --- MOBILE FOOTER (Sticky) --- */}
+        <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-gray-100 border-t border-gray-200 z-20 flex justify-center pb-8">
+           {selectedPurchase && (<CustomButton onClick={handleProcessReturn} variant={Variant.Payment} className="w-full py-3 text-lg font-semibold shadow-md">Process Transaction</CustomButton>)}
+        </div>
+
       </div>
 
       <PaymentDrawer

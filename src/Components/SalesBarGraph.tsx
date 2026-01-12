@@ -135,22 +135,7 @@ export const SalesBarChartReport: React.FC<SalesBarChartProps> = ({ isDataVisibl
               />
 
               <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#9ca3af', strokeWidth: 1, strokeDasharray: '4 4' }} />
-
-              {/* Previous Period Line (Dashed) */}
-              {viewMode === 'amount' && (
-                <Line
-                  type="linear" // Matches the straight lines in your image
-                  dataKey="previous"
-                  name="Previous"
-                  stroke="#9ca3af"
-                  strokeWidth={2}
-                  strokeDasharray="5 5"
-                  dot={false}
-                  activeDot={{ r: 4, fill: '#9ca3af' }}
-                />
-              )}
-
-              {/* Main Sales Line (Blue with White Dots) */}
+        
               <Line
                 type="linear" // Matches the straight lines in your image
                 dataKey={viewMode === 'amount' ? 'sales' : 'bills'}

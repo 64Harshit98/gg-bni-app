@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { Item, ItemGroup } from '../constants/models'; // Added ItemGroup
+import type { Item, ItemGroup } from '../constants/models'; 
 import { useDatabase } from '../context/auth-context';
 import { FieldValue, Timestamp } from 'firebase/firestore';
 import { storage } from '../lib/Firebase';
@@ -8,7 +8,6 @@ import { FiSave, FiX, FiPackage } from 'react-icons/fi';
 import { Spinner } from '../constants/Spinner';
 import imageCompression from 'browser-image-compression';
 
-// Interface for props
 interface ItemEditDrawerProps {
         item: Item | null;
         isOpen: boolean;
@@ -16,13 +15,11 @@ interface ItemEditDrawerProps {
         onSaveSuccess: (updatedItem: Partial<Item>) => void;
 }
 
-// Type for the update payload
 type ItemUpdatePayload = Partial<Omit<Item, 'id' | 'createdAt' | 'companyId'>> & {
         updatedAt?: FieldValue | Timestamp | number | null;
         imageUrl?: string | null;
 };
 
-// --- Image preview component ---
 const ImagePreview: React.FC<{ imageUrl: string | null; alt: string }> = ({ imageUrl, alt }) => {
         if (!imageUrl) {
                 return (
@@ -46,8 +43,6 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
         const [isSaving, setIsSaving] = useState(false);
         const [error, setError] = useState<string | null>(null);
         const firstInputRef = useRef<HTMLInputElement>(null);
-
-        // New State for Categories
         const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
         const [loadingGroups, setLoadingGroups] = useState(false);
 
@@ -55,7 +50,6 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
         const [imagePreview, setImagePreview] = useState<string | null>(null);
         const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 
-        // --- 1. FETCH GROUPS ON LOAD ---
         useEffect(() => {
                 const fetchGroups = async () => {
                         if (isOpen && dbOperations) {
@@ -73,14 +67,12 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 fetchGroups();
         }, [isOpen, dbOperations]);
 
-        // Effect to populate form when item changes or drawer opens
         useEffect(() => {
                 if (isOpen && item) {
                         setFormData({
                                 name: item.name || '',
                                 mrp: item.mrp ?? undefined,
                                 purchasePrice: item.purchasePrice ?? undefined,
-                                // Read lowercase stock
                                 stock: item.stock ?? (item as any).Stock ?? undefined,
                                 itemGroupId: item.itemGroupId || '',
                                 barcode: item.barcode || '',
@@ -109,12 +101,9 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 }
         }, [isOpen, item]);
 
-        // Handle input changes
         const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
                 const { name, value, type } = e.target;
-                // Check if element is specifically an input checkbox
                 const isCheckbox = type === 'checkbox';
-                // Type assertion for checkbox checked property
                 const checked = (e.target as HTMLInputElement).checked;
 
                 const isNumericField = ['mrp', 'purchasePrice', 'stock', 'tax', 'discount'].includes(name);
@@ -156,7 +145,6 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 }
         };
 
-        // Handle save action
         const handleSave = async () => {
                 const companyId = item?.companyId;
 
@@ -204,9 +192,9 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                 name: String(formData.name || ''),
                                 mrp: Number(formData.mrp || 0),
                                 purchasePrice: Number(formData.purchasePrice || 0),
-                                // Write lowercase stock
                                 stock: Number(formData.stock ?? (formData as any).Stock ?? 0),
                                 tax: Number(formData.tax || 0),
+                                taxRate: Number(formData.tax || 0),
                                 discount: Number(formData.discount || 0),
                                 itemGroupId: String(formData.itemGroupId || ''),
                                 barcode: String(formData.barcode || ''),
@@ -233,7 +221,6 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 }
         };
 
-        // --- CSS Transition Classes ---
         const drawerClasses = isOpen
                 ? 'translate-y-0 opacity-100'
                 : 'translate-y-full opacity-0 pointer-events-none';
@@ -250,7 +237,6 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                 className={`bg-white rounded-t-lg shadow-xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden transform transition-all duration-300 ease-in-out ${drawerClasses}`}
                                 onClick={(e) => e.stopPropagation()}
                         >
-                                {/* Header */}
                                 <div className="p-4 text-center relative border-b">
                                         <div className="absolute left-1/2 top-2 -translate-x-1/2">
                                                 <div className="w-12 h-1.5 bg-gray-300 rounded-full"></div>
@@ -270,11 +256,9 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         </button>
                                 </div>
 
-                                {/* Scrollable Content Area */}
                                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
                                         {error && <p className="text-red-600 bg-red-100 p-3 rounded text-sm">{error}</p>}
 
-                                        {/* Image Upload Section */}
                                         <div>
                                                 <label className="text-sm font-medium leading-none mb-1 block">Item Image</label>
                                                 <ImagePreview imageUrl={imagePreview} alt={formData.name || "Item Preview"} />
@@ -296,7 +280,6 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                                 {isSaving && uploadProgress !== null && <p className="text-sm text-gray-600 mt-1">Uploading image...</p>}
                                         </div>
 
-                                        {/* Form Fields */}
                                         <div>
                                                 <label htmlFor="edit-name" className="text-sm font-medium leading-none mb-1 block">Name</label>
                                                 <input
@@ -308,7 +291,6 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                                 />
                                         </div>
 
-                                        {/* --- 2. CHANGED CATEGORY INPUT TO SELECT --- */}
                                         <div>
                                                 <label htmlFor="edit-itemGroupId" className="text-sm font-medium leading-none mb-1 block">Category</label>
                                                 {loadingGroups ? (
@@ -417,7 +399,6 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         </div>
                                 </div>
 
-                                {/* Footer with Actions */}
                                 <div className="mt-auto border-t p-4 flex gap-3">
                                         <button
                                                 onClick={handleSave}

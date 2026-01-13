@@ -10,16 +10,16 @@ const SharedCataloguePage: React.FC = () => {
     // --- ORIGINAL LOGIC (DO NOT CHANGE) ---
     const { companyId } = useParams<{ companyId: string }>();
     const [items, setItems] = useState<Item[]>([]);
-    const [categories, setCategories] = useState<string[]>(['All']);
-    const [selectedCategory, setSelectedCategory] = useState('All');
+    const [_categories, setCategories] = useState<string[]>(['All']);
+    const [selectedCategory, _setSelectedCategory] = useState('All');
     const [searchQuery, setSearchQuery] = useState('');
     const [companyName] = useState<string>('Catalogue');
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [sortOrder, setSortOrder] = useState<'A-Z' | 'Z-A'>('A-Z');
     const [isSortOpen, setIsSortOpen] = useState(false);
-    const [cart, setCart] = useState<{ item: Item; quantity: number }[]>([]);
-    const [isCartOpen, setIsCartOpen] = useState(false);
+    // const [cart, setCart] = useState<{ item: Item; quantity: number }[]>([]);
+    const [_isCartOpen, setIsCartOpen] = useState(false);
 
     useEffect(() => {
         if (!companyId) {
@@ -90,13 +90,18 @@ const SharedCataloguePage: React.FC = () => {
                     >
                         <ShoppingCart size={14} />
                         <span>Cart</span>
-    
+
                     </button>
                 </div>
             </header>
 
             <main className="p-4 md:p-6 space-y-6 flex-1 max-w-7xl mx-auto w-full pb-10">
                 {/* --- SEARCH BAR --- */}
+                <div className='flex items-center justify-center'>
+                    <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">
+                        {companyName}<span className="text-[#00A3E1]">.</span>
+                    </h1>
+                </div>
                 <div className="relative group max-w-md mx-auto w-full">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                     <input

@@ -54,7 +54,7 @@ const SharedProduct: React.FC = () => {
     const [pageIsLoading, setPageIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [itemsToRenderCount, setItemsToRenderCount] = useState(ITEMS_PER_BATCH_RENDER);
-    
+
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
     const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
     const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
@@ -194,7 +194,7 @@ const SharedProduct: React.FC = () => {
                             </h1>
                         </div>
 
-                        <button 
+                        <button
                             onClick={() => setIsCartOpen(true)}
                             className="flex items-center justify-center gap-2 bg-[#00A3E1] text-white py-2 px-4 rounded-xl font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative"
                         >
@@ -211,7 +211,13 @@ const SharedProduct: React.FC = () => {
             </header>
 
             <main className="p-3 md:p-6 space-y-4 flex-1 max-w-7xl mx-auto w-full pb-24">
+                <div className='flex items-center justify-center'>
+                    <h1 className="text-xs md:text-sm font-black text-[#00A3E1] uppercase tracking-tighter">
+                        Catalogue Name
+                    </h1>
+                </div>
                 <div className="relative group md:max-w-md md:mx-auto w-full">
+
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
                     <input
                         type="text"
@@ -236,7 +242,7 @@ const SharedProduct: React.FC = () => {
                         {isSortOpen && (
                             <div className="absolute right-0 mt-2 w-40 bg-white rounded-2xl shadow-xl border border-gray-50 z-[70] overflow-hidden">
                                 {['A-Z', 'Z-A', 'Price: Low-High', 'Price: High-Low'].map((opt) => (
-                                    <button 
+                                    <button
                                         key={opt}
                                         onClick={() => { setSortOrder(opt as any); setIsSortOpen(false); }}
                                         className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 border-t border-gray-50 first:border-0 ${sortOrder === opt ? 'text-[#00A3E1]' : 'text-[#1A3B5D]'}`}
@@ -253,78 +259,79 @@ const SharedProduct: React.FC = () => {
                     {itemsToDisplay.map((item) => {
                         const cartItem = cart.find(i => i.item.id === item.id);
                         return (
-                        <div
-                            key={item.id}
-                            onClick={() => isViewMode ? handleOpenDetailDrawer(item) : handleOpenEditDrawer(item)}
-                            className={`bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 flex flex-col transition-all duration-300 relative group hover:shadow-md cursor-pointer ${!isViewMode ? 'ring-1 ring-[#00A3E1]/10' : ''}`}
-                        >
-                            <div className="aspect-square bg-[#F8FAFC] flex items-center justify-center relative overflow-hidden">
-                                {item.imageUrl ? (
-                                    <img src={item.imageUrl} alt={item.name} className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" />
-                                ) : (
-                                    <FiPackage className="w-10 h-10 text-gray-200" />
-                                )}
-                                {!isViewMode && (
-                                    <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm p-1.5 rounded-full shadow-sm">
-                                        <Edit3 size={10} className="text-[#00A3E1]" />
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="p-3 flex flex-col flex-1">
-                                <h3 className="text-[10px] font-black text-[#1A3B5D] mb-1 truncate uppercase leading-tight">{item.name}</h3>
-                                <div className="flex items-center justify-between mb-3">
-                                    <p className="text-xs font-black text-[#00A3E1]">₹{item.mrp}</p>
-                                </div>
-
-                                <div className="mt-auto flex gap-1">
-                                    {isViewMode ? (
-                                        cartItem ? (
-                                            <div className="w-full flex items-center justify-between bg-gray-50 rounded-xl px-1 py-1 border border-gray-100">
-                                                <button 
-                                                    onClick={(e) => { e.stopPropagation(); updateQuantity(item.id!, -1); }}
-                                                    className="p-1.5 bg-white shadow-sm text-[#00A3E1] hover:bg-[#00A3E1] hover:text-white rounded-lg transition-all"
-                                                >
-                                                    <Minus size={12} strokeWidth={3} />
-                                                </button>
-                                                <span className="text-xs font-black text-[#1A3B5D]">{cartItem.quantity}</span>
-                                                <button 
-                                                    onClick={(e) => { e.stopPropagation(); updateQuantity(item.id!, 1); }}
-                                                    className="p-1.5 bg-white shadow-sm text-[#00A3E1] hover:bg-[#00A3E1] hover:text-white rounded-lg transition-all"
-                                                >
-                                                    <Plus size={12} strokeWidth={3} />
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <button 
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    addToCart(item);
-                                                }}
-                                                className="w-full bg-[#00A3E1] text-white py-2 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm active:scale-95 transition-all flex items-center justify-center gap-2"
-                                            >
-                                                <Plus size={12} />
-                                                Add to Cart
-                                            </button>
-                                        )
+                            <div
+                                key={item.id}
+                                onClick={() => isViewMode ? handleOpenDetailDrawer(item) : handleOpenEditDrawer(item)}
+                                className={`bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 flex flex-col transition-all duration-300 relative group hover:shadow-md cursor-pointer ${!isViewMode ? 'ring-1 ring-[#00A3E1]/10' : ''}`}
+                            >
+                                <div className="aspect-square bg-[#F8FAFC] flex items-center justify-center relative overflow-hidden">
+                                    {item.imageUrl ? (
+                                        <img src={item.imageUrl} alt={item.name} className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" />
                                     ) : (
-                                        <>
-                                            <button 
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleOpenEditDrawer(item);
-                                                }}
-                                                className="flex-1 bg-gray-50 text-[#1A3B5D] py-1.5 rounded-lg text-[9px] font-black uppercase border border-gray-100"
-                                            >
-                                                Edit
-                                            </button>
-                                            <QuickListedToggle itemId={item.id!} isListed={item.isListed ?? false} onToggle={handleToggleListed} />
-                                        </>
+                                        <FiPackage className="w-10 h-10 text-gray-200" />
+                                    )}
+                                    {!isViewMode && (
+                                        <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm p-1.5 rounded-full shadow-sm">
+                                            <Edit3 size={10} className="text-[#00A3E1]" />
+                                        </div>
                                     )}
                                 </div>
+
+                                <div className="p-3 flex flex-col flex-1">
+                                    <h3 className="text-[10px] font-black text-[#1A3B5D] mb-1 truncate uppercase leading-tight">{item.name}</h3>
+                                    <div className="flex items-center justify-between mb-3">
+                                        <p className="text-xs font-black text-[#00A3E1]">₹{item.mrp}</p>
+                                    </div>
+
+                                    <div className="mt-auto flex gap-1">
+                                        {isViewMode ? (
+                                            cartItem ? (
+                                                <div className="w-full flex items-center justify-between bg-gray-50 rounded-xl px-1 py-1 border border-gray-100">
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); updateQuantity(item.id!, -1); }}
+                                                        className="p-1.5 bg-white shadow-sm text-[#00A3E1] hover:bg-[#00A3E1] hover:text-white rounded-lg transition-all"
+                                                    >
+                                                        <Minus size={12} strokeWidth={3} />
+                                                    </button>
+                                                    <span className="text-xs font-black text-[#1A3B5D]">{cartItem.quantity}</span>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); updateQuantity(item.id!, 1); }}
+                                                        className="p-1.5 bg-white shadow-sm text-[#00A3E1] hover:bg-[#00A3E1] hover:text-white rounded-lg transition-all"
+                                                    >
+                                                        <Plus size={12} strokeWidth={3} />
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        addToCart(item);
+                                                    }}
+                                                    className="w-full bg-[#00A3E1] text-white py-2 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm active:scale-95 transition-all flex items-center justify-center gap-2"
+                                                >
+                                                    <Plus size={12} />
+                                                    Add to Cart
+                                                </button>
+                                            )
+                                        ) : (
+                                            <>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleOpenEditDrawer(item);
+                                                    }}
+                                                    className="flex-1 bg-gray-50 text-[#1A3B5D] py-1.5 rounded-lg text-[9px] font-black uppercase border border-gray-100"
+                                                >
+                                                    Edit
+                                                </button>
+                                                <QuickListedToggle itemId={item.id!} isListed={item.isListed ?? false} onToggle={handleToggleListed} />
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    )})}
+                        )
+                    })}
                 </div>
 
                 {hasMoreItems && <div ref={loadMoreRef} className="h-20 flex justify-center items-center"><Spinner /></div>}
@@ -404,7 +411,7 @@ const SharedProduct: React.FC = () => {
                 onSaveSuccess={(updated) => setAllItems(prev => prev.map(i => i.id === selectedItemForEdit?.id ? { ...i, ...updated } as Item : i))}
             />
 
-            <ItemDetailDrawer 
+            <ItemDetailDrawer
                 item={selectedItemForDetails}
                 isOpen={isDetailDrawerOpen}
                 onClose={() => { setIsDetailDrawerOpen(false); setSelectedItemForDetails(null); }}

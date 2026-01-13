@@ -1,168 +1,119 @@
 import React, { useState, useEffect } from 'react';
-import type { Item } from '../constants/models'; // Adjust path as needed
-import { FiX, FiPackage, FiPlus, FiMinus, FiShoppingCart } from 'react-icons/fi';
-import { Spinner } from '../constants/Spinner'; // Adjust path as needed
+import type { Item } from '../constants/models';
+import { X, ShoppingCart, Plus, Minus } from 'lucide-react';
+import { Spinner } from '../constants/Spinner';
 
-// --- Props ---
 interface ItemDetailDrawerProps {
     item: Item | null;
     isOpen: boolean;
     onClose: () => void;
-    onAddToCart: (item: Item, quantity: number) => void;
+    onAddToCart: (item: Item, quantity: number, isFromDrawer?: boolean) => void;
+    initialQuantity?: number;
 }
 
-// --- Image preview component (from ItemEditDrawer) ---
-const ImagePreview: React.FC<{ imageUrl: string | null; alt: string }> = ({ imageUrl, alt }) => {
-    if (!imageUrl) {
-        return (
-            <div className="w-full h-40 bg-gray-200 rounded-lg flex items-center justify-center text-gray-400">
-                <FiPackage size={40} />
-            </div>
-        );
-    }
-    return (
-        <img
-            src={imageUrl}
-            alt={alt}
-            className="w-full h-40 object-cover rounded-lg border border-gray-300"
-        />
-    );
-};
-
-// --- Component ---
-export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({ item, isOpen, onClose, onAddToCart }) => {
-    const [quantity, setQuantity] = useState(1);
+export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({ item, isOpen, onClose, onAddToCart, initialQuantity = 1 }) => {
+    const [quantity, setQuantity] = useState(initialQuantity > 0 ? initialQuantity : 1);
     const [isAdding, setIsAdding] = useState(false);
 
-    // Reset quantity to 1 when drawer opens
     useEffect(() => {
         if (isOpen) {
-            setQuantity(1);
+            setQuantity(initialQuantity > 0 ? initialQuantity : 1);
         }
-    }, [isOpen, item]);
+    }, [isOpen, initialQuantity]);
 
-    if (!item) return null; // Don't render if no item is selected
+    if (!item) return null;
 
-    // --- Quantity Handlers ---
-    const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const val = parseInt(e.target.value, 10);
-        if (val > 0) {
-            setQuantity(val);
-        } else if (e.target.value === '') {
-            setQuantity(NaN); // Allow empty input
-        }
+    // REAL-TIME UPDATE LOGIC: Jab bhi +/- dabega, cart update hoga
+    const updateQuantity = (newQty: number) => {
+        if (newQty < 1) return;
+        setQuantity(newQty);
+        onAddToCart(item, newQty, true); // true matlab drawer se sync ho raha hai
     };
 
-    const increment = () => setQuantity(prev => (isNaN(prev) ? 1 : prev + 1));
-    const decrement = () => setQuantity(prev => (isNaN(prev) || prev <= 1 ? 1 : prev - 1));
-
-    // --- Add to Cart Handler ---
     const handleAddToCartClick = () => {
         setIsAdding(true);
-        const finalQuantity = isNaN(quantity) ? 1 : quantity;
-        onAddToCart(item, finalQuantity);
-
-        // Give feedback to user before closing
+        onAddToCart(item, quantity, true); 
+        
         setTimeout(() => {
             setIsAdding(false);
             onClose();
-        }, 500); // 0.5 second delay
+        }, 500);
     };
 
-    // --- CSS Transition Classes (from ItemEditDrawer) ---
-    const drawerClasses = isOpen
-        ? 'translate-y-0 opacity-100'
-        : 'translate-y-full opacity-0 pointer-events-none';
-    const overlayClasses = isOpen
-        ? 'opacity-100 bg-black/60'
-        : 'opacity-0 bg-transparent pointer-events-none';
-
-    // --- Render ---
     return (
-        <div
-            className={`fixed inset-0 z-40 flex justify-center items-end transition-opacity duration-300 ease-in-out ${overlayClasses}`}
-            onClick={onClose}
-        >
+        <>
             <div
-                className={`bg-white rounded-t-lg shadow-xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden transform transition-all duration-300 ease-in-out ${drawerClasses}`}
-                onClick={(e) => e.stopPropagation()}
+                className={`fixed inset-0 bg-black/40 backdrop-blur-[2px] z-[100] transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                onClick={onClose}
+            />
+
+            <div
+                className={`fixed bottom-0 left-0 right-0 bg-white rounded-t-[32px] z-[110] p-5 shadow-2xl transition-transform duration-300 ease-out max-w-[450px] mx-auto ${isOpen ? 'translate-y-0' : 'translate-y-full'}`}
             >
-                {/* Header (styled like ItemEditDrawer) */}
-                <div className="p-4 text-center relative border-b">
-                    <div className="absolute left-1/2 top-2 -translate-x-1/2">
-                        <div className="w-12 h-1.5 bg-gray-300 rounded-full"></div>
-                    </div>
-                    <h2 className="text-lg font-semibold leading-none tracking-tight pt-4">
-                        Item Details
-                    </h2>
-                    <p className="text-sm text-muted-foreground mt-1 text-gray-500">
-                        {item?.name || '...'}
-                    </p>
-                    <button
-                        onClick={onClose}
-                        className="absolute right-3 top-3 rounded-sm p-1 text-gray-500 hover:bg-gray-100 opacity-70"
-                        aria-label="Close"
-                    >
-                        <FiX size={18} />
+                <div className="flex justify-between items-center mb-4">
+                    <div className="w-10 h-1 bg-gray-100 rounded-full" />
+                    <button onClick={onClose} className="p-1.5 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-100">
+                        <X size={16} />
                     </button>
                 </div>
 
-                {/* Scrollable Content Area */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-4">
-
-                    {/* Image */}
-                    <div>
-                        <ImagePreview imageUrl={item.imageUrl || null} alt={item.name} />
+                <div className="flex gap-4 mb-5">
+                    <div className="w-24 h-24 bg-[#F8FAFC] rounded-xl overflow-hidden border border-gray-50 shrink-0">
+                        {item.imageUrl ? (
+                            <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                        ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-gray-100 text-gray-300">
+                                <ShoppingCart size={32} />
+                            </div>
+                        )}
                     </div>
-
-                    {/* Price */}
-                    <div>
-                        <label className="text-sm font-medium text-gray-500">Price</label>
-                        <p className="text-3xl font-bold text-gray-900">₹{item.mrp.toFixed(2)}</p>
-                    </div>
-
-                    {/* Description */}
-                    <div>
-                        <label className="text-sm font-medium text-gray-500">Description</label>
-                        <p className="text-base text-gray-700 mt-1">
-                            {/* You can add a 'description' field to your Item model */}
-                            {"No description available for this item."}
+                    <div className="flex-1 min-w-0 flex flex-col justify-center">
+                        <h3 className="text-sm text-[#1A3B5D] font-black uppercase tracking-tight truncate">
+                            {item.name}
+                        </h3>
+                        <p className="text-sm font-black text-[#00A3E1] mt-1">
+                            ₹{item.mrp.toFixed(2)}
+                        </p>
+                        <p className="text-[9px] text-gray-500 line-clamp-2 mt-1 font-medium italic">
+                            {item.barcode ? `Barcode: ${item.barcode}` : 'Premium Quality Product'}
                         </p>
                     </div>
-
                 </div>
 
-                {/* Footer with Actions (styled like ItemEditDrawer) */}
-                <div className="mt-auto border-t p-4 space-y-3">
-                    {/* Quantity Input */}
-                    <div className="flex items-center justify-between gap-4">
-                        <label className="text-sm font-medium text-gray-700">Quantity:</label>
-                        <div className="flex items-center gap-2 text-lg border border-gray-300 rounded-md">
-                            <button onClick={decrement} disabled={isAdding} className="px-3 py-2 text-gray-700 rounded-l-md disabled:opacity-50"><FiMinus size={16} /></button>
-                            <input
-                                type="number"
-                                value={isNaN(quantity) ? '' : quantity}
-                                onChange={handleQuantityChange}
-                                onBlur={() => { if (isNaN(quantity)) setQuantity(1) }}
-                                className="font-bold text-gray-900 w-16 text-center text-base focus:outline-none disabled:bg-gray-100"
-                                min="1"
-                                disabled={isAdding}
-                            />
-                            <button onClick={increment} disabled={isAdding} className="px-3 py-2 text-gray-700 rounded-r-md disabled:opacity-50"><FiPlus size={16} /></button>
+                <div className="pt-4 border-t border-gray-50 flex flex-col gap-4">
+                    <div className="flex justify-between items-center">
+                        <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
+                            Select Quantity
+                        </span>
+                        <div className="flex items-center border border-gray-100 rounded-xl overflow-hidden bg-gray-50">
+                            <button
+                                onClick={() => updateQuantity(quantity - 1)}
+                                className="p-2 text-gray-400 hover:text-[#00A3E1] transition-colors"
+                            >
+                                <Minus size={14} />
+                            </button>
+                            <span className="w-8 text-center font-black text-[#1A3B5D] text-xs">
+                                {quantity}
+                            </span>
+                            <button
+                                onClick={() => updateQuantity(quantity + 1)}
+                                className="p-2 text-gray-400 hover:text-[#00A3E1] transition-colors"
+                            >
+                                <Plus size={14} />
+                            </button>
                         </div>
                     </div>
 
-                    {/* Add to Cart Button */}
                     <button
                         onClick={handleAddToCartClick}
                         disabled={isAdding}
-                        className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-orange-500 text-white hover:bg-orange-600 h-10 px-4 py-2 w-full gap-2"
+                        className="w-full bg-[#00A3E1] text-white py-3.5 rounded-2xl font-black text-[10px] uppercase tracking-[0.15em] shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-70"
                     >
-                        {isAdding ? <Spinner /> : <FiShoppingCart size={16} />}
+                        {isAdding ? <Spinner /> : <ShoppingCart size={14} />}
                         {isAdding ? 'Adding...' : 'Add to Cart'}
                     </button>
                 </div>
             </div>
-        </div>
+        </>
     );
 };

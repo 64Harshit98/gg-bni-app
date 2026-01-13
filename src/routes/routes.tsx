@@ -57,7 +57,7 @@ const ResetPasswordPage = lazy(() => import('../Pages/Auth/ResetPassword'));
 const RestockReportPage = lazy(() => import('../Pages/Reports/RestockReport'));
 const TaxReport = lazy(() => import('../Pages/Reports/TaxReport'));
 const DownloadBill = lazy(() => import('../Pages/Auth/DownloadBill'));
-
+const SharedProduct = lazy(() => import('../Catalogue/SharedProduct'));
 
 const router = createBrowserRouter([
   {
@@ -309,6 +309,11 @@ const router = createBrowserRouter([
       {
         path: `/catalogue/:companyId`,
         element: <Catalogue />,
+        handle: { requiredPermission: null },
+      },
+      {
+        path: `/product`,
+        element: <SharedProduct />,
         handle: { requiredPermission: null },
       },
       {

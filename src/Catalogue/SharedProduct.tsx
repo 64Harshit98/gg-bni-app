@@ -4,19 +4,8 @@ import { useAuth, useDatabase } from '../context/auth-context';
 import type { Item, ItemGroup } from '../constants/models';
 import { FiStar, FiCheckSquare, FiLoader, FiPackage, FiPlus } from 'react-icons/fi';
 import { ItemEditDrawer } from '../Components/ItemDrawer';
-import { ItemDetailDrawer } from '../Components/ItemDetails'; // Drawer Import
+import { ItemDetailDrawer } from '../Components/ItemDetails';
 import { Spinner } from '../constants/Spinner';
-
-const StockIndicator: React.FC<{ stock: number }> = ({ stock }) => {
-    let colorClass = 'text-green-600 bg-green-100';
-    if (stock <= 10 && stock > 0) colorClass = 'text-yellow-600 bg-yellow-100';
-    if (stock <= 0) colorClass = 'text-red-600 bg-red-100';
-    return (
-        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tight ${colorClass}`}>
-            {stock} IN STOCK
-        </span>
-    );
-};
 
 interface QuickListedToggleProps {
     itemId: string;
@@ -54,21 +43,20 @@ const QuickListedToggle: React.FC<QuickListedToggleProps> = ({ itemId, isListed,
 
 const ITEMS_PER_BATCH_RENDER = 24;
 
-const MyShopPage: React.FC = () => {
+const SharedProduct: React.FC = () => {
     const { currentUser, loading: authLoading } = useAuth();
     const dbOperations = useDatabase();
     const [isViewMode, setIsViewMode] = useState(true);
     const [allItems, setAllItems] = useState<Item[]>([]);
     const [_allItemGroups, setAllItemGroups] = useState<ItemGroup[]>([]);
-    const [selectedCategory, _setSelectedCategory] = useState('All');
+    const [selectedCategory] = useState('All');
     const [searchQuery, setSearchQuery] = useState('');
     const [pageIsLoading, setPageIsLoading] = useState(true);
-    const [_error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
     const [itemsToRenderCount, setItemsToRenderCount] = useState(ITEMS_PER_BATCH_RENDER);
     
-    // States for Drawers
-    const [isDrawerOpen, setIsDrawerOpen] = useState(false); // Edit Drawer
-    const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false); // Details Drawer
+    const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+    const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
     const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
     const [selectedItemForDetails, setSelectedItemForDetails] = useState<Item | null>(null);
 
@@ -80,18 +68,16 @@ const MyShopPage: React.FC = () => {
     const [cart, setCart] = useState<{ item: Item; quantity: number }[]>([]);
     const [isCartOpen, setIsCartOpen] = useState(false);
 
-    // Optimized addToCart to handle drawer sync
-    const addToCart = (item: Item, quantity: number = 1, isFromDrawer: boolean = false) => {
+    const addToCart = useCallback((item: Item, quantity: number = 1, isFromDrawer: boolean = false) => {
         setCart(prev => {
             const existing = prev.find(i => i.item.id === item.id);
             if (existing) {
-                // Agar drawer se aa raha hai toh quantity overwrite hogi, warna +1 hogi
                 const newQuantity = isFromDrawer ? quantity : existing.quantity + 1;
                 return prev.map(i => i.item.id === item.id ? { ...i, quantity: newQuantity } : i);
             }
             return [...prev, { item, quantity }];
         });
-    };
+    }, []);
 
     const removeFromCart = (itemId: string) => {
         setCart(prev => prev.filter(i => i.item.id !== itemId));
@@ -125,8 +111,8 @@ const MyShopPage: React.FC = () => {
                 ]);
                 setAllItemGroups(fetchedItemGroups);
                 setAllItems(fetchedItems);
-            } catch (err: any) {
-                setError(err.message || 'Failed to load initial data.');
+            } catch (err: unknown) {
+                setError(err instanceof Error ? err.message : 'Failed to load initial data.');
             } finally {
                 setPageIsLoading(false);
             }
@@ -173,7 +159,6 @@ const MyShopPage: React.FC = () => {
         setIsDrawerOpen(true);
     };
 
-    // Card click handler for View Mode
     const handleOpenDetailDrawer = (item: Item) => {
         setSelectedItemForDetails(item);
         setIsDetailDrawerOpen(true);
@@ -193,9 +178,13 @@ const MyShopPage: React.FC = () => {
         return <div className="flex items-center justify-center h-screen bg-[#E9F0F7]"><Spinner /></div>;
     }
 
+    if (error) {
+        return <div className="flex items-center justify-center h-screen bg-[#E9F0F7] text-red-500">{error}</div>;
+    }
+
     return (
         <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative overflow-x-hidden">
-            <header className="sticky top-0 bg-white border-b border-gray-100 shadow-sm">
+            <header className="sticky top-0 bg-white border-b border-gray-100 shadow-sm z-[60]">
                 <div className="max-w-7xl mx-auto px-4 py-2 flex flex-col gap-2">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1.5">
@@ -203,11 +192,6 @@ const MyShopPage: React.FC = () => {
                             <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">
                                 MyShop<span className="text-[#00A3E1]">.</span>
                             </h1>
-                        </div>
-
-                        <div className="hidden md:flex bg-gray-50 p-1 rounded-xl border border-gray-100 scale-90">
-                            <button onClick={() => setIsViewMode(true)} className={`px-8 py-2 rounded-lg text-[12px] font-black uppercase transition-all ${isViewMode ? 'bg-[#00A3E1] text-white shadow-sm' : 'text-gray-400'}`}>My Items</button>
-                            <button onClick={() => setIsViewMode(false)} className={`px-8 py-2 rounded-lg text-[12px] font-black uppercase transition-all ${!isViewMode ? 'bg-[#00A3E1] text-white shadow-sm' : 'text-gray-400'}`}>Edit Items</button>
                         </div>
 
                         <button 
@@ -291,7 +275,6 @@ const MyShopPage: React.FC = () => {
                                 <h3 className="text-[10px] font-black text-[#1A3B5D] mb-1 truncate uppercase leading-tight">{item.name}</h3>
                                 <div className="flex items-center justify-between mb-3">
                                     <p className="text-xs font-black text-[#00A3E1]">₹{item.mrp}</p>
-                                    <StockIndicator stock={item.stock || 0} />
                                 </div>
 
                                 <div className="mt-auto flex gap-1">
@@ -367,7 +350,7 @@ const MyShopPage: React.FC = () => {
                                 cart.map(({ item, quantity }) => (
                                     <div key={item.id} className="flex gap-4 bg-gray-50 p-3 rounded-2xl border border-gray-100">
                                         <div className="w-16 h-16 bg-white rounded-xl overflow-hidden border border-gray-100 flex-shrink-0">
-                                            {item.imageUrl ? <img src={item.imageUrl} className="w-full h-full object-cover" /> : <FiPackage className="w-full h-full p-4 text-gray-200" />}
+                                            {item.imageUrl ? <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" /> : <FiPackage className="w-full h-full p-4 text-gray-200" />}
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <h4 className="text-[10px] font-black text-[#00A3E1] uppercase truncate">{item.name}</h4>
@@ -414,9 +397,6 @@ const MyShopPage: React.FC = () => {
                 </div>
             </div>
 
-            {/* DRAWERS SECTION */}
-            
-            {/* 1. Edit Drawer */}
             <ItemEditDrawer
                 item={selectedItemForEdit}
                 isOpen={isDrawerOpen}
@@ -424,7 +404,6 @@ const MyShopPage: React.FC = () => {
                 onSaveSuccess={(updated) => setAllItems(prev => prev.map(i => i.id === selectedItemForEdit?.id ? { ...i, ...updated } as Item : i))}
             />
 
-            {/* 2. Item Detail Drawer (New integration) */}
             <ItemDetailDrawer 
                 item={selectedItemForDetails}
                 isOpen={isDetailDrawerOpen}
@@ -436,4 +415,4 @@ const MyShopPage: React.FC = () => {
     );
 };
 
-export default MyShopPage;
+export default SharedProduct;

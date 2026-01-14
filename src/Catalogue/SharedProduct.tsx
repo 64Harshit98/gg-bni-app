@@ -1,13 +1,41 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Search, ShoppingCart, Edit3, Home, FileText, UserRound, X, Minus, Plus, ChevronLeft } from 'lucide-react';
+import { Search, ShoppingCart, Edit3, Heart, Minus, Plus, ChevronLeft, Facebook, Instagram, Twitter, Mail } from 'lucide-react';
 import { useAuth, useDatabase } from '../context/auth-context';
 import type { Item, ItemGroup } from '../constants/models';
 import { FiStar, FiCheckSquare, FiLoader, FiPackage, FiPlus } from 'react-icons/fi';
 import { ItemEditDrawer } from '../Components/ItemDrawer';
 import { ItemDetailDrawer } from '../Components/ItemDetails';
 import { Spinner } from '../constants/Spinner';
-import { useParams } from 'react-router';
-import { useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
+import { doc, getDoc } from 'firebase/firestore'; 
+import { db } from '../lib/Firebase'; 
+
+const useBusinessName = (companyId?: string) => {
+    const [businessName, setBusinessName] = useState<string>('');
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (!companyId) {
+            setLoading(false);
+            return;
+        }
+        const fetchBusinessInfo = async () => {
+            try {
+                const docRef = doc(db, 'companies', companyId, 'business_info', companyId);
+                const docSnap = await getDoc(docRef);
+                setBusinessName(docSnap.exists() ? docSnap.data().businessName || 'Catalogue' : 'Catalogue');
+            } catch (err) {
+                console.error("Error fetching business name:", err);
+                setBusinessName('Catalogue');
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchBusinessInfo();
+    }, [companyId]);
+
+    return { businessName, loading };
+};
 
 interface QuickListedToggleProps {
     itemId: string;
@@ -35,8 +63,7 @@ const QuickListedToggle: React.FC<QuickListedToggleProps> = ({ itemId, isListed,
         <button
             onClick={handleClick}
             disabled={disabled || isLoading}
-            className={`flex-1 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1 ${isListed ? 'bg-green-500 text-white shadow-sm' : 'bg-gray-100 text-gray-400'
-                }`}
+            className={`flex-1 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1 ${isListed ? 'bg-green-500 text-white shadow-sm' : 'bg-gray-100 text-gray-400'}`}
         >
             {isLoading ? <FiLoader className="animate-spin" size={10} /> : isListed ? <FiCheckSquare size={10} /> : <FiStar size={10} />}
             {isListed ? 'Listed' : 'List'}
@@ -45,10 +72,13 @@ const QuickListedToggle: React.FC<QuickListedToggleProps> = ({ itemId, isListed,
 };
 
 const ITEMS_PER_BATCH_RENDER = 24;
-const SharedProduct: React.FC = () => {
 
+const SharedProduct: React.FC = () => {
     const navigate = useNavigate();
+    // FIX: companyId extraction moved before its usage
     const { companyId, groupId } = useParams<{ companyId: string, groupId: string }>();
+    const { businessName: companyName, loading: nameLoading } = useBusinessName(companyId);
+
     const { currentUser, loading: authLoading } = useAuth();
     const dbOperations = useDatabase();
     const [isViewMode, setIsViewMode] = useState(true);
@@ -70,7 +100,6 @@ const SharedProduct: React.FC = () => {
     const [isSortOpen, setIsSortOpen] = useState(false);
 
     const [cart, setCart] = useState<{ item: Item; quantity: number }[]>([]);
-    const [isCartOpen, setIsCartOpen] = useState(false);
 
     const addToCart = useCallback((item: Item, quantity: number = 1, isFromDrawer: boolean = false) => {
         setCart(prev => {
@@ -87,14 +116,6 @@ const SharedProduct: React.FC = () => {
         });
     }, []);
 
-    const removeFromCart = (itemId: string) => {
-        setCart(prev => {
-            const newCart = prev.filter(i => i.item.id !== itemId);
-            localStorage.setItem('temp_cart', JSON.stringify(newCart));
-            return newCart;
-        });
-    };
-
     const updateQuantity = (itemId: string, delta: number) => {
         setCart(prev => {
             const newCart = prev.map(i => {
@@ -104,20 +125,15 @@ const SharedProduct: React.FC = () => {
                 }
                 return i;
             }).filter(i => i.quantity > 0);
-
             localStorage.setItem('temp_cart', JSON.stringify(newCart));
             return newCart;
         });
     };
 
-    const cartTotal = useMemo(() => cart.reduce((acc, curr) => acc + (curr.item.mrp || 0) * curr.quantity, 0), [cart]);
     const cartCount = useMemo(() => cart.reduce((acc, curr) => acc + curr.quantity, 0), [cart]);
 
     useEffect(() => {
-        if (authLoading || !currentUser || !dbOperations || !companyId) {
-            return;
-        }
-
+        if (authLoading || !currentUser || !dbOperations || !companyId) return;
         const fetchData = async () => {
             try {
                 setPageIsLoading(true);
@@ -127,7 +143,7 @@ const SharedProduct: React.FC = () => {
                 ]);
                 setAllItemGroups(fetchedItemGroups);
                 setAllItems(fetchedItems);
-            } catch (err: unknown) {
+            } catch (err: any) {
                 setError(err instanceof Error ? err.message : 'Failed to load data.');
             } finally {
                 setPageIsLoading(false);
@@ -140,8 +156,7 @@ const SharedProduct: React.FC = () => {
         const result = allItems.filter(item => {
             const matchesGroup = item.itemGroupId === groupId;
             if (isViewMode && !item.isListed) return false;
-            const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
-            return matchesGroup && matchesSearch;
+            return matchesGroup && item.name.toLowerCase().includes(searchQuery.toLowerCase());
         });
 
         return [...result].sort((a, b) => {
@@ -153,7 +168,6 @@ const SharedProduct: React.FC = () => {
         });
     }, [allItems, searchQuery, isViewMode, sortOrder, groupId]);
 
-    // --- LOGIC FOR DYNAMIC CATEGORY NAME ---
     const currentCategoryName = useMemo(() => {
         const group = allItemGroups.find(g => g.id === groupId);
         return group ? group.name : 'Catalogue';
@@ -178,9 +192,7 @@ const SharedProduct: React.FC = () => {
 
     useEffect(() => {
         const savedCart = localStorage.getItem('temp_cart');
-        if (savedCart) {
-            setCart(JSON.parse(savedCart));
-        }
+        if (savedCart) setCart(JSON.parse(savedCart));
     }, []);
 
     const handleOpenEditDrawer = (item: Item) => {
@@ -217,10 +229,7 @@ const SharedProduct: React.FC = () => {
                 <div className="max-w-7xl mx-auto px-4 py-2 flex flex-col gap-2">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1.5">
-                            <button
-                                onClick={() => navigate(-1)}
-                                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-                            >
+                            <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
                                 <ChevronLeft size={20} className="text-[#1A3B5D]" />
                             </button>
                             <div className="w-1 h-5 bg-[#00A3E1] rounded-full"></div>
@@ -228,18 +237,10 @@ const SharedProduct: React.FC = () => {
                                 MyShop<span className="text-[#00A3E1]">.</span>
                             </h1>
                         </div>
-
-                        <button
-                            onClick={() => navigate("/CheckOut")}
-                            className="flex items-center justify-center gap-2 bg-[#00A3E1] text-white py-2 px-4 rounded-xl font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative"
-                        >
+                        <button onClick={() => navigate("/CheckOut")} className="flex items-center justify-center gap-2 bg-[#00A3E1] text-white py-2 px-4 rounded-xl font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative">
                             <ShoppingCart size={14} />
                             <span>Cart</span>
-                            {cartCount > 0 && (
-                                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center border-2 border-white">
-                                    {cartCount}
-                                </span>
-                            )}
+                            {cartCount > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center border-2 border-white">{cartCount}</span>}
                         </button>
                     </div>
                 </div>
@@ -247,20 +248,11 @@ const SharedProduct: React.FC = () => {
 
             <main className="p-3 md:p-6 space-y-4 flex-1 max-w-7xl mx-auto w-full pb-24">
                 <div className='flex items-center justify-center'>
-                    <h1 className="text-xs md:text-sm font-black text-[#00A3E1] uppercase tracking-tighter">
-                        {currentCategoryName}
-                    </h1>
+                    <h1 className="text-xs md:text-sm font-black text-[#00A3E1] uppercase tracking-tighter">{currentCategoryName}</h1>
                 </div>
                 <div className="relative group md:max-w-md md:mx-auto w-full">
-
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-                    <input
-                        type="text"
-                        placeholder="Search products..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full bg-white border border-gray-100 rounded-xl py-2.5 pl-10 pr-4 text-xs outline-none shadow-sm focus:ring-1 focus:ring-[#00A3E1]/20 transition-all"
-                    />
+                    <input type="text" placeholder="Search products..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white border border-gray-100 rounded-xl py-2.5 pl-10 pr-4 text-xs outline-none shadow-sm focus:ring-1 focus:ring-[#00A3E1]/20 transition-all" />
                 </div>
 
                 <div className="max-w-7xl mx-auto px-1 flex items-center justify-between relative">
@@ -268,7 +260,6 @@ const SharedProduct: React.FC = () => {
                         <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Total Products:</span>
                         <span className="bg-[#00A3E1]/10 text-[#00A3E1] px-2.5 py-0.5 rounded-full text-[10px] font-black">{filteredItems.length}</span>
                     </div>
-
                     <div className="relative">
                         <button onClick={() => setIsSortOpen(!isSortOpen)} className="flex items-center gap-2 bg-white border border-gray-100 px-3 py-1.5 rounded-xl shadow-sm active:scale-95 transition-all">
                             <span className="text-[10px] font-black uppercase text-[#1A3B5D]">Sort: {sortOrder}</span>
@@ -276,12 +267,8 @@ const SharedProduct: React.FC = () => {
                         </button>
                         {isSortOpen && (
                             <div className="absolute right-0 mt-2 w-40 bg-white rounded-2xl shadow-xl border border-gray-50 z-[70] overflow-hidden">
-                                {['A-Z', 'Z-A', 'Price: Low-High', 'Price: High-Low'].map((opt) => (
-                                    <button
-                                        key={opt}
-                                        onClick={() => { setSortOrder(opt as any); setIsSortOpen(false); }}
-                                        className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 border-t border-gray-50 first:border-0 ${sortOrder === opt ? 'text-[#00A3E1]' : 'text-[#1A3B5D]'}`}
-                                    >
+                                {(['A-Z', 'Z-A', 'Price: Low-High', 'Price: High-Low'] as const).map((opt) => (
+                                    <button key={opt} onClick={() => { setSortOrder(opt); setIsSortOpen(false); }} className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 border-t border-gray-50 first:border-0 ${sortOrder === opt ? 'text-[#00A3E1]' : 'text-[#1A3B5D]'}`}>
                                         {opt.replace(':', ': ')}
                                     </button>
                                 ))}
@@ -294,71 +281,32 @@ const SharedProduct: React.FC = () => {
                     {itemsToDisplay.map((item) => {
                         const cartItem = cart.find(i => i.item.id === item.id);
                         return (
-                            <div
-                                key={item.id}
-                                onClick={() => isViewMode ? handleOpenDetailDrawer(item) : handleOpenEditDrawer(item)}
-                                className={`bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 flex flex-col transition-all duration-300 relative group hover:shadow-md cursor-pointer ${!isViewMode ? 'ring-1 ring-[#00A3E1]/10' : ''}`}
-                            >
+                            <div key={item.id} onClick={() => isViewMode ? handleOpenDetailDrawer(item) : handleOpenEditDrawer(item)} className={`bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 flex flex-col transition-all duration-300 relative group hover:shadow-md cursor-pointer ${!isViewMode ? 'ring-1 ring-[#00A3E1]/10' : ''}`}>
                                 <div className="aspect-square bg-[#F8FAFC] flex items-center justify-center relative overflow-hidden">
-                                    {item.imageUrl ? (
-                                        <img src={item.imageUrl} alt={item.name} className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" />
-                                    ) : (
-                                        <FiPackage className="w-10 h-10 text-gray-200" />
-                                    )}
-                                    {!isViewMode && (
-                                        <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm p-1.5 rounded-full shadow-sm">
-                                            <Edit3 size={10} className="text-[#00A3E1]" />
-                                        </div>
-                                    )}
+                                    {item.imageUrl ? <img src={item.imageUrl} alt={item.name} className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" /> : <FiPackage className="w-10 h-10 text-gray-200" />}
+                                    {!isViewMode && <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm p-1.5 rounded-full shadow-sm"><Edit3 size={10} className="text-[#00A3E1]" /></div>}
                                 </div>
-
                                 <div className="p-3 flex flex-col flex-1">
                                     <h3 className="text-[10px] font-black text-[#1A3B5D] mb-1 truncate uppercase leading-tight">{item.name}</h3>
                                     <div className="flex items-center justify-between mb-3">
                                         <p className="text-xs font-black text-[#00A3E1]">₹{item.mrp}</p>
                                     </div>
-
                                     <div className="mt-auto flex gap-1">
                                         {isViewMode ? (
                                             cartItem ? (
                                                 <div className="w-full flex items-center justify-between bg-gray-50 rounded-xl px-1 py-1 border border-gray-100">
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); updateQuantity(item.id!, -1); }}
-                                                        className="p-1.5 bg-white shadow-sm text-[#00A3E1] hover:bg-[#00A3E1] hover:text-white rounded-lg transition-all"
-                                                    >
-                                                        <Minus size={12} strokeWidth={3} />
-                                                    </button>
+                                                    <button onClick={(e) => { e.stopPropagation(); updateQuantity(item.id!, -1); }} className="p-1.5 bg-white shadow-sm text-[#00A3E1] hover:bg-[#00A3E1] hover:text-white rounded-lg transition-all"><Minus size={12} strokeWidth={3} /></button>
                                                     <span className="text-xs font-black text-[#1A3B5D]">{cartItem.quantity}</span>
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); updateQuantity(item.id!, 1); }}
-                                                        className="p-1.5 bg-white shadow-sm text-[#00A3E1] hover:bg-[#00A3E1] hover:text-white rounded-lg transition-all"
-                                                    >
-                                                        <Plus size={12} strokeWidth={3} />
-                                                    </button>
+                                                    <button onClick={(e) => { e.stopPropagation(); updateQuantity(item.id!, 1); }} className="p-1.5 bg-white shadow-sm text-[#00A3E1] hover:bg-[#00A3E1] hover:text-white rounded-lg transition-all"><Plus size={12} strokeWidth={3} /></button>
                                                 </div>
                                             ) : (
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        addToCart(item);
-                                                    }}
-                                                    className="w-full bg-[#00A3E1] text-white py-2 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm active:scale-95 transition-all flex items-center justify-center gap-2"
-                                                >
-                                                    <Plus size={12} />
-                                                    Add to Cart
+                                                <button onClick={(e) => { e.stopPropagation(); addToCart(item); }} className="w-full bg-[#00A3E1] text-white py-2 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm active:scale-95 transition-all flex items-center justify-center gap-2">
+                                                    <Plus size={12} /> Add to Cart
                                                 </button>
                                             )
                                         ) : (
                                             <>
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleOpenEditDrawer(item);
-                                                    }}
-                                                    className="flex-1 bg-gray-50 text-[#1A3B5D] py-1.5 rounded-lg text-[9px] font-black uppercase border border-gray-100"
-                                                >
-                                                    Edit
-                                                </button>
+                                                <button onClick={(e) => { e.stopPropagation(); handleOpenEditDrawer(item); }} className="flex-1 bg-gray-50 text-[#1A3B5D] py-1.5 rounded-lg text-[9px] font-black uppercase border border-gray-100">Edit</button>
                                                 <QuickListedToggle itemId={item.id!} isListed={item.isListed ?? false} onToggle={handleToggleListed} />
                                             </>
                                         )}
@@ -368,23 +316,32 @@ const SharedProduct: React.FC = () => {
                         )
                     })}
                 </div>
-
                 {hasMoreItems && <div ref={loadMoreRef} className="h-20 flex justify-center items-center"><Spinner /></div>}
             </main>
 
-            <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-lg border-t border-gray-100 px-4 py-3 z-50">
-                <div className="flex justify-between items-center gap-3">
-                    <button className="flex flex-1 flex-col items-center gap-1 text-gray-300">
-                        <FileText size={20} /><span className="text-[9px] font-black uppercase">Orders</span>
-                    </button>
-                    <button onClick={() => setIsViewMode(!isViewMode)} className={`flex flex-1 flex-col items-center gap-1 ${isViewMode ? 'text-[#00A3E1]' : 'text-orange-500'}`}>
-                        <Home size={20} /><span className="text-[9px] font-black uppercase">{isViewMode ? 'Shop' : 'Admin'}</span>
-                    </button>
-                    <button className="flex flex-1 flex-col items-center gap-1 text-gray-300">
-                        <UserRound size={20} /><span className="text-[9px] font-black uppercase">Profile</span>
-                    </button>
+            <footer className="w-full bg-white border-t border-gray-50 pt-12 pb-12 shadow-sm">
+                <div className="flex flex-col items-center text-center">
+                    <div className="mb-6">
+                        <h2 className="text-sm font-black text-[#1A3B5D] tracking-[0.3em] uppercase mb-2">{companyName}</h2>
+                        <div className="h-0.5 w-8 bg-[#00A3E1] mx-auto rounded-full"></div>
+                    </div>
+                    <div className="flex gap-8 mb-8 text-gray-400">
+                        <a href="#" className="hover:text-[#00A3E1] transition-colors"><Instagram size={18} /></a>
+                        <a href="#" className="hover:text-[#00A3E1] transition-colors"><Facebook size={18} /></a>
+                        <a href="#" className="hover:text-[#00A3E1] transition-colors"><Twitter size={18} /></a>
+                        <a href="#" className="hover:text-[#00A3E1] transition-colors"><Mail size={18} /></a>
+                    </div>
+                    <div className="space-y-3">
+                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                            Made with <Heart size={12} className="inline text-red-500 fill-red-500" /> in India
+                        </p>
+                        <div className="pt-4 border-t border-gray-50 w-48 mx-auto">
+                            <p className="text-[8px] font-medium text-gray-400 uppercase tracking-[0.15em]">© 2026 All Rights Reserved</p>
+                            <p className="mt-1 text-[9px] font-black text-[#1A3B5D]/40 uppercase tracking-widest">Powered by <span className="text-[#00A3E1]">sellar.in</span></p>
+                        </div>
+                    </div>
                 </div>
-            </div>
+            </footer>
 
             <ItemEditDrawer
                 item={selectedItemForEdit}

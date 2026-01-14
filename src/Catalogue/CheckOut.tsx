@@ -163,7 +163,7 @@ const CartPage: React.FC = () => {
                                                         <button onClick={() => removeFromCart(item.id)} className="text-red-400 p-1 hover:bg-red-50 rounded-lg"><Trash2 size={14} /></button>
                                                     </div>
                                                     <div className="flex items-center justify-between mt-2 gap-2">
-                                                        <span className="font-black text-[#1A3B5D] text-sm italic shrink-0">₹{item.price}</span>
+                                                        <span className="font-black text-[#1A3B5D] text-sm shrink-0">₹{item.price}</span>
                                                         <input 
                                                             type="text" 
                                                             placeholder="Add note..." 

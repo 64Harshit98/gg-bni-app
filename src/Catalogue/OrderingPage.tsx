@@ -3,20 +3,23 @@ import { useAuth, useDatabase } from '../context/auth-context';
 import type { Item, ItemGroup } from '../constants/models';
 import { Modal } from '../constants/Modal';
 import { State } from '../enums';
-import { FiX, FiPackage, FiPlus,  FiEdit3 } from 'react-icons/fi';
-import { Search, Home, FileText, UserRound, Heart, Trash2, X } from 'lucide-react'; 
+import { FiX, FiPackage, FiPlus, FiEdit3 } from 'react-icons/fi';
+import { Search, Home, FileText, UserRound, Heart, Trash2, X } from 'lucide-react';
 import { Spinner } from '../constants/Spinner';
 // import { ItemDetailDrawer } from '../Components/ItemDetails';
 import { db } from '../lib/Firebase';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { OrderInvoiceNumber } from '../UseComponents/InvoiceCounter';
+import { useNavigate } from 'react-router';
+
 
 const OrderingPage: React.FC = () => {
     // --- States ---
+    const navigate = useNavigate()
     const { currentUser, loading: authLoading } = useAuth();
     const dbOperations = useDatabase();
     const [items, setItems] = useState<Item[]>([]);
-    const [_itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
+    const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
     const [selectedCategory, _setSelectedCategory] = useState('All');
     const [searchQuery, setSearchQuery] = useState('');
     const [pageIsLoading, setPageIsLoading] = useState(true);
@@ -77,9 +80,9 @@ const OrderingPage: React.FC = () => {
     }, [authLoading, currentUser, dbOperations]);
 
     // --- YOUR NEW HANDLERS (Added as requested) ---
-    const handleEdit = (item: Item) => {
-        setEditingId(item.id!);
-        setTempName(item.name);
+    const handleEdit = (group: any) => {
+        setEditingId(group.id!);
+        setTempName(group.name);
     };
 
 
@@ -117,8 +120,8 @@ const OrderingPage: React.FC = () => {
 
 
     const filteredItems = useMemo(() => {
-        const result = items.filter(item => {
-            const matchesCat = selectedCategory === 'All' || item.itemGroupId === selectedCategory;
+        const result = itemGroups.filter(item => {
+            const matchesCat = selectedCategory === 'All' || item.id === selectedCategory;
             const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
             return matchesCat && matchesSearch;
         });
@@ -271,33 +274,31 @@ const OrderingPage: React.FC = () => {
                 {/* --- PRODUCT GRID WITH YOUR UI CODE --- */}
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                    {filteredItems.map(item => (
+                    {itemGroups.map(group => (
                         <div
-                            key={item.id}
+                            key={group.id}
                             // Yahan humne onClick handler card par laga diya hai
                             onClick={() => {
                                 if (activeTab === 'Edit Shop') {
-                                    handleEdit(item);
+                                    handleEdit(group);
                                 } else {
-                                    setSelectedItem(item);
+                                    navigate(`/MyShop/${currentUser?.companyId}/${group.id}`)
                                 }
                             }}
                             className={`bg-white rounded-[32px] overflow-hidden shadow-sm border border-gray-100 flex flex-col transition-all group cursor-pointer active:scale-95 ${activeTab === 'Edit Shop' ? 'hover:shadow-xl hover:border-[#00A3E1]/30' : ''
                                 }`}
                         >
                             <div className="aspect-square bg-[#F8FAFC] relative overflow-hidden flex items-center justify-center">
-                                {item.imageUrl ? (
-                                    <img src={item.imageUrl} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt={item.name} />
-                                ) : (
-                                    <FiPackage className="h-10 w-10 text-gray-200" />
-                                )}
+                                (
+                                <FiPackage className="h-10 w-10 text-gray-200" />
+                                )
                                 <div className="absolute top-4 right-4 p-2 bg-white/80 backdrop-blur-md rounded-full shadow-sm">
                                     {activeTab === 'Edit Shop' ? <FiEdit3 size={14} className="text-[#00A3E1]" /> : <Heart size={14} className="text-gray-300" />}
                                 </div>
                             </div>
 
                             <div className="p-2.5 flex flex-col flex-1">
-                                {editingId === item.id ? (
+                                {editingId === group.name ? (
                                     /* e.stopPropagation() zaroori hai taaki input click karne pe card ka click event dobara na chale */
                                     <div className="space-y-2 py-1" onClick={(e) => e.stopPropagation()}>
                                         <input
@@ -308,14 +309,14 @@ const OrderingPage: React.FC = () => {
                                             className="w-full bg-gray-50 border border-gray-100 rounded-lg py-1 px-2 text-[10px] font-bold outline-none"
                                         />
                                         <div className="flex gap-1">
-                                            <button onClick={(e) => { e.stopPropagation(); handleSaveEdit(item.id!); }} className="flex-1 bg-[#00A3E1] text-white py-1.5 rounded-md text-[8px] font-black uppercase">Save</button>
-                                            <button onClick={(e) => { e.stopPropagation(); if (window.confirm("Delete product?")) { setItems(items.filter(p => p.id !== item.id)); setEditingId(null); } }} className="p-1.5 bg-red-50 text-red-500 rounded-md"><Trash2 size={12} /></button>
+                                            <button onClick={(e) => { e.stopPropagation(); handleSaveEdit(group.id!); }} className="flex-1 bg-[#00A3E1] text-white py-1.5 rounded-md text-[8px] font-black uppercase">Save</button>
+                                            <button onClick={(e) => { e.stopPropagation(); if (window.confirm("Delete product?")) { setItems(items.filter(p => p.id !== group.id)); setEditingId(null); } }} className="p-1.5 bg-red-50 text-red-500 rounded-md"><Trash2 size={12} /></button>
                                             <button onClick={(e) => { e.stopPropagation(); setEditingId(null); }} className="p-1.5 bg-gray-50 text-gray-400 rounded-md"><X size={12} /></button>
                                         </div>
                                     </div>
                                 ) : (
                                     <>
-                                        <h3 className="text-[9px] md:text-[10px] font-bold text-[#1A3B5D] mb-0.5 truncate leading-tight">{item.name}</h3>
+                                        <h3 className="text-[9px] md:text-[10px] font-bold text-[#1A3B5D] mb-0.5 truncate leading-tight">{group.name}</h3>
                                         <div className="flex justify-between items-center mt-1">
                                             {/* Price placeholder agar chahiye ho toh */}
                                         </div>
@@ -364,147 +365,10 @@ const OrderingPage: React.FC = () => {
                     </div>
                 </div>
             )}
-
-            {/* <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} cart={cart} onUpdateQuantity={handleUpdateCartQuantity} onPlaceOrder={() => { setIsCartOpen(false); setIsCustomerModalOpen(true); }} /> */}
         </div>
     );
 };
 
-// --- CART DRAWER COMPONENT (Untouched) ---
-// const CartDrawer = ({ isOpen, onClose, cart, onUpdateQuantity, onPlaceOrder }: any) => {
-//     const totalAmount = cart.reduce((a: any, b: any) => a + (b.mrp * b.quantity), 0);
 
-//     return (
-//         <Transition.Root show={isOpen} as={Fragment}>
-//             <div className="fixed inset-0 z-[100] overflow-hidden">
-//                 {/* Backdrop with darker blur */}
-//                 <Transition.Child
-//                     as={Fragment}
-//                     enter="ease-in-out duration-500"
-//                     enterFrom="opacity-0"
-//                     enterTo="opacity-100"
-//                     leave="ease-in-out duration-500"
-//                     leaveFrom="opacity-100"
-//                     leaveTo="opacity-0"
-//                 >
-//                     <div className="absolute inset-0 bg-[#1A3B5D]/60 backdrop-blur-sm transition-opacity" onClick={onClose} />
-//                 </Transition.Child>
-
-//                 <div className="fixed inset-y-0 right-0 max-w-full flex pl-4 sm:pl-10">
-//                     <Transition.Child
-//                         as={Fragment}
-//                         enter="transform transition ease-in-out duration-500"
-//                         enterFrom="translate-x-full"
-//                         enterTo="translate-x-0"
-//                         leave="transform transition ease-in-out duration-500"
-//                         leaveFrom="translate-x-0"
-//                         leaveTo="translate-x-full"
-//                     >
-//                         <div className="w-screen max-w-md bg-[#F8FAFC] shadow-2xl flex flex-col">
-//                             {/* --- HEADER --- */}
-//                             <div className="p-5 bg-white border-b flex justify-between items-center">
-//                                 <div className="flex items-center gap-3">
-//                                     <div className="bg-[#00A3E1]/10 p-2 rounded-xl">
-//                                         <ShoppingCart size={18} className="text-[#00A3E1]" />
-//                                     </div>
-//                                     <div>
-//                                         <h2 className="text-xs font-black text-[#1A3B5D] uppercase tracking-tight">Shopping Bag</h2>
-//                                         <p className="text-[9px] text-gray-400 font-bold uppercase">{cart.length} Items Selected</p>
-//                                     </div>
-//                                 </div>
-//                                 <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400">
-//                                     <FiX size={20} />
-//                                 </button>
-//                             </div>
-
-//                             {/* --- CART ITEMS --- */}
-//                             <div className="flex-1 overflow-y-auto p-4 space-y-3">
-//                                 {cart.length === 0 ? (
-//                                     <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-4">
-//                                         <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center">
-//                                             <ShoppingCart size={32} className="text-gray-300" />
-//                                         </div>
-//                                         <div className="text-center">
-//                                             <p className="text-[11px] font-black uppercase text-gray-500 tracking-widest">Your bag is empty</p>
-//                                         </div>
-//                                     </div>
-//                                 ) : (
-//                                     cart.map((item: any) => (
-//                                         <div key={item.id} className="flex gap-4 items-center bg-white p-3 rounded-2xl border border-gray-100 shadow-sm transition-all hover:border-[#00A3E1]/30">
-//                                             {/* Product Image */}
-//                                             <div className="w-16 h-16 bg-[#F8FAFC] rounded-xl flex-shrink-0 overflow-hidden border border-gray-50">
-//                                                 {item.imageUrl ? (
-//                                                     <img src={item.imageUrl} className="w-full h-full object-cover" alt={item.name} />
-//                                                 ) : (
-//                                                     <div className="w-full h-full flex items-center justify-center"><FiPackage className="text-gray-200" size={20} /></div>
-//                                                 )}
-//                                             </div>
-
-//                                             {/* Info */}
-//                                             <div className="flex-1 min-w-0">
-//                                                 <p className="text-[10px] font-black uppercase text-[#1A3B5D] truncate mb-0.5">{item.name}</p>
-//                                                 <p className="text-xs font-black text-[#00A3E1]">₹{item.mrp}</p>
-//                                             </div>
-
-//                                             {/* Quantity Controls */}
-//                                             <div className="flex items-center gap-2 bg-[#F8FAFC] p-1 rounded-xl border border-gray-100">
-//                                                 <button 
-//                                                     onClick={() => onUpdateQuantity(item.id, -1)} 
-//                                                     className="w-8 h-8 flex items-center justify-center bg-white text-gray-500 hover:text-red-500 rounded-lg shadow-sm transition-colors"
-//                                                 >
-//                                                     <FiMinus size={12} />
-//                                                 </button>
-//                                                 <span className="text-[11px] font-black min-w-[20px] text-center text-[#1A3B5D]">{item.quantity}</span>
-//                                                 <button 
-//                                                     onClick={() => onUpdateQuantity(item.id, 1)} 
-//                                                     className="w-8 h-8 flex items-center justify-center bg-[#00A3E1] text-white rounded-lg shadow-md hover:bg-[#0082b4] transition-all"
-//                                                 >
-//                                                     <FiPlus size={12} />
-//                                                 </button>
-//                                             </div>
-//                                         </div>
-//                                     ))
-//                                 )}
-//                             </div>
-
-//                             {/* --- FOOTER --- */}
-//                             {cart.length > 0 && (
-//                                 <div className="p-6 bg-white border-t border-gray-100 space-y-3 shadow-[0_-10px_20px_rgba(0,0,0,0.02)]">
-//                                     <div className="flex justify-between items-end mb-2">
-//                                         <div>
-//                                             <span className="text-[9px] font-black uppercase text-gray-400 block mb-1">Estimated Total</span>
-//                                             <span className="text-2xl font-black text-[#1A3B5D] tracking-tight">₹{totalAmount.toFixed(0)}</span>
-//                                         </div>
-//                                         <div className="text-right">
-//                                             <span className="text-[9px] font-black uppercase text-green-500 bg-green-50 px-2 py-1 rounded-md">Incl. all taxes</span>
-//                                         </div>
-//                                     </div>
-
-//                                     <div className="flex flex-col gap-2">
-//                                         {/* New Go To Cart / View Cart Button */}
-//                                         <button 
-//                                             onClick={onClose} 
-//                                             className="w-full bg-gray-50 text-[#1A3B5D] py-3.5 rounded-2xl font-black uppercase text-[10px] border border-gray-200 hover:bg-gray-100 transition-all tracking-widest flex items-center justify-center gap-2"
-//                                         >
-//                                             Continue Shopping
-//                                         </button>
-
-//                                         {/* Checkout Button */}
-//                                         <button 
-//                                             onClick={onPlaceOrder} 
-//                                             className="w-full bg-[#00A3E1] text-white py-4 rounded-2xl font-black uppercase text-[10px] shadow-xl shadow-[#00A3E1]/20 hover:bg-[#0082b4] active:scale-[0.98] transition-all tracking-[0.15em]"
-//                                         >
-//                                             Proceed to Checkout
-//                                         </button>
-//                                     </div>
-//                                 </div>
-//                             )}
-//                         </div>
-//                     </Transition.Child>
-//                 </div>
-//             </div>
-//         </Transition.Root>
-//     );
-// };
 
 export default OrderingPage;

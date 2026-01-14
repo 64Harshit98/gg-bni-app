@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Search, ShoppingCart, Edit3, Home, FileText, UserRound, X, Minus, Plus, Trash2 } from 'lucide-react';
+import { Search, ShoppingCart, Edit3, Home, FileText, UserRound, X, Minus, Plus, ChevronLeft } from 'lucide-react';
 import { useAuth, useDatabase } from '../context/auth-context';
 import type { Item, ItemGroup } from '../constants/models';
 import { FiStar, FiCheckSquare, FiLoader, FiPackage, FiPlus } from 'react-icons/fi';
 import { ItemEditDrawer } from '../Components/ItemDrawer';
 import { ItemDetailDrawer } from '../Components/ItemDetails';
 import { Spinner } from '../constants/Spinner';
+import { useParams } from 'react-router';
+import { useNavigate } from 'react-router-dom';
 
 interface QuickListedToggleProps {
     itemId: string;
@@ -28,6 +30,7 @@ const QuickListedToggle: React.FC<QuickListedToggleProps> = ({ itemId, isListed,
             setIsLoading(false);
         }
     };
+
     return (
         <button
             onClick={handleClick}
@@ -42,14 +45,15 @@ const QuickListedToggle: React.FC<QuickListedToggleProps> = ({ itemId, isListed,
 };
 
 const ITEMS_PER_BATCH_RENDER = 24;
-
 const SharedProduct: React.FC = () => {
+
+    const navigate = useNavigate();
+    const { companyId, groupId } = useParams<{ companyId: string, groupId: string }>();
     const { currentUser, loading: authLoading } = useAuth();
     const dbOperations = useDatabase();
     const [isViewMode, setIsViewMode] = useState(true);
     const [allItems, setAllItems] = useState<Item[]>([]);
-    const [_allItemGroups, setAllItemGroups] = useState<ItemGroup[]>([]);
-    const [selectedCategory] = useState('All');
+    const [allItemGroups, setAllItemGroups] = useState<ItemGroup[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [pageIsLoading, setPageIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -71,40 +75,52 @@ const SharedProduct: React.FC = () => {
     const addToCart = useCallback((item: Item, quantity: number = 1, isFromDrawer: boolean = false) => {
         setCart(prev => {
             const existing = prev.find(i => i.item.id === item.id);
+            let newCart;
             if (existing) {
                 const newQuantity = isFromDrawer ? quantity : existing.quantity + 1;
-                return prev.map(i => i.item.id === item.id ? { ...i, quantity: newQuantity } : i);
+                newCart = prev.map(i => i.item.id === item.id ? { ...i, quantity: newQuantity } : i);
+            } else {
+                newCart = [...prev, { item, quantity }];
             }
-            return [...prev, { item, quantity }];
+            localStorage.setItem('temp_cart', JSON.stringify(newCart));
+            return newCart;
         });
     }, []);
 
     const removeFromCart = (itemId: string) => {
-        setCart(prev => prev.filter(i => i.item.id !== itemId));
+        setCart(prev => {
+            const newCart = prev.filter(i => i.item.id !== itemId);
+            localStorage.setItem('temp_cart', JSON.stringify(newCart));
+            return newCart;
+        });
     };
 
     const updateQuantity = (itemId: string, delta: number) => {
-        setCart(prev => prev.map(i => {
-            if (i.item.id === itemId) {
-                const newQty = Math.max(0, i.quantity + delta);
-                return { ...i, quantity: newQty };
-            }
-            return i;
-        }).filter(i => i.quantity > 0));
+        setCart(prev => {
+            const newCart = prev.map(i => {
+                if (i.item.id === itemId) {
+                    const newQty = Math.max(0, i.quantity + delta);
+                    return { ...i, quantity: newQty };
+                }
+                return i;
+            }).filter(i => i.quantity > 0);
+
+            localStorage.setItem('temp_cart', JSON.stringify(newCart));
+            return newCart;
+        });
     };
 
     const cartTotal = useMemo(() => cart.reduce((acc, curr) => acc + (curr.item.mrp || 0) * curr.quantity, 0), [cart]);
     const cartCount = useMemo(() => cart.reduce((acc, curr) => acc + curr.quantity, 0), [cart]);
 
     useEffect(() => {
-        if (authLoading || !currentUser || !dbOperations) {
-            if (!authLoading && (!currentUser || !dbOperations)) setPageIsLoading(false);
+        if (authLoading || !currentUser || !dbOperations || !companyId) {
             return;
         }
+
         const fetchData = async () => {
             try {
                 setPageIsLoading(true);
-                setError(null);
                 const [fetchedItemGroups, fetchedItems] = await Promise.all([
                     dbOperations.getItemGroups(),
                     dbOperations.getItems()
@@ -112,20 +128,20 @@ const SharedProduct: React.FC = () => {
                 setAllItemGroups(fetchedItemGroups);
                 setAllItems(fetchedItems);
             } catch (err: unknown) {
-                setError(err instanceof Error ? err.message : 'Failed to load initial data.');
+                setError(err instanceof Error ? err.message : 'Failed to load data.');
             } finally {
                 setPageIsLoading(false);
             }
         };
         fetchData();
-    }, [authLoading, currentUser, dbOperations]);
+    }, [authLoading, currentUser, dbOperations, companyId]);
 
     const filteredItems = useMemo(() => {
         const result = allItems.filter(item => {
+            const matchesGroup = item.itemGroupId === groupId;
             if (isViewMode && !item.isListed) return false;
-            const matchesCategory = selectedCategory === 'All' || item.itemGroupId === selectedCategory;
-            const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) || (item.barcode && item.barcode.includes(searchQuery));
-            return matchesCategory && matchesSearch;
+            const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
+            return matchesGroup && matchesSearch;
         });
 
         return [...result].sort((a, b) => {
@@ -135,7 +151,13 @@ const SharedProduct: React.FC = () => {
             if (sortOrder === 'Price: High-Low') return (b.mrp || 0) - (a.mrp || 0);
             return 0;
         });
-    }, [allItems, selectedCategory, searchQuery, isViewMode, sortOrder]);
+    }, [allItems, searchQuery, isViewMode, sortOrder, groupId]);
+
+    // --- LOGIC FOR DYNAMIC CATEGORY NAME ---
+    const currentCategoryName = useMemo(() => {
+        const group = allItemGroups.find(g => g.id === groupId);
+        return group ? group.name : 'Catalogue';
+    }, [allItemGroups, groupId]);
 
     const itemsToDisplay = useMemo(() => filteredItems.slice(0, itemsToRenderCount), [filteredItems, itemsToRenderCount]);
     const hasMoreItems = useMemo(() => itemsToRenderCount < filteredItems.length, [itemsToRenderCount, filteredItems.length]);
@@ -153,6 +175,13 @@ const SharedProduct: React.FC = () => {
         observerRef.current.observe(loadMoreRef.current);
         return () => observerRef.current?.disconnect();
     }, [hasMoreItems, loadMoreItems]);
+
+    useEffect(() => {
+        const savedCart = localStorage.getItem('temp_cart');
+        if (savedCart) {
+            setCart(JSON.parse(savedCart));
+        }
+    }, []);
 
     const handleOpenEditDrawer = (item: Item) => {
         setSelectedItemForEdit(item);
@@ -188,6 +217,12 @@ const SharedProduct: React.FC = () => {
                 <div className="max-w-7xl mx-auto px-4 py-2 flex flex-col gap-2">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1.5">
+                            <button
+                                onClick={() => navigate(-1)}
+                                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                            >
+                                <ChevronLeft size={20} className="text-[#1A3B5D]" />
+                            </button>
                             <div className="w-1 h-5 bg-[#00A3E1] rounded-full"></div>
                             <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">
                                 MyShop<span className="text-[#00A3E1]">.</span>
@@ -195,7 +230,7 @@ const SharedProduct: React.FC = () => {
                         </div>
 
                         <button
-                            onClick={() => setIsCartOpen(true)}
+                            onClick={() => navigate("/CheckOut")}
                             className="flex items-center justify-center gap-2 bg-[#00A3E1] text-white py-2 px-4 rounded-xl font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative"
                         >
                             <ShoppingCart size={14} />
@@ -213,7 +248,7 @@ const SharedProduct: React.FC = () => {
             <main className="p-3 md:p-6 space-y-4 flex-1 max-w-7xl mx-auto w-full pb-24">
                 <div className='flex items-center justify-center'>
                     <h1 className="text-xs md:text-sm font-black text-[#00A3E1] uppercase tracking-tighter">
-                        Catalogue Name
+                        {currentCategoryName}
                     </h1>
                 </div>
                 <div className="relative group md:max-w-md md:mx-auto w-full">
@@ -336,59 +371,6 @@ const SharedProduct: React.FC = () => {
 
                 {hasMoreItems && <div ref={loadMoreRef} className="h-20 flex justify-center items-center"><Spinner /></div>}
             </main>
-
-            {isCartOpen && (
-                <div className="fixed inset-0 z-[100] flex justify-end">
-                    <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setIsCartOpen(false)} />
-                    <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
-                        <div className="p-4 border-b flex items-center justify-between">
-                            <h2 className="text-sm font-black text-[#1A3B5D] uppercase tracking-wider">Your Cart ({cartCount})</h2>
-                            <button onClick={() => setIsCartOpen(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                                <X size={20} />
-                            </button>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                            {cart.length === 0 ? (
-                                <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-2">
-                                    <ShoppingCart size={48} strokeWidth={1} />
-                                    <p className="text-xs font-bold uppercase tracking-widest">Cart is empty</p>
-                                </div>
-                            ) : (
-                                cart.map(({ item, quantity }) => (
-                                    <div key={item.id} className="flex gap-4 bg-gray-50 p-3 rounded-2xl border border-gray-100">
-                                        <div className="w-16 h-16 bg-white rounded-xl overflow-hidden border border-gray-100 flex-shrink-0">
-                                            {item.imageUrl ? <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" /> : <FiPackage className="w-full h-full p-4 text-gray-200" />}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <h4 className="text-[10px] font-black text-[#00A3E1] uppercase truncate">{item.name}</h4>
-                                            <p className="text-xs font-black text-[#1A3B5D]">₹{item.mrp}</p>
-                                            <div className="flex items-center gap-3 mt-2">
-                                                <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-2 py-1">
-                                                    <button onClick={() => updateQuantity(item.id!, -1)} className="text-gray-400 hover:text-[#00A3E1]"><Minus size={14} /></button>
-                                                    <span className="text-xs font-black w-4 text-center">{quantity}</span>
-                                                    <button onClick={() => updateQuantity(item.id!, 1)} className="text-gray-400 hover:text-[#00A3E1]"><Plus size={14} /></button>
-                                                </div>
-                                                <button onClick={() => removeFromCart(item.id!)} className="text-red-400 hover:text-red-600 ml-auto"><Trash2 size={16} /></button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                        {cart.length > 0 && (
-                            <div className="p-4 border-t bg-gray-50 space-y-4">
-                                <div className="flex justify-between items-center">
-                                    <span className="text-[10px] font-black text-gray-400 uppercase">Subtotal</span>
-                                    <span className="text-lg font-black text-[#1A3B5D]">₹{cartTotal}</span>
-                                </div>
-                                <button className="w-full bg-[#00A3E1] text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-[#00A3E1]/20 active:scale-[0.98] transition-all">
-                                    Checkout Now
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
 
             <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-lg border-t border-gray-100 px-4 py-3 z-50">
                 <div className="flex justify-between items-center gap-3">

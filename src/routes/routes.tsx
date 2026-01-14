@@ -10,6 +10,7 @@ import { RequireSubscription } from '../UseComponents/RequiredSubscription';
 
 import Loading from '../Pages/Loading/Loading';
 import GlobalError from '../Components/GlobalError';
+import CartPage from '../Catalogue/CheckOut';
 
 const Home = lazy(() => import('../Pages/Home'));
 const Account = lazy(() => import('../Pages/Account'));
@@ -312,9 +313,14 @@ const router = createBrowserRouter([
         handle: { requiredPermission: null },
       },
       {
-        path: `/product`,
+        path: `/product/:companyId/:groupId`,
         element: <SharedProduct />,
         handle: { requiredPermission: null },
+      },
+      {
+        path: `/CheckOut`,
+        element: <CartPage />,
+        handle: { requiredPermission: null }
       },
       {
         path: ROUTES.UNAUTHORIZED,

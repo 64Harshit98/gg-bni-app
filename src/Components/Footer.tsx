@@ -1,5 +1,5 @@
 import React from 'react';
-import { CustomButton } from './index'; 
+import { CustomButton } from './index';
 import { Variant } from '../enums';
 import { IconChevronDown } from '../constants/Icons';
 
@@ -17,7 +17,7 @@ interface GenericBillFooterProps {
   actionLabel: string;
   onActionClick: () => void;
   disableAction?: boolean;
-  children?: React.ReactNode; 
+  children?: React.ReactNode;
 }
 
 export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
@@ -36,14 +36,14 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
   children
 }) => {
   return (
-   
+
     <div className="flex-shrink-0 bg-white border-t border-gray-100 shadow-[0_-5px_15px_rgba(0,0,0,0.05)] rounded-t-2xl z-20 md:shadow-none md:border-0 md:rounded-none md:bg-transparent md:w-full">
 
       <div className="md:mb-4">
-          {children}
+        {children}
       </div>
 
-     
+
       <div
         onClick={onToggleExpand}
         className="flex justify-between items-center px-5 py-2 cursor-pointer active:bg-gray-50 transition-colors rounded-t-2xl group border-b border-gray-100 md:hidden"
@@ -105,7 +105,7 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
           <CustomButton
             onClick={onActionClick}
             variant={Variant.Payment}
-            className="w-full py-3.5 text-base font-bold shadow-lg shadow-blue-200 rounded-lg flex justify-center items-center active:scale-[0.98] transition-transform"
+            className="w-full py-3.5 text-base font-bold shadow-lg shadow-blue-200 rounded-sm flex justify-center items-center active:scale-[0.98] transition-transform"
             disabled={disableAction}
           >
             {actionLabel}

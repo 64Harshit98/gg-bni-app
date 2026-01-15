@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
-import {
+import {orderBy, limit, getDoc,
   collection,
   query,
   getDocs,
   doc,
+   DocumentSnapshot, 
+ type DocumentData,
   writeBatch,
   increment as firebaseIncrement,
   arrayUnion,
@@ -112,39 +114,74 @@ const SalesReturnPage: React.FC = () => {
     [originalSaleItems, selectedReturnIds]
   );
 
-  useEffect(() => {
-    if (!currentUser || !currentUser.companyId || !dbOperations) {
-      setIsLoading(false);
-      return;
-    }
+useEffect(() => {
+  if (!currentUser || !currentUser.companyId || !dbOperations) {
+    setIsLoading(false);
+    return;
+  }
 
-    const fetchData = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const salesQuery = query(collection(db, 'companies', currentUser.companyId, 'sales'));
-        const [salesSnapshot, allItems] = await Promise.all([
-          getDocs(salesQuery),
-          dbOperations.getItems(),
-        ]);
-        const allSales: SalesData[] = salesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SalesData));
-        setSalesList(allSales);
-        setAvailableItems(allItems);
-        if (state?.invoiceData) {
-          handleSelectSale(state.invoiceData);
-        } else if (invoiceId) {
-          const pre = allSales.find(sale => sale.id === invoiceId);
-          if (pre) handleSelectSale(pre);
-        }
-      } catch (err) {
-        console.error('Error fetching data:', err);
-        setError('Failed to load initial data.');
-      } finally {
-        setIsLoading(false);
+  const fetchData = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      // OPTIMIZATION 1: Fetch only the 50 most recent sales
+      // This prevents downloading thousands of old records (saving massive reads/bandwidth)
+      const salesQuery = query(
+        collection(db, 'companies', currentUser.companyId, 'sales'),
+        orderBy('createdAt', 'desc'), // Show newest first
+        limit(50)
+      );
+
+     let specificInvoicePromise: Promise<DocumentSnapshot<DocumentData, DocumentData> | null> = Promise.resolve(null);
+      
+      // Only fetch specific invoice if needed
+      if (invoiceId && !state?.invoiceData) {
+         const specificRef = doc(db, 'companies', currentUser.companyId, 'sales', invoiceId);
+         // Now TypeScript allows this assignment!
+         specificInvoicePromise = getDoc(specificRef); 
       }
-    };
-    fetchData();
-  }, [currentUser, dbOperations, invoiceId, state]);
+
+      const [salesSnapshot, allItems, specificInvoiceSnap] = await Promise.all([
+        getDocs(salesQuery),
+        dbOperations.syncItems(), // OPTIMIZATION 3: Use your new Local Storage Sync (0 reads usually)
+        specificInvoicePromise
+      ]);
+
+      const recentSales: SalesData[] = salesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SalesData));
+
+      // LOGIC: Select the correct invoice
+      if (state?.invoiceData) {
+        // Case A: User came from "Save Sale" screen (Data is in state)
+        handleSelectSale(state.invoiceData);
+      } 
+      else if (specificInvoiceSnap && specificInvoiceSnap.exists()) {
+        // Case B: User clicked a link to an old invoice (Fetched individually)
+        const specificData = { id: specificInvoiceSnap.id, ...specificInvoiceSnap.data() } as SalesData;
+        
+        // Add it to the list if it's not already there (so it appears in the sidebar)
+        if (!recentSales.find(s => s.id === specificData.id)) {
+            recentSales.unshift(specificData); // Add to top of list
+        }
+        handleSelectSale(specificData);
+      } 
+      else if (invoiceId) {
+        // Case C: The invoice happened to be in the top 50
+        const pre = recentSales.find(sale => sale.id === invoiceId);
+        if (pre) handleSelectSale(pre);
+      }
+
+      setSalesList(recentSales);
+      setAvailableItems(allItems);
+
+    } catch (err) {
+      console.error('Error fetching data:', err);
+      setError('Failed to load initial data.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  fetchData();
+}, [currentUser, dbOperations, invoiceId, state]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -509,7 +546,7 @@ const SalesReturnPage: React.FC = () => {
 
         const customerUpdateData: any = {
           name: cleanPartyName,
-          phone: cleanPartyNumber,
+          number: cleanPartyNumber,
           companyId,
           lastUpdatedAt: serverTimestamp()
         };
@@ -634,7 +671,7 @@ const SalesReturnPage: React.FC = () => {
                 </div>
 
                 {/* Exchange Section (Input + List) */}
-                <div className="bg-white p-4 rounded-sm shadow-md mb-20 md:mb-0 border border-gray-200">
+                <div className="bg-white p-4 rounded-sm shadow-md mb-4 md:mb-0 border border-gray-200">
                    {/* Mobile View: Select Mode Here. Desktop: Mode is in Right Panel, but show Content if Exchange is selected */}
                    <div className="md:hidden mb-4">
                       <label className="block font-medium text-sm mb-1">Transaction Type</label>
@@ -698,7 +735,7 @@ const SalesReturnPage: React.FC = () => {
                 </div>
 
                 {/* Mobile Only: Inline Summary (Above Footer) */}
-                <div className="md:hidden bg-white p-4 rounded-sm shadow-md mt-2">
+                <div className="md:hidden bg-white p-4 rounded-sm shadow-md">
                     <div className="flex justify-between items-center text-sm text-blue-700">
                       <p>Return Value</p><p className="font-medium">₹{totalReturnGross.toFixed(2)}</p>
                     </div>
@@ -783,7 +820,7 @@ const SalesReturnPage: React.FC = () => {
         </div>
 
         {/* --- MOBILE FOOTER (Sticky) --- */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-gray-100 border-t border-gray-200 z-20 flex justify-center pb-8">
+        <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-transparent flex justify-center pb-18">
            {selectedSale && (<CustomButton onClick={handleProcessReturn} variant={Variant.Payment} className="w-full py-3 text-lg font-semibold shadow-md">Process Transaction</CustomButton>)}
         </div>
 

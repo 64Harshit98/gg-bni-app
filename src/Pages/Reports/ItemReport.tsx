@@ -5,6 +5,7 @@ import { getFirestoreOperations } from '../../lib/ItemsFirebase';
 import type { Item, ItemGroup } from '../../constants/models';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 import { Spinner } from '../../constants/Spinner';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
@@ -12,8 +13,60 @@ import { CustomTable } from '../../Components/CustomTable';
 import { IconClose } from '../../constants/Icons';
 import { getItemColumns } from '../../constants/TableColoumns';
 
+// Import your Modal and State
+import { Modal } from '../../constants/Modal'; // Adjust path to where you saved the Modal code
+import { State } from '../../enums';
+
 const UNASSIGNED_GROUP_NAME = 'Uncategorized';
 
+const DownloadChoiceModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  onDownloadPdf: () => void;
+  onDownloadExcel: () => void;
+}> = ({ isOpen, onClose, onDownloadPdf, onDownloadExcel }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 animate-fade-in">
+      <div className="bg-white rounded-sm shadow-2xl p-6 w-full max-w-sm text-center relative">
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+        >
+          <IconClose width={20} height={20} />
+        </button>
+
+        <div className="mx-auto mb-4 w-12 h-12 rounded-full flex items-center justify-center bg-blue-100">
+          <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+          </svg>
+        </div>
+
+        <h3 className="text-xl font-bold text-gray-800 mb-2">Download Report</h3>
+        <p className="text-gray-600 mb-6">Select your preferred format.</p>
+
+        <div className="flex flex-col gap-3">
+          <button
+            onClick={() => { onDownloadExcel(); }}
+            className="w-full bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 transition-colors font-medium flex items-center justify-center gap-2"
+          >
+            <span>Export as Excel</span>
+          </button>
+
+          <button
+            onClick={() => { onDownloadPdf(); }}
+            className="w-full bg-red-600 text-white py-3 px-4 rounded-lg hover:bg-red-700 transition-colors font-medium flex items-center justify-center gap-2"
+          >
+            <span>Export as PDF</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- Helper Component ---
 const FilterSelect: React.FC<{
   label: string;
   value: string;
@@ -48,7 +101,16 @@ const ItemReport: React.FC = () => {
   const [items, setItems] = useState<Item[]>([]);
   const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+
+  // State for the Generic Modal (Success/Error messages)
+  const [feedbackModal, setFeedbackModal] = useState<{ isOpen: boolean; type: State; message: string }>({
+    isOpen: false,
+    type: State.INFO,
+    message: '',
+  });
+
+  // State for the Download Selection Modal
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
 
   const [itemGroupId, setItemGroupId] = useState<string>('');
   const [appliedItemGroupId, setAppliedItemGroupId] = useState<string>('');
@@ -64,14 +126,19 @@ const ItemReport: React.FC = () => {
       setIsLoading(true);
       try {
         const [fetchedItems, fetchedGroups] = await Promise.all([
-          firestoreApi.getItems(),
+          firestoreApi.syncItems(),
           firestoreApi.getItemGroups(),
         ]);
         setItems(fetchedItems);
         setItemGroups(fetchedGroups);
       } catch (err) {
-        setError('Failed to load item data.');
         console.error(err);
+        // Use Generic Modal for Error
+        setFeedbackModal({
+          isOpen: true,
+          type: State.ERROR,
+          message: 'Failed to load item data from the server.'
+        });
       } finally {
         setIsLoading(false);
       }
@@ -121,30 +188,97 @@ const ItemReport: React.FC = () => {
     setSortConfig({ key, direction });
   };
 
-  const downloadAsPdf = () => {
-    const doc = new jsPDF();
-    doc.text('Item Report', 14, 15);
-    autoTable(doc, {
-      startY: 20,
-      head: [['Item Name', 'Item Group', 'MRP', 'Discount', 'Purchase Price']],
-      body: filteredItems.map((item) => [
-        item.name,
-        item.itemGroupId || UNASSIGNED_GROUP_NAME,
-        `₹${item.mrp?.toFixed(2) || 'N/A'}`,
-        `${item.discount || 0}%`,
-        `₹${item.purchasePrice?.toFixed(2) || 'N/A'}`,
-      ]),
-    });
-    doc.save('item_report.pdf');
+  const getGroupName = (id?: string) => {
+    if (!id) return UNASSIGNED_GROUP_NAME;
+    const group = itemGroups.find(g => g.id === id);
+    return group ? group.name : UNASSIGNED_GROUP_NAME;
   };
 
-const tableColumns = useMemo(() => getItemColumns(itemGroups), [itemGroups]);
+  const prepareExportData = (item: Item) => {
+    return {
+      'name': item.name,
+      'mrp': item.mrp || 0,
+      'purchasePrice': item.purchasePrice || 0,
+      'discount': item.discount || 0,
+      'tax': item.tax || 0,
+      'itemGroupId': getGroupName(item.itemGroupId),
+      'stock': item.stock || 0,
+      'barcode': item.barcode || '-',
+      'restockQuantity': item.restockQuantity || 0,
+    };
+  };
+
+  const downloadAsPdf = () => {
+    try {
+      const doc = new jsPDF('l', 'mm', 'a4');
+      doc.setFontSize(14);
+      doc.text('Detailed Item Report', 14, 15);
+      doc.setFontSize(10);
+      doc.text(`Total Items: ${summary.totalItems} | Avg Margin: ${Math.round(summary.averageMarginPercentage)}%`, 14, 22);
+
+      const exportData = filteredItems.map(prepareExportData);
+      const headers = Object.keys(exportData[0] || {});
+      const body = exportData.map(obj => Object.values(obj));
+
+      autoTable(doc, {
+        startY: 25,
+        head: [headers],
+        body: body,
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [41, 128, 185] },
+      });
+
+      doc.save('detailed_item_report.pdf');
+
+      // Close selection modal and show success modal
+      setIsDownloadModalOpen(false);
+      setFeedbackModal({ isOpen: true, type: State.SUCCESS, message: 'PDF downloaded successfully!' });
+    } catch (e) {
+      setFeedbackModal({ isOpen: true, type: State.ERROR, message: 'Failed to generate PDF.' });
+    }
+  };
+
+  const downloadAsExcel = () => {
+    try {
+      const dataToExport = filteredItems.map(prepareExportData);
+      const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Items");
+      XLSX.writeFile(workbook, "item_report.xlsx");
+
+      // Close selection modal and show success modal
+      setIsDownloadModalOpen(false);
+      setFeedbackModal({ isOpen: true, type: State.SUCCESS, message: 'Excel file downloaded successfully!' });
+    } catch (e) {
+      setFeedbackModal({ isOpen: true, type: State.ERROR, message: 'Failed to generate Excel file.' });
+    }
+  };
+
+  const tableColumns = useMemo(() => getItemColumns(itemGroups), [itemGroups]);
 
   if (isLoading) return <Spinner />;
-  if (error) return <div className="p-4 text-red-500 font-semibold text-center">{error}</div>;
 
   return (
     <div className="min-h-screen bg-gray-50 p-2 mb-12">
+      {/* 1. Generic Modal for Success/Error/Info */}
+      {feedbackModal.isOpen && (
+        <Modal
+          type={feedbackModal.type}
+          message={feedbackModal.message}
+          onClose={() => setFeedbackModal(prev => ({ ...prev, isOpen: false }))}
+          showConfirmButton={false}
+        />
+      )}
+
+      {/* 2. Download Choice Modal */}
+      <DownloadChoiceModal
+        isOpen={isDownloadModalOpen}
+        onClose={() => setIsDownloadModalOpen(false)}
+        onDownloadPdf={downloadAsPdf}
+        onDownloadExcel={downloadAsExcel}
+      />
+
       <div className="flex items-center justify-between pb-3 border-b mb-2">
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">Item Report</h1>
         <button onClick={() => navigate(-1)} className="rounded-full bg-gray-200 p-2 text-gray-900 hover:bg-gray-300">
@@ -173,14 +307,25 @@ const tableColumns = useMemo(() => getItemColumns(itemGroups), [itemGroups]);
         <CustomCard variant={CardVariant.Summary} title="Avg. Margin %" value={`${Math.round(summary.averageMarginPercentage).toFixed(0)} %`} />
       </div>
 
-      <div className="bg-white p-4 rounded-lg flex justify-between items-center">
+      <div className="bg-white p-4 rounded-lg flex flex-col md:flex-row justify-between items-center gap-4">
         <h2 className="text-lg font-semibold text-gray-700">Report Details</h2>
-        <div className="flex items-center space-x-3">
-          <button onClick={() => setIsListVisible(!isListVisible)} className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition">
+        <div className="flex items-center space-x-3 w-full md:w-auto overflow-x-auto">
+          <button onClick={() => setIsListVisible(!isListVisible)} className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition whitespace-nowrap">
             {isListVisible ? 'Hide List' : 'Show List'}
           </button>
-          <button onClick={downloadAsPdf} disabled={filteredItems.length === 0} className="bg-blue-600 text-white font-semibold rounded-md py-2 px-4 shadow-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
-            Download PDF
+
+          {/* Single Download Button triggers the Choice Modal */}
+          <button
+            onClick={() => {
+              if (filteredItems.length === 0) {
+                setFeedbackModal({ isOpen: true, type: State.INFO, message: 'No items available to download.' });
+              } else {
+                setIsDownloadModalOpen(true);
+              }
+            }}
+            className="bg-blue-600 text-white font-semibold rounded-md py-2 px-4 shadow-sm hover:bg-blue-700 whitespace-nowrap"
+          >
+            Download Report
           </button>
         </div>
       </div>

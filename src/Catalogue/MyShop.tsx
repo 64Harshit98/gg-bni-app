@@ -1,18 +1,50 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Search, ShoppingCart, Edit3, Home, FileText, UserRound, X, Minus, Plus, Trash2 } from 'lucide-react';
+import { Search, ShoppingCart, Edit3, X, Minus, Plus, Trash2, ChevronLeft } from 'lucide-react';
 import { useAuth, useDatabase } from '../context/auth-context';
 import type { Item, ItemGroup } from '../constants/models';
 import { FiStar, FiCheckSquare, FiLoader, FiPackage, FiPlus } from 'react-icons/fi';
 import { ItemEditDrawer } from '../Components/ItemDrawer';
-import { ItemDetailDrawer } from '../Components/ItemDetails'; // Drawer Import
+import { ItemDetailDrawer } from '../Components/ItemDetails';
 import { Spinner } from '../constants/Spinner';
+import { useNavigate, useParams } from 'react-router-dom';
+import Footer from './Footer';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../lib/Firebase';
+
+const useBusinessName = (companyId?: string) => {
+    const [businessName, setBusinessName] = useState<string>('');
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (!companyId) {
+            setLoading(false);
+            return;
+        }
+        const fetchBusinessInfo = async () => {
+            try {
+                // Correct multi-tenant path as per your logic
+                const docRef = doc(db, 'companies', companyId, 'business_info', companyId);
+                const docSnap = await getDoc(docRef);
+                setBusinessName(docSnap.exists() ? docSnap.data().businessName || 'Catalogue' : 'Catalogue');
+            } catch (err) {
+                console.error("Error fetching business name:", err);
+                setBusinessName('Catalogue');
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchBusinessInfo();
+    }, [companyId]);
+
+    return { businessName, loading };
+};
 
 const StockIndicator: React.FC<{ stock: number }> = ({ stock }) => {
     let colorClass = 'text-green-600 bg-green-100';
     if (stock <= 10 && stock > 0) colorClass = 'text-yellow-600 bg-yellow-100';
     if (stock <= 0) colorClass = 'text-red-600 bg-red-100';
     return (
-        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tight ${colorClass}`}>
+        <span className={`px-2 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-tight ${colorClass}`}>
             {stock} IN STOCK
         </span>
     );
@@ -43,7 +75,7 @@ const QuickListedToggle: React.FC<QuickListedToggleProps> = ({ itemId, isListed,
         <button
             onClick={handleClick}
             disabled={disabled || isLoading}
-            className={`flex-1 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1 ${isListed ? 'bg-green-500 text-white shadow-sm' : 'bg-gray-100 text-gray-400'
+            className={`flex-1 py-1.5 rounded-sm text-[9px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1 ${isListed ? 'bg-green-500 text-white shadow-sm' : 'bg-gray-100 text-gray-400'
                 }`}
         >
             {isLoading ? <FiLoader className="animate-spin" size={10} /> : isListed ? <FiCheckSquare size={10} /> : <FiStar size={10} />}
@@ -55,20 +87,24 @@ const QuickListedToggle: React.FC<QuickListedToggleProps> = ({ itemId, isListed,
 const ITEMS_PER_BATCH_RENDER = 24;
 
 const MyShopPage: React.FC = () => {
+    const navigate = useNavigate()
+    const { groupId } = useParams<{ groupId: string }>();
     const { currentUser, loading: authLoading } = useAuth();
+    const companyId = currentUser?.companyId;
+    const { businessName: companyName, loading: _nameLoading } = useBusinessName(companyId);
     const dbOperations = useDatabase();
+
     const [isViewMode, setIsViewMode] = useState(true);
     const [allItems, setAllItems] = useState<Item[]>([]);
     const [_allItemGroups, setAllItemGroups] = useState<ItemGroup[]>([]);
-    const [selectedCategory, _setSelectedCategory] = useState('All');
+    const [selectedCategory, setSelectedCategory] = useState(groupId || 'All');
     const [searchQuery, setSearchQuery] = useState('');
     const [pageIsLoading, setPageIsLoading] = useState(true);
     const [_error, setError] = useState<string | null>(null);
     const [itemsToRenderCount, setItemsToRenderCount] = useState(ITEMS_PER_BATCH_RENDER);
-    
-    // States for Drawers
-    const [isDrawerOpen, setIsDrawerOpen] = useState(false); // Edit Drawer
-    const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false); // Details Drawer
+
+    const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+    const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
     const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
     const [selectedItemForDetails, setSelectedItemForDetails] = useState<Item | null>(null);
 
@@ -80,12 +116,17 @@ const MyShopPage: React.FC = () => {
     const [cart, setCart] = useState<{ item: Item; quantity: number }[]>([]);
     const [isCartOpen, setIsCartOpen] = useState(false);
 
-    // Optimized addToCart to handle drawer sync
+    // Sync selectedCategory when groupId changes from URL
+    useEffect(() => {
+        if (groupId) {
+            setSelectedCategory(groupId);
+        }
+    }, [groupId]);
+
     const addToCart = (item: Item, quantity: number = 1, isFromDrawer: boolean = false) => {
         setCart(prev => {
             const existing = prev.find(i => i.item.id === item.id);
             if (existing) {
-                // Agar drawer se aa raha hai toh quantity overwrite hogi, warna +1 hogi
                 const newQuantity = isFromDrawer ? quantity : existing.quantity + 1;
                 return prev.map(i => i.item.id === item.id ? { ...i, quantity: newQuantity } : i);
             }
@@ -134,22 +175,32 @@ const MyShopPage: React.FC = () => {
         fetchData();
     }, [authLoading, currentUser, dbOperations]);
 
+    // 3. Updated Filter logic with safety checks
     const filteredItems = useMemo(() => {
+        const activeCat = groupId || selectedCategory;
+
         const result = allItems.filter(item => {
+            if (!item) return false;
             if (isViewMode && !item.isListed) return false;
-            const matchesCategory = selectedCategory === 'All' || item.itemGroupId === selectedCategory;
-            const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) || (item.barcode && item.barcode.includes(searchQuery));
+
+            const matchesCategory = activeCat === 'All' || item.itemGroupId === activeCat;
+            const itemName = item.name?.toLowerCase() || "";
+            const matchesSearch = itemName.includes(searchQuery.toLowerCase()) ||
+                (item.barcode && item.barcode.includes(searchQuery));
+
             return matchesCategory && matchesSearch;
         });
 
         return [...result].sort((a, b) => {
-            if (sortOrder === 'A-Z') return a.name.localeCompare(b.name);
-            if (sortOrder === 'Z-A') return b.name.localeCompare(a.name);
+            const nameA = a.name || "";
+            const nameB = b.name || "";
+            if (sortOrder === 'A-Z') return nameA.localeCompare(nameB);
+            if (sortOrder === 'Z-A') return nameB.localeCompare(nameA);
             if (sortOrder === 'Price: Low-High') return (a.mrp || 0) - (b.mrp || 0);
             if (sortOrder === 'Price: High-Low') return (b.mrp || 0) - (a.mrp || 0);
             return 0;
         });
-    }, [allItems, selectedCategory, searchQuery, isViewMode, sortOrder]);
+    }, [allItems, selectedCategory, searchQuery, isViewMode, sortOrder, groupId]);
 
     const itemsToDisplay = useMemo(() => filteredItems.slice(0, itemsToRenderCount), [filteredItems, itemsToRenderCount]);
     const hasMoreItems = useMemo(() => itemsToRenderCount < filteredItems.length, [itemsToRenderCount, filteredItems.length]);
@@ -173,7 +224,6 @@ const MyShopPage: React.FC = () => {
         setIsDrawerOpen(true);
     };
 
-    // Card click handler for View Mode
     const handleOpenDetailDrawer = (item: Item) => {
         setSelectedItemForDetails(item);
         setIsDetailDrawerOpen(true);
@@ -195,33 +245,27 @@ const MyShopPage: React.FC = () => {
 
     return (
         <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative overflow-x-hidden">
-            <header className="sticky top-0 bg-white border-b border-gray-100 shadow-sm">
+            <header className="sticky top-0 bg-white border-b border-gray-100 shadow-sm z-40">
                 <div className="max-w-7xl mx-auto px-4 py-2 flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
+                    <div className="flex">
                         <div className="flex items-center gap-1.5">
-                            <div className="w-1 h-5 bg-[#00A3E1] rounded-full"></div>
+                            <button
+                                onClick={() => navigate(-1)}
+                                className="p-1 hover:bg-gray-100 rounded-sm transition-colors"
+                            >
+                                <ChevronLeft className="text-[#1A3B5D]" size={20} />
+
+                            </button>
+                            <div className="w-1 h-5 bg-[#00A3E1] rounded-sm"></div>
                             <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">
-                                MyShop<span className="text-[#00A3E1]">.</span>
+                                {companyName}
                             </h1>
                         </div>
 
-                        <div className="hidden md:flex bg-gray-50 p-1 rounded-xl border border-gray-100 scale-90">
-                            <button onClick={() => setIsViewMode(true)} className={`px-8 py-2 rounded-lg text-[12px] font-black uppercase transition-all ${isViewMode ? 'bg-[#00A3E1] text-white shadow-sm' : 'text-gray-400'}`}>My Items</button>
-                            <button onClick={() => setIsViewMode(false)} className={`px-8 py-2 rounded-lg text-[12px] font-black uppercase transition-all ${!isViewMode ? 'bg-[#00A3E1] text-white shadow-sm' : 'text-gray-400'}`}>Edit Items</button>
+                        <div className="ml-60 hidden md:flex bg-gray-50 p-1 rounded-sm border border-gray-100 scale-90">
+                            <button onClick={() => setIsViewMode(true)} className={`px-8 py-2 rounded-sm text-[12px] font-black uppercase transition-all ${isViewMode ? 'bg-[#00A3E1] text-white shadow-sm' : 'text-gray-400'}`}>My Items</button>
+                            <button onClick={() => setIsViewMode(false)} className={`px-8 py-2 rounded-sm text-[12px] font-black uppercase transition-all ${!isViewMode ? 'bg-[#00A3E1] text-white shadow-sm' : 'text-gray-400'}`}>Edit Items</button>
                         </div>
-
-                        <button 
-                            onClick={() => setIsCartOpen(true)}
-                            className="flex items-center justify-center gap-2 bg-[#00A3E1] text-white py-2 px-4 rounded-xl font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative"
-                        >
-                            <ShoppingCart size={14} />
-                            <span>Cart</span>
-                            {cartCount > 0 && (
-                                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center border-2 border-white">
-                                    {cartCount}
-                                </span>
-                            )}
-                        </button>
                     </div>
                 </div>
             </header>
@@ -234,25 +278,25 @@ const MyShopPage: React.FC = () => {
                         placeholder="Search products..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full bg-white border border-gray-100 rounded-xl py-2.5 pl-10 pr-4 text-xs outline-none shadow-sm focus:ring-1 focus:ring-[#00A3E1]/20 transition-all"
+                        className="w-full bg-white border border-gray-100 rounded-sm py-2.5 pl-10 pr-4 text-xs outline-none shadow-sm focus:ring-1 focus:ring-[#00A3E1]/20 transition-all"
                     />
                 </div>
 
                 <div className="max-w-7xl mx-auto px-1 flex items-center justify-between relative">
                     <div className="flex items-center gap-2">
                         <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Total Products:</span>
-                        <span className="bg-[#00A3E1]/10 text-[#00A3E1] px-2.5 py-0.5 rounded-full text-[10px] font-black">{filteredItems.length}</span>
+                        <span className="bg-[#00A3E1]/10 text-[#00A3E1] px-2.5 py-0.5 rounded-sm text-[10px] font-black">{filteredItems.length}</span>
                     </div>
 
                     <div className="relative">
-                        <button onClick={() => setIsSortOpen(!isSortOpen)} className="flex items-center gap-2 bg-white border border-gray-100 px-3 py-1.5 rounded-xl shadow-sm active:scale-95 transition-all">
+                        <button onClick={() => setIsSortOpen(!isSortOpen)} className="flex items-center gap-2 bg-white border border-gray-100 px-3 py-1.5 rounded-sm shadow-sm active:scale-95 transition-all">
                             <span className="text-[10px] font-black uppercase text-[#1A3B5D]">Sort: {sortOrder}</span>
                             <FiPlus className={`transition-transform duration-300 ${isSortOpen ? 'rotate-45' : ''}`} size={12} />
                         </button>
                         {isSortOpen && (
-                            <div className="absolute right-0 mt-2 w-40 bg-white rounded-2xl shadow-xl border border-gray-50 z-[70] overflow-hidden">
+                            <div className="absolute right-0 mt-2 w-40 bg-white rounded-sm shadow-xl border border-gray-50 z-[70] overflow-hidden">
                                 {['A-Z', 'Z-A', 'Price: Low-High', 'Price: High-Low'].map((opt) => (
-                                    <button 
+                                    <button
                                         key={opt}
                                         onClick={() => { setSortOrder(opt as any); setIsSortOpen(false); }}
                                         className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 border-t border-gray-50 first:border-0 ${sortOrder === opt ? 'text-[#00A3E1]' : 'text-[#1A3B5D]'}`}
@@ -269,79 +313,80 @@ const MyShopPage: React.FC = () => {
                     {itemsToDisplay.map((item) => {
                         const cartItem = cart.find(i => i.item.id === item.id);
                         return (
-                        <div
-                            key={item.id}
-                            onClick={() => isViewMode ? handleOpenDetailDrawer(item) : handleOpenEditDrawer(item)}
-                            className={`bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 flex flex-col transition-all duration-300 relative group hover:shadow-md cursor-pointer ${!isViewMode ? 'ring-1 ring-[#00A3E1]/10' : ''}`}
-                        >
-                            <div className="aspect-square bg-[#F8FAFC] flex items-center justify-center relative overflow-hidden">
-                                {item.imageUrl ? (
-                                    <img src={item.imageUrl} alt={item.name} className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" />
-                                ) : (
-                                    <FiPackage className="w-10 h-10 text-gray-200" />
-                                )}
-                                {!isViewMode && (
-                                    <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm p-1.5 rounded-full shadow-sm">
-                                        <Edit3 size={10} className="text-[#00A3E1]" />
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="p-3 flex flex-col flex-1">
-                                <h3 className="text-[10px] font-black text-[#1A3B5D] mb-1 truncate uppercase leading-tight">{item.name}</h3>
-                                <div className="flex items-center justify-between mb-3">
-                                    <p className="text-xs font-black text-[#00A3E1]">₹{item.mrp}</p>
-                                    <StockIndicator stock={item.stock || 0} />
-                                </div>
-
-                                <div className="mt-auto flex gap-1">
-                                    {isViewMode ? (
-                                        cartItem ? (
-                                            <div className="w-full flex items-center justify-between bg-gray-50 rounded-xl px-1 py-1 border border-gray-100">
-                                                <button 
-                                                    onClick={(e) => { e.stopPropagation(); updateQuantity(item.id!, -1); }}
-                                                    className="p-1.5 bg-white shadow-sm text-[#00A3E1] hover:bg-[#00A3E1] hover:text-white rounded-lg transition-all"
-                                                >
-                                                    <Minus size={12} strokeWidth={3} />
-                                                </button>
-                                                <span className="text-xs font-black text-[#1A3B5D]">{cartItem.quantity}</span>
-                                                <button 
-                                                    onClick={(e) => { e.stopPropagation(); updateQuantity(item.id!, 1); }}
-                                                    className="p-1.5 bg-white shadow-sm text-[#00A3E1] hover:bg-[#00A3E1] hover:text-white rounded-lg transition-all"
-                                                >
-                                                    <Plus size={12} strokeWidth={3} />
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <button 
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    addToCart(item);
-                                                }}
-                                                className="w-full bg-[#00A3E1] text-white py-2 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm active:scale-95 transition-all flex items-center justify-center gap-2"
-                                            >
-                                                <Plus size={12} />
-                                                Add to Cart
-                                            </button>
-                                        )
+                            <div
+                                key={item.id}
+                                onClick={() => isViewMode ? handleOpenDetailDrawer(item) : handleOpenEditDrawer(item)}
+                                className={`bg-white rounded-sm overflow-hidden shadow-sm border border-gray-100 flex flex-col transition-all duration-300 relative group hover:shadow-md cursor-pointer ${!isViewMode ? 'ring-1 ring-[#00A3E1]/10' : ''}`}
+                            >
+                                <div className="aspect-square bg-[#F8FAFC] flex items-center justify-center relative overflow-hidden">
+                                    {item.imageUrl ? (
+                                        <img src={item.imageUrl} alt={item.name} className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" />
                                     ) : (
-                                        <>
-                                            <button 
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleOpenEditDrawer(item);
-                                                }}
-                                                className="flex-1 bg-gray-50 text-[#1A3B5D] py-1.5 rounded-lg text-[9px] font-black uppercase border border-gray-100"
-                                            >
-                                                Edit
-                                            </button>
-                                            <QuickListedToggle itemId={item.id!} isListed={item.isListed ?? false} onToggle={handleToggleListed} />
-                                        </>
+                                        <FiPackage className="w-10 h-10 text-gray-200" />
+                                    )}
+                                    {!isViewMode && (
+                                        <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm p-1.5 rounded-sm shadow-sm">
+                                            <Edit3 size={10} className="text-[#00A3E1]" />
+                                        </div>
                                     )}
                                 </div>
+
+                                <div className="p-3 flex flex-col flex-1">
+                                    <h3 className="text-[10px] font-black text-[#1A3B5D] mb-1 truncate uppercase leading-tight">{item.name}</h3>
+                                    <div className="flex items-center justify-between mb-3">
+                                        <p className="text-xs font-black text-[#00A3E1]">₹{item.mrp}</p>
+                                        <StockIndicator stock={item.stock || 0} />
+                                    </div>
+
+                                    <div className="mt-auto flex gap-1">
+                                        {isViewMode ? (
+                                            cartItem ? (
+                                                <div className="w-full flex items-center justify-between bg-gray-50 rounded-sm px-1 py-1 border border-gray-100">
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); updateQuantity(item.id!, -1); }}
+                                                        className="p-1.5 bg-white shadow-sm text-[#00A3E1] hover:bg-[#00A3E1] hover:text-white rounded-sm transition-all"
+                                                    >
+                                                        <Minus size={12} strokeWidth={3} />
+                                                    </button>
+                                                    <span className="text-xs font-black text-[#1A3B5D]">{cartItem.quantity}</span>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); updateQuantity(item.id!, 1); }}
+                                                        className="p-1.5 bg-white shadow-sm text-[#00A3E1] hover:bg-[#00A3E1] hover:text-white rounded-sm transition-all"
+                                                    >
+                                                        <Plus size={12} strokeWidth={3} />
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        addToCart(item);
+                                                    }}
+                                                    className="w-full bg-[#00A3E1] text-white py-2 rounded-sm text-[9px] font-black uppercase tracking-widest shadow-sm active:scale-95 transition-all flex items-center justify-center gap-2"
+                                                >
+                                                    <Plus size={12} />
+                                                    Add to Cart
+                                                </button>
+                                            )
+                                        ) : (
+                                            <>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleOpenEditDrawer(item);
+                                                    }}
+                                                    className="flex-1 bg-gray-50 text-[#1A3B5D] py-1.5 rounded-sm text-[9px] font-black uppercase border border-gray-100"
+                                                >
+                                                    Edit
+                                                </button>
+                                                <QuickListedToggle itemId={item.id!} isListed={item.isListed ?? false} onToggle={handleToggleListed} />
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    )})}
+                        )
+                    })}
                 </div>
 
                 {hasMoreItems && <div ref={loadMoreRef} className="h-20 flex justify-center items-center"><Spinner /></div>}
@@ -353,7 +398,7 @@ const MyShopPage: React.FC = () => {
                     <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
                         <div className="p-4 border-b flex items-center justify-between">
                             <h2 className="text-sm font-black text-[#1A3B5D] uppercase tracking-wider">Your Cart ({cartCount})</h2>
-                            <button onClick={() => setIsCartOpen(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                            <button onClick={() => setIsCartOpen(false)} className="p-2 hover:bg-gray-100 rounded-sm transition-colors">
                                 <X size={20} />
                             </button>
                         </div>
@@ -365,15 +410,15 @@ const MyShopPage: React.FC = () => {
                                 </div>
                             ) : (
                                 cart.map(({ item, quantity }) => (
-                                    <div key={item.id} className="flex gap-4 bg-gray-50 p-3 rounded-2xl border border-gray-100">
-                                        <div className="w-16 h-16 bg-white rounded-xl overflow-hidden border border-gray-100 flex-shrink-0">
+                                    <div key={item.id} className="flex gap-4 bg-gray-50 p-3 rounded-sm border border-gray-100">
+                                        <div className="w-16 h-16 bg-white rounded-sm overflow-hidden border border-gray-100 flex-shrink-0">
                                             {item.imageUrl ? <img src={item.imageUrl} className="w-full h-full object-cover" /> : <FiPackage className="w-full h-full p-4 text-gray-200" />}
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <h4 className="text-[10px] font-black text-[#00A3E1] uppercase truncate">{item.name}</h4>
                                             <p className="text-xs font-black text-[#1A3B5D]">₹{item.mrp}</p>
                                             <div className="flex items-center gap-3 mt-2">
-                                                <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-2 py-1">
+                                                <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-sm px-2 py-1">
                                                     <button onClick={() => updateQuantity(item.id!, -1)} className="text-gray-400 hover:text-[#00A3E1]"><Minus size={14} /></button>
                                                     <span className="text-xs font-black w-4 text-center">{quantity}</span>
                                                     <button onClick={() => updateQuantity(item.id!, 1)} className="text-gray-400 hover:text-[#00A3E1]"><Plus size={14} /></button>
@@ -391,7 +436,7 @@ const MyShopPage: React.FC = () => {
                                     <span className="text-[10px] font-black text-gray-400 uppercase">Subtotal</span>
                                     <span className="text-lg font-black text-[#1A3B5D]">₹{cartTotal}</span>
                                 </div>
-                                <button className="w-full bg-[#00A3E1] text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-[#00A3E1]/20 active:scale-[0.98] transition-all">
+                                <button className="w-full bg-[#00A3E1] text-white py-4 rounded-sm font-black text-xs uppercase tracking-widest shadow-lg shadow-[#00A3E1]/20 active:scale-[0.98] transition-all">
                                     Checkout Now
                                 </button>
                             </div>
@@ -400,23 +445,6 @@ const MyShopPage: React.FC = () => {
                 </div>
             )}
 
-            <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-lg border-t border-gray-100 px-4 py-3 z-50">
-                <div className="flex justify-between items-center gap-3">
-                    <button className="flex flex-1 flex-col items-center gap-1 text-gray-300">
-                        <FileText size={20} /><span className="text-[9px] font-black uppercase">Orders</span>
-                    </button>
-                    <button onClick={() => setIsViewMode(!isViewMode)} className={`flex flex-1 flex-col items-center gap-1 ${isViewMode ? 'text-[#00A3E1]' : 'text-orange-500'}`}>
-                        <Home size={20} /><span className="text-[9px] font-black uppercase">{isViewMode ? 'Shop' : 'Admin'}</span>
-                    </button>
-                    <button className="flex flex-1 flex-col items-center gap-1 text-gray-300">
-                        <UserRound size={20} /><span className="text-[9px] font-black uppercase">Profile</span>
-                    </button>
-                </div>
-            </div>
-
-            {/* DRAWERS SECTION */}
-            
-            {/* 1. Edit Drawer */}
             <ItemEditDrawer
                 item={selectedItemForEdit}
                 isOpen={isDrawerOpen}
@@ -424,14 +452,14 @@ const MyShopPage: React.FC = () => {
                 onSaveSuccess={(updated) => setAllItems(prev => prev.map(i => i.id === selectedItemForEdit?.id ? { ...i, ...updated } as Item : i))}
             />
 
-            {/* 2. Item Detail Drawer (New integration) */}
-            <ItemDetailDrawer 
+            <ItemDetailDrawer
                 item={selectedItemForDetails}
                 isOpen={isDetailDrawerOpen}
                 onClose={() => { setIsDetailDrawerOpen(false); setSelectedItemForDetails(null); }}
                 onAddToCart={addToCart}
                 initialQuantity={cart.find(i => i.item.id === selectedItemForDetails?.id)?.quantity || 1}
             />
+            <Footer companyName={companyName} />
         </div>
     );
 };

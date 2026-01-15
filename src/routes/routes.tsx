@@ -286,7 +286,7 @@ const router = createBrowserRouter([
             handle: { requiredPermission: null },
           },
           {
-            path: ROUTES.MYSHOP,
+            path: `${ROUTES.MYSHOP}/:groupId`,
             element: <MyShop />,
             handle: { requiredPermission: null },
           },
@@ -318,7 +318,7 @@ const router = createBrowserRouter([
         handle: { requiredPermission: null },
       },
       {
-        path: `/CheckOut`,
+        path: `/checkout/:companyId`,
         element: <CartPage />,
         handle: { requiredPermission: null }
       },

@@ -3,10 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getItemGroupsByCompany, getItemsByCompany } from '../lib/ItemsFirebase';
 import type { ItemGroup, Item } from '../constants/models';
 import { FiPackage, FiPlus } from 'react-icons/fi';
-import { Search, ShoppingCart, ChevronLeft, Heart, Facebook, Instagram, Twitter, Mail } from 'lucide-react';
+import { Search, ShoppingCart, ChevronLeft } from 'lucide-react';
 import { Spinner } from '../constants/Spinner';
 import { doc, getDoc } from 'firebase/firestore'; // Firebase imports
 import { db } from '../lib/Firebase'; // DB import
+import Footer from './Footer';
 
 // --- Custom Hook Integrated ---
 const useBusinessName = (companyId?: string) => {
@@ -114,22 +115,28 @@ const SharedCataloguePage: React.FC = () => {
                     <div className="flex items-center gap-3">
                         <button
                             onClick={() => navigate(-1)}
-                            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                            className="p-2 hover:bg-gray-100 rounded-sm transition-colors"
                         >
                             <ChevronLeft size={20} className="text-[#1A3B5D]" />
                         </button>
 
                         <div className="flex items-center gap-1.5">
-                            <div className="w-1 h-5 bg-[#00A3E1] rounded-full"></div>
+                            <div className="w-1 h-5 bg-[#00A3E1] rounded-sm"></div>
                             <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">
-                                {companyName}<span className="text-[#00A3E1]">.</span>
+                                {companyName}
                             </h1>
                         </div>
                     </div>
 
                     <button
-                        onClick={() => navigate('/CheckOut')}
-                        className="flex items-center justify-center gap-2 bg-[#00A3E1] text-white py-2 px-4 rounded-xl font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative"
+                        onClick={() => {
+                            if (companyId) {
+                                navigate(`/checkout/${companyId}`);
+                            } else {
+                                console.error("Company ID missing!");
+                            }
+                        }}
+                        className="flex items-center justify-center gap-2 bg-[#00A3E1] text-white py-2 px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative"
                     >
                         <ShoppingCart size={14} />
                         <span>Cart</span>
@@ -152,7 +159,7 @@ const SharedCataloguePage: React.FC = () => {
                         placeholder="Search catalogues..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full bg-white border border-gray-100 rounded-2xl py-3.5 pl-11 pr-4 text-xs font-bold outline-none shadow-sm focus:ring-2 focus:ring-[#00A3E1]/10 transition-all"
+                        className="w-full bg-white border border-gray-100 rounded-sm py-3.5 pl-11 pr-4 text-xs font-bold outline-none shadow-sm focus:ring-2 focus:ring-[#00A3E1]/10 transition-all"
                     />
                 </div>
 
@@ -161,7 +168,7 @@ const SharedCataloguePage: React.FC = () => {
                         <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">
                             Total Catalogues:
                         </span>
-                        <span className="bg-[#00A3E1]/10 text-[#00A3E1] px-2.5 py-0.5 rounded-full text-[10px] font-black">
+                        <span className="bg-[#00A3E1]/10 text-[#00A3E1] px-2.5 py-0.5 rounded-sm text-[10px] font-black">
                             {filteredItems.length}
                         </span>
                     </div>
@@ -169,14 +176,14 @@ const SharedCataloguePage: React.FC = () => {
                     <div className="relative">
                         <button
                             onClick={() => setIsSortOpen(!isSortOpen)}
-                            className="flex items-center gap-2 bg-white border border-gray-100 px-3 py-1.5 rounded-xl shadow-sm active:scale-95 transition-all"
+                            className="flex items-center gap-2 bg-white border border-gray-100 px-3 py-1.5 rounded-sm shadow-sm active:scale-95 transition-all"
                         >
                             <span className="text-[10px] font-black uppercase text-[#1A3B5D]">Sort: {sortOrder}</span>
                             <FiPlus className={`transition-transform duration-300 ${isSortOpen ? 'rotate-45' : ''}`} size={12} />
                         </button>
 
                         {isSortOpen && (
-                            <div className="absolute right-0 mt-2 w-32 bg-white rounded-2xl shadow-xl border border-gray-50 z-[70] overflow-hidden">
+                            <div className="absolute right-0 mt-2 w-32 bg-white rounded-sm shadow-xl border border-gray-50 z-[70] overflow-hidden">
                                 <button
                                     onClick={() => { setSortOrder('A-Z'); setIsSortOpen(false); }}
                                     className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 ${sortOrder === 'A-Z' ? 'text-[#00A3E1]' : 'text-[#1A3B5D]'}`}
@@ -202,7 +209,7 @@ const SharedCataloguePage: React.FC = () => {
                             <div
                                 key={group.id}
                                 onClick={() => navigate(`/product/${companyId}/${group.id}`)}
-                                className="bg-white rounded-[32px] overflow-hidden shadow-sm border border-gray-100 flex flex-col transition-all group cursor-pointer active:scale-95"
+                                className="bg-white rounded-sm overflow-hidden shadow-sm border border-gray-100 flex flex-col transition-all group cursor-pointer active:scale-95"
                             >
                                 <div className="aspect-square bg-[#F8FAFC] relative overflow-hidden flex items-center justify-center">
                                     {group.imageUrl ? (
@@ -217,7 +224,7 @@ const SharedCataloguePage: React.FC = () => {
                                         {group.name}
                                     </h3>
 
-                                    <div className="flex items-center justify-center gap-1.5 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100 w-fit mx-auto">
+                                    <div className="flex items-center justify-center gap-1.5 bg-blue-50 px-2 py-0.5 rounded-sm border border-blue-100 w-fit mx-auto">
                                         <span className="text-[10px] font-black text-[#00A3E1] leading-none">
                                             {itemCount}
                                         </span>
@@ -226,7 +233,7 @@ const SharedCataloguePage: React.FC = () => {
                                         </span>
                                     </div>
 
-                                    <div className="mt-2 flex items-center justify-center bg-[#00A3E1] px-2 py-1.5 rounded-lg">
+                                    <div className="mt-2 flex items-center justify-center bg-[#00A3E1] px-2 py-1.5 rounded-sm">
                                         <div className="flex items-center">
                                             <span className="text-[8px] font-bold uppercase text-white tracking-wider">View Products</span>
                                         </div>
@@ -239,7 +246,7 @@ const SharedCataloguePage: React.FC = () => {
 
                 {filteredItems.length === 0 && (
                     <div className="text-center py-20">
-                        <div className="bg-white inline-block p-6 rounded-[32px] shadow-sm border border-gray-100">
+                        <div className="bg-white inline-block p-6 rounded-sm shadow-sm border border-gray-100">
                             <FiPackage className="mx-auto h-12 w-12 text-gray-200 mb-4" />
                             <p className="text-[11px] font-black uppercase text-gray-400 tracking-widest">No catalogues found</p>
                         </div>
@@ -248,31 +255,7 @@ const SharedCataloguePage: React.FC = () => {
             </main>
 
             {/* FOOTER */}
-            <footer className="w-full bg-white border-t border-gray-50 pt-12 pb-12 shadow-sm">
-                <div className="flex flex-col items-center text-center">
-                    <div className="mb-6">
-                        <h2 className="text-sm font-black text-[#1A3B5D] tracking-[0.3em] uppercase mb-2">{companyName}</h2>
-                        <div className="h-0.5 w-8 bg-[#00A3E1] mx-auto rounded-full"></div>
-                    </div>
-                    <div className="flex gap-8 mb-8 text-gray-400">
-                        <a href="#" className="hover:text-[#00A3E1] transition-colors"><Instagram size={18} /></a>
-                        <a href="#" className="hover:text-[#00A3E1] transition-colors"><Facebook size={18} /></a>
-                        <a href="#" className="hover:text-[#00A3E1] transition-colors"><Twitter size={18} /></a>
-                        <a href="#" className="hover:text-[#00A3E1] transition-colors"><Mail size={18} /></a>
-                    </div>
-                    <div className="space-y-3">
-                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
-                            Made with <Heart size={12} className="inline text-red-500 fill-red-500" /> in India
-                        </p>
-                        <div className="pt-4 border-t border-gray-50 w-48 mx-auto">
-                            <p className="text-[8px] font-medium text-gray-400 uppercase tracking-[0.15em]">© 2026 All Rights Reserved</p>
-                            <p className="mt-1 text-[9px] font-black text-[#1A3B5D]/40 uppercase tracking-widest">
-                                Powered by <span className="text-[#00A3E1]">sellar.in</span>
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </footer>
+            <Footer companyName={companyName} />
         </div>
     );
 };

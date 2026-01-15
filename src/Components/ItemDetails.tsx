@@ -23,11 +23,10 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({ item, isOpen
 
     if (!item) return null;
 
-    // REAL-TIME UPDATE LOGIC: Jab bhi +/- dabega, cart update hoga
     const updateQuantity = (newQty: number) => {
         if (newQty < 1) return;
         setQuantity(newQty);
-        onAddToCart(item, newQty, true); // true matlab drawer se sync ho raha hai
+        onAddToCart(item, newQty, true); 
     };
 
     const handleAddToCartClick = () => {
@@ -74,8 +73,9 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({ item, isOpen
                         <p className="text-sm font-black text-[#00A3E1] mt-1">
                             ₹{item.mrp.toFixed(2)}
                         </p>
+                        {/* --- BARCODE KI JAGAH DESCRIPTION --- */}
                         <p className="text-[9px] text-gray-500 line-clamp-2 mt-1 font-medium italic">
-                            {item.barcode ? `Barcode: ${item.barcode}` : 'Premium Quality Product'}
+                            {item.description ? item.description : 'Premium Quality Product'}
                         </p>
                     </div>
                 </div>
@@ -107,7 +107,7 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({ item, isOpen
                     <button
                         onClick={handleAddToCartClick}
                         disabled={isAdding}
-                        className="w-full bg-[#00A3E1] text-white py-3.5 rounded-2xl font-black text-[10px] uppercase tracking-[0.15em] shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-70"
+                        className="w-full bg-[#00A3E1] text-white py-3.5 rounded-sm font-black text-[10px] uppercase tracking-[0.15em] shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-70"
                     >
                         {isAdding ? <Spinner /> : <ShoppingCart size={14} />}
                         {isAdding ? 'Adding...' : 'Add to Cart'}

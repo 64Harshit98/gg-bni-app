@@ -3,22 +3,52 @@ import { useAuth, useDatabase } from '../context/auth-context';
 import type { Item, ItemGroup } from '../constants/models';
 import { Modal } from '../constants/Modal';
 import { State } from '../enums';
-import { FiX, FiPackage, FiPlus, FiEdit3 } from 'react-icons/fi';
-import { Search, Home, FileText, UserRound, Heart, Trash2, X } from 'lucide-react';
+import { FiX, FiPackage, FiPlus } from 'react-icons/fi';
+import { Search, Home, FileText, UserRound, Trash2, X, ChevronLeft } from 'lucide-react';
 import { Spinner } from '../constants/Spinner';
-// import { ItemDetailDrawer } from '../Components/ItemDetails';
 import { db } from '../lib/Firebase';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { OrderInvoiceNumber } from '../UseComponents/InvoiceCounter';
 import { useNavigate } from 'react-router';
+import { doc, getDoc } from 'firebase/firestore'; // Firebase imports
+import Footer from './Footer';
 
+const useBusinessName = (companyId?: string) => {
+    const [businessName, setBusinessName] = useState<string>('');
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (!companyId) {
+            setLoading(false);
+            return;
+        }
+        const fetchBusinessInfo = async () => {
+            try {
+                // Correct multi-tenant path as per your logic
+                const docRef = doc(db, 'companies', companyId, 'business_info', companyId);
+                const docSnap = await getDoc(docRef);
+                setBusinessName(docSnap.exists() ? docSnap.data().businessName || 'Catalogue' : 'Catalogue');
+            } catch (err) {
+                console.error("Error fetching business name:", err);
+                setBusinessName('Catalogue');
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchBusinessInfo();
+    }, [companyId]);
+
+    return { businessName, loading };
+};
 
 const OrderingPage: React.FC = () => {
     // --- States ---
     const navigate = useNavigate()
     const { currentUser, loading: authLoading } = useAuth();
+    const companyId = currentUser?.companyId;
+    const { businessName: companyName, loading: _nameLoading } = useBusinessName(companyId);
     const dbOperations = useDatabase();
-    const [items, setItems] = useState<Item[]>([]);
+    const [_items, setItems] = useState<Item[]>([]);
     const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
     const [selectedCategory, _setSelectedCategory] = useState('All');
     const [searchQuery, setSearchQuery] = useState('');
@@ -27,7 +57,7 @@ const OrderingPage: React.FC = () => {
     // const [isCartOpen, setIsCartOpen] = useState(false);
     const [isPlacingOrder, setIsPlacingOrder] = useState(false);
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
-    const [_selectedItem, setSelectedItem] = useState<Item | null>(null);
+    const [_selectedItem, _setSelectedItem] = useState<Item | null>(null);
     // const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
     const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
     const [customerName, setCustomerName] = useState('');
@@ -36,7 +66,8 @@ const OrderingPage: React.FC = () => {
     const [sortOrder, setSortOrder] = useState<'A-Z' | 'Z-A'>('A-Z');
     const [isSortOpen, setIsSortOpen] = useState(false);
 
-    // --- YOUR NEW STATES (Added as requested) ---
+
+    // --- YOUR NEW STATES ---
     const [editingId, setEditingId] = useState<string | null>(null);
     const [tempName, setTempName] = useState('');
 
@@ -79,45 +110,35 @@ const OrderingPage: React.FC = () => {
         fetchData();
     }, [authLoading, currentUser, dbOperations]);
 
-    // --- YOUR NEW HANDLERS (Added as requested) ---
+    // --- HANDLERS ---
     const handleEdit = (group: any) => {
         setEditingId(group.id!);
         setTempName(group.name);
     };
 
 
-    const handleSaveEdit = (id: string) => {
-        setItems(items.map(p => p.id === id ? { ...p, name: tempName } : p));
-        setEditingId(null);
+    const handleSaveEdit = async (id: string) => {
+        if (!dbOperations) {
+            setModal({ message: 'Database connection error', type: State.ERROR });
+            return;
+        }
+
+        try {
+            await dbOperations.updateItemGroup(id, { name: tempName });
+            setItemGroups(prev => prev.map(group =>
+                group.id === id ? { ...group, name: tempName } : group
+            ));
+
+            setEditingId(null);
+            setModal({ message: 'Name updated successfully!', type: State.SUCCESS });
+        } catch (err) {
+            console.error("Update Error:", err);
+            setModal({ message: 'Failed to update name', type: State.ERROR });
+        }
     };
-
-    // --- Cart Logic (Untouched) ---
-    // const handleAddToCart = (item: Item, quantity: number, isFromDrawer: boolean = false) => {
-    //     setCart(prev => {
-    //         if (!item.id) return prev;
-    //         const existing = prev.find(ci => ci.id === item.id);
-    //         if (existing) {
-    //             const newQty = isFromDrawer ? quantity : existing.quantity + quantity;
-    //             return prev.map(ci => ci.id === item.id ? { ...ci, quantity: newQty } : ci);
-    //         }
-    //         return [...prev, { id: item.id, name: item.name, mrp: item.mrp, quantity, imageUrl: item.imageUrl || null }];
-    //     });
-    // };
-
-    // const handleUpdateCartQuantity = (id: string, delta: number) => {
-    //     setCart(prev => {
-    //         const item = prev.find(i => i.id === id);
-    //         if (!item) return prev;
-    //         const newQty = item.quantity + delta;
-    //         return newQty <= 0
-    //             ? prev.filter(i => i.id !== id)
-    //             : prev.map(i => i.id === id ? { ...i, quantity: newQty } : i);
-    //     });
-    // };
 
     // --- Memos ---
     const cartValue = useMemo(() => cart.reduce((acc, item) => acc + (item.mrp * item.quantity), 0), [cart]);
-
 
     const filteredItems = useMemo(() => {
         const result = itemGroups.filter(item => {
@@ -130,9 +151,9 @@ const OrderingPage: React.FC = () => {
             if (sortOrder === 'A-Z') return a.name.localeCompare(b.name);
             return b.name.localeCompare(a.name);
         });
-    }, [items, selectedCategory, searchQuery, sortOrder]);
+    }, [itemGroups, selectedCategory, searchQuery, sortOrder]);
 
-    // --- Order Logic (Untouched) ---
+    // --- Order Logic ---
     const handleConfirmAndSaveOrder = async () => {
         if (!customerName || !customerPhone) {
             setModal({ message: 'Please enter customer details', type: State.ERROR });
@@ -177,39 +198,42 @@ const OrderingPage: React.FC = () => {
             <header className="sticky top-0 z-[60] bg-white border-b border-gray-100 shadow-sm">
                 <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col gap-3">
                     <div className="flex">
-                        <div className="flex items-center gap-1.5">
-                            <div className="w-1 h-5 bg-[#00A3E1] rounded-full"></div>
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={() => navigate(-1)}
+                                className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+                            >
+                                <ChevronLeft className="text-[#1A3B5D]" size={20} />
+                                
+                            </button>
+                            <div className="w-1 h-5 bg-[#00A3E1] rounded-sm"></div>
                             <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">
-                                MyCatalogue<span className="text-[#00A3E1]">.</span>
+                                {companyName}
                             </h1>
                         </div>
 
-                        <div className="ml-50 hidden md:flex bg-gray-50 p-1 rounded-xl border border-gray-100">
-                            <button onClick={() => setActiveTab('My Shop')} className={`px-8 py-2 rounded-lg text-[12px] font-black uppercase transition-all ${activeTab === 'My Shop' ? 'bg-[#00A3E1] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>My Shop</button>
-                            <button onClick={() => setActiveTab('Edit Shop')} className={`px-8 py-2 rounded-lg text-[12px] font-black uppercase transition-all ${activeTab === 'Edit Shop' ? 'bg-[#00A3E1] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>Edit Shop</button>
+                        <div className="ml-60 hidden md:flex bg-gray-50 p-1 rounded-sm border border-gray-100">
+                            <button onClick={() => setActiveTab('My Shop')} className={`px-8 py-2 rounded-sm text-[12px] font-black uppercase transition-all ${activeTab === 'My Shop' ? 'bg-[#00A3E1] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>My Shop</button>
+                            <button onClick={() => setActiveTab('Edit Shop')} className={`px-8 py-2 rounded-sm text-[12px] font-black uppercase transition-all ${activeTab === 'Edit Shop' ? 'bg-[#00A3E1] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>Edit Shop</button>
                         </div>
-
-                        {/* <button onClick={() => setIsCartOpen(true)} className="bg-[#1A3B5D] text-white py-2 px-4 rounded-xl font-black text-[10px] uppercase shadow-lg flex items-center gap-2 transition-transform active:scale-95">
-                            <ShoppingCart size={14} />
-                            <span>₹{cartValue.toFixed(0)}</span>
-                        </button> */}
                     </div>
                 </div>
+
             </header>
 
             <main className="p-4 md:p-6 space-y-6 flex-1 max-w-7xl mx-auto w-full pb-32">
 
                 <div className="md:hidden flex justify-center w-full">
-                    <div className="bg-white/80 backdrop-blur-md p-1 rounded-2xl flex shadow-sm border border-gray-100 w-full max-w-md">
+                    <div className="bg-white/80 backdrop-blur-md p-1 rounded-sm flex shadow-sm border border-gray-100 w-full max-w-md">
                         <button
                             onClick={() => setActiveTab('My Shop')}
-                            className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'My Shop' ? 'bg-[#00A3E1] text-white shadow-md' : 'text-gray-400'}`}
+                            className={`flex-1 py-2.5 rounded-sm text-[10px] font-black uppercase transition-all ${activeTab === 'My Shop' ? 'bg-[#00A3E1] text-white shadow-md' : 'text-gray-400'}`}
                         >
                             My Shop
                         </button>
                         <button
                             onClick={() => setActiveTab('Edit Shop')}
-                            className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'Edit Shop' ? 'bg-[#00A3E1] text-white shadow-md' : 'text-gray-400'}`}
+                            className={`flex-1 py-2.5 rounded-sm text-[10px] font-black uppercase transition-all ${activeTab === 'Edit Shop' ? 'bg-[#00A3E1] text-white shadow-md' : 'text-gray-400'}`}
                         >
                             Edit Shop
                         </button>
@@ -218,7 +242,7 @@ const OrderingPage: React.FC = () => {
                 {/* --- SEARCH BAR --- */}
                 <div className="relative group max-w-md mx-auto w-full">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                    <input type="text" placeholder="Search products..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white border border-gray-100 rounded-2xl py-3.5 pl-11 pr-4 text-xs font-bold outline-none shadow-sm focus:ring-2 focus:ring-[#00A3E1]/10 transition-all" />
+                    <input type="text" placeholder="Search products..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white border border-gray-100 rounded-sm py-3.5 pl-11 pr-4 text-xs font-bold outline-none shadow-sm focus:ring-2 focus:ring-[#00A3E1]/10 transition-all" />
                 </div>
 
                 {/* --- CATALOGUE COUNT & FILTER --- */}
@@ -227,7 +251,7 @@ const OrderingPage: React.FC = () => {
                         <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">
                             Total Catalogues:
                         </span>
-                        <span className="bg-[#00A3E1]/10 text-[#00A3E1] px-2.5 py-0.5 rounded-full text-[10px] font-black">
+                        <span className="bg-[#00A3E1]/10 text-[#00A3E1] px-2.5 py-0.5 rounded-sm text-[10px] font-black">
                             {filteredItems.length}
                         </span>
                     </div>
@@ -236,7 +260,7 @@ const OrderingPage: React.FC = () => {
                     <div className="relative">
                         <button
                             onClick={() => setIsSortOpen(!isSortOpen)}
-                            className="flex items-center gap-2 bg-white border border-gray-100 px-3 py-1.5 rounded-xl shadow-sm active:scale-95 transition-all"
+                            className="flex items-center gap-2 bg-white border border-gray-100 px-3 py-1.5 rounded-sm shadow-sm active:scale-95 transition-all"
                         >
                             <span className="text-[10px] font-black uppercase text-[#1A3B5D]">Sort: {sortOrder}</span>
                             <FiPlus className={`transition-transform duration-300 ${isSortOpen ? 'rotate-45' : ''}`} size={12} />
@@ -244,7 +268,7 @@ const OrderingPage: React.FC = () => {
 
                         {/* Dropdown Menu */}
                         {isSortOpen && (
-                            <div className="absolute right-0 mt-2 w-32 bg-white rounded-2xl shadow-xl border border-gray-50 z-[70] overflow-hidden">
+                            <div className="absolute right-0 mt-2 w-32 bg-white rounded-sm shadow-xl border border-gray-50 z-[70] overflow-hidden">
                                 <button
                                     onClick={() => { setSortOrder('A-Z'); setIsSortOpen(false); }}
                                     className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 ${sortOrder === 'A-Z' ? 'text-[#00A3E1]' : 'text-[#1A3B5D]'}`}
@@ -262,67 +286,67 @@ const OrderingPage: React.FC = () => {
                     </div>
                 </div>
 
-
-                {/* --- CATEGORY FILTERS --- */}
-                {/* <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-                    <button onClick={() => setSelectedCategory('All')} className={`whitespace-nowrap px-6 py-2.5 text-[10px] font-black uppercase tracking-widest rounded-full transition-all ${selectedCategory === 'All' ? 'bg-[#00A3E1] text-white shadow-md' : 'bg-white text-gray-400 border border-gray-100'}`}>All</button>
-                    {itemGroups.map(group => (
-                        <button key={group.id} onClick={() => setSelectedCategory(group.id!)} className={`whitespace-nowrap px-6 py-2.5 text-[10px] font-black uppercase tracking-widest rounded-full transition-all ${selectedCategory === group.id ? 'bg-[#00A3E1] text-white shadow-md' : 'bg-white text-gray-400 border border-gray-100'}`}>{group.name}</button>
-                    ))}
-                </div> */}
-
-                {/* --- PRODUCT GRID WITH YOUR UI CODE --- */}
-
+                {/* --- PRODUCT GRID --- */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                    {itemGroups.map(group => (
+                    {filteredItems.map(group => (
                         <div
                             key={group.id}
-                            // Yahan humne onClick handler card par laga diya hai
                             onClick={() => {
                                 if (activeTab === 'Edit Shop') {
                                     handleEdit(group);
                                 } else {
-                                    navigate(`/MyShop/${currentUser?.companyId}/${group.id}`)
+                                    // LOGIC FIXED: Navigating with ID so MyShop can filter
+                                    navigate(`/catalogue-home/my-shop/${group.id}`)
                                 }
                             }}
-                            className={`bg-white rounded-[32px] overflow-hidden shadow-sm border border-gray-100 flex flex-col transition-all group cursor-pointer active:scale-95 ${activeTab === 'Edit Shop' ? 'hover:shadow-xl hover:border-[#00A3E1]/30' : ''
+                            className={`bg-white rounded-sm overflow-hidden shadow-sm border border-gray-100 flex flex-col transition-all group cursor-pointer active:scale-95 ${activeTab === 'Edit Shop' ? 'hover:shadow-xl hover:border-[#00A3E1]/30' : ''
                                 }`}
                         >
                             <div className="aspect-square bg-[#F8FAFC] relative overflow-hidden flex items-center justify-center">
-                                (
                                 <FiPackage className="h-10 w-10 text-gray-200" />
-                                )
-                                <div className="absolute top-4 right-4 p-2 bg-white/80 backdrop-blur-md rounded-full shadow-sm">
-                                    {activeTab === 'Edit Shop' ? <FiEdit3 size={14} className="text-[#00A3E1]" /> : <Heart size={14} className="text-gray-300" />}
-                                </div>
                             </div>
 
                             <div className="p-2.5 flex flex-col flex-1">
-                                {editingId === group.name ? (
-                                    /* e.stopPropagation() zaroori hai taaki input click karne pe card ka click event dobara na chale */
+                                {editingId === group.id ? (
                                     <div className="space-y-2 py-1" onClick={(e) => e.stopPropagation()}>
                                         <input
                                             autoFocus
                                             type="text"
                                             value={tempName}
                                             onChange={(e) => setTempName(e.target.value)}
-                                            className="w-full bg-gray-50 border border-gray-100 rounded-lg py-1 px-2 text-[10px] font-bold outline-none"
+                                            className="w-full bg-gray-50 border border-gray-100 rounded-sm py-1 px-2 text-[10px] font-bold outline-none"
                                         />
                                         <div className="flex gap-1">
-                                            <button onClick={(e) => { e.stopPropagation(); handleSaveEdit(group.id!); }} className="flex-1 bg-[#00A3E1] text-white py-1.5 rounded-md text-[8px] font-black uppercase">Save</button>
-                                            <button onClick={(e) => { e.stopPropagation(); if (window.confirm("Delete product?")) { setItems(items.filter(p => p.id !== group.id)); setEditingId(null); } }} className="p-1.5 bg-red-50 text-red-500 rounded-md"><Trash2 size={12} /></button>
-                                            <button onClick={(e) => { e.stopPropagation(); setEditingId(null); }} className="p-1.5 bg-gray-50 text-gray-400 rounded-md"><X size={12} /></button>
+                                            <button onClick={(e) => { e.stopPropagation(); handleSaveEdit(group.id!); }} className="flex-1 bg-[#00A3E1] text-white py-1.5 rounded-sm text-[8px] font-black uppercase">Save</button>
+
+                                            <button
+                                                onClick={async (e) => {
+                                                    e.stopPropagation();
+                                                    if (window.confirm("Delete product group?") && dbOperations) {
+                                                        try {
+                                                            await dbOperations.deleteItemGroup(group.id!);
+                                                            setItemGroups(itemGroups.filter(p => p.id !== group.id));
+                                                            setEditingId(null);
+                                                            setModal({ message: 'Deleted successfully', type: State.SUCCESS });
+                                                        } catch (err) {
+                                                            console.error(err);
+                                                            setModal({ message: 'Delete failed', type: State.ERROR });
+                                                        }
+                                                    }
+                                                }}
+                                                className="p-1.5 bg-red-50 text-red-500 rounded-sm"
+                                            >
+                                                <Trash2 size={12} />
+                                            </button>
+
+                                            <button onClick={(e) => { e.stopPropagation(); setEditingId(null); }} className="p-1.5 bg-gray-50 text-gray-400 rounded-sm"><X size={12} /></button>
                                         </div>
                                     </div>
                                 ) : (
                                     <>
-                                        <h3 className="text-[9px] md:text-[10px] font-bold text-[#1A3B5D] mb-0.5 truncate leading-tight">{group.name}</h3>
-                                        <div className="flex justify-between items-center mt-1">
-                                            {/* Price placeholder agar chahiye ho toh */}
-                                        </div>
-                                        {/* Ye button ab sirf visual indicator hai, logic card ke onClick mein hai */}
-                                        <div className="mt-1.5 w-full py-1.5 rounded-lg text-[9px] font-black uppercase text-center tracking-wider transition-all bg-[#00A3E1] text-white">
-                                            {activeTab === 'Edit Shop' ? 'Edit' : 'View'}
+                                        <h3 className="text-[9px] md:text-[10px] font-bold text-[#1A3B5D] mb-0.5 truncate leading-tight uppercase">{group.name}</h3>
+                                        <div className="mt-1.5 w-full py-1.5 rounded-sm text-[9px] font-black uppercase text-center tracking-wider transition-all bg-[#00A3E1] text-white">
+                                            {activeTab === 'Edit Shop' ? 'Edit' : 'View Items'}
                                         </div>
                                     </>
                                 )}
@@ -332,43 +356,26 @@ const OrderingPage: React.FC = () => {
                 </div>
             </main>
 
-            {/* --- MOBILE NAV & MODALS (Remaining Untouched) --- */}
-            <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-lg border-t border-gray-100 px-4 py-3 z-50">
-                <div className="flex justify-between items-center gap-3">
-                    <button className="flex flex-1 flex-col items-center gap-1 text-gray-300">
-                        <FileText size={20} />
-                        <span className="text-[9px] font-black uppercase">Orders</span>
-                    </button>
-                    <button className="flex flex-1 flex-col items-center gap-1 text-[#00A3E1]">
-                        <Home size={20} />
-                        <span className="text-[9px] font-black uppercase">Home</span>
-                    </button>
-                    <button className="flex flex-1 flex-col items-center gap-1 text-gray-300">
-                        <UserRound size={20} />
-                        <span className="text-[9px] font-black uppercase">Profile</span>
-                    </button>
-                </div>
-            </div>
+
 
             {isCustomerModalOpen && (
                 <div className="fixed inset-0 z-[110] flex items-center justify-center bg-[#1A3B5D]/60 backdrop-blur-md p-4">
-                    <div className="bg-white rounded-[32px] p-8 w-full max-w-sm shadow-2xl text-center relative">
+                    <div className="bg-white rounded-sm p-8 w-full max-w-sm shadow-2xl text-center relative">
                         <button onClick={() => setIsCustomerModalOpen(false)} className="absolute top-6 right-6 text-gray-400"><FiX size={20} /></button>
                         <h3 className="text-sm font-black text-[#1A3B5D] uppercase mb-6">Customer Details</h3>
                         <div className="space-y-4">
-                            <input type="text" placeholder="Customer Name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="w-full bg-gray-50 border-none rounded-2xl p-4 text-xs font-bold outline-none focus:ring-2 focus:ring-[#00A3E1]/20" />
-                            <input type="tel" placeholder="Phone Number" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className="w-full bg-gray-50 border-none rounded-2xl p-4 text-xs font-bold outline-none focus:ring-2 focus:ring-[#00A3E1]/20" />
+                            <input type="text" placeholder="Customer Name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="w-full bg-gray-50 border-none rounded-sm p-4 text-xs font-bold outline-none focus:ring-2 focus:ring-[#00A3E1]/20" />
+                            <input type="tel" placeholder="Phone Number" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className="w-full bg-gray-50 border-none rounded-sm p-4 text-xs font-bold outline-none focus:ring-2 focus:ring-[#00A3E1]/20" />
                         </div>
-                        <button disabled={isPlacingOrder} onClick={handleConfirmAndSaveOrder} className="w-full mt-6 bg-[#00A3E1] text-white py-4 rounded-2xl font-black text-[10px] uppercase shadow-lg tracking-widest active:scale-95 disabled:opacity-50 transition-all">
+                        <button disabled={isPlacingOrder} onClick={handleConfirmAndSaveOrder} className="w-full mt-6 bg-[#00A3E1] text-white py-4 rounded-sm font-black text-[10px] uppercase shadow-lg tracking-widest active:scale-95 disabled:opacity-50 transition-all">
                             {isPlacingOrder ? 'Placing Order...' : 'Confirm Order'}
                         </button>
                     </div>
                 </div>
             )}
+            <Footer companyName={companyName} />
         </div>
     );
 };
-
-
 
 export default OrderingPage;

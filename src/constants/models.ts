@@ -33,6 +33,7 @@ export interface Item {
 export interface ItemGroup {
   id?: string;
   name: string;
+  imageUrl?:string;
   description: string;
   createdAt: number; 
   updatedAt: number; 

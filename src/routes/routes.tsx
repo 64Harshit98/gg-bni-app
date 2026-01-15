@@ -10,6 +10,7 @@ import { RequireSubscription } from '../UseComponents/RequiredSubscription';
 
 import Loading from '../Pages/Loading/Loading';
 import GlobalError from '../Components/GlobalError';
+import CartPage from '../Catalogue/CheckOut';
 
 const Home = lazy(() => import('../Pages/Home'));
 const Account = lazy(() => import('../Pages/Account'));
@@ -57,7 +58,7 @@ const ResetPasswordPage = lazy(() => import('../Pages/Auth/ResetPassword'));
 const RestockReportPage = lazy(() => import('../Pages/Reports/RestockReport'));
 const TaxReport = lazy(() => import('../Pages/Reports/TaxReport'));
 const DownloadBill = lazy(() => import('../Pages/Auth/DownloadBill'));
-
+const SharedProduct = lazy(() => import('../Catalogue/SharedProduct'));
 
 const router = createBrowserRouter([
   {
@@ -285,7 +286,7 @@ const router = createBrowserRouter([
             handle: { requiredPermission: null },
           },
           {
-            path: ROUTES.MYSHOP,
+            path: `${ROUTES.MYSHOP}/:groupId`,
             element: <MyShop />,
             handle: { requiredPermission: null },
           },
@@ -310,6 +311,16 @@ const router = createBrowserRouter([
         path: `/catalogue/:companyId`,
         element: <Catalogue />,
         handle: { requiredPermission: null },
+      },
+      {
+        path: `/product/:companyId/:groupId`,
+        element: <SharedProduct />,
+        handle: { requiredPermission: null },
+      },
+      {
+        path: `/checkout/:companyId`,
+        element: <CartPage />,
+        handle: { requiredPermission: null }
       },
       {
         path: ROUTES.UNAUTHORIZED,

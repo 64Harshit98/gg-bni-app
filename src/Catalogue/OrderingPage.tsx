@@ -1,590 +1,379 @@
-import React, { useState, useEffect, useMemo, Fragment } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth, useDatabase } from '../context/auth-context';
-// --- FIX: Import ItemGroup ---
-import type { Item, ItemGroup } from '../constants/models'; 
+import type { Item, ItemGroup } from '../constants/models';
 import { Modal } from '../constants/Modal';
 import { State } from '../enums';
-import { FiSearch, FiShoppingCart, FiX, FiPackage, FiPlus, FiMinus } from 'react-icons/fi';
-import { Transition } from '@headlessui/react';
+import { FiX, FiPackage, FiPlus } from 'react-icons/fi';
+import { Search, Home, FileText, UserRound, Trash2, X, ChevronLeft } from 'lucide-react';
 import { Spinner } from '../constants/Spinner';
-import { ItemDetailDrawer } from '../Components/ItemDetails'; // <-- Make sure this path is correct
-
-// --- Firebase imports for saving the order ---
-import { db } from '../lib/Firebase'; // <-- Make sure this path is correct
+import { db } from '../lib/Firebase';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { OrderInvoiceNumber } from '../UseComponents/InvoiceCounter';
+import { useNavigate } from 'react-router';
+import { doc, getDoc } from 'firebase/firestore'; // Firebase imports
+import Footer from './Footer';
 
-// --- 1. Import the Invoice Number generator ---
-import { OrderInvoiceNumber } from '../UseComponents/InvoiceCounter'; // <-- Adjust path as needed
-
-
-// --- Cart Item Type ---
-interface CartItem {
-    id: string;
-    name: string;
-    mrp: number;
-    quantity: number;
-    imageUrl?: string | null; // <-- Corrected type
-}
-
-// --- Cart Drawer Component ---
-interface CartDrawerProps {
-    isOpen: boolean;
-    onClose: () => void;
-    cart: CartItem[];
-    onUpdateQuantity: (id: string, delta: number) => void;
-    onPlaceOrder: () => void; // Renamed to onPlaceOrder, will trigger the customer modal
-    isPlacingOrder: boolean;
-}
-
-const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, cart, onUpdateQuantity, onPlaceOrder, isPlacingOrder }) => {
-    const cartTotal = useMemo(() => {
-        return cart.reduce((acc, item) => acc + item.mrp * item.quantity, 0);
-    }, [cart]);
-
-    return (
-        <Transition.Root show={isOpen} as={Fragment}>
-            <div className="fixed inset-0 z-40 overflow-hidden">
-                <div className="absolute inset-0 overflow-hidden">
-                    {/* Background overlay */}
-                    <Transition.Child as={Fragment} enter="ease-in-out duration-500" enterFrom="opacity-0" enterTo="opacity-100" leave="ease-in-out duration-500" leaveFrom="opacity-100" leaveTo="opacity-0">
-                        <div className="absolute inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={onClose} />
-                    </Transition.Child>
-                    {/* Cart Panel */}
-                    <div className="fixed inset-y-0 right-0 flex max-w-full pl-10">
-                        <Transition.Child as={Fragment} enter="transform transition ease-in-out duration-500 sm:duration-700" enterFrom="translate-x-full" enterTo="translate-x-0" leave="transform transition ease-in-out duration-500 sm:duration-700" leaveFrom="translate-x-0" leaveTo="translate-x-full">
-                            <div className="w-screen max-w-md">
-                                <div className="flex h-full flex-col overflow-y-scroll bg-white shadow-xl">
-                                    {/* Header */}
-                                    <div className="flex-shrink-0 bg-gray-100 p-4 border-b">
-                                        <div className="flex items-start justify-between">
-                                            <h2 className="text-xl font-bold text-gray-900">Your Order</h2>
-                                            <button onClick={onClose} className="text-gray-500 hover:text-gray-800"> <FiX className="h-6 w-6" /> </button>
-                                        </div>
-                                    </div>
-                                    {/* Cart Items */}
-                                    <div className="flex-1 overflow-y-auto p-4">
-                                        {cart.length === 0 ? (<p className="text-center text-gray-500">Your cart is empty.</p>) : (
-                                            <div className="flex flex-col gap-4">
-                                                {cart.map(item => (
-                                                    <div key={item.id} className="flex gap-3 border-b pb-3">
-                                                        <div className="h-16 w-16 rounded bg-gray-200 flex-shrink-0 flex items-center justify-center text-gray-400">
-                                                            {item.imageUrl ? (<img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover rounded" />) : (<FiPackage className="h-8 w-8" />)}
-                                                        </div>
-                                                        <div className="flex-1">
-                                                            <p className="font-semibold text-gray-800">{item.name}</p>
-                                                            <p className="text-sm text-gray-600">₹{item.mrp.toFixed(2)}</p>
-                                                        </div>
-                                                        <div className="flex flex-col items-end justify-between">
-                                                            <p className="font-bold">₹{(item.mrp * item.quantity).toFixed(2)}</p>
-                                                            <div className="flex items-center gap-2 text-lg border border-gray-300 rounded-md">
-                                                                <button onClick={() => onUpdateQuantity(item.id, -1)} className="px-3 text-gray-700">-</button>
-                                                                <span className="font-bold text-gray-900 w-8 text-center text-base">{item.quantity}</span>
-                                                                <button onClick={() => onUpdateQuantity(item.id, 1)} className="px-3 text-gray-700">+</button>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                    {/* Footer */}
-                                    {cart.length > 0 && (
-                                        <div className="border-t border-gray-200 p-4">
-                                            <div className="flex justify-between text-lg font-bold mb-4">
-                                                <p>Total Amount</p>
-                                                <p>₹{cartTotal.toFixed(2)}</p>
-                                            </div>
-                                            {/* This button now just triggers the next step */}
-                                            <button onClick={onPlaceOrder} disabled={isPlacingOrder} className="w-full bg-blue-600 text-white py-3 rounded-md font-bold hover:bg-blue-700 disabled:bg-gray-400" >
-                                                {isPlacingOrder ? 'Loading...' : 'Place Order'}
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </Transition.Child>
-                    </div>
-                </div>
-            </div>
-        </Transition.Root>
-    );
-};
-
-
-// --- Quantity Control for Item Card ---
-interface ItemCardQuantityControlProps {
-    item: Item;
-    cartItem: CartItem | undefined;
-    onAddToCart: (item: Item, quantity: number) => void;
-    onSetQuantity: (id: string, quantity: number) => void;
-    onUpdateQuantity: (id: string, delta: number) => void;
-}
-
-const ItemCardQuantityControl: React.FC<ItemCardQuantityControlProps> = ({ item, cartItem, onAddToCart, onSetQuantity, onUpdateQuantity }) => {
-    const [inputValue, setInputValue] = useState<string | number>('');
+const useBusinessName = (companyId?: string) => {
+    const [businessName, setBusinessName] = useState<string>('');
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        setInputValue(cartItem?.quantity || '');
-    }, [cartItem]);
-
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const val = e.target.value;
-        setInputValue(val);
-        const num = parseInt(val, 10);
-        if (!isNaN(num) && num > 0) {
-            onSetQuantity(item.id!, num);
+        if (!companyId) {
+            setLoading(false);
+            return;
         }
-    };
+        const fetchBusinessInfo = async () => {
+            try {
+                // Correct multi-tenant path as per your logic
+                const docRef = doc(db, 'companies', companyId, 'business_info', companyId);
+                const docSnap = await getDoc(docRef);
+                setBusinessName(docSnap.exists() ? docSnap.data().businessName || 'Catalogue' : 'Catalogue');
+            } catch (err) {
+                console.error("Error fetching business name:", err);
+                setBusinessName('Catalogue');
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchBusinessInfo();
+    }, [companyId]);
 
-    const handleBlur = () => {
-        setInputValue(cartItem?.quantity || '');
-        if (inputValue === '' || inputValue === 0) {
-            onSetQuantity(item.id!, 0);
-        }
-    };
-
-    if (!cartItem) {
-        return (
-            <button
-                onClick={() => onAddToCart(item, 1)}
-                className="w-full bg-orange-500 text-white font-bold py-2 rounded-md hover:bg-orange-600 transition-colors mt-auto"
-            >
-                ADD TO CART
-            </button>
-        );
-    }
-
-    return (
-        <div className="flex items-center justify-center gap-2 text-lg mt-auto">
-            <button onClick={() => onUpdateQuantity(item.id!, -1)} className="px-3 py-1 rounded-md text-gray-700 border border-gray-300" >
-                <FiMinus size={16} />
-            </button>
-            <input
-                type="number"
-                value={inputValue}
-                onChange={handleInputChange}
-                onBlur={handleBlur}
-                className="font-bold text-gray-900 w-16 text-center text-base border border-gray-300 rounded-md py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                min="1"
-            />
-            <button onClick={() => onUpdateQuantity(item.id!, 1)} className="px-3 py-1 rounded-md text-gray-700 border border-gray-300" >
-                <FiPlus size={16} />
-            </button>
-        </div>
-    );
+    return { businessName, loading };
 };
 
-
-// --- Ordering Page Component ---
 const OrderingPage: React.FC = () => {
+    // --- States ---
+    const navigate = useNavigate()
     const { currentUser, loading: authLoading } = useAuth();
+    const companyId = currentUser?.companyId;
+    const { businessName: companyName, loading: _nameLoading } = useBusinessName(companyId);
     const dbOperations = useDatabase();
-
-    // Page state
-    const [items, setItems] = useState<Item[]>([]);
-    // --- FIX: Store full ItemGroup objects ---
-    const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]); 
-    const [selectedCategory, setSelectedCategory] = useState('All'); // Will be 'All' or a group ID
+    const [_items, setItems] = useState<Item[]>([]);
+    const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
+    const [selectedCategory, _setSelectedCategory] = useState('All');
     const [searchQuery, setSearchQuery] = useState('');
     const [pageIsLoading, setPageIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-
-    // Cart state
-    const [cart, setCart] = useState<CartItem[]>([]);
-    const [isCartOpen, setIsCartOpen] = useState(false);
-
-    // Order state
+    const [cart, setCart] = useState<any[]>([]);
+    // const [isCartOpen, setIsCartOpen] = useState(false);
     const [isPlacingOrder, setIsPlacingOrder] = useState(false);
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
-
-    // Item Detail state
-    const [selectedItem, setSelectedItem] = useState<Item | null>(null);
-    const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
-
-    // --- NEW: Customer Details State ---
+    const [_selectedItem, _setSelectedItem] = useState<Item | null>(null);
+    // const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
     const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
     const [customerName, setCustomerName] = useState('');
     const [customerPhone, setCustomerPhone] = useState('');
+    const [activeTab, setActiveTab] = useState<'My Shop' | 'Edit Shop'>('My Shop');
+    const [sortOrder, setSortOrder] = useState<'A-Z' | 'Z-A'>('A-Z');
+    const [isSortOpen, setIsSortOpen] = useState(false);
 
 
-    // useEffect for fetching data
+    // --- YOUR NEW STATES ---
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [tempName, setTempName] = useState('');
+
+    // --- Fetch Data ---
     useEffect(() => {
         if (authLoading || !currentUser || !dbOperations) {
             setPageIsLoading(authLoading || !dbOperations);
             return;
         }
+
         const fetchData = async () => {
             try {
                 setPageIsLoading(true);
-                setError(null);
                 const [fetchedItems, fetchedItemGroups] = await Promise.all([
                     dbOperations.getItems(),
                     dbOperations.getItemGroups()
                 ]);
-                const listedItems = fetchedItems.filter(item => item.isListed === true);
-                setItems(listedItems);
 
-                // --- FIX: Store full group objects and de-duplicate by name ---
-                // This prevents the "double button" bug
+                setItems(fetchedItems.filter(item => item.isListed));
+
                 const groupMap = new Map<string, ItemGroup>();
                 fetchedItemGroups.forEach(group => {
                     if (!groupMap.has(group.name.toLowerCase())) {
                         groupMap.set(group.name.toLowerCase(), group);
                     }
                 });
-                const uniqueGroups = Array.from(groupMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-                setItemGroups(uniqueGroups);
-                // --- END FIX ---
+
+                const sortedGroups = Array.from(groupMap.values()).sort((a, b) =>
+                    a.name.localeCompare(b.name)
+                );
+                setItemGroups(sortedGroups);
 
             } catch (err: any) {
-                setError(err.message || 'Failed to load shop.');
+                console.error("Error fetching data:", err);
             } finally {
                 setPageIsLoading(false);
             }
         };
+
         fetchData();
     }, [authLoading, currentUser, dbOperations]);
 
-    // Handlers for Item Detail Drawer
-    const handleItemClick = (item: Item) => {
-        setSelectedItem(item);
-        setIsDetailDrawerOpen(true);
+    // --- HANDLERS ---
+    const handleEdit = (group: any) => {
+        setEditingId(group.id!);
+        setTempName(group.name);
     };
 
-    const handleCloseDetailDrawer = () => {
-        setIsDetailDrawerOpen(false);
-        setTimeout(() => setSelectedItem(null), 300);
-    };
 
-    // --- Cart Handlers ---
-    const handleAddToCart = (item: Item, quantity: number) => {
-        setCart(prevCart => {
-            if (!item.id || quantity <= 0) return prevCart;
-            const existingItem = prevCart.find(cartItem => cartItem.id === item.id);
-
-            if (existingItem) {
-                return prevCart.map(cartItem =>
-                    cartItem.id === item.id ? { ...cartItem, quantity: cartItem.quantity + quantity } : cartItem
-                );
-            } else {
-                return [...prevCart, {
-                    id: item.id,
-                    name: item.name,
-                    mrp: item.mrp,
-                    quantity: quantity,
-                    imageUrl: item.imageUrl || null
-                }];
-            }
-        });
-    };
-
-    const handleUpdateCartQuantity = (id: string, delta: number) => {
-        setCart(prevCart => {
-            const itemToUpdate = prevCart.find(item => item.id === id);
-            if (!itemToUpdate) return prevCart;
-            const newQuantity = itemToUpdate.quantity + delta;
-            if (newQuantity <= 0) {
-                return prevCart.filter(item => item.id !== id);
-            } else {
-                return prevCart.map(item =>
-                    item.id === id ? { ...item, quantity: newQuantity } : item
-                );
-            }
-        });
-    };
-
-    const handleSetCartQuantity = (id: string, newQuantity: number) => {
-        setCart(prevCart => {
-            if (newQuantity <= 0) {
-                return prevCart.filter(item => item.id !== id);
-            }
-            return prevCart.map(item =>
-                item.id === id ? { ...item, quantity: newQuantity } : item
-            );
-        });
-    };
-
-    const cartCount = useMemo(() => {
-        return cart.reduce((acc, item) => acc + item.quantity, 0);
-    }, [cart]);
-
-    // Filtered items for display
-    const filteredItems = useMemo(() => {
-        return items.filter(item => {
-            // --- FIX: Filter by Group ID ---
-            const matchesCategory = selectedCategory === 'All' || item.itemGroupId === selectedCategory;
-            const matchesSearch =
-                item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                (item.barcode && item.barcode.includes(searchQuery));
-            return matchesCategory && matchesSearch;
-        });
-    }, [items, selectedCategory, searchQuery]);
-
-    // --- Step 1: Triggered by Cart Drawer "Place Order" button ---
-    const handleProceedToCheckout = () => {
-        if (cart.length === 0) {
-            setModal({ message: "Your cart is empty.", type: State.ERROR });
+    const handleSaveEdit = async (id: string) => {
+        if (!dbOperations) {
+            setModal({ message: 'Database connection error', type: State.ERROR });
             return;
         }
-        setIsCartOpen(false); // Close cart
-        setIsCustomerModalOpen(true); // Open customer details modal
-    };
-
-    // --- Step 2: Triggered by "Confirm Order" button in the new modal ---
-    const handleConfirmAndSaveOrder = async () => {
-        // 1. Validation
-        if (customerName.trim() === '' || customerPhone.trim() === '') {
-            setModal({ message: 'Please enter both customer name and phone number.', type: State.ERROR });
-            return;
-        }
-        if (!currentUser?.companyId) { // Check for companyId
-            setModal({ message: "User or company not found. Please log in again.", type: State.ERROR });
-            return;
-        }
-        if (cart.length === 0) {
-            setModal({ message: "Your cart is empty.", type: State.ERROR });
-            return;
-        }
-
-        setIsPlacingOrder(true);
-        setModal(null);
-        
-        const companyId = currentUser.companyId;
 
         try {
-            // 2. --- Generate Invoice Number ---
-            const newOrderId = await OrderInvoiceNumber(companyId);
-            
-            // 3. Calculate total
-            const totalAmount = cart.reduce((acc, item) => acc + item.mrp * item.quantity, 0);
+            await dbOperations.updateItemGroup(id, { name: tempName });
+            setItemGroups(prev => prev.map(group =>
+                group.id === id ? { ...group, name: tempName } : group
+            ));
 
-            // 4. Create the order object
-            const orderToSave = {
-                orderId: newOrderId, // <-- SAVED HERE
+            setEditingId(null);
+            setModal({ message: 'Name updated successfully!', type: State.SUCCESS });
+        } catch (err) {
+            console.error("Update Error:", err);
+            setModal({ message: 'Failed to update name', type: State.ERROR });
+        }
+    };
+
+    // --- Memos ---
+    const cartValue = useMemo(() => cart.reduce((acc, item) => acc + (item.mrp * item.quantity), 0), [cart]);
+
+    const filteredItems = useMemo(() => {
+        const result = itemGroups.filter(item => {
+            const matchesCat = selectedCategory === 'All' || item.id === selectedCategory;
+            const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
+            return matchesCat && matchesSearch;
+        });
+
+        return [...result].sort((a, b) => {
+            if (sortOrder === 'A-Z') return a.name.localeCompare(b.name);
+            return b.name.localeCompare(a.name);
+        });
+    }, [itemGroups, selectedCategory, searchQuery, sortOrder]);
+
+    // --- Order Logic ---
+    const handleConfirmAndSaveOrder = async () => {
+        if (!customerName || !customerPhone) {
+            setModal({ message: 'Please enter customer details', type: State.ERROR });
+            return;
+        }
+        setIsPlacingOrder(true);
+        try {
+            const newOrderId = await OrderInvoiceNumber(currentUser!.companyId!);
+            const ordersRef = collection(db, 'companies', currentUser!.companyId!, 'Orders');
+
+            await addDoc(ordersRef, {
+                orderId: newOrderId,
                 items: cart,
-                totalAmount: totalAmount,
-                status: 'Upcoming', 
-                createdAt: serverTimestamp(), 
+                totalAmount: cartValue,
+                status: 'Upcoming',
+                createdAt: serverTimestamp(),
+                userName: customerName,
+                userPhone: customerPhone,
+                companyId: currentUser!.companyId,
+            });
 
-                userName: customerName.trim(),
-                userPhone: customerPhone.trim(),
-
-                placedByUserId: currentUser.uid, 
-                companyId: companyId,
-            };
-
-            // 5. Save to Firestore
-            const ordersCollectionRef = collection(db, 'companies', companyId, 'Orders');
-            await addDoc(ordersCollectionRef, orderToSave);
-
-            // 6. Success feedback and cleanup
             setModal({ message: `Order ${newOrderId} placed successfully!`, type: State.SUCCESS });
             setCart([]);
             setIsCustomerModalOpen(false);
             setCustomerName('');
             setCustomerPhone('');
-
-        } catch (err: any) {
-            console.error("Order Error:", err); // This is where your error is caught
-            setModal({ message: err.message || "Failed to place order.", type: State.ERROR });
+        } catch (err) {
+            console.error("Order Error:", err);
+            setModal({ message: 'Failed to place order', type: State.ERROR });
         } finally {
             setIsPlacingOrder(false);
         }
     };
 
-    // --- Render ---
-    if (pageIsLoading) {
-        return <div className="flex items-center justify-center h-screen"><Spinner /> <span className="ml-2">Loading Shop...</span></div>;
-    }
-    if (error) {
-        return (
-            <div className="flex flex-col items-center justify-center h-screen text-red-500 p-4">
-                <p className="text-center mb-4">{error}</p>
-                <button onClick={() => window.location.reload()} className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Retry</button>
-            </div>
-        );
-    }
+    if (pageIsLoading) return <div className="flex items-center justify-center h-screen bg-[#E9F0F7]"><Spinner /></div>;
 
     return (
-        <div className="flex flex-col h-screen bg-gray-100 w-full overflow-hidden">
+        <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative overflow-x-hidden">
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
-            {/* --- NEW: Customer Details Modal --- */}
-            {isCustomerModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-500 bg-opacity-75 p-4">
-                    <div className="bg-white rounded-lg shadow-xl p-5 md:p-6 w-full max-w-md">
-                        <h3 className="text-xl font-bold mb-4 text-gray-900">Enter Customer Details</h3>
-                        <div className="space-y-4">
-                            <div>
-                                <label htmlFor="customerName" className="block text-sm font-medium text-gray-700">
-                                    Full Name <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    id="customerName"
-                                    value={customerName}
-                                    onChange={(e) => setCustomerName(e.target.value)}
-                                    className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                                    placeholder="Enter customer's name"
-                                />
-                            </div>
-                            <div>
-                                <label htmlFor="customerPhone" className="block text-sm font-medium text-gray-700">
-                                    Phone Number <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                    type="tel"
-                                    id="customerPhone"
-                                    value={customerPhone}
-                                    onChange={(e) => setCustomerPhone(e.target.value)}
-                                    className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                                    placeholder="Enter 10-digit phone number"
-                                />
-                            </div>
+            {/* --- HEADER --- */}
+            <header className="sticky top-0 z-[60] bg-white border-b border-gray-100 shadow-sm">
+                <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col gap-3">
+                    <div className="flex">
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={() => navigate(-1)}
+                                className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+                            >
+                                <ChevronLeft className="text-[#1A3B5D]" size={20} />
+                                
+                            </button>
+                            <div className="w-1 h-5 bg-[#00A3E1] rounded-sm"></div>
+                            <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">
+                                {companyName}
+                            </h1>
                         </div>
-                        <div className="mt-6 flex justify-end gap-3">
-                            <button
-                                type="button"
-                                onClick={() => setIsCustomerModalOpen(false)}
-                                disabled={isPlacingOrder}
-                                className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleConfirmAndSaveOrder}
-                                disabled={isPlacingOrder}
-                                className="inline-flex justify-center rounded-md border border-transparent bg-blue-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400"
-                            >
-                                {isPlacingOrder ? <Spinner /> : 'Confirm Order'}
-                            </button>
+
+                        <div className="ml-60 hidden md:flex bg-gray-50 p-1 rounded-sm border border-gray-100">
+                            <button onClick={() => setActiveTab('My Shop')} className={`px-8 py-2 rounded-sm text-[12px] font-black uppercase transition-all ${activeTab === 'My Shop' ? 'bg-[#00A3E1] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>My Shop</button>
+                            <button onClick={() => setActiveTab('Edit Shop')} className={`px-8 py-2 rounded-sm text-[12px] font-black uppercase transition-all ${activeTab === 'Edit Shop' ? 'bg-[#00A3E1] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>Edit Shop</button>
                         </div>
                     </div>
                 </div>
-            )}
-            {/* --- End of New Modal --- */}
 
-            <CartDrawer
-                isOpen={isCartOpen}
-                onClose={() => setIsCartOpen(false)}
-                cart={cart}
-                onUpdateQuantity={handleUpdateCartQuantity}
-                onPlaceOrder={handleProceedToCheckout} // <-- This now triggers the new modal
-                isPlacingOrder={isPlacingOrder}
-            />
-            <ItemDetailDrawer
-                isOpen={isDetailDrawerOpen}
-                onClose={handleCloseDetailDrawer}
-                item={selectedItem}
-                onAddToCart={handleAddToCart}
-            />
+            </header>
 
-            {/* --- HEADER --- */}
-            <div className="flex-shrink-0 p-4 bg-white shadow-sm flex items-center justify-between">
-                <h1 className="text-2xl font-bold text-gray-800">Shop</h1>
-                <button onClick={() => setIsCartOpen(true)} className="relative text-gray-700 hover:text-blue-600">
-                    <FiShoppingCart className="h-7 w-7" />
-                    {cartCount > 0 && (
-                        <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
-                            {cartCount}
-                        </span>
-                    )}
-                </button>
-            </div>
+            <main className="p-4 md:p-6 space-y-6 flex-1 max-w-7xl mx-auto w-full pb-32">
 
-            {/* --- SEARCH & FILTER BAR --- */}
-            <div className="flex-shrink-0 p-2 bg-white border-b sticky top-0 z-10">
-                <div className="relative mb-2">
-                    <input
-                        type="text"
-                        placeholder="Search listed items..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full p-3 pl-10 border rounded-lg"
-                    />
-                    <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                </div>
-                {/* --- FIX: Filter buttons now use ItemGroup IDs --- */}
-                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                    <button
-                        key="All"
-                        onClick={() => setSelectedCategory('All')}
-                        className={`px-4 py-1.5 text-sm font-medium rounded-full flex-shrink-0 transition-colors ${
-                            selectedCategory === 'All'
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-200 text-gray-700'
-                        }`}
-                    >
-                        All
-                    </button>
-                    {itemGroups.map(group => (
+                <div className="md:hidden flex justify-center w-full">
+                    <div className="bg-white/80 backdrop-blur-md p-1 rounded-sm flex shadow-sm border border-gray-100 w-full max-w-md">
                         <button
-                            key={group.id} // <-- Use unique ID for key
-                            onClick={() => setSelectedCategory(group.id!)} // <-- Filter by ID
-                            className={`px-4 py-1.5 text-sm font-medium rounded-full flex-shrink-0 transition-colors ${
-                                selectedCategory === group.id
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-gray-200 text-gray-700'
-                            }`}
+                            onClick={() => setActiveTab('My Shop')}
+                            className={`flex-1 py-2.5 rounded-sm text-[10px] font-black uppercase transition-all ${activeTab === 'My Shop' ? 'bg-[#00A3E1] text-white shadow-md' : 'text-gray-400'}`}
                         >
-                            {group.name} {/* Display name */}
+                            My Shop
                         </button>
+                        <button
+                            onClick={() => setActiveTab('Edit Shop')}
+                            className={`flex-1 py-2.5 rounded-sm text-[10px] font-black uppercase transition-all ${activeTab === 'Edit Shop' ? 'bg-[#00A3E1] text-white shadow-md' : 'text-gray-400'}`}
+                        >
+                            Edit Shop
+                        </button>
+                    </div>
+                </div>
+                {/* --- SEARCH BAR --- */}
+                <div className="relative group max-w-md mx-auto w-full">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                    <input type="text" placeholder="Search products..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white border border-gray-100 rounded-sm py-3.5 pl-11 pr-4 text-xs font-bold outline-none shadow-sm focus:ring-2 focus:ring-[#00A3E1]/10 transition-all" />
+                </div>
+
+                {/* --- CATALOGUE COUNT & FILTER --- */}
+                <div className="max-w-7xl mx-auto px-1 flex items-center justify-between relative">
+                    <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+                            Total Catalogues:
+                        </span>
+                        <span className="bg-[#00A3E1]/10 text-[#00A3E1] px-2.5 py-0.5 rounded-sm text-[10px] font-black">
+                            {filteredItems.length}
+                        </span>
+                    </div>
+
+                    {/* Filter Button */}
+                    <div className="relative">
+                        <button
+                            onClick={() => setIsSortOpen(!isSortOpen)}
+                            className="flex items-center gap-2 bg-white border border-gray-100 px-3 py-1.5 rounded-sm shadow-sm active:scale-95 transition-all"
+                        >
+                            <span className="text-[10px] font-black uppercase text-[#1A3B5D]">Sort: {sortOrder}</span>
+                            <FiPlus className={`transition-transform duration-300 ${isSortOpen ? 'rotate-45' : ''}`} size={12} />
+                        </button>
+
+                        {/* Dropdown Menu */}
+                        {isSortOpen && (
+                            <div className="absolute right-0 mt-2 w-32 bg-white rounded-sm shadow-xl border border-gray-50 z-[70] overflow-hidden">
+                                <button
+                                    onClick={() => { setSortOrder('A-Z'); setIsSortOpen(false); }}
+                                    className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 ${sortOrder === 'A-Z' ? 'text-[#00A3E1]' : 'text-[#1A3B5D]'}`}
+                                >
+                                    A to Z
+                                </button>
+                                <button
+                                    onClick={() => { setSortOrder('Z-A'); setIsSortOpen(false); }}
+                                    className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 border-t border-gray-50 ${sortOrder === 'Z-A' ? 'text-[#00A3E1]' : 'text-[#1A3B5D]'}`}
+                                >
+                                    Z to A
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* --- PRODUCT GRID --- */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                    {filteredItems.map(group => (
+                        <div
+                            key={group.id}
+                            onClick={() => {
+                                if (activeTab === 'Edit Shop') {
+                                    handleEdit(group);
+                                } else {
+                                    // LOGIC FIXED: Navigating with ID so MyShop can filter
+                                    navigate(`/catalogue-home/my-shop/${group.id}`)
+                                }
+                            }}
+                            className={`bg-white rounded-sm overflow-hidden shadow-sm border border-gray-100 flex flex-col transition-all group cursor-pointer active:scale-95 ${activeTab === 'Edit Shop' ? 'hover:shadow-xl hover:border-[#00A3E1]/30' : ''
+                                }`}
+                        >
+                            <div className="aspect-square bg-[#F8FAFC] relative overflow-hidden flex items-center justify-center">
+                                <FiPackage className="h-10 w-10 text-gray-200" />
+                            </div>
+
+                            <div className="p-2.5 flex flex-col flex-1">
+                                {editingId === group.id ? (
+                                    <div className="space-y-2 py-1" onClick={(e) => e.stopPropagation()}>
+                                        <input
+                                            autoFocus
+                                            type="text"
+                                            value={tempName}
+                                            onChange={(e) => setTempName(e.target.value)}
+                                            className="w-full bg-gray-50 border border-gray-100 rounded-sm py-1 px-2 text-[10px] font-bold outline-none"
+                                        />
+                                        <div className="flex gap-1">
+                                            <button onClick={(e) => { e.stopPropagation(); handleSaveEdit(group.id!); }} className="flex-1 bg-[#00A3E1] text-white py-1.5 rounded-sm text-[8px] font-black uppercase">Save</button>
+
+                                            <button
+                                                onClick={async (e) => {
+                                                    e.stopPropagation();
+                                                    if (window.confirm("Delete product group?") && dbOperations) {
+                                                        try {
+                                                            await dbOperations.deleteItemGroup(group.id!);
+                                                            setItemGroups(itemGroups.filter(p => p.id !== group.id));
+                                                            setEditingId(null);
+                                                            setModal({ message: 'Deleted successfully', type: State.SUCCESS });
+                                                        } catch (err) {
+                                                            console.error(err);
+                                                            setModal({ message: 'Delete failed', type: State.ERROR });
+                                                        }
+                                                    }
+                                                }}
+                                                className="p-1.5 bg-red-50 text-red-500 rounded-sm"
+                                            >
+                                                <Trash2 size={12} />
+                                            </button>
+
+                                            <button onClick={(e) => { e.stopPropagation(); setEditingId(null); }} className="p-1.5 bg-gray-50 text-gray-400 rounded-sm"><X size={12} /></button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <h3 className="text-[9px] md:text-[10px] font-bold text-[#1A3B5D] mb-0.5 truncate leading-tight uppercase">{group.name}</h3>
+                                        <div className="mt-1.5 w-full py-1.5 rounded-sm text-[9px] font-black uppercase text-center tracking-wider transition-all bg-[#00A3E1] text-white">
+                                            {activeTab === 'Edit Shop' ? 'Edit' : 'View Items'}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </div>
                     ))}
                 </div>
-            </div>
+            </main>
 
-            {/* --- ITEM GRID --- */}
-            <div className="flex-1 overflow-y-auto p-2">
-                <p className="text-xs md:text-sm text-gray-600 mb-3 px-2 md:px-0">
-                    Showing {filteredItems.length} listed items
-                </p>
-                <div className="grid grid-cols-2 gap-3">
-                    {filteredItems.map(item => {
-                        const cartItem = cart.find(ci => ci.id === item.id);
 
-                        return (
-                            <div
-                                key={item.id}
-                                className="bg-white rounded-lg shadow-sm overflow-hidden flex flex-col"
-                            >
-                                <button
-                                    onClick={() => handleItemClick(item)}
-                                    className="block text-left"
-                                >
-                                    <div className="h-40 w-full bg-gray-200 flex items-center justify-center text-gray-400">
-                                        {item.imageUrl ? (
-                                            <img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover" />
-                                        ) : (
-                                            <FiPackage className="h-12 w-12" />
-                                        )}
-                                    </div>
-                                    <div className="p-3">
-                                        <p className="font-semibold text-gray-800 break-words text-sm line-clamp-2 h-10">{item.name}</p>
-                                        <p className="text-lg font-bold text-gray-900 my-2">₹{item.mrp.toFixed(2)}</p>
-                                    </div>
-                                </button>
 
-                                <div className="p-3 pt-0 mt-auto">
-                                    <ItemCardQuantityControl
-                                        item={item}
-                                        cartItem={cartItem}
-                                        onAddToCart={handleAddToCart}
-                                        onSetQuantity={handleSetCartQuantity}
-                                        onUpdateQuantity={handleUpdateCartQuantity}
-                                    />
-                                </div>
-                            </div>
-                        );
-                    })}
+            {isCustomerModalOpen && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-[#1A3B5D]/60 backdrop-blur-md p-4">
+                    <div className="bg-white rounded-sm p-8 w-full max-w-sm shadow-2xl text-center relative">
+                        <button onClick={() => setIsCustomerModalOpen(false)} className="absolute top-6 right-6 text-gray-400"><FiX size={20} /></button>
+                        <h3 className="text-sm font-black text-[#1A3B5D] uppercase mb-6">Customer Details</h3>
+                        <div className="space-y-4">
+                            <input type="text" placeholder="Customer Name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="w-full bg-gray-50 border-none rounded-sm p-4 text-xs font-bold outline-none focus:ring-2 focus:ring-[#00A3E1]/20" />
+                            <input type="tel" placeholder="Phone Number" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className="w-full bg-gray-50 border-none rounded-sm p-4 text-xs font-bold outline-none focus:ring-2 focus:ring-[#00A3E1]/20" />
+                        </div>
+                        <button disabled={isPlacingOrder} onClick={handleConfirmAndSaveOrder} className="w-full mt-6 bg-[#00A3E1] text-white py-4 rounded-sm font-black text-[10px] uppercase shadow-lg tracking-widest active:scale-95 disabled:opacity-50 transition-all">
+                            {isPlacingOrder ? 'Placing Order...' : 'Confirm Order'}
+                        </button>
+                    </div>
                 </div>
-
-                {filteredItems.length === 0 && !pageIsLoading && (
-                    <p className="text-center text-gray-500 mt-10 p-4">
-                        No listed items found matching your filters.
-                    </p>
-                )}
-            </div>
+            )}
+            <Footer companyName={companyName} />
         </div>
     );
 };

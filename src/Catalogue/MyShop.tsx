@@ -1,34 +1,66 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { Search, ShoppingCart, Edit3, X, Minus, Plus, Trash2, ChevronLeft } from 'lucide-react';
 import { useAuth, useDatabase } from '../context/auth-context';
-import type { Item, ItemGroup } from '../constants/models'; // Import ItemGroup
-import { FiSearch, FiEdit, FiStar, FiCheckSquare, FiLoader, FiEye, FiPackage } from 'react-icons/fi';
+import type { Item, ItemGroup } from '../constants/models';
+import { FiStar, FiCheckSquare, FiLoader, FiPackage, FiPlus } from 'react-icons/fi';
 import { ItemEditDrawer } from '../Components/ItemDrawer';
+import { ItemDetailDrawer } from '../Components/ItemDetails';
 import { Spinner } from '../constants/Spinner';
+import { useNavigate, useParams } from 'react-router-dom';
+import Footer from './Footer';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../lib/Firebase';
 
-// --- StockIndicator (Unchanged) ---
+const useBusinessName = (companyId?: string) => {
+    const [businessName, setBusinessName] = useState<string>('');
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (!companyId) {
+            setLoading(false);
+            return;
+        }
+        const fetchBusinessInfo = async () => {
+            try {
+                // Correct multi-tenant path as per your logic
+                const docRef = doc(db, 'companies', companyId, 'business_info', companyId);
+                const docSnap = await getDoc(docRef);
+                setBusinessName(docSnap.exists() ? docSnap.data().businessName || 'Catalogue' : 'Catalogue');
+            } catch (err) {
+                console.error("Error fetching business name:", err);
+                setBusinessName('Catalogue');
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchBusinessInfo();
+    }, [companyId]);
+
+    return { businessName, loading };
+};
+
 const StockIndicator: React.FC<{ stock: number }> = ({ stock }) => {
     let colorClass = 'text-green-600 bg-green-100';
     if (stock <= 10 && stock > 0) colorClass = 'text-yellow-600 bg-yellow-100';
     if (stock <= 0) colorClass = 'text-red-600 bg-red-100';
-
     return (
-        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colorClass}`}>
-            {stock} in stock
+        <span className={`px-2 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-tight ${colorClass}`}>
+            {stock} IN STOCK
         </span>
     );
 };
 
-// --- QuickListedToggle (Unchanged) ---
 interface QuickListedToggleProps {
     itemId: string;
     isListed: boolean;
     onToggle: (itemId: string, newState: boolean) => Promise<void>;
     disabled?: boolean;
 }
+
 const QuickListedToggle: React.FC<QuickListedToggleProps> = ({ itemId, isListed, onToggle, disabled }) => {
     const [isLoading, setIsLoading] = useState(false);
-
-    const handleClick = async () => {
+    const handleClick = async (e: React.MouseEvent) => {
+        e.stopPropagation();
         if (disabled || isLoading) return;
         setIsLoading(true);
         try {
@@ -39,74 +71,103 @@ const QuickListedToggle: React.FC<QuickListedToggleProps> = ({ itemId, isListed,
             setIsLoading(false);
         }
     };
-
     return (
         <button
             onClick={handleClick}
             disabled={disabled || isLoading}
-            className={`flex-1 p-3 text-sm font-medium flex items-center justify-center gap-1 md:gap-2 border-l transition-colors disabled:opacity-50 ${isListed
-                ? 'bg-green-50 text-green-700 hover:bg-green-100'
-                : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+            className={`flex-1 py-1.5 rounded-sm text-[9px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1 ${isListed ? 'bg-green-500 text-white shadow-sm' : 'bg-gray-100 text-gray-400'
                 }`}
-            title={isListed ? "Unlist Item" : "List Item"}
         >
-            {isLoading ? (
-                <FiLoader className="h-4 w-4 animate-spin" />
-            ) : isListed ? (
-                <FiCheckSquare className="h-4 w-4 text-green-600" />
-            ) : (
-                <FiStar className="h-4 w-4" />
-            )}
-            <span className="hidden sm:inline">{isListed ? 'Listed' : 'List'}</span>
+            {isLoading ? <FiLoader className="animate-spin" size={10} /> : isListed ? <FiCheckSquare size={10} /> : <FiStar size={10} />}
+            {isListed ? 'Listed' : 'List'}
         </button>
     );
 };
 
-
 const ITEMS_PER_BATCH_RENDER = 24;
+
 const MyShopPage: React.FC = () => {
+    const navigate = useNavigate()
+    const { groupId } = useParams<{ groupId: string }>();
     const { currentUser, loading: authLoading } = useAuth();
+    const companyId = currentUser?.companyId;
+    const { businessName: companyName, loading: _nameLoading } = useBusinessName(companyId);
     const dbOperations = useDatabase();
 
-    const [isViewMode, setIsViewMode] = useState(false);
+    const [isViewMode, setIsViewMode] = useState(true);
     const [allItems, setAllItems] = useState<Item[]>([]);
-
-    // --- Store the full ItemGroup objects, including duplicates ---
-    const [allItemGroups, setAllItemGroups] = useState<ItemGroup[]>([]);
-
-    const [selectedCategory, setSelectedCategory] = useState('All'); // Will store 'All' or a group ID
+    const [_allItemGroups, setAllItemGroups] = useState<ItemGroup[]>([]);
+    const [selectedCategory, setSelectedCategory] = useState(groupId || 'All');
     const [searchQuery, setSearchQuery] = useState('');
     const [pageIsLoading, setPageIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [updateError, setUpdateError] = useState<string | null>(null);
-    const [listAllLoading, setListAllLoading] = useState(false);
+    const [_error, setError] = useState<string | null>(null);
     const [itemsToRenderCount, setItemsToRenderCount] = useState(ITEMS_PER_BATCH_RENDER);
+
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+    const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
     const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
+    const [selectedItemForDetails, setSelectedItemForDetails] = useState<Item | null>(null);
+
     const observerRef = useRef<IntersectionObserver | null>(null);
     const loadMoreRef = useRef<HTMLDivElement | null>(null);
+    const [sortOrder, setSortOrder] = useState<'A-Z' | 'Z-A' | 'Price: Low-High' | 'Price: High-Low'>('A-Z');
+    const [isSortOpen, setIsSortOpen] = useState(false);
+
+    const [cart, setCart] = useState<{ item: Item; quantity: number }[]>([]);
+    const [isCartOpen, setIsCartOpen] = useState(false);
+
+    // Sync selectedCategory when groupId changes from URL
+    useEffect(() => {
+        if (groupId) {
+            setSelectedCategory(groupId);
+        }
+    }, [groupId]);
+
+    const addToCart = (item: Item, quantity: number = 1, isFromDrawer: boolean = false) => {
+        setCart(prev => {
+            const existing = prev.find(i => i.item.id === item.id);
+            if (existing) {
+                const newQuantity = isFromDrawer ? quantity : existing.quantity + 1;
+                return prev.map(i => i.item.id === item.id ? { ...i, quantity: newQuantity } : i);
+            }
+            return [...prev, { item, quantity }];
+        });
+    };
+
+    const removeFromCart = (itemId: string) => {
+        setCart(prev => prev.filter(i => i.item.id !== itemId));
+    };
+
+    const updateQuantity = (itemId: string, delta: number) => {
+        setCart(prev => prev.map(i => {
+            if (i.item.id === itemId) {
+                const newQty = Math.max(0, i.quantity + delta);
+                return { ...i, quantity: newQty };
+            }
+            return i;
+        }).filter(i => i.quantity > 0));
+    };
+
+    const cartTotal = useMemo(() => cart.reduce((acc, curr) => acc + (curr.item.mrp || 0) * curr.quantity, 0), [cart]);
+    const cartCount = useMemo(() => cart.reduce((acc, curr) => acc + curr.quantity, 0), [cart]);
 
     useEffect(() => {
         if (authLoading || !currentUser || !dbOperations) {
-            setPageIsLoading(authLoading || !dbOperations);
+            if (!authLoading && (!currentUser || !dbOperations)) setPageIsLoading(false);
             return;
         }
-
         const fetchData = async () => {
             try {
-                setPageIsLoading(true); setError(null); setAllItems([]);
-                setItemsToRenderCount(ITEMS_PER_BATCH_RENDER);
-
+                setPageIsLoading(true);
+                setError(null);
                 const [fetchedItemGroups, fetchedItems] = await Promise.all([
                     dbOperations.getItemGroups(),
                     dbOperations.getItems()
                 ]);
-
-                setAllItemGroups(fetchedItemGroups); // Store all groups
+                setAllItemGroups(fetchedItemGroups);
                 setAllItems(fetchedItems);
-
             } catch (err: any) {
-                setError(err.message || 'Failed to load initial data.'); console.error("Fetch Error:", err);
+                setError(err.message || 'Failed to load initial data.');
             } finally {
                 setPageIsLoading(false);
             }
@@ -114,284 +175,291 @@ const MyShopPage: React.FC = () => {
         fetchData();
     }, [authLoading, currentUser, dbOperations]);
 
-    // --- FIX: Create a DE-DUPLICATED list of groups for the filter buttons ---
-    const uniqueCategories = useMemo(() => {
-        const map = new Map<string, ItemGroup>();
-        allItemGroups.forEach(group => {
-            if (!map.has(group.name.toLowerCase())) { // Use lowercase name as the unique key
-                map.set(group.name.toLowerCase(), group);
-            }
-        });
-        const uniqueGroups = Array.from(map.values());
-        uniqueGroups.sort((a, b) => a.name.localeCompare(b.name)); // Sort them
-        return uniqueGroups;
-    }, [allItemGroups]);
-
-
+    // 3. Updated Filter logic with safety checks
     const filteredItems = useMemo(() => {
-        return allItems.filter(item => {
-            if (isViewMode && !item.isListed) {
-                return false;
-            }
+        const activeCat = groupId || selectedCategory;
 
-            // --- FIX: Filter by ID, not by name ---
-            // Get the group object that matches the selectedCategory ID
-            const selectedGroup = allItemGroups.find(g => g.id === selectedCategory);
+        const result = allItems.filter(item => {
+            if (!item) return false;
+            if (isViewMode && !item.isListed) return false;
 
-            const matchesCategory =
-                selectedCategory === 'All' || // "All" is selected
-                item.itemGroupId === selectedCategory || // Item's ID matches selected ID
-                (selectedGroup && item.itemGroupId === selectedGroup.name); // Legacy: Item's ID (which is a name) matches selected group's name
-
-            const matchesSearch =
-                item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            const matchesCategory = activeCat === 'All' || item.itemGroupId === activeCat;
+            const itemName = item.name?.toLowerCase() || "";
+            const matchesSearch = itemName.includes(searchQuery.toLowerCase()) ||
                 (item.barcode && item.barcode.includes(searchQuery));
+
             return matchesCategory && matchesSearch;
         });
-    }, [allItems, selectedCategory, searchQuery, isViewMode, allItemGroups]); // Added allItemGroups
 
-    const unlistedFilteredCount = useMemo(() => {
-        return filteredItems.filter(item => !item.isListed).length;
-    }, [filteredItems]);
+        return [...result].sort((a, b) => {
+            const nameA = a.name || "";
+            const nameB = b.name || "";
+            if (sortOrder === 'A-Z') return nameA.localeCompare(nameB);
+            if (sortOrder === 'Z-A') return nameB.localeCompare(nameA);
+            if (sortOrder === 'Price: Low-High') return (a.mrp || 0) - (b.mrp || 0);
+            if (sortOrder === 'Price: High-Low') return (b.mrp || 0) - (a.mrp || 0);
+            return 0;
+        });
+    }, [allItems, selectedCategory, searchQuery, isViewMode, sortOrder, groupId]);
 
-    const itemsToDisplay = useMemo(() => {
-        return filteredItems.slice(0, itemsToRenderCount);
-    }, [filteredItems, itemsToRenderCount]);
-
-    const hasMoreItems = useMemo(() => {
-        return itemsToRenderCount < filteredItems.length;
-    }, [itemsToRenderCount, filteredItems.length]);
+    const itemsToDisplay = useMemo(() => filteredItems.slice(0, itemsToRenderCount), [filteredItems, itemsToRenderCount]);
+    const hasMoreItems = useMemo(() => itemsToRenderCount < filteredItems.length, [itemsToRenderCount, filteredItems.length]);
 
     const loadMoreItems = useCallback(() => {
         if (!hasMoreItems) return;
-        setItemsToRenderCount(prevCount => prevCount + ITEMS_PER_BATCH_RENDER);
+        setItemsToRenderCount(prev => prev + ITEMS_PER_BATCH_RENDER);
     }, [hasMoreItems]);
 
     useEffect(() => {
-        if (observerRef.current) observerRef.current.disconnect();
-
-        observerRef.current = new IntersectionObserver(entries => {
-            if (entries[0].isIntersecting && hasMoreItems) {
-                loadMoreItems();
-            }
-        });
-
-        const currentLoadMoreRef = loadMoreRef.current;
-        if (currentLoadMoreRef) {
-            observerRef.current.observe(currentLoadMoreRef);
-        }
-
-        return () => {
-            if (currentLoadMoreRef) {
-                observerRef.current?.unobserve(currentLoadMoreRef);
-            }
-            observerRef.current?.disconnect();
-        };
-    }, [loadMoreItems, hasMoreItems]);
+        if (!loadMoreRef.current) return;
+        observerRef.current = new IntersectionObserver((entries) => {
+            if (entries[0].isIntersecting && hasMoreItems) loadMoreItems();
+        }, { threshold: 0.1 });
+        observerRef.current.observe(loadMoreRef.current);
+        return () => observerRef.current?.disconnect();
+    }, [hasMoreItems, loadMoreItems]);
 
     const handleOpenEditDrawer = (item: Item) => {
         setSelectedItemForEdit(item);
         setIsDrawerOpen(true);
     };
-    const handleCloseEditDrawer = () => {
-        setIsDrawerOpen(false);
-        setTimeout(() => setSelectedItemForEdit(null), 300);
-    };
-    const handleSaveSuccess = (updatedItemData: Partial<Item>) => {
-        setAllItems(prevItems => prevItems.map(item =>
-            item.id === selectedItemForEdit?.id
-                ? { ...item, ...updatedItemData, id: item.id } as Item
-                : item
-        ));
-        setUpdateError(null);
-        console.log("Item updated successfully.");
+
+    const handleOpenDetailDrawer = (item: Item) => {
+        setSelectedItemForDetails(item);
+        setIsDetailDrawerOpen(true);
     };
 
     const handleToggleListed = async (itemId: string, newState: boolean) => {
         if (!dbOperations) return;
-        setUpdateError(null);
         try {
             await dbOperations.updateItem(itemId, { isListed: newState });
-            setAllItems(prevItems => prevItems.map(item =>
-                item.id === itemId ? { ...item, isListed: newState } as Item : item
-            ));
-        } catch (err: any) {
-            setUpdateError(err.message || "Failed to update item status."); throw err;
+            setAllItems(prev => prev.map(item => item.id === itemId ? { ...item, isListed: newState } as Item : item));
+        } catch (err) {
+            console.error("Failed to update listed status:", err);
         }
     };
 
-    const handleListAllFiltered = async () => {
-        if (!dbOperations) return;
-        const itemsToList = filteredItems.filter(item => !item.isListed && item.id);
-        if (itemsToList.length === 0) return;
-        setListAllLoading(true); setUpdateError(null);
-        try {
-            const updatePromises = itemsToList.map(item => dbOperations.updateItem(item.id!, { isListed: true }));
-            await Promise.all(updatePromises);
-            const updatedItemIds = new Set(itemsToList.map(item => item.id));
-            setAllItems(prevItems => prevItems.map(item => updatedItemIds.has(item.id) ? { ...item, isListed: true } as Item : item));
-        } catch (err: any) {
-            setUpdateError(err.message || "Failed to list all filtered items."); console.error("List All Error:", err);
-        } finally {
-            setListAllLoading(false);
-        }
-    };
-
-    if (authLoading || !dbOperations) {
-        return <div className="flex items-center justify-center h-screen"><Spinner /> <span className="ml-2">Initializing...</span></div>;
-    }
-
-    if (pageIsLoading && allItems.length === 0) {
-        return <div className="flex items-center justify-center h-screen"><Spinner /> <span className="ml-2">Loading catalogue...</span></div>;
-    }
-
-    if (error && allItems.length === 0) {
-        return (
-            <div className="flex flex-col items-center justify-center h-screen text-red-500 p-4">
-                <p className="text-center mb-4">{error}</p>
-                <button onClick={() => window.location.reload()} className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
-                    Retry
-                </button>
-            </div>
-        );
+    if (authLoading || (pageIsLoading && allItems.length === 0)) {
+        return <div className="flex items-center justify-center h-screen bg-[#E9F0F7]"><Spinner /></div>;
     }
 
     return (
-        <div className="flex flex-col h-screen bg-gray-100 w-full">
-            <div className="flex-shrink-0 p-4 bg-white shadow-sm border-b sticky top-0 z-20">
-                <div className="flex justify-between items-center">
-                    <div>
-                        <h1 className="text-2xl md:text-3xl font-bold text-gray-800">
-                            {isViewMode ? 'Public Catalogue Preview' : 'My Shop Catalogue'}
-                        </h1>
-                        <p className="text-gray-500 text-sm md:text-base">
-                            {isViewMode ? 'This is how customers see your listed items.' : 'Manage items and toggle listing status.'}
-                        </p>
-                    </div>
-                    <div className="flex gap-2">
-                        {!isViewMode && (
+        <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative overflow-x-hidden">
+            <header className="sticky top-0 bg-white border-b border-gray-100 shadow-sm z-40">
+                <div className="max-w-7xl mx-auto px-4 py-2 flex flex-col gap-2">
+                    <div className="flex">
+                        <div className="flex items-center gap-1.5">
                             <button
-                                onClick={handleListAllFiltered}
-                                disabled={listAllLoading || filteredItems.length === 0 || unlistedFilteredCount === 0}
-                                className="font-semibold py-2 px-3 rounded-lg shadow-sm transition-colors flex items-center gap-2 text-sm bg-blue-500 text-white hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                                onClick={() => navigate(-1)}
+                                className="p-1 hover:bg-gray-100 rounded-sm transition-colors"
                             >
-                                {listAllLoading ? (<FiLoader className="h-4 w-4 animate-spin" />) : (<FiCheckSquare size={16} />)}
-                                List {unlistedFilteredCount > 0 ? `(${unlistedFilteredCount}) ` : ''}Filtered
+                                <ChevronLeft className="text-[#1A3B5D]" size={20} />
+
                             </button>
-                        )}
-                        <button
-                            onClick={() => setIsViewMode(!isViewMode)}
-                            className={`font-semibold py-2 px-3 rounded-lg shadow-sm transition-colors flex items-center gap-2 text-sm ${isViewMode
-                                ? 'bg-gray-700 text-white hover:bg-gray-800'
-                                : 'bg-green-600 text-white hover:bg-green-700'
-                                }`}
-                        >
-                            {isViewMode ? <FiEdit size={16} /> : <FiEye size={16} />}
-                            {isViewMode ? 'Edit Mode' : 'Preview'}
+                            <div className="w-1 h-5 bg-[#00A3E1] rounded-sm"></div>
+                            <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">
+                                {companyName}
+                            </h1>
+                        </div>
+
+                        <div className="ml-60 hidden md:flex bg-gray-50 p-1 rounded-sm border border-gray-100 scale-90">
+                            <button onClick={() => setIsViewMode(true)} className={`px-8 py-2 rounded-sm text-[12px] font-black uppercase transition-all ${isViewMode ? 'bg-[#00A3E1] text-white shadow-sm' : 'text-gray-400'}`}>My Items</button>
+                            <button onClick={() => setIsViewMode(false)} className={`px-8 py-2 rounded-sm text-[12px] font-black uppercase transition-all ${!isViewMode ? 'bg-[#00A3E1] text-white shadow-sm' : 'text-gray-400'}`}>Edit Items</button>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <main className="p-3 md:p-6 space-y-4 flex-1 max-w-7xl mx-auto w-full pb-24">
+                <div className="relative group md:max-w-md md:mx-auto w-full">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                    <input
+                        type="text"
+                        placeholder="Search products..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full bg-white border border-gray-100 rounded-sm py-2.5 pl-10 pr-4 text-xs outline-none shadow-sm focus:ring-1 focus:ring-[#00A3E1]/20 transition-all"
+                    />
+                </div>
+
+                <div className="max-w-7xl mx-auto px-1 flex items-center justify-between relative">
+                    <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Total Products:</span>
+                        <span className="bg-[#00A3E1]/10 text-[#00A3E1] px-2.5 py-0.5 rounded-sm text-[10px] font-black">{filteredItems.length}</span>
+                    </div>
+
+                    <div className="relative">
+                        <button onClick={() => setIsSortOpen(!isSortOpen)} className="flex items-center gap-2 bg-white border border-gray-100 px-3 py-1.5 rounded-sm shadow-sm active:scale-95 transition-all">
+                            <span className="text-[10px] font-black uppercase text-[#1A3B5D]">Sort: {sortOrder}</span>
+                            <FiPlus className={`transition-transform duration-300 ${isSortOpen ? 'rotate-45' : ''}`} size={12} />
                         </button>
+                        {isSortOpen && (
+                            <div className="absolute right-0 mt-2 w-40 bg-white rounded-sm shadow-xl border border-gray-50 z-[70] overflow-hidden">
+                                {['A-Z', 'Z-A', 'Price: Low-High', 'Price: High-Low'].map((opt) => (
+                                    <button
+                                        key={opt}
+                                        onClick={() => { setSortOrder(opt as any); setIsSortOpen(false); }}
+                                        className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 border-t border-gray-50 first:border-0 ${sortOrder === opt ? 'text-[#00A3E1]' : 'text-[#1A3B5D]'}`}
+                                    >
+                                        {opt.replace(':', ': ')}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
 
-                {updateError && <p className="text-red-500 bg-red-100 p-2 rounded text-sm mt-2">{updateError}</p>}
-                {error && allItems.length > 0 && <p className="text-red-500 text-sm mt-2">{error}</p>}
-            </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                    {itemsToDisplay.map((item) => {
+                        const cartItem = cart.find(i => i.item.id === item.id);
+                        return (
+                            <div
+                                key={item.id}
+                                onClick={() => isViewMode ? handleOpenDetailDrawer(item) : handleOpenEditDrawer(item)}
+                                className={`bg-white rounded-sm overflow-hidden shadow-sm border border-gray-100 flex flex-col transition-all duration-300 relative group hover:shadow-md cursor-pointer ${!isViewMode ? 'ring-1 ring-[#00A3E1]/10' : ''}`}
+                            >
+                                <div className="aspect-square bg-[#F8FAFC] flex items-center justify-center relative overflow-hidden">
+                                    {item.imageUrl ? (
+                                        <img src={item.imageUrl} alt={item.name} className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" />
+                                    ) : (
+                                        <FiPackage className="w-10 h-10 text-gray-200" />
+                                    )}
+                                    {!isViewMode && (
+                                        <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm p-1.5 rounded-sm shadow-sm">
+                                            <Edit3 size={10} className="text-[#00A3E1]" />
+                                        </div>
+                                    )}
+                                </div>
 
-            {/* --- SEARCH & FILTER BAR --- */}
-            <div className="flex-shrink-0 p-3 bg-white border-b sticky top-[88px] z-10 flex flex-col md:flex-row gap-2">
-                <div className="relative flex-grow">
-                    <input type="text" placeholder="Search by name or barcode..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full p-3 pl-10 border rounded-lg text-sm md:text-base" />
-                    <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                </div>
-
-                {/* --- FIX: This is your button filter, now using uniqueCategories --- */}
-                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                    <button
-                        key="All" // Unique key for "All"
-                        onClick={() => setSelectedCategory('All')}
-                        className={`px-3 md:px-4 py-1.5 text-xs md:text-sm font-medium rounded-full flex-shrink-0 transition-colors ${selectedCategory === 'All'
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                            }`}
-                    >
-                        All
-                    </button>
-                    {/* Map over the DE-DUPLICATED list */}
-                    {uniqueCategories.map(group => (
-                        <button
-                            key={group.id!} // <-- Use the UNIQUE ID for the key
-                            onClick={() => setSelectedCategory(group.id!)} // <-- Set the UNIQUE ID
-                            className={`px-3 md:px-4 py-1.5 text-xs md:text-sm font-medium rounded-full flex-shrink-0 transition-colors ${selectedCategory === group.id
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                                }`}
-                        >
-                            {group.name} {/* Display the name */}
-                        </button>
-                    ))}
-                </div>
-                {/* --- END FIX --- */}
-            </div>
-
-            {/* --- ITEM GRID --- */}
-            <div className="flex-1 overflow-y-auto p-3 md:p-4">
-                <p className="text-xs md:text-sm text-gray-600 mb-3 px-1 md:px-0">
-                    Showing {itemsToDisplay.length} of {filteredItems.length} filtered items ({allItems.length} total)
-                </p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4">
-                    {itemsToDisplay.map(item => (
-                        <div key={item.id} className="bg-white rounded-lg shadow-sm overflow-hidden flex flex-col border border-gray-200 transition-shadow hover:shadow-lg" >
-                            <div className="relative h-40 w-full bg-gray-200 flex items-center justify-center text-gray-400">
-                                {item.imageUrl ? (
-                                    <img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover" />
-                                ) : (
-                                    <FiPackage className="h-12 w-12" />
-                                )}
-                                {item.isListed && (
-                                    <div className="absolute top-2 left-2 bg-green-100 text-green-700 text-xs font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
-                                        <FiStar size={10} /> Listed
+                                <div className="p-3 flex flex-col flex-1">
+                                    <h3 className="text-[10px] font-black text-[#1A3B5D] mb-1 truncate uppercase leading-tight">{item.name}</h3>
+                                    <div className="flex items-center justify-between mb-3">
+                                        <p className="text-xs font-black text-[#00A3E1]">₹{item.mrp}</p>
+                                        <StockIndicator stock={item.stock || 0} />
                                     </div>
-                                )}
-                            </div>
 
-                            <div className="p-3 md:p-4 flex-grow flex flex-col">
-                                <div>
-                                    <p className="font-semibold text-gray-800 break-words mb-2 text-sm md:text-base line-clamp-2 h-10 md:h-12">{item.name}</p>
-                                    <StockIndicator stock={item.stock || 0} />
+                                    <div className="mt-auto flex gap-1">
+                                        {isViewMode ? (
+                                            cartItem ? (
+                                                <div className="w-full flex items-center justify-between bg-gray-50 rounded-sm px-1 py-1 border border-gray-100">
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); updateQuantity(item.id!, -1); }}
+                                                        className="p-1.5 bg-white shadow-sm text-[#00A3E1] hover:bg-[#00A3E1] hover:text-white rounded-sm transition-all"
+                                                    >
+                                                        <Minus size={12} strokeWidth={3} />
+                                                    </button>
+                                                    <span className="text-xs font-black text-[#1A3B5D]">{cartItem.quantity}</span>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); updateQuantity(item.id!, 1); }}
+                                                        className="p-1.5 bg-white shadow-sm text-[#00A3E1] hover:bg-[#00A3E1] hover:text-white rounded-sm transition-all"
+                                                    >
+                                                        <Plus size={12} strokeWidth={3} />
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        addToCart(item);
+                                                    }}
+                                                    className="w-full bg-[#00A3E1] text-white py-2 rounded-sm text-[9px] font-black uppercase tracking-widest shadow-sm active:scale-95 transition-all flex items-center justify-center gap-2"
+                                                >
+                                                    <Plus size={12} />
+                                                    Add to Cart
+                                                </button>
+                                            )
+                                        ) : (
+                                            <>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleOpenEditDrawer(item);
+                                                    }}
+                                                    className="flex-1 bg-gray-50 text-[#1A3B5D] py-1.5 rounded-sm text-[9px] font-black uppercase border border-gray-100"
+                                                >
+                                                    Edit
+                                                </button>
+                                                <QuickListedToggle itemId={item.id!} isListed={item.isListed ?? false} onToggle={handleToggleListed} />
+                                            </>
+                                        )}
+                                    </div>
                                 </div>
-                                <p className="text-base md:text-lg font-bold text-gray-900 mt-auto pt-2">₹{item.mrp.toFixed(2)}</p>
                             </div>
+                        )
+                    })}
+                </div>
 
-                            {!isViewMode && (
-                                <div className="flex border-t">
-                                    <button onClick={() => handleOpenEditDrawer(item)} className="flex-1 bg-gray-50 hover:bg-gray-100 text-gray-700 p-3 text-sm font-medium flex items-center justify-center gap-1 md:gap-2 border-r" >
-                                        <FiEdit className="h-4 w-4" /> Edit
-                                    </button>
-                                    <QuickListedToggle itemId={item.id!} isListed={item.isListed ?? false} onToggle={handleToggleListed} disabled={listAllLoading} />
+                {hasMoreItems && <div ref={loadMoreRef} className="h-20 flex justify-center items-center"><Spinner /></div>}
+            </main>
+
+            {isCartOpen && (
+                <div className="fixed inset-0 z-[100] flex justify-end">
+                    <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setIsCartOpen(false)} />
+                    <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
+                        <div className="p-4 border-b flex items-center justify-between">
+                            <h2 className="text-sm font-black text-[#1A3B5D] uppercase tracking-wider">Your Cart ({cartCount})</h2>
+                            <button onClick={() => setIsCartOpen(false)} className="p-2 hover:bg-gray-100 rounded-sm transition-colors">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                            {cart.length === 0 ? (
+                                <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-2">
+                                    <ShoppingCart size={48} strokeWidth={1} />
+                                    <p className="text-xs font-bold uppercase tracking-widest">Cart is empty</p>
                                 </div>
+                            ) : (
+                                cart.map(({ item, quantity }) => (
+                                    <div key={item.id} className="flex gap-4 bg-gray-50 p-3 rounded-sm border border-gray-100">
+                                        <div className="w-16 h-16 bg-white rounded-sm overflow-hidden border border-gray-100 flex-shrink-0">
+                                            {item.imageUrl ? <img src={item.imageUrl} className="w-full h-full object-cover" /> : <FiPackage className="w-full h-full p-4 text-gray-200" />}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <h4 className="text-[10px] font-black text-[#00A3E1] uppercase truncate">{item.name}</h4>
+                                            <p className="text-xs font-black text-[#1A3B5D]">₹{item.mrp}</p>
+                                            <div className="flex items-center gap-3 mt-2">
+                                                <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-sm px-2 py-1">
+                                                    <button onClick={() => updateQuantity(item.id!, -1)} className="text-gray-400 hover:text-[#00A3E1]"><Minus size={14} /></button>
+                                                    <span className="text-xs font-black w-4 text-center">{quantity}</span>
+                                                    <button onClick={() => updateQuantity(item.id!, 1)} className="text-gray-400 hover:text-[#00A3E1]"><Plus size={14} /></button>
+                                                </div>
+                                                <button onClick={() => removeFromCart(item.id!)} className="text-red-400 hover:text-red-600 ml-auto"><Trash2 size={16} /></button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
                             )}
                         </div>
-                    ))}
+                        {cart.length > 0 && (
+                            <div className="p-4 border-t bg-gray-50 space-y-4">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-[10px] font-black text-gray-400 uppercase">Subtotal</span>
+                                    <span className="text-lg font-black text-[#1A3B5D]">₹{cartTotal}</span>
+                                </div>
+                                <button className="w-full bg-[#00A3E1] text-white py-4 rounded-sm font-black text-xs uppercase tracking-widest shadow-lg shadow-[#00A3E1]/20 active:scale-[0.98] transition-all">
+                                    Checkout Now
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 </div>
+            )}
 
-                {hasMoreItems && (
-                    <div ref={loadMoreRef} className="h-20 flex justify-center items-center mt-4">
-                        <Spinner />
-                    </div>
-                )}
-                {!hasMoreItems && filteredItems.length > 0 && (
-                    <p className="text-center text-gray-500 text-sm mt-8">You've reached the end of the list.</p>
-                )}
+            <ItemEditDrawer
+                item={selectedItemForEdit}
+                isOpen={isDrawerOpen}
+                onClose={() => { setIsDrawerOpen(false); setSelectedItemForEdit(null); }}
+                onSaveSuccess={(updated) => setAllItems(prev => prev.map(i => i.id === selectedItemForEdit?.id ? { ...i, ...updated } as Item : i))}
+            />
 
-                {filteredItems.length === 0 && !pageIsLoading && (
-                    <div className="text-center text-gray-500 mt-10 p-4">
-                        <p>No items found matching '{searchQuery}' in category '{selectedCategory}'.</p>
-                        {isViewMode && <p className="text-sm">Only listed items are shown in preview mode.</p>}
-                    </div>
-                )}
-            </div>
-
-            {/* --- DRAWER --- */}
-            <ItemEditDrawer item={selectedItemForEdit} isOpen={isDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
+            <ItemDetailDrawer
+                item={selectedItemForDetails}
+                isOpen={isDetailDrawerOpen}
+                onClose={() => { setIsDetailDrawerOpen(false); setSelectedItemForDetails(null); }}
+                onAddToCart={addToCart}
+                initialQuantity={cart.find(i => i.item.id === selectedItemForDetails?.id)?.quantity || 1}
+            />
+            <Footer companyName={companyName} />
         </div>
     );
 };

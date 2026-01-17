@@ -43,7 +43,7 @@ export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     salesViewType: 'list',
     enableSalesmanSelection: true,
     gstScheme: 'none',
-    taxType: 'exclusive',
+    taxType: 'inclusive',
 
 
     enableRounding: true,

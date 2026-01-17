@@ -2,7 +2,6 @@ import React from 'react';
 import { useRouteError, useNavigate } from 'react-router-dom';
 import { CustomButton } from './CustomButton';
 import { Variant } from '../enums';
-import { FiFrown } from 'react-icons/fi';
 import dogImage from '../assets/dog-error.png';
 
 const GlobalError: React.FC = () => {
@@ -16,19 +15,17 @@ const GlobalError: React.FC = () => {
         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gray-50 p-6 text-center font-poppins overflow-hidden">
             <div className="bg-white p-8 rounded-lg shadow-md max-w-md w-full border border-red-100">
                 <div className="flex justify-center mx-auto mb-4">
-                    
-                    <img 
+
+                    <img
                         src={dogImage} // Replace with your actual image path
-                        alt="Sad Dog" 
-                        className="w-60 h-24 object-contain" 
+                        alt="Sad Dog"
+                        className="w-60 h-24 object-contain"
                     />
                 </div>
 
                 <h2 className="text-2xl font-bold text-gray-800 mb-2">Oops!</h2>
                 <p className="text-gray-500 mb-6 text-sm flex flex-col items-center gap-2">
                     <span>I crashed !!</span>
-                    <span>I am also part human after all.</span>
-                    <FiFrown className="w-12 h-12 text-gray-400 mt-2" />
                 </p>
                 <div className="space-y-3">
                     <CustomButton

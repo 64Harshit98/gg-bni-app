@@ -1,32 +1,23 @@
 import React from 'react';
-import { CustomButton } from './index'; // Adjust path to where CustomButton is exported
+import { CustomButton } from './index'; 
 import { Variant } from '../enums';
 import { IconChevronDown } from '../constants/Icons';
 
 interface GenericBillFooterProps {
-  // --- UI State ---
   isExpanded: boolean;
   onToggleExpand: () => void;
-
-  // --- Data ---
   totalQuantity: number;
   subtotal: number;
   totalDiscount?: number;
   taxAmount?: number;
-  taxLabel?: string; // e.g. "Tax (Exclusive)" or "Total Tax"
+  taxLabel?: string;
   roundingOffAmount?: number;
   finalAmount: number;
-
-  // --- Configuration ---
   showTaxRow?: boolean;
-
-  // --- Actions ---
   actionLabel: string;
   onActionClick: () => void;
   disableAction?: boolean;
-
-  // --- Slots ---
-  children?: React.ReactNode; // For extra content like Tax Selectors in Purchase
+  children?: React.ReactNode; 
 }
 
 export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
@@ -45,21 +36,23 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
   children
 }) => {
   return (
-    <div className="flex-shrink-0 bg-white border-t border-gray-100 shadow-[0_-5px_15px_rgba(0,0,0,0.05)] rounded-sm z-20 mb-10">
+   
+    <div className="flex-shrink-0 bg-white border-t border-gray-100 shadow-[0_-5px_15px_rgba(0,0,0,0.05)] rounded-t-2xl z-20 md:shadow-none md:border-0 md:rounded-none md:bg-transparent md:w-full">
 
-      {/* Optional Content (e.g. Tax Selector for Purchase) */}
-      {children}
+      <div className="md:mb-4">
+          {children}
+      </div>
 
-      {/* Toggle Header */}
+     
       <div
         onClick={onToggleExpand}
-        className="flex justify-between items-center px-5 py-2 cursor-pointer active:bg-gray-50 transition-colors rounded-t-2xl group border-b border-gray-100"
+        className="flex justify-between items-center px-5 py-2 cursor-pointer active:bg-gray-50 transition-colors rounded-t-2xl group border-b border-gray-100 md:hidden"
       >
         <div className="flex items-center gap-2">
           <span className="text-sm font-bold tracking-wider text-gray-500 group-hover:text-gray-700">
             Bill Details
           </span>
-          {/* Show Qty in header when collapsed for quick view */}
+          {/* Show Qty in header when collapsed */}
           {!isExpanded && (
             <span className="bg-gray-100 text-gray-600 text-[10px] px-2 py-0.5 rounded-full font-medium">
               {totalQuantity} Items
@@ -71,39 +64,36 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
         </div>
       </div>
 
-      {/* Expanded Details */}
-      {isExpanded && (
-        <div className="px-5 pb-2 space-y-2 text-sm animate-in slide-in-from-bottom-2 duration-200 pt-2">
 
-          <div className="flex justify-between text-gray-600">
-            <span>Subtotal</span>
-            <span className="font-medium">₹{subtotal.toFixed(2)}</span>
-          </div>
+      <div className={`${isExpanded ? 'block' : 'hidden'} md:block px-5 pb-2 pt-2 md:px-0 md:pb-4 space-y-2 text-sm animate-in slide-in-from-bottom-2 duration-200 md:animate-none`}>
 
-          {totalDiscount > 0 && (
-            <div className="flex justify-between text-green-600">
-              <span>Discount</span>
-              <span className="font-medium">- ₹{totalDiscount.toFixed(2)}</span>
-            </div>
-          )}
-
-          {showTaxRow && (
-            <div className="flex justify-between text-blue-600">
-              <span>{taxLabel}</span>
-              <span className="font-medium">+ ₹{taxAmount.toFixed(2)}</span>
-            </div>
-          )}
-
-
-          <div className="border-t border-dashed border-gray-200 pt-2 mt-2 flex justify-between text-gray-500 text-xs font-medium">
-            <span>Total Quantity</span>
-            <span>{totalQuantity}</span>
-          </div>
+        <div className="flex justify-between text-gray-600">
+          <span>Subtotal</span>
+          <span className="font-medium">₹{subtotal.toFixed(2)}</span>
         </div>
-      )}
+
+        {totalDiscount > 0 && (
+          <div className="flex justify-between text-green-600">
+            <span>Discount</span>
+            <span className="font-medium">- ₹{totalDiscount.toFixed(2)}</span>
+          </div>
+        )}
+
+        {showTaxRow && (
+          <div className="flex justify-between text-blue-600">
+            <span>{taxLabel}</span>
+            <span className="font-medium">+ ₹{taxAmount.toFixed(2)}</span>
+          </div>
+        )}
+
+        <div className="border-t border-dashed border-gray-200 pt-2 mt-2 flex justify-between text-gray-500 text-xs font-medium">
+          <span>Total Quantity</span>
+          <span>{totalQuantity}</span>
+        </div>
+      </div>
 
       {/* Main Total & Action */}
-      <div className="px-5 pb-5 pt-2">
+      <div className="px-5 pb-5 pt-2 md:px-0 md:pb-0 md:pt-4 md:border-t md:border-gray-100">
         <div className="flex justify-between items-end mb-2">
           <span className="text-gray-500 text-sm font-medium pb-1">Grand Total</span>
           <span className="text-2xl font-extrabold text-gray-900 tracking-tight">
@@ -115,7 +105,7 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
           <CustomButton
             onClick={onActionClick}
             variant={Variant.Payment}
-            className="w-full py-3.5 text-base font-bold shadow-lg shadow-blue-200 rounded-sm flex justify-center items-center active:scale-[0.98] transition-transform"
+            className="w-full py-3.5 text-base font-bold shadow-lg shadow-blue-200 rounded-lg flex justify-center items-center active:scale-[0.98] transition-transform"
             disabled={disableAction}
           >
             {actionLabel}

@@ -18,6 +18,8 @@ export const ROUTES = {
   EDIT_PROFILE: '/edit-profile',
   LANDING: '/landing',
   ITEM_REPORT: '/item-report',
+  RESTOCK_REPORT: '/restock-report',
+  TAX_REPORT: '/tax-report',
   SALES_REPORT: '/sales-report',
   PURCHASE_REPORT: '/purchase-report',
   PNL_REPORT: '/pnl-report',

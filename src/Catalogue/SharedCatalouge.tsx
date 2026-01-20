@@ -3,40 +3,42 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getItemGroupsByCompany, getItemsByCompany } from '../lib/ItemsFirebase';
 import type { ItemGroup, Item } from '../constants/models';
 import { FiPackage, FiPlus } from 'react-icons/fi';
-import { Search, ShoppingCart, ChevronLeft } from 'lucide-react';
+import {ShoppingCart, ChevronLeft } from 'lucide-react';
 import { Spinner } from '../constants/Spinner';
-import { doc, getDoc } from 'firebase/firestore'; // Firebase imports
-import { db } from '../lib/Firebase'; // DB import
+// import { doc, getDoc } from 'firebase/firestore'; // Firebase imports
+// import { db } from '../lib/Firebase'; // DB import
 import Footer from './Footer';
+import { useBusinessName } from './hooks/BusinessName.tsx';
+import SearchBar from './SearchBar.tsx';
 
 // --- Custom Hook Integrated ---
-const useBusinessName = (companyId?: string) => {
-    const [businessName, setBusinessName] = useState<string>('');
-    const [loading, setLoading] = useState(true);
+// const useBusinessName = (companyId?: string) => {
+//     const [businessName, setBusinessName] = useState<string>('');
+//     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        if (!companyId) {
-            setLoading(false);
-            return;
-        }
-        const fetchBusinessInfo = async () => {
-            try {
-                // Correct multi-tenant path as per your logic
-                const docRef = doc(db, 'companies', companyId, 'business_info', companyId);
-                const docSnap = await getDoc(docRef);
-                setBusinessName(docSnap.exists() ? docSnap.data().businessName || 'Catalogue' : 'Catalogue');
-            } catch (err) {
-                console.error("Error fetching business name:", err);
-                setBusinessName('Catalogue');
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchBusinessInfo();
-    }, [companyId]);
+//     useEffect(() => {
+//         if (!companyId) {
+//             setLoading(false);
+//             return;
+//         }
+//         const fetchBusinessInfo = async () => {
+//             try {
+//                 // Correct multi-tenant path as per your logic
+//                 const docRef = doc(db, 'companies', companyId, 'business_info', companyId);
+//                 const docSnap = await getDoc(docRef);
+//                 setBusinessName(docSnap.exists() ? docSnap.data().businessName || 'Catalogue' : 'Catalogue');
+//             } catch (err) {
+//                 console.error("Error fetching business name:", err);
+//                 setBusinessName('Catalogue');
+//             } finally {
+//                 setLoading(false);
+//             }
+//         };
+//         fetchBusinessInfo();
+//     }, [companyId]);
 
-    return { businessName, loading };
-};
+//     return { businessName, loading };
+// };
 
 const SharedCataloguePage: React.FC = () => {
     const { companyId } = useParams<{ companyId: string }>();
@@ -136,7 +138,7 @@ const SharedCataloguePage: React.FC = () => {
                                 console.error("Company ID missing!");
                             }
                         }}
-                        className="flex items-center justify-center gap-2 bg-[#00A3E1] text-white py-2 px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative"
+                        className="flex items-center justify-center gap-2 bg-[#00A3E1] text-white py-2 px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative cursor-pointer"
                     >
                         <ShoppingCart size={14} />
                         <span>Cart</span>
@@ -153,13 +155,8 @@ const SharedCataloguePage: React.FC = () => {
 
                 {/* Rest of the code remains exactly same */}
                 <div className="relative group max-w-md mx-auto w-full">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                    <input
-                        type="text"
-                        placeholder="Search catalogues..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full bg-white border border-gray-100 rounded-sm py-3.5 pl-11 pr-4 text-xs font-bold outline-none shadow-sm focus:ring-2 focus:ring-[#00A3E1]/10 transition-all"
+                    <SearchBar
+                        setSearchQuery={setSearchQuery}
                     />
                 </div>
 
@@ -176,7 +173,7 @@ const SharedCataloguePage: React.FC = () => {
                     <div className="relative">
                         <button
                             onClick={() => setIsSortOpen(!isSortOpen)}
-                            className="flex items-center gap-2 bg-white border border-gray-100 px-3 py-1.5 rounded-sm shadow-sm active:scale-95 transition-all"
+                            className="flex items-center gap-2 bg-white border border-gray-100 px-3 py-1.5 rounded-sm shadow-sm active:scale-95 transition-all cursor-pointer"
                         >
                             <span className="text-[10px] font-black uppercase text-[#1A3B5D]">Sort: {sortOrder}</span>
                             <FiPlus className={`transition-transform duration-300 ${isSortOpen ? 'rotate-45' : ''}`} size={12} />

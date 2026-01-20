@@ -4,42 +4,15 @@ import type { Item, ItemGroup } from '../constants/models';
 import { Modal } from '../constants/Modal';
 import { State } from '../enums';
 import { FiX, FiPackage, FiPlus } from 'react-icons/fi';
-import { Search, Home, FileText, UserRound, Trash2, X, ChevronLeft } from 'lucide-react';
+import { Trash2, X, ChevronLeft } from 'lucide-react';
 import { Spinner } from '../constants/Spinner';
 import { db } from '../lib/Firebase';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { OrderInvoiceNumber } from '../UseComponents/InvoiceCounter';
 import { useNavigate } from 'react-router';
-import { doc, getDoc } from 'firebase/firestore'; // Firebase imports
 import Footer from './Footer';
-
-const useBusinessName = (companyId?: string) => {
-    const [businessName, setBusinessName] = useState<string>('');
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        if (!companyId) {
-            setLoading(false);
-            return;
-        }
-        const fetchBusinessInfo = async () => {
-            try {
-                // Correct multi-tenant path as per your logic
-                const docRef = doc(db, 'companies', companyId, 'business_info', companyId);
-                const docSnap = await getDoc(docRef);
-                setBusinessName(docSnap.exists() ? docSnap.data().businessName || 'Catalogue' : 'Catalogue');
-            } catch (err) {
-                console.error("Error fetching business name:", err);
-                setBusinessName('Catalogue');
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchBusinessInfo();
-    }, [companyId]);
-
-    return { businessName, loading };
-};
+import { useBusinessName } from './hooks/BusinessName';
+import SearchBar from './SearchBar';
 
 const OrderingPage: React.FC = () => {
     // --- States ---
@@ -54,18 +27,15 @@ const OrderingPage: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [pageIsLoading, setPageIsLoading] = useState(true);
     const [cart, setCart] = useState<any[]>([]);
-    // const [isCartOpen, setIsCartOpen] = useState(false);
     const [isPlacingOrder, setIsPlacingOrder] = useState(false);
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
     const [_selectedItem, _setSelectedItem] = useState<Item | null>(null);
-    // const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
     const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
     const [customerName, setCustomerName] = useState('');
     const [customerPhone, setCustomerPhone] = useState('');
     const [activeTab, setActiveTab] = useState<'My Shop' | 'Edit Shop'>('My Shop');
     const [sortOrder, setSortOrder] = useState<'A-Z' | 'Z-A'>('A-Z');
     const [isSortOpen, setIsSortOpen] = useState(false);
-
 
     // --- YOUR NEW STATES ---
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -115,7 +85,6 @@ const OrderingPage: React.FC = () => {
         setEditingId(group.id!);
         setTempName(group.name);
     };
-
 
     const handleSaveEdit = async (id: string) => {
         if (!dbOperations) {
@@ -191,59 +160,58 @@ const OrderingPage: React.FC = () => {
     if (pageIsLoading) return <div className="flex items-center justify-center h-screen bg-[#E9F0F7]"><Spinner /></div>;
 
     return (
-        <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative overflow-x-hidden">
+        <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative">
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
-            {/* --- HEADER --- */}
-            <header className="sticky top-0 z-[60] bg-white border-b border-gray-100 shadow-sm">
-                <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col gap-3">
-                    <div className="flex">
-                        <div className="flex items-center gap-3">
-                            <button
-                                onClick={() => navigate(-1)}
-                                className="p-1 hover:bg-gray-100 rounded-full transition-colors"
-                            >
-                                <ChevronLeft className="text-[#1A3B5D]" size={20} />
-                                
-                            </button>
-                            <div className="w-1 h-5 bg-[#00A3E1] rounded-sm"></div>
-                            <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">
-                                {companyName}
-                            </h1>
-                        </div>
+            {/* --- FIXED HEADER SECTION --- */}
+            <header className="sticky top-0 z-[100] bg-white border-b border-gray-100 shadow-sm w-full">
+                <div className="max-w-7xl mx-auto px-4 py-3 flex items-center">
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => navigate(-1)}
+                            className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+                        >
+                            <ChevronLeft className="text-[#1A3B5D]" size={20} />
+                        </button>
+                        <div className="w-1 h-5 bg-[#00A3E1] rounded-sm"></div>
+                        <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">
+                            {companyName}
+                        </h1>
+                    </div>
 
-                        <div className="ml-60 hidden md:flex bg-gray-50 p-1 rounded-sm border border-gray-100">
-                            <button onClick={() => setActiveTab('My Shop')} className={`px-8 py-2 rounded-sm text-[12px] font-black uppercase transition-all ${activeTab === 'My Shop' ? 'bg-[#00A3E1] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>My Shop</button>
-                            <button onClick={() => setActiveTab('Edit Shop')} className={`px-8 py-2 rounded-sm text-[12px] font-black uppercase transition-all ${activeTab === 'Edit Shop' ? 'bg-[#00A3E1] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>Edit Shop</button>
-                        </div>
+                    <div className="hidden md:flex bg-gray-50 p-1 rounded-sm border border-gray-100 ml-52">
+                        <button onClick={() => setActiveTab('My Shop')} className={`px-8 py-2 rounded-sm text-[12px] font-black uppercase transition-all ${activeTab === 'My Shop' ? 'bg-[#00A3E1] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>My Shop</button>
+                        <button onClick={() => setActiveTab('Edit Shop')} className={`px-8 py-2 rounded-sm text-[12px] font-black uppercase transition-all ${activeTab === 'Edit Shop' ? 'bg-[#00A3E1] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>Edit Shop</button>
                     </div>
                 </div>
-
             </header>
 
-            <main className="p-4 md:p-6 space-y-6 flex-1 max-w-7xl mx-auto w-full pb-32">
+            <main className="p-4 space-y-6 flex-1 max-w-7xl mx-auto w-full pb-20">
 
-                <div className="md:hidden flex justify-center w-full">
-                    <div className="bg-white/80 backdrop-blur-md p-1 rounded-sm flex shadow-sm border border-gray-100 w-full max-w-md">
+                {/* --- STICKY MOBILE TABS --- */}
+                <div className="md:hidden sticky top-[58px] z-[90] flex justify-center w-full px-4 py-2 bg-[#E9F0F7]/80 backdrop-blur-sm">
+                    <div className="bg-white/80 backdrop-blur-md p-1 rounded-sm flex shadow-md border border-gray-100 w-full max-w-md">
                         <button
                             onClick={() => setActiveTab('My Shop')}
-                            className={`flex-1 py-2.5 rounded-sm text-[10px] font-black uppercase transition-all ${activeTab === 'My Shop' ? 'bg-[#00A3E1] text-white shadow-md' : 'text-gray-400'}`}
+                            className={`flex-1 py-2.5 rounded-sm text-[10px] font-black uppercase transition-all ${activeTab === 'My Shop' ? 'bg-[#00A3E1] text-white shadow-md' : 'text-gray-400'
+                                }`}
                         >
                             My Shop
                         </button>
                         <button
                             onClick={() => setActiveTab('Edit Shop')}
-                            className={`flex-1 py-2.5 rounded-sm text-[10px] font-black uppercase transition-all ${activeTab === 'Edit Shop' ? 'bg-[#00A3E1] text-white shadow-md' : 'text-gray-400'}`}
+                            className={`flex-1 py-2.5 rounded-sm text-[10px] font-black uppercase transition-all ${activeTab === 'Edit Shop' ? 'bg-[#00A3E1] text-white shadow-md' : 'text-gray-400'
+                                }`}
                         >
                             Edit Shop
                         </button>
                     </div>
                 </div>
+
                 {/* --- SEARCH BAR --- */}
-                <div className="relative group max-w-md mx-auto w-full">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                    <input type="text" placeholder="Search products..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white border border-gray-100 rounded-sm py-3.5 pl-11 pr-4 text-xs font-bold outline-none shadow-sm focus:ring-2 focus:ring-[#00A3E1]/10 transition-all" />
-                </div>
+                <SearchBar
+                    setSearchQuery={setSearchQuery}
+                />
 
                 {/* --- CATALOGUE COUNT & FILTER --- */}
                 <div className="max-w-7xl mx-auto px-1 flex items-center justify-between relative">
@@ -256,7 +224,6 @@ const OrderingPage: React.FC = () => {
                         </span>
                     </div>
 
-                    {/* Filter Button */}
                     <div className="relative">
                         <button
                             onClick={() => setIsSortOpen(!isSortOpen)}
@@ -266,7 +233,6 @@ const OrderingPage: React.FC = () => {
                             <FiPlus className={`transition-transform duration-300 ${isSortOpen ? 'rotate-45' : ''}`} size={12} />
                         </button>
 
-                        {/* Dropdown Menu */}
                         {isSortOpen && (
                             <div className="absolute right-0 mt-2 w-32 bg-white rounded-sm shadow-xl border border-gray-50 z-[70] overflow-hidden">
                                 <button
@@ -288,75 +254,94 @@ const OrderingPage: React.FC = () => {
 
                 {/* --- PRODUCT GRID --- */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                    {filteredItems.map(group => (
-                        <div
-                            key={group.id}
-                            onClick={() => {
-                                if (activeTab === 'Edit Shop') {
-                                    handleEdit(group);
-                                } else {
-                                    // LOGIC FIXED: Navigating with ID so MyShop can filter
-                                    navigate(`/catalogue-home/my-shop/${group.id}`)
-                                }
-                            }}
-                            className={`bg-white rounded-sm overflow-hidden shadow-sm border border-gray-100 flex flex-col transition-all group cursor-pointer active:scale-95 ${activeTab === 'Edit Shop' ? 'hover:shadow-xl hover:border-[#00A3E1]/30' : ''
-                                }`}
-                        >
-                            <div className="aspect-square bg-[#F8FAFC] relative overflow-hidden flex items-center justify-center">
-                                <FiPackage className="h-10 w-10 text-gray-200" />
-                            </div>
+                    {filteredItems.map(group => {
+                        // Count calculation based on existing _items state
+                        const itemCount = _items.filter(item => item.itemGroupId === group.id).length;
 
-                            <div className="p-2.5 flex flex-col flex-1">
-                                {editingId === group.id ? (
-                                    <div className="space-y-2 py-1" onClick={(e) => e.stopPropagation()}>
-                                        <input
-                                            autoFocus
-                                            type="text"
-                                            value={tempName}
-                                            onChange={(e) => setTempName(e.target.value)}
-                                            className="w-full bg-gray-50 border border-gray-100 rounded-sm py-1 px-2 text-[10px] font-bold outline-none"
-                                        />
-                                        <div className="flex gap-1">
-                                            <button onClick={(e) => { e.stopPropagation(); handleSaveEdit(group.id!); }} className="flex-1 bg-[#00A3E1] text-white py-1.5 rounded-sm text-[8px] font-black uppercase">Save</button>
+                        return (
+                            <div
+                                key={group.id}
+                                onClick={() => {
+                                    if (activeTab === 'Edit Shop') {
+                                        handleEdit(group);
+                                    } else {
+                                        navigate(`/catalogue-home/my-shop/${group.id}`)
+                                    }
+                                }}
+                                className={`bg-white rounded-sm overflow-hidden shadow-sm border border-gray-100 flex flex-col transition-all group cursor-pointer active:scale-95 ${activeTab === 'Edit Shop' ? 'hover:shadow-xl hover:border-[#00A3E1]/30' : ''
+                                    }`}
+                            >
+                                {/* --- IMAGE SECTION WITH TOP BADGE --- */}
+                                <div className="aspect-square bg-[#F8FAFC] relative overflow-hidden flex items-center justify-center">
+                                    {group.imageUrl ? (
+                                        <img src={group.imageUrl} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt={group.name} />
+                                    ) : (
+                                        <FiPackage className="h-10 w-10 text-gray-200" />
+                                    )}
+                                </div>
 
-                                            <button
-                                                onClick={async (e) => {
-                                                    e.stopPropagation();
-                                                    if (window.confirm("Delete product group?") && dbOperations) {
-                                                        try {
-                                                            await dbOperations.deleteItemGroup(group.id!);
-                                                            setItemGroups(itemGroups.filter(p => p.id !== group.id));
-                                                            setEditingId(null);
-                                                            setModal({ message: 'Deleted successfully', type: State.SUCCESS });
-                                                        } catch (err) {
-                                                            console.error(err);
-                                                            setModal({ message: 'Delete failed', type: State.ERROR });
+                                {/* --- CONTENT SECTION --- */}
+                                <div className="p-3 flex flex-col flex-1">
+                                    {editingId === group.id ? (
+                                        <div className="space-y-2 py-1" onClick={(e) => e.stopPropagation()}>
+                                            <input
+                                                autoFocus
+                                                type="text"
+                                                value={tempName}
+                                                onChange={(e) => setTempName(e.target.value)}
+                                                className="w-full bg-gray-50 border border-gray-100 rounded-sm py-1 px-2 text-[10px] font-bold outline-none"
+                                            />
+                                            <div className="flex gap-1">
+                                                <button onClick={(e) => { e.stopPropagation(); handleSaveEdit(group.id!); }} className="flex-1 bg-[#00A3E1] text-white py-1.5 rounded-sm text-[8px] font-black uppercase">Save</button>
+                                                <button
+                                                    onClick={async (e) => {
+                                                        e.stopPropagation();
+                                                        if (window.confirm("Delete product group?") && dbOperations) {
+                                                            try {
+                                                                await dbOperations.deleteItemGroup(group.id!);
+                                                                setItemGroups(itemGroups.filter(p => p.id !== group.id));
+                                                                setEditingId(null);
+                                                                setModal({ message: 'Deleted successfully', type: State.SUCCESS });
+                                                            } catch (err) {
+                                                                console.error(err);
+                                                                setModal({ message: 'Delete failed', type: State.ERROR });
+                                                            }
                                                         }
-                                                    }
-                                                }}
-                                                className="p-1.5 bg-red-50 text-red-500 rounded-sm"
-                                            >
-                                                <Trash2 size={12} />
-                                            </button>
+                                                    }}
+                                                    className="p-1.5 bg-red-50 text-red-500 rounded-sm"
+                                                >
+                                                    <Trash2 size={12} />
+                                                </button>
+                                                <button onClick={(e) => { e.stopPropagation(); setEditingId(null); }} className="p-1.5 bg-gray-50 text-gray-400 rounded-sm"><X size={12} /></button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <h3 className="text-[10px] font-bold text-[#1A3B5D] mb-1.5 truncate leading-tight uppercase">
+                                                {group.name}
+                                            </h3>
 
-                                            <button onClick={(e) => { e.stopPropagation(); setEditingId(null); }} className="p-1.5 bg-gray-50 text-gray-400 rounded-sm"><X size={12} /></button>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <>
-                                        <h3 className="text-[9px] md:text-[10px] font-bold text-[#1A3B5D] mb-0.5 truncate leading-tight uppercase">{group.name}</h3>
-                                        <div className="mt-1.5 w-full py-1.5 rounded-sm text-[9px] font-black uppercase text-center tracking-wider transition-all bg-[#00A3E1] text-white">
-                                            {activeTab === 'Edit Shop' ? 'Edit' : 'View Items'}
-                                        </div>
-                                    </>
-                                )}
+                                            {/* Centered Item Count Badge UI */}
+                                            <div className="flex items-center justify-center gap-1.5 bg-blue-50 px-2 py-0.5 rounded-sm border border-blue-100 w-fit mx-auto mb-2">
+                                                <span className="text-[10px] font-black text-[#00A3E1] leading-none">
+                                                    {itemCount}
+                                                </span>
+                                                <span className="text-[8px] font-black uppercase tracking-widest text-[#1A3B5D]/60 leading-none">
+                                                    Items
+                                                </span>
+                                            </div>
+
+                                            <div className="mt-auto w-full py-1.5 rounded-sm text-[9px] font-black uppercase text-center tracking-wider transition-all bg-[#00A3E1] text-white">
+                                                {activeTab === 'Edit Shop' ? 'Edit Group' : 'View Products'}
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             </main>
-
-
 
             {isCustomerModalOpen && (
                 <div className="fixed inset-0 z-[110] flex items-center justify-center bg-[#1A3B5D]/60 backdrop-blur-md p-4">
@@ -373,7 +358,9 @@ const OrderingPage: React.FC = () => {
                     </div>
                 </div>
             )}
-            <Footer companyName={companyName} />
+            <div className="w-full m-0 p-0">
+                <Footer companyName={companyName} />
+            </div>
         </div>
     );
 };

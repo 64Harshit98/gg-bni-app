@@ -1,9 +1,8 @@
 import { Heart, Facebook, Instagram, Twitter, Mail } from 'lucide-react';
-
-function Footer({companyName}: any) {
+function Footer({ companyName }: any) {
     return (
         <div>
-            <footer className="w-full bg-white border-t border-gray-50 pt-12 pb-10 shadow-sm">
+            <footer className="w-full bg-white border-t border-gray-50 pt-12 pb-4 shadow-sm">
                 <div className="flex flex-col items-center text-center">
                     <div className="mb-6">
                         <h2 className="text-sm font-black text-[#1A3B5D] tracking-[0.3em] uppercase mb-2">{companyName}</h2>
@@ -22,7 +21,7 @@ function Footer({companyName}: any) {
                         <div className="pt-4 border-t border-gray-50 w-48 mx-auto">
                             <p className="text-[8px] font-medium text-gray-400 uppercase tracking-[0.15em]">© 2026 All Rights Reserved</p>
                             <p className="mt-1 text-[9px] font-black text-[#1A3B5D]/40 uppercase tracking-widest">
-                                Powered by <span className="text-[#00A3E1]">sellar.in</span>
+                                Powered by <a className="text-[#00A3E1] cursor-pointer" href='https://www.sellar.in' target='_blank'>sellar.in</a>
                             </p>
                         </div>
                     </div>

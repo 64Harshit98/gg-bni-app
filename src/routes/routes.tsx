@@ -11,6 +11,8 @@ import { RequireSubscription } from '../UseComponents/RequiredSubscription';
 import Loading from '../Pages/Loading/Loading';
 import GlobalError from '../Components/GlobalError';
 import CartPage from '../Catalogue/CheckOut';
+import AddItem from '../Catalogue/AddItem';
+import ItemGroups from '../Catalogue/ItemGroups';
 
 const Home = lazy(() => import('../Pages/Home'));
 const Account = lazy(() => import('../Pages/Account'));
@@ -41,10 +43,10 @@ const SalesSettingsPage = lazy(() => import('../Pages/Settings/SalesSetting'));
 const PurchaseSettingsPage = lazy(() => import('../Pages/Settings/Purchasesetting'));
 const History = lazy(() => import('../UseComponents/historypage'));
 const CHome = lazy(() => import('../Catalogue/CatalogueHome'));
-const MyShop = lazy(() => import('../Catalogue/MyShop'));
+const MyShop = lazy(() => import('../Catalogue/ShopItem'));
 const UserSetting = lazy(() => import('../Pages/Settings/UserSettings'));
 const ItemSetting = lazy(() => import('../Pages/Settings/ItemSetting'));
-const Order = lazy(() => import('../Catalogue/OrderingPage'));
+const Order = lazy(() => import('../Catalogue/Shop'));
 const OrderDetails = lazy(() => import('../Catalogue/Orders'));
 const Catalogue = lazy(() => import('../Catalogue/SharedCatalouge'));
 const CatalogueAccounts = lazy(() => import('../Catalogue/CatalougeAccount'));
@@ -286,6 +288,16 @@ const router = createBrowserRouter([
             handle: { requiredPermission: null },
           },
           {
+            path: ROUTES.ADD_PRODUCT,
+            element: <AddItem />,
+            handle: { requiredPermission: null },
+          },
+          {
+            path: ROUTES.CAT_ITEM_GROUP,
+            element: <ItemGroups />,
+            handle: { requiredPermission: null },
+          },
+          {
             path: `${ROUTES.MYSHOP}/:groupId`,
             element: <MyShop />,
             handle: { requiredPermission: null },
@@ -312,6 +324,7 @@ const router = createBrowserRouter([
         element: <Catalogue />,
         handle: { requiredPermission: null },
       },
+
       {
         path: `/product/:companyId/:groupId`,
         element: <SharedProduct />,

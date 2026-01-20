@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Search, ShoppingCart, Edit3,Minus, Plus, ChevronLeft} from 'lucide-react';
+import { ShoppingCart, Edit3,Minus, Plus, ChevronLeft} from 'lucide-react';
 import { useAuth, useDatabase } from '../context/auth-context';
 import type { Item, ItemGroup } from '../constants/models';
 import { FiStar, FiCheckSquare, FiLoader, FiPackage, FiPlus } from 'react-icons/fi';
@@ -7,36 +7,38 @@ import { ItemEditDrawer } from '../Components/ItemDrawer';
 import { ItemDetailDrawer } from '../Components/ItemDetails';
 import { Spinner } from '../constants/Spinner';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc } from 'firebase/firestore'; 
-import { db } from '../lib/Firebase'; 
+// import { doc, getDoc } from 'firebase/firestore'; 
+// import { db } from '../lib/Firebase'; 
 import Footer from './Footer';
+import { useBusinessName } from './hooks/BusinessName';
+import SearchBar from './SearchBar';
 
-const useBusinessName = (companyId?: string) => {
-    const [businessName, setBusinessName] = useState<string>('');
-    const [loading, setLoading] = useState(true);
+// const useBusinessName = (companyId?: string) => {
+//     const [businessName, setBusinessName] = useState<string>('');
+//     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        if (!companyId) {
-            setLoading(false);
-            return;
-        }
-        const fetchBusinessInfo = async () => {
-            try {
-                const docRef = doc(db, 'companies', companyId, 'business_info', companyId);
-                const docSnap = await getDoc(docRef);
-                setBusinessName(docSnap.exists() ? docSnap.data().businessName || 'Catalogue' : 'Catalogue');
-            } catch (err) {
-                console.error("Error fetching business name:", err);
-                setBusinessName('Catalogue');
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchBusinessInfo();
-    }, [companyId]);
+//     useEffect(() => {
+//         if (!companyId) {
+//             setLoading(false);
+//             return;
+//         }
+//         const fetchBusinessInfo = async () => {
+//             try {
+//                 const docRef = doc(db, 'companies', companyId, 'business_info', companyId);
+//                 const docSnap = await getDoc(docRef);
+//                 setBusinessName(docSnap.exists() ? docSnap.data().businessName || 'Catalogue' : 'Catalogue');
+//             } catch (err) {
+//                 console.error("Error fetching business name:", err);
+//                 setBusinessName('Catalogue');
+//             } finally {
+//                 setLoading(false);
+//             }
+//         };
+//         fetchBusinessInfo();
+//     }, [companyId]);
 
-    return { businessName, loading };
-};
+//     return { businessName, loading };
+// };
 
 interface QuickListedToggleProps {
     itemId: string;
@@ -235,7 +237,7 @@ const SharedProduct: React.FC = () => {
                             </button>
                             <div className="w-1 h-5 bg-[#00A3E1] rounded-sm"></div>
                             <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">
-                                MyShop<span className="text-[#00A3E1]">.</span>
+                                {companyName}
                             </h1>
                         </div>
                         <button onClick={() => navigate(`/checkout/${companyId}`)} className="flex items-center justify-center gap-2 bg-[#00A3E1] text-white py-2 px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative">
@@ -252,8 +254,9 @@ const SharedProduct: React.FC = () => {
                     <h1 className="text-xs md:text-sm font-black text-[#00A3E1] uppercase tracking-tighter">{currentCategoryName}</h1>
                 </div>
                 <div className="relative group md:max-w-md md:mx-auto w-full">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-                    <input type="text" placeholder="Search products..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white border border-gray-100 rounded-sm py-2.5 pl-10 pr-4 text-xs outline-none shadow-sm focus:ring-1 focus:ring-[#00A3E1]/20 transition-all" />
+                    <SearchBar
+                        setSearchQuery={setSearchQuery}
+                    />
                 </div>
 
                 <div className="max-w-7xl mx-auto px-1 flex items-center justify-between relative">

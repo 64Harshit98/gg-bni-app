@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Search, ShoppingCart, Edit3, X, Minus, Plus, Trash2, ChevronLeft } from 'lucide-react';
+import { ShoppingCart, Edit3, X, Minus, Plus, Trash2, ChevronLeft } from 'lucide-react';
 import { useAuth, useDatabase } from '../context/auth-context';
 import type { Item, ItemGroup } from '../constants/models';
 import { FiStar, FiCheckSquare, FiLoader, FiPackage, FiPlus } from 'react-icons/fi';
@@ -8,36 +8,38 @@ import { ItemDetailDrawer } from '../Components/ItemDetails';
 import { Spinner } from '../constants/Spinner';
 import { useNavigate, useParams } from 'react-router-dom';
 import Footer from './Footer';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../lib/Firebase';
+import { useBusinessName } from './hooks/BusinessName';
+import SearchBar from './SearchBar';
+// import { doc, getDoc } from 'firebase/firestore';
+// import { db } from '../lib/Firebase';
 
-const useBusinessName = (companyId?: string) => {
-    const [businessName, setBusinessName] = useState<string>('');
-    const [loading, setLoading] = useState(true);
+// const useBusinessName = (companyId?: string) => {
+//     const [businessName, setBusinessName] = useState<string>('');
+//     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        if (!companyId) {
-            setLoading(false);
-            return;
-        }
-        const fetchBusinessInfo = async () => {
-            try {
-                // Correct multi-tenant path as per your logic
-                const docRef = doc(db, 'companies', companyId, 'business_info', companyId);
-                const docSnap = await getDoc(docRef);
-                setBusinessName(docSnap.exists() ? docSnap.data().businessName || 'Catalogue' : 'Catalogue');
-            } catch (err) {
-                console.error("Error fetching business name:", err);
-                setBusinessName('Catalogue');
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchBusinessInfo();
-    }, [companyId]);
+//     useEffect(() => {
+//         if (!companyId) {
+//             setLoading(false);
+//             return;
+//         }
+//         const fetchBusinessInfo = async () => {
+//             try {
+//                 // Correct multi-tenant path as per your logic
+//                 const docRef = doc(db, 'companies', companyId, 'business_info', companyId);
+//                 const docSnap = await getDoc(docRef);
+//                 setBusinessName(docSnap.exists() ? docSnap.data().businessName || 'Catalogue' : 'Catalogue');
+//             } catch (err) {
+//                 console.error("Error fetching business name:", err);
+//                 setBusinessName('Catalogue');
+//             } finally {
+//                 setLoading(false);
+//             }
+//         };
+//         fetchBusinessInfo();
+//     }, [companyId]);
 
-    return { businessName, loading };
-};
+//     return { businessName, loading };
+// };
 
 const StockIndicator: React.FC<{ stock: number }> = ({ stock }) => {
     let colorClass = 'text-green-600 bg-green-100';
@@ -86,7 +88,7 @@ const QuickListedToggle: React.FC<QuickListedToggleProps> = ({ itemId, isListed,
 
 const ITEMS_PER_BATCH_RENDER = 24;
 
-const MyShopPage: React.FC = () => {
+const MyShop: React.FC = () => {
     const navigate = useNavigate()
     const { groupId } = useParams<{ groupId: string }>();
     const { currentUser, loading: authLoading } = useAuth();
@@ -96,7 +98,6 @@ const MyShopPage: React.FC = () => {
 
     const [isViewMode, setIsViewMode] = useState(true);
     const [allItems, setAllItems] = useState<Item[]>([]);
-    const [_allItemGroups, setAllItemGroups] = useState<ItemGroup[]>([]);
     const [selectedCategory, setSelectedCategory] = useState(groupId || 'All');
     const [searchQuery, setSearchQuery] = useState('');
     const [pageIsLoading, setPageIsLoading] = useState(true);
@@ -115,6 +116,7 @@ const MyShopPage: React.FC = () => {
 
     const [cart, setCart] = useState<{ item: Item; quantity: number }[]>([]);
     const [isCartOpen, setIsCartOpen] = useState(false);
+    const [allItemGroups, setAllItemGroups] = useState<ItemGroup[]>([]);
 
     // Sync selectedCategory when groupId changes from URL
     useEffect(() => {
@@ -150,6 +152,11 @@ const MyShopPage: React.FC = () => {
 
     const cartTotal = useMemo(() => cart.reduce((acc, curr) => acc + (curr.item.mrp || 0) * curr.quantity, 0), [cart]);
     const cartCount = useMemo(() => cart.reduce((acc, curr) => acc + curr.quantity, 0), [cart]);
+
+    const currentCategoryName = useMemo(() => {
+        const group = allItemGroups.find(g => g.id === groupId);
+        return group ? group.name : 'Catalogue';
+    }, [allItemGroups, groupId]);
 
     useEffect(() => {
         if (authLoading || !currentUser || !dbOperations) {
@@ -244,8 +251,8 @@ const MyShopPage: React.FC = () => {
     }
 
     return (
-        <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative overflow-x-hidden">
-            <header className="sticky top-0 bg-white border-b border-gray-100 shadow-sm z-40">
+        <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative">
+            <header className="sticky top-0 z-[100] bg-white border-b border-gray-100 shadow-sm w-full">
                 <div className="max-w-7xl mx-auto px-4 py-2 flex flex-col gap-2">
                     <div className="flex">
                         <div className="flex items-center gap-1.5">
@@ -271,14 +278,31 @@ const MyShopPage: React.FC = () => {
             </header>
 
             <main className="p-3 md:p-6 space-y-4 flex-1 max-w-7xl mx-auto w-full pb-24">
+                <div className='flex items-center justify-center'>
+                    <h1 className="text-xs md:text-sm font-black text-[#00A3E1] uppercase tracking-tighter">{currentCategoryName}</h1>
+                </div>
+
+                <div className="md:hidden sticky top-[58px] z-[90] flex justify-center w-full px-4 py-2 bg-[#E9F0F7]/80 backdrop-blur-sm">
+                    <div className="bg-white/80 backdrop-blur-md p-1 rounded-sm flex shadow-md border border-gray-100 w-full max-w-md">
+                        <button
+                            onClick={() => setIsViewMode(true)}
+                            className={`flex-1 py-2 rounded-sm text-[12px] font-black uppercase transition-all text-center ${isViewMode ? 'bg-[#00A3E1] text-white shadow-sm' : 'text-gray-400'}`}
+                        >
+                            My Items
+                        </button>
+                        <button
+                            onClick={() => setIsViewMode(false)}
+                            className={`flex-1 py-2 rounded-sm text-[12px] font-black uppercase transition-all text-center ${!isViewMode ? 'bg-[#00A3E1] text-white shadow-sm' : 'text-gray-400'}`}
+                        >
+                            Edit Items
+                        </button>
+                    </div>
+                </div>
+
+
                 <div className="relative group md:max-w-md md:mx-auto w-full">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-                    <input
-                        type="text"
-                        placeholder="Search products..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full bg-white border border-gray-100 rounded-sm py-2.5 pl-10 pr-4 text-xs outline-none shadow-sm focus:ring-1 focus:ring-[#00A3E1]/20 transition-all"
+                    <SearchBar
+                        setSearchQuery={setSearchQuery}
                     />
                 </div>
 
@@ -338,7 +362,7 @@ const MyShopPage: React.FC = () => {
                                         <StockIndicator stock={item.stock || 0} />
                                     </div>
 
-                                    <div className="mt-auto flex gap-1">
+                                    <div className="mt-1 flex gap-1">
                                         {isViewMode ? (
                                             cartItem ? (
                                                 <div className="w-full flex items-center justify-between bg-gray-50 rounded-sm px-1 py-1 border border-gray-100">
@@ -464,4 +488,4 @@ const MyShopPage: React.FC = () => {
     );
 };
 
-export default MyShopPage;
+export default MyShop;

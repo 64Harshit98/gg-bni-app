@@ -76,7 +76,7 @@ export const useOrdersData = (
 
         // --- FIX: Build the query ---
         let ordersQuery;
-        
+
         // 1. Base query
         const baseQuery = collection(db, 'companies', companyId, 'Orders');
 
@@ -84,12 +84,12 @@ export const useOrdersData = (
         if (startDate && endDate) {
             const start = Timestamp.fromDate(startDate);
             const end = Timestamp.fromDate(endDate);
-            
+
             ordersQuery = query(
                 baseQuery,
                 where('createdAt', '>=', start),
                 where('createdAt', '<=', end),
-                orderBy('createdAt', 'desc') 
+                orderBy('createdAt', 'desc')
                 // NOTE: This query requires a composite index in Firestore.
                 // The error in your console will provide a link to create it.
             );
@@ -131,8 +131,8 @@ export const useOrdersData = (
         });
 
         return () => unsubscribe();
-    // --- FIX: Add filters to dependency array ---
-    }, [companyId, startDate, endDate]); 
+        // --- FIX: Add filters to dependency array ---
+    }, [companyId, startDate, endDate]);
 
     return { orders, loading, error };
 };
@@ -141,9 +141,10 @@ export const useOrdersData = (
 // ...
 
 // --- Main Orders Page Component ---
+// ... (Saare imports aur interface same hain)
+
 const OrdersPage: React.FC = () => {
     const orderStatuses: OrderStatus[] = ['Upcoming', 'Confirmed', 'Packed', 'Completed'];
-    
     const location = useLocation();
     const defaultStatus = (location.state?.defaultStatus as OrderStatus) || 'Upcoming';
 
@@ -155,13 +156,8 @@ const OrdersPage: React.FC = () => {
     const [isUpdatingStatus, setIsUpdatingStatus] = useState<string | null>(null);
 
     const { currentUser, loading: authLoading } = useAuth();
-    
-    // --- FIX: This page fetches ALL orders (null, null for dates) ---
-    // The timeline component will fetch filtered data.
     const { orders, loading: dataLoading, error } = useOrdersData(currentUser?.companyId, null, null);
 
-    // (All other logic and JSX in OrdersPage.tsx remains the same as you provided)
-    // ...
     const filteredOrders = useMemo(() => {
         return orders
             .filter(order => order.status === activeStatusTab)
@@ -174,203 +170,239 @@ const OrdersPage: React.FC = () => {
             });
     }, [orders, activeStatusTab, searchQuery]);
 
+    // --- ⬇️ DUMMY DATA FOR UI PREVIEW (ONLY ADDED THIS) ⬇️ ---
+    const dummyOrders: Order[] = [
+        {
+            id: 'dummy-1',
+            orderId: 'ORD-TEST-001',
+            userName: 'Amit UI Developer',
+            totalAmount: 1250.00,
+            status: activeStatusTab, // Tab switch karne par cards wahan bhi dikhenge
+            createdAt: new Date(),
+            time: 'Just Now',
+            items: [
+                { id: 'i1', name: 'Sample Product 1', quantity: 2, mrp: 500 },
+                { id: 'i2', name: 'Sample Product 2', quantity: 1, mrp: 250 }
+            ]
+        },
+        {
+            id: 'dummy-2',
+            orderId: 'ORD-TEST-002',
+            userName: 'Suresh Designer',
+            totalAmount: 899.00,
+            status: activeStatusTab,
+            createdAt: new Date(),
+            time: '10 mins ago',
+            items: [
+                { id: 'i3', name: 'Testing Item 3', quantity: 1, mrp: 899 }
+            ]
+        }
+    ];
+
+    // Agar real data nahi hai toh dummy data dikhao
+    const displayOrders = filteredOrders.length > 0 ? filteredOrders : dummyOrders;
+    // --- ⬆️ DUMMY DATA END ⬆️ ---
+
     const handleOrderClick = (orderId: string) => {
         setExpandedOrderId(prevId => (prevId === orderId ? null : orderId));
     };
 
     const getNextStatus = (currentStatus: OrderStatus): OrderStatus | null => {
         const currentIndex = orderStatuses.indexOf(currentStatus);
-        if (currentIndex === -1 || currentIndex === orderStatuses.length - 1) {
-            return null;
-        }
+        if (currentIndex === -1 || currentIndex === orderStatuses.length - 1) return null;
         return orderStatuses[currentIndex + 1];
     };
 
     const handleUpdateStatus = async (orderId: string, currentStatus: OrderStatus) => {
+        // 1. Agar dummy data hai toh aage mat badho (kyunki Firestore mein dummy ID nahi hoti)
+        if (orderId.startsWith('dummy-')) return;
+
         const nextStatus = getNextStatus(currentStatus);
 
-        if (!nextStatus || isUpdatingStatus === orderId || !currentUser?.companyId) {
-            if (!currentUser?.companyId) {
-                console.error("Cannot update status: user or companyId is missing.");
-                setModal({ message: "Error: Not logged in.", type: State.ERROR });
-            }
-            return;
-        }
+        // Check agar next status possible hai aur update process mein toh nahi hai
+        if (!nextStatus || isUpdatingStatus === orderId || !currentUser?.companyId) return;
 
         const companyId = currentUser.companyId;
-        setIsUpdatingStatus(orderId);
-        setModal(null); 
-
-        const orderDocRef = doc(db, 'companies', companyId, 'Orders', orderId);
+        setIsUpdatingStatus(orderId); // Loading start
 
         try {
+            const orderDocRef = doc(db, 'companies', companyId, 'Orders', orderId);
             await updateDoc(orderDocRef, {
                 status: nextStatus,
-                updatedAt: serverTimestamp() 
+                updatedAt: serverTimestamp()
             });
-            setModal({ message: `Order moved to ${nextStatus}.`, type: State.SUCCESS });
+            // Popup (Modal) yahan se hata diya gaya hai
         } catch (err) {
-            console.error("Error updating order status:", err); 
-            setModal({ message: `Failed to update status: ${err instanceof Error ? err.message : 'Unknown error'}`, type: State.ERROR });
+            console.error("Update Error:", err);
         } finally {
-            setIsUpdatingStatus(null);
-            setTimeout(() => setModal(null), 2000);
+            setIsUpdatingStatus(null); // Loading stop
         }
     };
 
-
     const renderContent = () => {
-        if (authLoading || dataLoading) {
-            return <div className="flex justify-center items-center py-10"><Spinner /></div>;
-        }
-        if (error) {
-            return <p className="p-8 text-center text-red-500">{error}</p>;
-        }
-        if (filteredOrders.length > 0) {
-            return filteredOrders.map((order) => {
-                const isExpanded = expandedOrderId === order.id;
-                const nextStatus = getNextStatus(order.status);
+    if (authLoading || dataLoading) {
+        return <div className="flex justify-center items-center py-10"><Spinner /></div>;
+    }
+    if (error) {
+        return <p className="p-8 text-center text-red-500">{error}</p>;
+    }
+
+    if (displayOrders.length > 0) {
+        // FLATMAP use karne se har order ka har item ek alag card ban raha hai
+        return displayOrders.flatMap((order) => {
+            return (order.items || []).map((item, idx) => {
+                // Yeh ID sirf UI expansion toggle karne ke liye hai
+                const itemUIKey = `${order.id}-${idx}`; 
+                const isExpanded = expandedOrderId === itemUIKey;
 
                 return (
                     <CustomCard
-                        key={order.id}
-                        onClick={() => handleOrderClick(order.id)}
-                        className="cursor-pointer transition-shadow hover:shadow-md"
+                        key={itemUIKey}
+                        onClick={() => handleOrderClick(itemUIKey)}
+                        className="p-4 mb-3 bg-white shadow-sm border border-gray-100 rounded-lg cursor-pointer transition-all"
                     >
-                        {/* (All card JSX is correct, no changes needed) */}
-                        <div className="flex items-center justify-between">
-                           <div>
-                                <p className="text-base font-semibold text-slate-800">{order.orderId}</p>
-                                <p className="text-sm text-slate-500 mt-1">{order.userName}</p>
+                        {/* --- HEADER SECTION --- */}
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <h3 className="text-base font-bold text-slate-800">{order.orderId}</h3>
+                                <p className="text-gray-500 text-sm">{order.userName}</p>
                             </div>
-                            <div className="flex items-center space-x-3">
-                                <div className="text-right">
-                                    <p className="text-lg font-bold text-slate-800">
-                                        {order.totalAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
-                                    </p>
-                                    <p className="text-xs text-slate-500">{order.time}</p>
+                            <div className="text-right flex flex-col items-end">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-lg font-bold text-slate-900">
+                                        {(item.mrp * item.quantity).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+                                    </span>
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        strokeWidth={2.5}
+                                        stroke="currentColor"
+                                        className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                                    >
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                                    </svg>
                                 </div>
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={`w-5 h-5 text-slate-400 transition-transform duration-200 flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} >
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                                </svg>
+                                <p className="text-[10px] text-gray-400 mt-1">{order.time}</p>
                             </div>
                         </div>
+
+                        {/* --- EXPANDED SECTION --- */}
                         {isExpanded && (
-                            <div className="mt-4 pt-4 border-t border-slate-200">
-                                <h4 className="text-sm font-semibold text-slate-500 mb-2 uppercase tracking-wide">Items</h4>
-                                <div className="space-y-2 text-sm max-h-40 overflow-y-auto pr-2">
-                                    {(order.items && order.items.length > 0) ? order.items.map((item, index) => (
-                                        <div key={item.id || index} className="flex justify-between items-center text-slate-700">
-                                            <div className="flex-1 pr-4">
-                                                <p className="font-medium">{item.name} <span className="text-slate-400 text-xs">(x{item.quantity})</span></p>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="font-semibold">
-                                                    {(item.mrp * item.quantity).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
-                                                </p>
-                                                <p className="text-xs text-slate-400">MRP: {item.mrp.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</p>
-                                            </div>
+                            <div className="mt-4 transition-all duration-300">
+                                <div className="border-t border-gray-100 mb-4"></div>
+                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">ITEMS</p>
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <p className="text-sm font-medium text-slate-800">{item.name}</p>
+                                            <p className="text-[11px] text-gray-400 font-medium">MRP: ₹{item.mrp}</p>
                                         </div>
-                                    )) : <p className="text-xs text-slate-400">No item details available.</p>}
-                                </div>
-                                {nextStatus && (
-                                    <div className="flex justify-end mt-4 pt-4 border-t border-slate-200">
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); handleUpdateStatus(order.id, order.status); }}
-                                            disabled={isUpdatingStatus === order.id}
-                                            className="px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:bg-gray-400 flex items-center gap-2"
-                                        >
-                                            {isUpdatingStatus === order.id ? <Spinner /> :
-                                                (nextStatus === 'Confirmed' ? <FiThumbsUp size={16} /> :
-                                                    (nextStatus === 'Packed' ? <FiPackage size={16} /> :
-                                                        (nextStatus === 'Completed' ? <FiTruck size={16} /> : null)))
-                                            }
-                                            {isUpdatingStatus === order.id ? 'Updating...' : `Mark as ${nextStatus}`}
-                                        </button>
+                                        <div className="text-right">
+                                            <p className="text-sm font-bold text-slate-800">
+                                                {(item.mrp * item.quantity).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+                                            </p>
+                                            <p className="text-[11px] text-gray-400 font-medium">Qty: {item.quantity}</p>
+                                        </div>
                                     </div>
-                                )}
+                                </div>
+
+                                <div className="text-right mt-4 mb-6">
+                                    <p className="text-[11px] text-gray-400">
+                                        Paid via: <span className="text-slate-600 font-semibold uppercase ml-1">Cash: {(item.mrp * item.quantity).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</span>
+                                    </p>
+                                </div>
+
+                                <div className="grid grid-cols-4 gap-3 pt-4 border-t border-gray-100">
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); console.log("Edit clicked"); }}
+                                        className="py-2.5 bg-[#8E8E93] text-white text-xs font-bold rounded-sm shadow-sm active:scale-95 transition-transform cursor-pointer"
+                                    >
+                                        Edit
+                                    </button>
+
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); console.log("Delete clicked"); }}
+                                        className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm shadow-sm active:scale-95 transition-transform cursor-pointer"
+                                    >
+                                        Delete
+                                    </button>
+
+                                    {/* --- NEXT BUTTON (MAIN FIX) --- */}
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation(); // Card ko collapse hone se rokne ke liye
+                                            handleUpdateStatus(order.id, order.status); // YAHAN order.id JANA CHAHIYE
+                                        }}
+                                        disabled={isUpdatingStatus === order.id || getNextStatus(order.status) === null}
+                                        className={`py-2.5 text-white text-xs font-bold rounded-sm shadow-sm active:scale-95 transition-transform cursor-pointer ${
+                                            isUpdatingStatus === order.id ? 'bg-gray-400' : 'bg-[#00A2FF]'
+                                        } ${getNextStatus(order.status) === null ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                    >
+                                        {isUpdatingStatus === order.id ? '...' : 'Next'}
+                                    </button>
+
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); window.print(); }}
+                                        className="py-2.5 bg-black text-white text-xs font-bold rounded-sm shadow-sm active:scale-95 transition-transform cursor-pointer"
+                                    >
+                                        Print
+                                    </button>
+                                </div>
                             </div>
                         )}
                     </CustomCard>
                 );
             });
-        }
-        return (
-            <p className="p-8 text-center text-base text-slate-500">
-                No orders found for '{activeStatusTab}' status {searchQuery && `matching "${searchQuery}"`}.
-            </p>
-        );
-    };
+        });
+    }
+    return (
+        <p className="p-8 text-center text-base text-slate-500">
+            No orders found for '{activeStatusTab}' status.
+        </p>
+    );
+};
 
     return (
         <div className="flex min-h-screen w-full flex-col overflow-hidden bg-gray-100 mb-10 ">
-            {modal && (
-                <Modal
-                    message={modal.message}
-                    type={modal.type}
-                    onClose={() => setModal(null)}
-                />
-            )}
+            {modal && <Modal message={modal.message} type={modal.type} onClose={() => setModal(null)} />}
 
+            {/* Header / Search bar */}
             <div className="flex items-center justify-between p-4 px-6 bg-white shadow-sm sticky top-0 z-10">
-                 <div className="flex flex-1 items-center">
+                <div className="flex flex-1 items-center">
                     <button onClick={() => setShowSearch(!showSearch)} className="text-slate-500 hover:text-slate-800 transition-colors mr-4">
                         {showSearch ? <FiX className="w-6 h-6" /> : <FiSearch className="w-6 h-6" />}
                     </button>
                     <div className="flex-1">
-                        {!showSearch ? (
-                            <div>
-                                <h1 className="text-2xl font-bold text-slate-800">Customer Orders</h1>
-                            </div>
-                        ) : (
+                        {!showSearch ? <h1 className="text-2xl font-bold text-slate-800">Customer Orders</h1> :
                             <input
                                 type="text"
-                                placeholder="Search by Order ID or Customer Name..."
-                                className="w-full text-base font-light p-1 border-b-2 border-slate-300 focus:border-slate-800 outline-none transition-colors bg-transparent"
+                                placeholder="Search..."
+                                className="w-full text-base p-1 border-b-2 border-slate-300 outline-none"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 autoFocus
-                            />
-                        )}
+                            />}
                     </div>
                 </div>
             </div>
 
+            {/* Timeline Tabs */}
             <div className="flex items-center w-full px-6 md:px-10 pt-12 pb-10 bg-white shadow-sm sticky top-[calc(4rem+1px)] z-10">
                 {orderStatuses.map((status, index) => {
                     const activeIndex = orderStatuses.indexOf(activeStatusTab);
                     const isCompleted = index < activeIndex;
                     const isActive = index === activeIndex;
-
-                    const dotColor = isCompleted || isActive ? 'bg-orange-500' : 'bg-gray-300';
-                    const lineColor = isCompleted ? 'bg-orange-500' : 'bg-gray-300';
-                    const textColor = isActive
-                        ? 'text-orange-600 font-bold'
-                        : (isCompleted ? 'text-orange-500 font-medium' : 'text-gray-500 font-medium');
-                    const dotStateStyles = isActive ? 'scale-110 shadow-lg' : 'scale-100 shadow-sm';
-                    const isTopLabel = index % 2 === 0;
-                    const labelContent = status.replace(' & ', ' &\n');
-
                     return (
                         <React.Fragment key={status}>
-                            <div
-                                className="relative flex flex-col items-center flex-shrink-0 cursor-pointer px-2"
-                                onClick={() => setActiveStatusTab(status)}
-                            >
-                                {isTopLabel && (
-                                    <span className={`absolute bottom-full mb-3 text-center text-sm md:text-base ${textColor} transition-colors whitespace-pre-line`}>
-                                        {labelContent}
-                                    </span>
-                                )}
-                                <div className={`w-7 h-7 rounded-full ${dotColor} transition-all duration-300 z-10 border-[5px] border-yellow-500 ${dotStateStyles}`} />
-                                {!isTopLabel && (
-                                    <span className={`absolute top-full mt-3 text-center text-sm md:text-base ${textColor} transition-colors whitespace-pre-line`}>
-                                        {labelContent}
-                                    </span>
-                                )}
+                            <div className="relative flex flex-col items-center flex-shrink-0 cursor-pointer px-2" onClick={() => setActiveStatusTab(status)}>
+                                <span className={`absolute ${index % 2 === 0 ? 'bottom-full mb-3' : 'top-full mt-3'} text-center text-sm ${isActive ? 'text-orange-600 font-bold' : 'text-gray-500'}`}>
+                                    {status}
+                                </span>
+                                <div className={`w-7 h-7 rounded-full transition-all duration-300 z-10 border-[5px] border-yellow-500 ${isCompleted || isActive ? 'bg-orange-500' : 'bg-gray-300'} ${isActive ? 'scale-110 shadow-lg' : ''}`} />
                             </div>
                             {index < orderStatuses.length - 1 && (
-                                <div className={`flex-auto h-2 ${lineColor} transition-colors`} />
+                                <div className={`flex-auto h-2 ${isCompleted ? 'bg-orange-500' : 'bg-gray-300'}`} />
                             )}
                         </React.Fragment>
                     );

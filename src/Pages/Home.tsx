@@ -47,7 +47,7 @@ interface DashboardData {
   cacheEnd?: string;
 }
 
-const CACHE_DURATION = 60 * 60 * 1000; 
+const CACHE_DURATION = 60 * 60 * 1000;
 
 const cleanString = (str: string) => {
   if (!str) return 'N/A';
@@ -121,9 +121,9 @@ const DashboardContent = () => {
       const cached = localStorage.getItem(CACHE_KEY);
       if (!forceRefresh && cached) {
         const parsed = JSON.parse(cached);
-        
+
         const isTimeValid = (Date.now() - parsed.lastUpdated < CACHE_DURATION);
-        
+
         const isDateValid = parsed.cacheStart === filters.startDate && parsed.cacheEnd === filters.endDate;
 
         if (isTimeValid && isDateValid) {
@@ -148,7 +148,7 @@ const DashboardContent = () => {
 
       const qSales = query(
         salesRef,
-        where('createdAt', '>=', prevStart), 
+        where('createdAt', '>=', prevStart),
         where('createdAt', '<=', end),
         orderBy('createdAt', 'desc')
       );
@@ -208,7 +208,7 @@ const DashboardContent = () => {
             });
           }
           if (!methodFound) {
-            const m = d.paymentMethod || d.paymentMode ;
+            const m = d.paymentMethod || d.paymentMode;
             const clean = cleanString(m);
             if (!paymentMap[clean]) paymentMap[clean] = { amount: 0, count: 0 };
             paymentMap[clean].amount += amount;
@@ -258,7 +258,7 @@ const DashboardContent = () => {
       else if (currentTotalSales > 0) percentageChange = 100;
 
       const chartData = [];
-      const itr = new Date(prevStart); 
+      const itr = new Date(prevStart);
       while (itr <= end) {
         const offset = itr.getTimezoneOffset() * 60000;
         const key = new Date(itr.getTime() - offset).toISOString().split('T')[0];
@@ -352,12 +352,14 @@ const DashboardContent = () => {
       </header>
 
       <main className="flex-grow overflow-y-auto p-2 sm:p-2">
-        <div className="flex justify-center gap-2">
-          <p className="text-sm text-slate-500 flex items-center">Last Updated: {formattedLastUpdated}</p>
-          <button onClick={handleRefresh} className={`p-1 rounded-full hover:bg-slate-200 text-slate-600 transition-all ${loading ? 'animate-spin' : ''}`}>
-            {loading ? <FiLoader size={14} /> : <FiRefreshCw size={14} />}
-          </button>
-        </div>
+        <ShowWrapper requiredPermission={Permissions.ViewHidebutton}>
+          <div className="flex justify-center gap-2">
+            <p className="text-sm text-slate-500 flex items-center">Last Updated: {formattedLastUpdated}</p>
+            <button onClick={handleRefresh} className={`p-1 rounded-full hover:bg-slate-200 text-slate-600 transition-all ${loading ? 'animate-spin' : ''}`}>
+              {loading ? <FiLoader size={14} /> : <FiRefreshCw size={14} />}
+            </button>
+          </div>
+        </ShowWrapper>
 
         <div className="mx-auto max-w-7xl">
           <ShowWrapper requiredPermission={Permissions.ViewFilter}><div className="mb-2"><FilterControls /></div></ShowWrapper>
@@ -367,7 +369,7 @@ const DashboardContent = () => {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 pb-30">
               <ShowWrapper requiredPermission={Permissions.ViewSalescard}>
-                <SalesCard isDataVisible={isDataVisible} totalSales={data?.totalSales || 0} percentageChange={data?.percentageChange || 0} />
+                <SalesCard isDataVisible={isDataVisible} totalSales={Math.ceil(data?.totalSales || 0)} percentageChange={data?.percentageChange || 0} />
               </ShowWrapper>
               <ShowWrapper requiredPermission={Permissions.ViewSalesbarchart}>
                 <SalesBarChartReport isDataVisible={isDataVisible} data={data?.salesByDate || []} />

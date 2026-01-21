@@ -307,7 +307,13 @@ const Sales: React.FC = () => {
             barcode: itemToAdd.barcode || '',
             restockQuantity: itemToAdd.restockQuantity || 0,
         };
-        setItems(prev => [newSalesItem, ...prev]);
+        setItems(prev => {
+            if (salesSettings?.cartInsertionOrder === 'top') {
+                return [newSalesItem, ...prev]; // Add to Top
+            } else {
+                return [...prev, newSalesItem]; // Add to Bottom
+            }
+        });
     };
 
     const handleClearCart = () => {
@@ -317,7 +323,10 @@ const Sales: React.FC = () => {
     };
 
     const handleItemSelected = (selectedItem: Item | null) => {
-        if (selectedItem) { addItemToCart(selectedItem); setGridSearchQuery(''); }
+        if (selectedItem) {
+            addItemToCart(selectedItem);
+            setGridSearchQuery('');
+        }
     };
 
     const handleBarcodeScanned = async (barcode: string) => {
@@ -492,7 +501,7 @@ const Sales: React.FC = () => {
                     const difference = oldQty - newQty;
                     if (difference !== 0) {
                         const itemRef = doc(db, "companies", companyId, "items", itemId);
-                        transaction.update(itemRef, { stock: firebaseIncrement(difference) });
+                        transaction.update(itemRef, { stock: firebaseIncrement(difference), updatedAt: serverTimestamp() });
                     }
                 });
 
@@ -526,7 +535,7 @@ const Sales: React.FC = () => {
                         const pid = i.productId || i.id;
                         if (pid) {
                             const itemRef = doc(db, "companies", companyId, "items", pid);
-                            transaction.update(itemRef, { stock: firebaseIncrement(-(i.quantity || 1)) });
+                            transaction.update(itemRef, { stock: firebaseIncrement(-(i.quantity || 1)), updatedAt: serverTimestamp() });
                         }
                     });
                     if (settingsDocId) {
@@ -562,7 +571,7 @@ const Sales: React.FC = () => {
     const gstSchemeDisplay = salesSettings?.gstScheme ?? 'none';
     const settingsTaxTypeDisplay = salesSettings?.taxType ?? 'exclusive';
     const isCardView = salesSettings?.salesViewType === 'card';
-
+    console.log("Insertion Order:", salesSettings?.cartInsertionOrder)
     const showTaxRow = gstSchemeDisplay !== 'none' && settingsTaxTypeDisplay === 'exclusive';
 
     // --- RENDER HEADER (RESPONSIVE) ---
@@ -631,7 +640,9 @@ const Sales: React.FC = () => {
                     onActionClick={handleProceedToPayment}
                     disableAction={items.length === 0}
                 />
-                <PaymentDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} subtotal={amountToPayNow} onPaymentComplete={handleSavePayment} isPartyNameEditable={!isEditMode} initialPartyName={isEditMode ? invoiceToEdit?.partyName : ''} initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : ''} initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined} totalItemDiscount={totalDiscount} totalQuantity={totalQuantity}
+                <PaymentDrawer
+                    mode='sale' isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} subtotal={subtotal} billTotal={amountToPayNow} onPaymentComplete={handleSavePayment} isPartyNameEditable={!isEditMode} initialPartyName={isEditMode ? invoiceToEdit?.partyName : ''} initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : ''} initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined} totalItemDiscount={totalDiscount} totalQuantity={totalQuantity}
+                    initialDiscount={invoiceToEdit?.manualDiscount}
                     requireCustomerName={salesSettings?.requireCustomerName}
                     requireCustomerMobile={salesSettings?.requireCustomerMobile}
                 />
@@ -777,7 +788,17 @@ const Sales: React.FC = () => {
 
             </div>
 
-            <PaymentDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} subtotal={amountToPayNow} onPaymentComplete={handleSavePayment} isPartyNameEditable={!isEditMode} initialPartyName={isEditMode ? invoiceToEdit?.partyName : ''} initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : ''} initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined} totalItemDiscount={totalDiscount} totalQuantity={totalQuantity}
+            <PaymentDrawer isOpen={isDrawerOpen}
+                mode='sale'
+                onClose={() => setIsDrawerOpen(false)}
+                subtotal={subtotal} billTotal={amountToPayNow}
+                onPaymentComplete={handleSavePayment}
+                initialDiscount={invoiceToEdit?.manualDiscount}
+                isPartyNameEditable={!isEditMode}
+                initialPartyName={isEditMode ? invoiceToEdit?.partyName : ''}
+                initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : ''}
+                initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined}
+                totalItemDiscount={totalDiscount} totalQuantity={totalQuantity}
                 requireCustomerName={salesSettings?.requireCustomerName}
                 requireCustomerMobile={salesSettings?.requireCustomerMobile}
             />

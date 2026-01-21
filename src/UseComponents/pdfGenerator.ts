@@ -333,32 +333,43 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   }
 
   // --- BRANDING ---
-  const text1 = "Made With ";
-  const text2 = "Love";
-  const text3 = ", in India, By SELLAR.IN";
-
   doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
 
-  const w1 = doc.getTextWidth(text1);
-  const w2 = doc.getTextWidth(text2);
-  const w3 = doc.getTextWidth(text3);
-  const totalW = w1 + w2 + w3;
-
-  let cursorX = (pageWidth / 2) - (totalW / 2);
-  const textY = pageHeight - 5;
+  // Line 1: Powered by Sellar
+  const brandingLine1 = "Powered by Sellar.in";
+  const wLine1 = doc.getTextWidth(brandingLine1);
+  const line1Y = pageHeight - 11; // Positioned slightly higher
 
   doc.setTextColor(255, 255, 255);
-  doc.text(text1, cursorX, textY);
-  cursorX += w1;
+  doc.text(brandingLine1, (pageWidth / 2) - (wLine1 / 2), line1Y);
 
+  // Line 2: Made with Love in India
+  const partA = "Made with ";
+  const partB = "Love";
+  const partC = " in India";
+
+  const wA = doc.getTextWidth(partA);
+  const wB = doc.getTextWidth(partB);
+  const wC = doc.getTextWidth(partC);
+  const totalWLine2 = wA + wB + wC;
+
+  let cursorX = (pageWidth / 2) - (totalWLine2 / 2);
+  const line2Y = pageHeight - 6; // Positioned at the bottom
+
+  // Render "Made with "
+  doc.setTextColor(255, 255, 255);
+  doc.text(partA, cursorX, line2Y);
+  cursorX += wA;
+
+  // Render "Love" (in Red)
   doc.setTextColor(255, 100, 100);
-  doc.text(text2, cursorX, textY);
-  cursorX += w2;
+  doc.text(partB, cursorX, line2Y);
+  cursorX += wB;
 
+  // Render " in India"
   doc.setTextColor(255, 255, 255);
-  doc.text(text3, cursorX, textY);
-
+  doc.text(partC, cursorX, line2Y);
   // --- ACTION HANDLER ---
   if (action === ACTION.PRINT) {
     doc.autoPrint();

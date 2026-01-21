@@ -198,14 +198,6 @@ const PurchaseSettingsPage: React.FC = () => {
                     {/* --- Card 3: Defaults & Behavior --- */}
                     <div className="bg-white rounded-sm p-4 shadow-md mb-2">
                         <h2 className="text-lg font-semibold text-gray-800 mb-4">Defaults & Behavior</h2>
-
-                        <div className="flex items-center mb-4">
-                            <input type="checkbox" id="input-mrp"
-                                checked={settings.inputMRP}
-                                onChange={(e) => handleCheckboxChange('inputMRP', e.target.checked)}
-                                className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
-                            <label htmlFor="input-mrp" className="ml-2 text-gray-700 text-sm font-medium">Require MRP Input during Purchase</label>
-                        </div>
                         <div className="flex items-center mb-4">
                             <input type="checkbox" id="zero-value"
                                 checked={settings.zeroValueValidation}

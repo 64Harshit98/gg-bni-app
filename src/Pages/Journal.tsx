@@ -43,6 +43,7 @@ interface InvoiceItem {
   hsnSac?: string;
   unit?: string;
   discount?: number;
+  manualDiscount?: number;
 }
 
 interface Invoice {
@@ -60,8 +61,10 @@ interface Invoice {
   dueAmount?: number;
   items?: InvoiceItem[];
   paymentMethods?: DocumentData;
+  returnHistory?: DocumentData[];
   salesmanId?: string | null;
   salesmanName?: string;
+  manualDiscount?: number;
 }
 
 const formatDate = (date: Date): string => {
@@ -116,6 +119,7 @@ const useJournalData = (companyId?: string) => {
           finalPrice: type === 'Credit' ? (Number(item.finalPrice) || 0) : (Number(item.purchasePrice) || 0),
           mrp: Number(item.mrp) || 0,
           discount: item.discount || 0,
+          manualDiscount: item.manualDiscount || 0,
           purchasePrice: item.purchasePrice || 0,
           barcode: item.barcode || '',
           stock: item.stock ?? item.Stock ?? 0,
@@ -129,11 +133,13 @@ const useJournalData = (companyId?: string) => {
           (sum: number, value: any) => sum + (typeof value === 'number' ? value : 0),
           0
         );
+        const returnHistory = data.returnHistory || [];
 
         return {
           id: doc.id,
           invoiceNumber: data.invoiceNumber || `#${doc.id.slice(0, 6).toUpperCase()}`,
           amount: data.totalAmount || calculatedTotal || 0,
+          manualDiscount: data.manualDiscount || 0,
           time: formatDate(createdAt),
           status: status,
           type: type,
@@ -145,6 +151,7 @@ const useJournalData = (companyId?: string) => {
           salesmanName: data.salesmanName || '',
           createdAt,
           dueAmount: dueAmount,
+          returnHistory: returnHistory,
           items: items,
           paymentMethods: paymentMethods,
         };
@@ -529,6 +536,35 @@ const Journal: React.FC = () => {
 
         return (
           <CustomCard key={invoice.id} onClick={() => handleInvoiceClick(invoice.id)} className="cursor-pointer transition-shadow hover:shadow-md">
+            <div className="flex justify-between items-end w-full mb-1 -mt-5 relative pointer-events-none">
+
+              {/* LEFT: Return History Badges */}
+              <div className="flex justify-start gap-1 flex-wrap max-w-[50%] pointer-events-auto">
+                {invoice.returnHistory && invoice.returnHistory.length > 0 && (
+                  invoice.returnHistory.map((historyItem: any, index: number) => (
+                    <span
+                      key={`return-${index}`}
+                      className="text-[8px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider bg-orange-50 text-orange-600 border-orange-200 whitespace-nowrap"
+                    >
+                      {historyItem.modeOfReturn || 'Return'}
+                    </span>
+                  ))
+                )}
+              </div>
+
+              {/* RIGHT: Payment Mode Badges */}
+              <div className="flex justify-end gap-1 flex-wrap max-w-[50%] text-right pointer-events-auto">
+                {activeModes.map(([mode]) => (
+                  <span
+                    key={mode}
+                    className="text-[8px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider bg-blue-50 text-blue-600 border-blue-100 whitespace-nowrap"
+                  >
+                    {mode === 'upi' ? 'UPI' : mode.replace(/_/g, ' ')}
+                  </span>
+                ))}
+              </div>
+
+            </div>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-base font-semibold text-slate-800">{invoice.invoiceNumber}</p>
@@ -697,8 +733,14 @@ const Journal: React.FC = () => {
                 <h1 className="text-4xl font-light text-slate-800">Transactions</h1>
 
                 <div
-                  onClick={() => setShowCustomPicker(!showCustomPicker)}
-                  className="flex items-center gap-2 cursor-pointer hover:bg-gray-200 px-3 py-1 rounded-full transition-colors select-none"
+                  onClick={() => {
+                    if (showCustomPicker) {
+                      setShowCustomPicker(false);
+                    } else {
+                      setShowCustomPicker(true);
+                      setActiveDateFilter('custom');
+                    }
+                  }} className="flex items-center gap-2 cursor-pointer hover:bg-gray-200 px-3 py-1 rounded-full transition-colors select-none"
                 >
                   <p className='text-center text-lg font-light text-slate-600'>
                     {selectedPeriodText}
@@ -710,7 +752,7 @@ const Journal: React.FC = () => {
                   <div className="absolute top-full bg-white shadow-xl border border-gray-200 rounded-lg p-4 z-50 min-w-[300px] flex flex-col gap-4 animate-in fade-in zoom-in duration-200 cursor-default">
                     <div className="grid grid-cols-2 gap-2">
                       <div className="flex flex-col">
-                        <label className="text-xs font-semibold text-gray-500 mb-1">From Date</label>
+                        <label className="text-center text-xs font-semibold text-gray-500 mb-1">From</label>
                         <input
                           type="date"
                           value={customStartDate}
@@ -722,7 +764,7 @@ const Journal: React.FC = () => {
                         />
                       </div>
                       <div className="flex flex-col">
-                        <label className="text-xs font-semibold text-gray-500 mb-1">To Date</label>
+                        <label className="text-center text-xs font-semibold text-gray-500 mb-1">To</label>
                         <input
                           type="date"
                           value={customEndDate}

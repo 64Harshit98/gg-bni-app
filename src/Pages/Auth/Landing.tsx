@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { Link, useNavigate, Navigate } from 'react-router-dom';
 import { ROUTES } from '../../constants/routes.constants';
 import { CustomButton } from '../../Components';
 import sellarLogo from '../../assets/sellar-logo-heading.png';
@@ -18,6 +18,7 @@ const LoginPage: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [showPassword, setShowPassword] = useState(false);
+    const navigate = useNavigate();
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -31,6 +32,18 @@ const LoginPage: React.FC = () => {
             await loginUser(email, password);
         } catch (err: any) {
             setError(err.message || 'Failed to log in.');
+        } finally {
+            setLoading(false);
+        }
+    };
+    const handleSignup = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+
+        try {
+            navigate(ROUTES.SIGNUP);
+        } catch (error) {
+            console.error(error);
         } finally {
             setLoading(false);
         }
@@ -67,7 +80,7 @@ const LoginPage: React.FC = () => {
 
             {/* Login Form Section */}
             <div className="w-full bg-gray-100 p-6 py-8 shadow-t-lg rounded-t-2xl flex-shrink-0 z-20 mt-[-50px]">
-                <div className="w-full max-w-sm mx-auto">
+                <div className="w-full max-w-sm mx-auto mb-auto">
                     <form onSubmit={handleLogin} className="space-y-4">
                         <div className="relative">
                             <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
@@ -108,7 +121,7 @@ const LoginPage: React.FC = () => {
                         {/* --- Forgot Password Link --- */}
                         <div className="flex justify-end mt-1">
                             <Link
-                                to={ROUTES.FORGOT_PASSWORD || '/forgot-password'} 
+                                to={ROUTES.FORGOT_PASSWORD || '/forgot-password'}
                                 className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors"
                             >
                                 Forgot Password?
@@ -121,7 +134,7 @@ const LoginPage: React.FC = () => {
                             </p>
                         )}
 
-                        <div className="pt-2">
+                        <div className="flex flex-col-2 gap-2">
                             <CustomButton
                                 variant={Variant.Filled}
                                 type="submit"
@@ -130,17 +143,15 @@ const LoginPage: React.FC = () => {
                             >
                                 {loading ? <Spinner /> : 'Log In'}
                             </CustomButton>
-                        </div>
-
-                        <p className="text-center text-sm text-gray-600 pt-2">
-                            Don't have an account?{' '}
-                            <Link
-                                to={ROUTES.SIGNUP}
-                                className="font-medium text-blue-600 hover:underline"
+                            <CustomButton
+                                variant={Variant.Outline}
+                                type="submit"
+                                onClick={handleSignup}
+                                className="w-full flex justify-center h-14 text-lg font-semibold rounded-lg"
                             >
                                 Sign Up
-                            </Link>
-                        </p>
+                            </CustomButton>
+                        </div>
                     </form>
                 </div>
             </div>

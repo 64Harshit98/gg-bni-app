@@ -53,6 +53,7 @@ interface PurchaseDocumentData {
   companyId: string;
   voucherName?: string;
   roundingOff?: number;
+  manualDiscount?: number;
   updatedAt?: any;
 }
 type Purchase = PurchaseDocumentData & { id: string };
@@ -209,7 +210,7 @@ const PurchasePage: React.FC = () => {
                 taxableAmount: item.taxableAmount,
                 stock: item.stock ?? item.Stock ?? 0,
                 productId: item.productId || item.id,
-                isEditable: true
+                isEditable: false
               };
             });
 
@@ -240,7 +241,7 @@ const PurchasePage: React.FC = () => {
     return items.map(item => ({
       ...item,
       customPrice: item.purchasePrice,
-      isEditable: !isEditMode
+      isEditable: item.isEditable ?? true
     }));
   }, [items]);
 
@@ -322,7 +323,6 @@ const PurchasePage: React.FC = () => {
     let finalAmountAggPreRounding = 0;
     let qtyAgg = 0;
 
-
     items.forEach(item => {
       const purchasePrice = item.purchasePrice || 0;
       const quantity = item.quantity || 1;
@@ -364,16 +364,16 @@ const PurchasePage: React.FC = () => {
     const currentRoundingOffAmount = roundedAmount - finalAmountAggPreRounding;
     const currentTotalDiscount = mrpTotalAgg - purchasePriceTotalAgg;
 
-
     return {
-      subtotal: purchasePriceTotalAgg,
+      // FIX: Use totalTaxableBaseAgg instead of purchasePriceTotalAgg
+      // This ensures 'Subtotal' is always the pre-tax value
+      subtotal: totalTaxableBaseAgg,
       totalDiscount: currentTotalDiscount > 0 ? currentTotalDiscount : 0,
       taxableAmount: totalTaxableBaseAgg,
       taxAmount: totalTaxAgg,
       roundingOffAmount: currentRoundingOffAmount,
       finalAmount: roundedAmount,
       totalQuantity: qtyAgg
-
     };
   }, [items, purchaseSettings, billTaxType]);
 
@@ -496,6 +496,9 @@ const PurchasePage: React.FC = () => {
     try {
       const finalInvoiceNumber = invoiceNumber.trim();
 
+      const manualDiscount = completionData.discount || 0;
+      const finalTotalAmount = Math.max(0, finalAmount - manualDiscount);
+
       await runTransaction(db, async (transaction) => {
         const purchaseData: Omit<PurchaseDocumentData, 'id'> = {
           userId: currentUser.uid,
@@ -512,7 +515,8 @@ const PurchasePage: React.FC = () => {
           gstScheme: gstScheme,
           taxType: finalTaxType,
           roundingOff: roundingOffAmount,
-          totalAmount: finalAmount,
+          manualDiscount: manualDiscount,
+          totalAmount: finalTotalAmount,
           paymentMethods: completionData.paymentDetails,
           createdAt: serverTimestamp(),
           companyId: companyId,
@@ -578,6 +582,9 @@ const PurchasePage: React.FC = () => {
     const companyId = currentUser.companyId;
 
     try {
+      const manualDiscount = completionData.discount || 0;
+      const finalTotalAmount = Math.max(0, finalAmount - manualDiscount);
+
       await runTransaction(db, async (transaction) => {
         const purchaseRef = doc(db, 'companies', companyId, 'purchases', purchaseId);
         const purchaseDoc = await transaction.get(purchaseRef);
@@ -618,7 +625,8 @@ const PurchasePage: React.FC = () => {
           gstScheme: gstScheme,
           taxType: finalTaxType,
           roundingOff: roundingOffAmount,
-          totalAmount: finalAmount,
+          manualDiscount: manualDiscount,
+          totalAmount: finalTotalAmount,
           paymentMethods: completionData.paymentDetails,
           updatedAt: serverTimestamp(),
         };
@@ -756,7 +764,8 @@ const PurchasePage: React.FC = () => {
           onActionClick={handleProceedToPayment}
           disableAction={items.length === 0}
         />
-        <PaymentDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} subtotal={finalAmount} onPaymentComplete={handleSavePurchase} isPartyNameEditable={!editModeData} initialPartyName={editModeData ? editModeData.partyName : ''} initialPartyNumber={editModeData ? editModeData.partyNumber : ''} totalQuantity={totalQuantity} requireCustomerName={purchaseSettings?.requireSupplierName} requireCustomerMobile={purchaseSettings?.requireSupplierMobile} />
+        <PaymentDrawer mode='purchase' isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} subtotal={subtotal} billTotal={finalAmount} initialDiscount={editModeData?.manualDiscount}
+          onPaymentComplete={handleSavePurchase} isPartyNameEditable={!editModeData} initialPartyName={editModeData ? editModeData.partyName : ''} initialPartyNumber={editModeData ? editModeData.partyNumber : ''} totalQuantity={totalQuantity} requireCustomerName={purchaseSettings?.requireSupplierName} requireCustomerMobile={purchaseSettings?.requireSupplierMobile} />
         <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
       </div>
     );
@@ -894,11 +903,14 @@ const PurchasePage: React.FC = () => {
       </div>
 
       <PaymentDrawer
+        mode='purchase'
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
-        subtotal={finalAmount}
+        subtotal={subtotal}
+        billTotal={finalAmount}
         onPaymentComplete={handleSavePurchase}
         isPartyNameEditable={!editModeData}
+        initialDiscount={editModeData?.manualDiscount}
         initialPartyName={editModeData ? editModeData.partyName : ''}
         initialPartyNumber={editModeData ? editModeData.partyNumber : ''}
         totalQuantity={totalQuantity}

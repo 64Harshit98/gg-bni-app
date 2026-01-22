@@ -12,7 +12,7 @@ const Reports = () => {
     location.pathname === '/reports' || location.pathname === '/reports/';
 
   return (
-    <div className="flex flex-col w-full bg-gray-100 overflow-hidden font-poppins">
+    <div className="flex flex-col h-screen w-full bg-gray-100 shadow-lg overflow-hidden font-poppins">
       <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
         <button
           onClick={() => navigate(-1)}
@@ -23,7 +23,7 @@ const Reports = () => {
         <h1 className="text-2xl font-bold text-gray-800 m-0 flex-grow text-center">Reports</h1>
       </div>
 
-      <div className="flex grid grid-cols-2 p-4 gap-2 bg-gray-100 box-border">
+      <div className="flex grid grid-cols-2 p-4 gap-2 overflow-y-auto bg-gray-100 box-border">
         {isDefaultReportsView ? (
           <>
             <ShowWrapper requiredPermission={Permissions.ViewSalesReport}>

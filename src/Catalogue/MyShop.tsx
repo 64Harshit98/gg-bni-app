@@ -86,7 +86,7 @@ const MyShopPage: React.FC = () => {
     const observerRef = useRef<IntersectionObserver | null>(null);
     const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
-   useEffect(() => {
+    useEffect(() => {
         if (authLoading || !currentUser || !dbOperations) {
             setPageIsLoading(authLoading || !dbOperations);
             return;
@@ -94,25 +94,19 @@ const MyShopPage: React.FC = () => {
 
         const fetchData = async () => {
             try {
-                setPageIsLoading(true); 
-                setError(null); 
-                // Don't clear items immediately (setAllItems([])) if you want to avoid a "flash"
-                // But if you prefer a clean state, keeping it is fine.
-                setAllItems([]); 
+                setPageIsLoading(true); setError(null); setAllItems([]);
                 setItemsToRenderCount(ITEMS_PER_BATCH_RENDER);
 
-                // OPTIMIZATION: Use syncItems() instead of getItems()
                 const [fetchedItemGroups, fetchedItems] = await Promise.all([
                     dbOperations.getItemGroups(),
-                    dbOperations.syncItems() // <--- The magic change
+                    dbOperations.getItems()
                 ]);
 
-                setAllItemGroups(fetchedItemGroups);
+                setAllItemGroups(fetchedItemGroups); // Store all groups
                 setAllItems(fetchedItems);
 
             } catch (err: any) {
-                setError(err.message || 'Failed to load initial data.'); 
-                console.error("Fetch Error:", err);
+                setError(err.message || 'Failed to load initial data.'); console.error("Fetch Error:", err);
             } finally {
                 setPageIsLoading(false);
             }

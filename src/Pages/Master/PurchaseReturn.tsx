@@ -1,4 +1,3 @@
-// src/Pages/PurchaseReturnPage.tsx
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
@@ -24,9 +23,7 @@ import BarcodeScanner from '../../UseComponents/BarcodeScanner';
 import { ReturnListItem } from '../../Components/ReturnListItem';
 import { IconScanCircle } from '../../constants/Icons';
 import { GenericCartList, type CartItem } from '../../Components/CartItem';
-import { useSalesSettings } from '../../context/SettingsContext';
 
-// --- Interfaces ---
 interface PurchaseData {
   id: string;
   invoiceNumber: string;
@@ -62,7 +59,6 @@ const PurchaseReturnPage: React.FC = () => {
   const { purchaseId } = useParams();
   const { state } = useLocation();
   const location = useLocation();
-  const { salesSettings } = useSalesSettings(); // Reuse settings for locks
 
   const [supplierName, setSupplierName] = useState<string>('');
   const [supplierNumber, setSupplierNumber] = useState<string>('');
@@ -92,27 +88,11 @@ const PurchaseReturnPage: React.FC = () => {
   const [scannerPurpose, setScannerPurpose] = useState<'purchase' | 'item' | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
-  // --- Lock States (To fix TS Error) ---
-  const [isDiscountLocked, setIsDiscountLocked] = useState(true);
-  const [discountInfo, setDiscountInfo] = useState<string | null>(null);
-  const [isPriceLocked, setIsPriceLocked] = useState(true);
-  const [priceInfo, setPriceInfo] = useState<string | null>(null);
-  const longPressTimer = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    if (salesSettings) {
-      setIsDiscountLocked(salesSettings.lockDiscountEntry ?? false);
-      setIsPriceLocked(salesSettings.lockSalePriceEntry ?? false);
-    }
-  }, [salesSettings]);
-
-  // --- Derived State ---
   const itemsToReturn = useMemo(() =>
     originalPurchaseItems.filter(item => selectedReturnIds.has(item.id)),
     [originalPurchaseItems, selectedReturnIds]
   );
 
-  // --- Effects ---
   useEffect(() => {
     if (!currentUser || !currentUser.companyId || !dbOperations) {
       setIsLoading(false);
@@ -126,7 +106,7 @@ const PurchaseReturnPage: React.FC = () => {
         );
         const [purchasesSnapshot, allItems] = await Promise.all([
           getDocs(purchasesQuery),
-          dbOperations.syncItems()
+          dbOperations.getItems()
         ]);
         const purchases: PurchaseData[] = purchasesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PurchaseData));
         setPurchaseList(purchases);
@@ -170,7 +150,6 @@ const PurchaseReturnPage: React.FC = () => {
     [purchaseList, searchQuery]
   );
 
-  // --- Selection Handlers ---
   const handleSelectPurchase = (purchase: PurchaseData) => {
     setSelectedPurchase(purchase);
     setSupplierName(purchase.partyName);
@@ -241,17 +220,6 @@ const PurchaseReturnPage: React.FC = () => {
     }));
   };
 
-  // --- Lock Logic Wrappers ---
-  const handleDiscountPressStart = () => { if (!salesSettings?.lockDiscountEntry) longPressTimer.current = setTimeout(() => setIsDiscountLocked(false), 500); };
-  const handleDiscountPressEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
-  const handleDiscountClick = () => { if (isDiscountLocked) { setDiscountInfo("Cannot edit discount"); setTimeout(() => setDiscountInfo(null), 3000); } };
-
-  const handlePricePressStart = () => { if (!salesSettings?.lockSalePriceEntry) longPressTimer.current = setTimeout(() => setIsPriceLocked(false), 200); };
-  const handlePricePressEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
-  const handlePriceClick = () => { if (isPriceLocked) { setPriceInfo("Cannot edit price"); setTimeout(() => setPriceInfo(null), 1000); } };
-
-
-  // --- Handlers for GenericCartList (New Items) ---
   const handleRemoveNewItem = (id: string) => {
     setNewItemsReceived(prev => prev.filter(item => item.id !== id));
   };
@@ -345,7 +313,6 @@ const PurchaseReturnPage: React.FC = () => {
     return { totalReturnValue, totalNewItemsValue, finalBalance };
   }, [itemsToReturn, newItemsReceived]);
 
-  // --- SAVE TRANSACTION LOGIC ---
   const saveReturnTransaction = async (completionData?: Partial<PaymentCompletionData>) => {
     if (!currentUser || !currentUser.companyId || !selectedPurchase) return;
 
@@ -365,20 +332,18 @@ const PurchaseReturnPage: React.FC = () => {
       const purchaseRef = doc(db, 'companies', companyId, 'purchases', selectedPurchase.id);
 
       const originalItemsMap = new Map(selectedPurchase.items.map(item => [item.id, { ...item }]));
-      
-      // --- FIX: Create valid ID set to prevent crashes on deleted items ---
-      const validInventoryIds = new Set(availableItems.map(i => i.id));
 
-      // 1. Process Returns (Decrement Qty from Purchase Document)
       itemsToReturn.forEach(returnItem => {
         const originalItem = originalItemsMap.get(returnItem.originalItemId);
         if (originalItem) {
           originalItem.quantity -= returnItem.quantity;
           if (originalItem.quantity <= 0) originalItemsMap.delete(returnItem.originalItemId);
         }
+        batch.update(doc(db, 'companies', companyId, 'items', returnItem.originalItemId), {
+          stock: firebaseIncrement(-returnItem.quantity)
+        });
       });
 
-      // 2. Process New Items (Increment Qty in Purchase Document)
       newItemsReceived.forEach(newItem => {
         const originalItem = originalItemsMap.get(newItem.originalItemId);
         if (originalItem) {
@@ -391,6 +356,9 @@ const PurchaseReturnPage: React.FC = () => {
             purchasePrice: newItem.unitPrice,
           } as any);
         }
+        batch.update(doc(db, 'companies', companyId, 'items', newItem.originalItemId), {
+          stock: firebaseIncrement(newItem.quantity)
+        });
       });
 
       const newItemsList = Array.from(originalItemsMap.values());
@@ -419,26 +387,17 @@ const PurchaseReturnPage: React.FC = () => {
 
       batch.update(purchaseRef, updateData);
 
-      // 3. Update Stock (INVENTORY)
-      // --- LOGIC: Returns -> DECREASE stock (Sending back). New Items -> INCREASE stock (Receiving).
-      // --- FIX: Check validInventoryIds before updating ---
       itemsToReturn.forEach(returnItem => {
-        if (returnItem.originalItemId && validInventoryIds.has(returnItem.originalItemId)) {
-          batch.update(doc(db, 'companies', companyId, 'items', returnItem.originalItemId), {
-            stock: firebaseIncrement(-returnItem.quantity)
-          });
-        }
+        batch.update(doc(db, 'companies', companyId, 'items', returnItem.originalItemId), {
+          stock: firebaseIncrement(-returnItem.quantity)
+        });
       });
-      
       newItemsReceived.forEach(newItem => {
-        if (newItem.originalItemId && validInventoryIds.has(newItem.originalItemId)) {
-          batch.update(doc(db, 'companies', companyId, 'items', newItem.originalItemId), {
-            stock: firebaseIncrement(newItem.quantity)
-          });
-        }
+        batch.update(doc(db, 'companies', companyId, 'items', newItem.originalItemId), {
+          stock: firebaseIncrement(newItem.quantity)
+        });
       });
 
-      // 4. Save Customer/Supplier Info
       const cleanSupplierNumber = finalSupplierNumber?.trim();
       const cleanSupplierName = finalSupplierName?.trim();
       const cleanAddress = completionData?.partyAddress || supplierAddress || selectedPurchase.partyAddress || '';
@@ -455,11 +414,7 @@ const PurchaseReturnPage: React.FC = () => {
           lastUpdatedAt: serverTimestamp()
         };
 
-        // --- CASH REFUND LOGIC ---
-        // If "Cash Refund", supplier paid us. No debit balance increase.
-        // If "Debit Note" or "Exchange", if Final Balance > 0 (We are owed money/credit), increase Debit Balance.
         if (modeOfReturn === 'Cash Refund') {
-          // No balance update
         } else {
           if (finalBalance > 0) {
             customerUpdateData.debitBalance = firebaseIncrement(finalBalance);
@@ -472,9 +427,9 @@ const PurchaseReturnPage: React.FC = () => {
       await batch.commit();
       setModal({ type: State.SUCCESS, message: 'Purchase Return processed successfully!' });
       handleClear();
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error processing purchase return:', error);
-      setModal({ type: State.ERROR, message: `Failed: ${error.message || 'Unknown error'}` });
+      setModal({ type: State.ERROR, message: 'Failed to process return.' });
     } finally {
       setIsLoading(false);
       setIsDrawerOpen(false);
@@ -506,7 +461,6 @@ const PurchaseReturnPage: React.FC = () => {
 
   if (isLoading) return <div className="flex min-h-screen items-center justify-center">Loading...</div>;
 
-  // --- RENDER HEADER ---
   const renderHeader = () => (
     <div className="flex flex-col md:flex-row md:justify-between md:items-center bg-gray-100 md:bg-white border-b border-gray-300 shadow-sm flex-shrink-0 p-2 md:px-4 md:py-3 mb-2 md:mb-0">
       <h1 className="text-2xl font-bold text-gray-800 text-center md:text-left mb-2 md:mb-0">
@@ -527,10 +481,8 @@ const PurchaseReturnPage: React.FC = () => {
       {/* HEADER */}
       {renderHeader()}
 
-      {/* MAIN CONTENT WRAPPER */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
 
-        {/* --- LEFT PANEL (Desktop: 65%, Search + Lists) --- */}
         <div className="flex-1 w-full md:w-[65%] bg-gray-100 md:bg-white md:border-r border-gray-200 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 relative">
             
             {/* Search */}
@@ -573,7 +525,6 @@ const PurchaseReturnPage: React.FC = () => {
                       <div><label className="block text-xs font-bold text-gray-500 uppercase">Date</label><input type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm" /></div>
                       <div><label className="block text-xs font-bold text-gray-500 uppercase">Party</label><input type="text" value={supplierName} onChange={(e) => setSupplierName(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm" /></div>
                     </div>
-                    {/* SUPPLIER NUMBER INPUT */}
                     <div><label className="block text-xs font-bold text-gray-500 uppercase">Party Number</label><input type="text" value={supplierNumber} onChange={(e) => setSupplierNumber(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm" /></div>
                   </div>
 
@@ -621,12 +572,6 @@ const PurchaseReturnPage: React.FC = () => {
                           <IconScanCircle width={24} height={24} />
                         </button>
                       </div>
-
-                      {/* --- ADDED: DISPLAY ERROR/INFO MESSAGES FOR LOCKS (Prevent TS Error) --- */}
-                      <div className="flex gap-2 text-xs text-red-500 mb-2">
-                        {discountInfo && <span>{discountInfo}</span>}
-                        {priceInfo && <span>{priceInfo}</span>}
-                      </div>
                       
                       {newItemsReceived.length > 0 && (
                         <div className="border rounded-md overflow-hidden">
@@ -653,12 +598,12 @@ const PurchaseReturnPage: React.FC = () => {
                                 onCustomPriceChange={handleNewItemPriceChange}
                                 onCustomPriceBlur={handleNewItemPriceBlur}
                                 onQuantityChange={handleNewItemQuantity}
-                                onDiscountPressStart={handleDiscountPressStart}
-                                onDiscountPressEnd={handleDiscountPressEnd}
-                                onDiscountClick={handleDiscountClick}
-                                onPricePressStart={handlePricePressStart}
-                                onPricePressEnd={handlePricePressEnd}
-                                onPriceClick={handlePriceClick}
+                                onDiscountPressStart={() => { }}
+                                onDiscountPressEnd={() => { }}
+                                onDiscountClick={() => { }}
+                                onPricePressStart={() => { }}
+                                onPricePressEnd={() => { }}
+                                onPriceClick={() => { }}
                               />
                            </div>
                         </div>
@@ -738,7 +683,7 @@ const PurchaseReturnPage: React.FC = () => {
         </div>
 
         {/* --- MOBILE FOOTER (Sticky) --- */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-gray-100 flex justify-center pb-18">
+        <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-gray-100 border-t border-gray-200 z-20 flex justify-center pb-8">
            {selectedPurchase && (<CustomButton onClick={handleProcessReturn} variant={Variant.Payment} className="w-full py-3 text-lg font-semibold shadow-md">Process Transaction</CustomButton>)}
         </div>
 

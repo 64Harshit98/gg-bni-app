@@ -5,7 +5,6 @@ import {
   collection,
   query,
   onSnapshot,
-  orderBy,
   Timestamp,
   QuerySnapshot,
   doc,
@@ -25,11 +24,10 @@ import { Modal, PaymentModal } from '../constants/Modal';
 import { generatePdf } from '../UseComponents/pdfGenerator';
 import { getFirestoreOperations } from '../lib/ItemsFirebase';
 import { useSalesSettings } from '../context/SettingsContext';
-import { IconChevronDown, IconClose, IconFilter, IconSearch, IconDownload, IconPrint, IconScanCircle } from '../constants/Icons';
+import { IconChevronDown, IconClose, IconFilter, IconSearch, IconDownload, IconPrint, IconScanCircle } from '../constants/Icons'; // Added IconScanCircle
 import QRCode from 'react-qr-code';
 import { FiX } from 'react-icons/fi';
 
-// --- INTERFACES ---
 interface InvoiceItem {
   id: string;
   name: string;
@@ -74,7 +72,6 @@ const formatDate = (date: Date): string => {
   });
 };
 
-// --- DATA HOOK (REVERTED TO REAL-TIME / NO LIMIT) ---
 const useJournalData = (companyId?: string) => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,19 +84,8 @@ const useJournalData = (companyId?: string) => {
       return;
     }
 
-    setLoading(true);
-
-    // 1. SALES LISTENER (Credit)
-    const salesQuery = query(
-      collection(db, 'companies', companyId, 'sales'),
-      orderBy('createdAt', 'desc')
-    );
-
-    // 2. PURCHASES LISTENER (Debit)
-    const purchasesQuery = query(
-      collection(db, 'companies', companyId, 'purchases'),
-      orderBy('createdAt', 'desc')
-    );
+    const salesQuery = query(collection(db, 'companies', companyId, 'sales'));
+    const purchasesQuery = query(collection(db, 'companies', companyId, 'purchases'));
 
     const processSnapshot = (snapshot: QuerySnapshot, type: 'Credit' | 'Debit'): Invoice[] => {
       return snapshot.docs.map((doc) => {
@@ -151,44 +137,38 @@ const useJournalData = (companyId?: string) => {
       });
     };
 
-    const unsubSales = onSnapshot(salesQuery, (snapshot) => {
+    const unsubscribeSales = onSnapshot(salesQuery, (snapshot) => {
       const salesData = processSnapshot(snapshot, 'Credit');
-      setInvoices(prev => {
-        const withoutCredit = prev.filter(inv => inv.type !== 'Credit');
-        const combined = [...withoutCredit, ...salesData];
-        return combined.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-      });
+      setInvoices((prev) => [...prev.filter((inv) => inv.type !== 'Credit'), ...salesData]);
       setLoading(false);
-    }, (err) => {
-      console.error("Sales listener error:", err);
-      setError("Failed to load sales.");
+    }, () => {
+      setError("Failed to load sales data.");
       setLoading(false);
     });
 
-    const unsubPurchases = onSnapshot(purchasesQuery, (snapshot) => {
+    const unsubscribePurchases = onSnapshot(purchasesQuery, (snapshot) => {
       const purchasesData = processSnapshot(snapshot, 'Debit');
-      setInvoices(prev => {
-        const withoutDebit = prev.filter(inv => inv.type !== 'Debit');
-        const combined = [...withoutDebit, ...purchasesData];
-        return combined.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      setInvoices((prev) => [...prev.filter((inv) => inv.type !== 'Debit'), ...purchasesData]);
+      setLoading(false);
+    },
+      () => {
+        setError("Failed to load purchase data.");
+        setLoading(false);
       });
-      setLoading(false);
-    }, (err) => {
-      console.error("Purchases listener error:", err);
-      setError("Failed to load purchases.");
-      setLoading(false);
-    });
 
     return () => {
-      unsubSales();
-      unsubPurchases();
+      unsubscribeSales();
+      unsubscribePurchases();
     };
   }, [companyId]);
 
-  return { invoices, loading, error };
+  const sortedInvoices = useMemo(() => {
+    return invoices.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }, [invoices]);
+
+  return { invoices: sortedInvoices, loading, error };
 };
 
-// --- MAIN COMPONENT ---
 const Journal: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'Paid' | 'Unpaid'>('Paid');
   const [activeType, setActiveType] = useState<'Debit' | 'Credit'>('Credit');
@@ -202,9 +182,6 @@ const Journal: React.FC = () => {
   const [invoiceToDelete, setInvoiceToDelete] = useState<Invoice | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
-  const [customStartDate, setCustomStartDate] = useState<string>('');
-  const [customEndDate, setCustomEndDate] = useState<string>('');
-  const [showCustomPicker, setShowCustomPicker] = useState(false);
 
   const { salesSettings } = useSalesSettings();
 
@@ -213,7 +190,6 @@ const Journal: React.FC = () => {
   const [showQrModal, setShowQrModal] = useState<Invoice | null>(null);
 
   const { currentUser, loading: authLoading } = useAuth();
-  // Using the Reverted Hook
   const { invoices, loading: dataLoading, error } = useJournalData(currentUser?.companyId);
   const navigate = useNavigate();
 
@@ -242,50 +218,24 @@ const Journal: React.FC = () => {
           case 'last7': return invoiceDate >= daysAgo(today, 7);
           case 'last15': return invoiceDate >= daysAgo(today, 15);
           case 'last30': return invoiceDate >= daysAgo(today, 30);
-          case 'custom':
-            // 1. If dates aren't selected yet, show nothing (or all, depending on preference)
-            if (!customStartDate || !customEndDate) return false;
-
-            const start = new Date(customStartDate);
-            // Reset start time to 00:00:00 to ensure we catch everything from the start of the day
-            start.setHours(0, 0, 0, 0);
-
-            const end = new Date(customEndDate);
-            // 2. Set end date to the VERY END of the day (23:59:59) so we don't miss invoices made today
-            end.setHours(23, 59, 59, 999);
-
-            return invoiceDate >= start && invoiceDate <= end;
-
           default: return true;
         }
       })
       .filter((invoice) => {
-        // --- 2. ADVANCED TOKEN SEARCH (The Update) ---
-        const trimmedQuery = searchQuery.toLowerCase().trim();
-        if (!trimmedQuery) return true; // If search is empty, show everything
+        const lowerCaseQuery = searchQuery.toLowerCase();
+        const matchesDetails =
+          invoice.invoiceNumber.toLowerCase().includes(lowerCaseQuery) ||
+          invoice.partyName.toLowerCase().includes(lowerCaseQuery) ||
+          (invoice.partyNumber && invoice.partyNumber.includes(searchQuery));
 
-        // Split search into words (e.g., "John Apple" -> ["john", "apple"])
-        const searchTokens = trimmedQuery.split(/\s+/);
+        const matchesItems = invoice.items?.some(item =>
+          item.name.toLowerCase().includes(lowerCaseQuery)
+        );
 
-        // Return TRUE only if *EVERY* token is found somewhere in the invoice
-        return searchTokens.every((token) => {
-
-          // Check Main Details (Invoice #, Name, Phone)
-          const matchesDetails =
-            invoice.invoiceNumber.toLowerCase().includes(token) ||
-            invoice.partyName.toLowerCase().includes(token) ||
-            (invoice.partyNumber && invoice.partyNumber.includes(token));
-
-          // Check Items (Does ANY item in this invoice contain this token?)
-          const matchesItems = invoice.items?.some(item =>
-            item.name.toLowerCase().includes(token)
-          );
-
-          return matchesDetails || matchesItems;
-        });
+        return matchesDetails || matchesItems;
       })
       .filter((invoice) => invoice.type === activeType && invoice.status === activeTab);
-  }, [invoices, activeType, activeTab, searchQuery, activeDateFilter, customStartDate, customEndDate]);
+  }, [invoices, activeType, activeTab, searchQuery, activeDateFilter]);
 
   const selectedPeriodText = useMemo(() => {
     const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' };
@@ -299,23 +249,18 @@ const Journal: React.FC = () => {
       case 'last7': return `${formatDate(new Date(today.setDate(today.getDate() - 6)))} - ${formatDate(now)}`;
       case 'last15': return `${formatDate(new Date(today.setDate(today.getDate() - 14)))} - ${formatDate(now)}`;
       case 'last30': return `${formatDate(new Date(today.setDate(today.getDate() - 29)))} - ${formatDate(now)}`;
-      case 'custom':
-        if (customStartDate && customEndDate) {
-          return `${new Date(customStartDate).toLocaleDateString('en-IN', options)} - ${new Date(customEndDate).toLocaleDateString('en-IN', options)}`;
-        }
-        return 'Select Custom Range';
-
+      case 'all': return 'All Time';
       default: return 'Selected Period';
     }
-  }, [activeDateFilter, customStartDate, customEndDate]);
+  }, [activeDateFilter]);
 
   const dateFilters = [
+    { label: 'All Time', value: 'all' },
     { label: 'Today', value: 'today' },
     { label: 'Yesterday', value: 'yesterday' },
     { label: 'Last 7 Days', value: 'last7' },
     { label: 'Last 15 Days', value: 'last15' },
     { label: 'Last 30 Days', value: 'last30' },
-    { label: 'Custom Range', value: 'custom' },
   ];
 
   const handleDateFilterSelect = (value: string) => {
@@ -341,7 +286,7 @@ const Journal: React.FC = () => {
       const dbOps = getFirestoreOperations(currentUser.companyId);
       const [businessInfo, fetchedItems] = await Promise.all([
         dbOps.getBusinessInfo(),
-        dbOps.syncItems(),
+        dbOps.getItems(),
       ]);
 
       const populatedItems = (invoice.items || []).map((item: any, index: number) => {
@@ -405,8 +350,8 @@ const Journal: React.FC = () => {
   };
 
   const handleShowQr = (invoice: Invoice) => {
-    setInvoiceToPrint(null);
-    setShowQrModal(invoice);
+      setInvoiceToPrint(null); 
+      setShowQrModal(invoice);
   };
 
   const promptDeleteInvoice = (invoice: Invoice) => {
@@ -506,7 +451,6 @@ const Journal: React.FC = () => {
       state: { prefilledItems: cleanItems }
     });
   };
-
   const totalUnpaidAmount = useMemo(() => {
     if (activeTab !== 'Unpaid') return 0;
 
@@ -529,6 +473,7 @@ const Journal: React.FC = () => {
 
         return (
           <CustomCard key={invoice.id} onClick={() => handleInvoiceClick(invoice.id)} className="cursor-pointer transition-shadow hover:shadow-md">
+            {/* ... (Existing Card Content) ... */}
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-base font-semibold text-slate-800">{invoice.invoiceNumber}</p>
@@ -643,7 +588,8 @@ const Journal: React.FC = () => {
               <button onClick={() => handlePdfAction(invoiceToPrint, ACTION.PRINT)} className="w-full bg-white text-gray-700 border border-gray-300 py-2.5 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
                 <IconPrint /> Print Directly
               </button>
-
+              
+              {/* --- NEW BUTTON: GENERATE QR CODE --- */}
               <button onClick={() => handleShowQr(invoiceToPrint)} className="w-full bg-gray-900 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2">
                 <IconScanCircle width={20} height={20} /> Generate QR Code
               </button>
@@ -652,103 +598,48 @@ const Journal: React.FC = () => {
         </div>
       )}
 
+      {/* --- QR CODE DISPLAY MODAL --- */}
       {showQrModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm flex flex-col items-center animate-in fade-in zoom-in duration-300 relative">
-            <button onClick={() => setShowQrModal(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
-              <FiX size={24} />
-            </button>
-
-            <h3 className="text-xl font-bold text-gray-800 mb-1">Download Bill</h3>
-            <p className="text-sm text-gray-500 mb-4">Invoice #{showQrModal.invoiceNumber}</p>
-
-            <div className="bg-white p-2 border-2 border-gray-100 rounded-lg shadow-inner mb-4">
-              <QRCode
-                value={`${window.location.origin}/download-bill/${currentUser?.companyId}/${showQrModal.id}`}
-                size={200}
-                viewBox={`0 0 256 256`}
-              />
+            <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm flex flex-col items-center animate-in fade-in zoom-in duration-300 relative">
+                <button onClick={() => setShowQrModal(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+                    <FiX size={24} />
+                </button>
+                
+                <h3 className="text-xl font-bold text-gray-800 mb-1">Download Bill</h3>
+                <p className="text-sm text-gray-500 mb-4">Invoice #{showQrModal.invoiceNumber}</p>
+                
+                <div className="bg-white p-2 border-2 border-gray-100 rounded-lg shadow-inner mb-4">
+                    <QRCode 
+                        value={`${window.location.origin}/download-bill/${currentUser?.companyId}/${showQrModal.id}`} 
+                        size={200}
+                        viewBox={`0 0 256 256`}
+                    />
+                </div>
+                
+                <p className="text-center text-sm text-gray-600 mb-4">
+                    Scan to download PDF
+                </p>
+                
+                <button 
+                    onClick={() => setShowQrModal(null)}
+                    className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+                >
+                    Close
+                </button>
             </div>
-
-            <p className="text-center text-sm text-gray-600 mb-4">
-              Scan to download PDF
-            </p>
-
-            <button
-              onClick={() => setShowQrModal(null)}
-              className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
-            >
-              Close
-            </button>
-          </div>
         </div>
       )}
 
-      <div className="flex items-center justify-between p-2 px-2 z-20 relative">
+      <div className="flex items-center justify-between p-2 px-2">
+        {/* ... (Existing Header and Search Logic) ... */}
         <div className="flex flex-1 items-center">
           <button onClick={() => setShowSearch(!showSearch)} className="text-slate-500 hover:text-slate-800 transition-colors mr-4">
             {showSearch ? (
               <IconClose />) : (<IconSearch />)}
           </button>
           <div className="flex-1">
-            {!showSearch ? (
-              <div className="flex flex-col items-center relative z-20"> {/* Shared Parent Container */}
-
-                <h1 className="text-4xl font-light text-slate-800">Transactions</h1>
-
-                <div
-                  onClick={() => setShowCustomPicker(!showCustomPicker)}
-                  className="flex items-center gap-2 cursor-pointer hover:bg-gray-200 px-3 py-1 rounded-full transition-colors select-none"
-                >
-                  <p className='text-center text-lg font-light text-slate-600'>
-                    {selectedPeriodText}
-                  </p>
-                  <IconChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${showCustomPicker ? 'rotate-180' : ''}`} />
-                </div>
-
-                {showCustomPicker && (
-                  <div className="absolute top-full bg-white shadow-xl border border-gray-200 rounded-lg p-4 z-50 min-w-[300px] flex flex-col gap-4 animate-in fade-in zoom-in duration-200 cursor-default">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="flex flex-col">
-                        <label className="text-xs font-semibold text-gray-500 mb-1">From Date</label>
-                        <input
-                          type="date"
-                          value={customStartDate}
-                          onChange={(e) => {
-                            setCustomStartDate(e.target.value);
-                            setActiveDateFilter('custom');
-                          }}
-                          className="border border-gray-300 rounded-sm px-2 py-1.5 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div className="flex flex-col">
-                        <label className="text-xs font-semibold text-gray-500 mb-1">To Date</label>
-                        <input
-                          type="date"
-                          value={customEndDate}
-                          onChange={(e) => {
-                            setCustomEndDate(e.target.value);
-                            setActiveDateFilter('custom');
-                          }}
-                          className="border border-gray-300 rounded-sm px-2 py-1.5 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex justify-center text-center border-t border-gray-100 -mt-2 -mb-2">
-                      <button
-                        onClick={() => setShowCustomPicker(false)}
-                        className="flex-grow bg-black text-white text-sm px-4 py-2 rounded hover:bg-gray-800 transition-colors"
-                      >
-                        Apply
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <input type="text" placeholder="Search by Invoice, Name, or Phone..." className="w-full text-xl font-light p-1 border-b-2 border-slate-300 focus:border-slate-800 outline-none transition-colors" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} autoFocus />
-            )}
+            {!showSearch ? (<div> <h1 className="text-4xl font-light text-slate-800">Transactions</h1> <p className='text-center justify-center text-lg font-light text-slate-600'>{selectedPeriodText}</p> </div>) : (<input type="text" placeholder="Search by Invoice, Name, or Phone..." className="w-full text-xl font-light p-1 border-b-2 border-slate-300 focus:border-slate-800 outline-none transition-colors" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} autoFocus />)}
           </div>
         </div>
 
@@ -757,35 +648,9 @@ const Journal: React.FC = () => {
             <IconFilter />
           </button>
           {isFilterOpen && (
-            <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-md shadow-lg z-10 border overflow-hidden">
+            <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10 border">
               <ul className="py-1">
-                {dateFilters.map((filter) => (
-                  filter.value !== 'custom' && (
-                    <li key={filter.value}>
-                      <button
-                        onClick={() => {
-                          handleDateFilterSelect(filter.value);
-                          setIsFilterOpen(false);
-                        }}
-                        className={`w-full text-left px-4 py-2 text-sm ${activeDateFilter === filter.value ? 'bg-slate-100 text-slate-900' : 'text-slate-700'} hover:bg-slate-50`}
-                      >
-                        {filter.label}
-                      </button>
-                    </li>
-                  )
-                ))}
-                <li>
-                  <button
-                    onClick={() => {
-                      setActiveDateFilter('custom');
-                      setIsFilterOpen(false);
-                      setShowCustomPicker(true);
-                    }}
-                    className={`w-full text-left px-4 py-2 text-sm ${activeDateFilter === 'custom' ? 'bg-slate-100 text-slate-900' : 'text-slate-700'} hover:bg-slate-50`}
-                  >
-                    Custom Range
-                  </button>
-                </li>
+                {dateFilters.map((filter) => (<li key={filter.value}> <button onClick={() => handleDateFilterSelect(filter.value)} className={`w-full text-left px-4 py-2 text-sm ${activeDateFilter === filter.value ? 'bg-slate-100 text-slate-900' : 'text-slate-700'} hover:bg-slate-50`}>{filter.label}</button> </li>))}
               </ul>
             </div>
           )}

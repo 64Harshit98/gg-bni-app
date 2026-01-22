@@ -207,7 +207,8 @@ const OrderingPage: React.FC = () => {
     const [customerPhone, setCustomerPhone] = useState('');
 
 
-useEffect(() => {
+    // useEffect for fetching data
+    useEffect(() => {
         if (authLoading || !currentUser || !dbOperations) {
             setPageIsLoading(authLoading || !dbOperations);
             return;
@@ -216,20 +217,15 @@ useEffect(() => {
             try {
                 setPageIsLoading(true);
                 setError(null);
-
-                // OPTIMIZATION: Use syncItems() instead of getItems()
-                // This loads ALL items from local storage instantly (0 reads),
-                // then we filter them in the next line.
                 const [fetchedItems, fetchedItemGroups] = await Promise.all([
-                    dbOperations.syncItems(), 
+                    dbOperations.getItems(),
                     dbOperations.getItemGroups()
                 ]);
-
-                // Filter happens in memory (fast) instead of on the network
                 const listedItems = fetchedItems.filter(item => item.isListed === true);
                 setItems(listedItems);
 
-                // --- Existing Group Deduplication Logic (Preserved) ---
+                // --- FIX: Store full group objects and de-duplicate by name ---
+                // This prevents the "double button" bug
                 const groupMap = new Map<string, ItemGroup>();
                 fetchedItemGroups.forEach(group => {
                     if (!groupMap.has(group.name.toLowerCase())) {

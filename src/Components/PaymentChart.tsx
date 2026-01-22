@@ -19,7 +19,7 @@ export const PaymentChart: React.FC<PaymentChartProps> = ({ isDataVisible, data 
 
     return (
         <Card className="shadow-sm border-gray-200">
-            <CardHeader className="flex flex-row items-start justify-between ">
+            <CardHeader className="flex flex-row items-start justify-between pb-2">
                 <CardTitle className="text-base font-semibold text-gray-900 w-32 leading-tight">
                     Sales Payment Methods
                 </CardTitle>
@@ -29,7 +29,7 @@ export const PaymentChart: React.FC<PaymentChartProps> = ({ isDataVisible, data 
                 </div>
             </CardHeader>
 
-            <CardContent className="space-y-5">
+            <CardContent className="space-y-5 pt-2">
                 {isDataVisible ? (
                     data.length > 0 ? (
                         data.map((item, index) => {

@@ -1,12 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../lib/Firebase';
 import { useAuth } from '../../context/auth-context';
-import { 
-  collection, 
-  query, 
-  where, 
-  getDocs // CHANGED: Imported getDocs instead of onSnapshot
-} from 'firebase/firestore'; 
+import { collection, query, onSnapshot, where } from 'firebase/firestore';
+import type { FirestoreError } from 'firebase/firestore';
 import {
   Search,
   AlertTriangle,
@@ -44,17 +40,19 @@ const RestockReportPage: React.FC = () => {
       return;
     }
 
-    const fetchRestockItems = async () => {
-      setLoading(true);
-      try {
-        const itemsQuery = query(
-          collection(db, 'companies', currentUser.companyId, 'items'),
-          where('stock', '<=', 3),
-        );
+    setLoading(true);
 
-        // CHANGED: Using getDocs (One-time fetch) instead of onSnapshot (Listener)
-        const snapshot = await getDocs(itemsQuery);
+    // 1. Filter at the SOURCE
+    // TODO: add is isRestockNeeded field to optimize query this will be of type boolean
+    const itemsQuery = query(
+      collection(db, 'companies', currentUser.companyId, 'items'),
+      where('stock', '<=', 3),
+    );
 
+    const unsubscribe = onSnapshot(
+      itemsQuery,
+      (snapshot) => {
+        // 2. Only the items that need restocking enter this function
         const filteredItems = snapshot.docs.map(
           (doc) =>
             ({
@@ -63,7 +61,7 @@ const RestockReportPage: React.FC = () => {
             }) as ItemDoc,
         );
 
-        // Keep your custom sorting
+        // 3. Keep your custom sorting
         filteredItems.sort(
           (a, b) =>
             (a.stock || 0) -
@@ -72,16 +70,16 @@ const RestockReportPage: React.FC = () => {
         );
 
         setInventoryItems(filteredItems);
-      } catch (err: any) {
+        setLoading(false);
+      },
+      (err: FirestoreError) => {
         console.error('Error fetching items for restock report:', err);
         setError(`Failed to load restock report: ${err.message}`);
-      } finally {
         setLoading(false);
-      }
-    };
+      },
+    );
 
-    fetchRestockItems();
-
+    return () => unsubscribe();
   }, [currentUser?.companyId]);
 
   const displayedItems = inventoryItems.filter((item) => {
@@ -239,7 +237,7 @@ const RestockReportPage: React.FC = () => {
                       </td>
                       <td className="p-4 text-center font-medium">
                         <span
-                          className={`${currentStock < 0 ? 'text-red-600' : 'text-gray-900'}`}
+                          className={`${currentStock === 0 ? 'text-red-600' : 'text-gray-900'}`}
                         >
                           {currentStock}
                         </span>

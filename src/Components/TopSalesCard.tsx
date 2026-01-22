@@ -17,14 +17,14 @@ export const TopSalespersonCard: React.FC<TopSalespersonCardProps> = ({ isDataVi
 
   return (
     <Card className="shadow-sm border-gray-200">
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="text-base font-semibold text-gray-900">Top 5 Salespeople</CardTitle>
         <div className="flex bg-gray-50 p-1 rounded-lg border border-gray-100">
           <button onClick={() => setViewMode('amount')} className={`px-2 py-1 text-xs font-medium rounded-md ${viewMode === 'amount' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500'}`}>Amt</button>
           <button onClick={() => setViewMode('quantity')} className={`px-2 py-1 text-xs font-medium rounded-md ${viewMode === 'quantity' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500'}`}>Qty</button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="pt-2 space-y-4">
         {isDataVisible ? (
           salesmen.length > 0 ? (
             salesmen.map((person, index) => (

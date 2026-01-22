@@ -99,7 +99,7 @@ const DashboardContent = () => {
 
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isDataVisible, setIsDataVisible] = useState(false);
+  const [isDataVisible, setIsDataVisible] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
 

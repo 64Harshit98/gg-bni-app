@@ -36,7 +36,6 @@
     "firebase-admin": "^13.5.0",
     "html2canvas": "^1.4.1",
     "html5-qrcode": "^2.3.8",
-    "idb-keyval": "^6.2.2",
     "jsbarcode": "^3.12.1",
     "jspdf": "^3.0.2",
     "jspdf-autotable": "^5.0.2",

@@ -31,7 +31,7 @@ export const TopSoldItemsCard: React.FC<TopSoldItemsCardProps> = ({ isDataVisibl
 
   return (
     <Card className="shadow-sm border-gray-200">
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="text-base font-semibold text-gray-900">Top 5 Items</CardTitle>
         <div className="flex bg-gray-50 p-1 rounded-lg border border-gray-100">
            <button 
@@ -49,7 +49,7 @@ export const TopSoldItemsCard: React.FC<TopSoldItemsCardProps> = ({ isDataVisibl
         </div>
       </CardHeader>
       
-      <CardContent className=" space-y-4">
+      <CardContent className="pt-2 space-y-4">
         {isDataVisible ? (
           sortedItems.length > 0 ? (
             sortedItems.map((item, index) => (

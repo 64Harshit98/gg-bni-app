@@ -9,7 +9,7 @@ export interface Item {
   tax: number;
   taxRate?: number;
   itemGroupId: string;
-  isDeleted?: boolean;
+  
   // CHANGED: Renamed 'Stock' to 'stock' (lowercase)
   stock: number; 
   

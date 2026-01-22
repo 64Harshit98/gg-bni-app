@@ -22,7 +22,7 @@ export const SalesCard: React.FC<SalesCardProps> = ({
       </CardHeader>
       <CardContent>
         <div className="text-center">
-          <p className="text-4xl font-bold text-blue-600">
+          <p className="text-4xl font-bold text-blue-600 mt-4">
             {isDataVisible ? `₹${totalSales.toLocaleString('en-IN')}` : '₹ ******'}
           </p>
           <p className="text-md text-gray-500 mt-2">

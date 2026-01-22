@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/auth-context';
 import type { Item } from '../../constants/models';
 import { getFirestoreOperations } from '../../lib/ItemsFirebase';
@@ -10,15 +10,14 @@ import { Input } from '../../Components/ui/input';
 import QRCodeLib from 'qrcode';
 import JsBarcode from 'jsbarcode';
 import SearchableItemInput from '../../UseComponents/SearchIteminput';
-import { IconClose } from '../../constants/Icons';
 
 // --- Data Types ---
-type PrintableItem = Item & {
-    quantityToPrint: number;
+type PrintableItem = Item & { 
+    quantityToPrint: number; 
     queueId: string; // Unique ID for the UI list
 };
 
-type PrefilledItem = { barcode: string, quantity: number, name: string };
+type PrefilledItem = { id: string, quantity: number, name: string };
 
 // --- Preview Component ---
 const LabelPreview: React.FC<{ item: Item, companyName: string }> = ({ item, companyName }) => {
@@ -67,7 +66,7 @@ const QRCodeGeneratorPage: React.FC = () => {
     const [printQueue, setPrintQueue] = useState<PrintableItem[]>([]);
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [isPrinting, setIsPrinting] = useState(false);
-    const navigate = useNavigate();
+
     const [itemForPreview, setItemForPreview] = useState<PrintableItem | null>(null);
     const [companyName, setCompanyName] = useState<string>('Your Company');
     const [isPreviewOpen, setIsPreviewOpen] = useState(true);
@@ -83,6 +82,7 @@ const QRCodeGeneratorPage: React.FC = () => {
         return null;
     }, [currentUser]);
 
+    // Effect to fetch items and business info
     useEffect(() => {
         if (!dbOperations) {
             setIsLoading(false); return;
@@ -91,7 +91,7 @@ const QRCodeGeneratorPage: React.FC = () => {
             setIsLoading(true);
             try {
                 const [fetchedItems, businessInfo] = await Promise.all([
-                    dbOperations.syncItems(),
+                    dbOperations.getItems(),
                     dbOperations.getBusinessInfo()
                 ]);
 
@@ -106,22 +106,25 @@ const QRCodeGeneratorPage: React.FC = () => {
         };
         fetchData();
     }, [dbOperations]);
+
+    // Effect to handle prefilled items
     useEffect(() => {
         const prefilledItems = location.state?.prefilledItems as PrefilledItem[] | undefined;
         if (prefilledItems && allItems.length > 0 && !hasPrefilled.current) {
             const allItemsMap = new Map(allItems.map(item => [item.id, item]));
-
+            
             const itemsToPrint = prefilledItems.map((pItem: PrefilledItem) => {
-                const fullItem = allItemsMap.get(pItem.barcode);
+                const fullItem = allItemsMap.get(pItem.id);
                 if (fullItem) {
-                    return {
-                        ...fullItem,
+                    return { 
+                        ...fullItem, 
                         quantityToPrint: pItem.quantity,
-                        queueId: crypto.randomUUID() as string
+                        queueId: crypto.randomUUID() as string // Explicit cast to fix Type Error
                     };
                 }
                 return null;
-            }).filter((item) => item !== null) as PrintableItem[];
+            }).filter((item) => item !== null) as PrintableItem[]; // FIX: Cast result array
+
             setPrintQueue(itemsToPrint);
             if (itemsToPrint.length > 0) {
                 setItemForPreview(itemsToPrint[0]);
@@ -149,8 +152,8 @@ const QRCodeGeneratorPage: React.FC = () => {
         // Prevent duplicates based on DB ID if desired, or allow multiple rows
         if (printQueue.some(queuedItem => queuedItem.id === item.id)) return;
 
-        const newItem: PrintableItem = {
-            ...item,
+        const newItem: PrintableItem = { 
+            ...item, 
             quantityToPrint: 1,
             queueId: crypto.randomUUID() as string
         };
@@ -342,10 +345,6 @@ const QRCodeGeneratorPage: React.FC = () => {
 
             <Card className="max-w-4xl mx-auto mb-16">
                 <CardHeader>
-                    <button onClick={() => navigate(-1)}
-                        className="rounded-full w-8 bg-gray-200 p-2 text-gray-900 hover:bg-gray-300">
-                        <IconClose width={18} height={20} />
-                    </button>
                     <CardTitle className="text-2xl text-center font-bold text-gray-800">Item QR Code Generator</CardTitle>
                 </CardHeader>
                 <CardContent>{renderContent()}</CardContent>

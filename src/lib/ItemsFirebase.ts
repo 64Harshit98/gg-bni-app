@@ -3,7 +3,6 @@ import {
   collection,
   addDoc,
   setDoc,
-  setDoc,
   getDocs,
   doc,
   updateDoc,
@@ -13,12 +12,13 @@ import {
   getDoc,
   serverTimestamp,
   writeBatch,
-  getCountFromServer,
-  onSnapshot
+  getCountFromServer
 } from 'firebase/firestore';
-import { get, set } from 'idb-keyval';
+import { get, set } from 'idb-keyval'; // High-performance local storage
 import type { Item, ItemGroup } from '../constants/models';
 import { Role, type User } from '../Role/permission';
+
+
 
 export const getFirestoreOperations = (companyId: string) => {
   if (!companyId) {
@@ -30,101 +30,71 @@ export const getFirestoreOperations = (companyId: string) => {
   const itemRef = collection(companyRef, 'items');
   const usersRef = collection(companyRef, 'users');
 
-  const STORE_KEY = `pos_items_${companyId}`;
-  const TIME_KEY = `pos_sync_time_${companyId}`;
-
   return {
-    listenToItems: (onData: (items: Item[]) => void) => {
-      let unsubscribe = () => { };
-
-      (async () => {
-        try {
-          const localItems: Item[] = (await get(STORE_KEY)) || [];
-          onData(localItems.filter(i => !i.isDeleted));
-        } catch (e) {
-          console.error("Error loading initial cache", e);
-        }
-
-        const lastSyncTime = await get(TIME_KEY);
-        let q;
-        if (lastSyncTime) {
-          console.log(`[Listener] Listening for updates since: ${lastSyncTime}`);
-          const lastDate = new Date(lastSyncTime);
-          q = query(itemRef, where('updatedAt', '>', lastDate));
-        } else {
-          console.log(`[Listener] First time sync. Listening to full collection.`);
-          q = query(itemRef);
-        }
-
-        unsubscribe = onSnapshot(q, async (snapshot) => {
-          if (snapshot.empty) return;
-
-          const currentLocal: Item[] = (await get(STORE_KEY)) || [];
-          const itemMap = new Map(currentLocal.map(i => [i.id, i]));
-
-          snapshot.docs.forEach(doc => {
-            const newItem = { id: doc.id, ...(doc.data() as Item) };
-            if (newItem.isDeleted) {
-              itemMap.delete(newItem.id);
-            } else {
-              itemMap.set(newItem.id, newItem);
-            }
-          });
-
-          const mergedItems = Array.from(itemMap.values());
-
-          await set(STORE_KEY, mergedItems);
-          await set(TIME_KEY, new Date().toISOString());
-
-          console.log(`[Listener] Synced ${snapshot.size} changes. Total items: ${mergedItems.length}`);
-
-          onData(mergedItems.filter(i => !i.isDeleted));
-        }, (error) => {
-          console.error("Live Sync Error:", error);
-        });
-      })();
-
-      return () => unsubscribe();
-    },
-
-
+    // ---------------------------------------------------------
+    // 1. SYNC ITEMS (The "Delta Sync" Strategy)
+    // ---------------------------------------------------------
     syncItems: async (): Promise<Item[]> => {
+      // Dynamic keys ensure Company A data doesn't mix with Company B
+      const STORE_KEY = `pos_items_${companyId}`;
+      const TIME_KEY = `pos_sync_time_${companyId}`;
+
+      // A. Load Local Data (Fast, 0 Cost)
       let localItems: Item[] = (await get(STORE_KEY)) || [];
       const lastSyncTime = await get(TIME_KEY);
 
+      // B. Build Query: "Give me only what changed since last time"
       let q;
       if (lastSyncTime) {
+        console.log(`[Sync] Checking for updates since: ${lastSyncTime}`);
         const lastDate = new Date(lastSyncTime);
         q = query(itemRef, where('updatedAt', '>', lastDate));
       } else {
+        console.log(`[Sync] First time load. Fetching full database.`);
         q = query(itemRef);
       }
 
+      // C. Fetch from Firestore
       const snapshot = await getDocs(q);
 
+      // D. Optimization: If no updates, return local cache immediately
       if (snapshot.empty) {
+        // Return only items that are NOT deleted
         return localItems.filter(i => !i.isDeleted);
       }
 
+      // E. Merge Logic
       const fetchedItems = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as Item) }));
+      
+      // Create a map of existing items for O(1) lookups
       const itemMap = new Map(localItems.map(i => [i.id, i]));
 
       fetchedItems.forEach(newItem => {
         if (newItem.isDeleted) {
+          // If server says "deleted", remove from local map
           itemMap.delete(newItem.id);
         } else {
+          // Otherwise add/update the item
           itemMap.set(newItem.id, newItem);
         }
       });
 
+      // Convert back to array
       const mergedItems = Array.from(itemMap.values());
 
+      // F. Save New State to Local Device
       await set(STORE_KEY, mergedItems);
       await set(TIME_KEY, new Date().toISOString());
 
+      console.log(`[Sync] Updated. Total items available: ${mergedItems.length}`);
+      
+      // Return list without deleted items
       return mergedItems.filter(i => !i.isDeleted);
     },
 
+    // ---------------------------------------------------------
+    // 2. ITEM CRUD (Modified for Soft Deletes)
+    // ---------------------------------------------------------
 
     createItem: async (
       item: Omit<Item, 'id' | 'createdAt' | 'updatedAt' | 'companyId'>,
@@ -133,9 +103,9 @@ export const getFirestoreOperations = (companyId: string) => {
       const payload = {
         ...item,
         companyId,
-        isDeleted: false,
+        isDeleted: false, // Default to not deleted
         createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
+        updatedAt: serverTimestamp() // Crucial for Sync
       };
 
       if (customId) {
@@ -149,22 +119,29 @@ export const getFirestoreOperations = (companyId: string) => {
 
     updateItem: async (id: string, updates: Partial<Omit<Item, 'id' | 'createdAt' | 'companyId'>>): Promise<void> => {
       const docRef = doc(itemRef, id);
-      await updateDoc(docRef, {
-        ...updates,
-        updatedAt: serverTimestamp()
+      await updateDoc(docRef, { 
+        ...updates, 
+        updatedAt: serverTimestamp() // Crucial: This triggers the sync for other users
       });
     },
 
+    // CRITICAL CHANGE: Soft Delete instead of Physical Delete
     deleteItem: async (id: string): Promise<void> => {
       const docRef = doc(itemRef, id);
-      await updateDoc(docRef, {
-        isDeleted: true,
-        updatedAt: serverTimestamp()
+      await updateDoc(docRef, { 
+        isDeleted: true, 
+        updatedAt: serverTimestamp() 
       });
+      // The next time syncItems() runs, it will see this flag and remove it locally.
     },
 
+    // ---------------------------------------------------------
+    // 3. OTHER HELPER FUNCTIONS (Preserved)
+    // ---------------------------------------------------------
 
     getItemByBarcode: async (barcode: string): Promise<Item | null> => {
+      // NOTE: For better performance, you should use syncItems() on the frontend 
+      // and .find() the barcode there. But this serves as a fallback.
       const q = query(itemRef, where('barcode', '==', barcode), where('isDeleted', '==', false));
       const querySnapshot = await getDocs(q);
       if (!querySnapshot.empty) {
@@ -194,14 +171,19 @@ export const getFirestoreOperations = (companyId: string) => {
           gstin: (data.gstin as string) || ""
         };
       } else {
+        console.warn(`Business info not found for ${companyId}`);
         return { name: "", address: "", phoneNumber: "", email: "", gstin: "" };
       }
     },
 
+    // --- ITEM GROUPS (These typically don't need delta sync as they are small lists) ---
 
     getDistinctItemGroupsFromItems: async (): Promise<ItemGroup[]> => {
-      const snapshot = await getDocs(itemGroupRef);
-      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ItemGroup));
+        // Optimized: Just fetch groups directly. 
+        // If you need perfect accuracy on "used" groups, stick to reading just ItemGroups
+        // rather than reading all Items to check usage.
+        const snapshot = await getDocs(itemGroupRef);
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ItemGroup));
     },
 
     createItemGroup: async (itemGroup: Omit<ItemGroup, 'id' | 'createdAt' | 'updatedAt' | 'companyId'>): Promise<string> => {
@@ -244,6 +226,7 @@ export const getFirestoreOperations = (companyId: string) => {
 
       batch.update(groupDocRef, { name: newName, updatedAt: serverTimestamp() });
 
+      // Note: This reads items. For massive lists, consider running this in a Cloud Function
       const itemsQuery = query(itemRef, where('itemGroupId', '==', oldName));
       const itemsSnapshot = await getDocs(itemsQuery);
 
@@ -269,6 +252,7 @@ export const getFirestoreOperations = (companyId: string) => {
       await deleteDoc(groupDocRef);
     },
 
+    // --- USERS ---
 
     getSalesmen: async (): Promise<User[]> => {
       const q = query(usersRef, where("role", "==", Role.Salesman));
@@ -283,14 +267,17 @@ export const getFirestoreOperations = (companyId: string) => {
     },
   };
 };
-
-
 export const getItemsByCompany = async (companyId: string): Promise<Item[]> => {
   try {
     const itemsRef = collection(db, 'companies', companyId, 'items');
-    const q = query(itemsRef, where('isListed', '==', true), where('isDeleted', '==', false));
+    
+    // 2. QUERY: Only fetch items where isListed is true
+    // Note: If you want to sort by name AND filter by isListed, you will need a Composite Index.
+    // For now, this simple query works without a custom index.
+    const q = query(itemsRef, where('isListed', '==', true));
+    
     const snapshot = await getDocs(q);
-
+    
     return snapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
@@ -304,9 +291,9 @@ export const getItemsByCompany = async (companyId: string): Promise<Item[]> => {
 export const getItemGroupsByCompany = async (companyId: string): Promise<ItemGroup[]> => {
   try {
     const groupsRef = collection(db, 'companies', companyId, 'itemGroups');
-    const q = query(groupsRef);
+    const q = query(groupsRef); // Fetch all groups
     const snapshot = await getDocs(q);
-
+    
     return snapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),

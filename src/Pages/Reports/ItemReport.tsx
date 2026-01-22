@@ -6,7 +6,6 @@ import type { Item, ItemGroup } from '../../constants/models';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
-import * as XLSX from 'xlsx';
 import { Spinner } from '../../constants/Spinner';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
@@ -37,6 +36,12 @@ const DownloadChoiceModal: React.FC<{
         >
           <IconClose width={20} height={20} />
         </button>
+
+        <div className="mx-auto mb-4 w-12 h-12 rounded-full flex items-center justify-center bg-blue-100">
+          <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+          </svg>
+        </div>
 
         <h3 className="text-xl font-bold text-gray-800 mb-2">Download Report</h3>
         <p className="text-gray-600 mb-6">Select your preferred format.</p>

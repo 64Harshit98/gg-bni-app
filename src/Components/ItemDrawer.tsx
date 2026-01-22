@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { Item, ItemGroup } from '../constants/models';
+import type { Item, ItemGroup } from '../constants/models'; 
 import { useDatabase } from '../context/auth-context';
-import { FieldValue, Timestamp, doc, getDoc } from 'firebase/firestore';
-import { db, storage } from '../lib/Firebase';
+import { FieldValue, Timestamp, doc, getDoc } from 'firebase/firestore'; // Import getDoc/doc
+import { db, storage } from '../lib/Firebase'; // Import db
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { FiSave, FiX, FiPackage } from 'react-icons/fi';
 import { Spinner } from '../constants/Spinner';
@@ -41,8 +41,9 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
     const dbOperations = useDatabase();
     const [formData, setFormData] = useState<Partial<Item>>({});
     const [isSaving, setIsSaving] = useState(false);
-
-    const [isFetching, setIsFetching] = useState(false);
+    
+    // New state for fetching live data
+    const [isFetching, setIsFetching] = useState(false); 
 
     const [error, setError] = useState<string | null>(null);
     const firstInputRef = useRef<HTMLInputElement>(null);
@@ -53,6 +54,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
     const [imagePreview, setImagePreview] = useState<string | null>(null);
     const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 
+    // 1. Fetch Groups
     useEffect(() => {
         const fetchGroups = async () => {
             if (isOpen && dbOperations) {
@@ -70,13 +72,15 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
         fetchGroups();
     }, [isOpen, dbOperations]);
 
+    // 2. Fetch Live Item Data when Drawer Opens
     useEffect(() => {
         const fetchLiveItemData = async () => {
             if (isOpen && item && item.id && item.companyId) {
                 setIsFetching(true);
                 setError(null);
-
+                
                 try {
+                    // Fetch directly from Firestore to ensure data is live
                     const itemRef = doc(db, 'companies', item.companyId, 'items', item.id);
                     const itemSnap = await getDoc(itemRef);
 
@@ -85,9 +89,11 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                     if (itemSnap.exists()) {
                         liveData = itemSnap.data() as Partial<Item>;
                     } else {
+                        // Fallback to prop if fetch fails or doc missing (unlikely)
                         liveData = { ...item };
                     }
 
+                    // Populate Form with LIVE data
                     setFormData({
                         name: liveData.name || '',
                         mrp: liveData.mrp ?? undefined,
@@ -105,6 +111,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                     setImageFile(null);
                     setUploadProgress(null);
 
+                    // Focus input after loading
                     setTimeout(() => {
                         firstInputRef.current?.focus();
                     }, 100);
@@ -117,6 +124,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 }
 
             } else if (!isOpen) {
+                // Reset when closed
                 setFormData({});
                 setError(null);
                 setIsSaving(false);
@@ -285,6 +293,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                    {/* SHOW LOADING SPINNER IF FETCHING LIVE DATA */}
                     {isFetching ? (
                         <div className="flex flex-col items-center justify-center h-40 space-y-2">
                             <Spinner />

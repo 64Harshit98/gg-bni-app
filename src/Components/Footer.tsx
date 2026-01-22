@@ -37,7 +37,7 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
 }) => {
   return (
 
-    <div className="flex-shrink-0 bg-white border-t border-gray-100 shadow-[0_-5px_15px_rgba(0,0,0,0.05)] rounded-t-sm z-20 md:shadow-none md:border-0 md:rounded-none md:bg-transparent md:w-full">
+    <div className="flex-shrink-0 bg-white border-t border-gray-100 shadow-[0_-5px_15px_rgba(0,0,0,0.05)] rounded-t-2xl z-20 md:shadow-none md:border-0 md:rounded-none md:bg-transparent md:w-full">
 
       <div className="md:mb-4">
         {children}
@@ -52,9 +52,12 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
           <span className="text-sm font-bold tracking-wider text-gray-500 group-hover:text-gray-700">
             Bill Details
           </span>
-          <span className="bg-gray-100 text-gray-600 text-[10px] px-2 py-0.5 rounded-sm font-medium">
-            {totalQuantity} Items
-          </span>
+          {/* Show Qty in header when collapsed */}
+          {!isExpanded && (
+            <span className="bg-gray-100 text-gray-600 text-[10px] px-2 py-0.5 rounded-full font-medium">
+              {totalQuantity} Items
+            </span>
+          )}
         </div>
         <div className={`transform transition-transform duration-300 text-gray-400 ${isExpanded ? '' : 'rotate-180'}`}>
           <IconChevronDown width={20} height={20} />
@@ -62,9 +65,9 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
       </div>
 
 
-      <div className={`${isExpanded ? 'block' : 'hidden'} md:block px-5 pb-2 pt-1 md:px-0 md:pb-4 space-y-2 text-sm animate-in slide-in-from-bottom-2 duration-200 md:animate-none`}>
+      <div className={`${isExpanded ? 'block' : 'hidden'} md:block px-5 pb-2 pt-2 md:px-0 md:pb-4 space-y-2 text-sm animate-in slide-in-from-bottom-2 duration-200 md:animate-none`}>
 
-        <div className="flex justify-between text-gray-600 pt-1">
+        <div className="flex justify-between text-gray-600">
           <span>Subtotal</span>
           <span className="font-medium">₹{subtotal.toFixed(2)}</span>
         </div>
@@ -77,15 +80,20 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
         )}
 
         {showTaxRow && (
-          <div className="border-b border-gray-200 pb-2 flex justify-between text-blue-600">
+          <div className="flex justify-between text-blue-600">
             <span>{taxLabel}</span>
             <span className="font-medium">+ ₹{taxAmount.toFixed(2)}</span>
           </div>
         )}
+
+        <div className="border-t border-dashed border-gray-200 pt-2 mt-2 flex justify-between text-gray-500 text-xs font-medium">
+          <span>Total Quantity</span>
+          <span>{totalQuantity}</span>
+        </div>
       </div>
 
       {/* Main Total & Action */}
-      <div className="px-5 pb-5 md:px-0 md:pb-0 md:pt-4 md:border-t md:border-gray-100">
+      <div className="px-5 pb-5 pt-2 md:px-0 md:pb-0 md:pt-4 md:border-t md:border-gray-100">
         <div className="flex justify-between items-end mb-2">
           <span className="text-gray-500 text-sm font-medium pb-1">Grand Total</span>
           <span className="text-2xl font-extrabold text-gray-900 tracking-tight">

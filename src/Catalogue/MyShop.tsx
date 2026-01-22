@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAuth, useDatabase } from '../context/auth-context';
-import type { Item, ItemGroup } from '../constants/models';
+import type { Item, ItemGroup } from '../constants/models'; // Import ItemGroup
 import { FiSearch, FiEdit, FiStar, FiCheckSquare, FiLoader, FiEye, FiPackage } from 'react-icons/fi';
 import { ItemEditDrawer } from '../Components/ItemDrawer';
 import { Spinner } from '../constants/Spinner';
 
+// --- StockIndicator (Unchanged) ---
 const StockIndicator: React.FC<{ stock: number }> = ({ stock }) => {
     let colorClass = 'text-green-600 bg-green-100';
     if (stock <= 10 && stock > 0) colorClass = 'text-yellow-600 bg-yellow-100';
@@ -17,6 +18,7 @@ const StockIndicator: React.FC<{ stock: number }> = ({ stock }) => {
     );
 };
 
+// --- QuickListedToggle (Unchanged) ---
 interface QuickListedToggleProps {
     itemId: string;
     isListed: boolean;
@@ -69,9 +71,10 @@ const MyShopPage: React.FC = () => {
     const [isViewMode, setIsViewMode] = useState(false);
     const [allItems, setAllItems] = useState<Item[]>([]);
 
+    // --- Store the full ItemGroup objects, including duplicates ---
     const [allItemGroups, setAllItemGroups] = useState<ItemGroup[]>([]);
 
-    const [selectedCategory, setSelectedCategory] = useState('All');
+    const [selectedCategory, setSelectedCategory] = useState('All'); // Will store 'All' or a group ID
     const [searchQuery, setSearchQuery] = useState('');
     const [pageIsLoading, setPageIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -83,7 +86,7 @@ const MyShopPage: React.FC = () => {
     const observerRef = useRef<IntersectionObserver | null>(null);
     const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
-    useEffect(() => {
+   useEffect(() => {
         if (authLoading || !currentUser || !dbOperations) {
             setPageIsLoading(authLoading || !dbOperations);
             return;
@@ -91,22 +94,24 @@ const MyShopPage: React.FC = () => {
 
         const fetchData = async () => {
             try {
-                setPageIsLoading(true);
-                setError(null);
-                setAllItems([]);
+                setPageIsLoading(true); 
+                setError(null); 
+                // Don't clear items immediately (setAllItems([])) if you want to avoid a "flash"
+                // But if you prefer a clean state, keeping it is fine.
+                setAllItems([]); 
                 setItemsToRenderCount(ITEMS_PER_BATCH_RENDER);
 
                 // OPTIMIZATION: Use syncItems() instead of getItems()
                 const [fetchedItemGroups, fetchedItems] = await Promise.all([
                     dbOperations.getItemGroups(),
-                    dbOperations.syncItems()
+                    dbOperations.syncItems() // <--- The magic change
                 ]);
 
                 setAllItemGroups(fetchedItemGroups);
                 setAllItems(fetchedItems);
 
             } catch (err: any) {
-                setError(err.message || 'Failed to load initial data.');
+                setError(err.message || 'Failed to load initial data.'); 
                 console.error("Fetch Error:", err);
             } finally {
                 setPageIsLoading(false);
@@ -115,15 +120,16 @@ const MyShopPage: React.FC = () => {
         fetchData();
     }, [authLoading, currentUser, dbOperations]);
 
+    // --- FIX: Create a DE-DUPLICATED list of groups for the filter buttons ---
     const uniqueCategories = useMemo(() => {
         const map = new Map<string, ItemGroup>();
         allItemGroups.forEach(group => {
-            if (!map.has(group.name.toLowerCase())) {
+            if (!map.has(group.name.toLowerCase())) { // Use lowercase name as the unique key
                 map.set(group.name.toLowerCase(), group);
             }
         });
         const uniqueGroups = Array.from(map.values());
-        uniqueGroups.sort((a, b) => a.name.localeCompare(b.name));
+        uniqueGroups.sort((a, b) => a.name.localeCompare(b.name)); // Sort them
         return uniqueGroups;
     }, [allItemGroups]);
 
@@ -134,6 +140,8 @@ const MyShopPage: React.FC = () => {
                 return false;
             }
 
+            // --- FIX: Filter by ID, not by name ---
+            // Get the group object that matches the selectedCategory ID
             const selectedGroup = allItemGroups.find(g => g.id === selectedCategory);
 
             const matchesCategory =
@@ -301,30 +309,33 @@ const MyShopPage: React.FC = () => {
                     <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                 </div>
 
+                {/* --- FIX: This is your button filter, now using uniqueCategories --- */}
                 <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
                     <button
-                        key="All"
+                        key="All" // Unique key for "All"
                         onClick={() => setSelectedCategory('All')}
                         className={`px-3 md:px-4 py-1.5 text-xs md:text-sm font-medium rounded-full flex-shrink-0 transition-colors ${selectedCategory === 'All'
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                             }`}
                     >
                         All
                     </button>
+                    {/* Map over the DE-DUPLICATED list */}
                     {uniqueCategories.map(group => (
                         <button
-                            key={group.id!}
-                            onClick={() => setSelectedCategory(group.id!)}
+                            key={group.id!} // <-- Use the UNIQUE ID for the key
+                            onClick={() => setSelectedCategory(group.id!)} // <-- Set the UNIQUE ID
                             className={`px-3 md:px-4 py-1.5 text-xs md:text-sm font-medium rounded-full flex-shrink-0 transition-colors ${selectedCategory === group.id
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                                 }`}
                         >
-                            {group.name}
+                            {group.name} {/* Display the name */}
                         </button>
                     ))}
                 </div>
+                {/* --- END FIX --- */}
             </div>
 
             {/* --- ITEM GRID --- */}

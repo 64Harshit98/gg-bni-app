@@ -33,7 +33,6 @@ export interface SalesSettings {
     voucherPrefix?: string;
     currentVoucherNumber?: number;
     copyVoucherAfterSaving?: boolean;
-    cartInsertionOrder?: 'top' | 'bottom';
     companyId?: string;
 }
 
@@ -49,7 +48,7 @@ export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
 
     enableRounding: true,
     roundingInterval: 1,
-    cartInsertionOrder: 'top',
+
     enforceExactMRP: false,
     hideMrp: false,
     enableItemWiseDiscount: true,
@@ -302,23 +301,6 @@ const SalesSettingsPage: React.FC = () => {
                                 className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500"
                             />
                             <label htmlFor="hide-mrp" className="ml-2 text-gray-700 text-sm font-medium">Hide MRP in Sales List</label>
-                        </div>
-                        <div className="mb-4">
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Cart Item Sorting
-                            </label>
-                            <select
-                                // Bind to the setting
-                                value={settings?.cartInsertionOrder || 'top'}
-                                onChange={(e) => handleChange('cartInsertionOrder', e.target.value as 'top' | 'bottom')}
-                                className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                            >
-                                <option value="top">Newest First (Add New to Top)</option>
-                                <option value="bottom">Oldest First (Add New to Bottom)</option>
-                            </select>
-                            <p className="text-xs text-gray-500 mt-1">
-                                Controls where new items appear in the cart list.
-                            </p>
                         </div>
                     </div>
 

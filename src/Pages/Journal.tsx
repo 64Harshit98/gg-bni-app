@@ -9,6 +9,7 @@ import {
   Timestamp,
   QuerySnapshot,
   doc,
+  getDoc,
   type DocumentData,
   runTransaction,
   increment,
@@ -346,14 +347,22 @@ const Journal: React.FC = () => {
 
     try {
       const dbOps = getFirestoreOperations(currentUser.companyId);
-      const [businessInfo, fetchedItems] = await Promise.all([
+
+      // --- FIX IS HERE: Add 'billSettingsSnap' to the const list ---
+      const [businessInfo, fetchedItems, billSettingsSnap] = await Promise.all([
         dbOps.getBusinessInfo(),
         dbOps.syncItems(),
+        // Fetch the bill settings doc
+        getDoc(doc(db, 'companies', currentUser.companyId, 'settings', 'bill'))
       ]);
+
+      // Now this variable 'billSettingsSnap' exists and can be used
+      const billSettings = billSettingsSnap.exists() ? billSettingsSnap.data() : {};
 
       const populatedItems = (invoice.items || []).map((item: any, index: number) => {
         const fullItem = fetchedItems.find((fi: any) => fi.id === item.id);
         const finalTaxRate = item.taxRate || item.tax || item.gstPercent || fullItem?.tax || 0;
+
         const itemAmount = (item.finalPrice !== undefined && item.finalPrice !== null)
           ? item.finalPrice
           : (item.mrp * item.quantity);
@@ -372,32 +381,49 @@ const Journal: React.FC = () => {
       });
 
       const dataForPdf = {
+        // --- COMPANY DETAILS (Fallback to businessInfo) ---
         companyName: businessInfo?.name || 'Your Company',
         companyAddress: businessInfo?.address || 'Your Address',
         companyContact: businessInfo?.phoneNumber || 'Your Phone',
         companyEmail: businessInfo?.email || '',
+        signatureBase64: billSettings.signatureBase64 || '',
+        // --- BILL SETTINGS SPECIFIC FIELDS ---
+        companyGstin: billSettings.companyGstin || businessInfo?.gstin || '',
+        msmeNumber: billSettings.msmeNumber || '',
+        panNumber: billSettings.panNumber || '',
+
+        // --- BILL TO (CUSTOMER) ---
         billTo: {
           name: invoice.partyName,
           address: invoice.partyAddress || '',
           phone: invoice.partyNumber || '',
           gstin: invoice.partyGstin || '',
         },
+
+        // --- INVOICE META ---
         invoice: {
           number: invoice.invoiceNumber,
-          date: invoice.createdAt.toLocaleString('en-IN', {
+          date: new Date(invoice.createdAt).toLocaleString('en-IN', {
             day: 'numeric', month: 'short', year: 'numeric',
             hour: 'numeric', minute: 'numeric', hour12: true
           }),
           billedBy: salesSettings?.enableSalesmanSelection ? (invoice.salesmanName || 'Admin') : '',
+          roNumber: '',
         },
+
+        // --- ITEMS ---
         items: populatedItems,
-        terms: 'Goods once sold will not be taken back.',
+
+        // --- FOOTER DETAILS ---
+        terms: billSettings.termsAndConditions || 'Goods once sold will not be taken back.',
         finalAmount: invoice.amount,
+
         bankDetails: {
-          accountName: businessInfo?.accountHolderName,
-          accountNumber: businessInfo?.accountNumber,
-          bankName: businessInfo?.bankName,
-          gstin: businessInfo?.gstin
+          accountName: billSettings.accountName || businessInfo?.accountHolderName,
+          accountNumber: billSettings.accountNumber || businessInfo?.accountNumber,
+          bankName: billSettings.bankName || businessInfo?.bankName,
+          ifsc: billSettings.ifscCode || '',
+          gstin: billSettings.companyGstin || businessInfo?.gstin
         }
       };
 
@@ -410,7 +436,6 @@ const Journal: React.FC = () => {
       setPdfGenerating(null);
     }
   };
-
   const handleShowQr = (invoice: Invoice) => {
     setInvoiceToPrint(null);
     setShowQrModal(invoice);

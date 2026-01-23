@@ -504,7 +504,7 @@ const PurchaseReturnPage: React.FC = () => {
           if (originalItem.quantity <= 0) originalItemsMap.delete(returnItem.originalItemId);
         }
         const itemDocRef = await getItemDocRef(returnItem.barcode, returnItem.originalItemId);
-        batch.update(itemDocRef, { stock: firebaseIncrement(-returnItem.quantity), updatedAt: serverTimestamp() });
+        batch.update(itemDocRef, { stock: firebaseIncrement(-returnItem.quantity) });
       }
 
       for (const newItem of newItemsReceived) {
@@ -525,7 +525,7 @@ const PurchaseReturnPage: React.FC = () => {
           } as any);
         }
         const itemDocRef = await getItemDocRef(newItem.barcode, newItem.originalItemId);
-        batch.update(itemDocRef, { stock: firebaseIncrement(newItem.quantity), updatedAt: serverTimestamp() });
+        batch.update(itemDocRef, { stock: firebaseIncrement(newItem.quantity) });
       }
 
       const newItemsList = Array.from(originalItemsMap.values());

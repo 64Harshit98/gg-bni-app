@@ -17,16 +17,3 @@ export interface PurchaseRecord {
   items: PurchaseItem[];
   [key: string]: any;
 }
-
-export const formatDate = (timestamp: number): string => {
-  if (!timestamp) return 'N/A';
-  return new Date(timestamp).toLocaleDateString('en-IN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: '2-digit',
-  });
-};
-
-export const formatDateForInput = (date: Date): string => {
-  return date.toISOString().split('T')[0];
-};

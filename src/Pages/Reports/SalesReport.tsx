@@ -1,159 +1,47 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
+import FilterSelect from './SalesReportComponents/FilterSelect';
 import { useNavigate } from 'react-router-dom';
-import { db } from '../../lib/Firebase';
 import {
-  collection,
-  query,
-  getDocs,
-  Timestamp,
-  orderBy,
-} from 'firebase/firestore';
-import { useAuth } from '../../context/auth-context';
+  formatDate,
+  formatDateForInput,
+} from './SalesReportComponents/salesReport.utils';
+import useSalesReport from './SalesReportComponents/useSalesReport';
+import { type SaleRecord } from './SalesReportComponents/salesReport.utils';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
-// import { PaymentChart } from '../../Components/PaymentChart';
-// import { TopEntitiesList } from '../../Components/TopFiveEntities';
+
 import { IconClose } from '../../constants/Icons';
 import { getSalesColumns } from '../../constants/TableColoumns';
-
-// --- Data Types ---
-interface SalesItem {
-  name: string;
-  mrp: number;
-  quantity: number;
-}
-interface PaymentMethods {
-  [key: string]: number;
-}
-interface SaleRecord {
-  id: string;
-  partyName: string;
-  totalAmount: number;
-  paymentMethods: PaymentMethods;
-  createdAt: number;
-  items: SalesItem[];
-  [key: string]: any;
-}
-
-const formatDate = (timestamp: number): string => {
-  if (!timestamp) return 'N/A';
-  return new Date(timestamp).toLocaleDateString('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: '2-digit',
-  });
-};
-
-const formatDateForInput = (date: Date): string => {
-  return date.toISOString().split('T')[0];
-};
-
-const FilterSelect: React.FC<{
-  label?: string;
-  value: string;
-  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
-  children: React.ReactNode;
-}> = ({ label, value, onChange, children }) => (
-  <div className="flex-1 min-w-0">
-    {label && (
-      <label className="block text-xs text-center font-medium text-gray-600 mb-1">
-        {label}
-      </label>
-    )}
-    <select
-      value={value}
-      onChange={onChange}
-      className="w-full p-2.5 text-sm text-center bg-gray-50 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-    >
-      {children}
-    </select>
-  </div>
-);
+import ReportDetails from './SalesReportComponents/ReportDetails';
 
 const SalesReport: React.FC = () => {
   const navigate = useNavigate();
-  const { currentUser, loading: authLoading } = useAuth();
-  const [sales, setSales] = useState<SaleRecord[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const [datePreset, setDatePreset] = useState<string>('today');
-  const [customStartDate, setCustomStartDate] = useState<string>('');
-  const [customEndDate, setCustomEndDate] = useState<string>('');
-  const [appliedFilters, setAppliedFilters] = useState<{
-    start: number;
-    end: number;
-  } | null>(null);
-  const [isListVisible, setIsListVisible] = useState(false);
-  const [sortConfig, setSortConfig] = useState<{
-    key: keyof SaleRecord;
-    direction: 'asc' | 'desc';
-  }>({ key: 'createdAt', direction: 'desc' });
-
-  useEffect(() => {
-    const today = new Date();
-    const startDateStr = formatDateForInput(today);
-    const endDateStr = formatDateForInput(today);
-    setCustomStartDate(startDateStr);
-    setCustomEndDate(endDateStr);
-    const start = new Date(startDateStr);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(endDateStr);
-    end.setHours(23, 59, 59, 999);
-    setAppliedFilters({ start: start.getTime(), end: end.getTime() });
-  }, []);
-
-  useEffect(() => {
-    if (authLoading) return;
-    if (!currentUser?.companyId) {
-      setIsLoading(false);
-      setError('Company information not found. Please log in again.');
-      return;
-    }
-
-    const companyId = currentUser.companyId;
-
-    const fetchSales = async () => {
-      setIsLoading(true);
-      try {
-        const q = query(
-          collection(db, 'companies', companyId, 'sales'),
-          orderBy('createdAt', 'desc'),
-        );
-
-        const querySnapshot = await getDocs(q);
-        const fetchedSales: SaleRecord[] = querySnapshot.docs.map((doc) => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            partyName: data.partyName || 'N/A',
-            totalAmount: data.totalAmount || 0,
-            paymentMethods: data.paymentMethods || {},
-            createdAt:
-              data.createdAt instanceof Timestamp
-                ? data.createdAt.toMillis()
-                : Date.now(),
-            items: data.items || [],
-          };
-        });
-        setSales(fetchedSales);
-      } catch (err) {
-        console.error('Error fetching sales:', err);
-        setError('Failed to load sales report.');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchSales();
-  }, [currentUser, authLoading]);
+  const {
+    setDatePreset,
+    setCustomStartDate,
+    setCustomEndDate,
+    customStartDate,
+    customEndDate,
+    setAppliedFilters,
+    sortConfig,
+    setSortConfig,
+    appliedFilters,
+    sales,
+    isLoading,
+    error,
+    datePreset,
+    isListVisible,
+    setIsListVisible,
+    authLoading,
+  } = useSalesReport();
 
   const handleDatePresetChange = (preset: string) => {
     setDatePreset(preset);
-    let start = new Date();
-    let end = new Date();
+    const start = new Date();
+    const end = new Date();
     switch (preset) {
       case 'today':
         break;
@@ -175,9 +63,9 @@ const SalesReport: React.FC = () => {
   };
 
   const handleApplyFilters = () => {
-    let start = customStartDate ? new Date(customStartDate) : new Date(0);
+    const start = customStartDate ? new Date(customStartDate) : new Date(0);
     start.setHours(0, 0, 0, 0);
-    let end = customEndDate ? new Date(customEndDate) : new Date();
+    const end = customEndDate ? new Date(customEndDate) : new Date();
     end.setHours(23, 59, 59, 999);
     setAppliedFilters({ start: start.getTime(), end: end.getTime() });
   };
@@ -203,7 +91,7 @@ const SalesReport: React.FC = () => {
       };
     }
 
-    let newFilteredSales = sales.filter(
+    const newFilteredSales = sales.filter(
       (sale) =>
         sale.createdAt >= appliedFilters.start &&
         sale.createdAt <= appliedFilters.end,
@@ -384,24 +272,12 @@ const SalesReport: React.FC = () => {
         <PaymentChart isDataVisible={true} type="sales" filters={appliedFilters} />
       </div> */}
 
-      <div className="bg-white p-4 rounded-lg shadow-md flex justify-between items-center">
-        <h2 className="text-lg font-semibold text-gray-700">Report Details</h2>
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={() => setIsListVisible(!isListVisible)}
-            className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition"
-          >
-            {isListVisible ? 'Hide List' : 'Show List'}
-          </button>
-          <button
-            onClick={downloadAsPdf}
-            disabled={filteredSales.length === 0}
-            className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 "
-          >
-            Download PDF
-          </button>
-        </div>
-      </div>
+      <ReportDetails
+        downloadAsPdf={downloadAsPdf}
+        filteredSales
+        isListVisible
+        setIsListVisible={setIsListVisible}
+      />
 
       {isListVisible && (
         <CustomTable<SaleRecord>

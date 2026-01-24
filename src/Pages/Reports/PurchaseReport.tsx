@@ -1,13 +1,13 @@
 import React, { useMemo } from 'react';
 import usePurchaseReports from './PurchaseReportComponents/usePurchaseReports';
 import { useNavigate } from 'react-router-dom';
-import { type PurchaseRecord } from './PurchaseReportComponents/purchaseReports.utils';
 import {
   formatDate,
   formatDateForInput,
-} from './SalesReportComponents/salesReport.utils';
+  type PurchaseRecord,
+} from './PurchaseReportComponents/purchaseReports.utils';
 import { jsPDF } from 'jspdf';
-import FilterSelect from './SalesReportComponents/FilterSelect';
+import FilterSelect from './PurchaseReportComponents/FilterSelect';
 import autoTable from 'jspdf-autotable';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';

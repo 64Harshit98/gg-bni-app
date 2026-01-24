@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
-import {
-  formatDateForInput,
-  type PurchaseRecord,
-} from './purchaseReports.utils';
+import { type PurchaseRecord } from './purchaseReports.utils';
+import { formatDateForInput } from '../SalesReportComponents/salesReport.utils';
 import { useAuth } from '../../../context/auth-context';
 import { db } from '../../../lib/Firebase';
 import {

@@ -16,9 +16,11 @@ interface SalesItem {
   mrp: number;
   quantity: number;
 }
+
 interface PaymentMethods {
   [key: string]: number;
 }
+
 export interface SaleRecord {
   id: string;
   partyName: string;

@@ -1,12 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { db } from '../../lib/Firebase';
-import { useAuth } from '../../context/auth-context';
-import { 
-  collection, 
-  query, 
-  where, 
-  getDocs // CHANGED: Imported getDocs instead of onSnapshot
-} from 'firebase/firestore'; 
+import React, { useMemo, useState } from 'react';
 import {
   Search,
   AlertTriangle,
@@ -18,87 +10,25 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { IconClose } from '../../constants/Icons';
 
-interface ItemDoc {
-  id: string;
-  name: string;
-  amount: number;
-  stock: number;
-  restockQuantity: number;
-  companyId: string;
-  supplier?: string;
-  unitCost?: number;
-}
+import useRestockReport from './RestockReportComponents/useRestockReport';
+import {
+  filterBySearch,
+  calculateSummary,
+  type ItemDoc,
+} from './RestockReportComponents/restockReport.utils';
 
 const RestockReportPage: React.FC = () => {
-  const { currentUser } = useAuth();
-
   const navigate = useNavigate();
-  const [inventoryItems, setInventoryItems] = useState<ItemDoc[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const { items: inventoryItems, loading, error } = useRestockReport();
   const [searchTerm, setSearchTerm] = useState('');
 
-  useEffect(() => {
-    if (!currentUser?.companyId) {
-      setLoading(false);
-      return;
-    }
+  const displayedItems = useMemo(
+    () => filterBySearch(inventoryItems, searchTerm),
+    [inventoryItems, searchTerm],
+  );
 
-    const fetchRestockItems = async () => {
-      setLoading(true);
-      try {
-        const itemsQuery = query(
-          collection(db, 'companies', currentUser.companyId, 'items'),
-          where('stock', '<=', 3),
-        );
-
-        // CHANGED: Using getDocs (One-time fetch) instead of onSnapshot (Listener)
-        const snapshot = await getDocs(itemsQuery);
-
-        const filteredItems = snapshot.docs.map(
-          (doc) =>
-            ({
-              id: doc.id,
-              ...doc.data(),
-            }) as ItemDoc,
-        );
-
-        // Keep your custom sorting
-        filteredItems.sort(
-          (a, b) =>
-            (a.stock || 0) -
-            a.restockQuantity -
-            ((b.stock || 0) - b.restockQuantity),
-        );
-
-        setInventoryItems(filteredItems);
-      } catch (err: any) {
-        console.error('Error fetching items for restock report:', err);
-        setError(`Failed to load restock report: ${err.message}`);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchRestockItems();
-
-  }, [currentUser?.companyId]);
-
-  const displayedItems = inventoryItems.filter((item) => {
-    return item.name.toLowerCase().includes(searchTerm.toLowerCase());
-  });
-
-  const totalItemsToRestock = displayedItems.length;
-  const outOfStockCount = displayedItems.filter(
-    (i) => (i.stock || 0) <= 0,
-  ).length;
-
-  const estimatedCostToRestock = displayedItems.reduce((acc, item) => {
-    const currentStock = item.stock || 0;
-    const quantityNeeded = item.restockQuantity - currentStock;
-    const cost = item.unitCost || 0;
-    return acc + quantityNeeded * cost;
-  }, 0);
+  const { totalItemsToRestock, outOfStockCount, estimatedCostToRestock } =
+    useMemo(() => calculateSummary(displayedItems), [displayedItems]);
 
   const getStatusBadge = (stock: number) => {
     if (stock <= 0) {
@@ -159,6 +89,7 @@ const RestockReportPage: React.FC = () => {
           </div>
         </div>
       </div>
+
       <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between mb-4">
         <div>
           <p className="text-sm font-medium text-gray-500">Est. Restock Cost</p>
@@ -220,7 +151,7 @@ const RestockReportPage: React.FC = () => {
                   </td>
                 </tr>
               ) : displayedItems.length > 0 ? (
-                displayedItems.map((item) => {
+                displayedItems.map((item: ItemDoc) => {
                   const currentStock = item.stock || 0;
                   const deficit = item.restockQuantity - currentStock;
 
@@ -239,7 +170,9 @@ const RestockReportPage: React.FC = () => {
                       </td>
                       <td className="p-4 text-center font-medium">
                         <span
-                          className={`${currentStock < 0 ? 'text-red-600' : 'text-gray-900'}`}
+                          className={
+                            currentStock < 0 ? 'text-red-600' : 'text-gray-900'
+                          }
                         >
                           {currentStock}
                         </span>

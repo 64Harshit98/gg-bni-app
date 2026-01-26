@@ -2,12 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
 import { useAuth } from '../../context/auth-context';
-import {
-  collection,
-  query,
-  onSnapshot,
-  Timestamp
-} from 'firebase/firestore';
+import { collection, query, onSnapshot, Timestamp } from 'firebase/firestore';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { CustomCard } from '../../Components/CustomCard';
@@ -15,6 +10,8 @@ import { CardVariant } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
 import { IconClose } from '../../constants/Icons';
 import { getPnlColumns } from '../../constants/TableColoumns';
+import { formatDateForInput } from './SalesReportComponents/salesReport.utils';
+import FilterSelect from './SalesReportComponents/FilterSelect';
 
 interface Transaction {
   id: string;
@@ -35,10 +32,6 @@ interface Item {
   purchasePrice: number;
 }
 
-const formatDateForInput = (date: Date): string => {
-  return date.toISOString().split('T')[0];
-};
-
 const formatDate = (date: Date): string => {
   if (!date) return 'N/A';
   return date.toLocaleDateString('en-GB', {
@@ -47,24 +40,6 @@ const formatDate = (date: Date): string => {
     year: '2-digit',
   });
 };
-
-const FilterSelect: React.FC<{
-  label?: string;
-  value: string;
-  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
-  children: React.ReactNode;
-}> = ({ label, value, onChange, children }) => (
-  <div className="flex-1 min-w-0">
-    {label && <label className="block text-xs text-center font-medium text-gray-600 mb-1">{label}</label>}
-    <select
-      value={value}
-      onChange={onChange}
-      className="w-full p-2.5 text-sm bg-gray-50 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-    >
-      {children}
-    </select>
-  </div>
-);
 
 const usePnlReport = (companyId: string | undefined) => {
   const [sales, setSales] = useState<Transaction[]>([]);
@@ -81,43 +56,59 @@ const usePnlReport = (companyId: string | undefined) => {
     const itemsCollectionRef = collection(db, 'companies', companyId, 'items');
     const qItems = query(itemsCollectionRef);
 
-    const unsubscribeItems = onSnapshot(qItems, (snapshot) => {
-      const newItemsMap = new Map<string, Item>();
-      snapshot.docs.forEach(doc => {
-        newItemsMap.set(doc.id, {
-          id: doc.id,
-          purchasePrice: doc.data().purchasePrice || 0,
+    const unsubscribeItems = onSnapshot(
+      qItems,
+      (snapshot) => {
+        const newItemsMap = new Map<string, Item>();
+        snapshot.docs.forEach((doc) => {
+          newItemsMap.set(doc.id, {
+            id: doc.id,
+            purchasePrice: doc.data().purchasePrice || 0,
+          });
         });
-      });
-      setItemsMap(newItemsMap);
-    }, (_err) => setError('Failed to fetch item data.'));
+        setItemsMap(newItemsMap);
+      },
+      (_err) => setError('Failed to fetch item data.'),
+    );
 
     const salesCollectionRef = collection(db, 'companies', companyId, 'sales');
     const qSales = query(salesCollectionRef);
 
-    const unsubscribeSales = onSnapshot(qSales, (snapshot) => {
-      if (itemsMap.size === 0 && snapshot.size > 0) return;
+    const unsubscribeSales = onSnapshot(
+      qSales,
+      (snapshot) => {
+        if (itemsMap.size === 0 && snapshot.size > 0) return;
 
-      setSales(snapshot.docs.map(doc => {
-        const saleData = doc.data();
-        const costOfGoodsSold = (saleData.items || []).reduce((sum: number, item: { id: string; quantity: number }) => {
-          const itemDetails = itemsMap.get(item.id);
-          const itemCost = itemDetails ? itemDetails.purchasePrice : 0;
-          return sum + (itemCost * (item.quantity || 0));
-        }, 0);
+        setSales(
+          snapshot.docs.map((doc) => {
+            const saleData = doc.data();
+            const costOfGoodsSold = (saleData.items || []).reduce(
+              (sum: number, item: { id: string; quantity: number }) => {
+                const itemDetails = itemsMap.get(item.id);
+                const itemCost = itemDetails ? itemDetails.purchasePrice : 0;
+                return sum + itemCost * (item.quantity || 0);
+              },
+              0,
+            );
 
-        return {
-          id: doc.id,
-          totalAmount: saleData.totalAmount || 0,
-          createdAt: saleData.createdAt instanceof Timestamp ? saleData.createdAt.toDate() : new Date(),
-          invoiceNumber: saleData.invoiceNumber || 'N/A',
-          partyName: saleData.partyName || 'N/A',
-          costOfGoodsSold: costOfGoodsSold,
-          items: saleData.items || [],
-        };
-      }));
-      setLoading(false);
-    }, (_err) => setError('Failed to fetch sales data.'));
+            return {
+              id: doc.id,
+              totalAmount: saleData.totalAmount || 0,
+              createdAt:
+                saleData.createdAt instanceof Timestamp
+                  ? saleData.createdAt.toDate()
+                  : new Date(),
+              invoiceNumber: saleData.invoiceNumber || 'N/A',
+              partyName: saleData.partyName || 'N/A',
+              costOfGoodsSold: costOfGoodsSold,
+              items: saleData.items || [],
+            };
+          }),
+        );
+        setLoading(false);
+      },
+      (_err) => setError('Failed to fetch sales data.'),
+    );
 
     return () => {
       unsubscribeItems();
@@ -131,14 +122,21 @@ const usePnlReport = (companyId: string | undefined) => {
 const PnlReportPage: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
-  const { sales, loading: dataLoading, error } = usePnlReport(currentUser?.companyId);
+  const {
+    sales,
+    loading: dataLoading,
+    error,
+  } = usePnlReport(currentUser?.companyId);
 
   const [datePreset, setDatePreset] = useState<string>('today');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [appliedFilters, setAppliedFilters] = useState({ start: '', end: '' });
   const [isListVisible, setIsListVisible] = useState(false);
-  const [sortConfig, setSortConfig] = useState<{ key: keyof TransactionDetail; direction: 'asc' | 'desc' }>({ key: 'createdAt', direction: 'desc' });
+  const [sortConfig, setSortConfig] = useState<{
+    key: keyof TransactionDetail;
+    direction: 'asc' | 'desc';
+  }>({ key: 'createdAt', direction: 'desc' });
 
   useEffect(() => {
     const today = new Date();
@@ -149,59 +147,100 @@ const PnlReportPage: React.FC = () => {
     startTimestamp.setHours(0, 0, 0, 0);
     const endTimestamp = new Date(formattedToday);
     endTimestamp.setHours(23, 59, 59, 999);
-    setAppliedFilters({ start: startTimestamp.toISOString(), end: endTimestamp.toISOString() });
+    setAppliedFilters({
+      start: startTimestamp.toISOString(),
+      end: endTimestamp.toISOString(),
+    });
   }, []);
 
   const { pnlSummary, filteredTransactions } = useMemo(() => {
-    const startTimestamp = appliedFilters.start ? new Date(appliedFilters.start).getTime() : 0;
-    const endTimestamp = appliedFilters.end ? new Date(appliedFilters.end).getTime() : Infinity;
-    const filteredSales = sales.filter(s => s.createdAt.getTime() >= startTimestamp && s.createdAt.getTime() <= endTimestamp);
+    const startTimestamp = appliedFilters.start
+      ? new Date(appliedFilters.start).getTime()
+      : 0;
+    const endTimestamp = appliedFilters.end
+      ? new Date(appliedFilters.end).getTime()
+      : Infinity;
+    const filteredSales = sales.filter(
+      (s) =>
+        s.createdAt.getTime() >= startTimestamp &&
+        s.createdAt.getTime() <= endTimestamp,
+    );
 
-    const totalRevenue = filteredSales.reduce((sum, sale) => sum + sale.totalAmount, 0);
-    const totalCostOfGoodsSold = filteredSales.reduce((sum, sale) => sum + (sale.costOfGoodsSold || 0), 0);
+    const totalRevenue = filteredSales.reduce(
+      (sum, sale) => sum + sale.totalAmount,
+      0,
+    );
+    const totalCostOfGoodsSold = filteredSales.reduce(
+      (sum, sale) => sum + (sale.costOfGoodsSold || 0),
+      0,
+    );
     const grossProfit = totalRevenue - totalCostOfGoodsSold;
-    const grossProfitPercentage = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
+    const grossProfitPercentage =
+      totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
 
-    let salesTransactions: TransactionDetail[] = filteredSales.map(s => ({
+    const salesTransactions: TransactionDetail[] = filteredSales.map((s) => ({
       ...s,
       type: 'Revenue' as const,
-      profit: s.totalAmount - (s.costOfGoodsSold || 0)
+      profit: s.totalAmount - (s.costOfGoodsSold || 0),
     }));
 
     salesTransactions.sort((a, b) => {
       const key = sortConfig.key;
       const direction = sortConfig.direction === 'asc' ? 1 : -1;
-      const valA = a[key] as any ?? (typeof a[key] === 'number' ? 0 : '');
-      const valB = b[key] as any ?? (typeof b[key] === 'number' ? 0 : '');
-      if (valA instanceof Date && valB instanceof Date) { return (valA.getTime() - valB.getTime()) * direction; }
-      if (typeof valA === 'number' && typeof valB === 'number') { return (valA - valB) * direction; }
-      if (typeof valA === 'string' && typeof valB === 'string') { return valA.localeCompare(valB) * direction; }
+      const valA = (a[key] as any) ?? (typeof a[key] === 'number' ? 0 : '');
+      const valB = (b[key] as any) ?? (typeof b[key] === 'number' ? 0 : '');
+      if (valA instanceof Date && valB instanceof Date) {
+        return (valA.getTime() - valB.getTime()) * direction;
+      }
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return (valA - valB) * direction;
+      }
+      if (typeof valA === 'string' && typeof valB === 'string') {
+        return valA.localeCompare(valB) * direction;
+      }
       return 0;
     });
 
     return {
-      pnlSummary: { totalRevenue, totalCost: totalCostOfGoodsSold, grossProfit, grossProfitPercentage },
-      filteredTransactions: salesTransactions
+      pnlSummary: {
+        totalRevenue,
+        totalCost: totalCostOfGoodsSold,
+        grossProfit,
+        grossProfitPercentage,
+      },
+      filteredTransactions: salesTransactions,
     };
   }, [sales, appliedFilters, sortConfig]);
 
   const handleSort = (key: keyof TransactionDetail) => {
-    setSortConfig(prevConfig => ({
+    setSortConfig((prevConfig) => ({
       key,
-      direction: prevConfig.key === key && prevConfig.direction === 'asc' ? 'desc' : 'asc'
+      direction:
+        prevConfig.key === key && prevConfig.direction === 'asc'
+          ? 'desc'
+          : 'asc',
     }));
   };
 
   const handleDatePresetChange = (preset: string) => {
     setDatePreset(preset);
-    let start = new Date();
-    let end = new Date();
+    const start = new Date();
+    const end = new Date();
     switch (preset) {
-      case 'today': break;
-      case 'yesterday': start.setDate(start.getDate() - 1); end.setDate(end.getDate() - 1); break;
-      case 'last7': start.setDate(start.getDate() - 6); break;
-      case 'last30': start.setDate(start.getDate() - 29); break;
-      case 'custom': return;
+      case 'today':
+        break;
+      case 'yesterday':
+        start.setDate(start.getDate() - 1);
+        end.setDate(end.getDate() - 1);
+        break;
+      case 'last7':
+        start.setDate(start.getDate() - 6);
+        break;
+      case 'last30':
+        start.setDate(start.getDate() - 29);
+        break;
+      case 'custom':
+        return;
     }
     setStartDate(formatDateForInput(start));
     setEndDate(formatDateForInput(end));
@@ -216,10 +255,15 @@ const PnlReportPage: React.FC = () => {
   };
 
   const selectedPeriodText = useMemo(() => {
-    const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' };
-    const format = (dateStr: string) => new Date(dateStr).toLocaleDateString('en-IN', options);
+    const options: Intl.DateTimeFormatOptions = {
+      day: 'numeric',
+      month: 'short',
+    };
+    const format = (dateStr: string) =>
+      new Date(dateStr).toLocaleDateString('en-IN', options);
 
-    if (!appliedFilters.start || !appliedFilters.end) return "Loading period...";
+    if (!appliedFilters.start || !appliedFilters.end)
+      return 'Loading period...';
 
     const start = format(appliedFilters.start);
     const end = format(appliedFilters.end);
@@ -228,10 +272,10 @@ const PnlReportPage: React.FC = () => {
     return `From ${start} to ${end}`;
   }, [appliedFilters]);
 
-
   const handleDownloadPdf = () => {
     const doc = new jsPDF();
-    const { totalRevenue, totalCost, grossProfit, grossProfitPercentage } = pnlSummary;
+    const { totalRevenue, totalCost, grossProfit, grossProfitPercentage } =
+      pnlSummary;
 
     doc.setFontSize(18);
     doc.text('Profit & Loss Report', 14, 22);
@@ -243,24 +287,34 @@ const PnlReportPage: React.FC = () => {
     autoTable(doc, {
       startY: summaryY,
       body: [
-        ['Total Sales:', `₹${totalRevenue.toLocaleString('en-IN')}`, 'Gross Profit / Loss:', `₹${grossProfit.toLocaleString('en-IN')}`],
-        ['Total Cost:', `₹${totalCost.toLocaleString('en-IN')}`, 'Gross Profit %:', `${grossProfitPercentage.toFixed(2)}%`],
+        [
+          'Total Sales:',
+          `₹${totalRevenue.toLocaleString('en-IN')}`,
+          'Gross Profit / Loss:',
+          `₹${grossProfit.toLocaleString('en-IN')}`,
+        ],
+        [
+          'Total Cost:',
+          `₹${totalCost.toLocaleString('en-IN')}`,
+          'Gross Profit %:',
+          `${grossProfitPercentage.toFixed(2)}%`,
+        ],
       ],
       theme: 'plain',
       styles: { fontSize: 10 },
       columnStyles: {
         0: { fontStyle: 'bold' },
         2: { fontStyle: 'bold' },
-      }
+      },
     });
 
     const tableHead = [['Date', 'Invoice', 'Sales', 'Cost', 'Profit']];
-    const tableBody = filteredTransactions.map(t => [
+    const tableBody = filteredTransactions.map((t) => [
       formatDate(t.createdAt),
       t.invoiceNumber,
       `₹${t.totalAmount.toLocaleString('en-IN')}`,
       `₹${(t.costOfGoodsSold || 0).toLocaleString('en-IN')}`,
-      `₹${(t.profit || 0).toLocaleString('en-IN')}`
+      `₹${(t.profit || 0).toLocaleString('en-IN')}`,
     ]);
 
     autoTable(doc, {
@@ -290,14 +344,19 @@ const PnlReportPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-100 p-2">
       <div className="flex items-center justify-between pb-3 border-b mb-2">
-        <h1 className="flex-1 text-xl text-center font-bold text-gray-800">Profit & Loss Report</h1>
+        <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
+          Profit & Loss Report
+        </h1>
         <button onClick={() => navigate(-1)} className="p-2">
           <IconClose width={20} height={20} />
         </button>
       </div>
 
       <div className="bg-white p-4 rounded-lg shadow-md mb-2">
-        <FilterSelect value={datePreset} onChange={(e) => handleDatePresetChange(e.target.value)}>
+        <FilterSelect
+          value={datePreset}
+          onChange={(e) => handleDatePresetChange(e.target.value)}
+        >
           <option value="today">Today</option>
           <option value="yesterday">Yesterday</option>
           <option value="last7">Last 7 Days</option>
@@ -308,13 +367,19 @@ const PnlReportPage: React.FC = () => {
           <input
             type="date"
             value={startDate}
-            onChange={(e) => { setStartDate(e.target.value); setDatePreset('custom'); }}
+            onChange={(e) => {
+              setStartDate(e.target.value);
+              setDatePreset('custom');
+            }}
             className="w-full p-2 text-sm bg-gray-50 border border-gray-300 rounded-md"
           />
           <input
             type="date"
             value={endDate}
-            onChange={(e) => { setEndDate(e.target.value); setDatePreset('custom'); }}
+            onChange={(e) => {
+              setEndDate(e.target.value);
+              setDatePreset('custom');
+            }}
             className="w-full p-2 text-sm bg-gray-50 border border-gray-300 rounded-md"
           />
         </div>
@@ -327,35 +392,53 @@ const PnlReportPage: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-2 gap-2">
-        <CustomCard variant={CardVariant.Summary}
+        <CustomCard
+          variant={CardVariant.Summary}
           title="Total Sales"
           value={`₹${pnlSummary.totalRevenue.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
           valueClassName="text-blue-600 text-3xl"
         />
-        <CustomCard variant={CardVariant.Summary}
+        <CustomCard
+          variant={CardVariant.Summary}
           title="Total Cost"
           value={`₹${pnlSummary.totalCost.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
           valueClassName="text-red-600 text-3xl"
         />
-        <CustomCard variant={CardVariant.Summary}
+        <CustomCard
+          variant={CardVariant.Summary}
           title="Profit / Loss"
           value={`₹${pnlSummary.grossProfit.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
-          valueClassName={pnlSummary.grossProfit >= 0 ? "text-green-600 text-3xl" : "text-red-600 text-3xl"}
+          valueClassName={
+            pnlSummary.grossProfit >= 0
+              ? 'text-green-600 text-3xl'
+              : 'text-red-600 text-3xl'
+          }
         />
-        <CustomCard variant={CardVariant.Summary}
+        <CustomCard
+          variant={CardVariant.Summary}
           title="Gross Profit %"
           value={`${Math.round(pnlSummary.grossProfitPercentage).toFixed(0)}%`}
-          valueClassName={pnlSummary.grossProfit >= 0 ? "text-green-600 text-3xl" : "text-red-600 text-3xl"}
+          valueClassName={
+            pnlSummary.grossProfit >= 0
+              ? 'text-green-600 text-3xl'
+              : 'text-red-600 text-3xl'
+          }
         />
       </div>
 
       <div className="bg-white p-4 rounded-lg shadow-md flex justify-between items-center mt-2">
         <h2 className="text-lg font-semibold text-gray-700">P&L Details</h2>
         <div className="flex items-center gap-2">
-          <button onClick={() => setIsListVisible(!isListVisible)} className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition">
+          <button
+            onClick={() => setIsListVisible(!isListVisible)}
+            className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition"
+          >
             {isListVisible ? 'Hide List' : 'Show List'}
           </button>
-          <button onClick={handleDownloadPdf} className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 transition">
+          <button
+            onClick={handleDownloadPdf}
+            className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 transition"
+          >
             Download as PDF
           </button>
         </div>

@@ -32,7 +32,7 @@ export const ROUTES = {
   PURCHASESETTING: '/purchase-setting',
   HISTORY: '/history',
   USERSETTING: '/user-setting',
-  BILL_SETTING: '/bill-setting',
+  BILLSETTING: '/bill-setting',
   ITEMSETTING: '/item-setting',
   CHOME: '/catalogue-home',
   MYSHOP: 'my-shop',

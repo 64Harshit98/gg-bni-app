@@ -251,7 +251,7 @@ const router = createBrowserRouter([
                 handle: { requiredPermission: null },
               },
               {
-                path: ROUTES.BILL_SETTING,
+                path: ROUTES.BILLSETTING,
                 element: <BillSettings />,
                 handle: { requiredPermission: null },
               },

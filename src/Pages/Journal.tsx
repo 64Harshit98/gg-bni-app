@@ -78,7 +78,6 @@ const formatDate = (date: Date): string => {
   });
 };
 
-// --- DATA HOOK (REVERTED TO REAL-TIME / NO LIMIT) ---
 const useJournalData = (companyId?: string) => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,13 +92,11 @@ const useJournalData = (companyId?: string) => {
 
     setLoading(true);
 
-    // 1. SALES LISTENER (Credit)
     const salesQuery = query(
       collection(db, 'companies', companyId, 'sales'),
       orderBy('createdAt', 'desc')
     );
 
-    // 2. PURCHASES LISTENER (Debit)
     const purchasesQuery = query(
       collection(db, 'companies', companyId, 'purchases'),
       orderBy('createdAt', 'desc')
@@ -221,7 +218,6 @@ const Journal: React.FC = () => {
   const [showQrModal, setShowQrModal] = useState<Invoice | null>(null);
 
   const { currentUser, loading: authLoading } = useAuth();
-  // Using the Reverted Hook
   const { invoices, loading: dataLoading, error } = useJournalData(currentUser?.companyId);
   const navigate = useNavigate();
 
@@ -251,15 +247,12 @@ const Journal: React.FC = () => {
           case 'last15': return invoiceDate >= daysAgo(today, 15);
           case 'last30': return invoiceDate >= daysAgo(today, 30);
           case 'custom':
-            // 1. If dates aren't selected yet, show nothing (or all, depending on preference)
             if (!customStartDate || !customEndDate) return false;
 
             const start = new Date(customStartDate);
-            // Reset start time to 00:00:00 to ensure we catch everything from the start of the day
             start.setHours(0, 0, 0, 0);
 
             const end = new Date(customEndDate);
-            // 2. Set end date to the VERY END of the day (23:59:59) so we don't miss invoices made today
             end.setHours(23, 59, 59, 999);
 
             return invoiceDate >= start && invoiceDate <= end;
@@ -268,23 +261,17 @@ const Journal: React.FC = () => {
         }
       })
       .filter((invoice) => {
-        // --- 2. ADVANCED TOKEN SEARCH (The Update) ---
         const trimmedQuery = searchQuery.toLowerCase().trim();
-        if (!trimmedQuery) return true; // If search is empty, show everything
-
-        // Split search into words (e.g., "John Apple" -> ["john", "apple"])
+        if (!trimmedQuery) return true;
         const searchTokens = trimmedQuery.split(/\s+/);
 
-        // Return TRUE only if *EVERY* token is found somewhere in the invoice
         return searchTokens.every((token) => {
 
-          // Check Main Details (Invoice #, Name, Phone)
           const matchesDetails =
             invoice.invoiceNumber.toLowerCase().includes(token) ||
             invoice.partyName.toLowerCase().includes(token) ||
             (invoice.partyNumber && invoice.partyNumber.includes(token));
 
-          // Check Items (Does ANY item in this invoice contain this token?)
           const matchesItems = invoice.items?.some(item =>
             item.name.toLowerCase().includes(token)
           );
@@ -348,15 +335,12 @@ const Journal: React.FC = () => {
     try {
       const dbOps = getFirestoreOperations(currentUser.companyId);
 
-      // --- FIX IS HERE: Add 'billSettingsSnap' to the const list ---
       const [businessInfo, fetchedItems, billSettingsSnap] = await Promise.all([
         dbOps.getBusinessInfo(),
         dbOps.syncItems(),
-        // Fetch the bill settings doc
         getDoc(doc(db, 'companies', currentUser.companyId, 'settings', 'bill'))
       ]);
 
-      // Now this variable 'billSettingsSnap' exists and can be used
       const billSettings = billSettingsSnap.exists() ? billSettingsSnap.data() : {};
 
       const populatedItems = (invoice.items || []).map((item: any, index: number) => {
@@ -381,18 +365,15 @@ const Journal: React.FC = () => {
       });
 
       const dataForPdf = {
-        // --- COMPANY DETAILS (Fallback to businessInfo) ---
         companyName: businessInfo?.name || 'Your Company',
         companyAddress: businessInfo?.address || 'Your Address',
         companyContact: businessInfo?.phoneNumber || 'Your Phone',
         companyEmail: businessInfo?.email || '',
         signatureBase64: billSettings.signatureBase64 || '',
-        // --- BILL SETTINGS SPECIFIC FIELDS ---
         companyGstin: billSettings.companyGstin || businessInfo?.gstin || '',
         msmeNumber: billSettings.msmeNumber || '',
         panNumber: billSettings.panNumber || '',
 
-        // --- BILL TO (CUSTOMER) ---
         billTo: {
           name: invoice.partyName,
           address: invoice.partyAddress || '',
@@ -400,7 +381,6 @@ const Journal: React.FC = () => {
           gstin: invoice.partyGstin || '',
         },
 
-        // --- INVOICE META ---
         invoice: {
           number: invoice.invoiceNumber,
           date: new Date(invoice.createdAt).toLocaleString('en-IN', {
@@ -411,10 +391,8 @@ const Journal: React.FC = () => {
           roNumber: '',
         },
 
-        // --- ITEMS ---
         items: populatedItems,
 
-        // --- FOOTER DETAILS ---
         terms: billSettings.termsAndConditions || 'Goods once sold will not be taken back.',
         finalAmount: invoice.amount,
 

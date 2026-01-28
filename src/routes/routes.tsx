@@ -10,6 +10,7 @@ import { RequireSubscription } from '../UseComponents/RequiredSubscription';
 
 import Loading from '../Pages/Loading/Loading';
 import GlobalError from '../Components/GlobalError';
+// import SharedProduct from '../Catalogue/SharedProduct';
 
 const Home = lazy(() => import('../Pages/Home'));
 const Account = lazy(() => import('../Pages/Account'));
@@ -21,6 +22,7 @@ const SalesReturn = lazy(() => import('../Pages/Master/SalesReturn'));
 const Purchase = lazy(() => import('../Pages/Master/Purchase'));
 const PurchaseReturn = lazy(() => import('../Pages/Master/PurchaseReturn'));
 const ItemAdd = lazy(() => import('../Pages/Master/ItemAdd'));
+const CartPage = lazy(()=>import('../Catalogue/CheckOut'))
 const ItemGroup = lazy(() => import('../Pages/Master/ItemGroup'));
 const UserAdd = lazy(() => import('../Pages/Master/UserAdd'));
 const Landing = lazy(() => import('../Pages/Auth/Landing'));
@@ -39,13 +41,16 @@ const UnauthorizedPage = lazy(() => import('../Pages/Unauthorized'));
 const SalesSettingsPage = lazy(() => import('../Pages/Settings/SalesSetting'));
 const PurchaseSettingsPage = lazy(() => import('../Pages/Settings/Purchasesetting'));
 const CHome = lazy(() => import('../Catalogue/CatalogueHome'));
-const MyShop = lazy(() => import('../Catalogue/MyShop'));
+const MyShop = lazy(() => import('../Catalogue/ShopItem'));
 const UserSetting = lazy(() => import('../Pages/Settings/UserSettings'));
 const ItemSetting = lazy(() => import('../Pages/Settings/ItemSetting'));
-const Order = lazy(() => import('../Catalogue/OrderingPage'));
+const Order = lazy(() => import('../Catalogue/Shop'));
 const OrderDetails = lazy(() => import('../Catalogue/Orders'));
 const Catalogue = lazy(() => import('../Catalogue/SharedCatalouge'));
+const SharedProduct = lazy(() => import('../Catalogue/SharedProduct'));
 const CatalogueAccounts = lazy(() => import('../Catalogue/CatalougeAccount'));
+const CatItemGroup = lazy(() => import('../Catalogue/ItemGroup'));
+const AddItem = lazy(() => import('../Catalogue/AddItem'));
 const CatalogueReports = lazy(() => import('../Catalogue/CatalogueReports/CatalogueReports'));
 const CatalogueSales = lazy(() => import('../Catalogue/CatalogueReports/CatalogueSalesReport'));
 const SuperAdminCompanies = lazy(() => import('../Pages/Account/SuperAdmin'));
@@ -285,7 +290,17 @@ const router = createBrowserRouter([
             handle: { requiredPermission: null },
           },
           {
-            path: ROUTES.MYSHOP,
+            path: ROUTES.ADD_PRODUCT,
+            element: <AddItem />,
+            handle: { requiredPermission: null },
+          },
+          {
+            path: ROUTES.CAT_ITEM_GROUP,
+            element: <CatItemGroup />,
+            handle: { requiredPermission: null },
+          },
+          {
+            path: `${ROUTES.MYSHOP}/:groupId`,
             element: <MyShop />,
             handle: { requiredPermission: null },
           },
@@ -307,9 +322,19 @@ const router = createBrowserRouter([
         ],
       },
       {
+        path: `/product/:companyId/:groupId`,
+        element: <SharedProduct />,
+        handle: { requiredPermission: null },
+      },
+      {
         path: `/catalogue/:companyId`,
         element: <Catalogue />,
         handle: { requiredPermission: null },
+      },
+      {
+        path: `/checkout/:companyId`,
+        element: <CartPage />,
+        handle: { requiredPermission: null }
       },
       {
         path: ROUTES.UNAUTHORIZED,

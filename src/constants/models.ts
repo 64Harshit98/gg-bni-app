@@ -5,7 +5,7 @@ export interface Item {
   name: string;
   mrp: number; 
   purchasePrice: number;
-  discount: number; 
+  discount?: number; 
   tax: number;
   taxRate?: number;
   itemGroupId: string;
@@ -36,6 +36,7 @@ export interface ItemGroup {
   description: string;
   createdAt: number; 
   updatedAt: number; 
+  imageUrl?:string;
 }
 
 export interface PurchaseItem {

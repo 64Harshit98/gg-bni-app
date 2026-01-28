@@ -12,7 +12,7 @@ const Reports = () => {
         <div className="flex flex-col h-screen w-full bg-gray-100 shadow-lg overflow-hidden font-poppins">
             {/* Header (Unchanged) */}
             <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
-                <h1 className="text-2xl font-bold text-gray-800 m-0 flex-grow text-center">Reports</h1>
+                <h1 className="text-2xl font-bold text-gray-900 m-0 flex-grow text-center">Reports</h1>
             </div>
 
             {/* --- THIS IS THE FIX ---
@@ -25,7 +25,7 @@ const Reports = () => {
                     // This grid will only apply to your list of links.
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <Link
-                            to={ROUTES.CATALOGUE_SALES} // Use your ROUTES constant
+                            to={`${ROUTES.CHOME}/${ROUTES.CATALOGUE_SALES}`} // Use your ROUTES constant
                             className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
                         >
                             <span className="text-lg font-medium">Sales Report</span>

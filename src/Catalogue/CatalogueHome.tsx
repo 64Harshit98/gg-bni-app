@@ -101,7 +101,7 @@ const HomePage: React.FC = () => {
                                                 to={to}
                                                 onClick={() => setIsMenuOpen(false)}
                                                 className={`flex w-full items-center gap-3 px-4 py-2 text-sm font-medium ${location.pathname === to
-                                                    ? 'bg-gray-500 text-white'
+                                                    ? 'bg-gray-600 text-white'
                                                     : 'text-slate-700 hover:bg-gray-100'
                                                     }`}
                                             >

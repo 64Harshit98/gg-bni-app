@@ -272,7 +272,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                     <h2 className="text-lg font-semibold leading-none tracking-tight pt-4">
                         Edit Item
                     </h2>
-                    <p className="text-sm text-muted-foreground mt-1 text-gray-500">
+                    <p className="text-sm mt-1 text-gray-500">
                         {item?.name || 'Item details'}
                     </p>
                     <button

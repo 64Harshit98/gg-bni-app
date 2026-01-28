@@ -176,13 +176,13 @@ const Account: React.FC = () => {
                             {/* ... button ... */}
                         </div>
                     </div>
-                    <div className="w-full flex grid grid-cols-2 gap-4 justify-center mt-2 space-y-2 flex-col">
+                    <div className="w-full grid-cols-2 gap-4 justify-center mt-2 space-y-2 flex-col">
 
                         <ShowWrapper
                             requiredPermission={Permissions.ViewPNLReport}
                         >
                             <Link
-                                to={ROUTES.CATALOGUE_REPORTS}
+                                to={`${ROUTES.CHOME}/${ROUTES.CATALOGUE_REPORTS}`}
                                 className="
                 flex justify-between items-center
                 bg-white p-4 rounded-sm shadow-md mb-2

@@ -1,8 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { db } from '../../lib/Firebase';
-import { useAuth } from '../../context/auth-context';
-import { collection, query, onSnapshot, Timestamp } from 'firebase/firestore';
+import React, { useMemo } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { CustomCard } from '../../Components/CustomCard';
@@ -10,148 +6,35 @@ import { CardVariant } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
 import { IconClose } from '../../constants/Icons';
 import { getPnlColumns } from '../../constants/TableColoumns';
-import { formatDateForInput } from './SalesReportComponents/salesReport.utils';
 import FilterSelect from './SalesReportComponents/FilterSelect';
-
-interface Transaction {
-  id: string;
-  partyName: string;
-  invoiceNumber: string;
-  totalAmount: number;
-  createdAt: Date;
-  costOfGoodsSold?: number;
-}
-
-interface TransactionDetail extends Transaction {
-  type: 'Revenue' | 'Cost';
-  profit?: number;
-}
-
-interface Item {
-  id: string;
-  purchasePrice: number;
-}
-
-const formatDate = (date: Date): string => {
-  if (!date) return 'N/A';
-  return date.toLocaleDateString('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: '2-digit',
-  });
-};
-
-const usePnlReport = (companyId: string | undefined) => {
-  const [sales, setSales] = useState<Transaction[]>([]);
-  const [itemsMap, setItemsMap] = useState<Map<string, Item>>(new Map());
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!companyId) {
-      setLoading(false);
-      return;
-    }
-
-    const itemsCollectionRef = collection(db, 'companies', companyId, 'items');
-    const qItems = query(itemsCollectionRef);
-
-    const unsubscribeItems = onSnapshot(
-      qItems,
-      (snapshot) => {
-        const newItemsMap = new Map<string, Item>();
-        snapshot.docs.forEach((doc) => {
-          newItemsMap.set(doc.id, {
-            id: doc.id,
-            purchasePrice: doc.data().purchasePrice || 0,
-          });
-        });
-        setItemsMap(newItemsMap);
-      },
-      (_err) => setError('Failed to fetch item data.'),
-    );
-
-    const salesCollectionRef = collection(db, 'companies', companyId, 'sales');
-    const qSales = query(salesCollectionRef);
-
-    const unsubscribeSales = onSnapshot(
-      qSales,
-      (snapshot) => {
-        if (itemsMap.size === 0 && snapshot.size > 0) return;
-
-        setSales(
-          snapshot.docs.map((doc) => {
-            const saleData = doc.data();
-            const costOfGoodsSold = (saleData.items || []).reduce(
-              (sum: number, item: { id: string; quantity: number }) => {
-                const itemDetails = itemsMap.get(item.id);
-                const itemCost = itemDetails ? itemDetails.purchasePrice : 0;
-                return sum + itemCost * (item.quantity || 0);
-              },
-              0,
-            );
-
-            return {
-              id: doc.id,
-              totalAmount: saleData.totalAmount || 0,
-              createdAt:
-                saleData.createdAt instanceof Timestamp
-                  ? saleData.createdAt.toDate()
-                  : new Date(),
-              invoiceNumber: saleData.invoiceNumber || 'N/A',
-              partyName: saleData.partyName || 'N/A',
-              costOfGoodsSold: costOfGoodsSold,
-              items: saleData.items || [],
-            };
-          }),
-        );
-        setLoading(false);
-      },
-      (_err) => setError('Failed to fetch sales data.'),
-    );
-
-    return () => {
-      unsubscribeItems();
-      unsubscribeSales();
-    };
-  }, [companyId, itemsMap]);
-
-  return { sales, loading, error };
-};
+import { usePnlReport, usePnlStates } from './PNLReportComponents/usePnlReport';
+import { type TransactionDetail } from './PNLReportComponents/pnlReport.utils';
+import { formatDate } from './PNLReportComponents/pnlReport.utils';
+import { handleDatePresetChange } from './PNLReportComponents/pnlReport.utils';
 
 const PnlReportPage: React.FC = () => {
-  const navigate = useNavigate();
-  const { currentUser, loading: authLoading } = useAuth();
+  const {
+    navigate,
+    currentUser,
+    authLoading,
+    datePreset,
+    setDatePreset,
+    startDate,
+    endDate,
+    appliedFilters,
+    setAppliedFilters,
+    isListVisible,
+    setIsListVisible,
+    sortConfig,
+    setSortConfig,
+    setStartDate,
+    setEndDate,
+  } = usePnlStates();
   const {
     sales,
     loading: dataLoading,
     error,
   } = usePnlReport(currentUser?.companyId);
-
-  const [datePreset, setDatePreset] = useState<string>('today');
-  const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>('');
-  const [appliedFilters, setAppliedFilters] = useState({ start: '', end: '' });
-  const [isListVisible, setIsListVisible] = useState(false);
-  const [sortConfig, setSortConfig] = useState<{
-    key: keyof TransactionDetail;
-    direction: 'asc' | 'desc';
-  }>({ key: 'createdAt', direction: 'desc' });
-
-  useEffect(() => {
-    const today = new Date();
-    const formattedToday = formatDateForInput(today);
-    setStartDate(formattedToday);
-    setEndDate(formattedToday);
-    const startTimestamp = new Date(formattedToday);
-    startTimestamp.setHours(0, 0, 0, 0);
-    const endTimestamp = new Date(formattedToday);
-    endTimestamp.setHours(23, 59, 59, 999);
-    setAppliedFilters({
-      start: startTimestamp.toISOString(),
-      end: endTimestamp.toISOString(),
-    });
-  }, []);
 
   const { pnlSummary, filteredTransactions } = useMemo(() => {
     const startTimestamp = appliedFilters.start
@@ -220,30 +103,6 @@ const PnlReportPage: React.FC = () => {
           ? 'desc'
           : 'asc',
     }));
-  };
-
-  const handleDatePresetChange = (preset: string) => {
-    setDatePreset(preset);
-    const start = new Date();
-    const end = new Date();
-    switch (preset) {
-      case 'today':
-        break;
-      case 'yesterday':
-        start.setDate(start.getDate() - 1);
-        end.setDate(end.getDate() - 1);
-        break;
-      case 'last7':
-        start.setDate(start.getDate() - 6);
-        break;
-      case 'last30':
-        start.setDate(start.getDate() - 29);
-        break;
-      case 'custom':
-        return;
-    }
-    setStartDate(formatDateForInput(start));
-    setEndDate(formatDateForInput(end));
   };
 
   const handleApplyFilters = () => {
@@ -355,7 +214,14 @@ const PnlReportPage: React.FC = () => {
       <div className="bg-white p-4 rounded-lg shadow-md mb-2">
         <FilterSelect
           value={datePreset}
-          onChange={(e) => handleDatePresetChange(e.target.value)}
+          onChange={(e) =>
+            handleDatePresetChange(
+              e.target.value,
+              setDatePreset,
+              setStartDate,
+              setEndDate,
+            )
+          }
         >
           <option value="today">Today</option>
           <option value="yesterday">Yesterday</option>

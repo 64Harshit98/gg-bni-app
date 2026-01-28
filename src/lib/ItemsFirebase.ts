@@ -2,77 +2,184 @@ import { db } from './Firebase';
 import {
   collection,
   addDoc,
-  setDoc, // <--- ADDED THIS IMPORT
+  setDoc,
   getDocs,
   doc,
   updateDoc,
-  deleteDoc,
+  deleteDoc, // Still used for non-sync items like groups
   query,
   where,
   getDoc,
   serverTimestamp,
   writeBatch,
   getCountFromServer,
+  onSnapshot
 } from 'firebase/firestore';
+import { get, set } from 'idb-keyval';
 import type { Item, ItemGroup } from '../constants/models';
 import { Role, type User } from '../Role/permission';
-
-// ================================================================================
-// PUBLIC STANDALONE FUNCTIONS (For Public Links/Invoices)
-// ================================================================================
-
-/**
- * Fetches all publicly listed items for a specific company.
- */
-export const getItemsByCompany = async (companyId: string): Promise<Item[]> => {
-  if (!companyId) throw new Error("A valid companyId must be provided.");
-
-  const itemCollectionRef = collection(db, 'companies', companyId, 'items');
-  const q = query(
-    itemCollectionRef,
-    where('isListed', '==', true)
-  );
-  const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map((doc) => ({ id: doc.id, ...(doc.data() as Item) }));
-};
-
-/**
- * Fetches all item groups for a specific company.
- */
-export const getItemGroupsByCompany = async (companyId: string): Promise<ItemGroup[]> => {
-  if (!companyId) throw new Error("A valid companyId must be provided.");
-
-  const itemGroupCollectionRef = collection(db, 'companies', companyId, 'itemGroups');
-  const q = query(itemGroupCollectionRef);
-  const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map((doc) => ({ id: doc.id, ...(doc.data() as ItemGroup) }));
-};
-
-// ================================================================================
-// FACTORY FUNCTION (SECURE AUTHENTICATED OPERATIONS)
-// ================================================================================
 
 export const getFirestoreOperations = (companyId: string) => {
   if (!companyId) {
     throw new Error("A valid companyId must be provided to initialize Firestore operations.");
   }
 
-  // --- References ---
   const companyRef = doc(db, 'companies', companyId);
   const itemGroupRef = collection(companyRef, 'itemGroups');
   const itemRef = collection(companyRef, 'items');
   const usersRef = collection(companyRef, 'users');
 
+  const STORE_KEY = `pos_items_${companyId}`;
+  const TIME_KEY = `pos_sync_time_${companyId}`;
+
   return {
-    // --- Business Info ---
+    listenToItems: (onData: (items: Item[]) => void) => {
+      let unsubscribe = () => { };
+
+      (async () => {
+        try {
+          const localItems: Item[] = (await get(STORE_KEY)) || [];
+          onData(localItems.filter(i => !i.isDeleted));
+        } catch (e) {
+          console.error("Error loading initial cache", e);
+        }
+
+        const lastSyncTime = await get(TIME_KEY);
+        let q;
+        if (lastSyncTime) {
+          console.log(`[Listener] Listening for updates since: ${lastSyncTime}`);
+          const lastDate = new Date(lastSyncTime);
+          q = query(itemRef, where('updatedAt', '>', lastDate));
+        } else {
+          console.log(`[Listener] First time sync. Listening to full collection.`);
+          q = query(itemRef);
+        }
+
+        unsubscribe = onSnapshot(q, async (snapshot) => {
+          if (snapshot.empty) return;
+
+          const currentLocal: Item[] = (await get(STORE_KEY)) || [];
+          const itemMap = new Map(currentLocal.map(i => [i.id, i]));
+
+          snapshot.docs.forEach(doc => {
+            const newItem = { id: doc.id, ...(doc.data() as Item) };
+            if (newItem.isDeleted) {
+              itemMap.delete(newItem.id);
+            } else {
+              itemMap.set(newItem.id, newItem);
+            }
+          });
+
+          const mergedItems = Array.from(itemMap.values());
+
+          await set(STORE_KEY, mergedItems);
+          await set(TIME_KEY, new Date().toISOString());
+
+          console.log(`[Listener] Synced ${snapshot.size} changes. Total items: ${mergedItems.length}`);
+
+          onData(mergedItems.filter(i => !i.isDeleted));
+        }, (error) => {
+          console.error("Live Sync Error:", error);
+        });
+      })();
+
+      return () => unsubscribe();
+    },
+
+
+    syncItems: async (): Promise<Item[]> => {
+      let localItems: Item[] = (await get(STORE_KEY)) || [];
+      const lastSyncTime = await get(TIME_KEY);
+
+      let q;
+      if (lastSyncTime) {
+        const lastDate = new Date(lastSyncTime);
+        q = query(itemRef, where('updatedAt', '>', lastDate));
+      } else {
+        q = query(itemRef);
+      }
+
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
+        return localItems.filter(i => !i.isDeleted);
+      }
+
+      const fetchedItems = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as Item) }));
+      const itemMap = new Map(localItems.map(i => [i.id, i]));
+
+      fetchedItems.forEach(newItem => {
+        if (newItem.isDeleted) {
+          itemMap.delete(newItem.id);
+        } else {
+          itemMap.set(newItem.id, newItem);
+        }
+      });
+
+      const mergedItems = Array.from(itemMap.values());
+
+      await set(STORE_KEY, mergedItems);
+      await set(TIME_KEY, new Date().toISOString());
+
+      return mergedItems.filter(i => !i.isDeleted);
+    },
+
+
+    createItem: async (
+      item: Omit<Item, 'id' | 'createdAt' | 'updatedAt' | 'companyId'>,
+      customId?: string
+    ): Promise<string> => {
+      const payload = {
+        ...item,
+        companyId,
+        isDeleted: false,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+
+      if (customId) {
+        await setDoc(doc(itemRef, customId), payload);
+        return customId;
+      } else {
+        const docRef = await addDoc(itemRef, payload);
+        return docRef.id;
+      }
+    },
+
+    updateItem: async (id: string, updates: Partial<Omit<Item, 'id' | 'createdAt' | 'companyId'>>): Promise<void> => {
+      const docRef = doc(itemRef, id);
+      await updateDoc(docRef, {
+        ...updates,
+        updatedAt: serverTimestamp()
+      });
+    },
+
+    deleteItem: async (id: string): Promise<void> => {
+      const docRef = doc(itemRef, id);
+      await updateDoc(docRef, {
+        isDeleted: true,
+        updatedAt: serverTimestamp()
+      });
+    },
+
+
+    getItemByBarcode: async (barcode: string): Promise<Item | null> => {
+      const q = query(itemRef, where('barcode', '==', barcode), where('isDeleted', '==', false));
+      const querySnapshot = await getDocs(q);
+      if (!querySnapshot.empty) {
+        const doc = querySnapshot.docs[0];
+        return { id: doc.id, ...(doc.data() as Item) };
+      }
+      return null;
+    },
+
     getBusinessInfo: async () => {
       const docRef = doc(db, 'companies', companyId, 'business_info', companyId);
       const docSnap = await getDoc(docRef);
 
       if (docSnap.exists()) {
         const data = docSnap.data();
-        // Safe address construction
-        const addressParts = [data.city, data.state, data.postalCode].filter(Boolean).join(' ');
+        const addressParts = [data.streetAddress, data.city, data.state, data.postalCode].filter(Boolean).join(' ');
         const finalAddress = addressParts || data.address || "Address not available";
 
         return {
@@ -82,41 +189,18 @@ export const getFirestoreOperations = (companyId: string) => {
           accountHolderName: (data.accountHolderName as string) || "",
           accountNumber: (data.accountNumber as string) || "",
           bankName: (data.bankName as string) || "",
-          // --- FIX: Added these fields to satisfy TypeScript in Invoice Page ---
           email: (data.email as string) || "",
           gstin: (data.gstin as string) || ""
         };
       } else {
-        // Return empty structure to prevent crashes if doc is missing
-        console.warn(`Business info not found for ${companyId}`);
         return { name: "", address: "", phoneNumber: "", email: "", gstin: "" };
       }
     },
 
-    // --- Group Operations ---
 
     getDistinctItemGroupsFromItems: async (): Promise<ItemGroup[]> => {
-      // 1. Get all items to find used Group Names
-      const itemsSnapshot = await getDocs(itemRef);
-      const groupNames = new Set<string>();
-
-      itemsSnapshot.docs.forEach(doc => {
-        const item = doc.data() as Item;
-        if (item.itemGroupId) {
-          groupNames.add(item.itemGroupId);
-        }
-      });
-
-      if (groupNames.size === 0) return [];
-
-      // 2. Fetch ALL groups
-      // FIX: Removed 'where name in' because it crashes if you have > 10 groups.
-      // Using memory filtering is safer here.
-      const allGroupsSnapshot = await getDocs(itemGroupRef);
-      const allGroups = allGroupsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ItemGroup));
-
-      // 3. Filter locally
-      return allGroups.filter(group => groupNames.has(group.name));
+      const snapshot = await getDocs(itemGroupRef);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ItemGroup));
     },
 
     createItemGroup: async (itemGroup: Omit<ItemGroup, 'id' | 'createdAt' | 'updatedAt' | 'companyId'>): Promise<string> => {
@@ -157,16 +241,13 @@ export const getFirestoreOperations = (companyId: string) => {
       const groupDocRef = doc(itemGroupRef, id);
       const batch = writeBatch(db);
 
-      // Update Group Name
       batch.update(groupDocRef, { name: newName, updatedAt: serverTimestamp() });
 
-      // Find items using the old name
       const itemsQuery = query(itemRef, where('itemGroupId', '==', oldName));
       const itemsSnapshot = await getDocs(itemsQuery);
 
-      // Update items
       itemsSnapshot.forEach(itemDoc => {
-        batch.update(itemDoc.ref, { itemGroupId: newName });
+        batch.update(itemDoc.ref, { itemGroupId: newName, updatedAt: serverTimestamp() });
       });
 
       await batch.commit();
@@ -176,7 +257,7 @@ export const getFirestoreOperations = (companyId: string) => {
       const { id, name } = group;
       if (!id) throw new Error("Group ID is missing.");
 
-      const itemsQuery = query(itemRef, where('itemGroupId', '==', name));
+      const itemsQuery = query(itemRef, where('itemGroupId', '==', name), where('isDeleted', '==', false));
       const countSnapshot = await getCountFromServer(itemsQuery);
 
       if (countSnapshot.data().count > 0) {
@@ -187,69 +268,6 @@ export const getFirestoreOperations = (companyId: string) => {
       await deleteDoc(groupDocRef);
     },
 
-    // --- Item Operations ---
-
-    // UPDATED: Now accepts optional customId to prevent duplicates
-    createItem: async (
-      item: Omit<Item, 'id' | 'createdAt' | 'updatedAt' | 'companyId'>,
-      customId?: string
-    ): Promise<string> => {
-      const payload = {
-        ...item,
-        companyId,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      };
-
-      if (customId) {
-        // Use setDoc to enforce the barcode as the ID
-        await setDoc(doc(itemRef, customId), payload);
-        return customId;
-      } else {
-        // Use addDoc for random ID
-        const docRef = await addDoc(itemRef, payload);
-        return docRef.id;
-      }
-    },
-
-    getItems: async (): Promise<Item[]> => {
-      const snapshot = await getDocs(itemRef);
-      return snapshot.docs.map((doc) => ({ id: doc.id, ...(doc.data() as Item) }));
-    },
-
-    getItemById: async (id: string): Promise<Item | null> => {
-      const docRef = doc(itemRef, id);
-      const docSnap = await getDoc(docRef);
-      return docSnap.exists() ? { id: docSnap.id, ...(docSnap.data() as Item) } : null;
-    },
-
-    getItemsByItemGroupId: async (itemGroupId: string): Promise<Item[]> => {
-      const q = query(itemRef, where('itemGroupId', '==', itemGroupId));
-      const snapshot = await getDocs(q);
-      return snapshot.docs.map((doc) => ({ id: doc.id, ...(doc.data() as Item) }));
-    },
-
-    updateItem: async (id: string, updates: Partial<Omit<Item, 'id' | 'createdAt' | 'companyId'>>): Promise<void> => {
-      const docRef = doc(itemRef, id);
-      await updateDoc(docRef, { ...updates, updatedAt: serverTimestamp() });
-    },
-
-    deleteItem: async (id: string): Promise<void> => {
-      const docRef = doc(itemRef, id);
-      await deleteDoc(docRef);
-    },
-
-    getItemByBarcode: async (barcode: string): Promise<Item | null> => {
-      const q = query(itemRef, where('barcode', '==', barcode));
-      const querySnapshot = await getDocs(q);
-      if (!querySnapshot.empty) {
-        const doc = querySnapshot.docs[0];
-        return { id: doc.id, ...(doc.data() as Item) };
-      }
-      return null;
-    },
-
-    // --- User Operations ---
 
     getSalesmen: async (): Promise<User[]> => {
       const q = query(usersRef, where("role", "==", Role.Salesman));
@@ -263,4 +281,37 @@ export const getFirestoreOperations = (companyId: string) => {
       return snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() })) as User[];
     },
   };
+};
+
+
+export const getItemsByCompany = async (companyId: string): Promise<Item[]> => {
+  try {
+    const itemsRef = collection(db, 'companies', companyId, 'items');
+    const q = query(itemsRef, where('isListed', '==', true), where('isDeleted', '==', false));
+    const snapshot = await getDocs(q);
+
+    return snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as Item[];
+  } catch (error) {
+    console.error("Error fetching items:", error);
+    throw new Error("Failed to fetch items for this catalogue.");
+  }
+};
+
+export const getItemGroupsByCompany = async (companyId: string): Promise<ItemGroup[]> => {
+  try {
+    const groupsRef = collection(db, 'companies', companyId, 'itemGroups');
+    const q = query(groupsRef);
+    const snapshot = await getDocs(q);
+
+    return snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as ItemGroup[];
+  } catch (error) {
+    console.error("Error fetching groups:", error);
+    throw new Error("Failed to fetch categories.");
+  }
 };

@@ -571,7 +571,6 @@ const Sales: React.FC = () => {
     const gstSchemeDisplay = salesSettings?.gstScheme ?? 'none';
     const settingsTaxTypeDisplay = salesSettings?.taxType ?? 'exclusive';
     const isCardView = salesSettings?.salesViewType === 'card';
-    console.log("Insertion Order:", salesSettings?.cartInsertionOrder)
     const showTaxRow = gstSchemeDisplay !== 'none' && settingsTaxTypeDisplay === 'exclusive';
 
     // --- RENDER HEADER (RESPONSIVE) ---

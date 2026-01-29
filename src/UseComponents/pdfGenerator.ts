@@ -117,7 +117,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   // Right
   const posVal = data.billTo.address.split(',').pop()?.trim() || 'Uttar Pradesh';
   doc.text(`Place of Supply : ${posVal}`, (pageWidth / 2) + 2, cursorY + 5);
-  doc.text(`Vechle No.      : ${data.invoice.roNumber || ''}`, (pageWidth / 2) + 2, cursorY + 10);
+  doc.text(`Vehicle No.      : ${data.invoice.roNumber || ''}`, (pageWidth / 2) + 2, cursorY + 10);
 
   cursorY += metaHeight;
 
@@ -126,13 +126,13 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   // Data Preparation
   const billName = data.billTo.name;
   const billAddr = doc.splitTextToSize(data.billTo.address, (contentWidth / 2) - 5);
-  const billPhone = `PH.NO.  : ${data.billTo.phone || ''}`;
+  const billPhone = `Phone.No.  : ${data.billTo.phone || ''}`;
   const billEmail = `E Mail  : ${data.billTo.email || ''}`;
   const billGst = `GST No. : ${data.billTo.gstin || ''}`;
 
   const shipName = data.billTo.name;
   const shipAddr = billAddr;
-  const shipPhone = `PH.NO.  :`;
+  const shipPhone = `Phone.No.  :`;
   const shipEmail = `E Mail  :`;
   const shipGst = `GST No. :`;
 
@@ -253,7 +253,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
 
   autoTable(doc, {
     startY: cursorY,
-    head: [['S.N.', 'Description of Goods', 'HSN', 'Qty', 'Unit', 'MRP', 'Discount', 'Amt. Before', 'CGST', 'CGST Amt', 'SGST', 'SGST Amt', 'Amount']],
+    head: [['S.N.', 'Items', 'HSN', 'Qty', 'Unit', 'MRP', 'Discount', 'Subtotal', 'CGST', 'CGST Amt', 'SGST', 'SGST Amt', 'Amount']],
     body: tableBody,
     theme: 'grid',
     styles: {

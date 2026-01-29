@@ -84,20 +84,20 @@ export const GenericCartList = <T extends CartItem>({
 
           const displayPrice = item.customPrice !== undefined && item.customPrice !== null
             ? String(item.customPrice)
-            : calculatedRoundedPrice.toFixed();
+            : calculatedRoundedPrice.toFixed(2);
 
           const discountLocked = settings.lockDiscount || !item.isEditable;
           const priceLocked = settings.lockPrice || !item.isEditable;
 
           return (
-            <div 
-              key={item.id} 
+            <div
+              key={item.id}
               className={`bg-white rounded-lg shadow-sm border border-gray-200 p-3 flex flex-col md:flex-row md:items-center gap-3 ${!item.isEditable ? 'opacity-75 bg-gray-50' : ''}`}
             >
 
               {/* --- LEFT SIDE: Name & Identity (Flexible Width) --- */}
               <div className="flex justify-between items-start md:items-center w-full md:flex-1 md:w-auto min-w-0">
-                
+
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   <button
                     onClick={() => onDeleteItem(item.id)}

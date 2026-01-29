@@ -36,7 +36,9 @@ export interface PaymentCompletionData {
 interface PaymentDrawerProps {
     isOpen: boolean;
     onClose: () => void;
-    subtotal: number;        // Net Amount (after item discount)
+    mode?: 'sale' | 'purchase'; // Added Mode
+    subtotal: number;
+    billTotal: number;
     totalQuantity?: number;
     totalItemDiscount?: number;
     onPaymentComplete: (data: PaymentCompletionData) => Promise<void>;
@@ -46,13 +48,13 @@ interface PaymentDrawerProps {
     initialPaymentMethods?: PaymentDetails | { [key: string]: any };
     requireCustomerName?: boolean;
     requireCustomerMobile?: boolean;
+    initialDiscount?: number;
 }
 
-// FIX: Switched to Session Storage keys to isolate data per tab
 const SESSION_STORAGE_NAME_KEY = 'sessionPartyName';
 const SESSION_STORAGE_NUMBER_KEY = 'sessionPartyNumber';
 
-interface CustomerSuggestion {
+interface PartySuggestion {
     name: string;
     number: string;
     address?: string;
@@ -64,7 +66,9 @@ interface CustomerSuggestion {
 const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     isOpen,
     onClose,
+    mode = 'sale',
     subtotal,
+    billTotal,
     totalQuantity = 0,
     totalItemDiscount = 0,
     onPaymentComplete,
@@ -73,8 +77,14 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     initialPaymentMethods,
     requireCustomerName = false,
     requireCustomerMobile = false,
+    initialDiscount = 0,
 }) => {
     const { currentUser } = useAuth();
+
+    // --- COMPUTED PROPERTIES BASED ON MODE ---
+    const isSale = mode === 'sale';
+    const collectionName = isSale ? 'customers' : 'suppliers';
+    const partyLabel = isSale ? 'Customer' : 'Supplier';
 
     // --- STATE ---
     const [partyName, setPartyName] = useState('');
@@ -83,8 +93,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const [partyGST, setPartyGST] = useState('');
     const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
     const [discount, setDiscount] = useState(0);
-    const [customerCredit, setCustomerCredit] = useState(0);
-    const [customerDebit, setCustomerDebit] = useState(0);
+    const [partyCredit, setPartyCredit] = useState(0);
+    const [partyDebit, setPartyDebit] = useState(0);
     const [useCredit, setUseCredit] = useState(false);
     const [useDebit, setUseDebit] = useState(false);
     const [selectedPayments, setSelectedPayments] = useState<PaymentDetails>({});
@@ -92,7 +102,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isDiscountLocked, setIsDiscountLocked] = useState(true);
 
-    const [suggestions, setSuggestions] = useState<CustomerSuggestion[]>([]);
+    const [suggestions, setSuggestions] = useState<PartySuggestion[]>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
     const searchTimeout = useRef<NodeJS.Timeout | null>(null);
 
@@ -101,52 +111,47 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const [discountInfo, setDiscountInfo] = useState<string | null>(null);
 
     // --- CALCULATIONS ---
-    const displayGrossSubtotal = useMemo(() => {
-        return subtotal + totalItemDiscount;
-    }, [subtotal, totalItemDiscount]);
+    const netPayable = useMemo(() => Math.max(0, billTotal - discount), [billTotal, discount]);
 
-    const finalPayableAmount = useMemo(() => {
-        let payable = subtotal - discount;
-        if (useCredit) payable -= Math.min(payable, customerCredit);
-        if (useDebit) payable -= Math.min(payable, customerDebit);
-        return parseFloat(Math.max(0, payable).toFixed(2));
-    }, [subtotal, discount, useCredit, customerCredit, useDebit, customerDebit]);
+    const appliedCreditAmount = useMemo(() => {
+        if (!useCredit || partyCredit <= 0) return 0;
+        return Math.min(netPayable, partyCredit);
+    }, [useCredit, partyCredit, netPayable]);
 
-    const appliedCredit = useMemo(() => {
-        if (!useCredit || customerCredit <= 0) return 0;
-        return Math.min(subtotal - discount, customerCredit);
-    }, [useCredit, customerCredit, subtotal, discount]);
+    const appliedDebitAmount = useMemo(() => {
+        if (!useDebit || partyDebit <= 0) return 0;
+        return Math.min(netPayable - appliedCreditAmount, partyDebit);
+    }, [useDebit, partyDebit, netPayable, appliedCreditAmount]);
 
-    const appliedDebit = useMemo(() => {
-        if (!useDebit || customerDebit <= 0) return 0;
-        return Math.min(subtotal - discount - appliedCredit, customerDebit);
-    }, [useDebit, customerDebit, subtotal, discount, appliedCredit]);
-
-    const totalEnteredAmount = useMemo(() => {
+    const totalManualPayment = useMemo(() => {
         const sum = Object.values(selectedPayments).reduce((acc, amount) => acc + (amount || 0), 0);
         return parseFloat(sum.toFixed(2));
     }, [selectedPayments]);
 
+    const totalPaymentReceived = useMemo(() => {
+        return parseFloat((totalManualPayment + appliedCreditAmount + appliedDebitAmount).toFixed(2));
+    }, [totalManualPayment, appliedCreditAmount, appliedDebitAmount]);
+
     const changeToReturn = useMemo(() => {
-        const diff = totalEnteredAmount - finalPayableAmount;
+        const diff = totalPaymentReceived - netPayable;
         return diff > 0.01 ? parseFloat(diff.toFixed(2)) : 0;
-    }, [totalEnteredAmount, finalPayableAmount]);
+    }, [totalPaymentReceived, netPayable]);
 
     const pendingAmount = useMemo(() => {
-        const diff = finalPayableAmount - totalEnteredAmount;
+        const diff = netPayable - totalPaymentReceived;
         return diff > 0.01 ? parseFloat(diff.toFixed(2)) : 0;
-    }, [finalPayableAmount, totalEnteredAmount]);
+    }, [netPayable, totalPaymentReceived]);
 
     // --- EFFECTS ---
     useEffect(() => {
         if (!isOpen) return;
         shouldSaveToLocalStorage.current = true;
         setIsSubmitting(false);
-        setDiscount(0);
+        setDiscount(initialDiscount || 0);
         setIsDiscountLocked(true);
-        setCustomerCredit(0);
+        setPartyCredit(0);
         setUseCredit(false);
-        setCustomerDebit(0);
+        setPartyDebit(0);
         setUseDebit(false);
         setSuggestions([]);
         setShowSuggestions(false);
@@ -156,7 +161,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
 
         if (!initialName && !initialNumber) {
             try {
-                // FIX: Retrieve from sessionStorage instead of localStorage
                 initialName = sessionStorage.getItem(SESSION_STORAGE_NAME_KEY) || '';
                 initialNumber = sessionStorage.getItem(SESSION_STORAGE_NUMBER_KEY) || '';
             } catch (e) { }
@@ -165,7 +169,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         if (initialPaymentMethods && Object.keys(initialPaymentMethods).length > 0) {
             const loadedPayments: PaymentDetails = {};
             Object.entries(initialPaymentMethods).forEach(([key, value]) => {
-                if (key === 'due') return;
+                if (key === 'due' || key === 'Credit Note' || key === 'Debit Note') return;
                 const numVal = Number(value);
                 if (!isNaN(numVal) && numVal > 0) loadedPayments[key] = numVal;
             });
@@ -180,84 +184,103 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         setPartyGST('');
         setIsDetailsExpanded(false);
 
-        if (initialNumber) searchCustomer(initialNumber);
-    }, [isOpen]);
+        // Auto-search logic on open
+        if (isSale && initialNumber) searchParty(initialNumber, 'number');
+        if (!isSale && initialName) searchParty(initialName, 'name');
+
+    }, [isOpen, mode, initialDiscount]);
 
     useEffect(() => {
         if (isOpen && !isSubmitting && shouldSaveToLocalStorage.current) {
             try {
-                // FIX: Save to sessionStorage instead of localStorage
                 if (partyName) sessionStorage.setItem(SESSION_STORAGE_NAME_KEY, partyName);
                 if (partyNumber) sessionStorage.setItem(SESSION_STORAGE_NUMBER_KEY, partyNumber);
             } catch (e) { }
         }
     }, [partyName, partyNumber, isOpen, isSubmitting]);
 
-    // --- SEARCH LOGIC (MODIFIED TO NUMBER ONLY) ---
-    const searchCustomer = async (term: string) => {
-        if (!term || term.length < 3 || !currentUser?.companyId) {
-            setSuggestions([]);
-            setShowSuggestions(false);
-            return;
+    const searchParty = async (term: string, field: 'name' | 'number') => {
+        if (!term || term.length < 2 || !currentUser?.companyId) {
+            setSuggestions([]); setShowSuggestions(false); return;
         }
-        const companyId = currentUser.companyId;
-        const customersRef = collection(db, 'companies', companyId, 'customers');
 
-        // Only querying by number
-        const q = query(customersRef, where('number', '>=', term), where('number', '<=', term + '\uf8ff'), limit(5));
+        const companyId = currentUser.companyId;
+        const partyRef = collection(db, 'companies', companyId, collectionName);
+
+        const termLower = term.toLowerCase();
+
+        const termCap = termLower.charAt(0).toUpperCase() + termLower.slice(1);
 
         try {
-            const snapshot = await getDocs(q);
-            const results: CustomerSuggestion[] = [];
-            snapshot.forEach(doc => {
-                const data = doc.data();
-                results.push({
-                    name: data.name || '',
-                    number: data.number || doc.id,
-                    address: data.address,
-                    gstNumber: data.gstNumber,
-                    creditBalance: data.creditBalance,
-                    debitBalance: data.debitBalance
+            const queries = [];
+
+            queries.push(
+                getDocs(query(partyRef, where(field, '>=', termLower), where(field, '<=', termLower + '\uf8ff'), limit(5)))
+            );
+
+            if (field === 'name' && termCap !== termLower) {
+                queries.push(
+                    getDocs(query(partyRef, where(field, '>=', termCap), where(field, '<=', termCap + '\uf8ff'), limit(5)))
+                );
+            }
+            const snapshots = await Promise.all(queries);
+
+            const resultsMap = new Map<string, PartySuggestion>();
+
+            snapshots.forEach(snap => {
+                snap.forEach(doc => {
+                    if (!resultsMap.has(doc.id)) {
+                        const data = doc.data();
+                        resultsMap.set(doc.id, {
+                            name: data.name || '',
+                            number: data.number || doc.id,
+                            address: data.address,
+                            gstNumber: data.gstNumber,
+                            creditBalance: data.creditBalance,
+                            debitBalance: data.debitBalance
+                        });
+                    }
                 });
             });
+
+            const results = Array.from(resultsMap.values());
             setSuggestions(results);
             setShowSuggestions(results.length > 0);
-        } catch (err) { console.error(err); }
+
+        } catch (err) {
+            console.error(err);
+        }
     };
 
     const handleInputChange = (value: string, type: 'name' | 'number') => {
         if (type === 'name') {
             setPartyName(value);
-            setSuggestions([]);
-            setShowSuggestions(false);
+            if (!isSale) {
+                if (searchTimeout.current) clearTimeout(searchTimeout.current);
+                searchTimeout.current = setTimeout(() => { searchParty(value, 'name'); }, 400);
+            } else {
+                setSuggestions([]); setShowSuggestions(false);
+            }
         } else {
             setPartyNumber(value);
-            if (searchTimeout.current) clearTimeout(searchTimeout.current);
-            searchTimeout.current = setTimeout(() => { searchCustomer(value); }, 400);
+            if (isSale) {
+                if (searchTimeout.current) clearTimeout(searchTimeout.current);
+                searchTimeout.current = setTimeout(() => { searchParty(value, 'number'); }, 400);
+            } else {
+                setSuggestions([]); setShowSuggestions(false);
+            }
         }
     };
 
-    const selectCustomer = (customer: CustomerSuggestion) => {
-        setPartyName(customer.name);
-        setPartyNumber(customer.number);
-        setPartyAddress(customer.address || '');
-        setPartyGST(customer.gstNumber || '');
-
-        if ((customer.creditBalance || 0) > 0) {
-            setCustomerCredit(customer.creditBalance!);
-            setUseCredit(false);
-        } else {
-            setCustomerCredit(0);
-            setUseCredit(false);
-        }
-
-        if ((customer.debitBalance || 0) > 0) {
-            setCustomerDebit(customer.debitBalance!);
-            setUseDebit(false);
-        } else {
-            setCustomerDebit(0);
-            setUseDebit(false);
-        }
+    const selectParty = (party: PartySuggestion) => {
+        setPartyName(party.name);
+        setPartyNumber(party.number);
+        setPartyAddress(party.address || '');
+        setPartyGST(party.gstNumber || '');
+        setPartyCredit(party.creditBalance || 0);
+        setPartyDebit(party.debitBalance || 0);
+        setUseCredit(false);
+        setUseDebit(false);
         setShowSuggestions(false);
     };
 
@@ -282,10 +305,10 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
 
         const payloadToSave: PaymentDetails = {};
         transactiontypes.forEach((t) => { payloadToSave[t.id] = 0; });
-        if (initialPaymentMethods) {
-            Object.keys(initialPaymentMethods).forEach((key) => { if (key !== 'due') payloadToSave[key] = 0; });
-        }
         Object.entries(selectedPayments).forEach(([key, value]) => { payloadToSave[key] = value; });
+
+        if (appliedCreditAmount > 0) payloadToSave['Credit Note'] = appliedCreditAmount;
+        if (appliedDebitAmount > 0) payloadToSave['Debit Note'] = appliedDebitAmount;
 
         setIsSubmitting(true);
         shouldSaveToLocalStorage.current = false;
@@ -294,26 +317,38 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             await onPaymentComplete({
                 paymentDetails: payloadToSave,
                 partyName, partyNumber, discount,
-                finalAmount: finalPayableAmount,
-                appliedCredit, appliedDebit, partyAddress, partyGST, revDiscount,
+                finalAmount: netPayable,
+                appliedCredit: appliedCreditAmount,
+                appliedDebit: appliedDebitAmount,
+                partyAddress, partyGST, revDiscount,
             });
 
+            // --- SAVE TO RESPECTIVE DB ---
             if (currentUser?.companyId && partyNumber && partyNumber.trim().length > 0) {
                 const cleanNumber = partyNumber.trim();
-                const customerDocRef = doc(db, 'companies', currentUser.companyId, 'customers', cleanNumber);
+                const partyDocRef = doc(db, 'companies', currentUser.companyId, collectionName, cleanNumber);
 
-                const customerData: any = {
-                    name: partyName.trim(), number: cleanNumber, companyId: currentUser.companyId,
-                    lastSaleAt: serverTimestamp(), address: partyAddress.trim(), gstNumber: partyGST.trim(),
+                const partyData: any = {
+                    name: partyName.trim(),
+                    number: cleanNumber,
+                    companyId: currentUser.companyId,
+                    address: partyAddress.trim(),
+                    gstNumber: partyGST.trim(),
                 };
-                if (appliedCredit > 0) customerData.creditBalance = firebaseIncrement(-appliedCredit);
-                if (appliedDebit > 0) customerData.debitBalance = firebaseIncrement(-appliedDebit);
 
-                await setDoc(customerDocRef, customerData, { merge: true });
+                if (isSale) {
+                    partyData.lastSaleAt = serverTimestamp();
+                } else {
+                    partyData.lastPurchaseAt = serverTimestamp();
+                }
+
+                if (appliedCreditAmount > 0) partyData.creditBalance = firebaseIncrement(-appliedCreditAmount);
+                if (appliedDebitAmount > 0) partyData.debitBalance = firebaseIncrement(-appliedDebitAmount);
+
+                await setDoc(partyDocRef, partyData, { merge: true });
             }
 
             try {
-                // FIX: Remove from sessionStorage instead of localStorage
                 sessionStorage.removeItem(SESSION_STORAGE_NAME_KEY);
                 sessionStorage.removeItem(SESSION_STORAGE_NUMBER_KEY);
             } catch (e) { }
@@ -330,6 +365,24 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const handleDiscountClick = () => { if (isDiscountLocked) { setDiscountInfo("Cannot edit"); setTimeout(() => setDiscountInfo(null), 3000); } };
     const handleDiscountChange = (e: React.ChangeEvent<HTMLInputElement>) => { setDiscount(parseFloat(e.target.value) || 0); };
 
+    // --- RENDER HELPERS ---
+    const renderSuggestions = () => {
+        if (!showSuggestions || suggestions.length === 0) return null;
+        return (
+            <div className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-200 shadow-xl rounded-lg mt-1 max-h-48 overflow-y-auto">
+                {suggestions.map((party, idx) => (
+                    <div key={idx} className="p-3 hover:bg-blue-50 cursor-pointer border-b last:border-0 text-sm flex justify-between items-center" onClick={() => selectParty(party)}>
+                        <div>
+                            <div className="font-bold text-gray-800">{party.name}</div>
+                            <div className="text-xs text-gray-500">{party.number}</div>
+                        </div>
+                        {party.creditBalance && party.creditBalance > 0 && (<span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full">Credit: ₹{party.creditBalance}</span>)}
+                    </div>
+                ))}
+            </div>
+        );
+    };
+
     if (!isOpen) return null;
 
     return createPortal(
@@ -338,11 +391,9 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
 
             {modal && <div className="absolute z-[10000]"><Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} /></div>}
 
-            <div
-                className="relative w-full max-w-lg bg-gray-50 rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[90dvh] flex flex-col transform transition-transform duration-300 ease-out animate-slide-up"
-                onClick={(e) => e.stopPropagation()}
-                onTouchStart={(e) => e.stopPropagation()}
-            >
+            <div className="relative w-full max-w-lg bg-gray-50 rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[90dvh] flex flex-col transform transition-transform duration-300 ease-out animate-slide-up" onClick={(e) => e.stopPropagation()}>
+
+                {/* Header */}
                 <div className="p-3 bg-white rounded-t-2xl border-b border-gray-200 sticky top-0 z-10 flex items-center justify-center relative shadow-sm">
                     <div className="w-10 h-1 bg-gray-300 rounded-full absolute top-2"></div>
                     <button onClick={onClose} className="absolute left-4 p-1.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors">
@@ -352,50 +403,46 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 </div>
 
                 <div className="flex-1 overflow-y-auto overscroll-y-contain bg-white">
+                    {/* Party Info */}
                     <div className="p-4 space-y-2">
-                        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Customer Info</h3>
+                        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">{partyLabel} Info</h3>
                         <div className="grid grid-cols-2 gap-4 relative">
+
+                            {/* NUMBER INPUT (Search trigger if Sale) */}
                             <div className="relative">
                                 <input
                                     type="number"
                                     placeholder={requireCustomerMobile ? "Phone Number *" : "Phone Number"}
                                     value={partyNumber}
                                     onChange={(e) => handleInputChange(e.target.value, 'number')}
-                                    onFocus={() => { if (partyNumber.length >= 3) searchCustomer(partyNumber); }}
-                                    className={`w-full bg-gray-50 p-3 text-sm rounded-xs border ${requireCustomerMobile && !partyNumber ? 'border-red-300 focus:border-red-500' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none transition-all`}
+                                    onFocus={() => { if (isSale && partyNumber.length >= 3) searchParty(partyNumber, 'number'); }}
+                                    className={`w-full bg-gray-50 p-3 text-sm rounded-xs border ${requireCustomerMobile && !partyNumber ? 'border-red-300 focus:border-red-500' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none`}
                                     autoComplete="off"
                                 />
                                 {requireCustomerMobile && <span className="absolute right-3 top-3 text-red-500 font-bold">*</span>}
+                                {/* Render Dropdown here ONLY if Sale */}
+                                {isSale && renderSuggestions()}
                             </div>
 
+                            {/* NAME INPUT (Search trigger if Purchase) */}
                             <div className="relative">
                                 <input
                                     type="text"
-                                    placeholder={requireCustomerName ? "Name *" : "Name"}
+                                    placeholder={requireCustomerName ? `${partyLabel} Name *` : `${partyLabel} Name`}
                                     value={partyName}
                                     onChange={(e) => handleInputChange(e.target.value, 'name')}
-                                    className={`w-full bg-gray-50 p-3 text-sm rounded-xs border ${requireCustomerName && !partyName ? '' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none transition-all`}
+                                    onFocus={() => { if (!isSale && partyName.length >= 3) searchParty(partyName, 'name'); }}
+                                    className={`w-full bg-gray-50 p-3 text-sm rounded-xs border ${requireCustomerName && !partyName ? '' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none`}
                                     autoComplete="off"
                                 />
                                 {requireCustomerName && <span className="absolute right-3 top-3 text-red-500 font-bold">*</span>}
+                                {/* Render Dropdown here ONLY if Purchase */}
+                                {!isSale && renderSuggestions()}
                             </div>
 
-                            {showSuggestions && suggestions.length > 0 && (
-                                <div className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-200 shadow-xl rounded-lg mt-1 max-h-48 overflow-y-auto">
-                                    {suggestions.map((customer, idx) => (
-                                        <div key={idx} className="p-3 hover:bg-blue-50 cursor-pointer border-b last:border-0 text-sm flex justify-between items-center" onClick={() => selectCustomer(customer)}>
-                                            <div><div className="font-bold text-gray-800">{customer.name}</div><div className="text-xs text-gray-500">{customer.number}</div></div>
-                                            {customer.creditBalance && customer.creditBalance > 0 && (<span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full">Credit: ₹{customer.creditBalance}</span>)}
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
                         </div>
-
                         <div className="pt-1">
-                            <div onClick={() => setIsDetailsExpanded(!isDetailsExpanded)} className="flex items-center justify-start cursor-pointer text-blue-600 hover:text-blue-700 transition-colors text-xs font-semibold select-none">
-                                <span>{isDetailsExpanded ? 'Hide' : '+ Add'} GST & Address</span>
-                            </div>
+                            <div onClick={() => setIsDetailsExpanded(!isDetailsExpanded)} className="flex items-center justify-start cursor-pointer text-blue-600 hover:text-blue-700 transition-colors text-xs font-semibold select-none"><span>{isDetailsExpanded ? 'Hide' : '+ Add'} GST & Address</span></div>
                             {isDetailsExpanded && (
                                 <div className="grid grid-cols-2 gap-3 mt-3 animate-in slide-in-from-top-2 fade-in duration-200">
                                     <input type="text" placeholder="GST Number" value={partyGST} onChange={(e) => setPartyGST(e.target.value)} className="w-full p-2.5 text-sm rounded-lg border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none" />
@@ -405,111 +452,88 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                         </div>
                     </div>
 
-                    {(customerCredit > 0 || customerDebit > 0) && (
+                    {/* Credit/Debit Balances */}
+                    {(partyCredit > 0 || partyDebit > 0) && (
                         <div className="px-4 pb-2">
                             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Available Balances</h3>
-                            {customerCredit > 0 && (
+                            {partyCredit > 0 && (
                                 <div className="flex items-center justify-between p-3 bg-green-50 border border-green-100 rounded-lg mb-2">
-                                    <div className="flex flex-col">
-                                        <span className="text-sm font-semibold text-green-800">Credit Note Balance</span>
-                                        <span className="text-xs text-green-600">Available: ₹{customerCredit.toFixed(2)}</span>
-                                    </div>
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <input type="checkbox" checked={useCredit} onChange={(e) => setUseCredit(e.target.checked)} className="w-5 h-5 text-green-600 rounded focus:ring-green-500 border-gray-300" />
-                                        <span className="text-sm font-medium text-gray-700">Apply</span>
-                                    </label>
+                                    <div className="flex flex-col"><span className="text-sm font-semibold text-green-800">Credit Note Balance</span><span className="text-xs text-green-600">Available: ₹{partyCredit.toFixed(2)}</span></div>
+                                    <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={useCredit} onChange={(e) => setUseCredit(e.target.checked)} className="w-5 h-5 text-green-600 rounded focus:ring-green-500 border-gray-300" /><span className="text-sm font-medium text-gray-700">Apply</span></label>
                                 </div>
                             )}
-                            {customerDebit > 0 && (
+                            {partyDebit > 0 && (
                                 <div className="flex items-center justify-between p-3 bg-red-50 border border-red-100 rounded-lg">
-                                    <div className="flex flex-col">
-                                        <span className="text-sm font-semibold text-red-800">Debit Balance</span>
-                                        <span className="text-xs text-red-600">Available: ₹{customerDebit.toFixed(2)}</span>
-                                    </div>
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <input type="checkbox" checked={useDebit} onChange={(e) => setUseDebit(e.target.checked)} className="w-5 h-5 text-red-600 rounded focus:ring-red-500 border-gray-300" />
-                                        <span className="text-sm font-medium text-gray-700">Apply</span>
-                                    </label>
+                                    <div className="flex flex-col"><span className="text-sm font-semibold text-red-800">Debit Balance</span><span className="text-xs text-red-600">Available: ₹{partyDebit.toFixed(2)}</span></div>
+                                    <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={useDebit} onChange={(e) => setUseDebit(e.target.checked)} className="w-5 h-5 text-red-600 rounded focus:ring-red-500 border-gray-300" /><span className="text-sm font-medium text-gray-700">Apply</span></label>
                                 </div>
                             )}
                         </div>
                     )}
 
+                    {/* Payment Inputs */}
                     <div className="p-4 bg-gray-100">
                         <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Transaction Type</h3>
                         <div className="grid grid-cols-2 gap-4">
                             {transactiontypes.map((mode) => (
-                                <FloatingLabelInput
-                                    key={mode.id}
-                                    id={mode.id}
-                                    label={mode.name}
-                                    value={selectedPayments[mode.id]?.toString() || ''}
-                                    onChange={(e) => handleAmountChange(mode.id, e.target.value)}
-                                    onFill={() => handleFillRemaining(mode.id)}
-                                    showFillButton={pendingAmount > 0.01}
-                                    className="bg-white rounded-xs"
-                                />
+                                <FloatingLabelInput key={mode.id} id={mode.id} label={mode.name} value={selectedPayments[mode.id]?.toString() || ''} onChange={(e) => handleAmountChange(mode.id, e.target.value)} onFill={() => handleFillRemaining(mode.id)} showFillButton={pendingAmount > 0.01} className="bg-white rounded-xs" />
                             ))}
                         </div>
                     </div>
                 </div>
 
+                {/* Footer Totals */}
                 <div className="p-4 bg-white border-t border-gray-200 rounded-b-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-20">
                     <div className="flex justify-between items-center mb-2 text-sm text-gray-500">
                         <span>Qty: <strong className="text-gray-800">{totalQuantity}</strong></span>
                         <div className="flex items-center gap-2">
                             <span>Subtotal:</span>
-                            <span className="font-medium text-gray-800">₹{displayGrossSubtotal.toFixed(2)}</span>
+                            <span className="font-medium text-gray-800">₹{subtotal.toFixed(2)}</span>
                         </div>
                     </div>
 
-                    <div className="flex justify-between items-center mb-2 text-sm"
-                        onMouseDown={handleDiscountPressStart} onMouseUp={handleDiscountPressEnd} onMouseLeave={handleDiscountPressEnd} onTouchStart={handleDiscountPressStart} onTouchEnd={handleDiscountPressEnd} onClick={handleDiscountClick}>
+                    <div className="flex justify-between items-center mb-2 text-sm" onMouseDown={handleDiscountPressStart} onMouseUp={handleDiscountPressEnd} onMouseLeave={handleDiscountPressEnd} onTouchStart={handleDiscountPressStart} onTouchEnd={handleDiscountPressEnd} onClick={handleDiscountClick}>
                         <div className="flex items-center gap-2">
                             <span className={`text-gray-500 ${isDiscountLocked ? '' : 'text-blue-600 font-semibold'}`}>Bill Discount (₹)</span>
                             {isDiscountLocked && <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>}
                             {discountInfo && <span className="text-xs text-red-500 bg-red-50 px-1 rounded animate-pulse">{discountInfo}</span>}
                         </div>
-                        <input
-                            id="discount" type="number" placeholder="0"
-                            value={discount || ''} onChange={handleDiscountChange} readOnly={isDiscountLocked}
-                            className={`w-20 text-right bg-gray-100 rounded-xs text-gray-800 focus:outline-none ${isDiscountLocked ? 'cursor-not-allowed' : 'border-b border-blue-300 font-semibold'}`}
-                        />
+                        <input id="discount" type="number" placeholder="0" value={discount || ''} onChange={handleDiscountChange} readOnly={isDiscountLocked} className={`w-20 text-right bg-red-100 rounded-sm text-red-800 focus:outline-none ${isDiscountLocked ? 'cursor-not-allowed' : 'border-b border-blue-300 font-semibold'}`} />
                     </div>
 
                     <div className="flex justify-between items-center mb-1.5 min-h-[24px]">
-                        <div>
+                        <div className="flex-1 flex justify-start">
                             {changeToReturn > 0.01 ? (
-                                <span className="text-sm font-bold text-yellow-700 bg-yellow-50 px-2 py-1 rounded border border-yellow-100">Return: ₹{changeToReturn.toFixed(2)}</span>
+                                <span className="text-base font-bold text-yellow-700 bg-yellow-50 px-2 py-1 rounded border border-yellow-100">
+                                    Return: ₹{changeToReturn.toFixed()}
+                                </span>
                             ) : (
-                                <span className={`text-sm font-bold ${pendingAmount < 0.01 ? 'text-green-600' : 'text-red-500'}`}>
-                                    {pendingAmount < 0.01 ? 'Paid' : `Due: ₹${pendingAmount.toFixed(2)}`}
+                                <span className={`text-base font-bold ${pendingAmount < 0.01 ? 'text-green-600' : 'text-red-500'}`}>
+                                    {pendingAmount < 0.01 ? 'Paid' : `Due: ₹${pendingAmount.toFixed()}`}
                                 </span>
                             )}
                         </div>
-                        {totalItemDiscount > 0 && (
-                            <span className="text-sm text-green-600 font-medium">Discount: -₹{totalItemDiscount.toFixed(2)}</span>
-                        )}
-                    </div>
 
-                    <div className="flex justify-center items-center mb-4">
-                        <div className="flex flex-col items-center">
-                            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">Total Payable</span>
-                            <span className="text-3xl font-extrabold text-blue-600">₹{finalPayableAmount.toFixed(2)}</span>
+                        <div className="flex flex-col items-center mb-4 px-4">
+                            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">
+                                Total Payable
+                            </span>
+                            <span className="text-3xl font-extrabold text-blue-600">
+                                ₹{netPayable.toFixed(2)}
+                            </span>
+                        </div>
+
+                        <div className="flex-1 flex justify-end">
+                            {totalItemDiscount > 0 && (
+                                <span className="text-base text-red-600 font-medium">
+                                    Disc: -₹{totalItemDiscount.toFixed()}
+                                </span>
+                            )}
                         </div>
                     </div>
 
-                    <button
-                        onClick={handleConfirm}
-                        disabled={isSubmitting || pendingAmount > 0.01}
-                        className="w-full py-3.5 text-white rounded-sm font-bold text-lg shadow active:scale-[0.98] transition-all disabled:bg-gray-300 disabled:shadow-none disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                        style={{ backgroundColor: pendingAmount < 0.01 ? '#0ea5e9' : '#94a3b8' }}
-                    >
-                        {isSubmitting ? (
-                            <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Processing...</>
-                        ) : (
-                            "Confirm Payment"
-                        )}
+                    <button onClick={handleConfirm} disabled={isSubmitting || pendingAmount > 0.01} className="w-full py-3.5 text-white rounded-sm font-bold text-lg shadow active:scale-[0.98] transition-all disabled:bg-gray-300 disabled:shadow-none disabled:cursor-not-allowed flex items-center justify-center gap-2" style={{ backgroundColor: pendingAmount < 0.01 ? '#0ea5e9' : '#94a3b8' }}>
+                        {isSubmitting ? (<><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Processing...</>) : ("Confirm Payment")}
                     </button>
                 </div>
             </div>

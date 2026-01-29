@@ -36,7 +36,7 @@ export interface SalesItem extends OriginalSalesItem {
     amount: number;
     barcode: string;
     restockQuantity: number;
-    productId: string; 
+    productId: string;
 }
 
 export const applyRounding = (amount: number, isRoundingEnabled: boolean, interval: number = 1): number => {
@@ -122,12 +122,18 @@ const Sales: React.FC = () => {
         const fetchData = async () => {
             try {
                 setPageIsLoading(true);
-                setError(null);
-                const [fetchedItems, fetchedWorkers] = await Promise.all([
-                    dbOperations.getItems(),
-                    dbOperations.getWorkers()
-                ]);
+                setError(null); // <--- Fix 1: Reset error state
 
+                // --- 1. NEW SYNC LOGIC (Optimized) ---
+                // This pulls from local storage + delta updates
+                const fetchedItems = await dbOperations.syncItems();
+                setAvailableItems(fetchedItems);
+
+                // --- 2. FETCH WORKERS & GROUPS (Restored Logic) ---
+                const fetchedWorkers = await dbOperations.getWorkers();
+                setWorkers(fetchedWorkers);
+
+                // Restored: Fetch Item Groups so your filter buttons work
                 let groupMap: Record<string, string> = {};
                 if (currentUser?.companyId) {
                     try {
@@ -141,10 +147,9 @@ const Sales: React.FC = () => {
                         console.error("Error fetching item groups", e);
                     }
                 }
-                setItemGroupMap(groupMap);
-                setAvailableItems(fetchedItems);
-                setWorkers(fetchedWorkers);
+                setItemGroupMap(groupMap); // <--- Fix 2: Use the setter
 
+                // --- 3. WORKER SELECTION LOGIC ---
                 if (isEditMode) {
                     const originalSalesman = fetchedWorkers.find(u => u.uid === invoiceToEdit?.salesmanId);
                     setSelectedWorker(originalSalesman || null);
@@ -154,8 +159,9 @@ const Sales: React.FC = () => {
                 }
 
             } catch (err) {
-                setError('Failed to load initial page data.');
+                // <--- Fix 3: Handle Errors properly
                 console.error(err);
+                setError('Failed to load initial page data.');
             } finally {
                 setPageIsLoading(false);
             }
@@ -175,9 +181,9 @@ const Sales: React.FC = () => {
         if (isEditMode && invoiceToEdit?.items) {
             const nonEditableItems = invoiceToEdit.items.map((item: any) => ({
                 ...item,
-                id: crypto.randomUUID(), 
-                productId: item.id,      
-                isEditable: true,
+                id: crypto.randomUUID(),
+                productId: item.id,
+                isEditable: false,
                 customPrice: item.effectiveUnitPrice,
                 quantity: item.quantity || 1,
                 mrp: item.mrp || 0,
@@ -301,7 +307,13 @@ const Sales: React.FC = () => {
             barcode: itemToAdd.barcode || '',
             restockQuantity: itemToAdd.restockQuantity || 0,
         };
-        setItems(prev => [newSalesItem, ...prev]);
+        setItems(prev => {
+            if (salesSettings?.cartInsertionOrder === 'top') {
+                return [newSalesItem, ...prev]; // Add to Top
+            } else {
+                return [...prev, newSalesItem]; // Add to Bottom
+            }
+        });
     };
 
     const handleClearCart = () => {
@@ -311,7 +323,10 @@ const Sales: React.FC = () => {
     };
 
     const handleItemSelected = (selectedItem: Item | null) => {
-        if (selectedItem) { addItemToCart(selectedItem); setGridSearchQuery(''); }
+        if (selectedItem) {
+            addItemToCart(selectedItem);
+            setGridSearchQuery('');
+        }
     };
 
     const handleBarcodeScanned = async (barcode: string) => {
@@ -449,7 +464,7 @@ const Sales: React.FC = () => {
 
                 return {
                     ...item,
-                    id: item.productId, 
+                    id: item.productId,
                     quantity: currentQuantity, discount: currentDiscount, effectiveUnitPrice, finalPrice: itemFinalPrice,
                     taxableAmount: itemTaxableBase, taxAmount: itemTaxAmount, taxRate: isTaxEnabled ? itemSpecificTaxRate : 0,
                     taxType: finalTaxType, discountPercentage: currentDiscount,
@@ -486,7 +501,7 @@ const Sales: React.FC = () => {
                     const difference = oldQty - newQty;
                     if (difference !== 0) {
                         const itemRef = doc(db, "companies", companyId, "items", itemId);
-                        transaction.update(itemRef, { stock: firebaseIncrement(difference) });
+                        transaction.update(itemRef, { stock: firebaseIncrement(difference), updatedAt: serverTimestamp() });
                     }
                 });
 
@@ -503,7 +518,7 @@ const Sales: React.FC = () => {
         } else {
             try {
                 const newInvoiceNumber = await generateNextInvoiceNumber(companyId);
-                let newSaleId = ''; 
+                let newSaleId = '';
 
                 await runTransaction(db, async (transaction) => {
                     const saleData = {
@@ -514,13 +529,13 @@ const Sales: React.FC = () => {
                         paymentMethods: completionData.paymentDetails, createdAt: serverTimestamp(), companyId: companyId, voucherName: salesSettings?.voucherName ?? 'Sales'
                     };
                     const newSaleRef = doc(collection(db, "companies", companyId, "sales"));
-                    newSaleId = newSaleRef.id; 
+                    newSaleId = newSaleRef.id;
                     transaction.set(newSaleRef, saleData);
                     items.forEach(i => {
                         const pid = i.productId || i.id;
                         if (pid) {
                             const itemRef = doc(db, "companies", companyId, "items", pid);
-                            transaction.update(itemRef, { stock: firebaseIncrement(-(i.quantity || 1)) });
+                            transaction.update(itemRef, { stock: firebaseIncrement(-(i.quantity || 1)), updatedAt: serverTimestamp() });
                         }
                     });
                     if (settingsDocId) {
@@ -556,9 +571,8 @@ const Sales: React.FC = () => {
     const gstSchemeDisplay = salesSettings?.gstScheme ?? 'none';
     const settingsTaxTypeDisplay = salesSettings?.taxType ?? 'exclusive';
     const isCardView = salesSettings?.salesViewType === 'card';
-
     const showTaxRow = gstSchemeDisplay !== 'none' && settingsTaxTypeDisplay === 'exclusive';
-    
+
     // --- RENDER HEADER (RESPONSIVE) ---
     const renderHeader = () => (
         <div className="flex flex-col md:flex-row md:justify-between md:items-center bg-gray-100 md:bg-white border-b border-gray-200 shadow-sm flex-shrink-0 mb-2 md:mb-0 p-2 md:px-4 md:py-3">
@@ -625,7 +639,9 @@ const Sales: React.FC = () => {
                     onActionClick={handleProceedToPayment}
                     disableAction={items.length === 0}
                 />
-                <PaymentDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} subtotal={amountToPayNow} onPaymentComplete={handleSavePayment} isPartyNameEditable={!isEditMode} initialPartyName={isEditMode ? invoiceToEdit?.partyName : ''} initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : ''} initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined} totalItemDiscount={totalDiscount} totalQuantity={totalQuantity}
+                <PaymentDrawer
+                    mode='sale' isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} subtotal={subtotal} billTotal={amountToPayNow} onPaymentComplete={handleSavePayment} isPartyNameEditable={!isEditMode} initialPartyName={isEditMode ? invoiceToEdit?.partyName : ''} initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : ''} initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined} totalItemDiscount={totalDiscount} totalQuantity={totalQuantity}
+                    initialDiscount={invoiceToEdit?.manualDiscount}
                     requireCustomerName={salesSettings?.requireCustomerName}
                     requireCustomerMobile={salesSettings?.requireCustomerMobile}
                 />
@@ -670,9 +686,9 @@ const Sales: React.FC = () => {
         <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden pb-2">
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
             <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
-            
+
             {renderHeader()}
-            
+
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
 
                 <div className="flex flex-col w-full  md:w-3/4 min-w-0 h-full relative">
@@ -728,7 +744,7 @@ const Sales: React.FC = () => {
                             onPricePressEnd={handlePricePressEnd}
                             onPriceClick={handlePriceClick}
                         />
-                        
+
                         {/* MOBILE FOOTER (Visible only on small screens) */}
                         <div className="md:hidden">
                             <GenericBillFooter
@@ -753,25 +769,35 @@ const Sales: React.FC = () => {
                     <div className="flex-1 p-6 flex flex-col justify-end"> {/* Use justify-end to push footer to bottom if list is short */}
                         <h2 className="text-xl font-bold text-gray-800 mb-6 border-b pb-2">Bill Summary</h2>
                         <GenericBillFooter
-            isExpanded={true} 
-            onToggleExpand={() => {}} 
-            totalQuantity={totalQuantity}
-            subtotal={subtotal}
-            totalDiscount={totalDiscount}
-            taxAmount={taxAmount}
-            finalAmount={finalAmount}
-            showTaxRow={showTaxRow}
-            taxLabel="Tax (Exclusive)"
-            actionLabel={isEditMode ? 'Update Invoice' : 'Proceed to Pay'}
-            onActionClick={handleProceedToPayment}
-            disableAction={items.length === 0}
-        />
+                            isExpanded={true}
+                            onToggleExpand={() => { }}
+                            totalQuantity={totalQuantity}
+                            subtotal={subtotal}
+                            totalDiscount={totalDiscount}
+                            taxAmount={taxAmount}
+                            finalAmount={finalAmount}
+                            showTaxRow={showTaxRow}
+                            taxLabel="Tax (Exclusive)"
+                            actionLabel={isEditMode ? 'Update Invoice' : 'Proceed to Pay'}
+                            onActionClick={handleProceedToPayment}
+                            disableAction={items.length === 0}
+                        />
                     </div>
                 </div>
 
             </div>
 
-            <PaymentDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} subtotal={amountToPayNow} onPaymentComplete={handleSavePayment} isPartyNameEditable={!isEditMode} initialPartyName={isEditMode ? invoiceToEdit?.partyName : ''} initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : ''} initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined} totalItemDiscount={totalDiscount} totalQuantity={totalQuantity}
+            <PaymentDrawer isOpen={isDrawerOpen}
+                mode='sale'
+                onClose={() => setIsDrawerOpen(false)}
+                subtotal={subtotal} billTotal={amountToPayNow}
+                onPaymentComplete={handleSavePayment}
+                initialDiscount={invoiceToEdit?.manualDiscount}
+                isPartyNameEditable={!isEditMode}
+                initialPartyName={isEditMode ? invoiceToEdit?.partyName : ''}
+                initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : ''}
+                initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined}
+                totalItemDiscount={totalDiscount} totalQuantity={totalQuantity}
                 requireCustomerName={salesSettings?.requireCustomerName}
                 requireCustomerMobile={salesSettings?.requireCustomerMobile}
             />

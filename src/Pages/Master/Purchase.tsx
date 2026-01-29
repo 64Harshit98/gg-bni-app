@@ -246,9 +246,16 @@ const PurchasePage: React.FC = () => {
   }, [items]);
 
   const handlePriceChange = (id: string, val: string) => {
-    if (val === '' || /^[0-9]*\.?[0-9]*$/.test(val)) {
+    if (val === '') {
       setItems(prev => prev.map(item =>
-        item.id === id ? { ...item, purchasePrice: parseFloat(val) || 0 } : item
+        item.id === id ? { ...item, purchasePrice: '' as any } : item
+      ));
+      return;
+    }
+
+    if (/^[0-9]*\.?[0-9]*$/.test(val)) {
+      setItems(prev => prev.map(item =>
+        item.id === id ? { ...item, purchasePrice: val as any } : item
       ));
     }
   };

@@ -34,10 +34,14 @@ const PnlReport = lazy(() => import('../Pages/Reports/PNLReport'));
 const BusInfo = lazy(() => import('../Pages/Auth/BusInfo'));
 const Shopsetup = lazy(() => import('../Pages/Auth/ShopSetup'));
 const PrintQR = lazy(() => import('../Pages/Master/PrintQR'));
-const Permissionsetting = lazy(() => import('../Pages/Settings/Permissionsetting'));
+const Permissionsetting = lazy(
+  () => import('../Pages/Settings/Permissionsetting'),
+);
 const UnauthorizedPage = lazy(() => import('../Pages/Unauthorized'));
 const SalesSettingsPage = lazy(() => import('../Pages/Settings/SalesSetting'));
-const PurchaseSettingsPage = lazy(() => import('../Pages/Settings/Purchasesetting'));
+const PurchaseSettingsPage = lazy(
+  () => import('../Pages/Settings/Purchasesetting'),
+);
 const CHome = lazy(() => import('../Catalogue/CatalogueHome'));
 const MyShop = lazy(() => import('../Catalogue/MyShop'));
 const UserSetting = lazy(() => import('../Pages/Settings/UserSettings'));
@@ -46,17 +50,24 @@ const Order = lazy(() => import('../Catalogue/OrderingPage'));
 const OrderDetails = lazy(() => import('../Catalogue/Orders'));
 const Catalogue = lazy(() => import('../Catalogue/SharedCatalouge'));
 const CatalogueAccounts = lazy(() => import('../Catalogue/CatalougeAccount'));
-const CatalogueReports = lazy(() => import('../Catalogue/CatalogueReports/CatalogueReports'));
-const CatalogueSales = lazy(() => import('../Catalogue/CatalogueReports/CatalogueSalesReport'));
+const CatalogueReports = lazy(
+  () => import('../Catalogue/CatalogueReports/CatalogueReports'),
+);
+const CatalogueSales = lazy(
+  () => import('../Catalogue/CatalogueReports/CatalogueSalesReport'),
+);
 const SuperAdminCompanies = lazy(() => import('../Pages/Account/SuperAdmin'));
-const SubscriptionPage = lazy(() => import('../Pages/Account/SubscriptionPage'));
+const SubscriptionPage = lazy(
+  () => import('../Pages/Account/SubscriptionPage'),
+);
 const SupportPage = lazy(() => import('../Pages/Account/SupportPage'));
 const ForgotPasswordPage = lazy(() => import('../Pages/Auth/ForgotPassword'));
 const ResetPasswordPage = lazy(() => import('../Pages/Auth/ResetPassword'));
 const RestockReportPage = lazy(() => import('../Pages/Reports/RestockReport'));
 const TaxReport = lazy(() => import('../Pages/Reports/TaxReport'));
+const CustomerReport = lazy(() => import('../Pages/Reports/CustomerReport'));
 const DownloadBill = lazy(() => import('../Pages/Auth/DownloadBill'));
-
+const ManageItems = lazy(() => import('../Pages/Master/ManageItems'));
 
 const router = createBrowserRouter([
   {
@@ -71,13 +82,13 @@ const router = createBrowserRouter([
             handle: { isPublic: true },
           },
           {
-            path: "/download-bill/:companyId/:invoiceId",
+            path: '/download-bill/:companyId/:invoiceId',
             element: <DownloadBill />,
             handle: { isPublic: true },
           },
           {
-            path: "/super-admin",
-            element: <SuperAdminCompanies />
+            path: '/super-admin',
+            element: <SuperAdminCompanies />,
           },
           {
             path: ROUTES.SIGNUP,
@@ -167,7 +178,9 @@ const router = createBrowserRouter([
               {
                 path: ROUTES.PURCHASE_RETURN,
                 element: <PurchaseReturn />,
-                handle: { requiredPermission: Permissions.CreatePurchaseReturn },
+                handle: {
+                  requiredPermission: Permissions.CreatePurchaseReturn,
+                },
               },
               {
                 path: ROUTES.PRINTQR,
@@ -182,6 +195,11 @@ const router = createBrowserRouter([
               {
                 path: ROUTES.ITEM_GROUP,
                 element: <ItemGroup />,
+                handle: { requiredPermission: Permissions.ManageItemGroup },
+              },
+              {
+                path: ROUTES.MANAGE_ITEMS,
+                element: <ManageItems />,
                 handle: { requiredPermission: Permissions.ManageItemGroup },
               },
               {
@@ -207,6 +225,11 @@ const router = createBrowserRouter([
               {
                 path: ROUTES.TAX_REPORT,
                 element: <TaxReport />,
+                handle: { requiredPermission: Permissions.ViewItemReport },
+              },
+              {
+                path: ROUTES.CUSTOMER_REPORT,
+                element: <CustomerReport />,
                 handle: { requiredPermission: Permissions.ViewItemReport },
               },
               {

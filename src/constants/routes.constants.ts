@@ -20,6 +20,7 @@ export const ROUTES = {
   ITEM_REPORT: '/item-report',
   RESTOCK_REPORT: '/restock-report',
   TAX_REPORT: '/tax-report',
+  CUSTOMER_REPORT: '/customer-report',
   SALES_REPORT: '/sales-report',
   PURCHASE_REPORT: '/purchase-report',
   PNL_REPORT: '/pnl-report',
@@ -43,4 +44,5 @@ export const ROUTES = {
   CATALOGUE_SALES: 'sales',
   SUBSCRIPTION_PAGE: '/subscription',
   SUPPORT_PAGE: '/support',
+  MANAGE_ITEMS: '/manage-items',
 };

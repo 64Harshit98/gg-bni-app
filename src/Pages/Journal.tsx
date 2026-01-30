@@ -10,7 +10,6 @@ import {
   QuerySnapshot,
   doc,
   getDoc,
-  getDoc,
   type DocumentData,
   runTransaction,
   increment,

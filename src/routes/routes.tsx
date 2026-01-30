@@ -56,6 +56,7 @@ const ResetPasswordPage = lazy(() => import('../Pages/Auth/ResetPassword'));
 const RestockReportPage = lazy(() => import('../Pages/Reports/RestockReport'));
 const TaxReport = lazy(() => import('../Pages/Reports/TaxReport'));
 const DownloadBill = lazy(() => import('../Pages/Auth/DownloadBill'));
+const BillSettings = lazy(() => import('../Pages/Settings/BillSetting'));
 
 
 const router = createBrowserRouter([
@@ -247,6 +248,11 @@ const router = createBrowserRouter([
               {
                 path: ROUTES.ITEMSETTING,
                 element: <ItemSetting />,
+                handle: { requiredPermission: null },
+              },
+              {
+                path: ROUTES.BILLSETTING,
+                element: <BillSettings />,
                 handle: { requiredPermission: null },
               },
               {

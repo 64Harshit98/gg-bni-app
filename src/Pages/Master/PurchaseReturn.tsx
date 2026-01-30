@@ -1,4 +1,3 @@
-// src/Pages/PurchaseReturnPage.tsx
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
@@ -30,9 +29,7 @@ import BarcodeScanner from '../../UseComponents/BarcodeScanner';
 import { ReturnListItem } from '../../Components/ReturnListItem';
 import { IconScanCircle } from '../../constants/Icons';
 import { GenericCartList, type CartItem } from '../../Components/CartItem';
-import { useSalesSettings } from '../../context/SettingsContext';
 
-// --- Interfaces ---
 interface PurchaseData {
   id: string;
   invoiceNumber: string;
@@ -75,6 +72,7 @@ interface ReturnCartItem extends CartItem {
   stock?: number;
 }
 
+// Unified Party Interface (Customers DB)
 interface Party {
   id?: string;
   name: string;
@@ -89,7 +87,6 @@ const PurchaseReturnPage: React.FC = () => {
   const { purchaseId } = useParams();
   const { state } = useLocation();
   const location = useLocation();
-  const { salesSettings } = useSalesSettings(); // Reuse settings for locks
 
   const [supplierName, setSupplierName] = useState<string>('');
   const [supplierNumber, setSupplierNumber] = useState<string>('');
@@ -130,27 +127,11 @@ const PurchaseReturnPage: React.FC = () => {
   const [scannerPurpose, setScannerPurpose] = useState<'purchase' | 'item' | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
-  // --- Lock States (To fix TS Error) ---
-  const [isDiscountLocked, setIsDiscountLocked] = useState(true);
-  const [discountInfo, setDiscountInfo] = useState<string | null>(null);
-  const [isPriceLocked, setIsPriceLocked] = useState(true);
-  const [priceInfo, setPriceInfo] = useState<string | null>(null);
-  const longPressTimer = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    if (salesSettings) {
-      setIsDiscountLocked(salesSettings.lockDiscountEntry ?? false);
-      setIsPriceLocked(salesSettings.lockSalePriceEntry ?? false);
-    }
-  }, [salesSettings]);
-
-  // --- Derived State ---
   const itemsToReturn = useMemo(() =>
     originalPurchaseItems.filter(item => selectedReturnIds.has(item.id)),
     [originalPurchaseItems, selectedReturnIds]
   );
 
-  // --- Effects ---
   useEffect(() => {
     if (!currentUser || !currentUser.companyId || !dbOperations) {
       setIsLoading(false);
@@ -167,7 +148,7 @@ const PurchaseReturnPage: React.FC = () => {
           limit(50)
         );
 
-        const partiesQuery = query(collection(db, 'companies', currentUser.companyId, 'suppliers'), limit(100));
+        const partiesQuery = query(collection(db, 'companies', currentUser.companyId, 'customers'), limit(100));
 
         let specificPurchasePromise: Promise<DocumentSnapshot<DocumentData, DocumentData> | null> = Promise.resolve(null);
 
@@ -354,17 +335,6 @@ const PurchaseReturnPage: React.FC = () => {
     }));
   };
 
-  // --- Lock Logic Wrappers ---
-  const handleDiscountPressStart = () => { if (!salesSettings?.lockDiscountEntry) longPressTimer.current = setTimeout(() => setIsDiscountLocked(false), 500); };
-  const handleDiscountPressEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
-  const handleDiscountClick = () => { if (isDiscountLocked) { setDiscountInfo("Cannot edit discount"); setTimeout(() => setDiscountInfo(null), 3000); } };
-
-  const handlePricePressStart = () => { if (!salesSettings?.lockSalePriceEntry) longPressTimer.current = setTimeout(() => setIsPriceLocked(false), 200); };
-  const handlePricePressEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
-  const handlePriceClick = () => { if (isPriceLocked) { setPriceInfo("Cannot edit price"); setTimeout(() => setPriceInfo(null), 1000); } };
-
-
-  // --- Handlers for GenericCartList (New Items) ---
   const handleRemoveNewItem = (id: string) => {
     setNewItemsReceived(prev => prev.filter(item => item.id !== id));
   };
@@ -609,7 +579,7 @@ const PurchaseReturnPage: React.FC = () => {
       batch.update(purchaseRef, updateData);
 
       if (finalSupplierNumber.length >= 3) {
-        const supplierRef = doc(db, 'companies', companyId, 'suppliers', finalSupplierNumber);
+        const supplierRef = doc(db, 'companies', companyId, 'customers', finalSupplierNumber);
 
         const supplierUpdateData: any = {
           name: finalSupplierName,
@@ -668,7 +638,6 @@ const PurchaseReturnPage: React.FC = () => {
 
   if (isLoading) return <div className="flex min-h-screen items-center justify-center">Loading...</div>;
 
-  // --- RENDER HEADER ---
   const renderHeader = () => (
     <div className="flex flex-col md:flex-row md:justify-between md:items-center bg-gray-100 md:bg-white border-b border-gray-300 shadow-sm flex-shrink-0 p-2 md:px-4 md:py-3 mb-2 md:mb-0">
       <h1 className="text-2xl font-bold text-gray-800 text-center md:text-left mb-2 md:mb-0">
@@ -689,13 +658,12 @@ const PurchaseReturnPage: React.FC = () => {
       {/* HEADER */}
       {renderHeader()}
 
-      {/* MAIN CONTENT WRAPPER */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
 
-        <div className="flex-1 w-full md:w-[65%] bg-gray-100 md:bg-white md:border-r border-gray-200 overflow-y-auto p-2 md:p-2 pb-24 md:pb-2 relative">
+        <div className="flex-1 w-full md:w-[65%] bg-gray-100 md:bg-white md:border-r border-gray-200 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 relative">
 
           {/* Search */}
-          <div className="bg-white p-2 rounded-sm shadow-md mb-4 border border-gray-200">
+          <div className="bg-white p-4 rounded-sm shadow-md mb-4 border border-gray-200">
             <div className="relative" ref={dropdownRef}>
               <label htmlFor="search-purchase" className="block text-sm font-medium mb-1 text-gray-700">Search Original Purchase</label>
               <div className="flex gap-2">
@@ -728,7 +696,7 @@ const PurchaseReturnPage: React.FC = () => {
           {selectedPurchase && (
             <>
               {/* Purchase Details */}
-              <div className="bg-white p-3 rounded-sm shadow-md mb-4 border border-gray-200">
+              <div className="bg-white p-4 rounded-sm shadow-md mb-4 border border-gray-200">
                 <div className="space-y-3 mb-4">
                   <div className='grid grid-cols-2 gap-4'>
                     <div><label className="block text-xs font-bold text-gray-500 uppercase">Date</label><input type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm" /></div>
@@ -817,7 +785,7 @@ const PurchaseReturnPage: React.FC = () => {
               </div>
 
               {/* Exchange / New Items (Input + List) */}
-              <div className="bg-white p-2 rounded-sm shadow-md mb-5 md:mb-0 border border-gray-200">
+              <div className="bg-white p-4 rounded-sm shadow-md mb-20 md:mb-0 border border-gray-200">
                 {/* Mobile View: Mode Select Here */}
                 <div className="md:hidden mb-4">
                   <label className="block font-medium text-sm mb-1">Transaction Type</label>
@@ -849,7 +817,7 @@ const PurchaseReturnPage: React.FC = () => {
                     {newItemsReceived.length > 0 && (
                       <div className="border rounded-md overflow-hidden">
                         <div className="bg-gray-50 px-3 py-2 border-b text-xs font-bold text-gray-500 uppercase">Received Items</div>
-                        <div className="max-h-60 overflow-y-auto bg-gray-50">
+                        <div className="max-h-60 overflow-y-auto p-2 bg-gray-50">
                           <GenericCartList<ReturnCartItem>
                             items={newItemsReceived}
                             availableItems={availableItems}
@@ -978,7 +946,6 @@ const PurchaseReturnPage: React.FC = () => {
       </div>
 
       <PaymentDrawer
-        mode='purchase'
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
         subtotal={Math.abs(finalBalance)}

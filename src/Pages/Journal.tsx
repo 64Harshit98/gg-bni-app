@@ -9,6 +9,7 @@ import {
   Timestamp,
   QuerySnapshot,
   doc,
+  getDoc,
   type DocumentData,
   runTransaction,
   increment,
@@ -77,7 +78,6 @@ const formatDate = (date: Date): string => {
   });
 };
 
-// --- DATA HOOK (REVERTED TO REAL-TIME / NO LIMIT) ---
 const useJournalData = (companyId?: string) => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,13 +92,11 @@ const useJournalData = (companyId?: string) => {
 
     setLoading(true);
 
-    // 1. SALES LISTENER (Credit)
     const salesQuery = query(
       collection(db, 'companies', companyId, 'sales'),
       orderBy('createdAt', 'desc')
     );
 
-    // 2. PURCHASES LISTENER (Debit)
     const purchasesQuery = query(
       collection(db, 'companies', companyId, 'purchases'),
       orderBy('createdAt', 'desc')
@@ -220,7 +218,6 @@ const Journal: React.FC = () => {
   const [showQrModal, setShowQrModal] = useState<Invoice | null>(null);
 
   const { currentUser, loading: authLoading } = useAuth();
-  // Using the Reverted Hook
   const { invoices, loading: dataLoading, error } = useJournalData(currentUser?.companyId);
   const navigate = useNavigate();
 
@@ -250,15 +247,12 @@ const Journal: React.FC = () => {
           case 'last15': return invoiceDate >= daysAgo(today, 15);
           case 'last30': return invoiceDate >= daysAgo(today, 30);
           case 'custom':
-            // 1. If dates aren't selected yet, show nothing (or all, depending on preference)
             if (!customStartDate || !customEndDate) return false;
 
             const start = new Date(customStartDate);
-            // Reset start time to 00:00:00 to ensure we catch everything from the start of the day
             start.setHours(0, 0, 0, 0);
 
             const end = new Date(customEndDate);
-            // 2. Set end date to the VERY END of the day (23:59:59) so we don't miss invoices made today
             end.setHours(23, 59, 59, 999);
 
             return invoiceDate >= start && invoiceDate <= end;
@@ -267,23 +261,17 @@ const Journal: React.FC = () => {
         }
       })
       .filter((invoice) => {
-        // --- 2. ADVANCED TOKEN SEARCH (The Update) ---
         const trimmedQuery = searchQuery.toLowerCase().trim();
-        if (!trimmedQuery) return true; // If search is empty, show everything
-
-        // Split search into words (e.g., "John Apple" -> ["john", "apple"])
+        if (!trimmedQuery) return true;
         const searchTokens = trimmedQuery.split(/\s+/);
 
-        // Return TRUE only if *EVERY* token is found somewhere in the invoice
         return searchTokens.every((token) => {
 
-          // Check Main Details (Invoice #, Name, Phone)
           const matchesDetails =
             invoice.invoiceNumber.toLowerCase().includes(token) ||
             invoice.partyName.toLowerCase().includes(token) ||
             (invoice.partyNumber && invoice.partyNumber.includes(token));
 
-          // Check Items (Does ANY item in this invoice contain this token?)
           const matchesItems = invoice.items?.some(item =>
             item.name.toLowerCase().includes(token)
           );
@@ -346,14 +334,19 @@ const Journal: React.FC = () => {
 
     try {
       const dbOps = getFirestoreOperations(currentUser.companyId);
-      const [businessInfo, fetchedItems] = await Promise.all([
+
+      const [businessInfo, fetchedItems, billSettingsSnap] = await Promise.all([
         dbOps.getBusinessInfo(),
         dbOps.syncItems(),
+        getDoc(doc(db, 'companies', currentUser.companyId, 'settings', 'bill'))
       ]);
+
+      const billSettings = billSettingsSnap.exists() ? billSettingsSnap.data() : {};
 
       const populatedItems = (invoice.items || []).map((item: any, index: number) => {
         const fullItem = fetchedItems.find((fi: any) => fi.id === item.id);
         const finalTaxRate = item.taxRate || item.tax || item.gstPercent || fullItem?.tax || 0;
+
         const itemAmount = (item.finalPrice !== undefined && item.finalPrice !== null)
           ? item.finalPrice
           : (item.mrp * item.quantity);
@@ -372,32 +365,45 @@ const Journal: React.FC = () => {
       });
 
       const dataForPdf = {
+        gstScheme: salesSettings?.gstScheme || '',
+        taxType: salesSettings?.taxType || '',
         companyName: businessInfo?.name || 'Your Company',
         companyAddress: businessInfo?.address || 'Your Address',
         companyContact: businessInfo?.phoneNumber || 'Your Phone',
         companyEmail: businessInfo?.email || '',
+        signatureBase64: billSettings.signatureBase64 || '',
+        companyGstin: billSettings.companyGstin || businessInfo?.gstin || '',
+        msmeNumber: billSettings.msmeNumber || '',
+        panNumber: billSettings.panNumber || '',
+
         billTo: {
           name: invoice.partyName,
           address: invoice.partyAddress || '',
           phone: invoice.partyNumber || '',
           gstin: invoice.partyGstin || '',
         },
+
         invoice: {
           number: invoice.invoiceNumber,
-          date: invoice.createdAt.toLocaleString('en-IN', {
+          date: new Date(invoice.createdAt).toLocaleString('en-IN', {
             day: 'numeric', month: 'short', year: 'numeric',
             hour: 'numeric', minute: 'numeric', hour12: true
           }),
           billedBy: salesSettings?.enableSalesmanSelection ? (invoice.salesmanName || 'Admin') : '',
+          roNumber: '',
         },
+
         items: populatedItems,
-        terms: 'Goods once sold will not be taken back.',
+
+        terms: billSettings.termsAndConditions || 'Goods once sold will not be taken back.',
         finalAmount: invoice.amount,
+
         bankDetails: {
-          accountName: businessInfo?.accountHolderName,
-          accountNumber: businessInfo?.accountNumber,
-          bankName: businessInfo?.bankName,
-          gstin: businessInfo?.gstin
+          accountName: billSettings.accountName || businessInfo?.accountHolderName,
+          accountNumber: billSettings.accountNumber || businessInfo?.accountNumber,
+          bankName: billSettings.bankName || businessInfo?.bankName,
+          ifsc: billSettings.ifscCode || '',
+          gstin: billSettings.companyGstin || businessInfo?.gstin
         }
       };
 
@@ -410,7 +416,6 @@ const Journal: React.FC = () => {
       setPdfGenerating(null);
     }
   };
-
   const handleShowQr = (invoice: Invoice) => {
     setInvoiceToPrint(null);
     setShowQrModal(invoice);

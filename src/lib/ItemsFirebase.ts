@@ -179,7 +179,7 @@ export const getFirestoreOperations = (companyId: string) => {
 
       if (docSnap.exists()) {
         const data = docSnap.data();
-        const addressParts = [data.city, data.state, data.postalCode].filter(Boolean).join(' ');
+        const addressParts = [data.streetAddress, data.city, data.state, data.postalCode].filter(Boolean).join(' ');
         const finalAddress = addressParts || data.address || "Address not available";
 
         return {

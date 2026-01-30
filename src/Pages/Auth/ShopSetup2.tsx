@@ -52,16 +52,34 @@ const FinalSetupPage: React.FC = () => {
   };
 
   const handleDownloadSample = () => {
-    try {
-      const sampleData = [
-        { name: 'Sample Item', mrp: 100, purchasePrice: 80, stock: 10 }];
-      const ws = XLSX.utils.json_to_sheet(sampleData);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Items');
-      XLSX.writeFile(wb, 'Inventory_Sample.xlsx');
-    } catch (err) {
-      console.error(err);
-    }
+    const sampleData = [
+      {
+        name: 'Apple',
+        mrp: 100,
+        purchasePrice: 80,
+        discount: 0,
+        tax: 0,
+        itemGroupId: 'Fruits',
+        stock: 50,
+        barcode: '1001',
+        restockQuantity: 10
+      },
+    ];
+    const ws = XLSX.utils.json_to_sheet(sampleData);
+    const mandatoryCols = [1, 5, 6, 7];
+    mandatoryCols.forEach((colIndex) => {
+      const cellAddress = XLSX.utils.encode_col(colIndex) + "1";
+      if (ws[cellAddress]) {
+        ws[cellAddress].s = {
+          font: { bold: true, color: { rgb: "FF0000" } },
+          fill: { fgColor: { rgb: "FEE2E2" } },
+          alignment: { horizontal: "center" }
+        };
+      }
+    });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Items');
+    XLSX.writeFile(wb, 'Sellar_Items_Sample.xlsx');
   };
 
   const handleFinishSetup = async (e: React.FormEvent) => {

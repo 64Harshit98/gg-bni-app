@@ -91,14 +91,18 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                     setFormData({
                         name: liveData.name || '',
                         mrp: liveData.mrp ?? undefined,
-                        purchasePrice: liveData.purchasePrice ?? undefined,
+                        salesPrice: liveData.salesPrice ?? undefined,
                         stock: liveData.stock ?? (liveData as any).Stock ?? undefined,
                         itemGroupId: liveData.itemGroupId || '',
                         barcode: liveData.barcode || '',
+                        hsnSac: liveData.hsnSac || '',
                         tax: liveData.tax ?? undefined,
+                        purchasePrice: liveData.purchasePrice ?? undefined,
                         discount: liveData.discount ?? undefined,
+                        purchasediscount: liveData.purchasediscount ?? undefined,
                         isListed: liveData.isListed ?? false,
                         imageUrl: liveData.imageUrl || '',
+                        description: liveData.description || '',
                     });
 
                     setImagePreview(liveData.imageUrl || null);
@@ -134,7 +138,8 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
         const isCheckbox = type === 'checkbox';
         const checked = (e.target as HTMLInputElement).checked;
 
-        const isNumericField = ['mrp', 'purchasePrice', 'stock', 'tax', 'discount'].includes(name);
+        // Added 'salesPrice' to numeric fields
+        const isNumericField = ['mrp', 'purchasePrice', 'stock', 'tax', 'discount', 'salesPrice'].includes(name);
 
         setFormData(prev => ({
             ...prev,
@@ -219,15 +224,19 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
             const dataToUpdate: ItemUpdatePayload = {
                 name: String(formData.name || ''),
                 mrp: Number(formData.mrp || 0),
+                salesPrice: Number(formData.salesPrice || 0), // <--- Save Sales Price
                 purchasePrice: Number(formData.purchasePrice || 0),
+                purchasediscount: Number(formData.purchasediscount || 0),
                 stock: Number(formData.stock ?? (formData as any).Stock ?? 0),
                 tax: Number(formData.tax || 0),
                 taxRate: Number(formData.tax || 0),
+                hsnSac: String(formData.hsnSac || ''), // <--- Save HSN Code
                 discount: Number(formData.discount || 0),
                 itemGroupId: String(formData.itemGroupId || ''),
                 barcode: String(formData.barcode || ''),
                 isListed: formData.isListed ?? false,
                 imageUrl: newImageUrl,
+                description: String(formData.description || '')
             };
 
             await dbOperations.updateItem(item.id, dataToUpdate);
@@ -326,28 +335,8 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                 />
                             </div>
 
-                            <div>
-                                <label htmlFor="edit-itemGroupId" className="text-sm font-medium leading-none mb-1 block">Category</label>
-                                {loadingGroups ? (
-                                    <p className="text-xs text-gray-500">Loading categories...</p>
-                                ) : (
-                                    <select
-                                        id="edit-itemGroupId"
-                                        name="itemGroupId"
-                                        value={formData.itemGroupId || ''}
-                                        onChange={handleChange}
-                                        className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                        disabled={isSaving}
-                                    >
-                                        <option value="" disabled>Select a category</option>
-                                        {itemGroups.map((group) => (
-                                            <option key={group.id} value={group.id}>
-                                                {group.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                )}
-                            </div>
+
+                            {/* --- Pricing Row --- */}
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
@@ -361,6 +350,39 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                     />
                                 </div>
                                 <div>
+                                    <label htmlFor="edit-itemGroupId" className="text-sm font-medium leading-none mb-1 block">Category</label>
+                                    {loadingGroups ? (
+                                        <p className="text-xs text-gray-500">Loading categories...</p>
+                                    ) : (
+                                        <select
+                                            id="edit-itemGroupId"
+                                            name="itemGroupId"
+                                            value={formData.itemGroupId || ''}
+                                            onChange={handleChange}
+                                            className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                            disabled={isSaving}
+                                        >
+                                            <option value="" disabled>Select a category</option>
+                                            {itemGroups.map((group) => (
+                                                <option key={group.id} value={group.id}>
+                                                    {group.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    )}
+                                </div>
+                                <div>
+                                    <label htmlFor="edit-salesPrice" className="text-sm font-medium leading-none mb-1 block">Sales Price (₹)</label>
+                                    <input
+                                        type="number" id="edit-salesPrice" name="salesPrice" step="0.01"
+                                        value={formData.salesPrice ?? ''}
+                                        onChange={handleChange}
+                                        className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        disabled={isSaving}
+                                        placeholder="Optional"
+                                    />
+                                </div>
+                                <div>
                                     <label htmlFor="edit-purchasePrice" className="text-sm font-medium leading-none mb-1 block">Purchase (₹)</label>
                                     <input
                                         type="number" id="edit-purchasePrice" name="purchasePrice" step="0.01"
@@ -370,8 +392,69 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         disabled={isSaving}
                                     />
                                 </div>
+
                             </div>
+
+                            {/* --- Purchase & Stock Row --- */}
                             <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label htmlFor="edit-discount" className="text-sm font-medium leading-none mb-1 block">Sale Disc (%)</label>
+                                    <input
+                                        type="number" id="edit-discount" name="discount" step="0.01"
+                                        value={formData.discount ?? ''}
+                                        onChange={handleChange}
+                                        className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        disabled={isSaving}
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="edit-purchasediscount" className="text-sm font-medium leading-none mb-1 block">Purchase Disc (%)</label>
+                                    <input
+                                        type="number" id="edit-purchasediscount" name="purchasediscount" step="0.01"
+                                        value={formData.purchasediscount ?? ''}
+                                        onChange={handleChange}
+                                        className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        disabled={isSaving}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* --- Tax & HSN Row --- */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label htmlFor="edit-tax" className="text-sm font-medium leading-none mb-1 block">Tax (%)</label>
+                                    <input
+                                        type="number" id="edit-tax" name="tax" step="0.01"
+                                        value={formData.tax ?? ''}
+                                        onChange={handleChange}
+                                        className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        disabled={isSaving}
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="edit-hsnSac" className="text-sm font-medium leading-none mb-1 block">HSN Code</label>
+                                    <input
+                                        type="text" id="edit-hsnSac" name="hsnSac"
+                                        value={formData.hsnSac || ''}
+                                        onChange={handleChange}
+                                        className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        disabled={isSaving}
+                                        placeholder="e.g. 123456"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* --- Discount & Barcode Row --- */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label htmlFor="edit-barcode" className="text-sm font-medium leading-none mb-1 block">Barcode</label>
+                                    <input
+                                        type="text" id="edit-barcode" name="barcode"
+                                        value={formData.barcode || ''} onChange={handleChange}
+                                        className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        disabled={isSaving}
+                                    />
+                                </div>
                                 <div>
                                     <label htmlFor="edit-stock" className="text-sm font-medium leading-none mb-1 block">Stock</label>
                                     <input
@@ -385,36 +468,17 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         disabled={isSaving}
                                     />
                                 </div>
-                                <div>
-                                    <label htmlFor="edit-tax" className="text-sm font-medium leading-none mb-1 block">Tax (%)</label>
-                                    <input
-                                        type="number" id="edit-tax" name="tax" step="0.01"
-                                        value={formData.tax ?? ''}
-                                        onChange={handleChange}
-                                        className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                        disabled={isSaving}
-                                    />
-                                </div>
                             </div>
                             <div>
-                                <label htmlFor="edit-discount" className="text-sm font-medium leading-none mb-1 block">Discount (%)</label>
+                                <label htmlFor="edit-description" className="text-sm font-medium leading-none mb-1 block">Description</label>
                                 <input
-                                    type="number" id="edit-discount" name="discount" step="0.01"
-                                    value={formData.discount ?? ''}
-                                    onChange={handleChange}
+                                    type="text" id="edit-description" name="description"
+                                    value={formData.description || ''} onChange={handleChange}
                                     className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                     disabled={isSaving}
                                 />
                             </div>
-                            <div>
-                                <label htmlFor="edit-barcode" className="text-sm font-medium leading-none mb-1 block">Barcode</label>
-                                <input
-                                    type="text" id="edit-barcode" name="barcode"
-                                    value={formData.barcode || ''} onChange={handleChange}
-                                    className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                    disabled={isSaving}
-                                />
-                            </div>
+
                             <div className="flex items-center space-x-2 pt-2">
                                 <input
                                     type="checkbox"

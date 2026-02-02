@@ -335,6 +335,103 @@ const PurchaseReturnPage: React.FC = () => {
     }));
   };
 
+  // --- LOGIC 1: ADD NEW ITEM (Purchase Price Priority) ---
+  const handleNewItemSelected = (item: Item) => {
+    if (!item) return;
+
+    const mrp = Number(item.mrp || 0);
+    const masterPurchasePrice = Number(item.purchasePrice || 0);
+
+    let finalNetPrice = 0;
+    let calculatedDiscount = 0;
+
+    if (masterPurchasePrice > 0) {
+      finalNetPrice = masterPurchasePrice;
+      if (mrp > 0) {
+        calculatedDiscount = ((mrp - masterPurchasePrice) / mrp) * 100;
+      }
+    } else {
+      finalNetPrice = 0;
+      calculatedDiscount = 0;
+    }
+
+    setNewItemsReceived(prev => [...prev, {
+      id: crypto.randomUUID(),
+      originalItemId: item.id!,
+      name: item.name,
+      quantity: 1,
+      unitPrice: finalNetPrice,
+      amount: finalNetPrice,
+      isEditable: true,
+      customPrice: finalNetPrice,
+      discount: parseFloat(calculatedDiscount.toFixed(2)),
+      productId: item.id,
+      mrp: mrp,
+      tax: item.tax || 0,
+      hsnSac: item.hsnSac || '',
+      barcode: item.barcode || '',
+      unit: item.unit || '',
+      stock: item.stock || (item as any).Stock || 0
+    }]);
+  };
+
+  // --- LOGIC 2: NEW ITEM PRICE CHANGE (Updates Discount) ---
+  const handleNewItemPriceBlur = (id: string) => {
+    setNewItemsReceived(prev => prev.map(item => {
+      if (item.id === id) {
+        const rawVal = item.customPrice;
+        const currentPriceVal = parseFloat(String(rawVal));
+
+        if (item.customPrice === '' || isNaN(currentPriceVal)) {
+          return { ...item, unitPrice: 0, amount: 0, customPrice: 0 };
+        }
+
+        let d = item.discount || 0;
+        const mrp = item.mrp || 0;
+
+        if (mrp > 0) {
+          d = Math.max(0, ((mrp - currentPriceVal) / mrp) * 100);
+        }
+
+        return {
+          ...item,
+          unitPrice: currentPriceVal,
+          amount: currentPriceVal * item.quantity,
+          customPrice: currentPriceVal,
+          discount: parseFloat(d.toFixed(2))
+        };
+      }
+      return item;
+    }));
+  };
+
+  // --- LOGIC 3: NEW ITEM DISCOUNT CHANGE (Updates Price) ---
+  const handleNewItemDiscountChange = (id: string, val: string | number) => {
+    const newDiscount = parseFloat(String(val)) || 0;
+
+    setNewItemsReceived(prev => prev.map(item => {
+      if (item.id === id) {
+        const mrp = item.mrp || 0;
+        let newNetPrice = item.unitPrice;
+
+        if (mrp > 0) {
+          newNetPrice = Math.max(0, mrp * (1 - newDiscount / 100));
+        }
+
+        newNetPrice = Math.round((newNetPrice + Number.EPSILON) * 100) / 100;
+
+        return {
+          ...item,
+          discount: newDiscount,
+          unitPrice: newNetPrice,
+          customPrice: newNetPrice,
+          amount: newNetPrice * item.quantity
+        };
+      }
+      return item;
+    }));
+  };
+
   const handleRemoveNewItem = (id: string) => {
     setNewItemsReceived(prev => prev.filter(item => item.id !== id));
   };
@@ -360,49 +457,6 @@ const PurchaseReturnPage: React.FC = () => {
       }
       return item;
     }));
-  };
-
-  const handleNewItemPriceBlur = (id: string) => {
-    setNewItemsReceived(prev => prev.map(item => {
-      if (item.id === id) {
-        const rawVal = item.customPrice;
-        const parsed = parseFloat(String(rawVal));
-
-        if (isNaN(parsed) || parsed < 0) {
-          return { ...item, customPrice: item.unitPrice };
-        }
-
-        return {
-          ...item,
-          unitPrice: parsed,
-          amount: parsed * item.quantity,
-          customPrice: parsed
-        };
-      }
-      return item;
-    }));
-  };
-
-  const handleNewItemSelected = (item: Item) => {
-    if (!item) return;
-    setNewItemsReceived(prev => [...prev, {
-      id: crypto.randomUUID(),
-      originalItemId: item.id!,
-      name: item.name,
-      quantity: 1,
-      unitPrice: item.purchasePrice || 0,
-      amount: item.purchasePrice || 0,
-      isEditable: true,
-      customPrice: item.purchasePrice,
-      discount: 0,
-      productId: item.id,
-      mrp: item.mrp || 0,
-      tax: item.tax || 0,
-      hsnSac: item.hsnSac || '',
-      barcode: item.barcode || '',
-      unit: item.unit || '',
-      stock: item.stock || (item as any).Stock || 0
-    }]);
   };
 
   // Helper to find Doc Ref by Barcode
@@ -535,6 +589,7 @@ const PurchaseReturnPage: React.FC = () => {
       const newManualDiscount = Math.max(0, originalManualDiscount - discountDeducted);
       const newTotalAmount = newGrossTotal - newManualDiscount;
 
+      // --- FIX 2: Calculate Payment Due Correctly (Prevent False Due) ---
       let updatedPaymentMethods: any = { ...(selectedPurchase.paymentMethods || {}) };
       if (completionData?.paymentDetails) {
         Object.entries(completionData.paymentDetails).forEach(([mode, amount]) => {
@@ -543,10 +598,13 @@ const PurchaseReturnPage: React.FC = () => {
           }
         });
       }
+
       const totalPaidSoFar = Object.entries(updatedPaymentMethods)
         .filter(([k]) => k !== 'due')
         .reduce((sum, [_, val]) => sum + Number(val), 0);
 
+      // If Return reduces bill total below what was paid, due is 0. 
+      // Excess is tracked via supplier Debit Balance, not invoice due.
       updatedPaymentMethods.due = Math.max(0, newTotalAmount - totalPaidSoFar);
 
       const returnHistoryRecord = {
@@ -561,7 +619,9 @@ const PurchaseReturnPage: React.FC = () => {
         paymentDetails: completionData?.paymentDetails || null,
         invoiceNumber: selectedPurchase.invoiceNumber,
         partyName: finalSupplierName,
-        partyNumber: finalSupplierNumber
+        partyNumber: finalSupplierNumber,
+        // --- FIX 1: Save the Manual Discount from Payment Drawer ---
+        transactionDiscount: completionData?.discount || 0
       };
 
       const updateData: any = {
@@ -591,7 +651,12 @@ const PurchaseReturnPage: React.FC = () => {
         };
 
         if (modeOfReturn !== 'Cash Refund' && finalBalance > 0) {
-          supplierUpdateData.debitBalance = firebaseIncrement(finalBalance);
+          // Subtract the drawer discount from the debit balance if applicable
+          // (User accepts less debit note value because of discount)
+          const netDebitToAdd = finalBalance - (completionData?.discount || 0);
+          if (netDebitToAdd > 0) {
+            supplierUpdateData.debitBalance = firebaseIncrement(netDebitToAdd);
+          }
         }
 
         batch.set(supplierRef, supplierUpdateData, { merge: true });
@@ -613,10 +678,33 @@ const PurchaseReturnPage: React.FC = () => {
     }
   };
 
+  // --- FIX 3: STRICT QUANTITY CHECK ---
   const handleProcessReturn = () => {
     if (!currentUser || !selectedPurchase) return;
     if (itemsToReturn.length === 0 && newItemsReceived.length === 0) {
       return setModal({ type: State.ERROR, message: 'No items have been returned or received.' });
+    }
+
+    // Validate quantities before opening drawer or saving
+    for (const returnItem of itemsToReturn) {
+      const originalItem = selectedPurchase.items.find(i => i.id === returnItem.originalItemId);
+
+      // Calculate how many of this item have ALREADY been returned in previous transactions
+      // Note: This requires 'returnHistory' to be fully loaded or parsed. 
+      // Since selectedPurchase is the live document, 'items' should ostensibly reflect current holdings? 
+      // Yes, 'items' array in DB is decremented on return. 
+      // So checking against 'originalItem.quantity' (Current Holding) is correct.
+
+      if (!originalItem) {
+        return setModal({ type: State.ERROR, message: `Item ${returnItem.name} not found in original bill.` });
+      }
+
+      if (returnItem.quantity > (originalItem.quantity || 0)) {
+        return setModal({
+          type: State.ERROR,
+          message: `Cannot return ${returnItem.quantity} of ${returnItem.name}. Only ${originalItem.quantity} remaining in bill.`
+        });
+      }
     }
 
     if (modeOfReturn === 'Cash Refund' && finalBalance > 0) {
@@ -709,7 +797,6 @@ const PurchaseReturnPage: React.FC = () => {
                         value={supplierName}
                         onChange={(e) => {
                           setSupplierName(e.target.value);
-                          // Clear number to avoid mismatch? Maybe not necessary, but UX choice.
                           setIsNameDropdownOpen(true);
                         }}
                         onFocus={() => setIsNameDropdownOpen(true)}
@@ -743,7 +830,7 @@ const PurchaseReturnPage: React.FC = () => {
                       value={supplierNumber}
                       onChange={(e) => {
                         setSupplierNumber(e.target.value);
-                        setSupplierName(''); // Clear name if changing number manually
+                        setSupplierName('');
                         setIsPartyDropdownOpen(true);
                       }}
                       onFocus={() => setIsPartyDropdownOpen(true)}
@@ -821,21 +908,21 @@ const PurchaseReturnPage: React.FC = () => {
                           <GenericCartList<ReturnCartItem>
                             items={newItemsReceived}
                             availableItems={availableItems}
-                            basePriceKey="unitPrice"
+                            basePriceKey="mrp"
                             priceLabel="Cost"
                             settings={{
                               enableRounding: false,
                               roundingInterval: 1,
-                              enableItemWiseDiscount: false,
-                              lockDiscount: true,
-                              lockPrice: false
+                              enableItemWiseDiscount: true, // Enable discount editing
+                              lockDiscount: false,          // Unlock Discount
+                              lockPrice: false              // Unlock Price
                             }}
                             applyRounding={(v) => v}
                             State={State}
                             setModal={setModal}
                             onOpenEditDrawer={() => { }}
                             onDeleteItem={handleRemoveNewItem}
-                            onDiscountChange={() => { }}
+                            onDiscountChange={handleNewItemDiscountChange}
                             onCustomPriceChange={handleNewItemPriceChange}
                             onCustomPriceBlur={handleNewItemPriceBlur}
                             onQuantityChange={handleNewItemQuantity}

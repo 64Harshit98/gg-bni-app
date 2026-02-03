@@ -91,6 +91,15 @@ const Reports = () => {
                 <span className="text-xl text-gray-500">→</span>
               </Link>
             </ShowWrapper>
+            <ShowWrapper requiredPermission={Permissions.ViewPNLReport}>
+              <Link
+                to={ROUTES.MANAGE_ITEMS}
+                className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
+              >
+                <span className="text-lg font-medium">Manage Items</span>
+                <span className="text-xl text-gray-500">→</span>
+              </Link>
+            </ShowWrapper>
           </>
         ) : (
           <div className="bg-white p-6 rounded-xl shadow-md mt-6 min-h-[200px] flex justify-center items-center text-gray-500 italic">

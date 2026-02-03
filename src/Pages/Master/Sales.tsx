@@ -237,7 +237,8 @@ const Sales: React.FC = () => {
         });
     }, [availableItems, selectedCategory, gridSearchQuery, items]);
 
-    // --- CALCULATION LOGIC: DEPENDS ON activeTaxMode ---
+    const gstSchemeDisplay = salesSettings?.gstScheme;
+
     const { subtotal, totalDiscount, roundOff, taxableAmount, taxAmount, finalAmount, totalQuantity } = useMemo(() => {
         let accumulatorSubtotal = 0;
         let accumulatorTaxable = 0;
@@ -249,40 +250,49 @@ const Sales: React.FC = () => {
         const isRoundingEnabled = salesSettings?.enableRounding ?? true;
         const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
 
-        // Effective Tax Mode based on TOGGLE
+        // Determine Effective Tax Mode
         let effectiveTaxMode = 'none';
-        if (isTaxEnabled) {
+        if (gstSchemeDisplay === 'regular' && isTaxEnabled) {
             effectiveTaxMode = activeTaxMode === 'exempt' ? 'none' : activeTaxMode;
+        } else {
+            effectiveTaxMode = 'none';
         }
 
         items.forEach(cartItem => {
             const currentQuantity = cartItem.quantity || 1;
             accumulatorQuantity += currentQuantity;
 
-            // Use item MRP for subtotal (Gross)
-            const currentMrp = cartItem.mrp || 0;
-            accumulatorSubtotal += currentMrp * currentQuantity;
+            let baseForSubtotal = (cartItem.mrp && cartItem.mrp > 0) ? cartItem.mrp : (cartItem.salesPrice || 0);
+
+            const itemSpecificTaxRate = (cartItem.tax !== undefined && cartItem.tax !== null) ? Number(cartItem.tax) : taxRate;
+
+            if (effectiveTaxMode === 'inclusive' && itemSpecificTaxRate > 0) {
+                baseForSubtotal = baseForSubtotal / (1 + (itemSpecificTaxRate / 100));
+            }
+
+            accumulatorSubtotal += baseForSubtotal * currentQuantity;
+
+            const baseForDiscount = (cartItem.mrp && cartItem.mrp > 0) ? cartItem.mrp : (cartItem.salesPrice || 0);
 
             let effectiveUnitPrice = 0;
             if (cartItem.customPrice !== undefined && cartItem.customPrice !== null && cartItem.customPrice !== '') {
                 effectiveUnitPrice = parseFloat(String(cartItem.customPrice));
             } else {
-                effectiveUnitPrice = currentMrp * (1 - (cartItem.discount || 0) / 100);
+                effectiveUnitPrice = baseForDiscount * (1 - (cartItem.discount || 0) / 100);
             }
 
             effectiveUnitPrice = applyRounding(effectiveUnitPrice, isRoundingEnabled, roundingInterval);
             const lineTotal = toCurrency(effectiveUnitPrice * currentQuantity);
 
+            // 3. Tax Calculation
             let lineBaseAmount = 0;
             let lineTaxAmount = 0;
-            const itemSpecificTaxRate = (cartItem.tax !== undefined && cartItem.tax !== null) ? Number(cartItem.tax) : taxRate;
 
             if (effectiveTaxMode !== 'none' && itemSpecificTaxRate > 0) {
                 if (effectiveTaxMode === 'inclusive') {
                     lineBaseAmount = toCurrency(lineTotal / (1 + (itemSpecificTaxRate / 100)));
                     lineTaxAmount = toCurrency(lineTotal - lineBaseAmount);
                 } else {
-                    // Exclusive
                     lineBaseAmount = lineTotal;
                     lineTaxAmount = toCurrency(lineTotal * (itemSpecificTaxRate / 100));
                 }
@@ -299,11 +309,13 @@ const Sales: React.FC = () => {
         const finalTax = toCurrency(accumulatorTax);
         const finalPayableAmount = toCurrency(finalTaxable + finalTax);
 
-        let amountCustomerPaysBeforeAddonTax = finalTaxable;
-        if (effectiveTaxMode === 'inclusive') amountCustomerPaysBeforeAddonTax += finalTax;
-        if (effectiveTaxMode === 'none') amountCustomerPaysBeforeAddonTax = finalPayableAmount;
+        let totalDiscountValue = 0;
 
-        const totalDiscountValue = toCurrency(accumulatorSubtotal - amountCustomerPaysBeforeAddonTax);
+        if (effectiveTaxMode === 'none') {
+            totalDiscountValue = toCurrency(accumulatorSubtotal - finalPayableAmount);
+        } else {
+            totalDiscountValue = toCurrency(accumulatorSubtotal - finalTaxable);
+        }
 
         return {
             subtotal: accumulatorSubtotal,
@@ -314,11 +326,10 @@ const Sales: React.FC = () => {
             finalAmount: finalPayableAmount,
             totalQuantity: accumulatorQuantity
         };
-    }, [items, salesSettings, activeTaxMode]); // Depends on activeTaxMode
+    }, [items, salesSettings, activeTaxMode, gstSchemeDisplay]);
 
     const amountToPayNow = useMemo(() => finalAmount, [finalAmount]);
 
-    // ... (Add Item, Barcode, Editing handlers - Unchanged from previous correct version) ...
     const addItemToCart = (itemToAdd: Item) => {
         if (!itemToAdd || !itemToAdd.id) {
             setModal({ message: "Cannot add invalid item.", type: State.ERROR });
@@ -376,10 +387,9 @@ const Sales: React.FC = () => {
         setIsScannerOpen(false);
         if (!dbOperations) return;
 
-        // FIX: Trim whitespace/newlines that scanners often append
         const cleanBarcode = barcode.trim();
 
-        console.log("Searching for barcode:", cleanBarcode); // Debugging aid
+        console.log("Searching for barcode:", cleanBarcode);
 
         try {
             const itemToAdd = await dbOperations.getItemByBarcode(cleanBarcode);
@@ -390,7 +400,6 @@ const Sales: React.FC = () => {
                     return exists ? prev : [...prev, itemToAdd];
                 });
             } else {
-                // FIX: Show the exact code scanned in the error to verify what was read
                 setModal({
                     message: `Item not found for barcode: "${cleanBarcode}"`,
                     type: State.ERROR
@@ -469,7 +478,6 @@ const Sales: React.FC = () => {
         setIsDrawerOpen(true);
     };
 
-    // --- SAVE LOGIC: Derived from activeTaxMode ---
     const handleSavePayment = async (completionData: PaymentCompletionData) => {
         if (!currentUser?.companyId) return;
 
@@ -480,16 +488,15 @@ const Sales: React.FC = () => {
         const salesman = salesSettings?.enableSalesmanSelection ? selectedWorker : workers.find(w => w.uid === currentUser.uid);
         const finalSalesman = salesman || { uid: currentUser.uid, name: currentUser.uid || 'Current User' };
 
-        // 1. Determine Scheme & Tax Type from Toggle State
         let finalGstScheme = 'none';
         let finalTaxType = 'none';
 
         if (activeTaxMode === 'exempt') {
-            finalGstScheme = 'composition'; // As requested: Exempt -> Composition
+            finalGstScheme = 'composition';
             finalTaxType = 'none';
         } else {
             finalGstScheme = 'regular';
-            finalTaxType = activeTaxMode; // 'inclusive' or 'exclusive'
+            finalTaxType = activeTaxMode;
         }
 
         const isTaxEnabled = salesSettings?.enableTax ?? true;
@@ -518,7 +525,6 @@ const Sales: React.FC = () => {
                 const itemSpecificTaxRate = (item.tax !== undefined && item.tax !== null) ? Number(item.tax) : currentTaxRate;
                 let itemTaxableBase = 0, itemTaxAmount = 0, itemFinalPrice = 0;
 
-                // Only calc tax if scheme is Regular
                 if (finalGstScheme === 'regular' && itemSpecificTaxRate > 0 && isTaxEnabled) {
                     if (finalTaxType === 'inclusive') {
                         itemFinalPrice = lineTotal;
@@ -546,8 +552,6 @@ const Sales: React.FC = () => {
         const finalInvoiceTotal = finalAmount - completionData.discount;
         const totalInvoiceDiscount = totalDiscount + (completionData.discount || 0);
 
-        // Define Transaction logic (New/Edit) ...
-        // (Copying logic from previous response but inserting the new saleData logic)
 
         const saveOperation = async (transaction: any, isNew: boolean, existingId?: string) => {
             const saleData: any = {
@@ -555,7 +559,6 @@ const Sales: React.FC = () => {
                 subtotal, discount: totalInvoiceDiscount, manualDiscount: completionData.discount || 0, revDiscount: completionData.revDiscount || 0,
                 roundOff, taxableAmount, taxAmount,
 
-                // SAVE DERIVED VALUES
                 gstScheme: finalGstScheme,
                 taxType: finalTaxType,
 
@@ -589,10 +592,6 @@ const Sales: React.FC = () => {
         try {
             if (isEditMode && invoiceToEdit?.id) {
                 await runTransaction(db, async (transaction) => {
-                    // (Inventory Diff Logic omitted for brevity, assuming standard impl)
-                    // ... [Existing Inventory Diff Code] ...
-
-                    // Simple overwrite for now to focus on tax logic:
                     await saveOperation(transaction, false, invoiceToEdit.id);
                 });
                 showSuccessModal("Invoice Updated", ROUTES.JOURNAL);
@@ -601,7 +600,6 @@ const Sales: React.FC = () => {
                 await runTransaction(db, async (transaction) => {
                     result = await saveOperation(transaction, true);
 
-                    // Stock Deduction
                     items.forEach(i => {
                         const pid = i.productId || i.id;
                         if (pid) {
@@ -639,8 +637,10 @@ const Sales: React.FC = () => {
 
     // --- Render Tax Toggle (DROPDOWN) ---
     const renderTaxToggle = () => {
-        if (salesSettings?.gstScheme !== 'regular') return null;
-        const isLocked = salesSettings?.lockTaxToggle ?? false;
+        const isSettingLocked = salesSettings?.lockTaxToggle ?? false;
+        const isSchemeLocked = salesSettings?.gstScheme !== 'regular';
+
+        const isLocked = isSettingLocked || isSchemeLocked;
         return (
             <div className="flex justify-between items-center p-2 bg-white border-b border-gray-200 px-5 rounded-sm">
                 <span className="text-sm font-semibold text-gray-700">Tax Calculation</span>
@@ -648,7 +648,7 @@ const Sales: React.FC = () => {
                     <select
                         value={activeTaxMode}
                         onChange={(e) => setActiveTaxMode(e.target.value as any)}
-                        disabled={isLocked} // --- DISABLE INPUT IF LOCKED ---
+                        disabled={(salesSettings?.gstScheme !== 'regular')} // --- DISABLE INPUT IF LOCKED ---
                         className={`appearance-none border border-gray-300 pr-8 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium transition-all ${isLocked
                             ? 'bg-gray-100 text-gray-400 cursor-not-allowed' // Locked Style
                             : 'bg-gray-50 hover:border-blue-400 text-gray-700 cursor-pointer' // Active Style

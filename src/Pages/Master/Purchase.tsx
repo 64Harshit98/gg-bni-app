@@ -21,7 +21,10 @@ import { GenericBillFooter } from '../../Components/Footer';
 import { IconScanCircle, IconScan } from '../../constants/Icons';
 
 interface PurchaseItem extends Omit<SalesItem, 'finalPrice' | 'effectiveUnitPrice' | 'discountPercentage'> {
-  purchasePrice: number;
+  purchasePrice: number | string;
+  originalPurchasePrice?: number;
+  // This field specifically tracks Purchase Discount
+  purchasediscount?: number;
   barcode?: string;
   taxRate?: number;
   taxType?: 'inclusive' | 'exclusive' | 'none';
@@ -121,7 +124,6 @@ const PurchasePage: React.FC = () => {
   }, [authLoading, loadingPurchaseSettings]);
 
   useEffect(() => {
-    // 1. Guard Clause
     if (pageIsLoading || !dbOperations || !currentUser?.companyId) return;
 
     const companyId = currentUser.companyId;
@@ -153,11 +155,7 @@ const PurchasePage: React.FC = () => {
 
     const initializePage = async () => {
       try {
-        // --- OPTIMIZATION START ---
-        // REPLACE: const fetchedItems = await dbOperations.getItems();
-        // WITH:
         const fetchedItems = await dbOperations.syncItems();
-        // --- OPTIMIZATION END ---
 
         let groupMap: Record<string, string> = {};
         if (currentUser?.companyId) {
@@ -189,20 +187,23 @@ const PurchasePage: React.FC = () => {
             }
 
             const validatedItems = (purchaseData.items || []).map((item: any) => {
-              // This lookup is now instant because fetchedItems comes from local storage
               const masterItem = fetchedItems.find(i => i.id === (item.productId || item.id));
-
               const recoveredTaxRate = (item.taxRate && item.taxRate > 0)
                 ? item.taxRate
                 : (masterItem?.tax ?? masterItem?.taxRate ?? 0);
+
+              // Use the saved transaction discount, NOT master item sale discount
+              const transactionDiscount = item.discount || 0;
 
               return {
                 id: item.id || crypto.randomUUID(),
                 name: item.name || 'Unknown Item',
                 purchasePrice: item.purchasePrice || 0,
+                originalPurchasePrice: masterItem?.purchasePrice || 0,
                 quantity: item.quantity || 1,
                 mrp: item.mrp || 0,
-                discount: item.discount || 0,
+                discount: transactionDiscount,
+                purchasediscount: transactionDiscount,
                 barcode: item.barcode || '',
                 taxRate: recoveredTaxRate,
                 taxType: item.taxType,
@@ -240,17 +241,142 @@ const PurchasePage: React.FC = () => {
   const cartItemsAdapter = useMemo(() => {
     return items.map(item => ({
       ...item,
+      purchasePrice: Number(item.purchasePrice || 0),
       customPrice: item.purchasePrice,
+      // GenericCartList will display this as "Discount"
+      discount: item.purchasediscount ?? item.discount ?? 0,
       isEditable: item.isEditable ?? true
     }));
   }, [items]);
 
+  // --- LOGIC 1: ADD ITEM ---
+  const addItemToCart = (itemToAdd: Item) => {
+    if (!itemToAdd || !itemToAdd.id) {
+      setModal({ message: "Cannot add invalid item.", type: State.ERROR });
+      return;
+    }
+
+    const resolvedTax = itemToAdd.tax ?? itemToAdd.taxRate ?? 0;
+
+    // 1. Extract Values
+    const mrp = Number(itemToAdd.mrp || 0);
+    const masterPurchasePrice = Number(itemToAdd.purchasePrice || 0);
+
+    // FIX: Look ONLY for 'purchasediscount'. Ignore 'discount' (Sale Discount).
+    const masterPurchaseDiscount = (itemToAdd as any).purchasediscount || 0;
+    const globalDefaultDiscount = purchaseSettings?.defaultDiscount ?? 0;
+
+    let finalNetPrice = 0;
+    let calculatedDiscount = 0;
+
+    // 2. Logic Implementation
+    if (masterPurchasePrice > 0) {
+      // Priority 1: Master Purchase Price exists
+      finalNetPrice = masterPurchasePrice;
+      if (mrp > 0) {
+        calculatedDiscount = ((mrp - masterPurchasePrice) / mrp) * 100;
+      }
+    } else if (masterPurchaseDiscount > 0) {
+      // Priority 2: Master Purchase Discount exists
+      calculatedDiscount = masterPurchaseDiscount;
+      finalNetPrice = mrp * (1 - (masterPurchaseDiscount / 100));
+    } else if (globalDefaultDiscount > 0 && mrp > 0) {
+      // Priority 3: Global Default Discount exists
+      calculatedDiscount = globalDefaultDiscount;
+      finalNetPrice = mrp * (1 - (globalDefaultDiscount / 100));
+    } else {
+      // Priority 4: No price, no purchase discount -> 0
+      finalNetPrice = 0;
+      calculatedDiscount = 0;
+    }
+
+    // 3. Apply Rounding
+    const isRoundingEnabled = purchaseSettings?.roundingOff ?? true;
+    finalNetPrice = applyPurchaseRounding(finalNetPrice, isRoundingEnabled);
+
+    setItems((prevItems) => [
+      {
+        id: crypto.randomUUID(),
+        productId: itemToAdd.id!,
+        name: itemToAdd.name || 'Unnamed Item',
+        purchasePrice: finalNetPrice,
+        originalPurchasePrice: masterPurchasePrice,
+        mrp: mrp,
+        barcode: itemToAdd.barcode || '',
+        quantity: 1,
+        // Set both to be safe, but 'purchasediscount' is the semantic one
+        discount: parseFloat(calculatedDiscount.toFixed(2)),
+        purchasediscount: parseFloat(calculatedDiscount.toFixed(2)),
+        taxRate: resolvedTax,
+        stock: itemToAdd.stock || (itemToAdd as any).Stock || 0,
+        isEditable: true
+      },
+      ...prevItems,
+    ]);
+  };
+
+  // --- LOGIC 2: HANDLE PRICE CHANGE (Typing) ---
   const handlePriceChange = (id: string, val: string) => {
     if (val === '' || /^[0-9]*\.?[0-9]*$/.test(val)) {
       setItems(prev => prev.map(item =>
-        item.id === id ? { ...item, purchasePrice: parseFloat(val) || 0 } : item
+        item.id === id ? { ...item, purchasePrice: val } : item
       ));
     }
+  };
+
+  // --- LOGIC 3: HANDLE DISCOUNT CHANGE (Calc Price from MRP) ---
+  const handleDiscountChange = (id: string, v: number | string) => {
+    const n = typeof v === 'string' ? parseFloat(v) : v;
+    const safeDiscount = isNaN(n) ? 0 : n;
+
+    setItems(prev => prev.map(i => {
+      if (i.id === id) {
+        const basePrice = (i.mrp && i.mrp > 0) ? i.mrp : (i.originalPurchasePrice || 0);
+
+        let newPrice = basePrice * (1 - safeDiscount / 100);
+
+        const isRoundingEnabled = purchaseSettings?.roundingOff ?? true;
+        newPrice = applyPurchaseRounding(newPrice, isRoundingEnabled);
+
+        return {
+          ...i,
+          discount: safeDiscount,
+          purchasediscount: safeDiscount,
+          purchasePrice: newPrice
+        };
+      }
+      return i;
+    }));
+  };
+
+  // --- LOGIC 4: HANDLE PRICE BLUR (Calc Discount from MRP) ---
+  const handlePriceBlur = (id: string) => {
+    setItems(prev => prev.map(i => {
+      if (i.id === id) {
+        const currentPriceVal = parseFloat(String(i.purchasePrice));
+
+        if (i.purchasePrice === '' || isNaN(currentPriceVal)) {
+          return { ...i, purchasePrice: 0 };
+        }
+
+        let d = 0;
+        const basePrice = (i.mrp && i.mrp > 0) ? i.mrp : (i.originalPurchasePrice || 0);
+
+        if (basePrice > 0) {
+          d = ((basePrice - currentPriceVal) / basePrice) * 100;
+        }
+
+        const finalDiscount = parseFloat(d.toFixed(2));
+
+        return {
+          ...i,
+          purchasePrice: currentPriceVal,
+          discount: finalDiscount,
+          purchasediscount: finalDiscount
+        };
+      }
+      return i;
+    }));
   };
 
   const categories = useMemo(() => {
@@ -277,32 +403,6 @@ const PurchasePage: React.FC = () => {
     });
   }, [availableItems, selectedCategory, gridSearchQuery, items]);
 
-  const addItemToCart = (itemToAdd: Item) => {
-    if (!itemToAdd || !itemToAdd.id) {
-      setModal({ message: "Cannot add invalid item.", type: State.ERROR });
-      return;
-    }
-    const defaultDiscount = purchaseSettings?.defaultDiscount ?? 0;
-    const resolvedTax = itemToAdd.tax ?? itemToAdd.taxRate ?? 0;
-
-    setItems((prevItems) => [
-      {
-        id: crypto.randomUUID(),
-        productId: itemToAdd.id!,
-        name: itemToAdd.name || 'Unnamed Item',
-        purchasePrice: itemToAdd.purchasePrice || 0,
-        mrp: itemToAdd.mrp || 0,
-        barcode: itemToAdd.barcode || '',
-        quantity: 1,
-        discount: defaultDiscount,
-        taxRate: resolvedTax,
-        stock: itemToAdd.stock || (itemToAdd as any).Stock || 0,
-        isEditable: true
-      },
-      ...prevItems,
-    ]);
-  };
-
   const {
     subtotal,
     taxableAmount,
@@ -324,13 +424,14 @@ const PurchasePage: React.FC = () => {
     let qtyAgg = 0;
 
     items.forEach(item => {
-      const purchasePrice = item.purchasePrice || 0;
+      const purchasePrice = Number(item.purchasePrice || 0);
       const quantity = item.quantity || 1;
       const itemTaxRate = item.taxRate || 0;
       const mrp = item.mrp || 0;
 
       qtyAgg += quantity;
       mrpTotalAgg += mrp * quantity;
+
       const itemTotalPurchasePrice = purchasePrice * quantity;
       purchasePriceTotalAgg += itemTotalPurchasePrice;
 
@@ -365,8 +466,6 @@ const PurchasePage: React.FC = () => {
     const currentTotalDiscount = mrpTotalAgg - purchasePriceTotalAgg;
 
     return {
-      // FIX: Use totalTaxableBaseAgg instead of purchasePriceTotalAgg
-      // This ensures 'Subtotal' is always the pre-tax value
       subtotal: totalTaxableBaseAgg,
       totalDiscount: currentTotalDiscount > 0 ? currentTotalDiscount : 0,
       taxableAmount: totalTaxableBaseAgg,
@@ -443,7 +542,7 @@ const PurchasePage: React.FC = () => {
 
     const formatItemsForDB = (itemsToFormat: PurchaseItem[]): PurchaseItem[] => {
       return itemsToFormat.map((item) => {
-        const purchasePrice = item.purchasePrice || 0;
+        const purchasePrice = Number(item.purchasePrice || 0);
         const quantity = item.quantity || 1;
         const itemTaxRate = finalTaxType === 'none' ? 0 : (item.taxRate || 0);
 
@@ -462,11 +561,14 @@ const PurchasePage: React.FC = () => {
           itemTax = 0;
         }
 
-        const { customPrice, isEditable, ...dbItem } = item;
+        const { customPrice, isEditable, originalPurchasePrice, purchasediscount, ...dbItem } = item;
 
         return {
           ...dbItem,
           id: item.productId || item.id,
+          purchasePrice: purchasePrice,
+          // Persist purchase discount specifically
+          discount: item.purchasediscount ?? item.discount ?? 0,
           taxableAmount: parseFloat(itemTaxableBase.toFixed(2)),
           taxAmount: parseFloat(itemTax.toFixed(2)),
           taxRate: itemTaxRate,
@@ -668,7 +770,8 @@ const PurchasePage: React.FC = () => {
     if (showPrintQrModal) {
       const itemsForPrint = showPrintQrModal.map(item => ({
         ...item,
-        id: item.productId || item.id
+        id: item.productId || item.id,
+        purchasePrice: Number(item.purchasePrice || 0) // Ensure number for QR print
       }));
       navigate(ROUTES.PRINTQR, { state: { prefilledItems: itemsForPrint } });
       setShowPrintQrModal(null);
@@ -814,18 +917,18 @@ const PurchasePage: React.FC = () => {
                 settings={{
                   enableRounding: false,
                   roundingInterval: 1,
-                  enableItemWiseDiscount: false,
-                  lockDiscount: true,
+                  enableItemWiseDiscount: true,
+                  lockDiscount: false,
                   lockPrice: false
                 }}
-                applyRounding={applyPurchaseRounding}
+                applyRounding={(val) => val}
                 State={State}
                 setModal={setModal}
                 onOpenEditDrawer={handleOpenEditDrawer}
                 onDeleteItem={handleDeleteItem}
-                onDiscountChange={() => { }}
+                onDiscountChange={handleDiscountChange}
                 onCustomPriceChange={handlePriceChange}
-                onCustomPriceBlur={() => { }}
+                onCustomPriceBlur={handlePriceBlur}
                 onQuantityChange={(id, qty) => handleQuantityChange(id, qty)}
               />
             </div>

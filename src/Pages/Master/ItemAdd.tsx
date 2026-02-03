@@ -10,10 +10,8 @@ import { useAuth, useDatabase } from '../../context/auth-context';
 import { Spinner } from '../../constants/Spinner';
 import { Modal } from '../../constants/Modal';
 import { useItemSettings } from '../../context/SettingsContext';
-import { v4 as uuidv4 } from 'uuid';
 import { IconScanCircle } from '../../constants/Icons';
-// --- ADDED: Efficient Firestore Imports ---
-import { collection, query, where, getDocs, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, limit, doc, runTransaction, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 
 const ItemAdd: React.FC = () => {
@@ -23,15 +21,19 @@ const ItemAdd: React.FC = () => {
   const { currentUser, loading: authLoading } = useAuth();
   const { itemSettings, loadingSettings: loadingItemSettings } = useItemSettings();
 
+  // --- STATE ---
   const [itemName, setItemName] = useState<string>('');
   const [itemMRP, setItemMRP] = useState<string>('');
+  const [itemSalesPrice, setItemSalesPrice] = useState<string>('');
   const [itemPurchasePrice, setItemPurchasePrice] = useState<string>('');
   const [itemDiscount, setItemDiscount] = useState<string>('');
+  const [PurchaseDiscount, setPurchaseDiscount] = useState<string>('');
   const [itemTax, setItemTax] = useState<string>('');
   const [itemAmount, setItemAmount] = useState<string>('');
   const [restockQuantity, setRestockQuantity] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [itemBarcode, setItemBarcode] = useState<string>('');
+  const [hsnCode, setHsnCode] = useState<string>('');
 
   const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
 
@@ -40,7 +42,11 @@ const ItemAdd: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
+
+  // --- UPLOAD STATE ---
   const [isUploading, setIsUploading] = useState<boolean>(false);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
+
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
@@ -52,11 +58,11 @@ const ItemAdd: React.FC = () => {
 
   const isActive = (path: string) => location.pathname === path;
 
+  // --- 1. Fetch Categories ---
   const fetchGroups = async () => {
     if (!dbOperations) return;
     try {
       setLoading(true);
-      // Fetching groups is fine as it's usually a small list
       const groups = await dbOperations.getItemGroups();
       setItemGroups(groups);
 
@@ -73,20 +79,62 @@ const ItemAdd: React.FC = () => {
     }
   };
 
+  // --- 2. Fetch Suggested Barcode (Peek Logic) ---
+  const fetchNextBarcode = async () => {
+    if (!currentUser?.companyId) return;
+    try {
+      const counterRef = doc(db, 'companies', currentUser.companyId, 'counters', 'items');
+      const snap = await getDoc(counterRef);
+      let nextSeq = 1001; // Default start
+      if (snap.exists()) {
+        nextSeq = (snap.data().currentSequence || 1000) + 1;
+      }
+      setItemBarcode(String(nextSeq));
+    } catch (e) {
+      console.error("Failed to fetch next barcode", e);
+    }
+  };
+
   useEffect(() => {
-    fetchGroups();
-  }, [dbOperations]);
+    if (dbOperations && currentUser) {
+      fetchGroups();
+      fetchNextBarcode();
+    }
+  }, [dbOperations, currentUser]);
 
   const resetForm = () => {
     setItemName('');
     setItemMRP('');
+    setItemSalesPrice('');
     setItemPurchasePrice('');
     setItemDiscount('');
+    setPurchaseDiscount('');
     setItemTax('');
     setItemAmount('');
-    setItemBarcode('');
+    fetchNextBarcode();
     setRestockQuantity('');
+    setHsnCode('');
     setSelectedCategory(itemGroups.length > 0 ? itemGroups[0].id! : '');
+  };
+
+  // --- HELPER: Transactional Sequence for Bulk Uploads ---
+  const reserveSequenceBlock = async (count: number): Promise<number> => {
+    if (!currentUser?.companyId) throw new Error("No Company ID");
+    const counterRef = doc(db, 'companies', currentUser.companyId, 'counters', 'items');
+    try {
+      return await runTransaction(db, async (transaction) => {
+        const counterDoc = await transaction.get(counterRef);
+        let lastSeq = 1000;
+        if (counterDoc.exists()) {
+          lastSeq = counterDoc.data().currentSequence || 1000;
+        }
+        const nextSeq = lastSeq + count;
+        transaction.set(counterRef, { currentSequence: nextSeq }, { merge: true });
+        return lastSeq + 1; // Return the first usable number
+      });
+    } catch (e) {
+      return Date.now();
+    }
   };
 
   const handleAddItem = async () => {
@@ -95,25 +143,60 @@ const ItemAdd: React.FC = () => {
     }
     setError(null); setSuccess(null); setModal(null);
 
-    if (!itemName.trim() || !itemMRP.trim() || !selectedCategory || !itemAmount.trim()) {
-      setModal({ message: 'Item Name, MRP, Stock Amount, and Category are required.', type: State.ERROR }); return;
+    // --- 1. Basic Field Validation ---
+    if (!itemName.trim() || !selectedCategory || !itemAmount.trim()) {
+      setModal({ message: 'Item Name, Stock Amount, and Category are required.', type: State.ERROR }); return;
     }
 
-    let finalBarcode = itemBarcode.trim();
-    if (!finalBarcode && itemSettings.autoGenerateBarcode) finalBarcode = uuidv4();
-    else if (!finalBarcode && itemSettings.requireBarcode) {
-      setModal({ message: 'Barcode required.', type: State.ERROR }); return;
+    if (!itemBarcode.trim()) {
+      setModal({ message: 'Barcode is required.', type: State.ERROR }); return;
     }
+
+    // --- 2. Price Logic Validation ---
+    const mrpValue = parseFloat(itemMRP) || 0;
+    const saleValue = parseFloat(itemSalesPrice) || 0;
+    const purchaseValue = parseFloat(itemPurchasePrice) || 0;
+
+    if (mrpValue === 0 && saleValue === 0) {
+      setModal({ message: 'Please enter either MRP or Sales Price.', type: State.ERROR }); return;
+    }
+
+    // --- 3. Discount Logic ---
+    let finalSaleDiscount = parseFloat(itemDiscount) || 0;
+    if (mrpValue > 0 && saleValue > 0) {
+      finalSaleDiscount = 0;
+    }
+
+    let finalPurchaseDiscount = parseFloat(PurchaseDiscount) || 0;
+    if (mrpValue > 0 && purchaseValue > 0) {
+      finalPurchaseDiscount = 0;
+    }
+
+    const finalBarcode = itemBarcode.trim();
 
     setIsSaving(true);
     try {
-      const customDocId = finalBarcode || uuidv4();
+      // Check for Duplicate Barcode
+      const itemsRef = collection(db, 'companies', currentUser.companyId, 'items');
+      const q = query(itemsRef, where('barcode', '==', finalBarcode), limit(1));
+      const snapshot = await getDocs(q);
+
+      if (!snapshot.empty) {
+        setModal({ message: `Barcode ${finalBarcode} already exists.`, type: State.ERROR });
+        setIsSaving(false);
+        return;
+      }
+
+      const customDocId = finalBarcode;
       const newItemData: any = {
         name: itemName.trim(),
-        mrp: parseFloat(itemMRP) || 0,
-        purchasePrice: parseFloat(itemPurchasePrice) || 0,
-        discount: parseFloat(itemDiscount) || 0,
+        mrp: mrpValue,
+        salesPrice: saleValue,
+        purchasePrice: purchaseValue,
+        discount: finalSaleDiscount,
+        purchasediscount: finalPurchaseDiscount,
         tax: parseFloat(itemTax) || 0,
+        hsnSac: hsnCode.trim(),
         itemGroupId: selectedCategory,
         stock: parseInt(itemAmount, 10) || 0,
         amount: parseInt(itemAmount, 10) || 0,
@@ -123,7 +206,20 @@ const ItemAdd: React.FC = () => {
 
       await dbOperations.createItem(newItemData, customDocId);
 
-      setSuccess(`Item "${itemName}" added successfully!`);
+      // Update Counter if numeric
+      const barcodeNum = parseInt(finalBarcode, 10);
+      if (!isNaN(barcodeNum)) {
+        const counterRef = doc(db, 'companies', currentUser.companyId, 'counters', 'items');
+        await runTransaction(db, async (transaction) => {
+          const counterDoc = await transaction.get(counterRef);
+          const currentDBSeq = counterDoc.exists() ? (counterDoc.data().currentSequence || 1000) : 1000;
+          if (barcodeNum > currentDBSeq) {
+            transaction.set(counterRef, { currentSequence: barcodeNum }, { merge: true });
+          }
+        });
+      }
+
+      setSuccess(`Item "${itemName}" added!`);
       resetForm();
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
@@ -134,12 +230,13 @@ const ItemAdd: React.FC = () => {
     }
   };
 
-  // --- OPTIMIZED BULK UPLOAD ---
+  // --- BULK UPLOAD ---
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !dbOperations || !currentUser || !itemSettings || !currentUser.companyId) return;
 
     setIsUploading(true);
+    setUploadProgress(null);
     setError(null); setSuccess(null); setModal(null);
 
     const reader = new FileReader();
@@ -156,16 +253,28 @@ const ItemAdd: React.FC = () => {
         let processedCount = 0;
         let createdCount = 0;
         let updatedCount = 0;
-        const errors: string[] = [];
+        let failedCount = 0; // Simple counter for errors
 
-        // 1. Fetch Groups (Keep this, it's small)
+        const totalItems = rawJson.length;
+        setUploadProgress({ current: 0, total: totalItems });
+
+        // --- PREP CATEGORIES ---
         let currentGroups = await dbOperations.getItemGroups();
         const groupMap = new Map<string, string>();
         currentGroups.forEach(g => groupMap.set(g.name.toLowerCase().trim(), g.id!));
 
-        // NOTE: "syncItems" / "getItems" removed. We will check existence inside the loop.
+        // --- PREP SEQUENTIAL BARCODES ---
+        const itemsNeedingBarcode = rawJson.filter((row: any) => !row.barcode && !row.Barcode).length;
+        let nextSeqNumber = 0;
+
+        if (itemsNeedingBarcode > 0) {
+          nextSeqNumber = await reserveSequenceBlock(itemsNeedingBarcode);
+        }
 
         for (let i = 0; i < rawJson.length; i++) {
+          await new Promise(resolve => setTimeout(resolve, 0));
+          setUploadProgress({ current: i + 1, total: totalItems });
+
           const rawRow = rawJson[i];
           const row: any = {};
 
@@ -174,7 +283,6 @@ const ItemAdd: React.FC = () => {
             row[cleanKey] = rawRow[k];
           });
 
-          // --- Group Logic ---
           const csvCategoryValue = String(
             row.itemgroupid || row.itemgroup || row.category || row.group || row.categoryname || "General"
           ).trim();
@@ -202,62 +310,90 @@ const ItemAdd: React.FC = () => {
             }
           }
 
-          if (!row.name || row.mrp == null) {
-            errors.push(`Row ${i + 2}: Missing Name or MRP`); continue;
+          // --- BULK VALIDATION LOGIC ---
+          // 1. Check Name
+          if (!row.name) {
+            failedCount++;
+            continue;
+          }
+
+          const rowMRP = parseFloat(String(row.mrp ?? row.MRP ?? 0));
+          const rowSale = parseFloat(String(row.salesprice ?? row.sellingprice ?? 0));
+          const rowPurchase = parseFloat(String(row.purchaseprice ?? row.purchasePrice ?? row.PurchasePrice ?? 0));
+
+          // 2. Check Price (Either MRP or Sale Price required)
+          if (rowMRP === 0 && rowSale === 0) {
+            failedCount++;
+            continue;
+          }
+
+          // 3. Sale Discount Logic
+          let rowSaleDiscount = parseFloat(String(row.discount ?? row.salediscount ?? row.salesdiscount ?? row.saledisc ?? 0));
+          if (rowMRP > 0 && rowSale > 0) {
+            rowSaleDiscount = 0;
+          }
+
+          // 4. Purchase Discount Logic
+          let rowPurchaseDiscount = parseFloat(String(row.purchasediscount ?? 0));
+          if (rowMRP > 0 && rowPurchase > 0) {
+            rowPurchaseDiscount = 0;
           }
 
           try {
-            const pPrice = parseFloat(String(row.purchaseprice ?? 0));
             const stockVal = parseInt(String(row.stock ?? row.amount ?? row.qty ?? row.quantity ?? 0), 10);
-            const rowBarcode = String(row.barcode || '').trim();
 
-            let customId = rowBarcode;
-            if (!customId && itemSettings?.autoGenerateBarcode) customId = uuidv4();
-            else if (!customId) customId = uuidv4();
+            let rowBarcode = String(row.barcode || '').trim();
+            const rowHsn = String(row.hsn || row.hsncode || row.sac || row.hsnsac || '').trim();
+
+            if (!rowBarcode) {
+              rowBarcode = String(nextSeqNumber);
+              nextSeqNumber++;
+            }
 
             const itemData: any = {
               name: String(row.name).trim(),
-              mrp: parseFloat(String(row.mrp)),
-              purchasePrice: pPrice,
-              discount: parseFloat(String(row.discount ?? 0)),
+              mrp: rowMRP,
+              salesPrice: rowSale,
+              purchasePrice: rowPurchase,
+              discount: rowSaleDiscount,
+              purchasediscount: rowPurchaseDiscount,
               tax: parseFloat(String(row.tax ?? 0)),
+              hsnSac: rowHsn,
               itemGroupId: targetGroupId,
               stock: stockVal,
               amount: stockVal,
-              barcode: customId === rowBarcode ? rowBarcode : customId,
+              barcode: rowBarcode,
               restockQuantity: parseInt(String(row.restockquantity ?? 0), 10),
               taxRate: parseFloat(String(row.tax ?? 0)),
             };
 
-            // --- OPTIMIZED CHECK: Is this a Create or Update? ---
             let isUpdate = false;
-            if (rowBarcode) {
-              // We check ONLY this specific barcode in the database
-              const itemsRef = collection(db, 'companies', currentUser.companyId, 'items');
-              const q = query(itemsRef, where('barcode', '==', rowBarcode), limit(1));
-              const snapshot = await getDocs(q);
-              if (!snapshot.empty) {
-                isUpdate = true;
-              }
-            }
+            const itemsRef = collection(db, 'companies', currentUser.companyId, 'items');
+            const q = query(itemsRef, where('barcode', '==', rowBarcode), limit(1));
+            const snapshot = await getDocs(q);
+            if (!snapshot.empty) isUpdate = true;
 
-            // Create/Update the item
-            await dbOperations.createItem(itemData, customId);
+            await dbOperations.createItem(itemData, rowBarcode);
 
             if (isUpdate) updatedCount++;
             else createdCount++;
 
             processedCount++;
           } catch (e: any) {
-            errors.push(`Row ${i + 2}: ${e.message}`);
+            failedCount++;
           }
         }
 
-        // Refresh groups in UI in case we added new ones
         await fetchGroups();
 
-        if (errors.length > 0) setModal({ message: `Done. ${errors.length} errors. First: ${errors[0]}`, type: State.ERROR });
-        else setSuccess(`Imported: ${createdCount} New, ${updatedCount} Updated.`);
+        if (failedCount > 0) {
+          setModal({
+            message: `Error in ${failedCount} entries. Please check for missing required fields (Item Name, Sale Price, MRP, Stock, Barcode) or invalid data.`,
+            type: State.ERROR
+          });
+        } else {
+          setSuccess(`Imported: ${createdCount} New, ${updatedCount} Updated.`);
+        }
 
         setTimeout(() => setSuccess(null), 5000);
 
@@ -266,6 +402,7 @@ const ItemAdd: React.FC = () => {
         setError("File processing failed.");
       } finally {
         setIsUploading(false);
+        setUploadProgress(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
       }
     };
@@ -282,15 +419,20 @@ const ItemAdd: React.FC = () => {
       {
         name: 'Apple',
         mrp: 100,
+        salesPrice: 95,
         purchasePrice: 80,
-        discount: 0, tax: 0,
+        'Sale Discount': 0,
+        purchasediscount: 0,
+        tax: 0,
+        hsnCode: '080810',
         itemGroupId: 'Fruits',
-        stock: 50, barcode: '1001',
+        stock: 50,
+        barcode: '1001',
         restockQuantity: 10
       },
     ];
     const ws = XLSX.utils.json_to_sheet(sampleData);
-    const mandatoryCols = [0, 1, 5, 6];
+    const mandatoryCols = [0, 9, 10]; // Name, Stock, Barcode
     mandatoryCols.forEach((colIndex) => {
       const cellAddress = XLSX.utils.encode_col(colIndex) + "1";
       if (ws[cellAddress]) {
@@ -325,30 +467,44 @@ const ItemAdd: React.FC = () => {
       <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
+      {/* --- PROGRESS MODAL --- */}
+      {uploadProgress && (
+        <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-white p-8 rounded-lg shadow-xl w-80 text-center">
+            <h3 className="text-lg font-bold mb-4 text-gray-800">Uploading Items...</h3>
+            <div className="w-full bg-gray-200 rounded-full h-4 mb-2 overflow-hidden">
+              <div
+                className="bg-sky-500 h-4 rounded-full transition-all duration-100"
+                style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
+              ></div>
+            </div>
+            <p className="text-sm text-gray-600 font-mono">
+              {uploadProgress.current} / {uploadProgress.total} processed
+            </p>
+            <p className="text-xs text-gray-400 mt-2">Please do not close this window.</p>
+          </div>
+        </div>
+      )}
+
       {renderHeader()}
 
-      {/* Main Layout Wrapper */}
       <div className="flex-1 flex flex-col md:flex-row relative">
 
         {/* LEFT PANEL */}
         <div className="flex-1 w-full md:w-[65%] bg-gray-100 md:bg-gray-50 md:border-r border-gray-200 pt-28 pb-24 px-2 md:pt-6 md:px-6 md:pb-6 overflow-y-auto">
 
-          {/* Messages */}
           {error && <div className="mb-4 text-center p-3 bg-red-100 text-red-700 rounded-lg">{error}</div>}
           {success && <div className="mb-4 text-center p-3 bg-green-100 text-green-700 rounded-lg">{success}</div>}
 
-          {/* MOBILE ONLY: Bulk Import Section */}
-          <div className="md:hidden bg-white p-2 rounded-lg shadow-md mb-4">
+          {/* MOBILE BULK IMPORT */}
+          <div className="md:hidden bg-white p-2 rounded-sm shadow-md mb-4">
             <div className="flex flex-col items-center justify-center mb-4">
               <h2 className="text-lg font-semibold text-gray-700 mb-2">Bulk Import</h2>
-              <p className="text-sm text-center text-gray-500 mb-4 max-w-sm">
-                Upload EXCEL. Missing categories will be <b>created automatically</b>.
-              </p>
               <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".xlsx, .xls, .csv" />
-              <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="w-full max-w-xs bg-sky-500 text-white py-2 px-4 rounded-lg hover:bg-sky-600 disabled:bg-gray-400 flex items-center justify-center gap-2">
+              <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="w-full max-w-xs bg-sky-500 text-white py-2 px-4 rounded-sm hover:bg-sky-600 disabled:bg-gray-400 flex items-center justify-center gap-2">
                 {isUploading ? <Spinner /> : 'Import from Excel'}
               </button>
-              <button type="button" onClick={handleDownloadSample} disabled={isUploading} className="w-full max-w-xs bg-white text-sky-500 border border-sky-500 py-2 px-4 rounded-lg mt-4 hover:bg-sky-50">
+              <button type="button" onClick={handleDownloadSample} disabled={isUploading} className="w-full max-w-xs bg-white text-sky-500 border border-sky-500 py-2 px-4 rounded-sm mt-4 hover:bg-sky-50">
                 Download Sample
               </button>
             </div>
@@ -359,67 +515,83 @@ const ItemAdd: React.FC = () => {
             <h2 className="text-lg font-bold text-gray-800 mb-4 md:mb-6 md:border-b md:pb-2">Add a Single Item</h2>
             <div className="space-y-4">
 
-              {/* Form Inputs */}
               <div>
                 <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:ml-0.5 after:text-red-500">Item Name</label>
-                <input type="text" value={itemName} onChange={(e) => setItemName(e.target.value)} className="w-full p-3 border border-gray-300 rounded-md focus:ring-sky-500 outline-none" placeholder="e.g. Apple" />
+                <input type="text" value={itemName} onChange={(e) => setItemName(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500 outline-none" placeholder="e.g. Apple" />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">Barcode</label>
+                <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:ml-0.5 after:text-red-500">Barcode</label>
                 <div className="flex gap-2">
-                  <input type="text" value={itemBarcode} onChange={(e) => setItemBarcode(e.target.value)} className="flex-grow p-3 border border-gray-300 rounded-md focus:ring-sky-500 outline-none" placeholder="Scan or type" />
-                  <button type="button" onClick={() => setIsScannerOpen(true)} className="bg-gray-700 text-white p-3 rounded-md"><IconScanCircle width={20} height={20} /></button>
+                  <input type="text" value={itemBarcode} onChange={(e) => setItemBarcode(e.target.value)} className="flex-grow p-3 border border-gray-300 rounded-sm focus:ring-sky-500 outline-none" placeholder="Scan or Type" />
+                  <button type="button" onClick={() => setIsScannerOpen(true)} className="bg-gray-700 text-white p-3 rounded-sm"><IconScanCircle width={20} height={20} /></button>
                 </div>
+                <p className="text-xs text-gray-400 mt-1">This is the next available number. You can change it if needed.</p>
               </div>
 
               <div className='grid grid-cols-2 gap-4'>
                 <div>
                   <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">MRP</label>
-                  <input type="number" value={itemMRP} onChange={(e) => setItemMRP(e.target.value)} className="w-full p-3 border border-gray-300 rounded-md focus:ring-sky-500" placeholder="0.00" />
+                  <input type="number" value={itemMRP} onChange={(e) => setItemMRP(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0.00" />
+                  <p className="text-[10px] text-gray-400">Required if Sale Price is empty</p>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">Category</label>
+                  <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm bg-white focus:ring-sky-500">
+                    <option value="" disabled>Select Category</option>
+                    {itemGroups.map(g => <option key={g.id} value={g.id!}>{g.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">Sales Price</label>
+                  <input type="number" value={itemSalesPrice} onChange={(e) => setItemSalesPrice(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0.00" />
+                  <p className="text-[10px] text-gray-400">Required if MRP is empty</p>
+                </div>
+
                 <div>
                   <label className="block text-sm font-medium text-gray-600 mb-1">Purchase Price</label>
-                  <input type="number" value={itemPurchasePrice} onChange={(e) => setItemPurchasePrice(e.target.value)} className="w-full p-3 border border-gray-300 rounded-md focus:ring-sky-500" placeholder="0.00" />
+                  <input type="number" value={itemPurchasePrice} onChange={(e) => setItemPurchasePrice(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0.00" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1">Discount (%)</label>
-                  <input type="number" value={itemDiscount} onChange={(e) => setItemDiscount(e.target.value)} className="w-full p-3 border border-gray-300 rounded-md focus:ring-sky-500" placeholder="0" />
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Sale Disc (%)</label>
+                  <input type="number" value={itemDiscount} onChange={(e) => setItemDiscount(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Purchase Disc (%)</label>
+                  <input type="number" value={PurchaseDiscount} onChange={(e) => setPurchaseDiscount(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />
+                </div>
+
                 <div>
                   <label className="block text-sm font-medium text-gray-600 mb-1">Tax (%)</label>
-                  <input type="number" value={itemTax} onChange={(e) => setItemTax(e.target.value)} className="w-full p-3 border border-gray-300 rounded-md focus:ring-sky-500" placeholder="0" />
+                  <input type="number" value={itemTax} onChange={(e) => setItemTax(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />
                 </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">HSN Code</label>
+                  <input type="text" value={hsnCode} onChange={(e) => setHsnCode(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="e.g. 123456" />
+                </div>
+
                 <div>
                   <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">Stock</label>
-                  <input type="number" value={itemAmount} onChange={(e) => setItemAmount(e.target.value)} className="w-full p-3 border border-gray-300 rounded-md focus:ring-sky-500" placeholder="0" />
+                  <input type="number" value={itemAmount} onChange={(e) => setItemAmount(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />
                 </div>
+
                 <div>
                   <label className="block text-sm font-medium text-gray-600 mb-1">Restock Level</label>
-                  <input type="number" value={restockQuantity} onChange={(e) => setRestockQuantity(e.target.value)} className="w-full p-3 border border-gray-300 rounded-md focus:ring-sky-500" placeholder="0" />
+                  <input type="number" value={restockQuantity} onChange={(e) => setRestockQuantity(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">Category</label>
-                <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className="w-full p-3 border border-gray-300 rounded-md bg-white focus:ring-sky-500">
-                  <option value="" disabled>Select Category</option>
-                  {itemGroups.map(g => <option key={g.id} value={g.id!}>{g.name}</option>)}
-                </select>
-              </div>
             </div>
           </div>
         </div>
-
-        {/* --- RIGHT PANEL: BULK IMPORT & ACTIONS (Desktop Only: 35%) --- */}
         <div className="hidden md:flex w-[35%] flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
           <div className="flex-1 p-6 flex flex-col">
 
-            {/* Desktop Bulk Import Section */}
             <div className="bg-sky-50 rounded-xl p-5 border border-sky-100">
               <h2 className="text-lg font-bold text-sky-800 mb-2">Bulk Import</h2>
               <p className="text-sm text-sky-600 mb-4">
-                Upload Excel/CSV to add multiple items at once. Categories will be created automatically.
+                Upload Excel/CSV. Missing categories created automatically.
               </p>
               <div className="flex flex-col gap-3">
                 <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="w-full bg-white text-sky-600 border border-sky-200 py-3 px-4 rounded-lg font-semibold hover:bg-sky-50 disabled:bg-gray-100 flex items-center justify-center gap-2 transition-colors">
@@ -433,7 +605,6 @@ const ItemAdd: React.FC = () => {
 
             <div className="flex-grow"></div>
 
-            {/* Desktop Save Button */}
             <div className=" border-t border-gray-100 pb-10">
               <button onClick={handleAddItem} disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)} className="w-full bg-sky-600 text-white py-4 px-6 rounded-xl text-lg font-bold hover:bg-sky-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-sky-200 transition-all active:scale-[0.98]">
                 {isSaving ? <Spinner /> : 'Add Item'}
@@ -441,7 +612,6 @@ const ItemAdd: React.FC = () => {
             </div>
           </div>
         </div>
-
         {/* --- MOBILE FIXED FOOTER --- */}
         <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-transparent flex justify-center pb-18">
           <button onClick={handleAddItem} disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)} className="w-48 max-w-sm bg-sky-500 text-white py-3 px-6 rounded-lg text-lg font-semibold hover:bg-sky-600 disabled:bg-gray-400 flex items-center justify-center gap-2 shadow-md">

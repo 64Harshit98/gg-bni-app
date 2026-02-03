@@ -17,7 +17,7 @@ import { useSalesSettings } from '../../context/SettingsContext';
 import { Spinner } from '../../constants/Spinner';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
 import { GenericCartList } from '../../Components/CartItem';
-import { FiTrash2, FiX } from 'react-icons/fi';
+import { FiTrash2, FiX, FiChevronDown } from 'react-icons/fi';
 import { GenericBillFooter } from '../../Components/Footer';
 import { IconScanCircle } from '../../constants/Icons';
 import QRCode from 'react-qr-code';
@@ -32,6 +32,7 @@ export interface SalesItem extends OriginalSalesItem {
     purchasePrice: number;
     tax: number;
     itemGroupId: string;
+    salesPrice: number;
     stock: number;
     amount: number;
     barcode: string;
@@ -62,7 +63,6 @@ const Sales: React.FC = () => {
     const isEditMode = location.state?.isEditMode === true && !!invoiceToEdit;
 
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
-
     const [savedBillData, setSavedBillData] = useState<{ id: string, number: string } | null>(null);
 
     const [items, setItems] = useState<SalesItem[]>(() => {
@@ -71,10 +71,13 @@ const Sales: React.FC = () => {
             const savedDraft = localStorage.getItem('sales_cart_draft');
             return savedDraft ? JSON.parse(savedDraft) : [];
         } catch (e) {
-            console.error("Error parsing sales draft", e);
             return [];
         }
     });
+
+    // --- Active Tax Mode State ---
+    // This drives the entire calculation logic now
+    const [activeTaxMode, setActiveTaxMode] = useState<'inclusive' | 'exclusive' | 'exempt'>('exclusive');
 
     const [availableItems, setAvailableItems] = useState<Item[]>([]);
     const [pageIsLoading, setPageIsLoading] = useState<boolean>(true);
@@ -102,14 +105,37 @@ const Sales: React.FC = () => {
     const isManager = userRole === ROLES.MANAGER || userRole === ROLES.OWNER;
     const hideMrp = (salesSettings as any)?.hideMrp ?? false;
 
+    // View variables
+    const isCardView = salesSettings?.salesViewType === 'card';
+    const showTaxRow = (activeTaxMode !== 'exempt');
+
+    // --- Initialize Tax Mode ---
+    // Logic: Always pre-select based on settings, but allow override.
+    useEffect(() => {
+        if (loadingSettings) return;
+
+        if (isEditMode && invoiceToEdit?.taxType) {
+            const savedType = invoiceToEdit.taxType;
+            if (savedType === 'none') setActiveTaxMode('exempt');
+            else if (savedType === 'inclusive' || savedType === 'exclusive') setActiveTaxMode(savedType);
+        } else if (salesSettings) {
+            // Pre-select based on Settings
+            if (salesSettings.gstScheme === 'none' || salesSettings.gstScheme === 'composition') {
+                setActiveTaxMode('exempt');
+            } else {
+                // If Regular, use the taxType preference
+                setActiveTaxMode(salesSettings.taxType as any || 'exclusive');
+            }
+        }
+    }, [loadingSettings, salesSettings, isEditMode, invoiceToEdit]);
+
+    // ... (Data Fetching - Unchanged) ...
     useEffect(() => {
         const findSettingsDocId = async () => {
             if (currentUser?.companyId) {
                 const settingsQuery = query(collection(db, 'companies', currentUser.companyId, 'settings'), where('settingType', '==', 'sales'));
                 const settingsSnapshot = await getDocs(settingsQuery);
-                if (!settingsSnapshot.empty) {
-                    setSettingsDocId(settingsSnapshot.docs[0].id);
-                }
+                if (!settingsSnapshot.empty) setSettingsDocId(settingsSnapshot.docs[0].id);
             }
         };
         findSettingsDocId();
@@ -122,34 +148,20 @@ const Sales: React.FC = () => {
         const fetchData = async () => {
             try {
                 setPageIsLoading(true);
-                setError(null); // <--- Fix 1: Reset error state
-
-                // --- 1. NEW SYNC LOGIC (Optimized) ---
-                // This pulls from local storage + delta updates
+                setError(null);
                 const fetchedItems = await dbOperations.syncItems();
                 setAvailableItems(fetchedItems);
-
-                // --- 2. FETCH WORKERS & GROUPS (Restored Logic) ---
                 const fetchedWorkers = await dbOperations.getWorkers();
                 setWorkers(fetchedWorkers);
-
-                // Restored: Fetch Item Groups so your filter buttons work
                 let groupMap: Record<string, string> = {};
                 if (currentUser?.companyId) {
                     try {
                         const groupsRef = collection(db, 'companies', currentUser.companyId, 'itemGroups');
                         const groupsSnap = await getDocs(groupsRef);
-                        groupsSnap.docs.forEach(doc => {
-                            const data = doc.data();
-                            groupMap[doc.id] = data.name || data.groupName || 'Unknown Group';
-                        });
-                    } catch (e) {
-                        console.error("Error fetching item groups", e);
-                    }
+                        groupsSnap.docs.forEach(doc => { const data = doc.data(); groupMap[doc.id] = data.name || data.groupName || 'Unknown Group'; });
+                    } catch (e) { console.error(e); }
                 }
-                setItemGroupMap(groupMap); // <--- Fix 2: Use the setter
-
-                // --- 3. WORKER SELECTION LOGIC ---
+                setItemGroupMap(groupMap);
                 if (isEditMode) {
                     const originalSalesman = fetchedWorkers.find(u => u.uid === invoiceToEdit?.salesmanId);
                     setSelectedWorker(originalSalesman || null);
@@ -157,16 +169,8 @@ const Sales: React.FC = () => {
                     const currentUserAsWorker = fetchedWorkers.find(u => u.uid === currentUser.uid);
                     setSelectedWorker(currentUserAsWorker || null);
                 }
-
-            } catch (err) {
-                // <--- Fix 3: Handle Errors properly
-                console.error(err);
-                setError('Failed to load initial page data.');
-            } finally {
-                setPageIsLoading(false);
-            }
+            } catch (err) { console.error(err); setError('Failed to load initial page data.'); } finally { setPageIsLoading(false); }
         };
-
         fetchData();
     }, [authLoading, currentUser, dbOperations, isEditMode, invoiceToEdit, loadingSettings]);
 
@@ -177,6 +181,7 @@ const Sales: React.FC = () => {
         }
     }, [loadingSettings, salesSettings?.lockDiscountEntry, salesSettings?.lockSalePriceEntry]);
 
+    // ... (Edit Mode Init - Unchanged) ...
     useEffect(() => {
         if (isEditMode && invoiceToEdit?.items) {
             const nonEditableItems = invoiceToEdit.items.map((item: any) => ({
@@ -208,9 +213,7 @@ const Sales: React.FC = () => {
     }, [isEditMode, invoiceToEdit]);
 
     useEffect(() => {
-        if (!isEditMode) {
-            localStorage.setItem('sales_cart_draft', JSON.stringify(items));
-        }
+        if (!isEditMode) localStorage.setItem('sales_cart_draft', JSON.stringify(items));
     }, [items, isEditMode]);
 
     const categories = useMemo(() => {
@@ -222,12 +225,9 @@ const Sales: React.FC = () => {
         const filtered = availableItems.filter(item => {
             const itemGroupId = item.itemGroupId || 'Others';
             const matchesCategory = selectedCategory === 'All' || itemGroupId === selectedCategory;
-            const matchesSearch = gridSearchQuery === '' ||
-                item.name.toLowerCase().includes(gridSearchQuery.toLowerCase()) ||
-                item.barcode?.includes(gridSearchQuery);
+            const matchesSearch = gridSearchQuery === '' || item.name.toLowerCase().includes(gridSearchQuery.toLowerCase()) || item.barcode?.includes(gridSearchQuery);
             return matchesCategory && matchesSearch;
         });
-
         return filtered.sort((a, b) => {
             const aInCart = items.some(i => i.productId === a.id);
             const bInCart = items.some(i => i.productId === b.id);
@@ -237,34 +237,59 @@ const Sales: React.FC = () => {
         });
     }, [availableItems, selectedCategory, gridSearchQuery, items]);
 
+    const gstSchemeDisplay = salesSettings?.gstScheme;
+
     const { subtotal, totalDiscount, roundOff, taxableAmount, taxAmount, finalAmount, totalQuantity } = useMemo(() => {
-        let accumulatorSubtotal = 0, accumulatorTaxable = 0, accumulatorTax = 0, accumulatorQuantity = 0;
+        let accumulatorSubtotal = 0;
+        let accumulatorTaxable = 0;
+        let accumulatorTax = 0;
+        let accumulatorQuantity = 0;
+
         const isTaxEnabled = salesSettings?.enableTax ?? true;
         const taxRate = salesSettings?.defaultTaxRate ?? 0;
-        const taxType = salesSettings?.taxType ?? 'exclusive';
         const isRoundingEnabled = salesSettings?.enableRounding ?? true;
         const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
 
-        items.forEach(item => {
-            const currentMrp = item.mrp || 0;
-            const currentQuantity = item.quantity || 1;
-            const currentDiscount = item.discount || 0;
-            accumulatorQuantity += currentQuantity;
-            const priceAfterDiscount = currentMrp * (1 - currentDiscount / 100);
-            const calculatedRoundedPrice = applyRounding(priceAfterDiscount, isRoundingEnabled, roundingInterval);
-            let effectiveUnitPrice = calculatedRoundedPrice;
-            if (item.customPrice !== undefined && item.customPrice !== null && item.customPrice !== '') {
-                const numericPrice = parseFloat(String(item.customPrice));
-                if (!isNaN(numericPrice)) effectiveUnitPrice = numericPrice;
-            }
-            effectiveUnitPrice = toCurrency(effectiveUnitPrice);
-            const lineTotal = toCurrency(effectiveUnitPrice * currentQuantity);
-            accumulatorSubtotal += currentMrp * currentQuantity;
-            let lineBaseAmount = 0, lineTaxAmount = 0;
-            const itemSpecificTaxRate = (item.tax !== undefined && item.tax !== null) ? Number(item.tax) : taxRate;
+        // Determine Effective Tax Mode
+        let effectiveTaxMode = 'none';
+        if (gstSchemeDisplay === 'regular' && isTaxEnabled) {
+            effectiveTaxMode = activeTaxMode === 'exempt' ? 'none' : activeTaxMode;
+        } else {
+            effectiveTaxMode = 'none';
+        }
 
-            if (isTaxEnabled && itemSpecificTaxRate > 0) {
-                if (taxType === 'inclusive') {
+        items.forEach(cartItem => {
+            const currentQuantity = cartItem.quantity || 1;
+            accumulatorQuantity += currentQuantity;
+
+            let baseForSubtotal = (cartItem.mrp && cartItem.mrp > 0) ? cartItem.mrp : (cartItem.salesPrice || 0);
+
+            const itemSpecificTaxRate = (cartItem.tax !== undefined && cartItem.tax !== null) ? Number(cartItem.tax) : taxRate;
+
+            if (effectiveTaxMode === 'inclusive' && itemSpecificTaxRate > 0) {
+                baseForSubtotal = baseForSubtotal / (1 + (itemSpecificTaxRate / 100));
+            }
+
+            accumulatorSubtotal += baseForSubtotal * currentQuantity;
+
+            const baseForDiscount = (cartItem.mrp && cartItem.mrp > 0) ? cartItem.mrp : (cartItem.salesPrice || 0);
+
+            let effectiveUnitPrice = 0;
+            if (cartItem.customPrice !== undefined && cartItem.customPrice !== null && cartItem.customPrice !== '') {
+                effectiveUnitPrice = parseFloat(String(cartItem.customPrice));
+            } else {
+                effectiveUnitPrice = baseForDiscount * (1 - (cartItem.discount || 0) / 100);
+            }
+
+            effectiveUnitPrice = applyRounding(effectiveUnitPrice, isRoundingEnabled, roundingInterval);
+            const lineTotal = toCurrency(effectiveUnitPrice * currentQuantity);
+
+            // 3. Tax Calculation
+            let lineBaseAmount = 0;
+            let lineTaxAmount = 0;
+
+            if (effectiveTaxMode !== 'none' && itemSpecificTaxRate > 0) {
+                if (effectiveTaxMode === 'inclusive') {
                     lineBaseAmount = toCurrency(lineTotal / (1 + (itemSpecificTaxRate / 100)));
                     lineTaxAmount = toCurrency(lineTotal - lineBaseAmount);
                 } else {
@@ -273,7 +298,9 @@ const Sales: React.FC = () => {
                 }
             } else {
                 lineBaseAmount = lineTotal;
+                lineTaxAmount = 0;
             }
+
             accumulatorTaxable += lineBaseAmount;
             accumulatorTax += lineTaxAmount;
         });
@@ -281,23 +308,60 @@ const Sales: React.FC = () => {
         const finalTaxable = toCurrency(accumulatorTaxable);
         const finalTax = toCurrency(accumulatorTax);
         const finalPayableAmount = toCurrency(finalTaxable + finalTax);
-        const amountCustomerPaysBeforeFinalTax = taxType === 'inclusive' ? (finalTaxable + finalTax) : finalTaxable;
-        const totalDiscountValue = toCurrency(accumulatorSubtotal - amountCustomerPaysBeforeFinalTax);
 
-        return { subtotal: accumulatorSubtotal, totalDiscount: totalDiscountValue > 0 ? totalDiscountValue : 0, roundOff: 0, taxableAmount: finalTaxable, taxAmount: finalTax, finalAmount: finalPayableAmount, totalQuantity: accumulatorQuantity };
-    }, [items, salesSettings]);
+        let totalDiscountValue = 0;
+
+        if (effectiveTaxMode === 'none') {
+            totalDiscountValue = toCurrency(accumulatorSubtotal - finalPayableAmount);
+        } else {
+            totalDiscountValue = toCurrency(accumulatorSubtotal - finalTaxable);
+        }
+
+        return {
+            subtotal: accumulatorSubtotal,
+            totalDiscount: totalDiscountValue > 0 ? totalDiscountValue : 0,
+            roundOff: 0,
+            taxableAmount: finalTaxable,
+            taxAmount: finalTax,
+            finalAmount: finalPayableAmount,
+            totalQuantity: accumulatorQuantity
+        };
+    }, [items, salesSettings, activeTaxMode, gstSchemeDisplay]);
 
     const amountToPayNow = useMemo(() => finalAmount, [finalAmount]);
 
     const addItemToCart = (itemToAdd: Item) => {
-        if (!itemToAdd || !itemToAdd.id) { setModal({ message: "Cannot add invalid item.", type: State.ERROR }); return; }
-        const defaultDiscount = itemToAdd.discount ?? salesSettings?.defaultDiscount ?? 0;
+        if (!itemToAdd || !itemToAdd.id) {
+            setModal({ message: "Cannot add invalid item.", type: State.ERROR });
+            return;
+        }
+        const mrp = Number(itemToAdd.mrp || 0);
+        const salesPrice = Number(itemToAdd.salesPrice || 0);
+        const presetDiscount = Number(itemToAdd.discount || 0);
+        let finalNetPrice = mrp;
+        let calculatedDiscount = 0;
+        if (salesPrice > 0) {
+            finalNetPrice = salesPrice;
+            if (mrp > 0) {
+                calculatedDiscount = ((mrp - salesPrice) / mrp) * 100;
+            }
+        } else if (presetDiscount > 0) {
+            calculatedDiscount = presetDiscount;
+            finalNetPrice = mrp * (1 - (presetDiscount / 100));
+        } else {
+            finalNetPrice = mrp;
+            calculatedDiscount = 0;
+        }
+        const isRoundingEnabled = salesSettings?.enableRounding ?? true;
+        const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
+        finalNetPrice = applyRounding(finalNetPrice, isRoundingEnabled, roundingInterval);
         const newSalesItem: SalesItem = {
             ...itemToAdd,
             id: crypto.randomUUID(),
             productId: itemToAdd.id!,
             quantity: 1,
-            discount: defaultDiscount,
+            discount: parseFloat(calculatedDiscount.toFixed(2)),
+            customPrice: finalNetPrice,
             isEditable: true,
             purchasePrice: itemToAdd.purchasePrice || 0,
             tax: itemToAdd.tax || 0,
@@ -308,32 +372,27 @@ const Sales: React.FC = () => {
             restockQuantity: itemToAdd.restockQuantity || 0,
         };
         setItems(prev => {
-            if (salesSettings?.cartInsertionOrder === 'top') {
-                return [newSalesItem, ...prev]; // Add to Top
-            } else {
-                return [...prev, newSalesItem]; // Add to Bottom
-            }
+            const insertionOrder = salesSettings?.cartInsertionOrder || 'top';
+            return insertionOrder === 'top' ? [newSalesItem, ...prev] : [...prev, newSalesItem];
         });
     };
 
     const handleClearCart = () => {
-        if (items.length > 0 && window.confirm("Are you sure you want to remove all items?")) {
-            setItems([]);
-        }
+        if (items.length > 0 && window.confirm("Are you sure you want to remove all items?")) setItems([]);
     };
-
     const handleItemSelected = (selectedItem: Item | null) => {
-        if (selectedItem) {
-            addItemToCart(selectedItem);
-            setGridSearchQuery('');
-        }
+        if (selectedItem) { addItemToCart(selectedItem); setGridSearchQuery(''); }
     };
-
     const handleBarcodeScanned = async (barcode: string) => {
         setIsScannerOpen(false);
         if (!dbOperations) return;
+
+        const cleanBarcode = barcode.trim();
+
+        console.log("Searching for barcode:", cleanBarcode);
+
         try {
-            const itemToAdd = await dbOperations.getItemByBarcode(barcode);
+            const itemToAdd = await dbOperations.getItemByBarcode(cleanBarcode);
             if (itemToAdd) {
                 addItemToCart(itemToAdd);
                 setAvailableItems(prev => {
@@ -341,57 +400,67 @@ const Sales: React.FC = () => {
                     return exists ? prev : [...prev, itemToAdd];
                 });
             } else {
-                setModal({ message: 'Item not found for this barcode.', type: State.ERROR });
+                setModal({
+                    message: `Item not found for barcode: "${cleanBarcode}"`,
+                    type: State.ERROR
+                });
             }
-        } catch { setModal({ message: 'Scan error.', type: State.ERROR }); }
+        } catch (e) {
+            console.error(e);
+            setModal({ message: 'Scan error occurred.', type: State.ERROR });
+        }
     };
-
-    const handleQuantityChange = (id: string, newQuantity: number) => {
-        setItems(prev => prev.map(item => item.id === id ? { ...item, quantity: Math.max(0, newQuantity) } : item));
-    };
-
-    const handleDeleteItem = (id: string) => {
-        setItems(prev => prev.filter(item => item.id !== id));
-    };
-
+    const handleQuantityChange = (id: string, newQuantity: number) => { setItems(prev => prev.map(item => item.id === id ? { ...item, quantity: Math.max(0, newQuantity) } : item)); };
+    const handleDeleteItem = (id: string) => { setItems(prev => prev.filter(item => item.id !== id)); };
     const handleDiscountPressStart = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); longPressTimer.current = setTimeout(() => setIsDiscountLocked(false), 500); };
     const handleDiscountPressEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
     const handleDiscountClick = () => { if (salesSettings?.lockDiscountEntry || isDiscountLocked) { setDiscountInfo("Cannot edit discount"); setTimeout(() => setDiscountInfo(null), 3000); } };
     const handlePricePressStart = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); longPressTimer.current = setTimeout(() => setIsPriceLocked(false), 500); };
     const handlePricePressEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
     const handlePriceClick = () => { if (salesSettings?.lockSalePriceEntry || isPriceLocked) { setPriceInfo("Cannot edit sale price"); setTimeout(() => setPriceInfo(null), 1000); } };
-    const handleDiscountChange = (id: string, v: number | string) => { const n = typeof v === 'string' ? parseFloat(v) : v; setItems(prev => prev.map(i => i.id === id ? { ...i, discount: Math.max(0, Math.min(100, isNaN(n) ? 0 : n)), customPrice: undefined } : i)); };
+    const handleDiscountChange = (id: string, v: number | string) => {
+        const n = typeof v === 'string' ? parseFloat(v) : v;
+        const safeDiscount = isNaN(n) ? 0 : n;
+        setItems(prev => prev.map(i => {
+            if (i.id === id) {
+                const basePrice = (i.mrp && i.mrp > 0) ? i.mrp : (i.salesPrice || 0);
+                let newPrice = basePrice * (1 - safeDiscount / 100);
+                const isRoundingEnabled = salesSettings?.enableRounding ?? true;
+                const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
+                newPrice = applyRounding(newPrice, isRoundingEnabled, roundingInterval);
+                return { ...i, discount: safeDiscount, customPrice: newPrice };
+            }
+            return i;
+        }));
+    };
     const handleCustomPriceChange = (id: string, v: string) => { if (v === '' || /^[0-9]*\.?[0-9]*$/.test(v)) setItems(prev => prev.map(i => i.id === id ? { ...i, customPrice: v } : i)); };
     const handleCustomPriceBlur = (id: string) => {
         setItems(prev => prev.map(i => {
             if (i.id === id && typeof i.customPrice === 'string') {
                 const n = parseFloat(i.customPrice);
                 if (i.customPrice === '' || isNaN(n)) return { ...i, customPrice: undefined };
-                let d = 0; if (i.mrp > 0) d = ((i.mrp - n) / i.mrp) * 100;
+                let d = 0; const basePrice = (i.mrp && i.mrp > 0) ? i.mrp : (i.salesPrice || 0);
+                if (basePrice > 0) d = ((basePrice - n) / basePrice) * 100;
                 return { ...i, customPrice: n, discount: parseFloat(d.toFixed(2)) };
             }
             return i;
         }));
     };
-
     const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
     const [isItemDrawerOpen, setIsItemDrawerOpen] = useState(false);
     const handleOpenEditDrawer = (item: Item) => { setSelectedItemForEdit(item); setIsItemDrawerOpen(true); };
     const handleCloseEditDrawer = () => { setIsItemDrawerOpen(false); setTimeout(() => setSelectedItemForEdit(null), 300); };
-
     const handleSaveSuccess = (updatedItemData: Partial<Item>) => {
         setAvailableItems(prevItems => prevItems.map(item => item.id === selectedItemForEdit?.id ? { ...item, ...updatedItemData, id: item.id } as Item : item));
         const updateForCart: Partial<SalesItem> = { ...updatedItemData };
         if ((updateForCart as any).Stock !== undefined) { updateForCart.stock = (updateForCart as any).Stock; delete (updateForCart as any).Stock; }
         Object.keys(updateForCart).forEach(key => { if (updateForCart[key as keyof typeof updateForCart] === undefined) delete updateForCart[key as keyof typeof updateForCart]; });
-
         setItems(prevCartItems => prevCartItems.map(cartItem => {
-            if (cartItem.productId === selectedItemForEdit?.id || cartItem.id === selectedItemForEdit?.id) {
-                return { ...cartItem, ...updateForCart } as SalesItem;
-            }
+            if (cartItem.productId === selectedItemForEdit?.id || cartItem.id === selectedItemForEdit?.id) return { ...cartItem, ...updateForCart } as SalesItem;
             return cartItem;
         }));
     };
+    const displayItems = useMemo(() => { return items; }, [items]);
 
     const handleProceedToPayment = () => {
         if (items.length === 0) { setModal({ message: 'Please add at least one item.', type: State.INFO }); return; }
@@ -412,43 +481,51 @@ const Sales: React.FC = () => {
     const handleSavePayment = async (completionData: PaymentCompletionData) => {
         if (!currentUser?.companyId) return;
 
-        if (salesSettings?.requireCustomerName && !completionData.partyName?.trim()) {
-            throw new Error("Customer Name is required.");
-        }
-        if (salesSettings?.requireCustomerMobile && !completionData.partyNumber?.trim()) {
-            throw new Error("Customer Mobile Number is required.");
-        }
+        if (salesSettings?.requireCustomerName && !completionData.partyName?.trim()) throw new Error("Customer Name is required.");
+        if (salesSettings?.requireCustomerMobile && !completionData.partyNumber?.trim()) throw new Error("Customer Mobile Number is required.");
 
         const companyId = currentUser.companyId;
         const salesman = salesSettings?.enableSalesmanSelection ? selectedWorker : workers.find(w => w.uid === currentUser.uid);
         const finalSalesman = salesman || { uid: currentUser.uid, name: currentUser.uid || 'Current User' };
 
-        // ... Validations ...
+        let finalGstScheme = 'none';
+        let finalTaxType = 'none';
+
+        if (activeTaxMode === 'exempt') {
+            finalGstScheme = 'composition';
+            finalTaxType = 'none';
+        } else {
+            finalGstScheme = 'regular';
+            finalTaxType = activeTaxMode;
+        }
+
         const isTaxEnabled = salesSettings?.enableTax ?? true;
-        const finalTaxType = isTaxEnabled ? (salesSettings?.taxType ?? 'exclusive') : 'none';
         const currentTaxRate = salesSettings?.defaultTaxRate ?? 0;
         const isRoundingEnabled = salesSettings?.enableRounding ?? true;
         const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
 
         const formatItemsForDB = (itemsToFormat: SalesItem[]) => {
             return itemsToFormat.map(({ isEditable, customPrice, ...item }) => {
-                const currentMrp = item.mrp || 0;
                 const currentDiscount = item.discount || 0;
                 const currentQuantity = item.quantity || 1;
-                const priceAfterDiscount = currentMrp * (1 - currentDiscount / 100);
-                const calculatedRoundedPrice = applyRounding(priceAfterDiscount, isRoundingEnabled, roundingInterval);
-                let effectiveUnitPrice = calculatedRoundedPrice;
+
+                let effectiveUnitPrice = 0;
                 if (customPrice !== undefined && customPrice !== null && customPrice !== '') {
-                    const num = parseFloat(String(customPrice));
-                    if (!isNaN(num)) effectiveUnitPrice = num;
+                    effectiveUnitPrice = parseFloat(String(customPrice));
+                } else {
+                    const basePrice = (item.mrp && item.mrp > 0) ? item.mrp : (item.salesPrice || 0);
+                    effectiveUnitPrice = basePrice * (1 - currentDiscount / 100);
                 }
+
+                effectiveUnitPrice = applyRounding(effectiveUnitPrice, isRoundingEnabled, roundingInterval);
                 effectiveUnitPrice = toCurrency(effectiveUnitPrice);
+
                 const lineTotal = toCurrency(effectiveUnitPrice * currentQuantity);
 
                 const itemSpecificTaxRate = (item.tax !== undefined && item.tax !== null) ? Number(item.tax) : currentTaxRate;
                 let itemTaxableBase = 0, itemTaxAmount = 0, itemFinalPrice = 0;
 
-                if (isTaxEnabled && itemSpecificTaxRate > 0) {
+                if (finalGstScheme === 'regular' && itemSpecificTaxRate > 0 && isTaxEnabled) {
                     if (finalTaxType === 'inclusive') {
                         itemFinalPrice = lineTotal;
                         itemTaxableBase = toCurrency(lineTotal / (1 + (itemSpecificTaxRate / 100)));
@@ -475,62 +552,54 @@ const Sales: React.FC = () => {
         const finalInvoiceTotal = finalAmount - completionData.discount;
         const totalInvoiceDiscount = totalDiscount + (completionData.discount || 0);
 
-        if (isEditMode && invoiceToEdit?.id) {
-            await runTransaction(db, async (transaction) => {
-                const invoiceRef = doc(db, "companies", companyId, "sales", invoiceToEdit.id);
-                const invoiceDoc = await transaction.get(invoiceRef);
-                if (!invoiceDoc.exists()) throw "Err";
 
-                const originalItems = invoiceDoc.data().items || [];
-                const originalQtyMap = new Map<string, number>();
-                originalItems.forEach((i: any) => { if (i.id) originalQtyMap.set(String(i.id), Number(i.quantity || 1)); });
+        const saveOperation = async (transaction: any, isNew: boolean, existingId?: string) => {
+            const saleData: any = {
+                items: formatItemsForDB(items),
+                subtotal, discount: totalInvoiceDiscount, manualDiscount: completionData.discount || 0, revDiscount: completionData.revDiscount || 0,
+                roundOff, taxableAmount, taxAmount,
 
-                const currentQtyMap = new Map<string, number>();
-                items.forEach((i) => {
-                    const pid = i.productId || i.id || '';
-                    if (pid) {
-                        const current = currentQtyMap.get(pid) || 0;
-                        currentQtyMap.set(pid, current + Number(i.quantity || 1));
-                    }
-                });
+                gstScheme: finalGstScheme,
+                taxType: finalTaxType,
 
-                const allItemIds = Array.from(new Set([...originalQtyMap.keys(), ...currentQtyMap.keys()]));
-                allItemIds.forEach((itemId) => {
-                    const oldQty = originalQtyMap.get(itemId) || 0;
-                    const newQty = currentQtyMap.get(itemId) || 0;
-                    const difference = oldQty - newQty;
-                    if (difference !== 0) {
-                        const itemRef = doc(db, "companies", companyId, "items", itemId);
-                        transaction.update(itemRef, { stock: firebaseIncrement(difference), updatedAt: serverTimestamp() });
-                    }
-                });
+                totalAmount: finalInvoiceTotal,
+                paymentMethods: completionData.paymentDetails,
+                partyName: completionData.partyName, partyNumber: completionData.partyNumber,
+                salesmanId: finalSalesman.uid, salesmanName: finalSalesman.name,
+                updatedAt: serverTimestamp()
+            };
 
-                transaction.update(invoiceRef, {
-                    items: formatItemsForDB(items),
-                    subtotal, discount: totalInvoiceDiscount, manualDiscount: completionData.discount || 0, revDiscount: completionData.revDiscount || 0,
-                    roundOff, taxableAmount, taxAmount, taxType: finalTaxType, totalAmount: finalInvoiceTotal,
-                    paymentMethods: completionData.paymentDetails, updatedAt: serverTimestamp(),
-                    partyName: completionData.partyName, partyNumber: completionData.partyNumber,
-                    salesmanId: finalSalesman.uid, salesmanName: finalSalesman.name
-                });
-            });
-            showSuccessModal("Invoice Updated", ROUTES.JOURNAL);
-        } else {
-            try {
-                const newInvoiceNumber = await generateNextInvoiceNumber(companyId);
-                let newSaleId = '';
+            if (isNew) {
+                saleData.createdAt = serverTimestamp();
+                saleData.invoiceNumber = await generateNextInvoiceNumber(companyId);
+                saleData.userId = currentUser.uid;
+                saleData.partyAddress = completionData.partyAddress || '';
+                saleData.partyGstin = completionData.partyGST || '';
+                saleData.companyId = companyId;
+                saleData.voucherName = salesSettings?.voucherName ?? 'Sales';
 
+                const newSaleRef = doc(collection(db, "companies", companyId, "sales"));
+                transaction.set(newSaleRef, saleData);
+                return { id: newSaleRef.id, number: saleData.invoiceNumber };
+            } else if (existingId) {
+                const invoiceRef = doc(db, "companies", companyId, "sales", existingId);
+                transaction.update(invoiceRef, saleData);
+                return { id: existingId, number: invoiceToEdit.invoiceNumber };
+            }
+            return null;
+        };
+
+        try {
+            if (isEditMode && invoiceToEdit?.id) {
                 await runTransaction(db, async (transaction) => {
-                    const saleData = {
-                        invoiceNumber: newInvoiceNumber, userId: currentUser.uid, salesmanId: finalSalesman.uid, salesmanName: finalSalesman.name,
-                        partyName: completionData.partyName, partyNumber: completionData.partyNumber, partyAddress: completionData.partyAddress || '', partyGstin: completionData.partyGST || '',
-                        items: formatItemsForDB(items), subtotal, discount: totalInvoiceDiscount, manualDiscount: completionData.discount || 0, revDiscount: completionData.revDiscount || 0,
-                        roundOff, taxableAmount, taxAmount, taxType: finalTaxType, totalAmount: finalInvoiceTotal,
-                        paymentMethods: completionData.paymentDetails, createdAt: serverTimestamp(), companyId: companyId, voucherName: salesSettings?.voucherName ?? 'Sales'
-                    };
-                    const newSaleRef = doc(collection(db, "companies", companyId, "sales"));
-                    newSaleId = newSaleRef.id;
-                    transaction.set(newSaleRef, saleData);
+                    await saveOperation(transaction, false, invoiceToEdit.id);
+                });
+                showSuccessModal("Invoice Updated", ROUTES.JOURNAL);
+            } else {
+                let result;
+                await runTransaction(db, async (transaction) => {
+                    result = await saveOperation(transaction, true);
+
                     items.forEach(i => {
                         const pid = i.productId || i.id;
                         if (pid) {
@@ -543,15 +612,15 @@ const Sales: React.FC = () => {
                         transaction.update(settingsRef, { currentVoucherNumber: firebaseIncrement(1) });
                     }
                 });
-
-                setIsDrawerOpen(false);
-                setSavedBillData({ id: newSaleId, number: newInvoiceNumber });
-                localStorage.removeItem('sales_cart_draft');
-                setItems([]);
-
-            } catch (e: any) {
-                console.error(e); setModal({ message: "Error saving", type: State.ERROR });
+                if (result) {
+                    setIsDrawerOpen(false);
+                    setSavedBillData(result);
+                    localStorage.removeItem('sales_cart_draft');
+                    setItems([]);
+                }
             }
+        } catch (e: any) {
+            console.error(e); setModal({ message: "Error saving", type: State.ERROR });
         }
     };
 
@@ -561,20 +630,44 @@ const Sales: React.FC = () => {
         setModal({ message, type: State.SUCCESS });
         setTimeout(() => { setModal(null); if (navigateTo) navigate(navigateTo); else if (!salesSettings?.copyVoucherAfterSaving) setItems([]); }, 1500);
     };
-    const handleCloseQrModal = () => {
-        setSavedBillData(null);
-    };
+    const handleCloseQrModal = () => { setSavedBillData(null); };
 
     if (pageIsLoading) return <div className="flex items-center justify-center h-screen"><Spinner /> <p className="ml-2">Loading...</p></div>;
     if (error) return <div className="flex flex-col items-center justify-center h-screen text-red-600"><p>{error}</p><button onClick={() => navigate(-1)} className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Go Back</button></div>;
 
-    const gstSchemeDisplay = salesSettings?.gstScheme ?? 'none';
-    const settingsTaxTypeDisplay = salesSettings?.taxType ?? 'exclusive';
-    const isCardView = salesSettings?.salesViewType === 'card';
-    console.log("Insertion Order:", salesSettings?.cartInsertionOrder)
-    const showTaxRow = gstSchemeDisplay !== 'none' && settingsTaxTypeDisplay === 'exclusive';
+    // --- Render Tax Toggle (DROPDOWN) ---
+    const renderTaxToggle = () => {
+        const isSettingLocked = salesSettings?.lockTaxToggle ?? false;
+        const isSchemeLocked = salesSettings?.gstScheme !== 'regular';
 
-    // --- RENDER HEADER (RESPONSIVE) ---
+        const isLocked = isSettingLocked || isSchemeLocked;
+        return (
+            <div className="flex justify-between items-center p-2 bg-white border-b border-gray-200 px-5 rounded-sm">
+                <span className="text-sm font-semibold text-gray-700">Tax Calculation</span>
+                <div className="relative">
+                    <select
+                        value={activeTaxMode}
+                        onChange={(e) => setActiveTaxMode(e.target.value as any)}
+                        disabled={(salesSettings?.gstScheme !== 'regular')} // --- DISABLE INPUT IF LOCKED ---
+                        className={`appearance-none border border-gray-300 pr-8 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium transition-all ${isLocked
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed' // Locked Style
+                            : 'bg-gray-50 hover:border-blue-400 text-gray-700 cursor-pointer' // Active Style
+                            }`}
+                    >
+                        <option value="exclusive">Tax Exclusive</option>
+                        <option value="inclusive">Tax Inclusive</option>
+                        <option value="exempt">Tax Exempt</option>
+                    </select>
+                    {!isLocked && (
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
+                            <FiChevronDown size={14} />
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
     const renderHeader = () => (
         <div className="flex flex-col md:flex-row md:justify-between md:items-center bg-gray-100 md:bg-white border-b border-gray-200 shadow-sm flex-shrink-0 mb-2 md:mb-0 p-2 md:px-4 md:py-3">
             <h1 className="text-2xl font-bold text-gray-800 text-center md:text-left mb-2 md:mb-0">
@@ -589,14 +682,12 @@ const Sales: React.FC = () => {
         </div>
     );
 
-
     if (isCardView) {
         return (
             <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden pb-2">
                 {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
                 <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
                 {renderHeader()}
-                {/* Grid Search Header */}
                 <div className="flex-shrink-0 bg-gray-50 border-b border-gray-300">
                     <div className="p-2 bg-white border-b flex gap-2 items-center">
                         <div className="flex-grow relative">
@@ -610,7 +701,6 @@ const Sales: React.FC = () => {
                         {categories.map(cat => <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-4 py-1 rounded-full border ${selectedCategory === cat ? 'bg-green-600 text-white' : 'bg-white'}`}>{itemGroupMap[cat] || cat}</button>)}
                     </div>
                 </div>
-                {/* Grid Content */}
                 <div className="flex-1 p-3 overflow-y-auto grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 content-start bg-gray-100 pb-20">
                     {sortedGridItems.map(item => {
                         const countInCart = items.filter(i => i.productId === item.id).length;
@@ -626,6 +716,9 @@ const Sales: React.FC = () => {
                         );
                     })}
                 </div>
+                <div className="md:hidden p-2">
+                    {renderTaxToggle()}
+                </div>
                 <GenericBillFooter
                     isExpanded={isFooterExpanded}
                     onToggleExpand={() => setIsFooterExpanded(!isFooterExpanded)}
@@ -635,7 +728,7 @@ const Sales: React.FC = () => {
                     taxAmount={taxAmount}
                     finalAmount={finalAmount}
                     showTaxRow={showTaxRow}
-                    taxLabel="Tax (Exclusive)"
+                    taxLabel={`Tax (${activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})`}
                     actionLabel={isEditMode ? 'Update Invoice' : 'Proceed to Pay'}
                     onActionClick={handleProceedToPayment}
                     disableAction={items.length === 0}
@@ -647,7 +740,6 @@ const Sales: React.FC = () => {
                     requireCustomerMobile={salesSettings?.requireCustomerMobile}
                 />
                 <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
-
                 {savedBillData && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
                         <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm flex flex-col items-center animate-in fade-in zoom-in duration-300">
@@ -656,7 +748,6 @@ const Sales: React.FC = () => {
                             </button>
                             <h3 className="text-xl font-bold text-gray-800 mb-1">Bill Saved!</h3>
                             <p className="text-sm text-gray-500 mb-4">Invoice #{savedBillData.number}</p>
-
                             <div className="bg-white p-2 border-2 border-gray-100 rounded-lg shadow-inner mb-4">
                                 <QRCode
                                     value={`${window.location.origin}/download-bill/${currentUser?.companyId}/${savedBillData.id}`}
@@ -664,11 +755,9 @@ const Sales: React.FC = () => {
                                     viewBox={`0 0 256 256`}
                                 />
                             </div>
-
                             <p className="text-center text-sm text-gray-600 mb-4">
                                 Ask customer to scan this QR code to download their bill.
                             </p>
-
                             <button
                                 onClick={handleCloseQrModal}
                                 className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
@@ -678,7 +767,6 @@ const Sales: React.FC = () => {
                         </div>
                     </div>
                 )}
-
             </div>
         );
     }
@@ -692,7 +780,7 @@ const Sales: React.FC = () => {
 
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
 
-                <div className="flex flex-col w-full  md:w-3/4 min-w-0 h-full relative">
+                <div className="flex flex-col w-full md:w-3/4 min-w-0 h-full relative">
 
                     <div className="flex-shrink-0 p-2 bg-white border-b pb-3 mb-2 rounded-sm md:mb-0 md:border-r border-gray-200">
                         <div className="flex gap-4 items-end w-full">
@@ -717,7 +805,7 @@ const Sales: React.FC = () => {
                             {priceInfo && <div className="text-xs text-red-600">{priceInfo}</div>}
                         </div>
                         <GenericCartList
-                            items={items}
+                            items={displayItems}
                             availableItems={availableItems}
                             basePriceKey="mrp"
                             priceLabel="MRP"
@@ -748,6 +836,7 @@ const Sales: React.FC = () => {
 
                         {/* MOBILE FOOTER (Visible only on small screens) */}
                         <div className="md:hidden">
+
                             <GenericBillFooter
                                 isExpanded={isFooterExpanded}
                                 onToggleExpand={() => setIsFooterExpanded(!isFooterExpanded)}
@@ -757,18 +846,24 @@ const Sales: React.FC = () => {
                                 taxAmount={taxAmount}
                                 finalAmount={finalAmount}
                                 showTaxRow={showTaxRow}
-                                taxLabel="Tax (Exclusive)"
+                                taxLabel={`Tax (${activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})`}
                                 actionLabel={isEditMode ? 'Update Invoice' : 'Proceed to Pay'}
                                 onActionClick={handleProceedToPayment}
                                 disableAction={items.length === 0}
-                            />
+                            >
+                                {renderTaxToggle()}
+                            </GenericBillFooter>
                         </div>
                     </div>
                 </div>
 
                 <div className="hidden md:flex w-1/4 flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
-                    <div className="flex-1 p-6 flex flex-col justify-end"> {/* Use justify-end to push footer to bottom if list is short */}
+                    <div className="flex-1 p-6 flex flex-col justify-end">
                         <h2 className="text-xl font-bold text-gray-800 mb-6 border-b pb-2">Bill Summary</h2>
+
+                        {/* Desktop Toggle */}
+                        {renderTaxToggle()}
+
                         <GenericBillFooter
                             isExpanded={true}
                             onToggleExpand={() => { }}
@@ -778,7 +873,7 @@ const Sales: React.FC = () => {
                             taxAmount={taxAmount}
                             finalAmount={finalAmount}
                             showTaxRow={showTaxRow}
-                            taxLabel="Tax (Exclusive)"
+                            taxLabel={`Tax (${activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})`}
                             actionLabel={isEditMode ? 'Update Invoice' : 'Proceed to Pay'}
                             onActionClick={handleProceedToPayment}
                             disableAction={items.length === 0}
@@ -804,7 +899,6 @@ const Sales: React.FC = () => {
             />
             <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
 
-            {/* --- 3. QR CODE MODAL (LIST VIEW) --- */}
             {savedBillData && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
                     <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm flex flex-col items-center animate-in fade-in zoom-in duration-300">

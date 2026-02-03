@@ -1,29 +1,27 @@
 // src/constants/models.ts
 
 export interface Item {
-  id?: string; 
+  id?: string;
   name: string;
-  mrp: number; 
+  mrp: number;
   purchasePrice: number;
-  discount: number; 
+  discount: number;
+  purchasediscount?: number;
   tax: number;
   taxRate?: number;
   itemGroupId: string;
   isDeleted?: boolean;
-  // CHANGED: Renamed 'Stock' to 'stock' (lowercase)
-  stock: number; 
-  
-  // OPTIONAL: Keep 'amount' if you use it for "Pack Size", otherwise ignore it for inventory
-  amount?: number; 
-  
-  barcode?: string; 
-  createdAt: number | object; // Allow object for Firebase Timestamp
-  updatedAt: number | object; 
+  salesPrice: number;
+  stock: number;
+  amount?: number;
+  barcode?: string;
+  createdAt: number | object;
+  updatedAt: number | object;
   category?: string;
-  hsnSac?: string; 
-  gst?: number; 
-  unit?: string; 
-  companyId?: string | null; 
+  hsnSac?: string;
+  gst?: number;
+  unit?: string;
+  companyId?: string | null;
   restockQuantity: number;
   isListed?: boolean;
   imageUrl?: string | null;
@@ -34,8 +32,8 @@ export interface ItemGroup {
   id?: string;
   name: string;
   description: string;
-  createdAt: number; 
-  updatedAt: number; 
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface PurchaseItem {
@@ -43,7 +41,6 @@ export interface PurchaseItem {
   name: string;
   purchasePrice: number;
   quantity: number;
-  // Added optional stock for UI logic
   stock?: number;
 }
 
@@ -59,7 +56,7 @@ export interface Purchase {
     method: string;
     amount: number;
   }[];
-  createdAt: any; 
+  createdAt: any;
   companyId: string;
 }
 
@@ -92,9 +89,8 @@ export interface SalesItem {
   name: string;
   mrp: number;
   quantity: number;
-  discount?: number; 
-  discountPercentage?: number; 
+  discount?: number;
+  discountPercentage?: number;
   finalPrice?: number;
-  // Added stock here for consistency
   stock?: number;
 }

@@ -13,6 +13,8 @@ export interface InvoiceData {
   companyGstin?: string;
   msmeNumber?: string;
   signatureBase64?: string;
+  billDiscount?: number;
+
   billTo: {
     name: string;
     address: string;
@@ -52,6 +54,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   console.log("PDF Generator Data:", {
     scheme: data.gstScheme,
     taxType: data.taxType,
+    billDiscount: data.billDiscount,
     items: data.items
   });
 
@@ -148,13 +151,13 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   // --- 3. PARTIES SECTION ---
   const billName = data.billTo.name;
   const billAddr = doc.splitTextToSize(data.billTo.address, (contentWidth / 2) - 5);
-  const billPhone = `PH.NO.  : ${data.billTo.phone || ''}`;
+  const billPhone = `Phone.No.  : ${data.billTo.phone || ''}`;
   const billEmail = `E Mail  : ${data.billTo.email || ''}`;
   const billGst = `GST No. : ${data.billTo.gstin || ''}`;
 
   const shipName = data.billTo.name;
   const shipAddr = billAddr;
-  const shipPhone = `PH.NO.  :`;
+  const shipPhone = `Phone.No.  :`;
   const shipEmail = `E Mail  :`;
   const shipGst = `GST No. :`;
 
@@ -216,38 +219,33 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     const qty = Number(item.quantity) || 0;
     const mrp = Number(item.listPrice) || 0;
 
-    // --- STEP 1: DETERMINE ROW TOTAL (MONEY VALUE) ---
-    // We trust 'item.amount' as the absolute Final Total (inclusive of tax)
+    // --- DETERMINE ROW TOTAL & DISCOUNT ---
     let rowTotal = 0;
+    let displayDiscount = 0;
+
     if (item.amount !== undefined && item.amount !== null && Number(item.amount) > 0) {
       rowTotal = Number(item.amount);
+      displayDiscount = (mrp * qty) - rowTotal;
+      if (displayDiscount < 0) displayDiscount = 0;
     } else {
-      // Fallback: Calculate from MRP and Disc
-      rowTotal = (mrp * qty) - (Number(item.discountAmount) || 0);
+      const discAmt = Number(item.discountAmount) || 0;
+      displayDiscount = discAmt;
+      rowTotal = (mrp * qty) - discAmt;
     }
 
-    // --- STEP 2: DETERMINE DISPLAY DISCOUNT (VISUAL ONLY) ---
-    let displayDiscount = 0;
-    // PRIORITY: Use the explicit discount amount if valid
+    // Explicit Discount Priority for Display
     if (item.discountAmount !== undefined && Number(item.discountAmount) > 0) {
       displayDiscount = Number(item.discountAmount);
-    } else {
-      // Fallback: Try to calculate difference (MRP*Qty - Total)
-      // Note: This might be 0 or negative if Total includes Tax > Discount
-      displayDiscount = (mrp * qty) - rowTotal;
     }
-    // Safety clamp
-    if (displayDiscount < 0) displayDiscount = 0;
 
-
-    // --- STEP 3: TAX RATE ---
+    // --- TAX RATE ---
     let effectiveTaxRate = Number(item.gstPercent || item.taxRate || 0);
 
     if (safeScheme === 'COMPOSITION' || safeScheme === 'NONE') {
       effectiveTaxRate = 0;
     }
 
-    // --- STEP 4: CALCULATION LOGIC ---
+    // --- CALCULATION LOGIC ---
     let taxableValue = 0;
     let taxAmt = 0;
     let netAmount = 0;
@@ -258,9 +256,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
       taxAmt = 0;
     }
     else {
-      // REGULAR SCHEME
-      // Since 'rowTotal' comes from backend ALREADY INCLUDING TAX (per your requirement),
-      // we ALWAYS back-calculate tax.
+      // REGULAR SCHEME (Back-calculate)
       netAmount = rowTotal;
       taxableValue = netAmount / (1 + (effectiveTaxRate / 100));
       taxAmt = netAmount - taxableValue;
@@ -288,7 +284,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
       qty,
       item.unit || 'PCS',
       mrp.toFixed(2),
-      displayDiscount.toFixed(2), // Now prioritized to explicit value
+      displayDiscount.toFixed(2),
       taxableValue.toFixed(2),
       `${(effectiveTaxRate / 2)}%`,
       (taxAmt / 2).toFixed(2),
@@ -298,12 +294,18 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     ];
   });
 
-  const finalRoundTotal = Math.round(grossTotal);
-  const roundOffAmt = finalRoundTotal - grossTotal;
+  // --- UPDATED GRAND TOTAL CALCULATION ---
+  const billDiscount = Number(data.billDiscount) || 0;
+
+  // Subtract bill discount from the sum of item amounts
+  const netPayable = grossTotal - billDiscount;
+
+  const finalRoundTotal = Math.round(netPayable);
+  const roundOffAmt = finalRoundTotal - netPayable;
 
   autoTable(doc, {
     startY: cursorY,
-    head: [['S.N.', 'Description', 'HSN', 'Qty', 'Unit', 'MRP', 'Disc.', 'Subtotal', 'CGST', 'Amt', 'SGST', 'Amt', 'Amount']],
+    head: [['S.N.', 'Items', 'HSN', 'Qty', 'Unit', 'MRP', 'Discount', 'Subtotal', 'CGST', 'CGST Amt', 'SGST', 'SGST Amt', 'Amount']],
     body: tableBody,
     theme: 'grid',
     styles: {
@@ -341,6 +343,17 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     finalY = margin;
   }
 
+  // --- ADDED: BILL DISCOUNT ROW ---
+  if (billDiscount > 0) {
+    const discH = 6;
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.rect(startX, finalY, contentWidth, discH);
+    doc.text('Less :Bill Discount (-)', endX - 35, finalY + 4);
+    doc.text(billDiscount.toFixed(2), endX - 2, finalY + 4, { align: 'right' });
+    finalY += discH;
+  }
+
   // 1. ROUNDED OFF
   const roundOffH = 6;
   doc.setFontSize(8);
@@ -364,7 +377,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   doc.text(finalRoundTotal.toFixed(2), endX - 2, finalY + 5.5, { align: 'right' });
   finalY += grandTotalH;
 
-  // 3. TAX TABLE (ALWAYS SHOW)
+  // 3. TAX TABLE
   const taxHeaders = [['Tax Rate', 'Taxable Amt.', 'CGST', 'SGST', 'Total Tax']];
   const taxBody = Object.keys(taxBreakdown).map(rate => {
     const d = taxBreakdown[rate];
@@ -484,10 +497,46 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   // 7. BRANDING FOOTER
   const brandingHeight = 15;
   const brandingY = pageHeight - brandingHeight;
+
   doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
-  doc.text('Powered by SELLAR.IN', pageWidth / 2, brandingY + 5, { align: 'center' });
 
+  // --- Split text to link and underline "SELLAR.IN" ---
+  const pbText = 'Powered by ';
+  const linkText = 'SELLAR.IN';
+
+  const pbWidth = doc.getTextWidth(pbText);
+  const linkWidth = doc.getTextWidth(linkText);
+
+  // Calculate Start X to center the combined text
+  let brandingX = (pageWidth / 2) - ((pbWidth + linkWidth) / 2);
+
+  // 1. Print "Powered by " (Black)
+  doc.text(pbText, brandingX, brandingY + 5);
+  brandingX += pbWidth;
+
+  // 2. Print "SELLAR.IN" (Blue)
+  const linkColorR = 0;
+  const linkColorG = 102;
+  const linkColorB = 204;
+
+  doc.setTextColor(linkColorR, linkColorG, linkColorB);
+  doc.text(linkText, brandingX, brandingY + 5);
+
+  // 3. Draw Underline (Same Blue Color)
+  doc.setDrawColor(linkColorR, linkColorG, linkColorB);
+  doc.setLineWidth(0.1);
+  // Line from start of text to end of text, slightly below baseline (+ 5.5)
+  doc.line(brandingX, brandingY + 5.5, brandingX + linkWidth, brandingY + 5.5);
+
+  // 4. Create Clickable Link
+  doc.link(brandingX, brandingY + 2, linkWidth, 4, { url: 'https://www.sellar.in' });
+
+  // Reset Colors for next section
+  doc.setTextColor(0, 0, 0);
+  doc.setDrawColor(0, 0, 0);
+
+  // "Made with Love in India" logic (Unchanged)
   doc.setFont('helvetica', 'normal');
   const part1 = "Made with ";
   const part2 = "Love";

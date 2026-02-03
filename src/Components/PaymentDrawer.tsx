@@ -498,7 +498,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                             {isDiscountLocked && <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>}
                             {discountInfo && <span className="text-xs text-red-500 bg-red-50 px-1 rounded animate-pulse">{discountInfo}</span>}
                         </div>
-                        <input id="discount" type="number" placeholder="0" value={discount || ''} onChange={handleDiscountChange} readOnly={isDiscountLocked} className={`w-20 text-right bg-gray-100 rounded-xs text-gray-800 focus:outline-none ${isDiscountLocked ? 'cursor-not-allowed' : 'border-b border-blue-300 font-semibold'}`} />
+                        <input id="discount" type="number" placeholder="0" value={discount || ''} onChange={handleDiscountChange} readOnly={isDiscountLocked} className={`w-20 text-center bg-red-100 rounded-sm text-red-800 focus:outline-none ${isDiscountLocked ? 'cursor-not-allowed' : 'border-b border-blue-300 font-semibold'}`} />
                     </div>
 
                     <div className="flex justify-between items-center mb-1.5 min-h-[24px]">
@@ -525,7 +525,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
 
                         <div className="flex-1 flex justify-end">
                             {totalItemDiscount > 0 && (
-                                <span className="text-base text-green-600 font-medium">
+                                <span className="text-base text-red-600 font-medium">
                                     Disc: -₹{totalItemDiscount.toFixed()}
                                 </span>
                             )}

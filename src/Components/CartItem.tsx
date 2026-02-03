@@ -1,4 +1,5 @@
 import { FiEdit, FiTrash2 } from 'react-icons/fi';
+import { useState, useEffect } from 'react';
 import type { Item } from '../constants/models';
 import { State } from '../enums';
 
@@ -42,6 +43,65 @@ interface GenericCartListProps<T extends CartItem> {
   onPricePressEnd?: () => void;
   onPriceClick?: () => void;
 }
+
+const FloatingInput = ({
+  value,
+  onChange,
+  onBlur,
+  locked,
+  className,
+  ...props
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  onBlur: () => void;
+  locked: boolean;
+  className?: string;
+  [key: string]: any;
+}) => {
+  const [localValue, setLocalValue] = useState<string>(value || '');
+  const [isFocused, setIsFocused] = useState(false);
+
+  useEffect(() => {
+    const incomingValue = value === null || value === undefined ? '' : String(value);
+    if (!isFocused && incomingValue !== localValue) {
+      setLocalValue(incomingValue);
+    }
+  }, [value, isFocused, localValue]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    if (val === '' || /^\d*\.?\d*$/.test(val)) {
+      setLocalValue(val);
+      onChange(val);
+    }
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={localValue}
+      onChange={handleChange}
+      onFocus={() => {
+        if (!locked) {
+          setIsFocused(true);
+          setLocalValue('');
+        }
+      }}
+      onBlur={() => {
+        setIsFocused(false);
+        setLocalValue(value || '');
+        onBlur();
+      }}
+      readOnly={locked}
+      autoComplete="off"
+      className={`focus:outline-none bg-transparent ${locked ? 'text-gray-400' : ''} ${className || ''}`}
+      {...props}
+    />
+  );
+};
+
 
 export const GenericCartList = <T extends CartItem>({
   items,
@@ -89,15 +149,19 @@ export const GenericCartList = <T extends CartItem>({
           const discountLocked = settings.lockDiscount || !item.isEditable;
           const priceLocked = settings.lockPrice || !item.isEditable;
 
+          const isZeroPrice = displayPrice !== '' && Number(displayPrice) === 0;
+          const baseCardClass = isZeroPrice
+            ? 'bg-red-50 border-red-500'
+            : 'bg-white border-gray-200';
+
           return (
             <div
               key={item.id}
-              className={`bg-white rounded-lg shadow-sm border border-gray-200 p-3 flex flex-col md:flex-row md:items-center gap-3 ${!item.isEditable ? 'opacity-75 bg-gray-50' : ''}`}
+              className={`${baseCardClass} rounded-lg shadow-sm border p-3 flex flex-col md:flex-row md:items-center gap-3 ${!item.isEditable ? 'opacity-75 bg-gray-50' : ''}`}
             >
 
-              {/* --- LEFT SIDE: Name & Identity (Flexible Width) --- */}
+              {/* --- LEFT SIDE: Name & Identity --- */}
               <div className="flex justify-between items-start md:items-center w-full md:flex-1 md:w-auto min-w-0">
-
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   <button
                     onClick={() => onDeleteItem(item.id)}
@@ -110,7 +174,6 @@ export const GenericCartList = <T extends CartItem>({
                     {item.name || 'Unnamed Item'}
                   </h3>
 
-                  {/* Desktop: Master Edit Icon */}
                   <button
                     onClick={() => {
                       const originalItem = availableItems.find(a => a.id === item.productId || a.id === item.id);
@@ -118,13 +181,11 @@ export const GenericCartList = <T extends CartItem>({
                       else setModal({ message: "Original item not found.", type: State.ERROR });
                     }}
                     className="hidden md:block text-gray-400 hover:text-blue-600 flex-shrink-0"
-                    title="Edit Master Item"
                   >
                     <FiEdit size={14} />
                   </button>
                 </div>
 
-                {/* MRP Display (Mobile: Right side of row 1. Desktop: Next to name) */}
                 {!settings.hideMrp && (
                   <div className="flex-shrink-0 ml-2 whitespace-nowrap">
                     <p className="text-xs text-gray-500">{priceLabel}: ₹{currentBasePrice.toFixed()}</p>
@@ -132,9 +193,8 @@ export const GenericCartList = <T extends CartItem>({
                 )}
               </div>
 
-              <div className="flex items-center justify-between md:justify-end gap-2 w-full md:w-auto flex-shrink-0 mt-2 md:mt-0">
+              <div className="flex items-center justify-between md:justify-end gap-2 w-full md:w-auto flex-shrink-0 md:mt-0">
 
-                {/* Mobile Only: Edit Icon */}
                 <button
                   onClick={() => {
                     const originalItem = availableItems.find(a => a.id === item.productId || a.id === item.id);
@@ -153,14 +213,17 @@ export const GenericCartList = <T extends CartItem>({
                     onMouseDown={onDiscountPressStart} onMouseUp={onDiscountPressEnd} onMouseLeave={onDiscountPressEnd}
                     onTouchStart={onDiscountPressStart} onTouchEnd={onDiscountPressEnd} onClick={onDiscountClick}
                   >
-                    <label className="absolute -top-2 left-1 bg-white px-1 text-[10px] text-gray-500 leading-none">Disc%</label>
-                    <input
-                      type="number"
-                      value={item.discount || ''}
-                      onChange={(e) => onDiscountChange(item.id, e.target.value)}
-                      readOnly={discountLocked}
-                      className={`w-full px-1 py-1 text-center text-sm border rounded focus:outline-none focus:border-blue-500 h-9 ${discountLocked ? 'bg-gray-50 text-gray-400' : ''}`}
+                    <label className="absolute -top-1 left-3.5 bg-white px-1 text-[10px] text-gray-500 leading-none">Disc%</label>                    <FloatingInput
+                      value={item.discount !== undefined ? String(item.discount) : ''}
+                      onChange={(val) => onDiscountChange(item.id, val)}
+                      onBlur={() => {
+                        if ((item.discount as any) === '' || item.discount === undefined) {
+                          onDiscountChange(item.id, 0);
+                        }
+                      }}
+                      locked={discountLocked}
                       placeholder="0"
+                      className={`w-full px-1 py-1 text-center text-sm border border-slate-300 rounded h-9 ${discountLocked ? 'bg-gray-50' : 'focus:border-blue-500'}`}
                     />
                   </div>
                 )}
@@ -171,43 +234,48 @@ export const GenericCartList = <T extends CartItem>({
                   onMouseDown={onPricePressStart} onMouseUp={onPricePressEnd} onMouseLeave={onPricePressEnd}
                   onTouchStart={onPricePressStart} onTouchEnd={onPricePressEnd} onClick={onPriceClick}
                 >
-                  <label className="absolute -top-2 left-1 bg-white px-1 text-[10px] text-gray-500 leading-none">Net Price</label>
-                  <div className="flex items-center border rounded px-2 bg-white h-9">
+                  <label className="absolute -top-1 left-4.5 bg-white px-1 text-[10px] text-gray-500 leading-none">Net Price</label>                  <div className="flex items-center border border-slate-300 rounded px-2 bg-transparent h-9">
                     <span className="text-xs text-gray-500 mr-1">₹</span>
-                    <input
-                      type="number"
+                    <FloatingInput
                       value={displayPrice}
-                      onChange={(e) => onCustomPriceChange(item.id, e.target.value)}
-                      onFocus={() => {
-                        if (!priceLocked) {
-                          onCustomPriceChange(item.id, '');
+                      onChange={(val) => onCustomPriceChange(item.id, val)}
+                      onBlur={() => {
+                        if (displayPrice === '' || item.customPrice === '') {
+                          onCustomPriceChange(item.id, String(calculatedRoundedPrice));
                         }
+                        onCustomPriceBlur(item.id);
                       }}
-                      onBlur={() => onCustomPriceBlur(item.id)}
-                      readOnly={priceLocked}
-                      className={`w-full p-0 text-sm text-right focus:outline-none bg-transparent ${priceLocked ? 'text-gray-400' : ''}`}
+                      locked={priceLocked}
+                      className="w-full p-0 text-sm text-right"
                     />
                   </div>
                 </div>
 
                 {/* 3. Quantity Control */}
-                <div className="flex items-center border rounded bg-white h-9 w-24 flex-shrink-0 ml-auto md:ml-0">
+                <div className="flex items-center border border-slate-300 rounded bg-transparent h-9 w-24 flex-shrink-0 ml-auto md:ml-0">
                   <button
                     onClick={() => onQuantityChange(item.id, Math.max(1, (item.quantity || 1) - 1))}
                     disabled={item.quantity <= 1 || !item.isEditable}
                     className="px-2 text-gray-600 hover:bg-gray-200 disabled:text-gray-300 text-lg leading-none flex items-center justify-center h-full w-8 border-r"
                   >-</button>
-                  <input
-                    type="number"
-                    value={item.quantity}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value);
-                      if (!isNaN(val)) onQuantityChange(item.id, val);
-                      else if (e.target.value === '') onQuantityChange(item.id, 0);
-                    }}
-                    disabled={!item.isEditable}
-                    className="flex-1 w-full text-center bg-transparent text-sm font-semibold focus:outline-none h-full"
-                  />
+
+                  <div className="flex-1 w-full h-full">
+                    <FloatingInput
+                      value={String(item.quantity)}
+                      onChange={(val) => {
+                        const num = parseFloat(val);
+                        onQuantityChange(item.id, isNaN(num) ? '' as any : num);
+                      }}
+                      onBlur={() => {
+                        if (!item.quantity) {
+                          onQuantityChange(item.id, 1);
+                        }
+                      }}
+                      locked={!item.isEditable}
+                      className="w-full h-full text-center text-sm font-semibold"
+                    />
+                  </div>
+
                   <button
                     onClick={() => onQuantityChange(item.id, (item.quantity || 1) + 1)}
                     disabled={!item.isEditable}

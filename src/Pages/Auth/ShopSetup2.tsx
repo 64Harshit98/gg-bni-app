@@ -192,39 +192,51 @@ const FinalSetupPage: React.FC = () => {
               {/* List View Option */}
               <div
                 onClick={() => setSalesViewType('list')}
-                className={`cursor-pointer relative rounded-xl border-2 p-4 flex flex-col items-center gap-3 transition-all duration-200 ${salesViewType === 'list' ? 'border-blue-600 bg-blue-50 shadow-md' : 'border-gray-200 hover:border-blue-300'}`}
-              >
-                {salesViewType === 'list' && <div className="absolute top-2 right-2 bg-blue-600 text-white rounded-full p-0.5"><FiCheck size={12} /></div>}
-                <div className="w-full h-20 bg-white border border-gray-200 rounded p-2 flex flex-col gap-2 justify-center shadow-inner">
+                className={`cursor-pointer relative rounded-xl border-2 p-2 flex flex-col items-center gap-3 transition-all duration-200 ${salesViewType === 'list'
+                  ? 'border-blue-600 bg-blue-50 shadow-md'
+                  : 'border-gray-200 hover:border-blue-300 bg-white'
+                  }`}              >
+                {salesViewType === 'list' && (
+                  <div className="absolute top-2 right-2 bg-blue-600 text-white rounded-full p-0.5 shadow-sm">
+                    <FiCheck size={12} />
+                  </div>
+                )}
+                {/* Visual Representation of List */}
+                <div className="w-full h-24 bg-white border border-gray-200 rounded p-3 flex flex-col gap-2 justify-center shadow-inner">
                   <div className="h-2 w-3/4 bg-gray-300 rounded"></div>
                   <div className="h-2 w-full bg-gray-200 rounded"></div>
                   <div className="h-2 w-5/6 bg-gray-200 rounded"></div>
+                  <div className="h-2 w-full bg-gray-200 rounded"></div>
                 </div>
-                {/* TOOLTIP ADDED HERE */}
-                <div className="flex items-center justify-center">
-                  <p className="font-bold text-gray-800 text-center">List View</p>
+                <div className="text-center">
+                  <p className="font-bold text-gray-800">List View</p>
                   <InfoTooltip text="Compact table view. Best for Desktop & Barcode Scanning users." />
                 </div>
               </div>
 
               {/* Card View Option */}
               <div
-                onClick={() => setSalesViewType('card')}
-                className={`cursor-pointer relative rounded-xl border-2 p-4 flex flex-col items-center gap-3 transition-all duration-200 ${salesViewType === 'card' ? 'border-blue-600 bg-blue-50 shadow-md' : 'border-gray-200 hover:border-blue-300'}`}
+                className="relative rounded-xl border-2 border-gray-100 p-4 flex flex-col items-center gap-3 bg-gray-50 cursor-not-allowed opacity-100"
               >
-                {salesViewType === 'card' && <div className="absolute top-2 right-2 bg-blue-600 text-white rounded-full p-0.5"><FiCheck size={12} /></div>}
-                <div className="w-full h-20 bg-white border border-gray-200 rounded p-2 grid grid-cols-3 gap-2 shadow-inner">
-                  <div className="bg-gray-200 rounded aspect-square"></div>
-                  <div className="bg-gray-200 rounded aspect-square"></div>
-                  <div className="bg-gray-200 rounded aspect-square"></div>
+                {/* Coming Soon Badge */}
+                <div className="absolute top-3 right-3 bg-orange-300 text-black text-[10px] font-bold px-2 py-1 rounded-sm border border-orange-200 shadow-sm">
+                  COMING SOON
                 </div>
-                {/* TOOLTIP ADDED HERE */}
-                <div className="flex items-center justify-center">
-                  <p className="font-bold text-gray-800 text-center">Card View</p>
-                  <InfoTooltip text="Visual grid view with images. Best for Touchscreens & Tablets." />
+
+                {/* Visual Representation (Grayed Out) */}
+                <div className="w-full max-w-[12rem] h-24 bg-gray-100 border border-gray-200 rounded p-3 grid grid-cols-3 gap-2 shadow-none mx-auto opacity-50">
+                  <div className="bg-gray-300 rounded aspect-square w-full"></div>
+                  <div className="bg-gray-300 rounded aspect-square w-full"></div>
+                  <div className="bg-gray-300 rounded aspect-square w-full"></div>
+                  <div className="bg-gray-300 rounded aspect-square w-full"></div>
+                  <div className="bg-gray-300 rounded aspect-square w-full"></div>
+                  <div className="bg-gray-300 rounded aspect-square w-full"></div>
+                </div>
+                <div className="text-center opacity-60">
+                  <p className="font-bold text-gray-500">Card View</p>
+                  <p className="text-xs text-gray-400 mt-1">Best for Touchscreens & Tablets</p>
                 </div>
               </div>
-
             </div>
           </div>
 

@@ -160,7 +160,7 @@ const SupportPage: React.FC = () => {
                 </div>
                 <div>
                   <p className="text-xs text-gray-500 font-bold uppercase">WhatsApp Support</p>
-                  <a href="https://wa.me/918586096622" className="text-green-600 font-medium hover:underline">+91 8586096622</a>
+                  <a href="https://wa.me/919818815838" className="text-green-600 font-medium hover:underline">+91 9818815838</a>
                 </div>
               </div>
             </div>

@@ -42,6 +42,7 @@ interface InvoiceItem {
   gst?: number;
   taxRate?: number;
   hsnSac?: string;
+  effectiveUnitPrice?: number;
   unit?: string;
   discount?: number;
   manualDiscount?: number;
@@ -117,6 +118,7 @@ const useJournalData = (companyId?: string) => {
           finalPrice: type === 'Credit' ? (Number(item.finalPrice) || 0) : (Number(item.purchasePrice) || 0),
           mrp: Number(item.mrp) || 0,
           discount: item.discount || 0,
+          effectiveUnitPrice: item.effectiveUnitPrice || 0,
           manualDiscount: item.manualDiscount || 0,
           purchasePrice: item.purchasePrice || 0,
           barcode: item.barcode || '',
@@ -375,6 +377,7 @@ const Journal: React.FC = () => {
         companyGstin: billSettings.companyGstin || businessInfo?.gstin || '',
         msmeNumber: billSettings.msmeNumber || '',
         panNumber: billSettings.panNumber || '',
+        billDiscount: invoice.manualDiscount || 0,
 
         billTo: {
           name: invoice.partyName,
@@ -539,6 +542,7 @@ const Journal: React.FC = () => {
         const activeModes = Object.entries(paymentMethods)
           .filter(([key, value]) => key !== 'due' && Number(value) > 0);
 
+
         return (
           <CustomCard key={invoice.id} onClick={() => handleInvoiceClick(invoice.id)} className="cursor-pointer transition-shadow hover:shadow-md">
             <div className="flex justify-between items-end w-full mb-1 -mt-5 relative pointer-events-none">
@@ -592,25 +596,54 @@ const Journal: React.FC = () => {
             </div>
 
             {isExpanded && (
-              <div className="mt-4 pt-4 border-t border-slate-200">
-                <h4 className="text-sm font-semibold text-slate-500 mb-2 uppercase tracking-wide">Items</h4>
-                <div className="space-y-2 text-sm">
-                  {(invoice.items && invoice.items.length > 0) ? invoice.items.map((item, index) => (
-                    <div key={index} className="flex justify-between items-center text-slate-700">
-                      <div className="flex-1 pr-4">
-                        <p className="font-medium">{item.name}</p>
-                        <p className="text-xs text-slate-400">MRP: {item.mrp.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-semibold">{item.finalPrice.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</p>
-                        <p className="text-xs text-slate-400">Qty: {item.quantity}</p>
-                      </div>
-                    </div>
-                  )) : <p className="text-xs text-slate-400">No item details available.</p>}
+              <div className="mt-1">
+                <div className="relative py-2">
+                  <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                    <div className="w-full border-t border-slate-300"></div>
+                  </div>
+                  <div className="relative flex justify-center">
+                    <span className="bg-white px-2 text-xs font-bold text-slate-400 uppercase tracking-widest">Items</span>
+                  </div>
                 </div>
+                <div className="space-y-2 text-sm">
+                  {(invoice.items && invoice.items.length > 0) ? invoice.items.map((item, index) => {
+
+                    const netUnitPrice = item.effectiveUnitPrice
+                      ? item.effectiveUnitPrice
+                      : (item.quantity > 0 ? (item.finalPrice / item.quantity) : 0);
+
+                    return (
+                      <div key={index} className="flex justify-between items-center text-slate-700 mb-3">
+                        <div className="flex-1 pr-4">
+                          <p className="font-medium">{item.name}</p>
+                          <p className="text-xs text-slate-400 flex items-center gap-1">
+                            <span>MRP: {item.mrp.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}</span>
+                            <span className="text-slate-400">|</span>
+                            {/* 2. Display Net Price */}
+                            <span className="text-slate-400 font-medium">
+                              Net: {netUnitPrice.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}
+                            </span>
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-semibold">{item.finalPrice.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</p>
+                          <p className="text-xs text-slate-400">Qty: {item.quantity}</p>
+                        </div>
+                      </div>
+                    );
+                  }) : <p className="text-xs text-slate-400">No item details available.</p>}
+                </div>
+                {invoice.manualDiscount && invoice.manualDiscount > 0 ? (
+                  <div className="flex justify-between items-center mt-3 pt-1.5 border-t border-line border-slate-200">
+                    <p className="text-xs font-medium text-slate-400">Bill Discount</p>
+                    <p className="text-xs font-semibold text-red-400">
+                      - {invoice.manualDiscount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+                    </p>
+                  </div>
+                ) : null}
 
                 {activeModes.length > 0 && (
-                  <div className="flex justify-between items-start mt-3 pt-2 border-t border-slate-100 text-xs text-slate-500">
+                  <div className="flex justify-between items-start mt-1 pt-2 border-t border-slate-200 text-xs text-slate-500">
                     {salesSettings?.enableSalesmanSelection ? (
                       <p className="text-left whitespace-nowrap mr-2">
                         Salesman: {invoice.salesmanName?.slice(0, 15) || 'N/A'}
@@ -627,7 +660,7 @@ const Journal: React.FC = () => {
                   </div>
                 )}
 
-                <div className="flex justify-between gap-2 mt-4 pt-4 border-t border-slate-200">
+                <div className="flex justify-between gap-2 mt-2 pt-4 border-t border-slate-200">
                   {invoice.status === 'Unpaid' && (<button onClick={(e) => { e.stopPropagation(); openPaymentModal(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-emerald-500 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors">Settle</button>)}
                   {invoice.status === 'Paid' && (<button onClick={(e) => { e.stopPropagation(); promptDeleteInvoice(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors">Delete</button>)}
                   <button onClick={(e) => { e.stopPropagation(); handleEditInvoice(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-gray-400 rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors">Edit</button>
@@ -745,7 +778,7 @@ const Journal: React.FC = () => {
                       setShowCustomPicker(true);
                       setActiveDateFilter('custom');
                     }
-                  }} className="flex items-center gap-2 cursor-pointer hover:bg-gray-200 px-3 py-1 rounded-full transition-colors select-none"
+                  }} className="flex items-center gap-2 cursor-pointer hover:bg-gray-200 px-3 py-1 rounded-full transition-colors select-none -mb-3"
                 >
                   <p className='text-center text-lg font-light text-slate-600'>
                     {selectedPeriodText}
@@ -858,7 +891,7 @@ const Journal: React.FC = () => {
           </div>
         </div>
       )}
-      <div className="flex-grow overflow-y-auto bg-slate-100 space-y-3 pt-4 pb-24">
+      <div className="flex-grow overflow-y-auto bg-slate-100 space-y-3 pt-2 pb-24">
         {renderContent()}
       </div>
     </div >

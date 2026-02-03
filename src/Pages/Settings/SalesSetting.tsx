@@ -10,7 +10,7 @@ import { Spinner } from '../../constants/Spinner';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
 import { useAuth } from '../../context/auth-context';
-
+import { FiCheck } from 'react-icons/fi';
 export interface SalesSettings {
     settingType: 'sales';
     salesViewType?: 'card' | 'list';
@@ -206,21 +206,64 @@ const SalesSettingsPage: React.FC = () => {
 
                     {/* --- Card 1: General Settings --- */}
                     <div className="bg-white rounded-lg p-6 shadow-md mb-2">
-                        <h2 className="text-lg font-semibold text-gray-800 mb-4">General Settings</h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                            <div>
-                                <label htmlFor="sales-view-type" className="block text-gray-700 text-sm font-medium mb-1">Sales View Type</label>
-                                <select
-                                    id="sales-view-type"
-                                    value={settings.salesViewType || 'list'}
-                                    onChange={(e) => handleChange('salesViewType', e.target.value)}
-                                    className="w-full p-3 border border-gray-300 rounded-lg bg-white"
+                        <h2 className="text-lg font-semibold text-gray-800 mb-4">Display Settings</h2>
+
+                        <div className="mb-4">
+                            <label className="block text-gray-700 text-sm font-medium mb-3">Sales View Mode</label>
+
+                            <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
+                                {/* List View Option */}
+                                <div
+                                    onClick={() => handleChange('salesViewType', 'list')}
+                                    className={`cursor-pointer relative rounded-xl border-2 p-2 flex flex-col items-center gap-3 transition-all duration-200 ${settings.salesViewType === 'list'
+                                        ? 'border-blue-600 bg-blue-50 shadow-md'
+                                        : 'border-gray-200 hover:border-blue-300 bg-white'
+                                        }`}
                                 >
-                                    <option value="list">List View</option>
-                                    <option value="card">Card View</option>
-                                </select>
+                                    {settings.salesViewType === 'list' && (
+                                        <div className="absolute top-2 right-2 bg-blue-600 text-white rounded-full p-0.5 shadow-sm">
+                                            <FiCheck size={12} />
+                                        </div>
+                                    )}
+                                    {/* Visual Representation of List */}
+                                    <div className="w-full h-24 bg-white border border-gray-200 rounded p-3 flex flex-col gap-2 justify-center shadow-inner">
+                                        <div className="h-2 w-3/4 bg-gray-300 rounded"></div>
+                                        <div className="h-2 w-full bg-gray-200 rounded"></div>
+                                        <div className="h-2 w-5/6 bg-gray-200 rounded"></div>
+                                        <div className="h-2 w-full bg-gray-200 rounded"></div>
+                                    </div>
+                                    <div className="text-center">
+                                        <p className="font-bold text-gray-800">List View</p>
+                                        <p className="text-xs text-gray-500 mt-1">Best for Desktop & Barcode Scanning</p>
+                                    </div>
+                                </div>
+
+                                {/* Card View Option */}
+                                <div
+                                    className="relative rounded-xl border-2 border-gray-100 p-4 flex flex-col items-center gap-3 bg-gray-50 cursor-not-allowed opacity-100"
+                                >
+                                    {/* Coming Soon Badge */}
+                                    <div className="absolute top-3 right-3 bg-orange-300 text-black text-[10px] font-bold px-2 py-1 rounded-sm border border-orange-200 shadow-sm">
+                                        COMING SOON
+                                    </div>
+
+                                    {/* Visual Representation (Grayed Out) */}
+                                    <div className="w-full max-w-[12rem] h-24 bg-gray-100 border border-gray-200 rounded p-3 grid grid-cols-3 gap-2 shadow-none mx-auto opacity-50">
+                                        <div className="bg-gray-300 rounded aspect-square w-full"></div>
+                                        <div className="bg-gray-300 rounded aspect-square w-full"></div>
+                                        <div className="bg-gray-300 rounded aspect-square w-full"></div>
+                                        <div className="bg-gray-300 rounded aspect-square w-full"></div>
+                                        <div className="bg-gray-300 rounded aspect-square w-full"></div>
+                                        <div className="bg-gray-300 rounded aspect-square w-full"></div>
+                                    </div>
+                                    <div className="text-center opacity-60">
+                                        <p className="font-bold text-gray-500">Card View</p>
+                                        <p className="text-xs text-gray-400 mt-1">Best for Touchscreens & Tablets</p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
+
                         <div className="flex items-center mb-2">
                             <input type="checkbox" id="salesman-billing" checked={settings.enableSalesmanSelection ?? false} onChange={(e) => handleCheckboxChange('enableSalesmanSelection', e.target.checked)} className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
                             <label htmlFor="salesman-billing" className="ml-2 text-gray-700 text-sm font-medium">Enable Salesman-wise Billing</label>

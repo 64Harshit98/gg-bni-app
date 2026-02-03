@@ -584,13 +584,12 @@ const PurchaseReturnPage: React.FC = () => {
 
       const newItemsList = Array.from(originalItemsMap.values());
       const newGrossTotal = newItemsList.reduce((sum, item) => sum + (item.quantity * (item.purchasePrice || 0)), 0);
-
+      const currentTransactionBillDiscount = Number(completionData?.discount || 0);
       const originalManualDiscount = Number(selectedPurchase.manualDiscount) || 0;
-      const newManualDiscount = Math.max(0, originalManualDiscount - discountDeducted);
+      const newManualDiscount = Math.max(0, originalManualDiscount - discountDeducted) + currentTransactionBillDiscount;
       const newTotalAmount = newGrossTotal - newManualDiscount;
-
-      // --- FIX 2: Calculate Payment Due Correctly (Prevent False Due) ---
       let updatedPaymentMethods: any = { ...(selectedPurchase.paymentMethods || {}) };
+
       if (completionData?.paymentDetails) {
         Object.entries(completionData.paymentDetails).forEach(([mode, amount]) => {
           if (mode !== 'due') {
@@ -603,8 +602,6 @@ const PurchaseReturnPage: React.FC = () => {
         .filter(([k]) => k !== 'due')
         .reduce((sum, [_, val]) => sum + Number(val), 0);
 
-      // If Return reduces bill total below what was paid, due is 0. 
-      // Excess is tracked via supplier Debit Balance, not invoice due.
       updatedPaymentMethods.due = Math.max(0, newTotalAmount - totalPaidSoFar);
 
       const returnHistoryRecord = {
@@ -620,8 +617,7 @@ const PurchaseReturnPage: React.FC = () => {
         invoiceNumber: selectedPurchase.invoiceNumber,
         partyName: finalSupplierName,
         partyNumber: finalSupplierNumber,
-        // --- FIX 1: Save the Manual Discount from Payment Drawer ---
-        transactionDiscount: completionData?.discount || 0
+        billDiscount: currentTransactionBillDiscount
       };
 
       const updateData: any = {
@@ -651,8 +647,6 @@ const PurchaseReturnPage: React.FC = () => {
         };
 
         if (modeOfReturn !== 'Cash Refund' && finalBalance > 0) {
-          // Subtract the drawer discount from the debit balance if applicable
-          // (User accepts less debit note value because of discount)
           const netDebitToAdd = finalBalance - (completionData?.discount || 0);
           if (netDebitToAdd > 0) {
             supplierUpdateData.debitBalance = firebaseIncrement(netDebitToAdd);
@@ -681,28 +675,24 @@ const PurchaseReturnPage: React.FC = () => {
   // --- FIX 3: STRICT QUANTITY CHECK ---
   const handleProcessReturn = () => {
     if (!currentUser || !selectedPurchase) return;
+
     if (itemsToReturn.length === 0 && newItemsReceived.length === 0) {
       return setModal({ type: State.ERROR, message: 'No items have been returned or received.' });
     }
 
-    // Validate quantities before opening drawer or saving
     for (const returnItem of itemsToReturn) {
       const originalItem = selectedPurchase.items.find(i => i.id === returnItem.originalItemId);
 
-      // Calculate how many of this item have ALREADY been returned in previous transactions
-      // Note: This requires 'returnHistory' to be fully loaded or parsed. 
-      // Since selectedPurchase is the live document, 'items' should ostensibly reflect current holdings? 
-      // Yes, 'items' array in DB is decremented on return. 
-      // So checking against 'originalItem.quantity' (Current Holding) is correct.
-
       if (!originalItem) {
-        return setModal({ type: State.ERROR, message: `Item ${returnItem.name} not found in original bill.` });
+        return setModal({ type: State.ERROR, message: `Item "${returnItem.name}" not found in original bill.` });
       }
 
-      if (returnItem.quantity > (originalItem.quantity || 0)) {
+      const currentBillQty = originalItem.quantity || 0;
+
+      if (returnItem.quantity > currentBillQty) {
         return setModal({
           type: State.ERROR,
-          message: `Cannot return ${returnItem.quantity} of ${returnItem.name}. Only ${originalItem.quantity} remaining in bill.`
+          message: `Error: You are trying to return ${returnItem.quantity} of "${returnItem.name}", but only ${currentBillQty} remain in this bill.`
         });
       }
     }
@@ -717,7 +707,6 @@ const PurchaseReturnPage: React.FC = () => {
       setIsDrawerOpen(true);
     }
   };
-
   const getBalanceLabel = () => {
     if (finalBalance < 0) return 'Payment Due';
     if (modeOfReturn === 'Cash Refund') return 'Refund Received';
@@ -748,10 +737,10 @@ const PurchaseReturnPage: React.FC = () => {
 
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
 
-        <div className="flex-1 w-full md:w-[65%] bg-gray-100 md:bg-white md:border-r border-gray-200 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 relative">
+        <div className="flex-1 w-full md:w-[65%] bg-gray-100 md:bg-white md:border-r border-gray-200 overflow-y-auto p-1 md:p-2 pb-24 md:pb-6 relative">
 
           {/* Search */}
-          <div className="bg-white p-4 rounded-sm shadow-md mb-4 border border-gray-200">
+          <div className="bg-white p-2 rounded-sm shadow-md mb-4 border border-gray-200">
             <div className="relative" ref={dropdownRef}>
               <label htmlFor="search-purchase" className="block text-sm font-medium mb-1 text-gray-700">Search Original Purchase</label>
               <div className="flex gap-2">
@@ -784,7 +773,7 @@ const PurchaseReturnPage: React.FC = () => {
           {selectedPurchase && (
             <>
               {/* Purchase Details */}
-              <div className="bg-white p-4 rounded-sm shadow-md mb-4 border border-gray-200">
+              <div className="bg-white p-2 rounded-sm shadow-md mb-4 border border-gray-200">
                 <div className="space-y-3 mb-4">
                   <div className='grid grid-cols-2 gap-4'>
                     <div><label className="block text-xs font-bold text-gray-500 uppercase">Date</label><input type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm" /></div>
@@ -872,9 +861,9 @@ const PurchaseReturnPage: React.FC = () => {
               </div>
 
               {/* Exchange / New Items (Input + List) */}
-              <div className="bg-white p-4 rounded-sm shadow-md mb-20 md:mb-0 border border-gray-200">
+              <div className="bg-white p-2 rounded-sm shadow-md mb-5 md:mb-0 border border-gray-200">
                 {/* Mobile View: Mode Select Here */}
-                <div className="md:hidden mb-4">
+                <div className="md:hidden mb-2">
                   <label className="block font-medium text-sm mb-1">Transaction Type</label>
                   <select value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-2 border rounded bg-white">
                     <option>Exchange</option>
@@ -885,7 +874,7 @@ const PurchaseReturnPage: React.FC = () => {
 
                 {modeOfReturn === 'Exchange' && (
                   <div className="mt-2">
-                    <div className="flex items-end gap-2 mb-3">
+                    <div className="flex items-end gap-2 mb-2">
                       <div className="flex-grow">
                         <SearchableItemInput
                           label="Add New Item Received"
@@ -904,7 +893,7 @@ const PurchaseReturnPage: React.FC = () => {
                     {newItemsReceived.length > 0 && (
                       <div className="border rounded-md overflow-hidden">
                         <div className="bg-gray-50 px-3 py-2 border-b text-xs font-bold text-gray-500 uppercase">Received Items</div>
-                        <div className="max-h-60 overflow-y-auto p-2 bg-gray-50">
+                        <div className="max-h-60 overflow-y-auto bg-gray-50">
                           <GenericCartList<ReturnCartItem>
                             items={newItemsReceived}
                             availableItems={availableItems}
@@ -941,7 +930,7 @@ const PurchaseReturnPage: React.FC = () => {
               </div>
 
               {/* Mobile Only: Inline Summary */}
-              <div className="md:hidden bg-white p-4 rounded-sm shadow-md mt-2">
+              <div className="md:hidden bg-white p-2 rounded-sm shadow-md mt-2">
                 <div className="flex justify-between items-center text-sm text-red-700">
                   <p>Return Value</p><p className="font-medium">₹{totalReturnValue.toFixed(2)}</p>
                 </div>
@@ -981,7 +970,7 @@ const PurchaseReturnPage: React.FC = () => {
               </div>
 
               {/* Financials */}
-              <div className="space-y-4 text-sm text-gray-700 bg-gray-50 p-4 rounded-xl border border-gray-100 flex-grow">
+              <div className="space-y-4 text-sm text-gray-700 bg-gray-50 p-2 rounded-xl border border-gray-100 flex-grow">
                 <div className="flex justify-between">
                   <span>Gross Return Value</span>
                   <span className="font-medium">₹{totalReturnValue.toFixed(2)}</span>
@@ -1026,7 +1015,7 @@ const PurchaseReturnPage: React.FC = () => {
         </div>
 
         {/* --- MOBILE FOOTER (Sticky) --- */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-transparent flex justify-center pb-18">
+        <div className="md:hidden fixed bottom-0 left-0 right-0 p-2 bg-transparent flex justify-center pb-18">
           {selectedPurchase && (<CustomButton onClick={handleProcessReturn} variant={Variant.Payment} className="w-full py-3 text-lg font-semibold shadow-md">Process Transaction</CustomButton>)}
         </div>
 

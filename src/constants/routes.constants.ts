@@ -45,5 +45,6 @@ export const ROUTES = {
   SUBSCRIPTION_PAGE: '/subscription',
   SUPPORT_PAGE: '/support',
   ADD_PRODUCT:'add-product',
-  CAT_ITEM_GROUP:' item-groups'
+  CAT_ITEM_GROUP:' item-groups',
+  ORDER_RETURN:'order-return'
 };

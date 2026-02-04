@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { ChevronLeft, Trash2, Check, ChevronUp, X } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Footer from './Footer';
-import { doc, getDoc, collection, addDoc, setDoc, deleteDoc,updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
+import { FiPackage } from 'react-icons/fi';
+
 
 interface CartItem {
     id: string | number;
@@ -13,6 +15,7 @@ interface CartItem {
     quantity: number;
     image: string;
     note: string;
+    imageUrl?: string;
 }
 
 interface Address {
@@ -72,7 +75,7 @@ const CartPage: React.FC = () => {
         try {
             await setDoc(ref, {
                 id: tempId,
-                orderId: `UPC-${billing.phone.slice(-4)}`,
+                orderId: `UPC-${billing.phone.slice(-11)}`,
                 userName: billing.name || 'Guest',
                 totalAmount: cartItems.reduce((acc, i) => acc + (i.price * i.quantity), 0),
                 status: 'Upcoming', // Orders.tsx isi status ko filter karta hai
@@ -149,39 +152,42 @@ const CartPage: React.FC = () => {
         setIsPlacing(true);
 
         try {
-            // Aapka wahi temp ID jo Upcoming tab mein dikh raha hai
-            const tempDocId = `TEMP-${billing.phone}`;
+            const tempDocId = `ORD-${billing.phone.slice(0, -4)}`;
             const orderDocRef = doc(db, 'companies', companyId, 'Orders', tempDocId);
 
             const finalOrderData = {
-                // Hum orderId ko random generate kar rahe hain final recognition ke liye
                 orderId: `ORD-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
                 userName: billing.name.trim(),
                 totalAmount: Number(totalPay),
                 paidAmount: 0,
-                status: 'Confirmed', // Status badalte hi Orders.tsx filters ise Confirmed mein bhej denge
-                updatedAt: serverTimestamp(), // Record update time
+                status: 'Confirmed', // Status change hote hi ye Upcoming se hat kar Confirmed mein aa jayega
+                updatedAt: serverTimestamp(),
+                // Agar pehle sync nahi hua tha, toh createdAt yahan add ho jayega
+                createdAt: serverTimestamp(),
                 time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
                 items: cartItems.map(item => ({
                     id: String(item.id),
                     name: item.name,
                     quantity: Number(item.quantity),
-                    mrp: Number(item.price)
+                    mrp: Number(item.price),
+                    note: item.note || ""
                 })),
                 billingDetails: { ...billing },
-                shippingDetails: isSameAsShipping ? { ...billing } : { ...shipping },
+                shippingDetails: isSameAsShipping ? { ...billing } : {
+                    ...shipping,
+                    phone: shipping.phone || billing.phone,
+                    name: shipping.name || billing.name
+                },
                 userLoginPhone: billing.phone
             };
-
-            // 1. Naya doc banane ki jagah usi TEMP doc ko UPDATE karein
-            // Isse data delete karne ki jhanjhat khatam aur flow smooth ho jayega
-            await updateDoc(orderDocRef, finalOrderData);
+            await setDoc(orderDocRef, finalOrderData, { merge: true });
 
             // cleanup
             localStorage.removeItem('temp_cart');
             setCartItems([]);
             setStep(1);
             alert('Order Placed Successfully!');
+            navigate(-1); // Order ke baad piche bhej do
 
         } catch (error: any) {
             console.error("Error updating order:", error);
@@ -190,23 +196,64 @@ const CartPage: React.FC = () => {
             setIsPlacing(false);
         }
     };
+
     useEffect(() => {
         if (isSameAsShipping) {
             setShipping({ ...billing });
         }
     }, [isSameAsShipping, billing]);
 
-    const removeFromCart = (id: string | number) => {
+    const removeFromCart = async (id: string | number) => {
+        console.log("Remove function triggered for ID:", id);
+
+        // 1. Local State Cleanup
         const updatedCart = cartItems.filter(item => item.id !== id);
         setCartItems(updatedCart);
+
+        // 2. Local Storage Cleanup
         const savedCart = localStorage.getItem('temp_cart');
         if (savedCart) {
             const parsedCart = JSON.parse(savedCart);
             const newLocalStorageCart = parsedCart.filter((entry: any) => entry.item.id !== id);
             localStorage.setItem('temp_cart', JSON.stringify(newLocalStorageCart));
         }
-    };
 
+        // 3. FIREBASE SYNC
+        // Console check karo ki ye values mil rahi hain ya nahi
+        console.log("Checking Sync - CompanyId:", companyId, "Phone:", billing.phone);
+
+        if (!companyId || !billing.phone) {
+            console.warn("Sync skipped: CompanyId or Phone missing in billing state.");
+            return;
+        }
+
+        const tempDocId = `{billing.phone}`;
+        const orderDocRef = doc(db, 'companies', companyId, 'Orders', tempDocId);
+
+        try {
+            if (updatedCart.length === 0) {
+                console.log("Cart is empty, deleting document from Firebase...");
+                await deleteDoc(orderDocRef);
+                console.log("Successfully deleted from Firebase");
+            } else {
+                console.log("Updating items in Firebase...");
+                await updateDoc(orderDocRef, {
+                    items: updatedCart.map(item => ({
+                        id: String(item.id),
+                        name: item.name,
+                        quantity: Number(item.quantity),
+                        mrp: Number(item.price)
+                    })),
+                    status: 'Confirmed',
+                    totalAmount: updatedCart.reduce((sum, item) => sum + (item.price * item.quantity), 0),
+                    updatedAt: serverTimestamp()
+                });
+                console.log("Successfully updated Firebase");
+            }
+        } catch (error) {
+            console.error("Firebase Sync Error details:", error);
+        }
+    };
     const handleDrawerAction = () => {
         if (step === 1) {
             setStep(2);
@@ -255,9 +302,9 @@ const CartPage: React.FC = () => {
                                 <>
                                     <div className="grid grid-cols-1 gap-2.5">
                                         {cartItems.length > 0 ? cartItems.map((item) => (
-                                            <div key={item.id} className="bg-white rounded-sm p-3 shadow-sm border border-gray-50">
+                                            <div key={item.id} className="bg-white rounded-sm p-3 shadow-sm border border-gray-10">
                                                 <div className="flex gap-3">
-                                                    <img src={item.image} alt={item.name} className="w-14 h-14 rounded-sm object-cover shrink-0" />
+                                                    {item.imageUrl ? <img src={item.imageUrl} alt={item.name} className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110 " /> : <FiPackage className="w-20 h-20 text-gray-200 border border-gray-400" />}
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex justify-between items-start gap-2">
                                                             <h3 className="text-[10px] font-black text-[#1A3B5D] uppercase truncate">{item.name}</h3>

@@ -10,6 +10,7 @@ import { RequireSubscription } from '../UseComponents/RequiredSubscription';
 
 import Loading from '../Pages/Loading/Loading';
 import GlobalError from '../Components/GlobalError';
+import OrdersReturnPage from '../Catalogue/OrdersReturn';
 // import SharedProduct from '../Catalogue/SharedProduct';
 
 const Home = lazy(() => import('../Pages/Home'));
@@ -328,6 +329,10 @@ const router = createBrowserRouter([
             path: ROUTES.ORDER,
             element: <Order />,
             handle: { requiredPermission: null },
+          },
+          {
+            path: ROUTES.ORDER_RETURN,
+            element:<OrdersReturnPage/>
           },
           {
             path: ROUTES.CATALOGUE_REPORTS,

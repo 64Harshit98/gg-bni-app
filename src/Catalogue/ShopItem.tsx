@@ -10,36 +10,6 @@ import { useNavigate, useParams } from 'react-router-dom';
 import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName';
 import SearchBar from './SearchBar';
-// import { doc, getDoc } from 'firebase/firestore';
-// import { db } from '../lib/Firebase';
-
-// const useBusinessName = (companyId?: string) => {
-//     const [businessName, setBusinessName] = useState<string>('');
-//     const [loading, setLoading] = useState(true);
-
-//     useEffect(() => {
-//         if (!companyId) {
-//             setLoading(false);
-//             return;
-//         }
-//         const fetchBusinessInfo = async () => {
-//             try {
-//                 // Correct multi-tenant path as per your logic
-//                 const docRef = doc(db, 'companies', companyId, 'business_info', companyId);
-//                 const docSnap = await getDoc(docRef);
-//                 setBusinessName(docSnap.exists() ? docSnap.data().businessName || 'Catalogue' : 'Catalogue');
-//             } catch (err) {
-//                 console.error("Error fetching business name:", err);
-//                 setBusinessName('Catalogue');
-//             } finally {
-//                 setLoading(false);
-//             }
-//         };
-//         fetchBusinessInfo();
-//     }, [companyId]);
-
-//     return { businessName, loading };
-// };
 
 const StockIndicator: React.FC<{ stock: number }> = ({ stock }) => {
     let colorClass = 'text-green-600 bg-green-100';
@@ -256,7 +226,7 @@ const MyShop: React.FC = () => {
             <header className="sticky top-0 z-[10] bg-white border-b border-gray-100 shadow-sm w-full">
                 <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col gap-2 relative">
                     <div className="flex items-center justify-between">
-                        {/* LEFT: Logo/Name */}
+                        {/* LEFT: Logo/Name + Category (Combined for Mobile) */}
                         <div className="flex items-center gap-1.5">
                             <button
                                 onClick={() => navigate(-1)}
@@ -265,16 +235,22 @@ const MyShop: React.FC = () => {
                                 <ChevronLeft className="text-[#1A3B5D]" size={20} />
                             </button>
                             <div className="w-1 h-5 bg-[#00A3E1] rounded-sm"></div>
-                            <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">
-                                {companyName}
-                            </h1>
-                        </div>
 
-                        {/* MOBILE ONLY: Category Name (Right Side) */}
-                        <div className="md:hidden flex flex-col items-end bg-blue-50/50 px-2 py-1 rounded-sm border-r-2 border-[#00A3E1]">
-                            <span className="text-[11px] font-[900] text-[#1A3B5D] uppercase truncate max-w-[110px] tracking-tight">
-                                {currentCategoryName}
-                            </span>
+                            <div className="flex items-center gap-1">
+                                <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">
+                                    {companyName}
+                                </h1>
+
+                                {/* MOBILE ONLY: Slash and Category Name attached to Company Name */}
+                                {currentCategoryName && (
+                                    <div className="md:hidden flex items-center gap-1">
+                                        <span className="text-gray-400 font-light">-</span>
+                                        <span className="text-[12px] font-bold text-gray-600 truncate max-w-[100px] uppercase tracking-tighter">
+                                            {currentCategoryName}
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         {/* DESKTOP ONLY: Tabs (Keep as is) */}

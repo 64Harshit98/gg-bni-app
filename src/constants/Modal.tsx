@@ -16,7 +16,7 @@ export const Modal: React.FC<ModalProps> = ({
     showConfirmButton = false,
     type,
 }) => (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-100 p-4">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[2000] p-4">
         <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm text-center">
             {/* Icon based on type */}
             <div className={`mx-auto mb-4 w-12 h-12 rounded-full flex items-center justify-center ${type === State.SUCCESS ? 'bg-green-100' :
@@ -81,6 +81,7 @@ interface PaymentModalProps {
     onClose: () => void;
     invoice: ModalInvoice | null;
     onSubmit: (invoice: ModalInvoice, amount: number, method: string) => Promise<void>;
+    onConfirm?: (amountToAdd: number) => Promise<void>;
 }
 
 export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, invoice, onSubmit }) => {
@@ -124,7 +125,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-[2000]">
             <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
                 <h2 className="text-2xl font-bold mb-2 text-slate-800">Settle Payment</h2>
                 <p className="mb-4 text-slate-600">
@@ -158,7 +159,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                     {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
                     <div className="flex justify-end gap-3">
                         <button type="button" onClick={onClose} className="px-4 py-2 rounded-md bg-slate-200 text-slate-800 hover:bg-slate-300">Cancel</button>
-                        <button type="submit" disabled={isSubmitting} className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
+                        <button type="submit" disabled={isSubmitting} className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                        >
                             {isSubmitting ? 'Processing...' : 'Submit Payment'}
                         </button>
                     </div>

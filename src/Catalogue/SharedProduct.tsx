@@ -10,7 +10,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName';
 import SearchBar from './SearchBar';
-import { serverTimestamp, doc, setDoc} from 'firebase/firestore';
+import { serverTimestamp, doc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 
 interface QuickListedToggleProps {
@@ -123,7 +123,7 @@ const SharedProduct: React.FC = () => {
                 newCart = [...prev, { item, quantity }];
             }
             localStorage.setItem('temp_cart', JSON.stringify(newCart));
-            
+
             syncToUpcoming(newCart); // <-- Ye line add hui hai
             return newCart;
         });
@@ -138,9 +138,9 @@ const SharedProduct: React.FC = () => {
                 }
                 return i;
             }).filter(i => i.quantity > 0);
-            
+
             localStorage.setItem('temp_cart', JSON.stringify(newCart));
-            
+
             syncToUpcoming(newCart); // <-- Ye line add hui hai
             return newCart;
         });
@@ -241,28 +241,51 @@ const SharedProduct: React.FC = () => {
     return (
         <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative overflow-x-hidden">
             <header className="sticky top-0 bg-white border-b border-gray-100 shadow-sm z-[60]">
-                <div className="max-w-7xl mx-auto px-4 py-2 flex flex-col gap-2">
+                <div className="max-w-7xl mx-auto px-1 md:px-4 py-2 flex flex-col gap-2">
                     <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                            <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 rounded-sm transition-colors">
+                        <div className="flex items-center justify-center gap-1">
+                            <button
+                                onClick={() => navigate(-1)}
+                                className="p-2 hover:bg-gray-100 rounded-sm transition-colors -ml-1 md:ml-0"
+                            >
                                 <ChevronLeft size={20} className="text-[#1A3B5D]" />
                             </button>
+
                             <div className="w-1 h-5 bg-[#00A3E1] rounded-sm"></div>
+
                             <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">
                                 {companyName}
                             </h1>
+
+                            {currentCategoryName && (
+                                <div className="md:hidden flex items-center justify-center gap-2">
+                                    <span className="text-gray-300 font-light text-sm">|</span>
+                                    <span className="text-[11px] font-bold text-slate-500 truncate max-w-[120px] uppercase tracking-[0.25em]">
+                                        {currentCategoryName}
+                                    </span>
+                                </div>
+                            )}
                         </div>
-                        <button onClick={() => navigate(`/checkout/${companyId}`)} className="flex items-center justify-center gap-2 bg-[#00A3E1] text-white py-2 px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative">
-                            <ShoppingCart size={14} />
-                            <span>Cart</span>
-                            {cartCount > 0 && <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[8px] w-4 h-4 rounded-sm flex items-center justify-center border-2 border-white">{cartCount}</span>}
+
+                        {/* Right Side Cart Button (Already optimized) */}
+                        <button
+                            onClick={() => navigate(`/checkout/${companyId}`)}
+                            className="flex items-center justify-center gap-2 bg-[#00A3E1] text-white py-2 px-3 md:px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative mr-1 md:mr-0"
+                        >
+                            <ShoppingCart size={16} />
+                            <span className="hidden md:inline">Cart</span>
+                            {cartCount > 0 && (
+                                <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[8px] w-4 h-4 rounded-sm flex items-center justify-center border-2 border-white">
+                                    {cartCount}
+                                </span>
+                            )}
                         </button>
                     </div>
                 </div>
             </header>
 
             <main className="p-3 md:p-6 space-y-4 flex-1 max-w-7xl mx-auto w-full pb-24">
-                <div className='flex items-center justify-center'>
+                <div className='hidden md:flex items-center justify-center'>
                     <h1 className="text-xs md:text-sm font-black text-[#00A3E1] uppercase tracking-tighter">{currentCategoryName}</h1>
                 </div>
                 <div className="relative group md:max-w-md md:mx-auto w-full">
@@ -316,7 +339,7 @@ const SharedProduct: React.FC = () => {
                                                     <button onClick={(e) => { e.stopPropagation(); updateQuantity(item.id!, 1); }} className="p-1.5 bg-white shadow-sm text-[#00A3E1] hover:bg-[#00A3E1] hover:text-white rounded-sm transition-all"><Plus size={12} strokeWidth={3} /></button>
                                                 </div>
                                             ) : (
-                                                <button onClick={(e) => { e.stopPropagation(); addToCart(item); }} className="w-full bg-[#00A3E1] text-white py-2 rounded-sm text-[9px] font-black uppercase tracking-widest shadow-sm active:scale-95 transition-all flex items-center justify-center gap-2">
+                                                <button onClick={(e) => { e.stopPropagation(); addToCart(item); }} className="w-full bg-[#00A3E1] text-white py-2 rounded-xs text-[9px] font-black uppercase tracking-widest shadow-sm active:scale-95 transition-all flex items-center justify-center gap-2">
                                                     <Plus size={12} /> Add to Cart
                                                 </button>
                                             )

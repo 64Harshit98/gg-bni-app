@@ -31,6 +31,7 @@ export interface PaymentCompletionData {
     partyAddress?: string;
     partyGST?: string;
     revDiscount?: number;
+    method?: string;
 }
 
 interface PaymentDrawerProps {
@@ -394,7 +395,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             <div className="relative w-full max-w-lg bg-gray-50 rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[90dvh] flex flex-col transform transition-transform duration-300 ease-out animate-slide-up" onClick={(e) => e.stopPropagation()}>
 
                 {/* Header */}
-                <div className="p-3 bg-white rounded-t-2xl border-b border-gray-200 sticky top-0 z-10 flex items-center justify-center relative shadow-sm">
+                <div className="p-3 bg-white rounded-t-2xl border-b border-gray-200 sticky top-0 z-10 flex items-center justify-center shadow-sm">
                     <div className="w-10 h-1 bg-gray-300 rounded-full absolute top-2"></div>
                     <button onClick={onClose} className="absolute left-4 p-1.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors">
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>

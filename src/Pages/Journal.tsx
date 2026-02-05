@@ -5,9 +5,11 @@ import {
   collection,
   query,
   onSnapshot,
+  orderBy,
   Timestamp,
   QuerySnapshot,
   doc,
+  getDoc,
   type DocumentData,
   runTransaction,
   increment,
@@ -24,10 +26,11 @@ import { Modal, PaymentModal } from '../constants/Modal';
 import { generatePdf } from '../UseComponents/pdfGenerator';
 import { getFirestoreOperations } from '../lib/ItemsFirebase';
 import { useSalesSettings } from '../context/SettingsContext';
-import { IconChevronDown, IconClose, IconFilter, IconSearch, IconDownload, IconPrint, IconScanCircle } from '../constants/Icons'; // Added IconScanCircle
+import { IconChevronDown, IconClose, IconFilter, IconSearch, IconDownload, IconPrint, IconScanCircle } from '../constants/Icons';
 import QRCode from 'react-qr-code';
 import { FiX } from 'react-icons/fi';
 
+// --- INTERFACES ---
 interface InvoiceItem {
   id: string;
   name: string;
@@ -41,6 +44,7 @@ interface InvoiceItem {
   hsnSac?: string;
   unit?: string;
   discount?: number;
+  manualDiscount?: number;
 }
 
 interface Invoice {
@@ -58,8 +62,10 @@ interface Invoice {
   dueAmount?: number;
   items?: InvoiceItem[];
   paymentMethods?: DocumentData;
+  returnHistory?: DocumentData[];
   salesmanId?: string | null;
   salesmanName?: string;
+  manualDiscount?: number;
 }
 
 const formatDate = (date: Date): string => {
@@ -84,8 +90,17 @@ const useJournalData = (companyId?: string) => {
       return;
     }
 
-    const salesQuery = query(collection(db, 'companies', companyId, 'sales'));
-    const purchasesQuery = query(collection(db, 'companies', companyId, 'purchases'));
+    setLoading(true);
+
+    const salesQuery = query(
+      collection(db, 'companies', companyId, 'sales'),
+      orderBy('createdAt', 'desc')
+    );
+
+    const purchasesQuery = query(
+      collection(db, 'companies', companyId, 'purchases'),
+      orderBy('createdAt', 'desc')
+    );
 
     const processSnapshot = (snapshot: QuerySnapshot, type: 'Credit' | 'Debit'): Invoice[] => {
       return snapshot.docs.map((doc) => {
@@ -102,6 +117,7 @@ const useJournalData = (companyId?: string) => {
           finalPrice: type === 'Credit' ? (Number(item.finalPrice) || 0) : (Number(item.purchasePrice) || 0),
           mrp: Number(item.mrp) || 0,
           discount: item.discount || 0,
+          manualDiscount: item.manualDiscount || 0,
           purchasePrice: item.purchasePrice || 0,
           barcode: item.barcode || '',
           stock: item.stock ?? item.Stock ?? 0,
@@ -115,11 +131,13 @@ const useJournalData = (companyId?: string) => {
           (sum: number, value: any) => sum + (typeof value === 'number' ? value : 0),
           0
         );
+        const returnHistory = data.returnHistory || [];
 
         return {
           id: doc.id,
           invoiceNumber: data.invoiceNumber || `#${doc.id.slice(0, 6).toUpperCase()}`,
           amount: data.totalAmount || calculatedTotal || 0,
+          manualDiscount: data.manualDiscount || 0,
           time: formatDate(createdAt),
           status: status,
           type: type,
@@ -131,44 +149,51 @@ const useJournalData = (companyId?: string) => {
           salesmanName: data.salesmanName || '',
           createdAt,
           dueAmount: dueAmount,
+          returnHistory: returnHistory,
           items: items,
           paymentMethods: paymentMethods,
         };
       });
     };
 
-    const unsubscribeSales = onSnapshot(salesQuery, (snapshot) => {
+    const unsubSales = onSnapshot(salesQuery, (snapshot) => {
       const salesData = processSnapshot(snapshot, 'Credit');
-      setInvoices((prev) => [...prev.filter((inv) => inv.type !== 'Credit'), ...salesData]);
+      setInvoices(prev => {
+        const withoutCredit = prev.filter(inv => inv.type !== 'Credit');
+        const combined = [...withoutCredit, ...salesData];
+        return combined.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      });
       setLoading(false);
-    }, () => {
-      setError("Failed to load sales data.");
+    }, (err) => {
+      console.error("Sales listener error:", err);
+      setError("Failed to load sales.");
       setLoading(false);
     });
 
-    const unsubscribePurchases = onSnapshot(purchasesQuery, (snapshot) => {
+    const unsubPurchases = onSnapshot(purchasesQuery, (snapshot) => {
       const purchasesData = processSnapshot(snapshot, 'Debit');
-      setInvoices((prev) => [...prev.filter((inv) => inv.type !== 'Debit'), ...purchasesData]);
-      setLoading(false);
-    },
-      () => {
-        setError("Failed to load purchase data.");
-        setLoading(false);
+      setInvoices(prev => {
+        const withoutDebit = prev.filter(inv => inv.type !== 'Debit');
+        const combined = [...withoutDebit, ...purchasesData];
+        return combined.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
       });
+      setLoading(false);
+    }, (err) => {
+      console.error("Purchases listener error:", err);
+      setError("Failed to load purchases.");
+      setLoading(false);
+    });
 
     return () => {
-      unsubscribeSales();
-      unsubscribePurchases();
+      unsubSales();
+      unsubPurchases();
     };
   }, [companyId]);
 
-  const sortedInvoices = useMemo(() => {
-    return invoices.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  }, [invoices]);
-
-  return { invoices: sortedInvoices, loading, error };
+  return { invoices, loading, error };
 };
 
+// --- MAIN COMPONENT ---
 const Journal: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'Paid' | 'Unpaid'>('Paid');
   const [activeType, setActiveType] = useState<'Debit' | 'Credit'>('Credit');
@@ -182,6 +207,9 @@ const Journal: React.FC = () => {
   const [invoiceToDelete, setInvoiceToDelete] = useState<Invoice | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
+  const [showCustomPicker, setShowCustomPicker] = useState(false);
 
   const { salesSettings } = useSalesSettings();
 
@@ -218,24 +246,41 @@ const Journal: React.FC = () => {
           case 'last7': return invoiceDate >= daysAgo(today, 7);
           case 'last15': return invoiceDate >= daysAgo(today, 15);
           case 'last30': return invoiceDate >= daysAgo(today, 30);
+          case 'custom':
+            if (!customStartDate || !customEndDate) return false;
+
+            const start = new Date(customStartDate);
+            start.setHours(0, 0, 0, 0);
+
+            const end = new Date(customEndDate);
+            end.setHours(23, 59, 59, 999);
+
+            return invoiceDate >= start && invoiceDate <= end;
+
           default: return true;
         }
       })
       .filter((invoice) => {
-        const lowerCaseQuery = searchQuery.toLowerCase();
-        const matchesDetails =
-          invoice.invoiceNumber.toLowerCase().includes(lowerCaseQuery) ||
-          invoice.partyName.toLowerCase().includes(lowerCaseQuery) ||
-          (invoice.partyNumber && invoice.partyNumber.includes(searchQuery));
+        const trimmedQuery = searchQuery.toLowerCase().trim();
+        if (!trimmedQuery) return true;
+        const searchTokens = trimmedQuery.split(/\s+/);
 
-        const matchesItems = invoice.items?.some(item =>
-          item.name.toLowerCase().includes(lowerCaseQuery)
-        );
+        return searchTokens.every((token) => {
 
-        return matchesDetails || matchesItems;
+          const matchesDetails =
+            invoice.invoiceNumber.toLowerCase().includes(token) ||
+            invoice.partyName.toLowerCase().includes(token) ||
+            (invoice.partyNumber && invoice.partyNumber.includes(token));
+
+          const matchesItems = invoice.items?.some(item =>
+            item.name.toLowerCase().includes(token)
+          );
+
+          return matchesDetails || matchesItems;
+        });
       })
       .filter((invoice) => invoice.type === activeType && invoice.status === activeTab);
-  }, [invoices, activeType, activeTab, searchQuery, activeDateFilter]);
+  }, [invoices, activeType, activeTab, searchQuery, activeDateFilter, customStartDate, customEndDate]);
 
   const selectedPeriodText = useMemo(() => {
     const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' };
@@ -249,18 +294,23 @@ const Journal: React.FC = () => {
       case 'last7': return `${formatDate(new Date(today.setDate(today.getDate() - 6)))} - ${formatDate(now)}`;
       case 'last15': return `${formatDate(new Date(today.setDate(today.getDate() - 14)))} - ${formatDate(now)}`;
       case 'last30': return `${formatDate(new Date(today.setDate(today.getDate() - 29)))} - ${formatDate(now)}`;
-      case 'all': return 'All Time';
+      case 'custom':
+        if (customStartDate && customEndDate) {
+          return `${new Date(customStartDate).toLocaleDateString('en-IN', options)} - ${new Date(customEndDate).toLocaleDateString('en-IN', options)}`;
+        }
+        return 'Select Custom Range';
+
       default: return 'Selected Period';
     }
-  }, [activeDateFilter]);
+  }, [activeDateFilter, customStartDate, customEndDate]);
 
   const dateFilters = [
-    { label: 'All Time', value: 'all' },
     { label: 'Today', value: 'today' },
     { label: 'Yesterday', value: 'yesterday' },
     { label: 'Last 7 Days', value: 'last7' },
     { label: 'Last 15 Days', value: 'last15' },
     { label: 'Last 30 Days', value: 'last30' },
+    { label: 'Custom Range', value: 'custom' },
   ];
 
   const handleDateFilterSelect = (value: string) => {
@@ -284,14 +334,19 @@ const Journal: React.FC = () => {
 
     try {
       const dbOps = getFirestoreOperations(currentUser.companyId);
-      const [businessInfo, fetchedItems] = await Promise.all([
+
+      const [businessInfo, fetchedItems, billSettingsSnap] = await Promise.all([
         dbOps.getBusinessInfo(),
-        dbOps.getItems(),
+        dbOps.syncItems(),
+        getDoc(doc(db, 'companies', currentUser.companyId, 'settings', 'bill'))
       ]);
+
+      const billSettings = billSettingsSnap.exists() ? billSettingsSnap.data() : {};
 
       const populatedItems = (invoice.items || []).map((item: any, index: number) => {
         const fullItem = fetchedItems.find((fi: any) => fi.id === item.id);
         const finalTaxRate = item.taxRate || item.tax || item.gstPercent || fullItem?.tax || 0;
+
         const itemAmount = (item.finalPrice !== undefined && item.finalPrice !== null)
           ? item.finalPrice
           : (item.mrp * item.quantity);
@@ -310,32 +365,45 @@ const Journal: React.FC = () => {
       });
 
       const dataForPdf = {
+        gstScheme: salesSettings?.gstScheme || '',
+        taxType: salesSettings?.taxType || '',
         companyName: businessInfo?.name || 'Your Company',
         companyAddress: businessInfo?.address || 'Your Address',
         companyContact: businessInfo?.phoneNumber || 'Your Phone',
         companyEmail: businessInfo?.email || '',
+        signatureBase64: billSettings.signatureBase64 || '',
+        companyGstin: billSettings.companyGstin || businessInfo?.gstin || '',
+        msmeNumber: billSettings.msmeNumber || '',
+        panNumber: billSettings.panNumber || '',
+
         billTo: {
           name: invoice.partyName,
           address: invoice.partyAddress || '',
           phone: invoice.partyNumber || '',
           gstin: invoice.partyGstin || '',
         },
+
         invoice: {
           number: invoice.invoiceNumber,
-          date: invoice.createdAt.toLocaleString('en-IN', {
+          date: new Date(invoice.createdAt).toLocaleString('en-IN', {
             day: 'numeric', month: 'short', year: 'numeric',
             hour: 'numeric', minute: 'numeric', hour12: true
           }),
           billedBy: salesSettings?.enableSalesmanSelection ? (invoice.salesmanName || 'Admin') : '',
+          roNumber: '',
         },
+
         items: populatedItems,
-        terms: 'Goods once sold will not be taken back.',
+
+        terms: billSettings.termsAndConditions || 'Goods once sold will not be taken back.',
         finalAmount: invoice.amount,
+
         bankDetails: {
-          accountName: businessInfo?.accountHolderName,
-          accountNumber: businessInfo?.accountNumber,
-          bankName: businessInfo?.bankName,
-          gstin: businessInfo?.gstin
+          accountName: billSettings.accountName || businessInfo?.accountHolderName,
+          accountNumber: billSettings.accountNumber || businessInfo?.accountNumber,
+          bankName: billSettings.bankName || businessInfo?.bankName,
+          ifsc: billSettings.ifscCode || '',
+          gstin: billSettings.companyGstin || businessInfo?.gstin
         }
       };
 
@@ -348,10 +416,9 @@ const Journal: React.FC = () => {
       setPdfGenerating(null);
     }
   };
-
   const handleShowQr = (invoice: Invoice) => {
-      setInvoiceToPrint(null); 
-      setShowQrModal(invoice);
+    setInvoiceToPrint(null);
+    setShowQrModal(invoice);
   };
 
   const promptDeleteInvoice = (invoice: Invoice) => {
@@ -451,6 +518,7 @@ const Journal: React.FC = () => {
       state: { prefilledItems: cleanItems }
     });
   };
+
   const totalUnpaidAmount = useMemo(() => {
     if (activeTab !== 'Unpaid') return 0;
 
@@ -473,7 +541,35 @@ const Journal: React.FC = () => {
 
         return (
           <CustomCard key={invoice.id} onClick={() => handleInvoiceClick(invoice.id)} className="cursor-pointer transition-shadow hover:shadow-md">
-            {/* ... (Existing Card Content) ... */}
+            <div className="flex justify-between items-end w-full mb-1 -mt-5 relative pointer-events-none">
+
+              {/* LEFT: Return History Badges */}
+              <div className="flex justify-start gap-1 flex-wrap max-w-[50%] pointer-events-auto">
+                {invoice.returnHistory && invoice.returnHistory.length > 0 && (
+                  invoice.returnHistory.map((historyItem: any, index: number) => (
+                    <span
+                      key={`return-${index}`}
+                      className="text-[8px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider bg-orange-50 text-orange-600 border-orange-200 whitespace-nowrap"
+                    >
+                      {historyItem.modeOfReturn || 'Return'}
+                    </span>
+                  ))
+                )}
+              </div>
+
+              {/* RIGHT: Payment Mode Badges */}
+              <div className="flex justify-end gap-1 flex-wrap max-w-[50%] text-right pointer-events-auto">
+                {activeModes.map(([mode]) => (
+                  <span
+                    key={mode}
+                    className="text-[8px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider bg-blue-50 text-blue-600 border-blue-100 whitespace-nowrap"
+                  >
+                    {mode === 'upi' ? 'UPI' : mode.replace(/_/g, ' ')}
+                  </span>
+                ))}
+              </div>
+
+            </div>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-base font-semibold text-slate-800">{invoice.invoiceNumber}</p>
@@ -588,8 +684,7 @@ const Journal: React.FC = () => {
               <button onClick={() => handlePdfAction(invoiceToPrint, ACTION.PRINT)} className="w-full bg-white text-gray-700 border border-gray-300 py-2.5 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
                 <IconPrint /> Print Directly
               </button>
-              
-              {/* --- NEW BUTTON: GENERATE QR CODE --- */}
+
               <button onClick={() => handleShowQr(invoiceToPrint)} className="w-full bg-gray-900 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2">
                 <IconScanCircle width={20} height={20} /> Generate QR Code
               </button>
@@ -598,48 +693,109 @@ const Journal: React.FC = () => {
         </div>
       )}
 
-      {/* --- QR CODE DISPLAY MODAL --- */}
       {showQrModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm flex flex-col items-center animate-in fade-in zoom-in duration-300 relative">
-                <button onClick={() => setShowQrModal(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
-                    <FiX size={24} />
-                </button>
-                
-                <h3 className="text-xl font-bold text-gray-800 mb-1">Download Bill</h3>
-                <p className="text-sm text-gray-500 mb-4">Invoice #{showQrModal.invoiceNumber}</p>
-                
-                <div className="bg-white p-2 border-2 border-gray-100 rounded-lg shadow-inner mb-4">
-                    <QRCode 
-                        value={`${window.location.origin}/download-bill/${currentUser?.companyId}/${showQrModal.id}`} 
-                        size={200}
-                        viewBox={`0 0 256 256`}
-                    />
-                </div>
-                
-                <p className="text-center text-sm text-gray-600 mb-4">
-                    Scan to download PDF
-                </p>
-                
-                <button 
-                    onClick={() => setShowQrModal(null)}
-                    className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
-                >
-                    Close
-                </button>
+          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm flex flex-col items-center animate-in fade-in zoom-in duration-300 relative">
+            <button onClick={() => setShowQrModal(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+              <FiX size={24} />
+            </button>
+
+            <h3 className="text-xl font-bold text-gray-800 mb-1">Download Bill</h3>
+            <p className="text-sm text-gray-500 mb-4">Invoice #{showQrModal.invoiceNumber}</p>
+
+            <div className="bg-white p-2 border-2 border-gray-100 rounded-lg shadow-inner mb-4">
+              <QRCode
+                value={`${window.location.origin}/download-bill/${currentUser?.companyId}/${showQrModal.id}`}
+                size={200}
+                viewBox={`0 0 256 256`}
+              />
             </div>
+
+            <p className="text-center text-sm text-gray-600 mb-4">
+              Scan to download PDF
+            </p>
+
+            <button
+              onClick={() => setShowQrModal(null)}
+              className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+            >
+              Close
+            </button>
+          </div>
         </div>
       )}
 
-      <div className="flex items-center justify-between p-2 px-2">
-        {/* ... (Existing Header and Search Logic) ... */}
+      <div className="flex items-center justify-between p-2 px-2 z-20 relative">
         <div className="flex flex-1 items-center">
           <button onClick={() => setShowSearch(!showSearch)} className="text-slate-500 hover:text-slate-800 transition-colors mr-4">
             {showSearch ? (
               <IconClose />) : (<IconSearch />)}
           </button>
           <div className="flex-1">
-            {!showSearch ? (<div> <h1 className="text-4xl font-light text-slate-800">Transactions</h1> <p className='text-center justify-center text-lg font-light text-slate-600'>{selectedPeriodText}</p> </div>) : (<input type="text" placeholder="Search by Invoice, Name, or Phone..." className="w-full text-xl font-light p-1 border-b-2 border-slate-300 focus:border-slate-800 outline-none transition-colors" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} autoFocus />)}
+            {!showSearch ? (
+              <div className="flex flex-col items-center relative z-20"> {/* Shared Parent Container */}
+
+                <h1 className="text-4xl font-light text-slate-800">Transactions</h1>
+
+                <div
+                  onClick={() => {
+                    if (showCustomPicker) {
+                      setShowCustomPicker(false);
+                    } else {
+                      setShowCustomPicker(true);
+                      setActiveDateFilter('custom');
+                    }
+                  }} className="flex items-center gap-2 cursor-pointer hover:bg-gray-200 px-3 py-1 rounded-full transition-colors select-none"
+                >
+                  <p className='text-center text-lg font-light text-slate-600'>
+                    {selectedPeriodText}
+                  </p>
+                  <IconChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${showCustomPicker ? 'rotate-180' : ''}`} />
+                </div>
+
+                {showCustomPicker && (
+                  <div className="absolute top-full bg-white shadow-xl border border-gray-200 rounded-lg p-4 z-50 min-w-[300px] flex flex-col gap-4 animate-in fade-in zoom-in duration-200 cursor-default">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex flex-col">
+                        <label className="text-center text-xs font-semibold text-gray-500 mb-1">From</label>
+                        <input
+                          type="date"
+                          value={customStartDate}
+                          onChange={(e) => {
+                            setCustomStartDate(e.target.value);
+                            setActiveDateFilter('custom');
+                          }}
+                          className="border border-gray-300 rounded-sm px-2 py-1.5 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div className="flex flex-col">
+                        <label className="text-center text-xs font-semibold text-gray-500 mb-1">To</label>
+                        <input
+                          type="date"
+                          value={customEndDate}
+                          onChange={(e) => {
+                            setCustomEndDate(e.target.value);
+                            setActiveDateFilter('custom');
+                          }}
+                          className="border border-gray-300 rounded-sm px-2 py-1.5 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-center text-center border-t border-gray-100 -mt-2 -mb-2">
+                      <button
+                        onClick={() => setShowCustomPicker(false)}
+                        className="flex-grow bg-black text-white text-sm px-4 py-2 rounded hover:bg-gray-800 transition-colors"
+                      >
+                        Apply
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <input type="text" placeholder="Search by Invoice, Name, or Phone..." className="w-full text-xl font-light p-1 border-b-2 border-slate-300 focus:border-slate-800 outline-none transition-colors" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} autoFocus />
+            )}
           </div>
         </div>
 
@@ -648,9 +804,35 @@ const Journal: React.FC = () => {
             <IconFilter />
           </button>
           {isFilterOpen && (
-            <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10 border">
+            <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-md shadow-lg z-10 border overflow-hidden">
               <ul className="py-1">
-                {dateFilters.map((filter) => (<li key={filter.value}> <button onClick={() => handleDateFilterSelect(filter.value)} className={`w-full text-left px-4 py-2 text-sm ${activeDateFilter === filter.value ? 'bg-slate-100 text-slate-900' : 'text-slate-700'} hover:bg-slate-50`}>{filter.label}</button> </li>))}
+                {dateFilters.map((filter) => (
+                  filter.value !== 'custom' && (
+                    <li key={filter.value}>
+                      <button
+                        onClick={() => {
+                          handleDateFilterSelect(filter.value);
+                          setIsFilterOpen(false);
+                        }}
+                        className={`w-full text-left px-4 py-2 text-sm ${activeDateFilter === filter.value ? 'bg-slate-100 text-slate-900' : 'text-slate-700'} hover:bg-slate-50`}
+                      >
+                        {filter.label}
+                      </button>
+                    </li>
+                  )
+                ))}
+                <li>
+                  <button
+                    onClick={() => {
+                      setActiveDateFilter('custom');
+                      setIsFilterOpen(false);
+                      setShowCustomPicker(true);
+                    }}
+                    className={`w-full text-left px-4 py-2 text-sm ${activeDateFilter === 'custom' ? 'bg-slate-100 text-slate-900' : 'text-slate-700'} hover:bg-slate-50`}
+                  >
+                    Custom Range
+                  </button>
+                </li>
               </ul>
             </div>
           )}

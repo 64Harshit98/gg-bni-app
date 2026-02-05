@@ -61,6 +61,11 @@ service cloud.firestore {
         allow read: if true;
         allow write: if isCompanyMember(companyId);
       }
+             match /settings/bill {
+        allow read: if true;
+        allow write: if isCompanyMember(companyId);
+      }
+      // =========================
       
       // =========================================================
       // AUTHENTICATED ONLY SECTIONS

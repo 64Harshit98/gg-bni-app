@@ -35,6 +35,7 @@ export interface SalesSettings {
     copyVoucherAfterSaving?: boolean;
     cartInsertionOrder?: 'top' | 'bottom';
     companyId?: string;
+    lockTaxToggle?: boolean;
 }
 
 
@@ -45,7 +46,7 @@ export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     enableSalesmanSelection: true,
     gstScheme: 'none',
     taxType: 'inclusive',
-
+    lockTaxToggle: false,
 
     enableRounding: true,
     roundingInterval: 1,
@@ -261,6 +262,18 @@ const SalesSettingsPage: React.FC = () => {
                                 </div>
                             </div>
                         )}
+                        <div className="flex items-start mt-2">
+                            <input
+                                type="checkbox"
+                                checked={settings.lockTaxToggle ?? false}
+                                onChange={(e) => handleCheckboxChange('lockTaxToggle', e.target.checked)}
+                                className="w-5 h-5 text-red-500 rounded focus:ring-red-500 mt-0.5"
+                            />
+                            <div className="ml-3">
+                                <label className="block text-sm font-bold text-gray-800">Lock Tax Mode</label>
+                                <p className="text-xs text-gray-600">Prevent cashiers from changing the tax mode (view only).</p>
+                            </div>
+                        </div>
 
                         <div className="flex items-center mb-2">
                             <input type="checkbox" id="enable-rounding" checked={settings.enableRounding ?? false} onChange={(e) => handleCheckboxChange('enableRounding', e.target.checked)} className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />

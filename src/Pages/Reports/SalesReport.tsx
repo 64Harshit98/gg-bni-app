@@ -1,159 +1,62 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
+import FilterSelect from './SalesReportComponents/FilterSelect';
 import { useNavigate } from 'react-router-dom';
-import { db } from '../../lib/Firebase';
 import {
-  collection,
-  query,
-  getDocs,
-  Timestamp,
-  orderBy,
-} from 'firebase/firestore';
-import { useAuth } from '../../context/auth-context';
+  formatDate,
+  formatDateForInput,
+} from './SalesReportComponents/salesReport.utils';
+import useSalesReport from './SalesReportComponents/useSalesReport';
+import { type SaleRecord } from './SalesReportComponents/salesReport.utils';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
+
 import { CustomCard } from '../../Components/CustomCard';
-import { CardVariant } from '../../enums';
+import { CardVariant, State } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
-// import { PaymentChart } from '../../Components/PaymentChart';
-// import { TopEntitiesList } from '../../Components/TopFiveEntities';
+
 import { IconClose } from '../../constants/Icons';
 import { getSalesColumns } from '../../constants/TableColoumns';
-
-// --- Data Types ---
-interface SalesItem {
-  name: string;
-  mrp: number;
-  quantity: number;
-}
-interface PaymentMethods {
-  [key: string]: number;
-}
-interface SaleRecord {
-  id: string;
-  partyName: string;
-  totalAmount: number;
-  paymentMethods: PaymentMethods;
-  createdAt: number;
-  items: SalesItem[];
-  [key: string]: any;
-}
-
-const formatDate = (timestamp: number): string => {
-  if (!timestamp) return 'N/A';
-  return new Date(timestamp).toLocaleDateString('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: '2-digit',
-  });
-};
-
-const formatDateForInput = (date: Date): string => {
-  return date.toISOString().split('T')[0];
-};
-
-const FilterSelect: React.FC<{
-  label?: string;
-  value: string;
-  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
-  children: React.ReactNode;
-}> = ({ label, value, onChange, children }) => (
-  <div className="flex-1 min-w-0">
-    {label && (
-      <label className="block text-xs text-center font-medium text-gray-600 mb-1">
-        {label}
-      </label>
-    )}
-    <select
-      value={value}
-      onChange={onChange}
-      className="w-full p-2.5 text-sm text-center bg-gray-50 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-    >
-      {children}
-    </select>
-  </div>
-);
+import ReportDetails from './SalesReportComponents/ReportDetails';
+import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
+import { Modal } from '../../constants/Modal';
 
 const SalesReport: React.FC = () => {
   const navigate = useNavigate();
-  const { currentUser, loading: authLoading } = useAuth();
-  const [sales, setSales] = useState<SaleRecord[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const [datePreset, setDatePreset] = useState<string>('today');
-  const [customStartDate, setCustomStartDate] = useState<string>('');
-  const [customEndDate, setCustomEndDate] = useState<string>('');
-  const [appliedFilters, setAppliedFilters] = useState<{
-    start: number;
-    end: number;
-  } | null>(null);
-  const [isListVisible, setIsListVisible] = useState(false);
-  const [sortConfig, setSortConfig] = useState<{
-    key: keyof SaleRecord;
-    direction: 'asc' | 'desc';
-  }>({ key: 'createdAt', direction: 'desc' });
+  const {
+    setDatePreset,
+    setCustomStartDate,
+    setCustomEndDate,
+    customStartDate,
+    customEndDate,
+    setAppliedFilters,
+    sortConfig,
+    setSortConfig,
+    appliedFilters,
+    sales,
+    isLoading,
+    error,
+    datePreset,
+    isListVisible,
+    setIsListVisible,
+    authLoading,
+  } = useSalesReport();
 
-  useEffect(() => {
-    const today = new Date();
-    const startDateStr = formatDateForInput(today);
-    const endDateStr = formatDateForInput(today);
-    setCustomStartDate(startDateStr);
-    setCustomEndDate(endDateStr);
-    const start = new Date(startDateStr);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(endDateStr);
-    end.setHours(23, 59, 59, 999);
-    setAppliedFilters({ start: start.getTime(), end: end.getTime() });
-  }, []);
+  /* ---------- LOCAL STATES (ADDED) ---------- */
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+  const [feedbackModal, setFeedbackModal] = useState({
+    isOpen: false,
+    type: State.INFO,
+    message: '',
+  });
 
-  useEffect(() => {
-    if (authLoading) return;
-    if (!currentUser?.companyId) {
-      setIsLoading(false);
-      setError('Company information not found. Please log in again.');
-      return;
-    }
-
-    const companyId = currentUser.companyId;
-
-    const fetchSales = async () => {
-      setIsLoading(true);
-      try {
-        const q = query(
-          collection(db, 'companies', companyId, 'sales'),
-          orderBy('createdAt', 'desc'),
-        );
-
-        const querySnapshot = await getDocs(q);
-        const fetchedSales: SaleRecord[] = querySnapshot.docs.map((doc) => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            partyName: data.partyName || 'N/A',
-            totalAmount: data.totalAmount || 0,
-            paymentMethods: data.paymentMethods || {},
-            createdAt:
-              data.createdAt instanceof Timestamp
-                ? data.createdAt.toMillis()
-                : Date.now(),
-            items: data.items || [],
-          };
-        });
-        setSales(fetchedSales);
-      } catch (err) {
-        console.error('Error fetching sales:', err);
-        setError('Failed to load sales report.');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchSales();
-  }, [currentUser, authLoading]);
-
+  /* ---------- DATE PRESET ---------- */
   const handleDatePresetChange = (preset: string) => {
     setDatePreset(preset);
-    let start = new Date();
-    let end = new Date();
+    const start = new Date();
+    const end = new Date();
+
     switch (preset) {
       case 'today':
         break;
@@ -170,18 +73,22 @@ const SalesReport: React.FC = () => {
       case 'custom':
         return;
     }
+
     setCustomStartDate(formatDateForInput(start));
     setCustomEndDate(formatDateForInput(end));
   };
 
   const handleApplyFilters = () => {
-    let start = customStartDate ? new Date(customStartDate) : new Date(0);
+    const start = customStartDate ? new Date(customStartDate) : new Date(0);
     start.setHours(0, 0, 0, 0);
-    let end = customEndDate ? new Date(customEndDate) : new Date();
+
+    const end = customEndDate ? new Date(customEndDate) : new Date();
     end.setHours(23, 59, 59, 999);
+
     setAppliedFilters({ start: start.getTime(), end: end.getTime() });
   };
 
+  /* ---------- SORT ---------- */
   const handleSort = (key: keyof SaleRecord) => {
     let direction: 'asc' | 'desc' = 'asc';
     if (sortConfig.key === key && sortConfig.direction === 'asc') {
@@ -190,6 +97,7 @@ const SalesReport: React.FC = () => {
     setSortConfig({ key, direction });
   };
 
+  /* ---------- FILTER + SUMMARY ---------- */
   const { filteredSales, summary } = useMemo(() => {
     if (!appliedFilters) {
       return {
@@ -203,7 +111,7 @@ const SalesReport: React.FC = () => {
       };
     }
 
-    let newFilteredSales = sales.filter(
+    const newFilteredSales = sales.filter(
       (sale) =>
         sale.createdAt >= appliedFilters.start &&
         sale.createdAt <= appliedFilters.end,
@@ -212,6 +120,7 @@ const SalesReport: React.FC = () => {
     newFilteredSales.sort((a, b) => {
       const key = sortConfig.key;
       const direction = sortConfig.direction === 'asc' ? 1 : -1;
+
       if (key === 'items') {
         const totalItemsA = a.items.reduce(
           (sum, item) => sum + item.quantity,
@@ -223,12 +132,15 @@ const SalesReport: React.FC = () => {
         );
         return (totalItemsA - totalItemsB) * direction;
       }
+
       const valA = a[key] ?? '';
       const valB = b[key] ?? '';
+
       if (typeof valA === 'string' && typeof valB === 'string')
         return valA.localeCompare(valB) * direction;
       if (typeof valA === 'number' && typeof valB === 'number')
         return (valA - valB) * direction;
+
       return 0;
     });
 
@@ -236,10 +148,12 @@ const SalesReport: React.FC = () => {
       (acc, sale) => acc + sale.totalAmount,
       0,
     );
+
     const totalItemsSold = newFilteredSales.reduce(
       (acc, sale) => acc + sale.items.reduce((iAcc, i) => iAcc + i.quantity, 0),
       0,
     );
+
     const totalTransactions = newFilteredSales.length;
     const averageSaleValue =
       totalTransactions > 0 ? totalSales / totalTransactions : 0;
@@ -255,18 +169,24 @@ const SalesReport: React.FC = () => {
     };
   }, [appliedFilters, sales, sortConfig]);
 
+  /* ---------- PDF DOWNLOAD (UNCHANGED) ---------- */
   const downloadAsPdf = () => {
     if (!appliedFilters) return;
+
     const doc = new jsPDF();
     doc.setFontSize(18);
     doc.text('Sales Report', 14, 22);
     doc.setFontSize(11);
     doc.setTextColor(100);
+
     doc.text(
-      `Date Range: ${formatDate(appliedFilters.start)} to ${formatDate(appliedFilters.end)}`,
+      `Date Range: ${formatDate(appliedFilters.start)} to ${formatDate(
+        appliedFilters.end,
+      )}`,
       14,
       29,
     );
+
     autoTable(doc, {
       startY: 35,
       head: [['Date', 'Party Name', 'Items', 'Amount']],
@@ -286,17 +206,70 @@ const SalesReport: React.FC = () => {
       ],
       footStyles: { fontStyle: 'bold' },
     });
+
     doc.save(`sales_report_${formatDateForInput(new Date())}.pdf`);
+  };
+
+  /* ---------- EXCEL DOWNLOAD (NEW) ---------- */
+  const downloadAsExcel = () => {
+    try {
+      const excelData = filteredSales.map((sale) => ({
+        Date: formatDate(sale.createdAt),
+        'Party Name': sale.partyName,
+        Items: sale.items.reduce((sum, i) => sum + i.quantity, 0),
+        Amount: sale.totalAmount,
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(excelData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Sales Report');
+
+      XLSX.writeFile(
+        workbook,
+        `sales_report_${formatDateForInput(new Date())}.xlsx`,
+      );
+
+      setIsDownloadModalOpen(false);
+      setFeedbackModal({
+        isOpen: true,
+        type: State.SUCCESS,
+        message: 'Excel downloaded successfully!',
+      });
+    } catch {
+      setFeedbackModal({
+        isOpen: true,
+        type: State.ERROR,
+        message: 'Failed to generate Excel file.',
+      });
+    }
   };
 
   const tableColumns = useMemo(() => getSalesColumns(), []);
 
+  /* ---------- LOAD STATES ---------- */
   if (isLoading || authLoading)
     return <div className="p-4 text-center">Loading...</div>;
   if (error) return <div className="p-4 text-center text-red-500">{error}</div>;
 
   return (
     <div className="min-h-screen bg-gray-100 p-2 pb-16">
+      {feedbackModal.isOpen && (
+        <Modal
+          type={feedbackModal.type}
+          message={feedbackModal.message}
+          onClose={() => setFeedbackModal((p) => ({ ...p, isOpen: false }))}
+          showConfirmButton={false}
+        />
+      )}
+
+      <DownloadChoiceModal
+        isOpen={isDownloadModalOpen}
+        onClose={() => setIsDownloadModalOpen(false)}
+        onDownloadPdf={downloadAsPdf}
+        onDownloadExcel={downloadAsExcel}
+      />
+
+      {/* HEADER */}
       <div className="flex items-center justify-between pb-3 border-b mb-2">
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
           Sales Report
@@ -306,6 +279,7 @@ const SalesReport: React.FC = () => {
         </button>
       </div>
 
+      {/* FILTERS */}
       <div className="bg-white p-2 rounded-lg shadow-md mb-2">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <FilterSelect
@@ -318,7 +292,8 @@ const SalesReport: React.FC = () => {
             <option value="last30">Last 30 Days</option>
             <option value="custom">Custom</option>
           </FilterSelect>
-          <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
+
+          <div className="grid grid-cols-2 gap-4">
             <input
               type="date"
               value={customStartDate}
@@ -327,7 +302,6 @@ const SalesReport: React.FC = () => {
                 setDatePreset('custom');
               }}
               className="w-full p-2 text-sm bg-gray-50 border rounded-md"
-              placeholder="Start Date"
             />
             <input
               type="date"
@@ -337,71 +311,61 @@ const SalesReport: React.FC = () => {
                 setDatePreset('custom');
               }}
               className="w-full p-2 text-sm bg-gray-50 border rounded-md"
-              placeholder="End Date"
             />
           </div>
         </div>
+
         <button
           onClick={handleApplyFilters}
-          className="w-full mt-2 px-3 py-1 bg-blue-600 text-white text-lg font-semibold rounded-lg shadow-sm hover:bg-blue-700"
+          className="w-full mt-2 px-3 py-1 bg-blue-600 text-white text-lg font-semibold rounded-lg hover:bg-blue-700"
         >
           Apply
         </button>
       </div>
 
+      {/* SUMMARY */}
       <div className="grid grid-cols-2 gap-2 mb-2">
         <CustomCard
           variant={CardVariant.Summary}
           title="Total Sales"
-          value={`₹${Math.round(summary.totalSales || 0).toLocaleString('en-IN')}`}
+          value={`₹${Math.round(summary.totalSales).toLocaleString('en-IN')}`}
         />
         <CustomCard
           variant={CardVariant.Summary}
           title="Total Bills"
-          value={summary.totalTransactions?.toString() || '0'}
+          value={summary.totalTransactions.toString()}
         />
         <CustomCard
           variant={CardVariant.Summary}
           title="Items Sold"
-          value={summary.totalItemsSold?.toString() || '0'}
+          value={summary.totalItemsSold.toString()}
         />
         <CustomCard
           variant={CardVariant.Summary}
           title="Avg Sale Value"
-          value={`₹${Math.round(summary.averageSaleValue || 0).toLocaleString('en-IN')}`}
+          value={`₹${Math.round(summary.averageSaleValue).toLocaleString(
+            'en-IN',
+          )}`}
         />
       </div>
-      {/* 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 mb-2">
-        <div className="lg:col-span-2">
-          <TopEntitiesList 
-             isDataVisible={true} 
-             type="sales" 
-             filters={appliedFilters} 
-             titleOverride="Top 5 Customers"
-          />
-        </div>
-        <PaymentChart isDataVisible={true} type="sales" filters={appliedFilters} />
-      </div> */}
 
-      <div className="bg-white p-4 rounded-lg shadow-md flex justify-between items-center">
-        <h2 className="text-lg font-semibold text-gray-700">Report Details</h2>
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={() => setIsListVisible(!isListVisible)}
-            className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition"
-          >
-            {isListVisible ? 'Hide List' : 'Show List'}
-          </button>
-          <button
-            onClick={downloadAsPdf}
-            disabled={filteredSales.length === 0}
-            className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 "
-          >
-            Download PDF
-          </button>
-        </div>
-      </div>
+      {/* REPORT DETAILS */}
+      <ReportDetails
+        downloadAsPdf={() => {
+          if (filteredSales.length === 0) {
+            setFeedbackModal({
+              isOpen: true,
+              type: State.INFO,
+              message: 'No data available to download.',
+            });
+          } else {
+            setIsDownloadModalOpen(true);
+          }
+        }}
+        filteredSales={filteredSales}
+        isListVisible={isListVisible}
+        setIsListVisible={setIsListVisible}
+      />
 
       {isListVisible && (
         <CustomTable<SaleRecord>

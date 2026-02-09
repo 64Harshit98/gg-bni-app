@@ -20,6 +20,7 @@ export const ROUTES = {
   ITEM_REPORT: '/item-report',
   RESTOCK_REPORT: '/restock-report',
   TAX_REPORT: '/tax-report',
+  CUSTOMER_REPORT: '/customer-report',
   SALES_REPORT: '/sales-report',
   PURCHASE_REPORT: '/purchase-report',
   PNL_REPORT: '/pnl-report',
@@ -32,6 +33,7 @@ export const ROUTES = {
   PURCHASESETTING: '/purchase-setting',
   HISTORY: '/history',
   USERSETTING: '/user-setting',
+  BILLSETTING: '/bill-setting',
   ITEMSETTING: '/item-setting',
   CHOME: '/catalogue-home',
   MYSHOP: 'my-shop',
@@ -43,4 +45,7 @@ export const ROUTES = {
   CATALOGUE_SALES: 'sales',
   SUBSCRIPTION_PAGE: '/subscription',
   SUPPORT_PAGE: '/support',
+  ADD_PRODUCT: 'add-product',
+  CAT_ITEM_GROUP: ' item-groups',
+  MANAGE_ITEMS: '/manage-items',
 };

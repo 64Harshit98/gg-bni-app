@@ -14,3 +14,4 @@ export const CatItems = [
         label: 'Account',
     },
 ];
+// Catalouge Routes

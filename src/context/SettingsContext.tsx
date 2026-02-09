@@ -33,6 +33,9 @@ export interface SalesSettings {
     copyVoucherAfterSaving?: boolean;
     enforceMRP?: boolean;
     enableBarcodePrinting?: boolean;
+    cartInsertionOrder?: 'top' | 'bottom';
+    lockTaxToggle?: boolean;
+
 }
 
 export interface PurchaseSettings {
@@ -104,6 +107,8 @@ const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     voucherName: 'Sales',
     voucherPrefix: 'SLS-',
     currentVoucherNumber: 1,
+    cartInsertionOrder: 'top',
+    lockTaxToggle: false,
     defaultDiscount: 0,
     copyVoucherAfterSaving: false,
     enforceMRP: false,

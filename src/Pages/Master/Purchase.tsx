@@ -21,7 +21,10 @@ import { GenericBillFooter } from '../../Components/Footer';
 import { IconScanCircle, IconScan } from '../../constants/Icons';
 
 interface PurchaseItem extends Omit<SalesItem, 'finalPrice' | 'effectiveUnitPrice' | 'discountPercentage'> {
-  purchasePrice: number;
+  purchasePrice: number | string;
+  originalPurchasePrice?: number;
+  // This field specifically tracks Purchase Discount
+  purchasediscount?: number;
   barcode?: string;
   taxRate?: number;
   taxType?: 'inclusive' | 'exclusive' | 'none';
@@ -53,6 +56,7 @@ interface PurchaseDocumentData {
   companyId: string;
   voucherName?: string;
   roundingOff?: number;
+  manualDiscount?: number;
   updatedAt?: any;
 }
 type Purchase = PurchaseDocumentData & { id: string };
@@ -151,7 +155,7 @@ const PurchasePage: React.FC = () => {
 
     const initializePage = async () => {
       try {
-        const fetchedItems = await dbOperations.getItems();
+        const fetchedItems = await dbOperations.syncItems();
 
         let groupMap: Record<string, string> = {};
         if (currentUser?.companyId) {
@@ -170,6 +174,7 @@ const PurchasePage: React.FC = () => {
         if (purchaseIdToEdit) {
           const purchaseDocRef = doc(db, 'companies', companyId, 'purchases', purchaseIdToEdit);
           const docSnap = await getDoc(purchaseDocRef);
+
           if (docSnap.exists()) {
             const purchaseData = { id: docSnap.id, ...docSnap.data() } as Purchase;
             setInvoiceNumber(purchaseData.invoiceNumber);
@@ -183,25 +188,30 @@ const PurchasePage: React.FC = () => {
 
             const validatedItems = (purchaseData.items || []).map((item: any) => {
               const masterItem = fetchedItems.find(i => i.id === (item.productId || item.id));
-             const recoveredTaxRate = (item.taxRate && item.taxRate > 0)
-    ? item.taxRate
-    : (masterItem?.tax ?? masterItem?.taxRate ?? 0);
+              const recoveredTaxRate = (item.taxRate && item.taxRate > 0)
+                ? item.taxRate
+                : (masterItem?.tax ?? masterItem?.taxRate ?? 0);
+
+              // Use the saved transaction discount, NOT master item sale discount
+              const transactionDiscount = item.discount || 0;
 
               return {
                 id: item.id || crypto.randomUUID(),
                 name: item.name || 'Unknown Item',
                 purchasePrice: item.purchasePrice || 0,
+                originalPurchasePrice: masterItem?.purchasePrice || 0,
                 quantity: item.quantity || 1,
                 mrp: item.mrp || 0,
-                discount: item.discount || 0,
+                discount: transactionDiscount,
+                purchasediscount: transactionDiscount,
                 barcode: item.barcode || '',
-                taxRate: recoveredTaxRate, 
+                taxRate: recoveredTaxRate,
                 taxType: item.taxType,
                 taxAmount: item.taxAmount,
                 taxableAmount: item.taxableAmount,
                 stock: item.stock ?? item.Stock ?? 0,
                 productId: item.productId || item.id,
-                isEditable: true
+                isEditable: false
               };
             });
 
@@ -231,17 +241,142 @@ const PurchasePage: React.FC = () => {
   const cartItemsAdapter = useMemo(() => {
     return items.map(item => ({
       ...item,
+      purchasePrice: Number(item.purchasePrice || 0),
       customPrice: item.purchasePrice,
-      isEditable: true
+      // GenericCartList will display this as "Discount"
+      discount: item.purchasediscount ?? item.discount ?? 0,
+      isEditable: item.isEditable ?? true
     }));
   }, [items]);
 
+  // --- LOGIC 1: ADD ITEM ---
+  const addItemToCart = (itemToAdd: Item) => {
+    if (!itemToAdd || !itemToAdd.id) {
+      setModal({ message: "Cannot add invalid item.", type: State.ERROR });
+      return;
+    }
+
+    const resolvedTax = itemToAdd.tax ?? itemToAdd.taxRate ?? 0;
+
+    // 1. Extract Values
+    const mrp = Number(itemToAdd.mrp || 0);
+    const masterPurchasePrice = Number(itemToAdd.purchasePrice || 0);
+
+    // FIX: Look ONLY for 'purchasediscount'. Ignore 'discount' (Sale Discount).
+    const masterPurchaseDiscount = (itemToAdd as any).purchasediscount || 0;
+    const globalDefaultDiscount = purchaseSettings?.defaultDiscount ?? 0;
+
+    let finalNetPrice = 0;
+    let calculatedDiscount = 0;
+
+    // 2. Logic Implementation
+    if (masterPurchasePrice > 0) {
+      // Priority 1: Master Purchase Price exists
+      finalNetPrice = masterPurchasePrice;
+      if (mrp > 0) {
+        calculatedDiscount = ((mrp - masterPurchasePrice) / mrp) * 100;
+      }
+    } else if (masterPurchaseDiscount > 0) {
+      // Priority 2: Master Purchase Discount exists
+      calculatedDiscount = masterPurchaseDiscount;
+      finalNetPrice = mrp * (1 - (masterPurchaseDiscount / 100));
+    } else if (globalDefaultDiscount > 0 && mrp > 0) {
+      // Priority 3: Global Default Discount exists
+      calculatedDiscount = globalDefaultDiscount;
+      finalNetPrice = mrp * (1 - (globalDefaultDiscount / 100));
+    } else {
+      // Priority 4: No price, no purchase discount -> 0
+      finalNetPrice = 0;
+      calculatedDiscount = 0;
+    }
+
+    // 3. Apply Rounding
+    const isRoundingEnabled = purchaseSettings?.roundingOff ?? true;
+    finalNetPrice = applyPurchaseRounding(finalNetPrice, isRoundingEnabled);
+
+    setItems((prevItems) => [
+      {
+        id: crypto.randomUUID(),
+        productId: itemToAdd.id!,
+        name: itemToAdd.name || 'Unnamed Item',
+        purchasePrice: finalNetPrice,
+        originalPurchasePrice: masterPurchasePrice,
+        mrp: mrp,
+        barcode: itemToAdd.barcode || '',
+        quantity: 1,
+        // Set both to be safe, but 'purchasediscount' is the semantic one
+        discount: parseFloat(calculatedDiscount.toFixed(2)),
+        purchasediscount: parseFloat(calculatedDiscount.toFixed(2)),
+        taxRate: resolvedTax,
+        stock: itemToAdd.stock || (itemToAdd as any).Stock || 0,
+        isEditable: true
+      },
+      ...prevItems,
+    ]);
+  };
+
+  // --- LOGIC 2: HANDLE PRICE CHANGE (Typing) ---
   const handlePriceChange = (id: string, val: string) => {
     if (val === '' || /^[0-9]*\.?[0-9]*$/.test(val)) {
       setItems(prev => prev.map(item =>
-        item.id === id ? { ...item, purchasePrice: parseFloat(val) || 0 } : item
+        item.id === id ? { ...item, purchasePrice: val } : item
       ));
     }
+  };
+
+  // --- LOGIC 3: HANDLE DISCOUNT CHANGE (Calc Price from MRP) ---
+  const handleDiscountChange = (id: string, v: number | string) => {
+    const n = typeof v === 'string' ? parseFloat(v) : v;
+    const safeDiscount = isNaN(n) ? 0 : n;
+
+    setItems(prev => prev.map(i => {
+      if (i.id === id) {
+        const basePrice = (i.mrp && i.mrp > 0) ? i.mrp : (i.originalPurchasePrice || 0);
+
+        let newPrice = basePrice * (1 - safeDiscount / 100);
+
+        const isRoundingEnabled = purchaseSettings?.roundingOff ?? true;
+        newPrice = applyPurchaseRounding(newPrice, isRoundingEnabled);
+
+        return {
+          ...i,
+          discount: safeDiscount,
+          purchasediscount: safeDiscount,
+          purchasePrice: newPrice
+        };
+      }
+      return i;
+    }));
+  };
+
+  // --- LOGIC 4: HANDLE PRICE BLUR (Calc Discount from MRP) ---
+  const handlePriceBlur = (id: string) => {
+    setItems(prev => prev.map(i => {
+      if (i.id === id) {
+        const currentPriceVal = parseFloat(String(i.purchasePrice));
+
+        if (i.purchasePrice === '' || isNaN(currentPriceVal)) {
+          return { ...i, purchasePrice: 0 };
+        }
+
+        let d = 0;
+        const basePrice = (i.mrp && i.mrp > 0) ? i.mrp : (i.originalPurchasePrice || 0);
+
+        if (basePrice > 0) {
+          d = ((basePrice - currentPriceVal) / basePrice) * 100;
+        }
+
+        const finalDiscount = parseFloat(d.toFixed(2));
+
+        return {
+          ...i,
+          purchasePrice: currentPriceVal,
+          discount: finalDiscount,
+          purchasediscount: finalDiscount
+        };
+      }
+      return i;
+    }));
   };
 
   const categories = useMemo(() => {
@@ -268,32 +403,6 @@ const PurchasePage: React.FC = () => {
     });
   }, [availableItems, selectedCategory, gridSearchQuery, items]);
 
-  const addItemToCart = (itemToAdd: Item) => {
-    if (!itemToAdd || !itemToAdd.id) {
-      setModal({ message: "Cannot add invalid item.", type: State.ERROR });
-      return;
-    }
-    const defaultDiscount = purchaseSettings?.defaultDiscount ?? 0;
-const resolvedTax = itemToAdd.tax ?? itemToAdd.taxRate ?? 0;
-    
-    setItems((prevItems) => [
-      {
-        id: crypto.randomUUID(),
-        productId: itemToAdd.id!,
-        name: itemToAdd.name || 'Unnamed Item',
-        purchasePrice: itemToAdd.purchasePrice || 0,
-        mrp: itemToAdd.mrp || 0,
-        barcode: itemToAdd.barcode || '',
-        quantity: 1,
-        discount: defaultDiscount,
-        taxRate: resolvedTax,
-        stock: itemToAdd.stock || (itemToAdd as any).Stock || 0,
-        isEditable: true
-      },
-      ...prevItems,
-    ]);
-  };
-
   const {
     subtotal,
     taxableAmount,
@@ -304,7 +413,7 @@ const resolvedTax = itemToAdd.tax ?? itemToAdd.taxRate ?? 0;
     totalQuantity
   } = useMemo(() => {
     const gstScheme = purchaseSettings?.gstScheme ?? 'none';
-    const taxType = billTaxType; 
+    const taxType = billTaxType;
     const isRoundingEnabled = purchaseSettings?.roundingOff ?? true;
 
     let mrpTotalAgg = 0;
@@ -314,15 +423,15 @@ const resolvedTax = itemToAdd.tax ?? itemToAdd.taxRate ?? 0;
     let finalAmountAggPreRounding = 0;
     let qtyAgg = 0;
 
-    
     items.forEach(item => {
-      const purchasePrice = item.purchasePrice || 0;
+      const purchasePrice = Number(item.purchasePrice || 0);
       const quantity = item.quantity || 1;
       const itemTaxRate = item.taxRate || 0;
       const mrp = item.mrp || 0;
 
       qtyAgg += quantity;
       mrpTotalAgg += mrp * quantity;
+
       const itemTotalPurchasePrice = purchasePrice * quantity;
       purchasePriceTotalAgg += itemTotalPurchasePrice;
 
@@ -355,20 +464,18 @@ const resolvedTax = itemToAdd.tax ?? itemToAdd.taxRate ?? 0;
     const roundedAmount = applyPurchaseRounding(finalAmountAggPreRounding, isRoundingEnabled);
     const currentRoundingOffAmount = roundedAmount - finalAmountAggPreRounding;
     const currentTotalDiscount = mrpTotalAgg - purchasePriceTotalAgg;
-    
 
     return {
-      subtotal: purchasePriceTotalAgg,
+      subtotal: totalTaxableBaseAgg,
       totalDiscount: currentTotalDiscount > 0 ? currentTotalDiscount : 0,
       taxableAmount: totalTaxableBaseAgg,
       taxAmount: totalTaxAgg,
       roundingOffAmount: currentRoundingOffAmount,
       finalAmount: roundedAmount,
       totalQuantity: qtyAgg
-      
     };
-  }, [items, purchaseSettings, billTaxType]); 
-  
+  }, [items, purchaseSettings, billTaxType]);
+
 
   const handleQuantityChange = (id: string, newQuantity: number) => {
     setItems((prevItems) =>
@@ -435,7 +542,7 @@ const resolvedTax = itemToAdd.tax ?? itemToAdd.taxRate ?? 0;
 
     const formatItemsForDB = (itemsToFormat: PurchaseItem[]): PurchaseItem[] => {
       return itemsToFormat.map((item) => {
-        const purchasePrice = item.purchasePrice || 0;
+        const purchasePrice = Number(item.purchasePrice || 0);
         const quantity = item.quantity || 1;
         const itemTaxRate = finalTaxType === 'none' ? 0 : (item.taxRate || 0);
 
@@ -454,11 +561,14 @@ const resolvedTax = itemToAdd.tax ?? itemToAdd.taxRate ?? 0;
           itemTax = 0;
         }
 
-        const { customPrice, isEditable, ...dbItem } = item;
+        const { customPrice, isEditable, originalPurchasePrice, purchasediscount, ...dbItem } = item;
 
         return {
           ...dbItem,
           id: item.productId || item.id,
+          purchasePrice: purchasePrice,
+          // Persist purchase discount specifically
+          discount: item.purchasediscount ?? item.discount ?? 0,
           taxableAmount: parseFloat(itemTaxableBase.toFixed(2)),
           taxAmount: parseFloat(itemTax.toFixed(2)),
           taxRate: itemTaxRate,
@@ -488,6 +598,9 @@ const resolvedTax = itemToAdd.tax ?? itemToAdd.taxRate ?? 0;
     try {
       const finalInvoiceNumber = invoiceNumber.trim();
 
+      const manualDiscount = completionData.discount || 0;
+      const finalTotalAmount = Math.max(0, finalAmount - manualDiscount);
+
       await runTransaction(db, async (transaction) => {
         const purchaseData: Omit<PurchaseDocumentData, 'id'> = {
           userId: currentUser.uid,
@@ -504,7 +617,8 @@ const resolvedTax = itemToAdd.tax ?? itemToAdd.taxRate ?? 0;
           gstScheme: gstScheme,
           taxType: finalTaxType,
           roundingOff: roundingOffAmount,
-          totalAmount: finalAmount,
+          manualDiscount: manualDiscount,
+          totalAmount: finalTotalAmount,
           paymentMethods: completionData.paymentDetails,
           createdAt: serverTimestamp(),
           companyId: companyId,
@@ -570,6 +684,9 @@ const resolvedTax = itemToAdd.tax ?? itemToAdd.taxRate ?? 0;
     const companyId = currentUser.companyId;
 
     try {
+      const manualDiscount = completionData.discount || 0;
+      const finalTotalAmount = Math.max(0, finalAmount - manualDiscount);
+
       await runTransaction(db, async (transaction) => {
         const purchaseRef = doc(db, 'companies', companyId, 'purchases', purchaseId);
         const purchaseDoc = await transaction.get(purchaseRef);
@@ -610,7 +727,8 @@ const resolvedTax = itemToAdd.tax ?? itemToAdd.taxRate ?? 0;
           gstScheme: gstScheme,
           taxType: finalTaxType,
           roundingOff: roundingOffAmount,
-          totalAmount: finalAmount,
+          manualDiscount: manualDiscount,
+          totalAmount: finalTotalAmount,
           paymentMethods: completionData.paymentDetails,
           updatedAt: serverTimestamp(),
         };
@@ -652,7 +770,8 @@ const resolvedTax = itemToAdd.tax ?? itemToAdd.taxRate ?? 0;
     if (showPrintQrModal) {
       const itemsForPrint = showPrintQrModal.map(item => ({
         ...item,
-        id: item.productId || item.id
+        id: item.productId || item.id,
+        purchasePrice: Number(item.purchasePrice || 0) // Ensure number for QR print
       }));
       navigate(ROUTES.PRINTQR, { state: { prefilledItems: itemsForPrint } });
       setShowPrintQrModal(null);
@@ -699,7 +818,7 @@ const resolvedTax = itemToAdd.tax ?? itemToAdd.taxRate ?? 0;
           <input type="text" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-24 text-sm outline-none transition-colors" />
         </div>
       </div>
-      
+
       {!editModeData && (
         <div className="flex items-center justify-center gap-6">
           <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.PURCHASE)} active={isActive(ROUTES.PURCHASE)}>Purchase</CustomButton>
@@ -725,15 +844,15 @@ const resolvedTax = itemToAdd.tax ?? itemToAdd.taxRate ?? 0;
           <div className="flex overflow-x-auto whitespace-nowrap p-2 gap-2 bg-white border-b border-gray-200 scrollbar-hide"> {categories.map(catId => (<CustomButton key={catId} onClick={() => setSelectedCategory(catId)} variant={selectedCategory === catId ? Variant.Filled : Variant.Outline} className={`text-sm flex-shrink-0 ${selectedCategory === catId ? 'bg-blue-600 border-blue-600 text-white' : 'border-gray-300 text-gray-700'}`} >{itemGroupMap[catId] || catId}</CustomButton>))} </div>
         </div>
         <div className="flex-1 p-3 overflow-y-auto grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 content-start bg-gray-100 pb-20">
-             {sortedGridItems.length === 0 ? <div className="col-span-full text-center text-gray-500 mt-10">No items found</div> : (sortedGridItems.map(item => {
-              const matchingCartItems = items.filter(i => i.productId === item.id);
-              const lastAddedCartItem = matchingCartItems[matchingCartItems.length - 1];
-              const isSelected = matchingCartItems.length > 0;
-              const quantity = lastAddedCartItem?.quantity || 0;
-              return (<div key={item.id} onClick={() => addItemToCart(item)} className={`p-2 rounded shadow-sm border transition-all flex flex-col justify-between text-center relative select-none cursor-pointer ${isSelected ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500' : 'bg-white border-gray-200 hover:shadow-md hover:border-blue-400'}`}> <div className="w-full flex flex-col items-center pt-1 px-1 pointer-events-none"> <span className="text-sm font-bold text-gray-800 leading-tight text-center line-clamp-2" title={item.name}>{item.name}</span> <span className="text-sm font-medium text-gray-600 mt-1">₹{item.purchasePrice || 0}</span> <span className="text-xs text-gray-400">MRP: ₹{item.mrp || 0}</span> </div> <div className="w-full flex items-center justify-center pb-1 mt-auto"> {!isSelected ? (<span className="text-blue-600 font-bold text-sm px-4 py-1 bg-blue-50 rounded-lg">Add</span>) : (<div className="flex items-center gap-1 bg-white shadow-sm px-1 py-0.5 border border-gray-200 rounded-full text-lg"> <button onClick={(e) => { e.stopPropagation(); if (quantity > 1) handleQuantityChange(lastAddedCartItem.id, quantity - 1); else handleDeleteItem(lastAddedCartItem.id); }} className="w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 hover:bg-red-100 text-gray-700 hover:text-red-600 font-bold transition-colors text-sm">-</button> <span className="text-sm font-bold w-4 text-center">{quantity}</span> <button onClick={(e) => { e.stopPropagation(); addItemToCart(item); }} className="w-6 h-6 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-700 font-bold transition-colors text-sm">+</button> </div>)} </div> </div>);
-            }))}
+          {sortedGridItems.length === 0 ? <div className="col-span-full text-center text-gray-500 mt-10">No items found</div> : (sortedGridItems.map(item => {
+            const matchingCartItems = items.filter(i => i.productId === item.id);
+            const lastAddedCartItem = matchingCartItems[matchingCartItems.length - 1];
+            const isSelected = matchingCartItems.length > 0;
+            const quantity = lastAddedCartItem?.quantity || 0;
+            return (<div key={item.id} onClick={() => addItemToCart(item)} className={`p-2 rounded shadow-sm border transition-all flex flex-col justify-between text-center relative select-none cursor-pointer ${isSelected ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500' : 'bg-white border-gray-200 hover:shadow-md hover:border-blue-400'}`}> <div className="w-full flex flex-col items-center pt-1 px-1 pointer-events-none"> <span className="text-sm font-bold text-gray-800 leading-tight text-center line-clamp-2" title={item.name}>{item.name}</span> <span className="text-sm font-medium text-gray-600 mt-1">₹{item.purchasePrice || 0}</span> <span className="text-xs text-gray-400">MRP: ₹{item.mrp || 0}</span> </div> <div className="w-full flex items-center justify-center pb-1 mt-auto"> {!isSelected ? (<span className="text-blue-600 font-bold text-sm px-4 py-1 bg-blue-50 rounded-lg">Add</span>) : (<div className="flex items-center gap-1 bg-white shadow-sm px-1 py-0.5 border border-gray-200 rounded-full text-lg"> <button onClick={(e) => { e.stopPropagation(); if (quantity > 1) handleQuantityChange(lastAddedCartItem.id, quantity - 1); else handleDeleteItem(lastAddedCartItem.id); }} className="w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 hover:bg-red-100 text-gray-700 hover:text-red-600 font-bold transition-colors text-sm">-</button> <span className="text-sm font-bold w-4 text-center">{quantity}</span> <button onClick={(e) => { e.stopPropagation(); addItemToCart(item); }} className="w-6 h-6 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-700 font-bold transition-colors text-sm">+</button> </div>)} </div> </div>);
+          }))}
         </div>
-        
+
         <GenericBillFooter
           isExpanded={isFooterExpanded}
           onToggleExpand={() => setIsFooterExpanded(!isFooterExpanded)}
@@ -748,7 +867,8 @@ const resolvedTax = itemToAdd.tax ?? itemToAdd.taxRate ?? 0;
           onActionClick={handleProceedToPayment}
           disableAction={items.length === 0}
         />
-        <PaymentDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} subtotal={finalAmount} onPaymentComplete={handleSavePurchase} isPartyNameEditable={!editModeData} initialPartyName={editModeData ? editModeData.partyName : ''} initialPartyNumber={editModeData ? editModeData.partyNumber : ''} totalQuantity={totalQuantity} requireCustomerName={purchaseSettings?.requireSupplierName} requireCustomerMobile={purchaseSettings?.requireSupplierMobile} />
+        <PaymentDrawer mode='purchase' isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} subtotal={subtotal} billTotal={finalAmount} initialDiscount={editModeData?.manualDiscount}
+          onPaymentComplete={handleSavePurchase} isPartyNameEditable={!editModeData} initialPartyName={editModeData ? editModeData.partyName : ''} initialPartyNumber={editModeData ? editModeData.partyNumber : ''} totalQuantity={totalQuantity} requireCustomerName={purchaseSettings?.requireSupplierName} requireCustomerMobile={purchaseSettings?.requireSupplierMobile} />
         <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
       </div>
     );
@@ -763,134 +883,137 @@ const resolvedTax = itemToAdd.tax ?? itemToAdd.taxRate ?? 0;
       {renderHeader()}
 
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-          
-          <div className="flex flex-col w-full md:w-3/4 h-full relative min-w-0 border-r border-gray-200">
-            
-             <div className="flex-shrink-0 p-2 bg-white border-b mt-2 rounded-sm md:mt-0">
-                <div className="flex gap-2 items-end">
-                  <div className="flex-grow">
-                    <SearchableItemInput label="Search & Add Item" placeholder="Search by name or barcode..." items={availableItems} onItemSelected={handleItemSelected} isLoading={pageIsLoading} error={error} />
-                  </div>
-                  <button onClick={() => setIsScannerOpen(true)} className="p-3 bg-gray-700 text-white rounded-md font-semibold transition hover:bg-gray-800" title="Scan Barcode">
-                    <IconScanCircle width={20} height={20} />
-                  </button>
-                </div>
+
+        <div className="flex flex-col w-full md:w-3/4 h-full relative min-w-0 border-r border-gray-200">
+
+          <div className="flex-shrink-0 p-2 bg-white border-b mt-2 rounded-sm md:mt-0">
+            <div className="flex gap-2 items-end">
+              <div className="flex-grow">
+                <SearchableItemInput label="Search & Add Item" placeholder="Search by name or barcode..." items={availableItems} onItemSelected={handleItemSelected} isLoading={pageIsLoading} error={error} />
               </div>
+              <button onClick={() => setIsScannerOpen(true)} className="p-3 bg-gray-700 text-white rounded-md font-semibold transition hover:bg-gray-800" title="Scan Barcode">
+                <IconScanCircle width={20} height={20} />
+              </button>
+            </div>
+          </div>
 
-              <div className='flex-grow overflow-y-auto p-2 bg-gray-100'>
-                 <div className="flex justify-between items-center px-2 mb-2">
-                    <h3 className="text-gray-700 text-lg font-medium">Cart</h3>
-                    {items.length > 0 && (
-                      <button onClick={handleClearCart} className="flex items-center gap-1 text-sm text-red-500 hover:text-red-700 font-medium transition-colors">
-                        <FiTrash2 size={16} />
-                        <span>Clear Cart</span>
-                      </button>
-                    )}
-                 </div>
+          <div className='flex-grow overflow-y-auto p-2 bg-gray-100'>
+            <div className="flex justify-between items-center px-2 mb-2">
+              <h3 className="text-gray-700 text-lg font-medium">Cart</h3>
+              {items.length > 0 && (
+                <button onClick={handleClearCart} className="flex items-center gap-1 text-sm text-red-500 hover:text-red-700 font-medium transition-colors">
+                  <FiTrash2 size={16} />
+                  <span>Clear Cart</span>
+                </button>
+              )}
+            </div>
 
-                 <div className="flex flex-col gap-2">
-                    <GenericCartList
-                      items={cartItemsAdapter}
-                      availableItems={availableItems}
-                      basePriceKey="mrp"
-                      priceLabel="MRP"
-                      settings={{
-                        enableRounding: false, 
-                        roundingInterval: 1,
-                        enableItemWiseDiscount: false, 
-                        lockDiscount: true,
-                        lockPrice: false 
-                      }}
-                      applyRounding={applyPurchaseRounding}
-                      State={State}
-                      setModal={setModal}
-                      onOpenEditDrawer={handleOpenEditDrawer}
-                      onDeleteItem={handleDeleteItem}
-                      onDiscountChange={() => { }} 
-                      onCustomPriceChange={handlePriceChange} 
-                      onCustomPriceBlur={() => { }} 
-                      onQuantityChange={(id, qty) => handleQuantityChange(id, qty)} 
-                    />
-                 </div>
-              </div>
+            <div className="flex flex-col gap-2">
+              <GenericCartList
+                items={cartItemsAdapter}
+                availableItems={availableItems}
+                basePriceKey="mrp"
+                priceLabel="MRP"
+                settings={{
+                  enableRounding: false,
+                  roundingInterval: 1,
+                  enableItemWiseDiscount: true,
+                  lockDiscount: false,
+                  lockPrice: false
+                }}
+                applyRounding={(val) => val}
+                State={State}
+                setModal={setModal}
+                onOpenEditDrawer={handleOpenEditDrawer}
+                onDeleteItem={handleDeleteItem}
+                onDiscountChange={handleDiscountChange}
+                onCustomPriceChange={handlePriceChange}
+                onCustomPriceBlur={handlePriceBlur}
+                onQuantityChange={(id, qty) => handleQuantityChange(id, qty)}
+              />
+            </div>
+          </div>
 
-              <div className="md:hidden">
-                 <GenericBillFooter
-                    isExpanded={isFooterExpanded}
-                    onToggleExpand={() => setIsFooterExpanded(!isFooterExpanded)}
-                    totalQuantity={totalQuantity}
-                    subtotal={subtotal}
-                    taxAmount={taxAmount}
-                    finalAmount={finalAmount}
-                    roundingOffAmount={roundingOffAmount}
-                    showTaxRow={displayTaxTotal}
-                    taxLabel="Total Tax"
-                    actionLabel={isEditMode ? 'Update' : 'Pay Now'}
-                    onActionClick={handleProceedToPayment}
-                    disableAction={items.length === 0}
+          <div className="md:hidden">
+            <GenericBillFooter
+              isExpanded={isFooterExpanded}
+              onToggleExpand={() => setIsFooterExpanded(!isFooterExpanded)}
+              totalQuantity={totalQuantity}
+              subtotal={subtotal}
+              taxAmount={taxAmount}
+              finalAmount={finalAmount}
+              roundingOffAmount={roundingOffAmount}
+              showTaxRow={displayTaxTotal}
+              taxLabel="Total Tax"
+              actionLabel={isEditMode ? 'Update' : 'Pay Now'}
+              onActionClick={handleProceedToPayment}
+              disableAction={items.length === 0}
+            >
+              {showTaxToggle && (
+                <div className="flex justify-between items-center p-2 bg-white border-b border-gray-200 px-5">
+                  <p className="text-sm font-semibold text-gray-600">Tax Calculation</p>
+                  <select
+                    value={billTaxType}
+                    onChange={(e) => setBillTaxType(e.target.value as TaxOption)}
+                    className="border border-gray-300 rounded-md p-1 text-sm bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium"
                   >
-                    {showTaxToggle && (
-                      <div className="flex justify-between items-center p-2 bg-white border-b border-gray-200 px-5">
-                        <p className="text-sm font-semibold text-gray-600">Tax Calculation</p>
-                        <select
-                          value={billTaxType}
-                          onChange={(e) => setBillTaxType(e.target.value as TaxOption)}
-                          className="border border-gray-300 rounded-md p-1 text-sm bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium"
-                        >
-                          <option value="exclusive">Tax Exclusive</option>
-                          <option value="inclusive">Tax Inclusive</option>
-                          <option value="exempt">Tax Exempt</option>
-                        </select>
-                      </div>
-                    )}
-                  </GenericBillFooter>
-              </div>
-
+                    <option value="exclusive">Tax Exclusive</option>
+                    <option value="inclusive">Tax Inclusive</option>
+                    <option value="exempt">Tax Exempt</option>
+                  </select>
+                </div>
+              )}
+            </GenericBillFooter>
           </div>
 
-          <div className="hidden md:flex w-1/4 flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
-               <div className="flex-1 p-6 flex flex-col justify-end">
-                  <h2 className="text-xl font-bold text-gray-800 mb-6 border-b pb-2">Purchase Summary</h2>
-                   
-                   <GenericBillFooter
-                      isExpanded={true} 
-                      onToggleExpand={() => {}} 
-                      totalQuantity={totalQuantity}
-                      subtotal={subtotal}
-                      taxAmount={taxAmount}
-                      finalAmount={finalAmount}
-                      roundingOffAmount={roundingOffAmount}
-                      showTaxRow={displayTaxTotal}
-                      taxLabel="Total Tax"
-                      actionLabel={isEditMode ? 'Update' : 'Pay Now'}
-                      onActionClick={handleProceedToPayment}
-                      disableAction={items.length === 0}
-                    >
-                      {showTaxToggle && (
-                        <div className="flex justify-between items-center py-2 bg-transparent border-b border-gray-100 mb-4">
-                          <p className="text-sm font-semibold text-gray-600">Tax Calculation</p>
-                          <select
-                            value={billTaxType}
-                            onChange={(e) => setBillTaxType(e.target.value as TaxOption)}
-                            className="border border-gray-300 rounded-md p-1 text-sm bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium"
-                          >
-                            <option value="exclusive">Tax Exclusive</option>
-                            <option value="inclusive">Tax Inclusive</option>
-                            <option value="exempt">Tax Exempt</option>
-                          </select>
-                        </div>
-                      )}
-                    </GenericBillFooter>
-               </div>
+        </div>
+
+        <div className="hidden md:flex w-1/4 flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
+          <div className="flex-1 p-6 flex flex-col justify-end">
+            <h2 className="text-xl font-bold text-gray-800 mb-6 border-b pb-2">Purchase Summary</h2>
+
+            <GenericBillFooter
+              isExpanded={true}
+              onToggleExpand={() => { }}
+              totalQuantity={totalQuantity}
+              subtotal={subtotal}
+              taxAmount={taxAmount}
+              finalAmount={finalAmount}
+              roundingOffAmount={roundingOffAmount}
+              showTaxRow={displayTaxTotal}
+              taxLabel="Total Tax"
+              actionLabel={isEditMode ? 'Update' : 'Pay Now'}
+              onActionClick={handleProceedToPayment}
+              disableAction={items.length === 0}
+            >
+              {showTaxToggle && (
+                <div className="flex justify-between items-center py-2 bg-transparent border-b border-gray-100 mb-4">
+                  <p className="text-sm font-semibold text-gray-600">Tax Calculation</p>
+                  <select
+                    value={billTaxType}
+                    onChange={(e) => setBillTaxType(e.target.value as TaxOption)}
+                    className="border border-gray-300 rounded-md p-1 text-sm bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium"
+                  >
+                    <option value="exclusive">Tax Exclusive</option>
+                    <option value="inclusive">Tax Inclusive</option>
+                    <option value="exempt">Tax Exempt</option>
+                  </select>
+                </div>
+              )}
+            </GenericBillFooter>
           </div>
+        </div>
       </div>
 
       <PaymentDrawer
+        mode='purchase'
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
-        subtotal={finalAmount}
+        subtotal={subtotal}
+        billTotal={finalAmount}
         onPaymentComplete={handleSavePurchase}
         isPartyNameEditable={!editModeData}
+        initialDiscount={editModeData?.manualDiscount}
         initialPartyName={editModeData ? editModeData.partyName : ''}
         initialPartyNumber={editModeData ? editModeData.partyNumber : ''}
         totalQuantity={totalQuantity}
@@ -904,7 +1027,7 @@ const resolvedTax = itemToAdd.tax ?? itemToAdd.taxRate ?? 0;
         onSaveSuccess={handleSaveSuccess}
       />
 
-       {showPrintQrModal && (
+      {showPrintQrModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
           <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm mx-4">
             <h3 className="text-lg font-bold text-gray-800">Purchase Saved!</h3>

@@ -13,6 +13,14 @@ export default defineConfig({
     alias: {
       '@': '/src',
     },
-
+  },
+  server: {
+    proxy: {
+      '/botmaster': {
+        target: 'https://api.botmastersender.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/botmaster/, ''),
+      },
+    },
   },
 });

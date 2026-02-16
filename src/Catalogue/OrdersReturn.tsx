@@ -6,13 +6,11 @@ import {
   collection,
   query,
   getDocs,
-  orderBy,
-  limit,
   doc,
   writeBatch,
+  arrayUnion,
   serverTimestamp,
   increment as firebaseIncrement,
-  arrayUnion
 } from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
 import type { Item } from '../constants/models';
@@ -85,7 +83,7 @@ const OrdersReturnPage: React.FC = () => {
   const salesDropdownRef = useRef<HTMLDivElement>(null);
 
   // Customer Dropdown States
-  const [availableCustomers, setAvailableCustomers] = useState<Customer[]>([]);
+  const [availableCustomers, _setAvailableCustomers] = useState<Customer[]>([]);
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState<boolean>(false);
   const customerDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -127,21 +125,13 @@ const OrdersReturnPage: React.FC = () => {
       setIsLoading(true);
       try {
         const ordersQuery = query(
-          collection(db, 'companies', currentUser.companyId, 'Orders'),
-          orderBy('createdAt', 'desc'),
-          limit(50)
+          collection(db, 'companies', currentUser.companyId, 'Orders')
         );
 
         const snap = await getDocs(ordersQuery);
-        const completedOrders = snap.docs
-          .map(d => ({
-            id: d.id,
-            ...d.data()
-          } as Order))
-.filter(o =>
-  o.status === 'Completed' ||
-  o.status === 'Paid'
-)
+        const completedOrders = snap.docs.map(
+          d => ({ id: d.id, ...d.data() } as Order)
+        );
         setSalesList(completedOrders);
       } catch (err) {
         console.error(err);
@@ -152,6 +142,44 @@ const OrdersReturnPage: React.FC = () => {
     };
     fetchOrders();
   }, [currentUser]);
+
+  useEffect(() => {
+    if (!state?.selectedOrder || salesList.length === 0) return;
+
+    const foundOrder = salesList.find(
+      o => o.orderId === state.selectedOrder
+    );
+
+    if (foundOrder) {
+      handleSelectSale(foundOrder);
+    }
+  }, [state, salesList]);
+
+
+  useEffect(() => {
+    if (!currentUser?.companyId) return;
+
+    const fetchItems = async () => {
+      try {
+        const q = query(
+          collection(db, 'companies', currentUser.companyId, 'items')
+        );
+        const snap = await getDocs(q);
+        const list = snap.docs.map(d => ({
+          id: d.id,
+          ...d.data()
+        })) as any[];
+
+        setAvailableItems(list);
+      } catch (err) {
+        console.error(err);
+        setError('Failed to load items');
+      }
+    };
+
+    fetchItems();
+  }, [currentUser]);
+
 
 
   // Click Outside Handler for both Dropdowns
@@ -171,14 +199,19 @@ const OrdersReturnPage: React.FC = () => {
   const filteredSales = useMemo(() => {
     if (!salesList) return [];
 
-    return salesList.filter(order => {
-      const query = (searchSaleQuery || "").toLowerCase();
-      const orderId = (order?.OrderId || "").toString().toLowerCase();
-      const userName = (order?.userName || "").toString().toLowerCase();
-      return orderId.includes(query) || userName.includes(query);
-    });
-  }, [salesList, searchSaleQuery]);
+    return salesList
+      .filter(order =>
+        ['completed', 'paid', 'unpaid']
+          .includes(String(order.status).toLowerCase().trim())
+      )
+      .filter(order => {
+        const query = (searchSaleQuery || "").toLowerCase();
+        const orderId = (order?.orderId || "").toLowerCase();
+        const userName = (order?.userName || "").toLowerCase();
+        return orderId.includes(query) || userName.includes(query);
+      });
 
+  }, [salesList, searchSaleQuery]);
 
   const filteredCustomers = useMemo(() => {
     if (!partyNumber) return [];
@@ -200,36 +233,51 @@ const OrdersReturnPage: React.FC = () => {
     setIsCustomerDropdownOpen(false);
   };
 
-  const handleSelectSale = (Order: any) => {
+  const handleSelectSale = (Order: Order) => {
     setSelectedSale(Order);
+    setSearchSaleQuery(Order.orderId ?? '');
 
-    setPartyName(Order.userName || 'Customer');
-    setPartyNumber(Order.billingDetails?.phone || '');
+    setPartyName(Order.userName ?? 'Customer');
+    setPartyNumber(Order.billingDetails?.phone ?? '');
 
     setOriginalSaleItems(
-      Order.items.map((item: any) => ({
-        id: crypto.randomUUID(),
-        originalItemId: item.id,
-        name: item.name,
-        quantity: item.quantity,
-        unitPrice: item.mrp,
-        amount: item.mrp * item.quantity,
-        mrp: item.mrp
-      }))
-    );
+      (Order.items ?? [])
+        .map((item: any) => {
+          const id = item.id;
+          if (!id) return null;
 
-    setSearchSaleQuery(Order.OrderId);
-    setIsSalesDropdownOpen(false);
+          const qty = Number(item.quantity) || 0;
+          const mrp = Number(item.mrp) || 0;
+          const unit = mrp;
+          const total = mrp * qty;
+
+
+          return {
+            id,
+            originalItemId: id,
+            name: item.name ?? 'Unnamed Item',
+            quantity: qty,
+            unitPrice: unit,
+            amount: total,
+            mrp: Number(item.mrp) || unit
+          };
+        })
+        .filter(Boolean) as TransactionItem[]
+    );
   };
 
 
   const handleToggleReturnItem = (itemId: string) => {
+    if (!originalSaleItems.find(i => i.id === itemId)) return;
+
     setSelectedReturnIds(prevIds => {
       const newIds = new Set(prevIds);
-      if (newIds.has(itemId)) newIds.delete(itemId); else newIds.add(itemId);
+      if (newIds.has(itemId)) newIds.delete(itemId);
+      else newIds.add(itemId);
       return newIds;
     });
   };
+
 
   const handleListChange = (
     setter: React.Dispatch<React.SetStateAction<any[]>>,
@@ -283,7 +331,13 @@ const OrdersReturnPage: React.FC = () => {
     const purpose = scannerPurpose;
     setScannerPurpose(null);
     if (purpose === 'sale') {
-      const foundSale = salesList.find(sale => sale.OrderId === barcode);
+      const foundSale = salesList.find(
+        sale =>
+          sale.orderId === barcode &&
+          ['paid', 'completed', 'confirmed']
+            .includes(String(sale.status).toLowerCase())
+      );
+
       if (foundSale) {
         handleSelectSale(foundSale);
       } else {
@@ -349,7 +403,7 @@ const OrdersReturnPage: React.FC = () => {
     }
 
     setExchangeItems(prev => [...prev, {
-      id: crypto.randomUUID(),
+      id: itemToAdd.id!,
       originalItemId: itemToAdd.id!,
       name: itemToAdd.name,
       quantity: 1,
@@ -386,7 +440,6 @@ const OrdersReturnPage: React.FC = () => {
   // --- CALCULATION LOGIC (UI) ---
   const {
     totalReturnGross,
-    totalReturnValue,
     totalExchangeValue,
     finalBalance,
     discountDeducted
@@ -396,9 +449,13 @@ const OrdersReturnPage: React.FC = () => {
 
     let dd = 0;
     if (selectedSale) {
-      const originalInvoiceTotal = (selectedSale.items || []).reduce((sum, item) => {
-        return sum + (Number(item.finalPrice) || 0);
-      }, 0);
+      const baseItems = selectedSale.items || [];
+
+      const originalInvoiceTotal = baseItems.reduce(
+        (sum: number, item: any) => sum + Number(item.finalPrice || 0),
+        0
+      );
+
 
       const originalManualDiscount = Number(selectedSale.manualDiscount) || 0;
 
@@ -423,234 +480,277 @@ const OrdersReturnPage: React.FC = () => {
 
   // --- SAVE LOGIC ---
   const saveReturnTransaction = async (
-  completionData?: Partial<PaymentCompletionData>
-) => {
-  if (!currentUser || !currentUser.companyId || !selectedSale) return;
+    completionData?: Partial<PaymentCompletionData>
+  ) => {
+    if (!currentUser || !currentUser.companyId || !selectedSale) return;
 
-  setIsLoading(true);
-  const companyId = currentUser.companyId;
+    setIsLoading(true);
+    const companyId = currentUser.companyId;
 
-  try {
-    const batch = writeBatch(db);
-    const saleRef = doc(db, 'companies', companyId, 'Orders', selectedSale.id);
+    try {
+      const batch = writeBatch(db);
+      const saleRef = doc(db, 'companies', companyId, 'Orders', selectedSale.id);
 
-    // --- 0. FINAL PARTY DETAILS ---
-    const finalPartyName =
-      (completionData?.partyName || partyName || selectedSale.userName || '').trim();
+      // --- 0. FINAL PARTY DETAILS ---
+      const finalPartyName =
+        (completionData?.partyName || partyName || selectedSale.userName || '').trim();
 
-    const finalPartyNumber =
-      (completionData?.partyNumber || partyNumber || '').trim();
+      const finalPartyNumber =
+        (completionData?.partyNumber || partyNumber || '').trim();
 
-    // --- 1. ORIGINAL ITEMS MAP ---
-    const originalItemsMap = new Map<string, any>();
+      // --- 1. ORIGINAL ITEMS MAP ---
+      const originalItemsMap = new Map<string, any>();
 
-    (selectedSale.items || []).forEach((item: any) => {
-      const safeId = item.id || item.productId;
-      const qty = Number(item.quantity) || 1;
-      const total = Number(item.finalPrice || item.amount || 0);
-      const unit = qty > 0 ? total / qty : 0;
+      (selectedSale.items || []).forEach((item: any) => {
+        const safeId = item.id;
+        const qty = Number(item.quantity) || 1;
+        const total = Number(item.finalPrice || item.amount || 0);
+        const unit = qty > 0 ? total / qty : 0;
 
-      originalItemsMap.set(safeId, {
-        ...item,
-        _effectiveUnitPrice: unit
-      });
-    });
-
-    const originalInvoiceTotal = (selectedSale.items || []).reduce(
-      (sum: number, item: any) => sum + Number(item.finalPrice || 0),
-      0
-    );
-
-    const validInventoryIds = new Set(availableItems.map(i => i.id));
-
-    // --- 2. HANDLE RETURNS ---
-    let returnedItemsGrossValue = 0;
-
-    itemsToReturn.forEach(returnItem => {
-      const originalItem = originalItemsMap.get(returnItem.originalItemId);
-
-      if (originalItem) {
-        originalItem.quantity -= returnItem.quantity;
-        returnedItemsGrossValue +=
-          originalItem._effectiveUnitPrice * returnItem.quantity;
-
-        if (originalItem.quantity <= 0) {
-          originalItemsMap.delete(returnItem.originalItemId);
-        }
-      }
-
-      if (validInventoryIds.has(returnItem.originalItemId)) {
-        batch.update(
-          doc(db, 'companies', companyId, 'items', returnItem.originalItemId),
-          {
-            stock: firebaseIncrement(returnItem.quantity),
-            updatedAt: serverTimestamp()
-          }
-        );
-      }
-    });
-
-    // --- 3. HANDLE EXCHANGE ---
-    exchangeItems.forEach(exchangeItem => {
-      const existingItem = originalItemsMap.get(exchangeItem.originalItemId);
-
-      if (existingItem) {
-        existingItem.quantity += exchangeItem.quantity;
-      } else {
-        originalItemsMap.set(exchangeItem.originalItemId, {
-          id: exchangeItem.originalItemId,
-          name: exchangeItem.name,
-          mrp: exchangeItem.mrp,
-          quantity: exchangeItem.quantity,
-          discount: exchangeItem.discount || 0,
-          finalPrice: exchangeItem.amount,
-          amount: exchangeItem.amount,
-          unitPrice:
-            exchangeItem.amount / exchangeItem.quantity || exchangeItem.mrp,
-          _effectiveUnitPrice:
-            exchangeItem.amount / exchangeItem.quantity || exchangeItem.mrp
+        originalItemsMap.set(safeId, {
+          ...item,
+          _effectiveUnitPrice: unit
         });
+      });
+
+
+      const originalInvoiceTotal = (selectedSale.items || []).reduce(
+        (sum: number, item: any) => sum + Number(item.finalPrice || 0),
+        0
+      );
+
+      const validInventoryIds = new Set(availableItems.map(i => i.id));
+
+      // --- 2. HANDLE RETURNS ---
+      let returnedItemsGrossValue = 0;
+
+      itemsToReturn.forEach(returnItem => {
+        const originalItem = originalItemsMap.get(returnItem.originalItemId);
+
+        if (originalItem) {
+          originalItem.quantity -= returnItem.quantity;
+          returnedItemsGrossValue +=
+            originalItem._effectiveUnitPrice * returnItem.quantity;
+
+          if (originalItem.quantity <= 0) {
+            originalItemsMap.delete(returnItem.originalItemId);
+          }
+        }
+      });
+
+      // --- 3. HANDLE EXCHANGE ---
+      exchangeItems.forEach(exchangeItem => {
+        const existingItem = originalItemsMap.get(exchangeItem.originalItemId);
+
+        if (existingItem) {
+          existingItem.quantity += exchangeItem.quantity;
+        } else {
+          originalItemsMap.set(exchangeItem.originalItemId, {
+            id: exchangeItem.originalItemId,
+            name: exchangeItem.name,
+            mrp: exchangeItem.mrp,
+            quantity: exchangeItem.quantity,
+            discount: exchangeItem.discount || 0,
+            finalPrice: exchangeItem.amount,
+            amount: exchangeItem.amount,
+            unitPrice:
+              exchangeItem.amount / exchangeItem.quantity || exchangeItem.mrp,
+            _effectiveUnitPrice:
+              exchangeItem.amount / exchangeItem.quantity || exchangeItem.mrp
+          });
+        }
+
+        if (validInventoryIds.has(exchangeItem.originalItemId)) {
+          batch.update(
+            doc(db, 'companies', companyId, 'items', exchangeItem.originalItemId),
+            {
+              stock: firebaseIncrement(-exchangeItem.quantity),
+              updatedAt: serverTimestamp()
+            }
+          );
+        }
+      });
+
+      // --- 3.5 HANDLE RETURN STOCK (ADD BACK) ---
+      itemsToReturn.forEach(returnItem => {
+        if (validInventoryIds.has(returnItem.originalItemId)) {
+          batch.update(
+            doc(db, 'companies', companyId, 'items', returnItem.originalItemId),
+            {
+              stock: firebaseIncrement(returnItem.quantity),
+              updatedAt: serverTimestamp()
+            }
+          );
+        }
+      });
+
+
+      // --- 4. RECALCULATE BILL ---
+      const newItemsList = Array.from(originalItemsMap.values()).map(item => {
+        const safeUnit =
+          Number(item._effectiveUnitPrice) ||
+          Number(item.unitPrice) ||
+          Number(item.mrp) ||
+          0;
+
+        const lineTotal = safeUnit * Number(item.quantity);
+
+        const { _effectiveUnitPrice, ...clean } = item;
+
+        return {
+          ...clean,
+          unitPrice: safeUnit,
+          finalPrice: lineTotal,
+          amount: lineTotal
+        };
+      });
+
+      const totals = newItemsList.reduce(
+        (acc, item) => {
+          const gross = item.mrp * item.quantity;
+          const discount = gross - item.finalPrice;
+          acc.subtotal += gross;
+          acc.totalItemDiscount += discount;
+          return acc;
+        },
+        { subtotal: 0, totalItemDiscount: 0 }
+      );
+
+      // --- 5. MANUAL DISCOUNT ---
+      const originalManualDiscount = Number(selectedSale.manualDiscount) || 0;
+      let discountDeduction = 0;
+
+      if (
+        originalManualDiscount > 0 &&
+        originalInvoiceTotal > 0 &&
+        returnedItemsGrossValue > 0
+      ) {
+        discountDeduction =
+          (returnedItemsGrossValue / originalInvoiceTotal) *
+          originalManualDiscount;
       }
 
-      if (validInventoryIds.has(exchangeItem.originalItemId)) {
-        batch.update(
-          doc(db, 'companies', companyId, 'items', exchangeItem.originalItemId),
-          {
-            stock: firebaseIncrement(-exchangeItem.quantity),
-            updatedAt: serverTimestamp()
+      discountDeduction = Math.round(discountDeduction * 100) / 100;
+      const newManualDiscount = Math.max(
+        0,
+        originalManualDiscount - discountDeduction
+      );
+
+      const updatedFinalAmount =
+        totals.subtotal - totals.totalItemDiscount - newManualDiscount;
+
+      // --- 6. PAYMENTS ---
+      const updatedPaymentMethods = {
+        ...(selectedSale.paymentMethods || {})
+      };
+
+      if (completionData?.paymentDetails) {
+        Object.entries(completionData.paymentDetails).forEach(
+          ([mode, amount]) => {
+            if (mode.toLowerCase() !== 'due') {
+              updatedPaymentMethods[mode] =
+                (updatedPaymentMethods[mode] || 0) + Number(amount);
+            }
           }
         );
       }
-    });
 
-    // --- 4. RECALCULATE BILL ---
-    const newItemsList = Array.from(originalItemsMap.values()).map(item => {
-      const lineTotal = item._effectiveUnitPrice * item.quantity;
-      const { _effectiveUnitPrice, ...clean } = item;
 
-      return {
-        ...clean,
-        finalPrice: lineTotal,
-        amount: lineTotal,
-        unitPrice: item._effectiveUnitPrice
+      const paid = Object.entries(updatedPaymentMethods)
+        .filter(([k]) => k !== 'due')
+        .reduce((sum, [, v]) => sum + Number(v), 0);
+
+      updatedPaymentMethods.due = Math.max(0, updatedFinalAmount - paid);
+
+      // --- 7. HISTORY ---
+      const returnHistoryRecord = {
+        id: crypto.randomUUID(),
+        returnedAt: new Date(),
+        returnedItems: itemsToReturn,
+        exchangeItems,
+        finalBalance,
+        discountDeducted: discountDeduction,
+        modeOfReturn,
+        paymentDetails: completionData?.paymentDetails || null,
+        partyName: finalPartyName,
+        partyNumber: finalPartyNumber
       };
-    });
+      // --- 9. CUSTOMER LEDGER ---
+      if (finalPartyNumber.length >= 3 && finalBalance > 0) {
+        batch.set(
+          doc(db, 'companies', companyId, 'customers', finalPartyNumber),
+          {
+            name: finalPartyName,
+            number: finalPartyNumber,
+            creditBalance: firebaseIncrement(finalBalance),
+            lastUpdatedAt: serverTimestamp()
+          },
+          { merge: true }
+        );
+      }
 
-    const totals = newItemsList.reduce(
-      (acc, item) => {
-        const gross = item.mrp * item.quantity;
-        const discount = gross - item.finalPrice;
-        acc.subtotal += gross;
-        acc.totalItemDiscount += discount;
-        return acc;
-      },
-      { subtotal: 0, totalItemDiscount: 0 }
-    );
+      const actualPaid = selectedSale.paidAmount ?? 0;
+      const newStatus =
+        updatedFinalAmount > 0 && actualPaid >= updatedFinalAmount
+          ? 'Paid'
+          : 'Completed';
 
-    // --- 5. MANUAL DISCOUNT ---
-    const originalManualDiscount = Number(selectedSale.manualDiscount) || 0;
-    let discountDeduction = 0;
+      const isUnpaidOrder = (selectedSale.paidAmount ?? 0) === 0;
 
-    if (
-      originalManualDiscount > 0 &&
-      originalInvoiceTotal > 0 &&
-      returnedItemsGrossValue > 0
-    ) {
-      discountDeduction =
-        (returnedItemsGrossValue / originalInvoiceTotal) *
-        originalManualDiscount;
-    }
+      batch.update(saleRef, {
+        items: newItemsList,
 
-    discountDeduction = Math.round(discountDeduction * 100) / 100;
-    const newManualDiscount = Math.max(
-      0,
-      originalManualDiscount - discountDeduction
-    );
+        // ✅ unpaid case: card total ko touch hi mat karo
+        ...(isUnpaidOrder ? {} : { totalAmount: updatedFinalAmount }),
 
-    const updatedFinalAmount =
-      totals.subtotal - totals.totalItemDiscount - newManualDiscount;
+        manualDiscount: newManualDiscount,
 
-    // --- 6. PAYMENTS ---
-    const updatedPaymentMethods = {
-      ...(selectedSale.paymentMethods || {})
-    };
-
-    if (completionData?.paymentDetails) {
-      Object.entries(completionData.paymentDetails).forEach(
-        ([mode, amount]) => {
-          if (mode !== 'due') {
-            updatedPaymentMethods[mode] =
-              (updatedPaymentMethods[mode] || 0) + Number(amount);
-          }
-        }
-      );
-    }
-
-    const paid = Object.entries(updatedPaymentMethods)
-      .filter(([k]) => k !== 'due')
-      .reduce((sum, [, v]) => sum + Number(v), 0);
-
-    updatedPaymentMethods.due = Math.max(0, updatedFinalAmount - paid);
-
-    // --- 7. HISTORY ---
-    const returnHistoryRecord = {
-      id: crypto.randomUUID(),
-      returnedAt: new Date(),
-      returnedItems: itemsToReturn,
-      exchangeItems,
-      finalBalance,
-      discountDeducted: discountDeduction,
-      modeOfReturn,
-      paymentDetails: completionData?.paymentDetails || null,
-      partyName: finalPartyName,
-      partyNumber: finalPartyNumber
-    };
-
-    // --- 8. UPDATE SALE ---
- batch.update(saleRef, {
-  status: 'Returned',
-  returnedAt: serverTimestamp(),
-  returnDetails: {
-    items: itemsToReturn,
-    exchangeItems,
-    refundAmount: finalBalance,
-    mode: modeOfReturn
-  }
-})
-
-    // --- 9. CUSTOMER LEDGER ---
-    if (finalPartyNumber.length >= 3 && finalBalance > 0) {
-      batch.set(
-        doc(db, 'companies', companyId, 'customers', finalPartyNumber),
-        {
-          name: finalPartyName,
-          number: finalPartyNumber,
-          creditBalance: firebaseIncrement(finalBalance),
-          lastUpdatedAt: serverTimestamp()
+        // ✅ due yahin se auto adjust ho rahi hai
+        paymentMethods: {
+          ...updatedPaymentMethods,
+          due: isUnpaidOrder
+            ? Math.max(0, selectedSale.totalAmount - returnedItemsGrossValue)
+            : updatedPaymentMethods.due
         },
-        { merge: true }
+
+        paidAmount: actualPaid,
+
+        // ✅ unpaid me status kabhi Paid nahi hoga
+        status: isUnpaidOrder ? 'Completed' : newStatus,
+
+        returnHistory: arrayUnion(returnHistoryRecord),
+        updatedAt: serverTimestamp()
+      });
+      await batch.commit();
+      // ✅ UI ko directly updated items se sync karo
+      setOriginalSaleItems(
+        newItemsList.map((item: any) => ({
+          id: item.id,
+          originalItemId: item.id,
+          name: item.name,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          amount: item.finalPrice,
+          mrp: item.mrp
+        }))
       );
+      setSelectedReturnIds(new Set());
+      setModal({
+        type: State.SUCCESS,
+        message: 'Return processed successfully!'
+      });
+      setTimeout(() => navigate(`${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`), 1500);
+    } catch (err: any) {
+      console.error(err);
+      setModal({
+        type: State.ERROR,
+        message: `Failed: ${err.message}`
+      });
+    } finally {
+      setIsLoading(false);
+      setIsDrawerOpen(false);
     }
-
-    await batch.commit();
-
-    setModal({
-      type: State.SUCCESS,
-      message: 'Return processed successfully!'
-    });
-
-    setTimeout(() => navigate(`${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`), 1500);
-  } catch (err: any) {
-    console.error(err);
-    setModal({
-      type: State.ERROR,
-      message: `Failed: ${err.message}`
-    });
-  } finally {
-    setIsLoading(false);
-    setIsDrawerOpen(false);
-  }
-};
+  };
 
 
   const handleProcessReturn = () => {
@@ -680,6 +780,48 @@ const OrdersReturnPage: React.FC = () => {
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
       <BarcodeScanner isOpen={scannerPurpose !== null} onClose={() => setScannerPurpose(null)} onScanSuccess={handleBarcodeScanned} />
 
+      {/* === HEADER === */}
+      <header className="flex flex-shrink-0 items-center justify-between border-b border-slate-300 bg-gray-100 p-2 shadow-sm">
+
+        {/* Left: Back Button */}
+        <div className="w-14 flex justify-start">
+          <button
+            onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ORDERDETAILS}`, { replace: true })}
+            className="p-2 rounded-sm border border-slate-400 hover:bg-slate-200 transition-colors text-slate-700"
+            title="Back"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <line x1="19" y1="12" x2="5" y2="12"></line>
+              <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+          </button>
+        </div>
+
+        {/* Center: Title */}
+        <div className="flex-1 text-center">
+          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
+            Orders Return
+          </h1>
+          <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">
+            Process Refunds & Exchange
+          </p>
+        </div>
+
+        {/* Right: Empty space for balance (w-14 keeps title centered) */}
+        <div className="w-14 flex justify-end">
+          {/* Isse khali rakha hai taaki heading center mein rahe */}
+        </div>
+      </header>
 
       {/* MAIN CONTENT WRAPPER */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
@@ -692,14 +834,14 @@ const OrdersReturnPage: React.FC = () => {
             <div className="relative" ref={salesDropdownRef}>
               <label htmlFor="search-sale" className="block text-sm font-medium mb-1 text-gray-700">Search Original Sale</label>
               <div className="flex gap-2">
-                <input id="search-sale" type="text" value={searchSaleQuery} onChange={(e) => { setSearchSaleQuery(e.target.value); setIsSalesDropdownOpen(true); }} onFocus={() => setIsSalesDropdownOpen(true)} placeholder={selectedSale ? `${selectedSale.userName} (${selectedSale.OrderId})` : "Invoice or Name..."} className="flex-grow p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" autoComplete="off" readOnly={!!selectedSale} />
+                <input id="search-sale" type="text" value={searchSaleQuery} onChange={(e) => { setSearchSaleQuery(e.target.value); setIsSalesDropdownOpen(true); }} onFocus={() => setIsSalesDropdownOpen(true)} placeholder={selectedSale ? `(${selectedSale.orderId})` : "Invoice or Name..."} className="flex-grow p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" autoComplete="off" readOnly={!!selectedSale} />
                 {selectedSale && (<button onClick={handleClear} className=" px-3 bg-gray-200 text-gray-700 font-semibold rounded-lg whitespace-nowrap hover:bg-gray-300">Clear</button>)}
               </div>
               {isSalesDropdownOpen && !selectedSale && (
                 <div className="absolute top-full w-full z-20 mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
                   {filteredSales.map((sale) => (
                     <div key={sale.id} className="p-3 cursor-pointer hover:bg-gray-100 border-b border-gray-50 last:border-0" onClick={() => handleSelectSale(sale)}>
-                      <p className="font-semibold text-sm">{sale.userName} <span className="text-gray-500 font-normal">({sale.OrderId || 'N/A'})</span></p>
+                      <p className="font-semibold text-sm">{sale.userName} <span className="text-gray-500 font-normal">({sale.orderId || 'N/A'})</span></p>
                       <p className="text-xs text-gray-500">Amount: ₹{sale.totalAmount.toFixed(2)}</p>
                     </div>
                   ))}
@@ -750,13 +892,25 @@ const OrdersReturnPage: React.FC = () => {
 
                 <h3 className="text-sm font-bold text-gray-700 mb-2 border-b pb-1">Select Return Items</h3>
                 <div className="flex flex-col gap-2">
+                  {originalSaleItems.length === 0 && (
+                    <p className="text-sm text-gray-500">
+                      No returnable items found for this order.
+                    </p>
+                  )}
+
                   {originalSaleItems.map((item) => (
                     <ReturnListItem
                       key={item.id}
                       item={item}
                       isSelected={selectedReturnIds.has(item.id)}
                       onToggle={handleToggleReturnItem}
-                      onQuantityChange={(id, val) => handleListChange(setOriginalSaleItems, id, 'quantity', val)}
+                      onQuantityChange={(id, val) => {
+                        const item = originalSaleItems.find(i => i.id === id);
+                        if (!item) return;
+                        const safeQty = Math.min(val, item.quantity);
+                        handleListChange(setOriginalSaleItems, id, 'quantity', safeQty);
+                      }}
+
                       showMrp={true}
                     />
                   ))}
@@ -808,8 +962,6 @@ const OrdersReturnPage: React.FC = () => {
                           <GenericCartList<any>
                             items={mappedExchangeItems.map(item => ({
                               ...item,
-                              // GenericCartList ko calculation ke liye 'amount' chahiye hota hai
-                              amount: item.mrp ?? (item.mrp * item.quantity),
                               isEditable: true // UI mein controls dikhane ke liye
                             }))}
                             availableItems={availableItems as any}

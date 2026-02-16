@@ -46,7 +46,14 @@ export const ROUTES = {
   SUBSCRIPTION_PAGE: '/subscription',
   SUPPORT_PAGE: '/support',
   ADD_PRODUCT: 'add-product',
-  CAT_ITEM_GROUP: ' item-groups',
+  CAT_ITEM_GROUP: 'item-groups',
   MANAGE_ITEMS: '/manage-items',
-  ORDER_RETURN:'order-return'
+  ORDER_RETURN:'order-return',
+  CATA_MASTERS:'cata-masters',
+  CATA_SALE_SETTING:'cata-sales-setting',
+  CATA_BILL_SETTING:'cata-bill-setting',
+  CATA_ITEM_SETTING:'cata-item-setting',
+  CATA_USER_SETTING:'cata-user-setting',
+  CATA_PERMISSION_SETTING:'cata-permission-setting',
+  CATA_EDIT:'cata-edit-profile'
 };

@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { ChevronLeft, Trash2, Check, ChevronUp, X } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Footer from './Footer';
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, deleteDoc, collection} from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 import { FiPackage } from 'react-icons/fi';
+import { OrderInvoiceNumber } from '../UseComponents/InvoiceCounter';
+import { useAuth } from '../context/auth-context';
 
 
 interface CartItem {
@@ -53,6 +55,7 @@ const useBusinessName = (companyId?: string) => {
 };
 
 const CartPage: React.FC = () => {
+    const { currentUser } = useAuth();
     const navigate = useNavigate();
     const [step, setStep] = useState<number>(1);
     const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
@@ -65,33 +68,52 @@ const CartPage: React.FC = () => {
     const [isSameAsShipping, setIsSameAsShipping] = useState<boolean>(false);
     const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
-    // --- SYNC TO UPCOMING (Orders Page Sync) ---
-    const syncToUpcoming = async () => {
-        if (!companyId || !billing.phone || billing.phone.length < 10 || cartItems.length === 0) return;
-
-        const tempId = `TEMP-${billing.phone}`;
-        const ref = doc(db, 'companies', companyId, 'Orders', tempId);
-
-        try {
-            await setDoc(ref, {
-                id: tempId,
-                orderId: `UPC-${billing.phone.slice(-11)}`,
-                userName: billing.name || 'Guest',
-                totalAmount: cartItems.reduce((acc, i) => acc + (i.price * i.quantity), 0),
-                status: 'Upcoming', // Orders.tsx isi status ko filter karta hai
-                createdAt: serverTimestamp(),
-                time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
-                items: cartItems.map(i => ({ id: String(i.id), name: i.name, quantity: i.quantity, mrp: i.price })),
-                userLoginPhone: billing.phone,
-                billingDetails: billing
-            }, { merge: true });
-        } catch (e) { console.error("Sync Error:", e); }
+    const getUpcomingDocId = () => {
+        return currentUser?.uid
+            ? `upcoming_${currentUser.uid}`
+            : `upcoming_guest`;
     };
 
-    // Jab user step 2 (Shipping) par jaye, tab sync trigger ho
-    useEffect(() => {
-        if (step === 2) syncToUpcoming();
-    }, [step, billing, cartItems]);
+
+    const syncToUpcoming = async (updatedCart: CartItem[]) => {
+        if (!companyId) return;
+
+        const docId = getUpcomingDocId();
+        const orderRef = doc(db, 'companies', companyId, 'Orders', docId);
+        if (updatedCart.length === 0) {
+            await deleteDoc(orderRef);
+            return;
+        }
+
+        const itemsForFirebase = updatedCart.map(item => ({
+            id: String(item.id),
+            name: item.name,
+            quantity: item.quantity,
+            mrp: item.price,
+            note: item.note || ''
+        }));
+
+        const totalAmount = itemsForFirebase.reduce(
+            (sum, i) => sum + i.mrp * i.quantity,
+            0
+        );
+
+        await setDoc(
+            orderRef,
+            {
+                orderId: docId,
+                status: 'Upcoming',
+                totalAmount,
+                paidAmount: 0,
+                items: itemsForFirebase,
+                updatedAt: serverTimestamp(),
+                createdAt: serverTimestamp(),
+                userId: currentUser?.uid || null
+            },
+            { merge: true } // 🔥 VERY IMPORTANT
+        );
+    };
+
 
     useEffect(() => {
         const savedCart = localStorage.getItem('temp_cart');
@@ -115,23 +137,33 @@ const CartPage: React.FC = () => {
     }, []);
 
     const updateQuantity = (id: string | number, delta: number) => {
-        const updatedItems = cartItems.map(item => {
-            if (item.id === id) {
-                const newQty = Math.max(1, item.quantity + delta);
-                return { ...item, quantity: newQty };
-            }
-            return item;
-        });
+        const updatedItems = cartItems
+            .map(item => {
+                if (item.id === id) {
+                    const newQty = item.quantity + delta;
+                    return { ...item, quantity: newQty };
+                }
+                return item;
+            })
+            .filter(item => item.quantity > 0);
+
         setCartItems(updatedItems);
-        const savedCart = localStorage.getItem('temp_cart');
-        if (savedCart) {
-            const parsedCart = JSON.parse(savedCart);
-            const newLS = parsedCart.map((entry: any) =>
-                entry.item.id === id ? { ...entry, quantity: Math.max(1, entry.quantity + delta) } : entry
-            );
-            localStorage.setItem('temp_cart', JSON.stringify(newLS));
-        }
+
+        // localStorage sync
+        localStorage.setItem(
+            'temp_cart',
+            JSON.stringify(
+                updatedItems.map(i => ({
+                    item: { id: i.id, name: i.name, mrp: i.price },
+                    quantity: i.quantity
+                }))
+            )
+        );
+
+        // 🔥 UPCOMING LIVE UPDATE
+        syncToUpcoming(updatedItems);
     };
+
 
     const updateItemNote = (id: string | number, note: string) => {
         setCartItems(prev => prev.map(item => item.id === id ? { ...item, note } : item));
@@ -140,62 +172,63 @@ const CartPage: React.FC = () => {
     const subtotal = cartItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
     const totalPay = subtotal;
 
-    const placeOrder = async () => {
-        if (!companyId) return;
+   const placeOrder = async () => {
+  if (!companyId || !currentUser?.uid) return;
 
-        if (!billing.name || !billing.phone) {
-            alert("Please fill name and phone number");
-            setStep(2);
-            return;
-        }
+  setIsPlacing(true);
 
-        setIsPlacing(true);
+  try {
+    // 1️⃣ Create CONFIRMED order
+    const orderDocRef = doc(
+      collection(db, 'companies', companyId, 'Orders')
+    );
 
-        try {
-            const tempDocId = `ORD-${billing.phone.slice(0, -4)}`;
-            const orderDocRef = doc(db, 'companies', companyId, 'Orders', tempDocId);
+    const orderInvoiceNumber = await OrderInvoiceNumber(companyId);
 
-            const finalOrderData = {
-                orderId: `ORD-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
-                userName: billing.name.trim(),
-                totalAmount: Number(totalPay),
-                paidAmount: 0,
-                status: 'Confirmed', // Status change hote hi ye Upcoming se hat kar Confirmed mein aa jayega
-                updatedAt: serverTimestamp(),
-                // Agar pehle sync nahi hua tha, toh createdAt yahan add ho jayega
-                createdAt: serverTimestamp(),
-                time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
-                items: cartItems.map(item => ({
-                    id: String(item.id),
-                    name: item.name,
-                    quantity: Number(item.quantity),
-                    mrp: Number(item.price),
-                    note: item.note || ""
-                })),
-                billingDetails: { ...billing },
-                shippingDetails: isSameAsShipping ? { ...billing } : {
-                    ...shipping,
-                    phone: shipping.phone || billing.phone,
-                    name: shipping.name || billing.name
-                },
-                userLoginPhone: billing.phone
-            };
-            await setDoc(orderDocRef, finalOrderData, { merge: true });
+    await setDoc(orderDocRef, {
+      orderId: orderInvoiceNumber,
+      invoiceNumber: orderInvoiceNumber,
+      status: 'Confirmed',
+      totalAmount: totalPay,
+      paidAmount: 0,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      items: cartItems.map(i => ({
+        id: String(i.id),
+        name: i.name,
+        quantity: i.quantity,
+        mrp: i.price,
+        note: i.note || ''
+      })),
+      billingDetails: billing,
+      shippingDetails: isSameAsShipping ? billing : shipping,
+      userLoginPhone: billing.phone,
+      userName: billing.name
+    });
 
-            // cleanup
-            localStorage.removeItem('temp_cart');
-            setCartItems([]);
-            setStep(1);
-            alert('Order Placed Successfully!');
-            navigate(-1); // Order ke baad piche bhej do
+    // 2️⃣ DELETE UPCOMING (STEP 5 — YAHI HAI)
+    const upcomingRef = doc(
+      db,
+      'companies',
+      companyId,
+      'Orders',
+      `upcoming_${currentUser.uid}`
+    );
 
-        } catch (error: any) {
-            console.error("Error updating order:", error);
-            alert(`Failed to place order: ${error.message}`);
-        } finally {
-            setIsPlacing(false);
-        }
-    };
+    await deleteDoc(upcomingRef);
+
+    // 3️⃣ Cleanup local state
+    localStorage.removeItem('temp_cart');
+    setCartItems([]);
+    navigate(-1);
+
+  } catch (e) {
+    console.error(e);
+  } finally {
+    setIsPlacing(false);
+  }
+};
+
 
     useEffect(() => {
         if (isSameAsShipping) {
@@ -203,57 +236,25 @@ const CartPage: React.FC = () => {
         }
     }, [isSameAsShipping, billing]);
 
-    const removeFromCart = async (id: string | number) => {
-        console.log("Remove function triggered for ID:", id);
-
-        // 1. Local State Cleanup
+    const removeFromCart = (id: string | number) => {
         const updatedCart = cartItems.filter(item => item.id !== id);
         setCartItems(updatedCart);
 
-        // 2. Local Storage Cleanup
-        const savedCart = localStorage.getItem('temp_cart');
-        if (savedCart) {
-            const parsedCart = JSON.parse(savedCart);
-            const newLocalStorageCart = parsedCart.filter((entry: any) => entry.item.id !== id);
-            localStorage.setItem('temp_cart', JSON.stringify(newLocalStorageCart));
-        }
+        localStorage.setItem(
+            'temp_cart',
+            JSON.stringify(
+                updatedCart.map(i => ({
+                    item: { id: i.id, name: i.name, mrp: i.price },
+                    quantity: i.quantity
+                }))
+            )
+        );
 
-        // 3. FIREBASE SYNC
-        // Console check karo ki ye values mil rahi hain ya nahi
-        console.log("Checking Sync - CompanyId:", companyId, "Phone:", billing.phone);
-
-        if (!companyId || !billing.phone) {
-            console.warn("Sync skipped: CompanyId or Phone missing in billing state.");
-            return;
-        }
-
-        const tempDocId = `{billing.phone}`;
-        const orderDocRef = doc(db, 'companies', companyId, 'Orders', tempDocId);
-
-        try {
-            if (updatedCart.length === 0) {
-                console.log("Cart is empty, deleting document from Firebase...");
-                await deleteDoc(orderDocRef);
-                console.log("Successfully deleted from Firebase");
-            } else {
-                console.log("Updating items in Firebase...");
-                await updateDoc(orderDocRef, {
-                    items: updatedCart.map(item => ({
-                        id: String(item.id),
-                        name: item.name,
-                        quantity: Number(item.quantity),
-                        mrp: Number(item.price)
-                    })),
-                    status: 'Confirmed',
-                    totalAmount: updatedCart.reduce((sum, item) => sum + (item.price * item.quantity), 0),
-                    updatedAt: serverTimestamp()
-                });
-                console.log("Successfully updated Firebase");
-            }
-        } catch (error) {
-            console.error("Firebase Sync Error details:", error);
-        }
+        // 🔥 UPCOMING LIVE UPDATE / DELETE
+        syncToUpcoming(updatedCart);
     };
+
+
     const handleDrawerAction = () => {
         if (step === 1) {
             setStep(2);
@@ -304,12 +305,27 @@ const CartPage: React.FC = () => {
                                         {cartItems.length > 0 ? cartItems.map((item) => (
                                             <div key={item.id} className="bg-white rounded-sm p-3 shadow-sm border border-gray-10">
                                                 <div className="flex gap-3">
-                                                    {item.imageUrl ? <img src={item.imageUrl} alt={item.name} className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110 " /> : <FiPackage className="w-20 h-20 text-gray-200 border border-gray-400" />}
+                                                    {/* Image Container with Background */}
+                                                    <div className="w-15 h-15 bg-gray-100 rounded-sm overflow-hidden flex-shrink-0 flex items-center justify-center border border-gray-100">
+                                                        {item.imageUrl ? (
+                                                            <img
+                                                                src={item.imageUrl}
+                                                                alt={item.name}
+                                                                className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110"
+                                                            />
+                                                        ) : (
+                                                            <FiPackage className="w-10 h-10 text-gray-300" />
+                                                        )}
+                                                    </div>
+
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex justify-between items-start gap-2">
                                                             <h3 className="text-[10px] font-black text-[#1A3B5D] uppercase truncate">{item.name}</h3>
-                                                            <button onClick={() => removeFromCart(item.id)} className="text-red-500 p-1 hover:bg-red-50 rounded-sm shrink-0"><Trash2 size={14} /></button>
+                                                            <button onClick={() => removeFromCart(item.id)} className="text-red-500 p-1 hover:bg-red-50 rounded-sm shrink-0">
+                                                                <Trash2 size={14} />
+                                                            </button>
                                                         </div>
+
                                                         <div className="flex flex-wrap items-center justify-between mt-2 gap-2">
                                                             <span className="font-black text-[#1A3B5D] text-sm shrink-0">₹{item.price}</span>
                                                             <input
@@ -353,7 +369,19 @@ const CartPage: React.FC = () => {
                                                 </div>
                                                 <div className="space-y-1">
                                                     <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest ml-1">Phone</label>
-                                                    <input value={billing.phone} onChange={(e) => setBilling({ ...billing, phone: e.target.value })} type="tel" className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[10px] font-bold outline-none" placeholder="+91" />
+                                                    <input
+                                                        value={billing.phone}
+                                                        onChange={(e) => {
+                                                            const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                                                            setBilling({ ...billing, phone: val });
+                                                            if (isSameAsShipping) {
+                                                                setShipping(prev => ({ ...prev, phone: val }));
+                                                            }
+                                                        }}
+                                                        type="tel"
+                                                        className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[10px] font-bold outline-none"
+                                                        placeholder="10 Digits Only"
+                                                    />
                                                 </div>
                                                 <div className="space-y-1">
                                                     <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest ml-1">City</label>
@@ -380,7 +408,17 @@ const CartPage: React.FC = () => {
                                                 </div>
                                                 <div className="space-y-1">
                                                     <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest ml-1">Phone</label>
-                                                    <input value={shipping.phone} onChange={(e) => setShipping({ ...shipping, phone: e.target.value })} type="tel" className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[10px] font-bold outline-none" placeholder="+91" />
+                                                    <input
+                                                        value={shipping.phone}
+                                                        onChange={(e) => {
+                                                            const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                                                            setShipping({ ...shipping, phone: val });
+                                                        }}
+                                                        type="tel"
+                                                        className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[10px] font-bold outline-none"
+                                                        placeholder="10 Digits Only"
+                                                        disabled={isSameAsShipping}
+                                                    />
                                                 </div>
                                                 <div className="space-y-1">
                                                     <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest ml-1">City</label>

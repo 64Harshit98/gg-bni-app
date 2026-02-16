@@ -10,14 +10,15 @@ import { useNavigate } from 'react-router-dom';
 import { ROUTES } from '../../src/constants/routes.constants';
 import { GenericCartList } from '../Components/CartItem';
 import { ItemEditDrawer } from '../Components/ItemDrawer';
+import { useDatabase } from '../context/auth-context';
 import {
     collection,
     query,
     onSnapshot,
     Timestamp,
-    QuerySnapshot,
     doc,
     getDoc,
+    getDocs,
     updateDoc,
     deleteDoc,
     orderBy,
@@ -30,6 +31,8 @@ import { Spinner } from '../constants/Spinner';
 import { Modal, PaymentModal } from '../constants/Modal';
 import { State } from '../enums';
 import { FiSearch, FiX } from 'react-icons/fi';
+import { IconEdit, IconFilter } from '../constants/Icons';
+import type { Item } from '../constants/models';
 
 export interface OrderItem {
     id: string;
@@ -52,7 +55,7 @@ export type OrderStatus = 'Upcoming' | 'Confirmed' | 'Packed' | 'Completed' | 'P
 
 export interface Order {
     id: string;
-    OrderId: string;
+    orderId: string;
     totalAmount: number;
     userName: string;
     status: OrderStatus;
@@ -72,7 +75,21 @@ export interface Order {
     paymentMethods?: { [key: string]: number };
     note?: string;
     manualDiscount?: number;
-    discount?: number
+    discount?: number;
+    returnHistory?: {
+        id: string;
+        returnedAt: Date;
+        returnedItems: any[];
+        exchangeItems: any[];
+        finalBalance: number;
+        discountDeducted: number;
+        modeOfReturn: string;
+        paymentDetails?: any;
+        partyName?: string;
+        partyNumber?: string;
+    }[];
+    paymentStatus?: string
+    updatedAt?: Date;
 }
 
 const formatDate = (date: Date): string => {
@@ -96,70 +113,84 @@ export const useOrdersData = (
 
     useEffect(() => {
         if (!companyId) {
-            setLoading(false);
             setOrders([]);
+            setLoading(false);
             return;
         }
 
         setLoading(true);
-        const baseQuery = collection(db, 'companies', companyId, 'Orders');
-        const OrdersQuery =
+
+        const ordersRef = collection(db, 'companies', companyId, 'Orders');
+
+        const q =
             startDate && endDate
                 ? query(
-                    baseQuery,
+                    ordersRef,
                     where('createdAt', '>=', Timestamp.fromDate(startDate)),
                     where('createdAt', '<=', Timestamp.fromDate(endDate)),
                     orderBy('createdAt', 'desc')
                 )
-                : query(baseQuery, orderBy('createdAt', 'desc'));
+                : query(ordersRef, orderBy('createdAt'));
 
-        const unsubscribe = onSnapshot(OrdersQuery, (snapshot: QuerySnapshot) => {
-            const OrdersData = snapshot.docs.map((doc): Order => {
-                const data = doc.data();
+        const unsubscribe = onSnapshot(
+            q,
+            (snapshot) => {
+                const list: Order[] = snapshot.docs.map((doc) => {
+                    const data = doc.data();
 
-                // FIX HERE
-                const createdAt =
-                    data.createdAt instanceof Timestamp
-                        ? data.createdAt.toDate()
-                        : new Date(0);
+                    const createdAt =
+                        data.createdAt instanceof Timestamp
+                            ? data.createdAt.toDate()
+                            : new Date();
 
-                return {
-                    id: doc.id,
-                    OrderId: data.OrderId || doc.id,
-                    totalAmount: data.totalAmount || 0,
-                    paidAmount: data.paidAmount || 0,
-                    paymentMethods: data.paymentMethods || {},
-                    paymentMethod: data.paymentMethod || '',
-                    userName:
-                        data.userName ||
-                        (data.billingDetails && data.billingDetails.name) ||
-                        'Anonymous',
-                    userEmail: data.userEmail || 'No Email',
-                    userLoginPhone:
-                        data.userLoginPhone ||
-                        (data.billingDetails && data.billingDetails.phone) ||
-                        'N/A',
-                    billingDetails: data.billingDetails,
-                    shippingDetails: data.shippingDetails,
-                    status: data.status || 'Upcoming',
-                    createdAt,
-                    time: formatDate(createdAt),
-                    items: (data.items || []).map((item: any) => ({
-                        id: item.id,
-                        name: item.name,
-                        quantity: item.quantity,
-                        mrp: item.mrp,
-                        note: item.note || ""
-                    })),
-                };
-            });
+                    const updatedAt =
+                        data.updatedAt instanceof Timestamp
+                            ? data.updatedAt.toDate()
+                            : createdAt;
 
-            setOrders(OrdersData);
-            setLoading(false);
-        }, () => {
-            setError('Failed to load Orders data.');
-            setLoading(false);
-        });
+                    return {
+                        id: doc.id,
+                        orderId: data.orderId || doc.id,
+                        totalAmount: Number(data.totalAmount || 0),
+                        paidAmount: Number(data.paidAmount || 0),
+                        status: data.status || 'Upcoming',
+                        paymentMethod: data.paymentMethod,
+                        paymentMethods: data.paymentMethods,
+                        returnHistory: Array.isArray(data.returnHistory) ? data.returnHistory : [],
+                        updatedAt,
+                        userName:
+                            data.userName ||
+                            data.billingDetails?.name ||
+                            'Anonymous',
+                        userLoginPhone:
+                            data.userLoginPhone ||
+                            data.billingDetails?.phone ||
+                            '',
+                        billingDetails: data.billingDetails,
+                        shippingDetails: data.shippingDetails,
+                        createdAt,
+                        time: formatDate(createdAt),
+                        items: Array.isArray(data.items)
+                            ? data.items.map((i: any) => ({
+                                id: i.id,
+                                name: i.name,
+                                quantity: Number(i.quantity || 0),
+                                mrp: Number(i.mrp || 0),
+                                finalPrice: Number(i.finalPrice ?? i.amount ?? (i.mrp * i.quantity)),
+                                note: i.note || '',
+                            }))
+                            : [],
+                    };
+                });
+
+                setOrders(list);
+                setLoading(false);
+            },
+            () => {
+                setError('Failed to load orders');
+                setLoading(false);
+            }
+        );
 
         return () => unsubscribe();
     }, [companyId, startDate, endDate]);
@@ -167,30 +198,55 @@ export const useOrdersData = (
     return { Orders, loading, error };
 };
 
-const getDateRange = (filter: string, customStart?: Date | null, customEnd?: Date | null) => {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
+
+const getDateRange = (
+    filter: string,
+    customStart?: Date | null,
+    customEnd?: Date | null
+) => {
     const end = new Date();
     end.setHours(23, 59, 59, 999);
 
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+
     switch (filter) {
-        case 'today': return { start, end };
-        case 'yesterday':
+        case 'today':
+            return { start, end };
+
+        case 'yesterday': {
             start.setDate(start.getDate() - 1);
             end.setDate(end.getDate() - 1);
             return { start, end };
-        case 'last7':
-            start.setDate(start.getDate() - 7);
+        }
+
+        case 'last7': {
+            // FIX HERE (7 days total including today)
+            start.setDate(start.getDate() - 6);
             return { start, end };
-        case 'last30':
-            start.setDate(start.getDate() - 30);
+        }
+
+        case 'last30': {
+            // Same logic (30 days total)
+            start.setDate(start.getDate() - 29);
             return { start, end };
+        }
+
         case 'custom':
-            return { start: customStart || null, end: customEnd || null };
+            return {
+                start: customStart
+                    ? new Date(new Date(customStart).setHours(0, 0, 0, 0))
+                    : start,
+                end: customEnd
+                    ? new Date(new Date(customEnd).setHours(23, 59, 59, 999))
+                    : end,
+            };
+
         default:
             return { start, end };
     }
 };
+
 
 const OrdersPage: React.FC = () => {
     const navigate = useNavigate();
@@ -205,14 +261,13 @@ const OrdersPage: React.FC = () => {
     );
 
     const [activeDateFilter, setActiveDateFilter] = useState<string>('today');
-    const [inventoryItems, setInventoryItems] = useState<any[]>([]);
     const [companyInfo, setCompanyInfo] = useState<any>(null);
     const [showPaymentModal, setShowPaymentModal] = useState<Order | null>(null);
     const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
     const [selectedItemForEdit, setSelectedItemForEdit] = useState<any>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [showSearch, setShowSearch] = useState(false);
-    const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+    const [expandedorderId, setExpandedorderId] = useState<string | null>(null);
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
     const [isUpdatingStatus, setIsUpdatingStatus] = useState<string | null>(null);
     const [selectedOrderForAction, setSelectedOrderForAction] = useState<Order | null>(null);
@@ -226,6 +281,11 @@ const OrdersPage: React.FC = () => {
         start: new Date(new Date().setHours(0, 0, 0, 0)),
         end: new Date(new Date().setHours(23, 59, 59, 999))
     });
+    const [_itemGroupMap, setItemGroupMap] = useState<Record<string, string>>({});
+    const [_pageIsLoading, setPageIsLoading] = useState(false);
+    const dbOperations = useDatabase();
+    const [_error, setError] = useState<string | null>(null);
+    const [availableItems, setAvailableItems] = useState<Item[]>([]);
 
     const { currentUser } = useAuth();
     const { Orders, loading: dataLoading, error } = useOrdersData(
@@ -281,9 +341,9 @@ const OrdersPage: React.FC = () => {
         }
 
         if (activeDateFilter === 'last7') {
-            start.setDate(today.getDate() - 7);
+            start.setDate(today.getDate() - 6);
         } else if (activeDateFilter === 'last30') {
-            start.setDate(today.getDate() - 30);
+            start.setDate(today.getDate() - 29);
         }
 
         // Format: "DD/MM/YYYY to DD/MM/YYYY"
@@ -309,37 +369,35 @@ const OrdersPage: React.FC = () => {
         fetchCompanyInfo();
     }, [currentUser]);
 
+
     useEffect(() => {
-        if (!currentUser?.companyId) return;
-        const itemsRef = collection(db, 'companies', currentUser.companyId, 'items');
-        const unsubscribe = onSnapshot(itemsRef, (snapshot) => {
-            setInventoryItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        });
-        return () => unsubscribe();
-    }, [currentUser?.companyId]);
+        const fetchData = async () => {
+            if (!dbOperations || !currentUser?.companyId) return;
+            try {
+                setPageIsLoading(true);
+                // Sales.tsx wala fast sync logic
+                const fetchedItems = await dbOperations.syncItems();
+                setAvailableItems(fetchedItems);
 
-    // const handleItemSelectInDrawer = (item: any) => {
-    //     if (!editingOrder) return;
+                // Item Groups (Categories) fetch logic
+                const groupsRef = collection(db, 'companies', currentUser.companyId, 'itemGroups');
+                const groupsSnap = await getDocs(groupsRef);
+                const groupMap: Record<string, string> = {};
+                groupsSnap.docs.forEach(doc => {
+                    const data = doc.data();
+                    groupMap[doc.id] = data.name || data.groupName || 'Unknown Group';
+                });
+                setItemGroupMap(groupMap);
+            } catch (err) {
+                console.error("Fetch Error:", err);
+                setError('Failed to sync data.');
+            } finally {
+                setPageIsLoading(false);
+            }
+        };
+        fetchData();
+    }, [dbOperations, currentUser?.companyId]);
 
-    //     const newItem: OrderItem = {
-    //         id: item.id,
-    //         name: item.name,
-    //         mrp: Number(item.mrp),
-    //         quantity: 1,
-    //         note: ""
-    //     };
-
-    //     const updatedItems = [...(editingOrder.items || []), newItem];
-
-    //     // Naya total calculate karo
-    //     const newTotal = updatedItems.reduce((sum, i) => sum + (i.mrp * i.quantity), 0);
-
-    //     setEditingOrder({
-    //         ...editingOrder,
-    //         items: updatedItems,
-    //         totalAmount: newTotal
-    //     });
-    // };
 
     // PDF & Sharing Functions (Same as provided)
     const handlePdfAction = async (Order: Order, action: ACTION) => {
@@ -355,7 +413,7 @@ const OrdersPage: React.FC = () => {
                     address: Order.billingDetails?.address || "N/A",
                     phone: Order.billingDetails?.phone || "N/A",
                 },
-                invoice: { number: Order.OrderId, date: Order.time, billedBy: "Admin" },
+                invoice: { number: Order.orderId, date: Order.time, billedBy: "Admin" },
                 items: (Order.items || []).map((item, index) => ({
                     sno: index + 1,
                     name: item.name,
@@ -385,6 +443,49 @@ const OrdersPage: React.FC = () => {
     };
 
 
+    const handleSaveSuccess = (updatedItemData: Partial<Item>) => {
+        if (!selectedItemForEdit) return;
+
+        // 1. Data Cleaning (Sales logic ki tarah)
+        const updatePayload: any = { ...updatedItemData };
+
+        // Capital 'Stock' ko small 'stock' mein convert karna (Drawer ki compatibility ke liye)
+        if (updatePayload.Stock !== undefined) {
+            updatePayload.stock = updatePayload.Stock;
+            delete updatePayload.Stock;
+        }
+
+        // Undefined values hata do
+        Object.keys(updatePayload).forEach(key => {
+            if (updatePayload[key] === undefined) delete updatePayload[key];
+        });
+
+        // 2. editingOrder state update karo
+        setEditingOrder(prevOrder => {
+            if (!prevOrder) return prevOrder;
+
+            const updatedItems = (prevOrder.items || []).map(item => {
+                // Check matching ID (Drawer String id bhejta hai)
+                if (String(item.id) === String(selectedItemForEdit.id)) {
+                    return { ...item, ...updatePayload };
+                }
+                return item;
+            });
+
+            // 3. Recalculate Total Amount (MRP * Quantity)
+            const newTotal = updatedItems.reduce((sum, i) => sum + (Number(i.mrp || 0) * Number(i.quantity || 0)), 0);
+
+            return {
+                ...prevOrder,
+                items: updatedItems,
+                totalAmount: newTotal
+            };
+        });
+
+        // Drawer band karo
+        setIsEditDrawerOpen(false);
+        setSelectedItemForEdit(null);
+    };
 
     const handleShareBill = async (Order: Order) => {
         setIsGeneratingPdf(true);
@@ -399,7 +500,7 @@ const OrdersPage: React.FC = () => {
                     address: Order.billingDetails?.address || "N/A",
                     phone: Order.billingDetails?.phone || "N/A",
                 },
-                invoice: { number: Order.OrderId, date: Order.time, billedBy: "Admin" },
+                invoice: { number: Order.orderId, date: Order.time, billedBy: "Admin" },
                 items: (Order.items || []).map((item, index) => ({
                     sno: index + 1,
                     name: item.name,
@@ -421,12 +522,12 @@ const OrdersPage: React.FC = () => {
             };
             const pdfBlob = await generatePdf(data, ACTION.BLOB);
             if (!pdfBlob || !(pdfBlob instanceof Blob)) throw new Error("PDF generation failed");
-            const file = new File([pdfBlob], `Bill_${Order.OrderId}.pdf`, { type: 'application/pdf' });
+            const file = new File([pdfBlob], `Bill_${Order.orderId}.pdf`, { type: 'application/pdf' });
 
             if (navigator.canShare && navigator.canShare({ files: [file] })) {
                 await navigator.share({
                     files: [file],
-                    title: `Invoice #${Order.OrderId}`,
+                    title: `Invoice #${Order.orderId}`,
                     text: `Hi ${Order.userName}, your bill is ready.`,
                 });
             } else {
@@ -442,27 +543,6 @@ const OrdersPage: React.FC = () => {
         }
     };
 
-    // const handleAddPayment = async (amountToAdd: number, method: string = 'Cash') => {
-    //     try {
-    //         if (!currentUser?.companyId || !showPaymentModal?.id) return;
-
-    //         const OrderRef = doc(db, 'companies', currentUser.companyId, 'Orders', showPaymentModal.id);
-
-    //         const currentPaid = Number(showPaymentModal.paidAmount || 0);
-    //         const newTotalPaid = currentPaid + Number(amountToAdd);
-
-    //         await updateDoc(OrderRef, {
-    //             paidAmount: newTotalPaid,
-    //             paymentMethod: method, // Yeh field UI ke liye zaroori hai
-    //             [`paymentMethods.${method}`]: (showPaymentModal.paymentMethods?.[method] || 0) + Number(amountToAdd)
-    //         });
-
-    //         setShowPaymentModal(null);
-    //     } catch (err) {
-    //         console.error("Error:", err);
-    //     }
-    // };
-
     const statusCounts = useMemo(() => {
         return OrderStatuses.reduce((acc, status) => {
             acc[status] = Orders.filter(o => o.status === status).length;
@@ -470,39 +550,69 @@ const OrdersPage: React.FC = () => {
         }, {} as Record<string, number>);
     }, [Orders, OrderStatuses]);
 
+    useEffect(() => {
+        let unsubscribeItems: () => void;
+        if (dbOperations) {
+            unsubscribeItems = dbOperations.listenToItems((data) => {
+                setAvailableItems(data);
+            });
+        }
+        return () => {
+            if (unsubscribeItems) unsubscribeItems();
+        };
+    }, [dbOperations]);
+
     // 3. Simplified Filter (No toggle dependency)
     const filteredOrders = useMemo(() => {
-        return Orders
-            .filter(order => {
-                // Sirf wahi orders dikhao jo current tab ke status se match karte ho
-                const matchesStatus = order.status === activeStatusTab;
 
-                // Completed tab ke andar Paid/Unpaid ka extra filter
+        let result = Orders
+            .filter(order => {
                 if (activeStatusTab === 'Completed') {
-                    const due = (order.totalAmount || 0) - (order.paidAmount || 0);
-                    if (paymentFilter === 'paid') return order.status === 'Completed' && due <= 0;
-                    if (paymentFilter === 'unpaid') return order.status === 'Completed' && due > 0;
+                    if (paymentFilter === 'unpaid') {
+                        return order.status === 'Completed';
+                    }
+                    return order.status === 'Paid';
                 }
-                return matchesStatus;
+
+                return order.status === activeStatusTab;
             })
             .filter(order => {
-                const searchLower = searchQuery.toLowerCase();
+                const q = searchQuery.toLowerCase();
                 return (
-                    order.OrderId?.toLowerCase().includes(searchLower) ||
-                    order.userName?.toLowerCase().includes(searchLower)
+                    order.orderId?.toLowerCase().includes(q) ||
+                    order.userName?.toLowerCase().includes(q)
                 );
             });
-    }, [Orders, activeStatusTab, searchQuery, paymentFilter]);
+
+        // Paid tab me latest order sabse upar
+        if (activeStatusTab === 'Completed' && paymentFilter === 'paid') {
+            result = result.sort((a, b) => {
+                const aTime = a.updatedAt
+                    ? new Date(a.updatedAt).getTime()
+                    : new Date(a.createdAt).getTime();
+
+                const bTime = b.updatedAt
+                    ? new Date(b.updatedAt).getTime()
+                    : new Date(b.createdAt).getTime();
+
+                return bTime - aTime;
+            });
+        }
+
+        return result;
+
+    }, [Orders, activeStatusTab, paymentFilter, searchQuery]);
+
 
     const handleOrderClick = (uiKey: string) => {
-        setExpandedOrderId(prevId => (prevId === uiKey ? null : uiKey));
+        setExpandedorderId(prevId => (prevId === uiKey ? null : uiKey));
     };
 
-    const handleDeleteOrder = async (OrderId: string) => {
+    const handleDeleteOrder = async (orderId: string) => {
         const confirmDelete = window.confirm("Are you sure you want to delete this entire Order?");
         if (!confirmDelete || !currentUser?.companyId) return;
         try {
-            const OrderDocRef = doc(db, 'companies', currentUser.companyId, 'Orders', OrderId);
+            const OrderDocRef = doc(db, 'companies', currentUser.companyId, 'Orders', orderId);
             await deleteDoc(OrderDocRef);
             setModal({ message: "Order deleted successfully", type: State.SUCCESS });
         } catch (err) {
@@ -510,14 +620,14 @@ const OrdersPage: React.FC = () => {
         }
     };
 
-    const handleUpdateStatus = async (OrderId: string, currentStatus: OrderStatus, manualNextStatus?: OrderStatus) => {
-        setIsUpdatingStatus(OrderId);
+    const handleUpdateStatus = async (orderId: string, currentStatus: OrderStatus, manualNextStatus?: OrderStatus) => {
+        setIsUpdatingStatus(orderId);
         try {
             const nextStatusMap: Record<OrderStatus, OrderStatus> = {
                 'Upcoming': 'Confirmed',
                 'Confirmed': 'Packed',
                 'Packed': 'Completed',
-                'Completed': 'Paid',
+                'Completed': 'Completed',
                 'Paid': 'Paid'
             };
 
@@ -525,7 +635,8 @@ const OrdersPage: React.FC = () => {
             const nextStatus = manualNextStatus || nextStatusMap[currentStatus];
 
             if (!currentUser?.companyId) return;
-            const OrderRef = doc(db, 'companies', currentUser.companyId, 'Orders', OrderId);
+            const OrderRef = doc(db, 'companies', currentUser.companyId, 'Orders', orderId);
+
 
             await updateDoc(OrderRef, {
                 status: nextStatus,
@@ -610,10 +721,8 @@ const OrdersPage: React.FC = () => {
                     {/* Right: Filter Icon */}
                     <div className="w-10 flex justify-end">
                         <div className="relative" ref={filterRef}>
-                            <button onClick={() => setIsFilterOpen(!isFilterOpen)} className="text-slate-500 hover:text-slate-800">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.572a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
-                                </svg>
+                            <button onClick={() => setIsFilterOpen(!isFilterOpen)} className="text-slate-500 hover:text-slate-800 cursor-pointer">
+                                <IconFilter />
                             </button>
 
                             {isFilterOpen && (
@@ -705,46 +814,107 @@ const OrdersPage: React.FC = () => {
                     <p className="p-8 text-center text-red-500">{error}</p>
                 ) : filteredOrders.length > 0 ? (
                     filteredOrders.map((Order) => {
-                        const isExpanded = expandedOrderId === Order.id;
-                        // const isCompletedStatus = Order.status === 'Completed';
-                        // const isPaidStatus = Order.status === 'Paid'; // Ab use ho raha hai
+                        const returnMethods =
+                            Order.returnHistory && Order.returnHistory.length > 0
+                                ? Array.from(
+                                    new Set(
+                                        Order.returnHistory.map(r => r.modeOfReturn)
+                                    )) : [];
+                        const isExpanded = expandedorderId === Order.id;
                         const isUpcomingStatus = Order.status === 'Upcoming';
-                        const total = Number(Order.totalAmount || 0);
+                        const total = (Order.items || []).reduce((sum, item) => {
+                            const price = Number(item.mrp || 0) * Number(item.quantity || 0);
+                            return sum + price;
+                        }, 0);
                         const paid = Number(Order.paidAmount || 0);
-                        const due = total - paid;
-
+                        const due = Math.max(0, total - paid);
+                        const isPaid = Order.status === 'Paid';
+                        const isFinalStage = Order.status === 'Completed' || Order.status === 'Paid';
                         return (
                             <CustomCard key={Order.id} onClick={() => handleOrderClick(Order.id)} className="p-5 mb-3 bg-white shadow-sm border border-gray-100 rounded-sm cursor-pointer relative">
+                                {/* 🔁 RETURN METHOD BADGE - TOP LEFT */}
+                                {returnMethods.length > 0 && (
+                                    <div className="absolute -top-0.5 left-0 flex flex-wrap gap-1 p-1">
+                                        {returnMethods.map((method, index) => (
+                                            <span
+                                                key={`${method}-${index}`}
+                                                className={`text-[8px] uppercase font-bold px-2 py-0.5 rounded border ${method === 'EXCHANGE'
+                                                    ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                                    : method === 'CASH REFUND'
+                                                        ? 'bg-green-50 text-green-700 border-green-200'
+                                                        : 'bg-orange-50 text-orange-700 border-orange-200'
+                                                    }`}
+                                            >
+                                                {method}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
                                 <button
                                     onClick={(e) => { e.stopPropagation(); setEditingOrder(Order); }}
-                                    className="absolute top-2 left-2 p-2 bg-white/90 backdrop-blur-sm text-slate-500 rounded-sm transition-all duration-300 shadow-md z-20 group"
+                                    className="absolute top-5 left-2 p-2 bg-white/90 backdrop-blur-sm text-slate-500 rounded-sm transition-all duration-300 z-20 group"
                                 >
-                                    <div className="flex items-center gap-1">
-                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3 h-3"><path d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>
-                                        <span className="text-[5px] font-bold uppercase hidden">Edit</span>
+                                    <div className="flex items-center cursor-pointer">
+                                        <IconEdit className='h-3 w-3' />
                                     </div>
                                 </button>
 
-                                <div className='absolute right-5 top-0'>
-                                    {Order.paymentMethods && Object.keys(Order.paymentMethods).length > 0 ? (
-                                        Object.keys(Order.paymentMethods).map((m) => (
-                                            <span key={m} className="text-[8px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider bg-blue-50 text-blue-600 border-blue-100 whitespace-nowrap">
-                                                {m}
-                                            </span>
-                                        ))
-                                    ) :
-                                        /* 2. Fallback: Agar singular field ho (Purana Data) */
-                                        Order.paymentMethods ? (
-                                            <span className="text-[8px] uppercase font-bold px-1.5 py-0.5 rounded   tracking-wider text-blue-600 border-blue-100 whitespace-nowrap">
-                                                {Order.paymentMethod}
-                                            </span>
-                                        ) : null
-                                    }
-                                </div>
+                                <div className="absolute right-5 top-0 flex gap-1">
+                                    {/* PAYMENT METHOD BADGES (DUE EXCLUDED) */}
+                                    {Order.paymentMethods &&
+                                        Object.entries(Order.paymentMethods)
+                                            .filter(([method, amount]) => {
+                                                if (method.toLowerCase() === 'due') return false;
 
+                                                const latestReturn =
+                                                    Order.returnHistory?.[Order.returnHistory.length - 1];
+
+                                                const usedInExchange =
+                                                    latestReturn?.paymentDetails &&
+                                                    Number(latestReturn.paymentDetails[method]) > 0;
+
+                                                // agar exchange me use hua hai to blue me mat dikha
+                                                if (usedInExchange) return false;
+
+                                                return Number(amount) > 0;
+                                            })
+                                            .map(([method]) => (
+                                                <span
+                                                    key={`original-${method}`}
+                                                    className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100"
+                                                >
+                                                    {method}
+                                                </span>
+                                            ))}
+
+                                    {Order.returnHistory &&
+                                        Order.returnHistory.length > 0 &&
+                                        (() => {
+                                            const latestReturn =
+                                                Order.returnHistory[Order.returnHistory.length - 1];
+
+                                            if (!latestReturn.paymentDetails) return null;
+
+                                            return Object.entries(latestReturn.paymentDetails)
+                                                .filter(
+                                                    ([method, amount]) =>
+                                                        method.toLowerCase() !== 'due' &&
+                                                        Number(amount) > 0
+                                                )
+                                                .map(([method]) => (
+                                                    <span
+                                                        key={`exchange-${method}`}
+                                                        className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-red-50 text-red-600 border border-red-200"
+                                                    >
+                                                        {method}
+                                                    </span>
+                                                ));
+                                        })()}
+
+                                </div>
                                 <div className="flex justify-between items-start pl-6 mt-1">
                                     <div>
-                                        <h3 className="text-sm font-bold text-slate-800">{Order.OrderId}</h3>
+                                        <h3 className="text-sm font-bold text-slate-800">{Order.orderId}</h3>
                                         <p className="text-gray-600 text-xs font-medium">{Order.userName}</p>
                                         <p className="text-[10px] text-gray-400 mt-1">{Order.time}</p>
                                         {isUpcomingStatus && (
@@ -755,8 +925,6 @@ const OrdersPage: React.FC = () => {
                                             </div>
                                         )}
                                     </div>
-
-
                                     <div className="text-right flex flex-col items-end">
                                         <div className="flex items-center gap-2">
                                             <p className="text-[18px] font-bold text-black">₹{total.toFixed(2)}</p>
@@ -810,20 +978,38 @@ const OrdersPage: React.FC = () => {
                                             {/* Totals Section */}
                                             <div className="border-t mt-1 p-2 flex items-center justify-between">
                                                 <div className="flex flex-wrap gap-1 items-center">
-                                                    {(paid > 0) && (
+                                                    {paid > 0 && (
                                                         Order.paymentMethods && Object.keys(Order.paymentMethods).length > 0 ? (
-                                                            Object.entries(Order.paymentMethods).map(([method, amount]) => (
-                                                                <div key={method} className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-green-100">
-                                                                    <span className="text-[8px] font-bold text-green-800 uppercase">{method}:</span>
-                                                                    <span className="text-[9px] font-black text-green-600">₹{Number(amount).toFixed(2)}</span>
-                                                                </div>
-                                                            ))
-                                                        ) : <div className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-green-100">
-                                                            <span className="text-[8px] font-bold text-green-800 uppercase">{Order.paymentMethod || 'Paid'}:</span>
-                                                            <span className="text-[9px] font-black text-green-600">₹{paid.toFixed(2)}</span>
-                                                        </div>
+                                                            Object.entries(Order.paymentMethods)
+                                                                .filter(([method, amount]) =>
+                                                                    method.toLowerCase() !== 'due' && Number(amount) > 0
+                                                                )
+                                                                .map(([method, amount]) => (
+                                                                    <div
+                                                                        key={method}
+                                                                        className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-green-100"
+                                                                    >
+                                                                        <span className="text-[8px] font-bold text-green-800 uppercase">
+                                                                            {method}
+                                                                        </span>
+                                                                        <span className="text-[9px] font-black text-green-600">
+                                                                            ₹{Number(amount).toFixed(2)}
+                                                                        </span>
+                                                                    </div>
+                                                                ))
+                                                        ) : Order.paymentMethod && paid > 0 ? (
+                                                            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-green-100">
+                                                                <span className="text-[8px] font-bold text-green-800 uppercase">
+                                                                    {Order.paymentMethod}
+                                                                </span>
+                                                                <span className="text-[9px] font-black text-green-600">
+                                                                    ₹{paid.toFixed(2)}
+                                                                </span>
+                                                            </div>
+                                                        ) : null
                                                     )}
                                                 </div>
+
                                                 <div className='flex gap-3 items-center'>
                                                     <div className="text-right border-r border-slate-200 pr-3">
                                                         <p className="text-[7px] font-bold text-green-600 uppercase tracking-tighter leading-none mb-0.5">Paid</p>
@@ -836,54 +1022,114 @@ const OrdersPage: React.FC = () => {
                                                 </div>
                                             </div>
                                         </div>
-
                                         {/* Buttons Section - Updated Grid & Logic */}
-                                        <div className={`grid ${Order.status === 'Completed' ? 'grid-cols-3' : 'grid-cols-4'} gap-3 pt-6 border-t`}>
-                                            {/* 1. Delete Button (Sabme dikhega) */}
-                                            <button onClick={(e) => { e.stopPropagation(); handleDeleteOrder(Order.id); }} className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm">Delete</button>
-
-                                            {Order.status === 'Completed' ? (
-                                                /* Stage: COMPLETED (3 Buttons logic) */
+                                        <div
+                                            className={`grid ${isFinalStage
+                                                ? (isPaid ? 'grid-cols-3' : 'grid-cols-4')
+                                                : 'grid-cols-4'
+                                                } gap-3 pt-6 border-t`}
+                                        >
+                                            {isFinalStage ? (
                                                 <>
-                                                    {due > 0 ? (
-                                                        // Unpaid section: Settle button
-                                                        <button onClick={(e) => { e.stopPropagation(); setShowPaymentModal(Order); }} className="py-2.5 bg-blue-600 text-white text-xs font-bold rounded-sm">
-                                                            Settle
-                                                        </button>
-                                                    ) : (
-                                                        // Paid section: Return button
+                                                    {/* DELETE */}
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleDeleteOrder(Order.id);
+                                                        }}
+                                                        className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm"
+                                                    >
+                                                        Delete
+                                                    </button>
+
+                                                    {/* SETTLE – only UNPAID */}
+                                                    {!isPaid && (
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                // Hum poora order object 'state' ke zariye bhej rahe hain
-                                                                navigate(`${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`, {
-                                                                    state: { selectedOrder: Order }
-                                                                });
+                                                                setShowPaymentModal(Order);
                                                             }}
-                                                            className="py-2.5 bg-orange-500 text-white text-xs font-bold rounded-sm px-4"
+                                                            className="py-2.5 bg-emerald-500 text-white text-xs font-bold rounded-sm"
                                                         >
-                                                            Return
+                                                            Settle
                                                         </button>
                                                     )}
-                                                    <button onClick={(e) => { e.stopPropagation(); setSelectedOrderForAction(Order); }} className="py-2.5 bg-black text-white text-xs font-bold rounded-sm">Print</button>
+
+                                                    {/* RETURN – PAID + UNPAID dono me */}
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            navigate(
+                                                                `${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`,
+                                                                { state: { selectedOrder: Order.orderId } }
+                                                            );
+                                                        }}
+                                                        className="py-2.5 bg-sky-500 text-white text-xs font-bold rounded-sm"
+                                                    >
+                                                        Return
+                                                    </button>
+
+                                                    {/* PRINT */}
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setSelectedOrderForAction(Order);
+                                                        }}
+                                                        className="py-2.5 bg-black text-white text-xs font-bold rounded-sm"
+                                                    >
+                                                        Print
+                                                    </button>
                                                 </>
                                             ) : (
-                                                /* Other Stages: Upcoming, Confirmed, Packed (4 Buttons logic) */
                                                 <>
-                                                    <button onClick={(e) => { e.stopPropagation(); setShowPaymentModal(Order); }} className="py-2.5 bg-green-600 text-white text-xs font-bold rounded-sm">
+                                                    {/* DELETE */}
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleDeleteOrder(Order.id);
+                                                        }}
+                                                        className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm"
+                                                    >
+                                                        Delete
+                                                    </button>
+
+                                                    {/* ADVANCE */}
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setShowPaymentModal(Order);
+                                                        }}
+                                                        className="py-2.5 bg-emerald-500 text-white text-xs font-bold rounded-sm"
+                                                    >
                                                         Advance
                                                     </button>
-                                                    <button onClick={(e) => { e.stopPropagation(); setSelectedOrderForAction(Order); }} className="py-2.5 bg-black text-white text-xs font-bold rounded-sm">Print</button>
+
+                                                    {/* PRINT */}
                                                     <button
-                                                        onClick={(e) => { e.stopPropagation(); handleUpdateStatus(Order.id, Order.status); }}
-                                                        disabled={isUpdatingStatus === Order.id}
-                                                        className="py-2.5 text-white text-xs font-bold rounded-sm bg-[#00A2FF]"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setSelectedOrderForAction(Order);
+                                                        }}
+                                                        className="py-2.5 bg-black text-white text-xs font-bold rounded-sm"
                                                     >
-                                                        {isUpdatingStatus === Order.id ? '...' : (Order.status === 'Upcoming' ? 'Confirm' : 'Next')}
+                                                        Print
+                                                    </button>
+
+                                                    {/* NEXT */}
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleUpdateStatus(Order.id, Order.status);
+                                                        }}
+                                                        disabled={isUpdatingStatus === Order.id}
+                                                        className="py-2.5 bg-[#00A2FF] text-white text-xs font-bold rounded-sm"
+                                                    >
+                                                        {isUpdatingStatus === Order.id ? '...' : 'Next'}
                                                     </button>
                                                 </>
                                             )}
                                         </div>
+
                                     </div>
                                 )}
                             </CustomCard>
@@ -919,64 +1165,124 @@ const OrdersPage: React.FC = () => {
                 </div>
             )}
 
-            {showPaymentModal && (
-                <PaymentModal
-                    isOpen={!!showPaymentModal}
-                    onClose={() => setShowPaymentModal(null)}
-                    invoice={{
-                        id: showPaymentModal.id,
-                        invoiceNumber: showPaymentModal.OrderId,
-                        amount: Number(showPaymentModal.totalAmount),
-                        partyName: showPaymentModal.userName,
-                        dueAmount: Number(showPaymentModal.totalAmount) - Number(showPaymentModal.paidAmount || 0),
-                        time: showPaymentModal.time,
-                        status: 'Unpaid',
-                        type: 'Credit',
-                        createdAt: new Date(),
-                    }}
-                    onSubmit={async (_inv, amount, method) => {
-                        try {
-                            if (!currentUser?.companyId || !showPaymentModal) return;
+            {showPaymentModal && (() => {
 
-                            const orderRef = doc(db, 'companies', currentUser.companyId, 'Orders', showPaymentModal.id);
+                // ✅ Updated total calculate karo (items se)
+                const updatedTotal =
+                    (showPaymentModal.items || []).reduce(
+                        (sum, item) =>
+                            sum + (Number(item.mrp || 0) * Number(item.quantity || 0)),
+                        0
+                    );
 
-                            // Naya method object banate hain
-                            const currentMethods = showPaymentModal.paymentMethods || {};
-                            // onSubmit ke andar ye change karo
-                            const methodKey = method ? method.toUpperCase() : 'CASH';
+                // ✅ Current paid
+                const alreadyPaid = Number(showPaymentModal.paidAmount || 0);
 
-                            const updatedMethods = {
-                                ...currentMethods,
-                                [methodKey]: (currentMethods[methodKey] || 0) + amount
-                            };
+                // ✅ Current due
+                const currentDue = Math.max(0, updatedTotal - alreadyPaid);
 
-                            // Database update
-                            await updateDoc(orderRef, {
-                                paidAmount: (showPaymentModal.paidAmount || 0) + amount,
-                                paymentMethods: updatedMethods, // Ye data jayega tabhi card pe dikhega
-                                updatedAt: serverTimestamp()
-                            });
+                return (
+                    <PaymentModal
+                        isOpen={!!showPaymentModal}
+                        onClose={() => setShowPaymentModal(null)}
+                        invoice={{
+                            id: showPaymentModal.id,
+                            invoiceNumber: showPaymentModal.orderId,
+                            amount: currentDue,      // 🔥 drawer me updated due
+                            partyName: showPaymentModal.userName,
+                            dueAmount: currentDue,   // 🔥 same due
+                            time: showPaymentModal.time,
+                            status: currentDue === 0 ? 'Paid' : 'Unpaid',
+                            type: 'Credit',
+                            createdAt: new Date(),
+                        }}
+                        onSubmit={async (_inv, amount, method) => {
+                            try {
+                                if (!currentUser?.companyId || !showPaymentModal) return;
 
-                            setShowPaymentModal(null);
-                            setModal({ message: "Payment successful!", type: State.SUCCESS });
-                        } catch (err) {
-                            console.error("Payment Error:", err);
-                            setModal({ message: "Payment failed", type: State.ERROR });
-                        }
-                    }}
-                />
-            )}
+                                const orderRef = doc(
+                                    db,
+                                    'companies',
+                                    currentUser.companyId,
+                                    'Orders',
+                                    showPaymentModal.id
+                                );
+
+                                const currentMethods =
+                                    showPaymentModal.paymentMethods || {};
+
+                                const methodKey = method
+                                    ? method.toUpperCase()
+                                    : 'CASH';
+
+                                const updatedMethods = {
+                                    ...currentMethods,
+                                    [methodKey]:
+                                        (currentMethods[methodKey] || 0) + amount,
+                                };
+
+                                const newPaidTotal = alreadyPaid + amount;
+
+                                let newStatus = showPaymentModal.status;
+                                if (
+                                    showPaymentModal.status === 'Completed' &&
+                                    Math.round(newPaidTotal) >= Math.round(updatedTotal)
+                                ) {
+                                    newStatus = 'Paid';
+                                }
+
+                                await updateDoc(orderRef, {
+                                    paidAmount: newPaidTotal,
+                                    paymentMethods: updatedMethods,
+                                    paymentMethod: methodKey,
+                                    status: newStatus,
+                                    updatedAt: serverTimestamp(),
+                                });
+
+                                setShowPaymentModal(null);
+                                setModal({
+                                    message: "Payment successful!",
+                                    type: State.SUCCESS,
+                                });
+
+                            } catch (err) {
+                                console.error("Payment Error:", err);
+                                setModal({
+                                    message: "Payment failed",
+                                    type: State.ERROR,
+                                });
+                            }
+                        }}
+                    />
+                );
+            })()}
 
             {editingOrder && (
                 <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-2 md:p-4">
                     <div className="bg-white rounded-sm w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
                         {/* Header */}
                         <div className="px-5 py-3 border-b flex justify-between items-center bg-slate-50">
-                            <div>
-                                <h3 className="text-sm font-bold text-slate-800 leading-tight">Edit Order</h3>
-                                <p className="text-[10px] text-orange-600 font-bold uppercase tracking-tighter">{editingOrder.OrderId}</p>
+                            <div className="flex items-center gap-4">
+                                <div>
+                                    <h3 className="text-sm font-bold text-slate-800 leading-tight">Edit Order</h3>
+                                    <p className="text-[10px] text-orange-600 font-bold uppercase tracking-tighter">{editingOrder.orderId}</p>
+                                </div>
+
+                                {/* Divider aur Total Amount */}
+                                <div className="h-8 w-[1px] bg-gray-500 mx-2"></div>
+                                <div className="flex flex-col gap-1">
+                                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest leading-none">Total Amount</span>
+                                    <span className="text-md font-black text-slate-900 leading-none">₹{editingOrder.totalAmount.toFixed(2)}</span>
+                                </div>
                             </div>
-                            <button onClick={() => setEditingOrder(null)} className="p-1.5 hover:bg-gray-200 rounded-sm transition-colors"><FiX size={20} /></button>
+
+                            {/* Close Button */}
+                            <button
+                                onClick={() => setEditingOrder(null)}
+                                className="p-1.5 hover:bg-gray-200 rounded-sm transition-colors"
+                            >
+                                <FiX size={20} />
+                            </button>
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar">
@@ -1010,7 +1316,7 @@ const OrdersPage: React.FC = () => {
                                                 <label className="flex items-center gap-1.5 cursor-pointer select-none">
                                                     <input
                                                         type="checkbox"
-                                                        id="sameAsBilling" // Id add kar di for reference
+                                                        id="sameAsBilling"
                                                         className="w-3.5 h-3.5 accent-orange-600 rounded-sm cursor-pointer"
                                                         onChange={(e) => {
                                                             if (e.target.checked) {
@@ -1035,30 +1341,28 @@ const OrdersPage: React.FC = () => {
                                                     onChange={(e) => {
                                                         const val = e.target.value;
                                                         const isSame = (document.getElementById('sameAsBilling') as HTMLInputElement)?.checked;
-
                                                         setEditingOrder({
                                                             ...editingOrder,
                                                             billingDetails: { ...editingOrder.billingDetails!, name: val },
-                                                            // LIVE SYNC: Agar checkbox ticked hai toh shipping name bhi update karo
                                                             ...(isSame && { shippingDetails: { ...editingOrder.shippingDetails!, name: val } })
                                                         });
                                                     }}
                                                 />
 
-                                                {/* PHONE FIELD */}
+                                                {/* PHONE FIELD (Billing) - Security Check Added */}
                                                 <input
                                                     type="text"
                                                     placeholder="Phone"
                                                     className="p-2 border border-slate-300 rounded-sm text-xs outline-none focus:border-orange-400"
                                                     value={editingOrder.billingDetails?.phone || ''}
                                                     onChange={(e) => {
-                                                        const val = e.target.value;
+                                                        // Sirf numbers allow karo aur max 10 digits
+                                                        const val = e.target.value.replace(/\D/g, '').slice(0, 10);
                                                         const isSame = (document.getElementById('sameAsBilling') as HTMLInputElement)?.checked;
 
                                                         setEditingOrder({
                                                             ...editingOrder,
                                                             billingDetails: { ...editingOrder.billingDetails!, phone: val },
-                                                            // LIVE SYNC
                                                             ...(isSame && { shippingDetails: { ...editingOrder.shippingDetails!, phone: val } })
                                                         });
                                                     }}
@@ -1072,11 +1376,9 @@ const OrdersPage: React.FC = () => {
                                                     onChange={(e) => {
                                                         const val = e.target.value;
                                                         const isSame = (document.getElementById('sameAsBilling') as HTMLInputElement)?.checked;
-
                                                         setEditingOrder({
                                                             ...editingOrder,
                                                             billingDetails: { ...editingOrder.billingDetails!, address: val },
-                                                            // LIVE SYNC
                                                             ...(isSame && { shippingDetails: { ...editingOrder.shippingDetails!, address: val } })
                                                         });
                                                     }}
@@ -1093,27 +1395,33 @@ const OrdersPage: React.FC = () => {
                                                 <input
                                                     type="text"
                                                     placeholder="Name"
-                                                    className="p-2 border border-slate-300 rounded-sm text-xs outline-none focus:border-blue-400"   
+                                                    className="p-2 border border-slate-300 rounded-sm text-xs outline-none focus:border-blue-400"
                                                     value={editingOrder.shippingDetails?.name || ''}
                                                     onChange={(e) => setEditingOrder({
                                                         ...editingOrder,
                                                         shippingDetails: { ...editingOrder.shippingDetails!, name: e.target.value }
                                                     })}
                                                 />
+
+                                                {/* PHONE FIELD (Shipping) - Security Check Added */}
                                                 <input
                                                     type="text"
                                                     placeholder="Phone"
                                                     className="p-2 border border-slate-300 rounded-sm text-xs outline-none focus:border-blue-400"
                                                     value={editingOrder.shippingDetails?.phone || ''}
-                                                    onChange={(e) => setEditingOrder({
-                                                        ...editingOrder,
-                                                        shippingDetails: { ...editingOrder.shippingDetails!, phone: e.target.value }
-                                                    })}
+                                                    onChange={(e) => {
+                                                        // Sirf numbers allow karo aur max 10 digits
+                                                        const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                                                        setEditingOrder({
+                                                            ...editingOrder,
+                                                            shippingDetails: { ...editingOrder.shippingDetails!, phone: val }
+                                                        });
+                                                    }}
                                                 />
+
                                                 <textarea
                                                     placeholder="Address"
                                                     className="col-span-2 p-2 border border-slate-300 rounded-sm text-xs h-16 resize-none outline-none focus:border-blue-400"
-
                                                     value={editingOrder.shippingDetails?.address || ''}
                                                     onChange={(e) => setEditingOrder({
                                                         ...editingOrder,
@@ -1126,12 +1434,12 @@ const OrdersPage: React.FC = () => {
                                 </div>
 
                                 {/* RIGHT SIDE: ITEMS & TOTAL */}
-                                <div className="flex flex-col h-full space-y-2">
+                                <div className="flex flex-col h-min space-y-2">
                                     {/* ADD NEW ITEM SEARCH BOX */}
                                     <div className="p-2 border-t border-slate-200">
                                         <p className="text-[9px] font-black text-orange-600 uppercase tracking-widest mb-2">Add New Item</p>
                                         <SearchableItemInput
-                                            items={inventoryItems}
+                                            items={availableItems}
                                             onItemSelected={(selectedItem) => {
                                                 // Yahan ensure kar rahe hain ki item wahi add ho jiska ID ho
                                                 if (!selectedItem.id) return;
@@ -1144,7 +1452,7 @@ const OrdersPage: React.FC = () => {
                                                     note: "",
                                                     tax: Number(selectedItem.tax)
                                                 };
-                                                const updatedItems = [...(editingOrder.items || []), newItem];
+                                                const updatedItems = [newItem, ...(editingOrder.items || [])];
                                                 const newTotal = updatedItems.reduce((sum, i) => sum + (i.mrp * i.quantity), 0);
                                                 setEditingOrder({ ...editingOrder, items: updatedItems, totalAmount: newTotal });
                                             }}
@@ -1152,13 +1460,13 @@ const OrdersPage: React.FC = () => {
                                         />
                                     </div>
 
-                                    <div className="flex-1 p-1 rounded-md border border-slate-200 bg-slate-50 flex flex-col min-h-0">
+                                    <div className="h-fit self-start w-full p-2 rounded-sm border border-slate-200 bg-slate-50 flex flex-col">
                                         <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">
                                             Items ({editingOrder.items?.length})
                                         </h4>
 
                                         {/* Items List Container */}
-                                        <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar">
+                                        <div className="h-auto">
                                             <GenericCartList
                                                 items={(editingOrder.items || []).map(item => ({
                                                     ...item,
@@ -1166,7 +1474,7 @@ const OrdersPage: React.FC = () => {
                                                     itemGroupId: item.itemGroupId ? String(item.itemGroupId) : undefined,
                                                     isEditable: true
                                                 }))}
-                                                availableItems={(editingOrder.items || []) as any}
+                                                availableItems={availableItems}
                                                 basePriceKey="mrp"
                                                 priceLabel="Price"
                                                 State={State}
@@ -1183,8 +1491,18 @@ const OrdersPage: React.FC = () => {
 
                                                 // --- DRAWER TRIGGER HERE ---
                                                 onOpenEditDrawer={(item) => {
-                                                    console.log("Drawer Triggered for:", item);
-                                                    setSelectedItemForEdit(item);
+                                                    // 1. Full product dhoondo sync data se
+                                                    const fullProduct = availableItems.find(i => String(i.id) === String(item.id));
+                                                    const mergedItem = {
+                                                        ...(fullProduct || {}),
+                                                        ...item,
+                                                        id: String(item.id),
+                                                        companyId: currentUser?.companyId,
+                                                        itemGroupId: fullProduct?.itemGroupId || (item as any).itemGroupId
+                                                    };
+
+                                                    // 3. Error fix karne ke liye 'as unknown as OrderItem' use karo
+                                                    setSelectedItemForEdit(mergedItem as unknown as OrderItem);
                                                     setIsEditDrawerOpen(true);
                                                 }}
 
@@ -1212,29 +1530,14 @@ const OrdersPage: React.FC = () => {
 
                                         {/* --- ITEM EDIT DRAWER COMPONENT --- */}
                                         <ItemEditDrawer
-                                            isOpen={isEditDrawerOpen}
+                                            item={selectedItemForEdit}
+                                            isOpen={isEditDrawerOpen} // Check karo tumhare Orders.tsx mein yahi state name hai na?
                                             onClose={() => {
                                                 setIsEditDrawerOpen(false);
                                                 setSelectedItemForEdit(null);
                                             }}
-                                            item={selectedItemForEdit}
-                                            onSaveSuccess={(updatedItemData: any) => {
-                                                // Logic to update the item in editingOrder.items
-                                                const updatedItems = editingOrder.items?.map(i =>
-                                                    String(i.id) === String(selectedItemForEdit.id) ? { ...i, ...updatedItemData } : i
-                                                );
-                                                const newTotal = updatedItems?.reduce((sum, i) => sum + (i.mrp * i.quantity), 0) || 0;
-                                                setEditingOrder({ ...editingOrder, items: updatedItems, totalAmount: newTotal });
-                                                setIsEditDrawerOpen(false);
-                                            }}
+                                            onSaveSuccess={handleSaveSuccess}
                                         />
-                                    </div>
-
-                                    <div className="bg-slate-900 rounded-sm p-4 flex justify-between items-center shadow-sm">
-                                        <div className="text-slate-400">
-                                            <p className="text-[10px] font-black uppercase tracking-[0.2em]">Total Amount</p>
-                                        </div>
-                                        <span className="text-xl font-black text-white">₹{editingOrder.totalAmount.toFixed(2)}</span>
                                     </div>
                                 </div>
                             </div>

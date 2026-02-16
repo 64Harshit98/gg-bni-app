@@ -6,52 +6,96 @@ import { useNavigate } from 'react-router-dom';
 import { ROUTES } from '../constants/routes.constants';
 import { useFilter } from './Filter';
 
-// ✅ Statuses ka order bilkul wahi jo timeline mein chahiye
 const orderStatuses: (OrderStatus | 'Upcoming')[] = ['Upcoming', 'Confirmed', 'Packed', 'Completed'];
+
+const startOfDay = (dateStr: string) => {
+    const d = new Date(dateStr);
+    d.setHours(0, 0, 0, 0);
+    return d;
+};
+
+const endOfDay = (dateStr: string) => {
+    const d = new Date(dateStr);
+    d.setHours(23, 59, 59, 999);
+    return d;
+};
+
 
 const useGroupedOrders = () => {
     const { currentUser } = useAuth();
-    // ✅ Main page wala same hook use kar rahe hain
-    const { Orders, loading, error } = useOrdersData(currentUser?.companyId);
+    const { filters } = useFilter();
+
+    const safeStartDate = useMemo(() => {
+        if (!filters.startDate) return null;
+        return startOfDay(filters.startDate);
+    }, [filters.startDate]);
+
+    const safeEndDate = useMemo(() => {
+        if (!filters.endDate) return null;
+        return endOfDay(filters.endDate);
+    }, [filters.endDate]);
+
+
+    const { Orders, loading, error } = useOrdersData(
+        currentUser?.companyId,
+        safeStartDate,
+        safeEndDate
+    );
 
     const groupedOrders = useMemo(() => {
         const map = new Map<OrderStatus | 'Upcoming', Order[]>();
-        // Map initialize kar rahe hain
         orderStatuses.forEach(status => map.set(status, []));
 
-        // ✅ FIX: Date filter hata diya hai taaki numbers 100% Orders page se match karein
         for (const order of Orders) {
             const status = order.status || 'Upcoming';
-            const statusGroup = map.get(status);
-            if (statusGroup) {
-                statusGroup.push(order);
+
+            // ✅ NO paid/unpaid logic here
+            if (map.has(status)) {
+                map.get(status)?.push(order);
             }
         }
+
         return map;
     }, [Orders]);
 
+
+
     return { groupedOrders, loading, error };
 };
+
 
 interface OrderTimelineProps {
     isDataVisible: boolean;
 }
 
 export const OrderTimeline: React.FC<OrderTimelineProps> = ({ isDataVisible }) => {
+    const { filters } = useFilter();
+    const safeStartDate = useMemo(() => {
+        if (!filters.startDate) return new Date();
+        return startOfDay(filters.startDate);
+    }, [filters.startDate]);
+
+    const safeEndDate = useMemo(() => {
+        if (!filters.endDate) return new Date();
+        return endOfDay(filters.endDate);
+    }, [filters.endDate]);
+
+
     const { groupedOrders, loading, error } = useGroupedOrders();
     const navigate = useNavigate();
-    const { filters } = useFilter();
+
 
     const selectedPeriodText = useMemo(() => {
-        if (!filters.startDate || !filters.endDate) return 'for the selected period';
         const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' };
-        const startDate = new Date(filters.startDate).toLocaleDateString('en-IN', options);
-        const endDate = new Date(filters.endDate).toLocaleDateString('en-IN', options);
-        return startDate === endDate ? `for ${startDate}` : `from ${startDate} to ${endDate}`;
-    }, [filters.startDate, filters.endDate]);
+
+        const start = safeStartDate.toLocaleDateString('en-IN', options);
+        const end = safeEndDate.toLocaleDateString('en-IN', options);
+
+        return start === end ? `for ${start}` : `from ${start} to ${end}`;
+    }, [safeStartDate, safeEndDate]);
+
 
     const handleViewStatus = (status: OrderStatus | 'Upcoming') => {
-        // ✅ Navigation setup
         navigate(ROUTES.ORDERDETAILS, { state: { defaultStatus: status } });
     };
 

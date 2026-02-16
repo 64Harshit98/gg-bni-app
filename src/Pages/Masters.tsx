@@ -8,7 +8,6 @@ const Masters = () => {
 
   const isDefaultMastersView =
     location.pathname === '/masters' || location.pathname === '/masters/';
-
   return (
     <div className="flex flex-col h-screen w-full bg-white shadow-lg overflow-hidden font-poppins">
       <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm flex-shrink-0">

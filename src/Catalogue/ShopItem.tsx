@@ -10,6 +10,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName';
 import SearchBar from './SearchBar';
+import { useLocation } from 'react-router-dom';
 
 const StockIndicator: React.FC<{ stock: number }> = ({ stock }) => {
     let colorClass = 'text-green-600 bg-green-100';
@@ -60,12 +61,14 @@ const ITEMS_PER_BATCH_RENDER = 24;
 
 const MyShop: React.FC = () => {
     const navigate = useNavigate()
+    const location = useLocation();
+    const highlightItemId = location.state?.highlightItemId;
     const { groupId } = useParams<{ groupId: string }>();
     const { currentUser, loading: authLoading } = useAuth();
     const companyId = currentUser?.companyId;
     const { businessName: companyName, loading: _nameLoading } = useBusinessName(companyId);
     const dbOperations = useDatabase();
-
+    const [highlightedId, setHighlightedId] = useState<string | null>(null);
     const [isViewMode, setIsViewMode] = useState(true);
     const [allItems, setAllItems] = useState<Item[]>([]);
     const [selectedCategory, setSelectedCategory] = useState(groupId || 'All');
@@ -127,6 +130,39 @@ const MyShop: React.FC = () => {
         const group = allItemGroups.find(g => g.id === groupId);
         return group ? group.name : 'Catalogue';
     }, [allItemGroups, groupId]);
+
+    useEffect(() => {
+        if (!highlightedId) return;
+
+        const timer = setTimeout(() => {
+            const element = document.getElementById(highlightedId);
+
+            if (element) {
+                element.scrollIntoView({
+                    behavior: "smooth",
+                    block: "center"
+                });
+            }
+        }, 200);
+
+        const removeTimer = setTimeout(() => {
+            setHighlightedId(null);
+        }, 2200);
+
+        return () => {
+            clearTimeout(timer);
+            clearTimeout(removeTimer);
+        };
+
+    }, [highlightedId, itemsToRenderCount]);
+
+    useEffect(() => {
+        if (!highlightItemId) return;
+
+        setHighlightedId(highlightItemId);
+
+    }, [highlightItemId]);
+
 
     useEffect(() => {
         if (authLoading || !currentUser || !dbOperations) {
@@ -287,7 +323,23 @@ const MyShop: React.FC = () => {
 
                 <div className="relative group md:max-w-md md:mx-auto w-full">
                     <SearchBar
+                        items={allItems}
                         setSearchQuery={setSearchQuery}
+                        onSelectItem={(item) => {
+                            if (!item.id) return;
+
+                            const itemIndex = filteredItems.findIndex(i => i.id === item.id);
+
+                            if (itemIndex !== -1) {
+                                const requiredRenderCount =
+                                    Math.ceil((itemIndex + 1) / ITEMS_PER_BATCH_RENDER) * ITEMS_PER_BATCH_RENDER;
+
+                                setItemsToRenderCount(requiredRenderCount);
+                            }
+
+                            setHighlightedId(item.id);
+                        }}
+                        placeholder="Search products..."
                     />
                 </div>
 
@@ -323,9 +375,13 @@ const MyShop: React.FC = () => {
                         const cartItem = cart.find(i => i.item.id === item.id);
                         return (
                             <div
+                                id={item.id}
                                 key={item.id}
                                 onClick={() => isViewMode ? handleOpenDetailDrawer(item) : handleOpenEditDrawer(item)}
-                                className={`bg-white rounded-sm overflow-hidden shadow-sm border border-gray-100 flex flex-col transition-all duration-300 relative group hover:shadow-md cursor-pointer ${!isViewMode ? 'ring-1 ring-[#00A3E1]/10' : ''}`}
+                                className={`bg-white rounded-sm overflow-hidden shadow-sm border transition-all duration-300 relative group hover:shadow-md cursor-pointer 
+    ${highlightedId === item.id ? 'ring-2 ring-[#00A3E1] shadow-lg scale-[1.02]' : 'border-gray-100'} 
+    ${!isViewMode ? 'ring-1 ring-[#00A3E1]/10' : ''}
+`}
                             >
                                 <div className="aspect-square bg-[#F8FAFC] flex items-center justify-center relative overflow-hidden">
                                     {item.imageUrl ? (

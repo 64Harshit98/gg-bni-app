@@ -3,42 +3,12 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getItemGroupsByCompany, getItemsByCompany } from '../lib/ItemsFirebase';
 import type { ItemGroup, Item } from '../constants/models';
 import { FiPackage, FiPlus } from 'react-icons/fi';
-import {ShoppingCart, ChevronLeft } from 'lucide-react';
+import { ShoppingCart, ChevronLeft } from 'lucide-react';
 import { Spinner } from '../constants/Spinner';
-// import { doc, getDoc } from 'firebase/firestore'; // Firebase imports
-// import { db } from '../lib/Firebase'; // DB import
 import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName.tsx';
 import SearchBar from './SearchBar.tsx';
-
-// --- Custom Hook Integrated ---
-// const useBusinessName = (companyId?: string) => {
-//     const [businessName, setBusinessName] = useState<string>('');
-//     const [loading, setLoading] = useState(true);
-
-//     useEffect(() => {
-//         if (!companyId) {
-//             setLoading(false);
-//             return;
-//         }
-//         const fetchBusinessInfo = async () => {
-//             try {
-//                 // Correct multi-tenant path as per your logic
-//                 const docRef = doc(db, 'companies', companyId, 'business_info', companyId);
-//                 const docSnap = await getDoc(docRef);
-//                 setBusinessName(docSnap.exists() ? docSnap.data().businessName || 'Catalogue' : 'Catalogue');
-//             } catch (err) {
-//                 console.error("Error fetching business name:", err);
-//                 setBusinessName('Catalogue');
-//             } finally {
-//                 setLoading(false);
-//             }
-//         };
-//         fetchBusinessInfo();
-//     }, [companyId]);
-
-//     return { businessName, loading };
-// };
+import LeadPopUp from './PopUp.tsx';
 
 const SharedCataloguePage: React.FC = () => {
     const { companyId } = useParams<{ companyId: string }>();
@@ -71,7 +41,8 @@ const SharedCataloguePage: React.FC = () => {
                     getItemGroupsByCompany(companyId),
                     getItemsByCompany(companyId)
                 ]);
-
+                console.log("Fetched Item Groups:", fetchedItemGroups);
+                console.log("Fetched Items:", fetchedItems);
                 setItemGroups(fetchedItemGroups);
                 setAllItems(fetchedItems);
             } catch (err: any) {
@@ -84,17 +55,55 @@ const SharedCataloguePage: React.FC = () => {
         fetchData();
     }, [companyId]);
 
-    const filteredItems = useMemo(() => {
-        const result = itemGroups.filter(group => {
-            const matchesSearch = group.name.toLowerCase().includes(searchQuery.toLowerCase());
-            return matchesSearch;
-        });
+    const fuzzyMatch = (text: string, query: string) => {
+        const normalize = (str: string) =>
+            str.toLowerCase().replace(/\s+/g, '');
 
-        return [...result].sort((a, b) => {
-            if (sortOrder === 'A-Z') return a.name.localeCompare(b.name);
-            return b.name.localeCompare(a.name);
-        });
-    }, [itemGroups, searchQuery, sortOrder]);
+        const normalizedText = normalize(text);
+        const normalizedQuery = normalize(query);
+
+        // Direct partial match
+        if (normalizedText.includes(normalizedQuery)) return true;
+
+        // Word-by-word loose matching
+        return normalizedQuery.split('').every(char =>
+            normalizedText.includes(char)
+        );
+    };
+
+
+    const filteredItems = useMemo(() => {
+        if (!searchQuery.trim()) return itemGroups;
+
+        const lowerQuery = searchQuery.toLowerCase().trim();
+
+        const itemsGrouped = allItems.reduce<Record<string, Item[]>>((acc, item: Item) => {
+            if (!item.itemGroupId) return acc;
+            if (!acc[item.itemGroupId]) acc[item.itemGroupId] = [];
+            acc[item.itemGroupId].push(item);
+            return acc;
+        }, {});
+
+        return itemGroups
+            .filter((group: ItemGroup) => {
+                if (!group.id) return false;
+
+                const catalogueMatch = fuzzyMatch(group.name, lowerQuery);
+
+                const itemMatch =
+                    itemsGrouped[group.id]?.some((item: Item) =>
+                        fuzzyMatch(item.name, lowerQuery)
+                    ) ?? false;
+
+                return catalogueMatch || itemMatch;
+            })
+            .sort((a, b) =>
+                sortOrder === 'A-Z'
+                    ? a.name.localeCompare(b.name)
+                    : b.name.localeCompare(a.name)
+            );
+
+    }, [itemGroups, allItems, searchQuery, sortOrder]);
 
     // Added nameLoading to the main loading check
     if (isLoading || nameLoading) {
@@ -109,11 +118,15 @@ const SharedCataloguePage: React.FC = () => {
         );
     }
 
+
     return (
         <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative overflow-x-hidden">
+
+            <LeadPopUp companyId={companyId} companyName={companyName} />
+
             {/* --- HEADER --- */}
             <header className="sticky top-0 z-[60] bg-white border-b border-gray-100 shadow-sm">
-                <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+                <div className="max-w-7xl mx-auto px-3 py-3 flex justify-between items-center">
                     <div className="flex items-center gap-3">
                         <button
                             onClick={() => navigate(-1)}
@@ -156,7 +169,14 @@ const SharedCataloguePage: React.FC = () => {
                 {/* Rest of the code remains exactly same */}
                 <div className="relative group max-w-md mx-auto w-full">
                     <SearchBar
+                        items={allItems}
                         setSearchQuery={setSearchQuery}
+                        onSelectItem={(item) => {
+                            navigate(
+                                `/product/${companyId}/${item.itemGroupId}`,
+                                { state: { highlightItemId: item.id } }
+                            );
+                        }}
                     />
                 </div>
 
@@ -201,6 +221,8 @@ const SharedCataloguePage: React.FC = () => {
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                     {filteredItems.map(group => {
                         const itemCount = allItems.filter(item => item.itemGroupId === group.id).length;
+                        console.log("Group ID:", group.id);
+                        console.log("Sample Item:", allItems[0]);
 
                         return (
                             <div

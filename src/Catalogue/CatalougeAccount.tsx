@@ -7,6 +7,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { ROUTES } from '../constants/routes.constants';
 import { Permissions } from '../enums';
 import ShowWrapper from '../context/ShowWrapper';
+import BusinessCard from './BusinessCards/BusinessCard';
 
 interface UserProfile {
     name: string;
@@ -82,7 +83,7 @@ const Account: React.FC = () => {
     };
 
     const handleEditProfile = () => {
-        navigate(`${ROUTES.EDIT_PROFILE}`);
+        navigate(`${ROUTES.CHOME}/${ROUTES.CATA_EDIT}`);
     };
 
     if (loadingAuth || loadingProfile) {
@@ -161,21 +162,7 @@ const Account: React.FC = () => {
                     <h2 className="text-xl font-semibold text-slate-800 mb-4">
                         Share your Business Card
                     </h2>
-                    <div className="flex space-x-4 overflow-x-auto pb-4 mb-4">
-                        {/* ... Your Business Card UI ... */}
-                        <div className="flex-shrink-0 w-40 bg-white rounded-sm shadow p-4 h-32 flex flex-col justify-between">
-                            <p className="font-semibold text-gray-800">Business Card 1</p>
-                            {/* ... button ... */}
-                        </div>
-                        <div className="flex-shrink-0 w-40 bg-white rounded-sm shadow p-4 h-32 flex flex-col justify-between">
-                            <p className="font-semibold text-gray-800">Business Card 2</p>
-                            {/* ... button ... */}
-                        </div>
-                        <div className="flex-shrink-0 w-40 bg-white rounded-sm shadow p-4 h-32 flex flex-col justify-between">
-                            <p className="font-semibold text-gray-800">Business Card 3</p>
-                            {/* ... button ... */}
-                        </div>
-                    </div>
+                    <BusinessCard/>
                     <div className="w-full grid-cols-2 gap-4 justify-center mt-2 space-y-2 flex-col">
 
                         <ShowWrapper
@@ -183,25 +170,13 @@ const Account: React.FC = () => {
                         >
                             <Link
                                 to={`${ROUTES.CHOME}/${ROUTES.CATALOGUE_REPORTS}`}
-                                className="
-                flex justify-between items-center
-                bg-white p-4 rounded-sm shadow-md mb-2
-                border border-gray-200 text-gray-800
-                hover:shadow-lg
-              "
-                            >
+                                className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-border border-gray-200 text-gray-800 hover:shadow-lg">
                                 <span className="text-lg font-medium">Reports</span>
                                 <span className="text-xl text-gray-600">→</span>
                             </Link>
                             <Link
-                                to={ROUTES.MASTERS}
-                                className="
-                flex justify-between items-center
-                bg-white p-4 rounded-sm shadow-md mb-2
-                border border-gray-200 text-gray-800
-                hover:shadow-lg
-              "
-                            >
+                                to={`${ROUTES.CHOME}/${ROUTES.CATA_MASTERS}`}
+                                className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-border border-gray-200 text-gray-800 hover:shadow-lg">
                                 <span className="text-lg font-medium">Setting</span>
                                 <span className="text-xl text-gray-600">→</span>
                             </Link>

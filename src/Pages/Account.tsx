@@ -25,7 +25,7 @@ const Account: React.FC = () => {
   useEffect(() => {
     const fetchUserProfile = async () => {
       if (loadingAuth) return;
-      
+
       if (!currentUser) {
         setLoadingProfile(false);
         setError('No user is currently logged in.');
@@ -116,7 +116,7 @@ const Account: React.FC = () => {
             <img
               className="w-32 h-32 rounded-full object-cover border border-white shadow-lg bg-white"
               // UPDATED: Use profilePicture if available, else placeholder
-              src={profileData.profilePicture || "https://github.com/shadcn.png"} 
+              src={profileData.profilePicture || "https://github.com/shadcn.png"}
               alt="Profile"
             />
             <div className="absolute top-0 left-0 right-0 bottom-0 border-2 border-green-500 rounded-full animate-pulse"></div>
@@ -165,7 +165,7 @@ const Account: React.FC = () => {
               <p className="font-semibold text-gray-800">Business Card 3</p>
             </div>
           </div>
-          <div className="w-full flex grid grid-cols-2 gap-4 justify-center mt-2 space-y-2 flex-col">
+          <div className="w-full grid grid-cols-2 gap-4 justify-center mt-2 space-y-2 flex-col">
 
             <ShowWrapper
               requiredPermission={Permissions.ViewReports}
@@ -195,30 +195,30 @@ const Account: React.FC = () => {
                 <span className="text-xl text-gray-600">→</span>
               </Link>
             </ShowWrapper>
-             <Link
-                to={ROUTES.SUBSCRIPTION_PAGE}
-                className="
+            <Link
+              to={ROUTES.SUBSCRIPTION_PAGE}
+              className="
                 flex justify-between items-center
                 bg-white p-4 rounded-sm shadow-md mb-2
                 border border-gray-200 text-gray-800
                 hover:shadow-lg
               "
-              >
-                <span className="text-lg font-medium">Plans</span>
-                <span className="text-xl text-gray-600">→</span>
-              </Link>
-              <Link
-                to={ROUTES.SUPPORT_PAGE}
-                className="
+            >
+              <span className="text-lg font-medium">Plans</span>
+              <span className="text-xl text-gray-600">→</span>
+            </Link>
+            <Link
+              to={ROUTES.SUPPORT_PAGE}
+              className="
                 flex justify-between items-center
                 bg-white p-4 rounded-sm shadow-md mb-2
                 border border-gray-200 text-gray-800
                 hover:shadow-lg
               "
-              >
-                <span className="text-lg font-medium">Support</span>
-                <span className="text-xl text-gray-600">→</span>
-              </Link>
+            >
+              <span className="text-lg font-medium">Support</span>
+              <span className="text-xl text-gray-600">→</span>
+            </Link>
           </div>
           <div className="mt-2 flex justify-center">
             <button

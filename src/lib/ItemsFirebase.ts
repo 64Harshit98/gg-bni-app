@@ -287,7 +287,7 @@ export const getFirestoreOperations = (companyId: string) => {
 export const getItemsByCompany = async (companyId: string): Promise<Item[]> => {
   try {
     const itemsRef = collection(db, 'companies', companyId, 'items');
-    const q = query(itemsRef, where('isListed', '==', true), where('isDeleted', '==', false));
+    const q = query(itemsRef, where('isListed', '==', true));
     const snapshot = await getDocs(q);
 
     return snapshot.docs.map((doc) => ({

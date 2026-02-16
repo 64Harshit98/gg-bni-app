@@ -28,6 +28,7 @@ export interface InvoiceData {
     billedBy: string;
     roNumber?: string;
   };
+  finalAmount?:number;
   items: {
     sno: number;
     name: string;

@@ -11,6 +11,13 @@ import { RequireSubscription } from '../UseComponents/RequiredSubscription';
 import Loading from '../Pages/Loading/Loading';
 import GlobalError from '../Components/GlobalError';
 import OrdersReturnPage from '../Catalogue/OrdersReturn';
+import CatalogueSalesSettings from '../Catalogue/Settings/CatalogueSalesSetting';
+import CatalogueMasters from '../Catalogue/Settings/CatalogueMasters';
+import CatalogueBillSetting from '../Catalogue/Settings/CatalogueBillSetting';
+import CatalogueItemSetting from '../Catalogue/Settings/CatalogueItemSetting';
+import CatalogueUserSetting from '../Catalogue/Settings/CatalogueUserSetting';
+import CataloguePermissionSetting from '../Catalogue/Settings/CataloguePermissionSetting';
+import CatalogueEditProfile from '../Catalogue/CatalogueEditProfile';
 // import SharedProduct from '../Catalogue/SharedProduct';
 
 const Home = lazy(() => import('../Pages/Home'));
@@ -304,6 +311,11 @@ const router = createBrowserRouter([
             path: ROUTES.CATALOGUE_ACCOUNTS,
             element: <CatalogueAccounts />,
             handle: { requiredPermission: null },
+            children:[
+              {
+                
+              }
+            ]
           },
           {
             path: ROUTES.ORDERDETAILS,
@@ -332,7 +344,7 @@ const router = createBrowserRouter([
           },
           {
             path: ROUTES.ORDER_RETURN,
-            element:<OrdersReturnPage/>
+            element: <OrdersReturnPage />
           },
           {
             path: ROUTES.CATALOGUE_REPORTS,
@@ -344,6 +356,44 @@ const router = createBrowserRouter([
             element: <CatalogueSales />,
             handle: { requiredPermission: null },
           },
+          {
+            path: ROUTES.CATA_EDIT,
+            element: <CatalogueEditProfile />,
+            handle: { requiredPermission: null },
+          },
+          {
+            path: ROUTES.CATA_MASTERS,
+            element: <CatalogueMasters />,
+            handle: { requiredPermission: null },
+            children: [
+              {
+                path: ROUTES.CATA_SALE_SETTING,
+                element: <CatalogueSalesSettings />,
+                handle: { requiredPermission: null },
+              },
+              {
+                path: ROUTES.CATA_BILL_SETTING,
+                element: <CatalogueBillSetting />,
+                handle: { requiredPermission: null },
+              },
+              {
+                path: ROUTES.CATA_ITEM_SETTING,
+                element: <CatalogueItemSetting />,
+                handle: { requiredPermission: null },
+              },
+              {
+                path: ROUTES.CATA_USER_SETTING,
+                element: <CatalogueUserSetting />,
+                handle: { requiredPermission: null },
+              },
+              {
+                path: ROUTES.CATA_PERMISSION_SETTING,
+                element: <CataloguePermissionSetting />,
+                handle: { requiredPermission: null },
+              },
+            ],
+          },
+          
         ],
       },
       {

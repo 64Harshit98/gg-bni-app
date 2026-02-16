@@ -10,8 +10,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName';
 import SearchBar from './SearchBar';
-import { serverTimestamp, doc, setDoc } from 'firebase/firestore';
+import { serverTimestamp, doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
+import { OrderInvoiceNumber } from '../UseComponents/InvoiceCounter';
+import { useLocation } from 'react-router-dom';
 
 interface QuickListedToggleProps {
     itemId: string;
@@ -51,12 +53,14 @@ const ITEMS_PER_BATCH_RENDER = 24;
 
 const SharedProduct: React.FC = () => {
     const navigate = useNavigate();
-    // FIX: companyId extraction moved before its usage
     const { companyId, groupId } = useParams<{ companyId: string, groupId: string }>();
     const { businessName: companyName } = useBusinessName(companyId);
+    const location = useLocation();
+    const highlightItemId = location.state?.highlightItemId;
 
     const { currentUser, loading: authLoading } = useAuth();
     const dbOperations = useDatabase();
+    const [activeHighlight, setActiveHighlight] = useState<string | null>(null);
     const [isViewMode, _setIsViewMode] = useState(true);
     const [allItems, setAllItems] = useState<Item[]>([]);
     const [allItemGroups, setAllItemGroups] = useState<ItemGroup[]>([]);
@@ -74,60 +78,122 @@ const SharedProduct: React.FC = () => {
     const loadMoreRef = useRef<HTMLDivElement | null>(null);
     const [sortOrder, setSortOrder] = useState<'A-Z' | 'Z-A' | 'Price: Low-High' | 'Price: High-Low'>('A-Z');
     const [isSortOpen, setIsSortOpen] = useState(false);
-
     const [cart, setCart] = useState<{ item: Item; quantity: number }[]>([]);
 
+    const getUserKey = () => {
+        let key = localStorage.getItem('guest_uid');
+        if (!key) {
+            key = crypto.randomUUID();
+            localStorage.setItem('guest_uid', key);
+        }
+        return key;
+    };
+
+
     // --- New Firebase Sync Function ---
-    const syncToUpcoming = async (updatedCart: { item: Item; quantity: number }[]) => {
-        if (!companyId || !currentUser?.uid) return;
+    const syncToUpcoming = async (
+        updatedCart: { item: Item; quantity: number }[]
+    ) => {
+        if (!companyId || updatedCart.length === 0) return;
 
         try {
-            const userUid = currentUser.uid;
+            const userKey = currentUser?.uid ?? getUserKey();
             const loginName = currentUser?.name || "Guest User";
-            const orderDocId = `CART-${userUid}`;
-            const orderDocRef = doc(db, 'companies', companyId, 'Orders', orderDocId);
 
             const itemsForFirebase = updatedCart.map(c => ({
                 id: String(c.item.id),
                 name: c.item.name,
                 quantity: c.quantity,
-                mrp: (c.item as any).mrp || (c.item as any).rate || (c.item as any).price || 0
+                mrp:
+                    (c.item as any).mrp ||
+                    (c.item as any).rate ||
+                    (c.item as any).price ||
+                    0
             }));
 
-            if (itemsForFirebase.length === 0) return;
+            // 🔥 FIXED UPCOMING DOC (VERY IMPORTANT)
+            const orderRef = doc(
+                db,
+                'companies',
+                companyId,
+                'Orders',
+                `upcoming_${userKey}`
+            );
 
-            await setDoc(orderDocRef, {
-                orderId: `UPC-${userUid.substring(userUid.length - 4).toUpperCase()}`,
-                userName: loginName,
-                status: 'Upcoming',
-                totalAmount: itemsForFirebase.reduce((acc, curr) => acc + (Number(curr.mrp) * curr.quantity), 0),
-                paidAmount: 0,
-                createdAt: serverTimestamp(),
-                time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
-                items: itemsForFirebase,
-                userId: userUid
-            }, { merge: true });
+            // 🔍 Check if invoice already exists
+            const snap = await getDoc(orderRef);
+
+            let invoiceNumber = snap.exists()
+                ? snap.data().invoiceNumber
+                : await OrderInvoiceNumber(companyId);
+
+            await setDoc(
+                orderRef,
+                {
+                    orderId: invoiceNumber,
+                    invoiceNumber,
+
+                    userId: userKey,
+                    userName: loginName,
+
+                    status: 'Upcoming',
+
+                    items: itemsForFirebase,
+
+                    totalAmount: itemsForFirebase.reduce(
+                        (acc, curr) => acc + curr.mrp * curr.quantity,
+                        0
+                    ),
+
+                    paidAmount: 0,
+
+                    createdAt: snap.exists() ? snap.data().createdAt : serverTimestamp(),
+                    updatedAt: serverTimestamp(),
+                },
+                { merge: true }
+            );
+
         } catch (err) {
-            console.error("Sync Error:", err);
+            console.error("Sync Upcoming Error:", err);
         }
     };
 
-    const addToCart = useCallback((item: Item, quantity: number = 1, isFromDrawer: boolean = false) => {
+
+    useEffect(() => {
+        if (cart.length > 0) {
+            syncToUpcoming(cart);
+        }
+    }, [cart]);
+
+    useEffect(() => {
+        if (highlightItemId) {
+            setActiveHighlight(highlightItemId);
+
+            setTimeout(() => {
+                setActiveHighlight(null);
+            }, 3000);
+
+            setTimeout(() => {
+                const element = document.getElementById(highlightItemId);
+                element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 300);
+        }
+    }, [highlightItemId]);
+
+    const addToCart = useCallback((item: Item) => {
         setCart(prev => {
             const existing = prev.find(i => i.item.id === item.id);
-            let newCart;
-            if (existing) {
-                const newQuantity = isFromDrawer ? quantity : existing.quantity + 1;
-                newCart = prev.map(i => i.item.id === item.id ? { ...i, quantity: newQuantity } : i);
-            } else {
-                newCart = [...prev, { item, quantity }];
-            }
-            localStorage.setItem('temp_cart', JSON.stringify(newCart));
+            const newCart = existing
+                ? prev.map(i =>
+                    i.item.id === item.id ? { ...i, quantity: i.quantity + 1 } : i
+                )
+                : [...prev, { item, quantity: 1 }];
 
-            syncToUpcoming(newCart); // <-- Ye line add hui hai
+            localStorage.setItem('temp_cart', JSON.stringify(newCart));
             return newCart;
         });
-    }, [companyId, currentUser]);
+    }, []);
+
 
     const updateQuantity = (itemId: string, delta: number) => {
         setCart(prev => {
@@ -290,7 +356,14 @@ const SharedProduct: React.FC = () => {
                 </div>
                 <div className="relative group md:max-w-md md:mx-auto w-full">
                     <SearchBar
+                        items={allItems}
                         setSearchQuery={setSearchQuery}
+                        onSelectItem={(item) => {
+                            navigate(
+                                `/product/${companyId}/${item.itemGroupId}`,
+                                { state: { highlightItemId: item.id } }
+                            );
+                        }}
                     />
                 </div>
 
@@ -320,7 +393,7 @@ const SharedProduct: React.FC = () => {
                     {itemsToDisplay.map((item) => {
                         const cartItem = cart.find(i => i.item.id === item.id);
                         return (
-                            <div key={item.id} onClick={() => isViewMode ? handleOpenDetailDrawer(item) : handleOpenEditDrawer(item)} className={`bg-white rounded-sm overflow-hidden shadow-sm border border-gray-100 flex flex-col transition-all duration-300 relative group hover:shadow-md cursor-pointer ${!isViewMode ? 'ring-1 ring-[#00A3E1]/10' : ''}`}>
+                            <div id={item.id} key={item.id} onClick={() => isViewMode ? handleOpenDetailDrawer(item) : handleOpenEditDrawer(item)} className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col transition-all duration-300 relative group hover:shadow-md cursor-pointer ${activeHighlight === item.id ? 'ring-2 ring-[#00A3E1] scale-105 bg-blue-50 border-[#00A3E1]' : 'border-gray-100'}${!isViewMode ? 'ring-1 ring-[#00A3E1]/10' : ''}`}>
                                 <div className="aspect-square bg-[#F8FAFC] flex items-center justify-center relative overflow-hidden">
                                     {item.imageUrl ? <img src={item.imageUrl} alt={item.name} className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" /> : <FiPackage className="w-10 h-10 text-gray-200" />}
                                     {!isViewMode && <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm p-1.5 rounded-sm shadow-sm"><Edit3 size={10} className="text-[#00A3E1]" /></div>}

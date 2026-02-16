@@ -23,7 +23,7 @@ const OrderingPage: React.FC = () => {
     const dbOperations = useDatabase();
     const [_items, setItems] = useState<Item[]>([]);
     const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
-    const [selectedCategory, _setSelectedCategory] = useState('All');
+    // const [selectedCategory, _setSelectedCategory] = useState('All');
     const [searchQuery, setSearchQuery] = useState('');
     const [pageIsLoading, setPageIsLoading] = useState(true);
     const [cart, setCart] = useState<any[]>([]);
@@ -33,6 +33,7 @@ const OrderingPage: React.FC = () => {
     const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
     const [customerName, setCustomerName] = useState('');
     const [customerPhone, setCustomerPhone] = useState('');
+    const [highlightedId, setHighlightedId] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'My Shop' | 'Edit Shop'>('My Shop');
     const [sortOrder, setSortOrder] = useState<'A-Z' | 'Z-A'>('A-Z');
     const [isSortOpen, setIsSortOpen] = useState(false);
@@ -110,17 +111,36 @@ const OrderingPage: React.FC = () => {
     const cartValue = useMemo(() => cart.reduce((acc, item) => acc + (item.mrp * item.quantity), 0), [cart]);
 
     const filteredItems = useMemo(() => {
-        const result = itemGroups.filter(item => {
-            const matchesCat = selectedCategory === 'All' || item.id === selectedCategory;
-            const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
-            return matchesCat && matchesSearch;
+        const query = searchQuery.toLowerCase();
+
+        const result = itemGroups.filter(group => {
+            // Group name match
+            const matchesGroupName = group.name.toLowerCase().includes(query);
+
+            // Items inside group match
+            const matchesInnerItems = _items.some(item =>
+                item.itemGroupId === group.id &&
+                item.name.toLowerCase().includes(query)
+            );
+
+            return matchesGroupName || matchesInnerItems;
         });
 
         return [...result].sort((a, b) => {
             if (sortOrder === 'A-Z') return a.name.localeCompare(b.name);
             return b.name.localeCompare(a.name);
         });
-    }, [itemGroups, selectedCategory, searchQuery, sortOrder]);
+    }, [itemGroups, _items, searchQuery, sortOrder]);
+
+    const searchableItems = useMemo(() => {
+        if (!searchQuery.trim()) return [];
+
+        const query = searchQuery.toLowerCase();
+
+        return _items.filter(item =>
+            item.name.toLowerCase().includes(query)
+        );
+    }, [_items, searchQuery]);
 
     // --- Order Logic ---
     const handleConfirmAndSaveOrder = async () => {
@@ -179,7 +199,7 @@ const OrderingPage: React.FC = () => {
                         </h1>
                     </div>
 
-                    <div className="hidden md:flex bg-gray-50 p-1 rounded-sm border border-gray-100 ml-52">
+                    <div className="hidden md:flex bg-gray-50 p-1 rounded-sm border border-gray-100 ml-70">
                         <button onClick={() => setActiveTab('My Shop')} className={`px-8 py-2 rounded-sm text-[12px] font-black uppercase transition-all ${activeTab === 'My Shop' ? 'bg-[#00A3E1] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>My Shop</button>
                         <button onClick={() => setActiveTab('Edit Shop')} className={`px-8 py-2 rounded-sm text-[12px] font-black uppercase transition-all ${activeTab === 'Edit Shop' ? 'bg-[#00A3E1] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>Edit Shop</button>
                     </div>
@@ -210,7 +230,21 @@ const OrderingPage: React.FC = () => {
 
                 {/* --- SEARCH BAR --- */}
                 <SearchBar
+                    items={_items}
                     setSearchQuery={setSearchQuery}
+                    onSelectItem={(item) => {
+                        if (!item.id) return;
+
+                        navigate(
+                            `/catalogue-home/my-shop/${item.itemGroupId}`,
+                            {
+                                state: {
+                                    highlightItemId: item.id
+                                }
+                            }
+                        );
+                    }}
+                    placeholder="Search products..."
                 />
 
                 {/* --- CATALOGUE COUNT & FILTER --- */}
@@ -260,6 +294,7 @@ const OrderingPage: React.FC = () => {
 
                         return (
                             <div
+                                id={group.id}
                                 key={group.id}
                                 onClick={() => {
                                     if (activeTab === 'Edit Shop') {
@@ -268,9 +303,7 @@ const OrderingPage: React.FC = () => {
                                         navigate(`/catalogue-home/my-shop/${group.id}`)
                                     }
                                 }}
-                                className={`bg-white rounded-sm overflow-hidden shadow-sm border border-gray-100 flex flex-col transition-all group cursor-pointer active:scale-95 ${activeTab === 'Edit Shop' ? 'hover:shadow-xl hover:border-[#00A3E1]/30' : ''
-                                    }`}
-                            >
+                                className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col transition-all group cursor-pointer active:scale-95 ${highlightedId === group.id ? 'ring-2 ring-[#00A3E1] shadow-lg scale-[1.02]' : 'border-gray-100'}`}>
                                 {/* --- IMAGE SECTION WITH TOP BADGE --- */}
                                 <div className="aspect-square bg-[#F8FAFC] relative overflow-hidden flex items-center justify-center">
                                     {group.imageUrl ? (

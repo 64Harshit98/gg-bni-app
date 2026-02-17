@@ -93,7 +93,9 @@ const SharedProduct: React.FC = () => {
         updatedCart: { item: Item; quantity: number }[]
     ) => {
         if (!companyId || updatedCart.length === 0) return;
-
+        const leadData = JSON.parse(
+            sessionStorage.getItem("leadData") || "{}"
+        );
         try {
             const leadData = JSON.parse(
                 localStorage.getItem("leadData") || "{}"

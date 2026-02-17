@@ -23,7 +23,6 @@ import { IconScanCircle, IconScan } from '../../constants/Icons';
 interface PurchaseItem extends Omit<SalesItem, 'finalPrice' | 'effectiveUnitPrice' | 'discountPercentage'> {
   purchasePrice: number | string;
   originalPurchasePrice?: number;
-  // This field specifically tracks Purchase Discount
   purchasediscount?: number;
   barcode?: string;
   taxRate?: number;
@@ -211,7 +210,7 @@ const PurchasePage: React.FC = () => {
                 taxableAmount: item.taxableAmount,
                 stock: item.stock ?? item.Stock ?? 0,
                 productId: item.productId || item.id,
-                isEditable: false
+                isEditable: true
               };
             });
 
@@ -289,10 +288,6 @@ const PurchasePage: React.FC = () => {
       finalNetPrice = 0;
       calculatedDiscount = 0;
     }
-
-    // 3. Apply Rounding
-    const isRoundingEnabled = purchaseSettings?.roundingOff ?? true;
-    finalNetPrice = applyPurchaseRounding(finalNetPrice, isRoundingEnabled);
 
     setItems((prevItems) => [
       {
@@ -442,7 +437,7 @@ const PurchasePage: React.FC = () => {
       const effectiveScheme = taxType === 'exempt' ? 'none' : gstScheme;
       if (effectiveScheme === 'regular' || effectiveScheme === 'composition') {
         if (taxType === 'exclusive') {
-          itemTaxableBase = itemTotalPurchasePrice;
+          itemTaxableBase = Math.round(itemTotalPurchasePrice);
           itemTax = itemTaxableBase * (itemTaxRate / 100);
           itemFinalTotal = itemTaxableBase + itemTax;
         } else {
@@ -551,7 +546,7 @@ const PurchasePage: React.FC = () => {
         let itemTax = 0;
 
         if (finalTaxType === 'exclusive') {
-          itemTaxableBase = itemTotalPurchasePrice;
+          itemTaxableBase = Math.round(itemTotalPurchasePrice);
           itemTax = itemTaxableBase * (itemTaxRate / 100);
         } else if (finalTaxType === 'inclusive') {
           itemTaxableBase = itemTotalPurchasePrice / (1 + (itemTaxRate / 100));
@@ -561,21 +556,28 @@ const PurchasePage: React.FC = () => {
           itemTax = 0;
         }
 
-        const { customPrice, isEditable, originalPurchasePrice, purchasediscount, ...dbItem } = item;
+      const formattedTaxable = parseFloat(itemTaxableBase.toFixed(2));
+        const formattedTax = parseFloat(itemTax.toFixed(2));
+        
+        // --- NEW: Calculate Item-Wise Total (Taxable + Tax) ---
+        const itemLineTotal = parseFloat((formattedTaxable + formattedTax).toFixed(2));
+
+        const { customPrice, isEditable, originalPurchasePrice, ...dbItem } = item;
 
         return {
           ...dbItem,
           id: item.productId || item.id,
           purchasePrice: purchasePrice,
-          // Persist purchase discount specifically
           discount: item.purchasediscount ?? item.discount ?? 0,
           taxableAmount: parseFloat(itemTaxableBase.toFixed(2)),
           taxAmount: parseFloat(itemTax.toFixed(2)),
           taxRate: itemTaxRate,
           taxType: finalTaxType,
+          finalPrice: itemLineTotal,
         };
       });
     };
+    
 
     const formattedItemsForDB = formatItemsForDB(items);
 
@@ -916,7 +918,7 @@ const PurchasePage: React.FC = () => {
                 priceLabel="MRP"
                 settings={{
                   enableRounding: false,
-                  roundingInterval: 1,
+                  roundingInterval: 0,
                   enableItemWiseDiscount: true,
                   lockDiscount: false,
                   lockPrice: false

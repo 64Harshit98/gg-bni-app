@@ -54,7 +54,25 @@ export const ReturnListItem: React.FC<ReturnListItemProps> = ({
                         <input
                             type="number"
                             value={item.quantity}
-                            onChange={(e) => onQuantityChange(item.id, Number(e.target.value))}
+                            onFocus={(e) => e.target.select()}
+
+                            // 2. Handle the change logic
+                            onChange={(e) => {
+                                const val = e.target.value;
+                                if (val === '') {
+                                    onQuantityChange(item.id, 0);
+                                    return;
+                                }
+                                const num = parseFloat(val);
+                                onQuantityChange(item.id, isNaN(num) ? 0 : num);
+                            }}
+
+                            // 3. Reset to 1 if left empty or 0
+                            onBlur={() => {
+                                if (!item.quantity || item.quantity <= 0) {
+                                    onQuantityChange(item.id, 1);
+                                }
+                            }}
                             className="w-16 p-1 border border-gray-300 rounded text-center text-sm focus:outline-none focus:border-blue-500"
                             disabled={!isSelected}
                         />

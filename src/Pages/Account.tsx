@@ -7,6 +7,8 @@ import { doc, getDoc } from 'firebase/firestore';
 import { ROUTES } from '../constants/routes.constants';
 import { Permissions } from '../enums';
 import ShowWrapper from '../context/ShowWrapper';
+import ShinyText from '../Components/ShinyText';
+import { useMemo } from 'react';
 
 interface UserProfile {
   name: string;
@@ -21,6 +23,34 @@ const Account: React.FC = () => {
   const [profileData, setProfileData] = useState<UserProfile | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const daysRemaining = useMemo(() => {
+    // 1. Get subData exactly like SubscriptionPage
+    const subData = (currentUser as any)?.subscription || (currentUser as any)?.Subscription;
+
+    // 2. Get the raw expiry date
+    const rawDate = subData?.expiryDate;
+
+    if (!rawDate) return null;
+
+    // 3. Convert to JS Date using the EXACT logic from SubscriptionPage
+    const expiryDate = new Date(
+      (rawDate as any).toDate ? (rawDate as any).toDate() : rawDate
+    );
+
+    // 4. Calculate difference
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    expiryDate.setHours(0, 0, 0, 0);
+
+    const diffTime = expiryDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    return diffDays;
+  }, [currentUser]);
+
+  // Badge Visibility Logic
+  const showBadge = daysRemaining !== null && daysRemaining <= 5 && daysRemaining >= 0;
+  const isUrgent = daysRemaining !== null && daysRemaining <= 2;
 
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -108,45 +138,61 @@ const Account: React.FC = () => {
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-100">
-      <div className="bg-gray-100 p-6 pb-4 border-b border-gray-300">
-        <h1 className="text-4xl text-center font-bold text-slate-800 mb-4">Account</h1>
-
-        <div className="flex flex-col items-center">
-          <div className="relative mb-2">
-            <img
-              className="w-32 h-32 rounded-full object-cover border border-white shadow-lg bg-white"
-              // UPDATED: Use profilePicture if available, else placeholder
-              src={profileData.profilePicture || "https://github.com/shadcn.png"}
-              alt="Profile"
-            />
-            <div className="absolute top-0 left-0 right-0 bottom-0 border-2 border-green-500 rounded-full animate-pulse"></div>
-
-            <button
-              onClick={handleEditProfile}
-              className="absolute -top-1 -right-1 bg-white p-1.5 rounded-full shadow-lg hover:bg-gray-200 transition focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-center"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={1.5}
-                stroke="currentColor"
-                className="w-6 h-6 text-gray-700"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"
-                />
-              </svg>
-            </button>
-          </div>
-
-          <h2 className="text-2xl font-semibold text-slate-900">
-            {profileData.name}
-          </h2>
-          <p className="text-base text-gray-500">{profileData.email}</p>
+      {showBadge && (
+        <div className={`w-full text-center py-2 text-sm font-bold text-white shadow-sm transition-colors duration-300 ${isUrgent ? 'bg-red-300' : 'bg-amber-200'}`}>
+          <ShinyText
+            text={`Subscription expires in ${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'}.`}
+            speed={4}
+            delay={0}
+            color="#030303"
+            shineColor="#faf5f5"
+            spread={100}
+            direction="left"
+            yoyo={false}
+            pauseOnHover={false}
+            disabled={false}
+          />
+          <Link to="/subscription" className=" text-black ml-2 underline hover:text-gray-100">Renew Now</Link>
         </div>
+      )}
+      <div className="bg-gray-100 p-2 border-b border-gray-300 mb-4">
+        <h1 className="text-3xl font-bold text-center text-slate-800">Account</h1>
+      </div>
+      <div className="flex flex-col items-center pb-4">
+        <div className="relative mb-2">
+          <img
+            className="w-32 h-32 rounded-full object-cover border border-white shadow-lg bg-white"
+            // UPDATED: Use profilePicture if available, else placeholder
+            src={profileData.profilePicture || "https://github.com/shadcn.png"}
+            alt="Profile"
+          />
+          <div className="absolute top-0 left-0 right-0 bottom-0 border-2 border-green-500 rounded-full animate-pulse"></div>
+
+          <button
+            onClick={handleEditProfile}
+            className="absolute -top-1 -right-1 bg-white p-1.5 rounded-full shadow-lg hover:bg-gray-200 transition focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-center"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
+              className="w-6 h-6 text-gray-700"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"
+              />
+            </svg>
+          </button>
+        </div>
+
+        <h2 className="text-2xl font-semibold text-slate-900">
+          {profileData.name}
+        </h2>
+        <p className="text-base text-gray-500">{profileData.email}</p>
       </div>
 
       <div className="flex-1 bg-gray-100 p-2">
@@ -217,6 +263,19 @@ const Account: React.FC = () => {
               "
             >
               <span className="text-lg font-medium">Support</span>
+              <span className="text-xl text-gray-600">→</span>
+            </Link>
+          </div>
+          <div className="mt-4 mb-6 flex justify-center ">
+            <Link
+              to={ROUTES.ADDITIONAL_FEATURES}
+              className="
+                rounded-sm bg-white py-3 px-8 font-semibold shadow-md mb-2
+                border border-gray-200 text-gray-800
+                hover:shadow-lg
+              "
+            >
+              <span className="text-lg font-medium">Add Ons</span>
               <span className="text-xl text-gray-600">→</span>
             </Link>
           </div>

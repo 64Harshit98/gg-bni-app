@@ -53,7 +53,6 @@ interface TransactionItem {
   quantity: number;
   unitPrice: number;
   amount: number;
-  // --- NEW: Limit tracking ---
   maxReturnQuantity: number;
 }
 
@@ -66,6 +65,7 @@ interface ExchangeItem {
   unitPrice: number;
   amount: number;
   discount: number;
+  salesPrice?: number;
   customPrice?: number | string;
 }
 
@@ -147,6 +147,7 @@ const SalesReturnPage: React.FC = () => {
       setIsLoading(true);
       setError(null);
       try {
+        // Optimization: Don't fetch if quota is tight and list is empty
         const salesQuery = query(
           collection(db, 'companies', currentUser.companyId, 'sales'),
           orderBy('createdAt', 'desc'),
@@ -162,9 +163,14 @@ const SalesReturnPage: React.FC = () => {
           specificInvoicePromise = getDoc(specificRef);
         }
 
-        const [salesSnapshot, allItems, customersSnap, specificInvoiceSnap] = await Promise.all([
+        // Check if items are already loaded to save reads
+        let allItems = availableItems;
+        if (availableItems.length === 0) {
+          allItems = await dbOperations.syncItems();
+        }
+
+        const [salesSnapshot, customersSnap, specificInvoiceSnap] = await Promise.all([
           getDocs(salesQuery),
-          dbOperations.syncItems(),
           getDocs(customersQuery),
           specificInvoicePromise
         ]);
@@ -188,17 +194,18 @@ const SalesReturnPage: React.FC = () => {
         }
 
         setSalesList(recentSales);
-        setAvailableItems(allItems);
+        if (availableItems.length === 0) setAvailableItems(allItems);
         setAvailableCustomers(customersData);
 
       } catch (err) {
         console.error('Error fetching data:', err);
-        setError('Failed to load initial data.');
+        // setError('Failed to load initial data.'); // Suppress to avoid UI blockage on quota error
       } finally {
         setIsLoading(false);
       }
     };
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, dbOperations, invoiceId, state]);
 
   useEffect(() => {
@@ -258,7 +265,7 @@ const SalesReturnPage: React.FC = () => {
           originalItemId: safeId,
           name: itemData.name,
           quantity: quantity,
-          maxReturnQuantity: quantity, // --- NEW: Set Validation Limit ---
+          maxReturnQuantity: quantity,
           unitPrice: unitPrice,
           amount: finalPrice,
           mrp: itemData.mrp || 0,
@@ -289,16 +296,11 @@ const SalesReturnPage: React.FC = () => {
       if (item.id === id) {
         let updatedValue = value;
 
-        // --- NEW: VALIDATION LOGIC ---
         if (field === 'quantity' && (item as any).maxReturnQuantity !== undefined) {
           const maxQty = (item as any).maxReturnQuantity;
           const newQty = Number(value);
-
           if (newQty > maxQty) {
-            setModal({
-              message: `Cannot return ${newQty} items. Only ${maxQty} were purchased.`,
-              type: State.ERROR
-            });
+            setModal({ message: `Cannot return ${newQty} items. Only ${maxQty} were purchased.`, type: State.ERROR });
             updatedValue = maxQty;
           } else if (newQty < 1) {
             updatedValue = 1;
@@ -306,13 +308,13 @@ const SalesReturnPage: React.FC = () => {
         }
 
         const updatedItem = { ...item, [field]: updatedValue };
-
         const isRoundingEnabled = salesSettings?.enableRounding ?? true;
         const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
 
         if (field === 'discount') {
           const discountValue = Number(updatedValue) || 0;
-          let newPrice = updatedItem.mrp * (1 - discountValue / 100);
+          const basePrice = (updatedItem.mrp && updatedItem.mrp > 0) ? updatedItem.mrp : (updatedItem.salesPrice || 0);
+          let newPrice = basePrice * (1 - discountValue / 100);
           newPrice = applyRounding(newPrice, isRoundingEnabled, roundingInterval);
           updatedItem.unitPrice = newPrice;
         }
@@ -341,34 +343,20 @@ const SalesReturnPage: React.FC = () => {
     navigate(ROUTES.SALES_RETURN);
   };
 
+  // --- FIX: Barcode Scan Trimming ---
   const handleBarcodeScanned = (barcode: string) => {
     const purpose = scannerPurpose;
     setScannerPurpose(null);
-
-    // FIX: Trim whitespace/newlines from scanner input
-    const cleanBarcode = barcode.trim();
-    console.log("Scanned Barcode (Cleaned):", cleanBarcode);
+    const cleanBarcode = barcode.trim(); // TRIM WHITESPACE
 
     if (purpose === 'sale') {
       const foundSale = salesList.find(sale => sale.invoiceNumber === cleanBarcode);
-      if (foundSale) {
-        handleSelectSale(foundSale);
-      } else {
-        setModal({
-          message: `Original sale not found for invoice: "${cleanBarcode}"`,
-          type: State.ERROR
-        });
-      }
+      if (foundSale) handleSelectSale(foundSale);
+      else setModal({ message: `Original sale not found for: "${cleanBarcode}"`, type: State.ERROR });
     } else if (purpose === 'item') {
       const itemToAdd = availableItems.find(item => item.barcode === cleanBarcode);
-      if (itemToAdd) {
-        handleExchangeItemSelected(itemToAdd);
-      } else {
-        setModal({
-          message: `Item not found for barcode: "${cleanBarcode}"`,
-          type: State.ERROR
-        });
-      }
+      if (itemToAdd) handleExchangeItemSelected(itemToAdd);
+      else setModal({ message: `Item not found for barcode: "${cleanBarcode}"`, type: State.ERROR });
     }
   };
 
@@ -405,6 +393,7 @@ const SalesReturnPage: React.FC = () => {
       unitPrice: finalExchangePrice,
       amount: finalExchangePrice,
       mrp: mrp,
+      salesPrice: salesPrice,
       discount: parseFloat(calculatedDiscount.toFixed(2)),
     }]);
   };
@@ -517,7 +506,7 @@ const SalesReturnPage: React.FC = () => {
       const originalInvoiceTotal = selectedSale.items.reduce((sum, item) => sum + (Number(item.finalPrice || 0)), 0);
       const validInventoryIds = new Set(availableItems.map(i => i.id));
 
-      // --- Determine Effective Tax Logic ---
+      // Default Tax Logic for NEW items in return
       const gstScheme = salesSettings?.gstScheme || 'none';
       const isTaxEnabled = salesSettings?.enableTax ?? true;
       const currentTaxRate = salesSettings?.defaultTaxRate ?? 0;
@@ -528,7 +517,7 @@ const SalesReturnPage: React.FC = () => {
         effectiveTaxMode = taxType;
       }
 
-      // --- 2. HANDLE STOCK (RETURN) ---
+      // 2. HANDLE STOCK (RETURN)
       let returnedItemsGrossValue = 0;
       itemsToReturn.forEach(returnItem => {
         const originalItem = originalItemsMap.get(returnItem.originalItemId);
@@ -545,7 +534,7 @@ const SalesReturnPage: React.FC = () => {
         }
       });
 
-      // --- 3. HANDLE STOCK (EXCHANGE) ---
+      // 3. HANDLE STOCK (EXCHANGE)
       exchangeItems.forEach(exchangeItem => {
         const existingItem = Array.from(originalItemsMap.values()).find(i => i.id === exchangeItem.originalItemId);
 
@@ -607,14 +596,18 @@ const SalesReturnPage: React.FC = () => {
         }
       });
 
-      // --- 4. RECALCULATE BILL TOTALS ---
+      // 4. RECALCULATE BILL TOTALS
       const newItemsList = Array.from(originalItemsMap.values()).map((item: any) => {
         const lineQty = Number(item.quantity);
         const lineUnit = Number(item._effectiveUnitPrice);
         let lineTotal = lineQty * lineUnit;
+
         const { _effectiveUnitPrice, ...cleanItem } = item;
 
         cleanItem.finalPrice = lineTotal;
+        // --- FIX: Explicitly save effectiveUnitPrice ---
+        cleanItem.effectiveUnitPrice = lineUnit;
+
         if (cleanItem.taxType === 'exclusive') {
           if (cleanItem.taxableAmount !== undefined && cleanItem.taxAmount !== undefined) {
             cleanItem.finalPrice = cleanItem.taxableAmount + cleanItem.taxAmount;
@@ -631,46 +624,37 @@ const SalesReturnPage: React.FC = () => {
         return acc;
       }, { subtotal: 0, taxableAmount: 0, taxAmount: 0, finalTotal: 0 });
 
-      // --- DISCOUNT LOGIC FIX ---
+      // DISCOUNT LOGIC
       let discountDeductionAmount = 0;
       const originalManualDiscount = Number(selectedSale.manualDiscount) || 0;
-
-      // 1. Calculate how much of the OLD discount should be removed because items were returned
       if (originalManualDiscount > 0 && originalInvoiceTotal > 0 && returnedItemsGrossValue > 0) {
         const ratio = returnedItemsGrossValue / originalInvoiceTotal;
         discountDeductionAmount = originalManualDiscount * ratio;
       }
       discountDeductionAmount = Math.round(discountDeductionAmount * 100) / 100;
 
-      // 2. Get the NEW discount entered in the payment drawer (if any)
       const newDrawerDiscount = Number(completionData?.discount) || 0;
-
-      // 3. Calculate Final Manual Discount: (Old Discount - Removed Portion) + New Discount
       const newManualDiscount = Math.max(0, originalManualDiscount - discountDeductionAmount + newDrawerDiscount);
 
-      // Final Calculation
       const updatedFinalAmount = updatedTotals.finalTotal - newManualDiscount;
       const totalItemDiscount = updatedTotals.subtotal - updatedTotals.finalTotal;
 
-      // --- 5. MERGE PAYMENTS ---
+      // 5. MERGE PAYMENTS
       let updatedPaymentMethods: any = { ...(selectedSale.paymentMethods || {}) };
       if (completionData?.paymentDetails) {
         Object.entries(completionData.paymentDetails).forEach(([mode, amount]) => {
           if (mode !== 'due') updatedPaymentMethods[mode] = (updatedPaymentMethods[mode] || 0) + Number(amount);
         });
       }
-
       const totalPaidSoFar = Object.entries(updatedPaymentMethods)
         .filter(([k]) => k !== 'due')
         .reduce((sum, [_, val]) => sum + Number(val), 0);
 
-      // Recalculate Due: If (Total - Paid) is tiny (rounding error), set to 0.
       let dueAmount = updatedFinalAmount - totalPaidSoFar;
-      if (dueAmount < 0.5) dueAmount = 0; // Tolerance for floating point/rounding differences
-
+      if (dueAmount < 0.5) dueAmount = 0;
       updatedPaymentMethods.due = dueAmount;
 
-      // --- 6. HISTORY & DB UPDATE ---
+      // 6. HISTORY & DB UPDATE
       const returnHistoryRecord = {
         id: crypto.randomUUID(),
         returnedAt: new Date(),
@@ -678,7 +662,7 @@ const SalesReturnPage: React.FC = () => {
         exchangeItems: exchangeItems.map(i => ({ originalItemId: i.originalItemId, name: i.name, quantity: i.quantity, amount: i.amount })),
         finalBalance,
         discountDeducted: discountDeductionAmount,
-        newDiscountApplied: newDrawerDiscount, // Log the new discount
+        newDiscountApplied: newDrawerDiscount,
         modeOfReturn,
         partyName: finalPartyName
       };
@@ -752,140 +736,158 @@ const SalesReturnPage: React.FC = () => {
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
       <BarcodeScanner isOpen={scannerPurpose !== null} onClose={() => setScannerPurpose(null)} onScanSuccess={handleBarcodeScanned} />
       {renderHeader()}
+
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-        <div className="flex-1 w-full md:w-[65%] bg-gray-100 md:bg-white md:border-r border-gray-200 overflow-y-auto p-2 md:p-2 pb-24 md:pb-2 relative">
-          <div className="bg-white p-2 rounded-sm shadow-md mb-4 border border-gray-200">
-            <div className="relative" ref={salesDropdownRef}>
-              <label htmlFor="search-sale" className="block text-sm font-medium mb-1 text-gray-700">Search Original Sale</label>
-              <div className="flex gap-2">
-                <input id="search-sale" type="text" value={searchSaleQuery} onChange={(e) => { setSearchSaleQuery(e.target.value); setIsSalesDropdownOpen(true); }} onFocus={() => setIsSalesDropdownOpen(true)} placeholder={selectedSale ? `${selectedSale.partyName} (${selectedSale.invoiceNumber})` : "Invoice or Name..."} className="flex-grow p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" autoComplete="off" readOnly={!!selectedSale} />
-                {selectedSale && (<button onClick={handleClear} className=" px-3 bg-gray-200 text-gray-700 font-semibold rounded-lg whitespace-nowrap hover:bg-gray-300">Clear</button>)}
-              </div>
-              {isSalesDropdownOpen && !selectedSale && (
-                <div className="absolute top-full w-full z-20 mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
-                  {filteredSales.map((sale) => (
-                    <div key={sale.id} className="p-3 cursor-pointer hover:bg-gray-100 border-b border-gray-50 last:border-0" onClick={() => handleSelectSale(sale)}>
-                      <p className="font-semibold text-sm">{sale.partyName} <span className="text-gray-500 font-normal">({sale.invoiceNumber || 'N/A'})</span></p>
-                      <p className="text-xs text-gray-500">Amount: ₹{sale.totalAmount.toFixed(2)}</p>
-                    </div>
-                  ))}
+
+        {/* --- LEFT PANEL --- */}
+        {/* REVERTED: Whole left panel scrolls naturally (overflow-y-auto) */}
+        <div className="flex-1 w-full md:w-[65%] bg-gray-100 md:bg-white md:border-r border-gray-200 overflow-y-auto relative">
+
+          {/* ADDED: pb-32 to allow scrolling past the floating footer button */}
+          <div className="p-2 md:p-2 pb-32 md:pb-2">
+
+            {/* Search Section */}
+            <div className="bg-white p-2 rounded-sm shadow-md mb-4 border border-gray-200">
+              <div className="relative" ref={salesDropdownRef}>
+                <label htmlFor="search-sale" className="block text-sm font-medium mb-1 text-gray-700">Search Original Sale</label>
+                <div className="flex gap-2">
+                  <input id="search-sale" type="text" value={searchSaleQuery} onChange={(e) => { setSearchSaleQuery(e.target.value); setIsSalesDropdownOpen(true); }} onFocus={() => setIsSalesDropdownOpen(true)} placeholder={selectedSale ? `${selectedSale.partyName} (${selectedSale.invoiceNumber})` : "Invoice or Name..."} className="flex-grow p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" autoComplete="off" readOnly={!!selectedSale} />
+                  {selectedSale && (<button onClick={handleClear} className=" px-3 bg-gray-200 text-gray-700 font-semibold rounded-lg whitespace-nowrap hover:bg-gray-300">Clear</button>)}
                 </div>
-              )}
+                {isSalesDropdownOpen && !selectedSale && (
+                  <div className="absolute top-full w-full z-20 mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
+                    {filteredSales.map((sale) => (
+                      <div key={sale.id} className="p-3 cursor-pointer hover:bg-gray-100 border-b border-gray-50 last:border-0" onClick={() => handleSelectSale(sale)}>
+                        <p className="font-semibold text-sm">{sale.partyName} <span className="text-gray-500 font-normal">({sale.invoiceNumber || 'N/A'})</span></p>
+                        <p className="text-xs text-gray-500">Amount: ₹{sale.totalAmount.toFixed(2)}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
 
-          {selectedSale && (
-            <>
-              <div className="bg-white p-3 rounded-sm shadow-md mb-4 border border-gray-200">
-                <div className="space-y-3 mb-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div><label className="block text-xs font-bold text-gray-500 uppercase">Date</label><input type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm" /></div>
-                    <div><label className="block text-xs font-bold text-gray-500 uppercase">Party</label><input type="text" value={partyName} onChange={(e) => setPartyName(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm" /></div>
-                  </div>
-                  <div className="relative" ref={customerDropdownRef}>
-                    <label className="block text-xs font-bold text-gray-500 uppercase">Party Number</label>
-                    <input type="text" value={partyNumber} onChange={(e) => { setPartyNumber(e.target.value); setPartyName(''); setIsCustomerDropdownOpen(true); }} onFocus={() => setIsCustomerDropdownOpen(true)} className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm" autoComplete="off" placeholder="Search customer by number or name..." />
-                    {isCustomerDropdownOpen && filteredCustomers.length > 0 && (
-                      <div className="absolute top-full left-0 w-full z-20 mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto">
-                        {filteredCustomers.map((customer) => (
-                          <div key={customer.id} className="p-2 cursor-pointer hover:bg-gray-100 border-b last:border-0" onClick={() => handleSelectCustomer(customer)}>
-                            <p className="font-semibold text-sm text-gray-800">{customer.name}</p>
-                            <p className="text-xs text-gray-500">{customer.number}</p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <h3 className="text-sm font-bold text-gray-700 mb-2 border-b pb-1">Select Return Items</h3>
-                <div className="flex flex-col gap-2">
-                  {originalSaleItems.map((item) => (
-                    <ReturnListItem key={item.id} item={item} isSelected={selectedReturnIds.has(item.id)} onToggle={handleToggleReturnItem} onQuantityChange={(id, val) => handleListChange(setOriginalSaleItems, id, 'quantity', val)} showMrp={true} />
-                  ))}
-                </div>
-              </div>
-
-              <div className="bg-white p-2 rounded-sm shadow-md mb-4 md:mb-0 border border-gray-200">
-                <div className="md:hidden mb-4">
-                  <label className="block font-medium text-sm mb-1">Transaction Type</label>
-                  <select value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-2 border rounded bg-white">
-                    <option>Credit Note</option>
-                    <option>Exchange</option>
-                    <option>Refund</option>
-                  </select>
-                </div>
-                {modeOfReturn === 'Exchange' && (
-                  <>
-                    <div className="flex items-end gap-1 mb-3">
-                      <div className="flex-grow"><SearchableItemInput label="Add Exchange Item" placeholder="Search inventory..." items={availableItems} onItemSelected={handleExchangeItemSelected} isLoading={isLoading} error={error} /></div>
-                      <button onClick={() => setScannerPurpose('item')} className="p-2.5 bg-gray-800 text-white rounded-md"><IconScanCircle width={20} height={20} /></button>
+            {selectedSale && (
+              <>
+                {/* Sale Details */}
+                <div className="bg-white p-3 rounded-sm shadow-md mb-4 border border-gray-200">
+                  <div className="space-y-3 mb-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div><label className="block text-xs font-bold text-gray-500 uppercase">Date</label><input type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm" /></div>
+                      <div><label className="block text-xs font-bold text-gray-500 uppercase">Party</label><input type="text" value={partyName} onChange={(e) => setPartyName(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm" /></div>
                     </div>
-                    <div className="flex gap-2 text-xs text-red-500 mb-2">
-                      {discountInfo && <span>{discountInfo}</span>}
-                      {priceInfo && <span>{priceInfo}</span>}
-                    </div>
-                    {exchangeItems.length > 0 && (
-                      <div className="border rounded-sm overflow-hidden">
-                        <div className="bg-gray-50 px-3 py-2 border-b text-xs font-bold text-gray-500 uppercase">Exchange Cart</div>
-                        <div className="max-h-60 overflow-y-auto bg-gray-50">
-                          <GenericCartList<SalesItem>
-                            items={mappedExchangeItems}
-                            availableItems={availableItems}
-                            basePriceKey="mrp"
-                            priceLabel="MRP"
-                            settings={{
-                              enableRounding: salesSettings?.enableRounding ?? true,
-                              roundingInterval: (salesSettings as any)?.roundingInterval ?? 1,
-                              enableItemWiseDiscount: salesSettings?.enableItemWiseDiscount ?? true,
-                              lockDiscount: isDiscountLocked,
-                              lockPrice: isPriceLocked
-                            }}
-                            applyRounding={applyRounding}
-                            State={State}
-                            setModal={setModal}
-                            onOpenEditDrawer={() => { }}
-                            onDeleteItem={(id) => handleRemoveFromList(setExchangeItems, id)}
-                            onDiscountChange={handleDiscountChange}
-                            onCustomPriceChange={handleCustomPriceChange}
-                            onCustomPriceBlur={handleCustomPriceBlur}
-                            onQuantityChange={handleQuantityChange}
-                            onDiscountPressStart={handleDiscountPressStart}
-                            onDiscountPressEnd={handleDiscountPressEnd}
-                            onDiscountClick={handleDiscountClick}
-                            onPricePressStart={handlePricePressStart}
-                            onPricePressEnd={handlePricePressEnd}
-                            onPriceClick={handlePriceClick}
-                          />
+                    <div className="relative" ref={customerDropdownRef}>
+                      <label className="block text-xs font-bold text-gray-500 uppercase">Party Number</label>
+                      <input type="text" value={partyNumber} onChange={(e) => { setPartyNumber(e.target.value); setPartyName(''); setIsCustomerDropdownOpen(true); }} onFocus={() => setIsCustomerDropdownOpen(true)} className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm" autoComplete="off" placeholder="Search customer by number or name..." />
+                      {isCustomerDropdownOpen && filteredCustomers.length > 0 && (
+                        <div className="absolute top-full left-0 w-full z-20 mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                          {filteredCustomers.map((customer) => (
+                            <div key={customer.id} className="p-2 cursor-pointer hover:bg-gray-100 border-b last:border-0" onClick={() => handleSelectCustomer(customer)}>
+                              <p className="font-semibold text-sm text-gray-800">{customer.name}</p>
+                              <p className="text-xs text-gray-500">{customer.number}</p>
+                            </div>
+                          ))}
                         </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
+                      )}
+                    </div>
+                  </div>
+                  <h3 className="text-sm font-bold text-gray-700 mb-2 border-b pb-1">Select Return Items</h3>
 
-              <div className="md:hidden bg-white p-2 rounded-sm shadow-md">
-                <div className="flex justify-between items-center text-sm text-blue-700">
-                  <p>Return Value</p><p className="font-medium">₹{totalReturnGross.toFixed(2)}</p>
-                </div>
-                {discountDeducted > 0 && (
-                  <div className="flex justify-between items-center text-xs text-red-600 mt-1">
-                    <p>Less Bill Discount</p><p>- ₹{discountDeducted.toFixed(2)}</p>
+                  {/* Normal list, scroll controlled by main panel */}
+                  <div className="flex flex-col gap-2">
+                    {originalSaleItems.map((item) => (
+                      <ReturnListItem key={item.id} item={item} isSelected={selectedReturnIds.has(item.id)} onToggle={handleToggleReturnItem} onQuantityChange={(id, val) => handleListChange(setOriginalSaleItems, id, 'quantity', val)} showMrp={true} />
+                    ))}
                   </div>
-                )}
-                {modeOfReturn === 'Exchange' && (
-                  <div className="flex justify-between items-center text-sm text-blue-700 mt-1">
-                    <p>Exchange Value</p><p className="font-medium">₹{totalExchangeValue.toFixed(2)}</p>
-                  </div>
-                )}
-                <div className="border-t border-gray-200 my-2"></div>
-                <div className={`flex justify-between items-center text-lg font-bold ${finalBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  <p>{getBalanceLabel()}</p><p>₹{Math.abs(finalBalance).toFixed(2)}</p>
                 </div>
-              </div>
-            </>
-          )}
+
+                {/* Exchange Section */}
+                <div className="bg-white p-2 rounded-sm shadow-md mb-4 md:mb-0 border border-gray-200">
+                  <div className="md:hidden mb-4">
+                    <label className="block font-medium text-sm mb-1">Transaction Type</label>
+                    <select value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-2 border rounded bg-white">
+                      <option>Credit Note</option>
+                      <option>Exchange</option>
+                      <option>Refund</option>
+                    </select>
+                  </div>
+                  {modeOfReturn === 'Exchange' && (
+                    <>
+                      <div className="flex items-end gap-1 mb-3">
+                        <div className="flex-grow"><SearchableItemInput label="Add Exchange Item" placeholder="Search inventory..." items={availableItems} onItemSelected={handleExchangeItemSelected} isLoading={isLoading} error={error} /></div>
+                        <button onClick={() => setScannerPurpose('item')} className="p-2.5 bg-gray-800 text-white rounded-md"><IconScanCircle width={20} height={20} /></button>
+                      </div>
+                      <div className="flex gap-2 text-xs text-red-500 mb-2">
+                        {discountInfo && <span>{discountInfo}</span>}
+                        {priceInfo && <span>{priceInfo}</span>}
+                      </div>
+                      {exchangeItems.length > 0 && (
+                        <div className="overflow-hidden">
+                          <div className=" px-3 py-2 border-b text-xs font-bold text-gray-500 uppercase mb-2">Exchange Cart</div>
+
+                          {/* Normal container, scroll controlled by main panel */}
+                          <div className="">
+                            <GenericCartList<SalesItem>
+                              items={mappedExchangeItems}
+                              availableItems={availableItems}
+                              basePriceKey="mrp"
+                              priceLabel="MRP"
+                              settings={{
+                                enableRounding: salesSettings?.enableRounding ?? true,
+                                roundingInterval: (salesSettings as any)?.roundingInterval ?? 1,
+                                enableItemWiseDiscount: salesSettings?.enableItemWiseDiscount ?? true,
+                                lockDiscount: isDiscountLocked,
+                                lockPrice: isPriceLocked
+                              }}
+                              applyRounding={applyRounding}
+                              State={State}
+                              setModal={setModal}
+                              onOpenEditDrawer={() => { }}
+                              onDeleteItem={(id) => handleRemoveFromList(setExchangeItems, id)}
+                              onDiscountChange={handleDiscountChange}
+                              onCustomPriceChange={handleCustomPriceChange}
+                              onCustomPriceBlur={handleCustomPriceBlur}
+                              onQuantityChange={handleQuantityChange}
+                              onDiscountPressStart={handleDiscountPressStart}
+                              onDiscountPressEnd={handleDiscountPressEnd}
+                              onDiscountClick={handleDiscountClick}
+                              onPricePressStart={handlePricePressStart}
+                              onPricePressEnd={handlePricePressEnd}
+                              onPriceClick={handlePriceClick}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* Mobile Summary */}
+                <div className="md:hidden bg-white p-2 rounded-sm shadow-md">
+                  <div className="flex justify-between items-center text-sm text-blue-700">
+                    <p>Return Value</p><p className="font-medium">₹{totalReturnGross.toFixed(2)}</p>
+                  </div>
+                  {discountDeducted > 0 && (
+                    <div className="flex justify-between items-center text-xs text-red-600 mt-1">
+                      <p>Less Bill Discount</p><p>- ₹{discountDeducted.toFixed(2)}</p>
+                    </div>
+                  )}
+                  {modeOfReturn === 'Exchange' && (
+                    <div className="flex justify-between items-center text-sm text-blue-700 mt-1">
+                      <p>Exchange Value</p><p className="font-medium">₹{totalExchangeValue.toFixed(2)}</p>
+                    </div>
+                  )}
+                  <div className="border-t border-gray-200 my-2"></div>
+                  <div className={`flex justify-between items-center text-lg font-bold ${finalBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    <p>{getBalanceLabel()}</p><p>₹{Math.abs(finalBalance).toFixed(2)}</p>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
+        {/* --- RIGHT PANEL --- */}
         <div className="hidden md:flex w-[35%] flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10 p-6">
           {selectedSale ? (
             <div className="flex flex-col h-full">
@@ -938,10 +940,12 @@ const SalesReturnPage: React.FC = () => {
             </div>
           )}
         </div>
-        <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-transparent flex justify-center pb-18">
-          {selectedSale && (<CustomButton onClick={handleProcessReturn} variant={Variant.Payment} className="w-full py-3 text-lg font-semibold shadow-md">Process Transaction</CustomButton>)}
+
+        <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-transparent flex justify-center pb-18 pointer-events-none">
+          {selectedSale && (<CustomButton onClick={handleProcessReturn} variant={Variant.Payment} className="w-full py-3 text-lg font-semibold shadow-md pointer-events-auto">Process Transaction</CustomButton>)}
         </div>
       </div>
+
       <PaymentDrawer
         mode='sale'
         isOpen={isDrawerOpen}

@@ -545,7 +545,18 @@ const OrdersPage: React.FC = () => {
 
     const statusCounts = useMemo(() => {
         return OrderStatuses.reduce((acc, status) => {
-            acc[status] = Orders.filter(o => o.status === status).length;
+
+            // 🔥 Completed = Completed + Paid
+            if (status === "Completed") {
+                acc[status] = Orders.filter(
+                    o => o.status === "Completed" || o.status === "Paid"
+                ).length;
+            } else {
+                acc[status] = Orders.filter(
+                    o => o.status === status
+                ).length;
+            }
+
             return acc;
         }, {} as Record<string, number>);
     }, [Orders, OrderStatuses]);
@@ -914,14 +925,51 @@ const OrdersPage: React.FC = () => {
                                 </div>
                                 <div className="flex justify-between items-start pl-6 mt-1">
                                     <div>
-                                        <h3 className="text-sm font-bold text-slate-800">{Order.orderId}</h3>
+                                        {!isUpcomingStatus && (
+                                            <h3 className="text-sm font-bold text-slate-800">
+                                                {Order.orderId}
+                                            </h3>
+                                        )}
                                         <p className="text-gray-600 text-xs font-medium">{Order.userName}</p>
                                         <p className="text-[10px] text-gray-400 mt-1">{Order.time}</p>
                                         {isUpcomingStatus && (
-                                            <div className="mt-2 p-2 bg-blue-50 rounded bOrder bOrder-dashed bOrder-blue-200">
-                                                <p className="text-[8px] font-black text-blue-500 uppercase">Customer Contact</p>
-                                                <p className="text-[10px] text-slate-700 font-bold">{Order.userEmail}</p>
-                                                <p className="text-[10px] text-slate-700 font-bold">{Order.userLoginPhone}</p>
+                                            <div className="mt-2 p-2 bg-slate-50/50 border border-slate-200 rounded-lg flex items-center justify-between gap-3">
+                                                {/* Left Side: Info */}
+                                                <div className="flex items-center gap-3 min-w-0 flex-1">
+                                                    <div className="hidden sm:block">
+                                                        <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                                                    </div>
+                                                    <div className="flex flex-col min-w-0">
+                                                        <span className="text-[11px] font-bold text-slate-900 truncate tracking-tight">
+                                                            {Order.userLoginPhone}
+                                                        </span>
+                                                        <span className="text-[9px] text-slate-500 truncate leading-none">
+                                                            {Order.userEmail}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Right Side: Buttons */}
+                                                {Order.userLoginPhone && (
+                                                    <div className="flex gap-1.5 shrink-0">
+                                                        <a
+                                                            href={`tel:${Order.userLoginPhone.replace(/\D/g, '')}`}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            className="h-8 px-3 flex items-center justify-center text-[10px] font-bold text-emerald-600 bg-white border border-emerald-200 rounded-md hover:bg-emerald-50 active:scale-95 transition-all shadow-sm"
+                                                        >
+                                                            Call
+                                                        </a>
+                                                        <a
+                                                            href={`https://wa.me/${Order.userLoginPhone.replace(/\D/g, '')}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            className="h-8 px-3 flex items-center justify-center text-[10px] font-bold text-white bg-[#25D366] rounded-md hover:bg-[#1ebe5d] active:scale-95 transition-all shadow-sm"
+                                                        >
+                                                            WhatsApp
+                                                        </a>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </div>
@@ -935,23 +983,24 @@ const OrdersPage: React.FC = () => {
                                 </div>
 
                                 {isExpanded && (
-                                    <div className="mt-1 border-t pt-4">
+                                    <div className={`mt-1 border-t pt-4 ${isUpcomingStatus ? "pb-2" : ""}`}>
                                         {/* Addresses Section */}
-                                        <div className="grid grid-cols-2 gap-4 mb-1 pb-4 border-b">
-                                            <div className="space-y-1">
-                                                <p className="text-[8px] font-black text-orange-500 uppercase">Billing Address</p>
-                                                <p className="text-[11px] font-bold text-slate-800">{Order.billingDetails?.name}</p>
-                                                <p className="text-[10px] text-gray-500 leading-tight">{Order.billingDetails?.address}</p>
-                                                <p className="text-[10px] text-gray-500">{Order.billingDetails?.phone}</p>
+                                        {!isUpcomingStatus && (
+                                            <div className="grid grid-cols-2 gap-4 mb-1 pb-4 border-b">
+                                                <div className="space-y-1">
+                                                    <p className="text-[8px] font-black text-orange-500 uppercase">Billing Address</p>
+                                                    <p className="text-[11px] font-bold text-slate-800">{Order.billingDetails?.name}</p>
+                                                    <p className="text-[10px] text-gray-500 leading-tight">{Order.billingDetails?.address}</p>
+                                                    <p className="text-[10px] text-gray-500">{Order.billingDetails?.phone}</p>
+                                                </div>
+                                                <div className="space-y-1 border-l pl-4">
+                                                    <p className="text-[8px] font-black text-blue-500 uppercase">Shipping Address</p>
+                                                    <p className="text-[11px] font-bold text-slate-800">{Order.shippingDetails?.name || Order.billingDetails?.name}</p>
+                                                    <p className="text-[10px] text-gray-500 leading-tight">{Order.shippingDetails?.address || Order.billingDetails?.address}</p>
+                                                    <p className="text-[10px] text-gray-500">{Order.shippingDetails?.phone}</p>
+                                                </div>
                                             </div>
-                                            <div className="space-y-1 border-l pl-4">
-                                                <p className="text-[8px] font-black text-blue-500 uppercase">Shipping Address</p>
-                                                <p className="text-[11px] font-bold text-slate-800">{Order.shippingDetails?.name || Order.billingDetails?.name}</p>
-                                                <p className="text-[10px] text-gray-500 leading-tight">{Order.shippingDetails?.address || Order.billingDetails?.address}</p>
-                                                <p className="text-[10px] text-gray-500">{Order.shippingDetails?.phone}</p>
-                                            </div>
-                                        </div>
-
+                                        )}
                                         {/* Items Section */}
                                         <div>
                                             {Order.items?.map((item, idx) => (
@@ -976,74 +1025,127 @@ const OrdersPage: React.FC = () => {
                                             ))}
 
                                             {/* Totals Section */}
-                                            <div className="border-t mt-1 p-2 flex items-center justify-between">
-                                                <div className="flex flex-wrap gap-1 items-center">
-                                                    {paid > 0 && (
-                                                        Order.paymentMethods && Object.keys(Order.paymentMethods).length > 0 ? (
-                                                            Object.entries(Order.paymentMethods)
-                                                                .filter(([method, amount]) =>
-                                                                    method.toLowerCase() !== 'due' && Number(amount) > 0
-                                                                )
-                                                                .map(([method, amount]) => (
-                                                                    <div
-                                                                        key={method}
-                                                                        className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-green-100"
-                                                                    >
-                                                                        <span className="text-[8px] font-bold text-green-800 uppercase">
-                                                                            {method}
-                                                                        </span>
-                                                                        <span className="text-[9px] font-black text-green-600">
-                                                                            ₹{Number(amount).toFixed(2)}
-                                                                        </span>
-                                                                    </div>
-                                                                ))
-                                                        ) : Order.paymentMethod && paid > 0 ? (
-                                                            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-green-100">
-                                                                <span className="text-[8px] font-bold text-green-800 uppercase">
-                                                                    {Order.paymentMethod}
-                                                                </span>
-                                                                <span className="text-[9px] font-black text-green-600">
-                                                                    ₹{paid.toFixed(2)}
-                                                                </span>
-                                                            </div>
-                                                        ) : null
-                                                    )}
-                                                </div>
+                                            {!isUpcomingStatus && (
+                                                <div className="border-t mt-1 p-2 flex items-center justify-between">
+                                                    <div className="flex flex-wrap gap-1 items-center">
+                                                        {paid > 0 && (
+                                                            Order.paymentMethods && Object.keys(Order.paymentMethods).length > 0 ? (
+                                                                Object.entries(Order.paymentMethods)
+                                                                    .filter(([method, amount]) =>
+                                                                        method.toLowerCase() !== 'due' && Number(amount) > 0
+                                                                    )
+                                                                    .map(([method, amount]) => (
+                                                                        <div
+                                                                            key={method}
+                                                                            className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-green-100"
+                                                                        >
+                                                                            <span className="text-[8px] font-bold text-green-800 uppercase">
+                                                                                {method}
+                                                                            </span>
+                                                                            <span className="text-[9px] font-black text-green-600">
+                                                                                ₹{Number(amount).toFixed(2)}
+                                                                            </span>
+                                                                        </div>
+                                                                    ))
+                                                            ) : Order.paymentMethod && paid > 0 ? (
+                                                                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-green-100">
+                                                                    <span className="text-[8px] font-bold text-green-800 uppercase">
+                                                                        {Order.paymentMethod}
+                                                                    </span>
+                                                                    <span className="text-[9px] font-black text-green-600">
+                                                                        ₹{paid.toFixed(2)}
+                                                                    </span>
+                                                                </div>
+                                                            ) : null
+                                                        )}
+                                                    </div>
 
-                                                <div className='flex gap-3 items-center'>
-                                                    <div className="text-right border-r border-slate-200 pr-3">
-                                                        <p className="text-[7px] font-bold text-green-600 uppercase tracking-tighter leading-none mb-0.5">Paid</p>
-                                                        <p className="text-[11px] font-black text-green-700 leading-none">₹{paid.toFixed(2)}</p>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <p className="text-[7px] font-bold text-red-600 uppercase tracking-tighter leading-none mb-0.5">Due</p>
-                                                        <p className="text-[11px] font-black text-red-700 leading-none">₹{due.toFixed(2)}</p>
+                                                    <div className='flex gap-3 items-center'>
+                                                        <div className="text-right border-r border-slate-200 pr-3">
+                                                            <p className="text-[7px] font-bold text-green-600 uppercase tracking-tighter leading-none mb-0.5">Paid</p>
+                                                            <p className="text-[11px] font-black text-green-700 leading-none">₹{paid.toFixed(2)}</p>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <p className="text-[7px] font-bold text-red-600 uppercase tracking-tighter leading-none mb-0.5">Due</p>
+                                                            <p className="text-[11px] font-black text-red-700 leading-none">₹{due.toFixed(2)}</p>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
+                                            )}
                                         </div>
                                         {/* Buttons Section - Updated Grid & Logic */}
-                                        <div
-                                            className={`grid ${isFinalStage
-                                                ? (isPaid ? 'grid-cols-3' : 'grid-cols-4')
-                                                : 'grid-cols-4'
-                                                } gap-3 pt-6 border-t`}
-                                        >
-                                            {isFinalStage ? (
-                                                <>
-                                                    {/* DELETE */}
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            handleDeleteOrder(Order.id);
-                                                        }}
-                                                        className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm"
-                                                    >
-                                                        Delete
-                                                    </button>
+                                        {!isUpcomingStatus && (
+                                            <div
+                                                className={`grid ${isFinalStage
+                                                    ? (isPaid ? 'grid-cols-3' : 'grid-cols-4')
+                                                    : 'grid-cols-4'
+                                                    } gap-3 pt-6 border-t`}
+                                            >
+                                                {isFinalStage ? (
+                                                    <>
+                                                        {/* DELETE */}
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleDeleteOrder(Order.id);
+                                                            }}
+                                                            className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm"
+                                                        >
+                                                            Delete
+                                                        </button>
 
-                                                    {/* SETTLE – only UNPAID */}
-                                                    {!isPaid && (
+                                                        {/* SETTLE – only UNPAID */}
+                                                        {!isPaid && (
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setShowPaymentModal(Order);
+                                                                }}
+                                                                className="py-2.5 bg-emerald-500 text-white text-xs font-bold rounded-sm"
+                                                            >
+                                                                Settle
+                                                            </button>
+                                                        )}
+
+                                                        {/* RETURN – PAID + UNPAID dono me */}
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                navigate(
+                                                                    `${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`,
+                                                                    { state: { selectedOrder: Order.orderId } }
+                                                                );
+                                                            }}
+                                                            className="py-2.5 bg-sky-500 text-white text-xs font-bold rounded-sm"
+                                                        >
+                                                            Return
+                                                        </button>
+
+                                                        {/* PRINT */}
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setSelectedOrderForAction(Order);
+                                                            }}
+                                                            className="py-2.5 bg-black text-white text-xs font-bold rounded-sm"
+                                                        >
+                                                            Print
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        {/* DELETE */}
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleDeleteOrder(Order.id);
+                                                            }}
+                                                            className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm"
+                                                        >
+                                                            Delete
+                                                        </button>
+
+                                                        {/* ADVANCE */}
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
@@ -1051,85 +1153,35 @@ const OrdersPage: React.FC = () => {
                                                             }}
                                                             className="py-2.5 bg-emerald-500 text-white text-xs font-bold rounded-sm"
                                                         >
-                                                            Settle
+                                                            Advance
                                                         </button>
-                                                    )}
 
-                                                    {/* RETURN – PAID + UNPAID dono me */}
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            navigate(
-                                                                `${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`,
-                                                                { state: { selectedOrder: Order.orderId } }
-                                                            );
-                                                        }}
-                                                        className="py-2.5 bg-sky-500 text-white text-xs font-bold rounded-sm"
-                                                    >
-                                                        Return
-                                                    </button>
+                                                        {/* PRINT */}
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setSelectedOrderForAction(Order);
+                                                            }}
+                                                            className="py-2.5 bg-black text-white text-xs font-bold rounded-sm"
+                                                        >
+                                                            Print
+                                                        </button>
 
-                                                    {/* PRINT */}
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setSelectedOrderForAction(Order);
-                                                        }}
-                                                        className="py-2.5 bg-black text-white text-xs font-bold rounded-sm"
-                                                    >
-                                                        Print
-                                                    </button>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    {/* DELETE */}
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            handleDeleteOrder(Order.id);
-                                                        }}
-                                                        className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm"
-                                                    >
-                                                        Delete
-                                                    </button>
-
-                                                    {/* ADVANCE */}
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setShowPaymentModal(Order);
-                                                        }}
-                                                        className="py-2.5 bg-emerald-500 text-white text-xs font-bold rounded-sm"
-                                                    >
-                                                        Advance
-                                                    </button>
-
-                                                    {/* PRINT */}
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setSelectedOrderForAction(Order);
-                                                        }}
-                                                        className="py-2.5 bg-black text-white text-xs font-bold rounded-sm"
-                                                    >
-                                                        Print
-                                                    </button>
-
-                                                    {/* NEXT */}
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            handleUpdateStatus(Order.id, Order.status);
-                                                        }}
-                                                        disabled={isUpdatingStatus === Order.id}
-                                                        className="py-2.5 bg-[#00A2FF] text-white text-xs font-bold rounded-sm"
-                                                    >
-                                                        {isUpdatingStatus === Order.id ? '...' : 'Next'}
-                                                    </button>
-                                                </>
-                                            )}
-                                        </div>
-
+                                                        {/* NEXT */}
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleUpdateStatus(Order.id, Order.status);
+                                                            }}
+                                                            disabled={isUpdatingStatus === Order.id}
+                                                            className="py-2.5 bg-[#00A2FF] text-white text-xs font-bold rounded-sm"
+                                                        >
+                                                            {isUpdatingStatus === Order.id ? '...' : 'Next'}
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </CustomCard>

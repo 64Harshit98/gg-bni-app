@@ -46,6 +46,15 @@ const CatalogueLayout = () => {
                     Catalogue
                 </Button>
             )}
+
+            <Button
+                variant="outline"
+                className="w-full mb-2 rounded bg-white"
+                onClick={() => navigate(ROUTES.CATA_REQUEST)}
+            >
+                Requests
+            </Button>
+
         </ShowWrapper>
     );
 
@@ -110,6 +119,16 @@ const CatalogueLayout = () => {
                                 <span>Catalogue</span>
                             </NavLink>
                         )}
+
+                        <NavLink
+                            to={`${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`}
+                            end
+                            className={({ isActive }) => sidebarLinkClass(isActive)}
+                        >
+                            <span className="text-lg">+</span>
+                            <span>Requests</span>
+                        </NavLink>
+
                     </ShowWrapper>
                 </nav>
             </aside>

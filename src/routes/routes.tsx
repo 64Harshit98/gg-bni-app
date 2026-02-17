@@ -18,6 +18,11 @@ import CatalogueItemSetting from '../Catalogue/Settings/CatalogueItemSetting';
 import CatalogueUserSetting from '../Catalogue/Settings/CatalogueUserSetting';
 import CataloguePermissionSetting from '../Catalogue/Settings/CataloguePermissionSetting';
 import CatalogueEditProfile from '../Catalogue/CatalogueEditProfile';
+import RequestPage from '../Catalogue/RequestPage';
+import CatalogueItemReport from '../Catalogue/CatalogueReports/CatalogueItemReport';
+import CatalogueCustomerReport from '../Catalogue/CatalogueReports/CatalogueCustomerReport';
+import CatalogueUserReport from '../Catalogue/CatalogueReports/CatalogueUserReport';
+import CatalogueTaxReport from '../Catalogue/CatalogueReports/CatalogueTaxReport';
 // import SharedProduct from '../Catalogue/SharedProduct';
 
 const Home = lazy(() => import('../Pages/Home'));
@@ -65,6 +70,7 @@ const CatItemGroup = lazy(() => import('../Catalogue/ItemGroup'));
 const AddItem = lazy(() => import('../Catalogue/AddItem'));
 const CatalogueReports = lazy(() => import('../Catalogue/CatalogueReports/CatalogueReports'));
 const CatalogueSales = lazy(() => import('../Catalogue/CatalogueReports/CatalogueSalesReport'));
+const CatalogueProfitLoss = lazy(() => import('../Catalogue/CatalogueReports/CatalogueProfitLossReport'));
 const SuperAdminCompanies = lazy(() => import('../Pages/Account/SuperAdmin'));
 const SubscriptionPage = lazy(
   () => import('../Pages/Account/SubscriptionPage'),
@@ -341,11 +347,6 @@ const router = createBrowserRouter([
             path: ROUTES.CATALOGUE_ACCOUNTS,
             element: <CatalogueAccounts />,
             handle: { requiredPermission: null },
-            children:[
-              {
-                
-              }
-            ]
           },
           {
             path: ROUTES.ORDERDETAILS,
@@ -355,6 +356,11 @@ const router = createBrowserRouter([
           {
             path: ROUTES.ADD_PRODUCT,
             element: <AddItem />,
+            handle: { requiredPermission: null },
+          },
+          {
+            path: ROUTES.CATA_REQUEST,
+            element: <RequestPage />,
             handle: { requiredPermission: null },
           },
           {
@@ -384,6 +390,31 @@ const router = createBrowserRouter([
           {
             path: ROUTES.CATALOGUE_SALES,
             element: <CatalogueSales />,
+            handle: { requiredPermission: null },
+          },
+          {
+            path: ROUTES.CATALOGUE_PNL_REPORT,
+            element: <CatalogueProfitLoss />,
+            handle: { requiredPermission: null },
+          },
+          {
+            path: ROUTES.CATALOGUE_ITEM_REPORT,
+            element: <CatalogueItemReport />,
+            handle: { requiredPermission: null },
+          },
+          {
+            path: ROUTES.CATALOGUE_CUSTOMER_REPORT,
+            element: <CatalogueCustomerReport />,
+            handle: { requiredPermission: null },
+          },
+          {
+            path: ROUTES.CATALOGUE_USER_REPORT,
+            element: <CatalogueUserReport />,
+            handle: { requiredPermission: null },
+          },
+          {
+            path: ROUTES.CATALOGUE_TAX_REPORT,
+            element: <CatalogueTaxReport />,
             handle: { requiredPermission: null },
           },
           {
@@ -423,7 +454,7 @@ const router = createBrowserRouter([
               },
             ],
           },
-          
+
         ],
       },
       {

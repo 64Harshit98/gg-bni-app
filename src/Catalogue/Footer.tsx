@@ -1,5 +1,23 @@
 import { Heart, Facebook, Instagram, Twitter, Mail } from 'lucide-react';
-function Footer({ companyName }: any) {
+const fixUrl = (url?: string) => {
+    if (!url) return "";
+    return url.startsWith("http") ? url : `https://${url}`;
+};
+type FooterProps = {
+    companyName?: string;
+    instagram?: string;
+    facebook?: string;
+    twitter?: string;
+    gmail?: string;
+};
+
+function Footer({
+    companyName,
+    instagram,
+    facebook,
+    twitter,
+    gmail,
+}: FooterProps) {
     return (
         <div>
             <footer className="w-full bg-white border-t border-gray-50 pt-12 pb-4 shadow-sm">
@@ -9,10 +27,51 @@ function Footer({ companyName }: any) {
                         <div className="h-0.5 w-8 bg-[#00A3E1] mx-auto rounded-sm"></div>
                     </div>
                     <div className="flex gap-8 mb-8 text-gray-400">
-                        <a href="#" className="hover:text-[#00A3E1] transition-colors"><Instagram size={18} /></a>
-                        <a href="#" className="hover:text-[#00A3E1] transition-colors"><Facebook size={18} /></a>
-                        <a href="#" className="hover:text-[#00A3E1] transition-colors"><Twitter size={18} /></a>
-                        <a href="#" className="hover:text-[#00A3E1] transition-colors"><Mail size={18} /></a>
+
+                        {instagram && (
+                            <a
+                                href={fixUrl(instagram)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="hover:text-[#00A3E1] transition-colors"
+                            >
+                                <Instagram size={18} />
+                            </a>
+                        )}
+
+                        {facebook && (
+                            <a
+                                href={fixUrl(facebook)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="hover:text-[#00A3E1] transition-colors"
+                            >
+                                <Facebook size={18} />
+                            </a>
+                        )}
+
+                        {twitter && (
+                            <a
+                                href={fixUrl(twitter)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="hover:text-[#00A3E1] transition-colors"
+                            >
+                                <Twitter size={18} />
+                            </a>
+                        )}
+
+                        {gmail && (
+                            <a
+                                href={`mailto:${gmail.trim()}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="hover:text-[#00A3E1] transition-colors"
+                            >
+                                <Mail size={18} />
+                            </a>
+                        )}
+
                     </div>
                     <div className="space-y-3">
                         <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">

@@ -33,15 +33,15 @@ const Reports = () => {
                         </Link>
 
                         <Link
-                            to={ROUTES.PURCHASE_REPORT} // Example
+                            to={`${ROUTES.CHOME}/${ROUTES.CATALOGUE_CUSTOMER_REPORT}`} // Example
                             className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
                         >
-                            <span className="text-lg font-medium">Purchase Report</span>
+                            <span className="text-lg font-medium">Customer Report</span>
                             <span className="text-xl text-gray-500">→</span>
                         </Link>
 
                         <Link
-                            to={ROUTES.PNL_REPORT} // Example
+                            to={`${ROUTES.CHOME}/${ROUTES.CATALOGUE_PNL_REPORT}`} // Example
                             className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
                         >
                             <span className="text-lg font-medium">Profit & Loss Report</span>
@@ -49,10 +49,24 @@ const Reports = () => {
                         </Link>
 
                         <Link
-                            to={ROUTES.ITEM_REPORT} // Example
+                            to={`${ROUTES.CHOME}/${ROUTES.CATALOGUE_ITEM_REPORT}`} // Example
                             className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
                         >
                             <span className="text-lg font-medium">Item Report</span>
+                            <span className="text-xl text-gray-500">→</span>
+                        </Link>
+                        <Link
+                            to={`${ROUTES.CHOME}/${ROUTES.CATALOGUE_USER_REPORT}`} // Example
+                            className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
+                        >
+                            <span className="text-lg font-medium">User Report</span>
+                            <span className="text-xl text-gray-500">→</span>
+                        </Link>
+                        <Link
+                            to={`${ROUTES.CHOME}/${ROUTES.CATALOGUE_TAX_REPORT}`} // Example
+                            className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
+                        >
+                            <span className="text-lg font-medium">Tax Report</span>
                             <span className="text-xl text-gray-500">→</span>
                         </Link>
                     </div>

@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { db, auth, storage } from '../lib/Firebase';
+import { db, storage } from '../lib/Firebase';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { updateProfile } from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../context/auth-context';
 import { FloatingLabelInput } from '../Components/ui/FloatingLabelInput';
-import { FiCamera } from 'react-icons/fi';
+import { FloatingLabelSelect } from '../Components/FloatingLabelSelect';
+import { FiCamera, FiHome, FiTag } from 'react-icons/fi';
 
 // --- Data Types ---
 interface CatalogueData {
@@ -25,6 +25,11 @@ interface CatalogueData {
   bankName: string;
   ifscCode: string;
   accountNumber: string;
+
+  instagram?: string;
+  facebook?: string;
+  twitter?: string;
+  gmail?: string;
 
   profilePicture?: string;
 }
@@ -93,8 +98,27 @@ const compressImage = (file: File): Promise<Blob> => {
   });
 };
 
+const businessTypeOptions = [
+  { value: 'Retail', label: 'Retail' },
+  { value: 'Wholesale', label: 'Wholesale' },
+  { value: 'Services', label: 'Services' },
+  { value: 'Manufacturing', label: 'Manufacturing' },
+  { value: 'Other', label: 'Other' },
+];
+
+const businessCategoryOptions = [
+  { value: 'Electronics', label: 'Electronics' },
+  { value: 'Gifts & Stationery', label: 'Gifts & Stationery' },
+  { value: 'Grocery', label: 'Grocery' },
+  { value: 'Fashion', label: 'Fashion & Apparel' },
+  { value: 'Health & Beauty', label: 'Health & Beauty' },
+  { value: 'Home & Furniture', label: 'Home & Furniture' },
+  { value: 'Food & Beverage', label: 'Food & Beverage' },
+  { value: 'Other', label: 'Other' },
+];
+
 // --- Custom Hook ---
-const useCatalogueData = (companyId?: string, catalogueId?: string) => {
+const useCatalogueData = (companyId?: string, catalogueId?: string, userId?: string) => {
   const [catalogue, setCatalogue] = useState<Partial<CatalogueData>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -107,85 +131,139 @@ const useCatalogueData = (companyId?: string, catalogueId?: string) => {
 
     const fetchCatalogueData = async () => {
       setLoading(true);
+
       try {
-        const catalogueDocRef = doc(
+        const businessDocRef = doc(
           db,
-          'companies',
+          "companies",
           companyId,
-          'catalogue',
+          "business_info",
           catalogueId
         );
 
-        const docSnap = await getDoc(catalogueDocRef);
+        const userDocRef = doc(
+          db,
+          "companies",
+          companyId,
+          "users",
+          userId!
+        );
 
-        if (docSnap.exists()) {
-          setCatalogue(docSnap.data());
-        } else {
-          setCatalogue({});
-        }
+        const [businessSnap, userSnap] = await Promise.all([
+          getDoc(businessDocRef),
+          getDoc(userDocRef),
+        ]);
 
-        console.log("Fetched catalogue:", docSnap.data());
+        const businessData = businessSnap.exists()
+          ? businessSnap.data()
+          : {};
+
+        const userData = userSnap.exists()
+          ? userSnap.data()
+          : {};
+
+        // 🔥 MERGE DATA (IMPORTANT)
+        setCatalogue({
+          ...businessData,
+          name: userData.name || "",
+          profilePicture: userData.profilePicture || "",
+        });
 
       } catch (err) {
-        console.error("Error fetching catalogue data:", err);
-        setError("Failed to load catalogue information.");
+        console.error("Error fetching data:", err);
+        setError("Failed to load profile.");
       } finally {
         setLoading(false);
       }
     };
 
+
     fetchCatalogueData();
   }, [companyId, catalogueId]);
 
   const saveData = async (data: Partial<CatalogueData>) => {
-    if (!companyId || !catalogueId) {
-      throw new Error("Company or catalogue ID missing.");
+    if (!companyId || !catalogueId || !userId) {
+      throw new Error("Missing required IDs.");
     }
 
-    const catalogueDocRef = doc(
+    // 🔹 Separate owner fields
+    const { name, profilePicture, ...businessData } = data;
+
+    // 🔹 BUSINESS INFO REF
+    const businessDocRef = doc(
       db,
-      'companies',
+      "companies",
       companyId,
-      'catalogue',
+      "business_info",
       catalogueId
     );
 
-    // Remove undefined values
-    const cleanData = Object.fromEntries(
-      Object.entries(data).filter(([_, v]) => v !== undefined)
+    // 🔹 USER REF
+    const userDocRef = doc(
+      db,
+      "companies",
+      companyId,
+      "users",
+      userId
     );
 
-    await setDoc(
-      catalogueDocRef,
-      {
-        ...cleanData,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
+    // Remove undefined values
+    const cleanBusinessData = Object.fromEntries(
+      Object.entries(businessData).filter(([_, v]) => v !== undefined)
     );
+
+    const promises = [];
+
+    promises.push(
+      setDoc(
+        businessDocRef,
+        {
+          ...cleanBusinessData,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      )
+    );
+
+    promises.push(
+      setDoc(
+        userDocRef,
+        {
+          name,
+          profilePicture,
+        },
+        { merge: true }
+      )
+    );
+
+    await Promise.all(promises);
   };
 
   return { catalogue, loading, error, saveData };
 };
 
-
 // --- Main Edit Profile Page Component ---
 const EditProfilePage: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
-  const { catalogue, loading: dataLoading, error: dataError, saveData } = useCatalogueData(currentUser?.companyId, currentUser?.companyId);
-
+  const { catalogue, loading: dataLoading, error: dataError, saveData } = useCatalogueData(currentUser?.companyId, currentUser?.companyId, currentUser?.uid);
   const [formData, setFormData] = useState<Partial<CatalogueData>>({});
+  const [businessType, setBusinessType] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
-
+  const [businessCategory, setBusinessCategory] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setFormData(catalogue);
+
+    // 🔥 dropdown pre-select fix
+    setBusinessType(catalogue.businessType || "");
+    setBusinessCategory(catalogue.businessCategory || "");
+
     if (catalogue.profilePicture) {
       setPreviewUrl(catalogue.profilePicture);
     }
@@ -249,7 +327,7 @@ const EditProfilePage: React.FC = () => {
   if (dataError) {
     return <div className="flex min-h-screen items-center justify-center text-red-500">{dataError}</div>;
   }
-console.log("FORM DATA:", formData);
+  console.log("FORM DATA:", formData);
   return (
     <div className="min-h-screen bg-gray-100 mb-12 sm:p-6">
       <div className="max-w-3xl mx-auto bg-gray-100 p-2 rounded-xl ">
@@ -296,9 +374,36 @@ console.log("FORM DATA:", formData);
               <div className="md:col-span-2">
                 <FloatingLabelInput type="text" name="businessName" value={formData.businessName || ''} onChange={handleInputChange} label="Business Name" />
               </div>
-              <FloatingLabelInput type="text" name="businessType" value={formData.businessType || ''} onChange={handleInputChange} label="Business Type" />
-              <FloatingLabelInput type="text" name="businessCategory" value={formData.businessCategory || ''} onChange={handleInputChange} label="Business Category" />
-              <FloatingLabelInput type="text" name="gstin" value={formData.gstin || ''} onChange={handleInputChange} label="GSTIN" />
+              <FloatingLabelSelect
+                id="businessType"
+                label="Business Type"
+                value={businessType}
+                onChange={(e) => {
+                  setBusinessType(e.target.value);
+                  setFormData(prev => ({
+                    ...prev,
+                    businessType: e.target.value
+                  }));
+                }}
+                options={businessTypeOptions}
+                required
+                icon={<FiHome size={20} />}
+              />
+              <FloatingLabelSelect
+                id="businessCategory"
+                label="Category"
+                value={businessCategory}
+                onChange={(e) => {
+                  setBusinessCategory(e.target.value);
+                  setFormData(prev => ({
+                    ...prev,
+                    businessCategory: e.target.value
+                  }));
+                }}
+                options={businessCategoryOptions}
+                required
+                icon={<FiTag size={20} />}
+              />
             </div>
           </fieldset>
 
@@ -325,6 +430,46 @@ console.log("FORM DATA:", formData);
               <div className="md:col-span-2">
                 <FloatingLabelInput type="text" name="accountNumber" value={formData.accountNumber || ''} onChange={handleInputChange} label="Account No." />
               </div>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend className="text-xl font-semibold text-gray-700 mb-2">
+              Social Media
+            </legend>
+
+            <div className="grid grid-cols-2 md:grid-cols-2 gap-6">
+              <FloatingLabelInput
+                type="text"
+                name="instagram"
+                value={formData.instagram || ""}
+                onChange={handleInputChange}
+                label="Instagram"
+              />
+
+              <FloatingLabelInput
+                type="text"
+                name="facebook"
+                value={formData.facebook || ""}
+                onChange={handleInputChange}
+                label="Facebook"
+              />
+
+              <FloatingLabelInput
+                type="text"
+                name="twitter"
+                value={formData.twitter || ""}
+                onChange={handleInputChange}
+                label="Twitter / X"
+              />
+
+              <FloatingLabelInput
+                type="email"
+                name="gmail"
+                value={formData.gmail || ""}
+                onChange={handleInputChange}
+                label="Gmail"
+              />
             </div>
           </fieldset>
 

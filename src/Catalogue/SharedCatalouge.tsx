@@ -9,6 +9,8 @@ import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName.tsx';
 import SearchBar from './SearchBar.tsx';
 import LeadPopUp from './PopUp.tsx';
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../lib/Firebase";
 
 const SharedCataloguePage: React.FC = () => {
     const { companyId } = useParams<{ companyId: string }>();
@@ -19,6 +21,7 @@ const SharedCataloguePage: React.FC = () => {
 
     // States
     const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
+    const [socialLinks, setSocialLinks] = useState<any>({});
     const [allItems, setAllItems] = useState<Item[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [isLoading, setIsLoading] = useState(true);
@@ -45,6 +48,20 @@ const SharedCataloguePage: React.FC = () => {
                 console.log("Fetched Items:", fetchedItems);
                 setItemGroups(fetchedItemGroups);
                 setAllItems(fetchedItems);
+                // fetch business info (social links)
+                const businessRef = doc(
+                    db,
+                    "companies",
+                    companyId,
+                    "business_info",
+                    companyId
+                );
+
+                const businessSnap = await getDoc(businessRef);
+
+                if (businessSnap.exists()) {
+                    setSocialLinks(businessSnap.data());
+                }
             } catch (err: any) {
                 setError(err.message || 'Failed to load catalogue.');
                 console.error("Fetch Error:", err);
@@ -170,8 +187,8 @@ const SharedCataloguePage: React.FC = () => {
                 <div className="relative group max-w-md mx-auto w-full">
                     <SearchBar
                         items={allItems}
-                        setSearchQuery={setSearchQuery}
-                        onSelectItem={(item) => {
+                        onItemSelected={(item: any) => {
+                            setSearchQuery(item.name); // agar query update karni hai
                             navigate(
                                 `/product/${companyId}/${item.itemGroupId}`,
                                 { state: { highlightItemId: item.id } }
@@ -274,7 +291,13 @@ const SharedCataloguePage: React.FC = () => {
             </main>
 
             {/* FOOTER */}
-            <Footer companyName={companyName} />
+            <Footer
+                companyName={companyName}
+                instagram={socialLinks.instagram}
+                facebook={socialLinks.facebook}
+                twitter={socialLinks.twitter}
+                gmail={socialLinks.gmail}
+            />
         </div>
     );
 };

@@ -43,6 +43,11 @@ export const ROUTES = {
   CATALOGUE_ACCOUNTS: 'accounts',
   CATALOGUE_REPORTS: 'reports',
   CATALOGUE_SALES: 'sales',
+  CATALOGUE_PNL_REPORT:'profit-loss',
+  CATALOGUE_ITEM_REPORT:'item',
+  CATALOGUE_CUSTOMER_REPORT:'customer-report',
+  CATALOGUE_USER_REPORT:'user-report',
+  CATALOGUE_TAX_REPORT:'tax-report',
   SUBSCRIPTION_PAGE: '/subscription',
   SUPPORT_PAGE: '/support',
   ADDITIONAL_FEATURES: '/additional-features',
@@ -60,5 +65,6 @@ export const ROUTES = {
   CATA_ITEM_SETTING:'cata-item-setting',
   CATA_USER_SETTING:'cata-user-setting',
   CATA_PERMISSION_SETTING:'cata-permission-setting',
-  CATA_EDIT:'cata-edit-profile'
+  CATA_EDIT:'cata-edit-profile',
+  CATA_REQUEST:'requests',
 };

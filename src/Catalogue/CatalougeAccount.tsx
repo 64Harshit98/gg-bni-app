@@ -12,6 +12,7 @@ import BusinessCard from './BusinessCards/BusinessCard';
 interface UserProfile {
     name: string;
     email: string;
+    profilePicture:string;
 }
 
 const Account: React.FC = () => {
@@ -119,7 +120,11 @@ const Account: React.FC = () => {
                     <div className="relative mb-4">
                         <img
                             className="w-28 h-28 rounded-full object-cover border-4 border-white shadow-lg"
-                            src="https://github.com/shadcn.png" // Placeholder image
+                            src={
+                                profileData.profilePicture ||
+                                "https://github.com/shadcn.png"
+                            }
+                            // Placeholder image
                             alt="Profile"
                         />
                         <div className="absolute top-0 left-0 right-0 bottom-0 border-2 border-green-500 rounded-full animate-pulse"></div>
@@ -162,7 +167,7 @@ const Account: React.FC = () => {
                     <h2 className="text-xl font-semibold text-slate-800 mb-4">
                         Share your Business Card
                     </h2>
-                    <BusinessCard/>
+                    <BusinessCard />
                     <div className="w-full grid-cols-2 gap-4 justify-center mt-2 space-y-2 flex-col">
 
                         <ShowWrapper

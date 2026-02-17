@@ -324,22 +324,21 @@ const MyShop: React.FC = () => {
                 <div className="relative group md:max-w-md md:mx-auto w-full">
                     <SearchBar
                         items={allItems}
-                        setSearchQuery={setSearchQuery}
-                        onSelectItem={(item) => {
+                        placeholder="Search products..."
+                        onItemSelected={(item) => {
                             if (!item.id) return;
 
-                            const itemIndex = filteredItems.findIndex(i => i.id === item.id);
+                            setSearchQuery(item.name);
 
-                            if (itemIndex !== -1) {
-                                const requiredRenderCount =
-                                    Math.ceil((itemIndex + 1) / ITEMS_PER_BATCH_RENDER) * ITEMS_PER_BATCH_RENDER;
-
-                                setItemsToRenderCount(requiredRenderCount);
-                            }
-
-                            setHighlightedId(item.id);
+                            navigate(
+                                `/catalogue-home/my-shop/${item.itemGroupId}`,
+                                {
+                                    state: {
+                                        highlightItemId: item.id
+                                    }
+                                }
+                            );
                         }}
-                        placeholder="Search products..."
                     />
                 </div>
 

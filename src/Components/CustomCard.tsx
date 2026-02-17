@@ -28,7 +28,7 @@ const CustomCard = React.forwardRef<HTMLDivElement, CustomCardProps>(
 
         const variantClasses = {
             [CardVariant.Default]: 
-                'mb-2 rounded-sm border border-slate-200 p-6 shadow-sm',
+                'mb-2 rounded-sm border border-slate-200 p-5.5 shadow-sm',
             
             [CardVariant.Summary]: 
                 'p-4 rounded-lg shadow-md text-center items-center justify-center min-h-[100px]',

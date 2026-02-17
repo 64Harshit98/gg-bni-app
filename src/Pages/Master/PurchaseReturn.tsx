@@ -58,6 +58,7 @@ interface TransactionItem {
   barcode?: string;
   unit?: string;
   stock?: number;
+  maxReturnQuantity?: number;
 }
 
 interface ReturnCartItem extends CartItem {
@@ -277,6 +278,7 @@ const PurchaseReturnPage: React.FC = () => {
         name: itemData.name,
         quantity: quantity,
         unitPrice: unitPrice,
+        maxReturnQuantity: quantity,
         amount: unitPrice * quantity,
         mrp: itemData.mrp || 0,
         tax: itemData.tax || 0,
@@ -325,10 +327,31 @@ const PurchaseReturnPage: React.FC = () => {
   ) => {
     listSetter(prev => prev.map(item => {
       if (item.id === id) {
-        const updatedItem = { ...item, [field]: value };
+        let updatedValue = value;
+
+        // --- VALIDATION LOGIC ---
+        if (field === 'quantity') {
+          const maxQty = item.maxReturnQuantity || 0;
+          const newQty = Number(value);
+
+          if (newQty > maxQty) {
+            setModal({
+              message: `Cannot return ${newQty} items. Only ${maxQty} were purchased.`,
+              type: State.ERROR
+            });
+            updatedValue = maxQty;
+          } else if (newQty < 1) {
+            updatedValue = 1;
+          }
+        }
+
+        const updatedItem = { ...item, [field]: updatedValue };
+
+        // Recalculate Amount
         if (field === 'quantity' || field === 'unitPrice') {
           updatedItem.amount = Number(updatedItem.quantity) * Number(updatedItem.unitPrice);
         }
+
         return updatedItem;
       }
       return item;

@@ -325,27 +325,33 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             });
 
             // --- SAVE TO RESPECTIVE DB ---
-            if (currentUser?.companyId && partyNumber && partyNumber.trim().length > 0) {
-                const cleanNumber = partyNumber.trim();
-                const partyDocRef = doc(db, 'companies', currentUser.companyId, collectionName, cleanNumber);
+            const identifier = partyNumber.trim() || partyName.trim();
+
+            if (currentUser?.companyId && identifier) {
+                // Use partyNumber as ID if available, otherwise use Name (Suppliers often use Names as IDs)
+                const partyDocRef = doc(db, 'companies', currentUser.companyId, collectionName, identifier);
 
                 const partyData: any = {
                     name: partyName.trim(),
-                    number: cleanNumber,
+                    number: partyNumber.trim(),
                     companyId: currentUser.companyId,
                     address: partyAddress.trim(),
                     gstNumber: partyGST.trim(),
+                    updatedAt: serverTimestamp(), // Track last modification
                 };
 
+                // Mode-specific timestamps
                 if (isSale) {
                     partyData.lastSaleAt = serverTimestamp();
                 } else {
                     partyData.lastPurchaseAt = serverTimestamp();
                 }
 
+                // Handle balance increments
                 if (appliedCreditAmount > 0) partyData.creditBalance = firebaseIncrement(-appliedCreditAmount);
                 if (appliedDebitAmount > 0) partyData.debitBalance = firebaseIncrement(-appliedDebitAmount);
 
+                // merge: true ensures we don't overwrite existing fields (like old balances)
                 await setDoc(partyDocRef, partyData, { merge: true });
             }
 

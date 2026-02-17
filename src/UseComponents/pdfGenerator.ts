@@ -52,12 +52,6 @@ export interface InvoiceData {
 }
 
 export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | ACTION.PRINT | ACTION.BLOB = ACTION.DOWNLOAD): Promise<Blob | void> => {
-  console.log("PDF Generator Data:", {
-    scheme: data.gstScheme,
-    taxType: data.taxType,
-    billDiscount: data.billDiscount,
-    items: data.items
-  });
 
   const doc = new jsPDF('p', 'mm', 'a4');
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -438,7 +432,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   doc.setFont('helvetica', 'bold');
   const bankText = `Bank name : ${data.bankDetails?.bankName || ''} , A/C NO. ${data.bankDetails?.accountNumber || ''}`;
   doc.text(bankText, startX + 35, finalY + 4);
-  doc.text(`IFSC Code ${data.bankDetails?.ifsc || data.bankDetails?.gstin || ''}`, startX + 35, finalY + 8);
+  doc.text(`IFSC Code ${data.bankDetails?.ifsc || ''}`, startX + 35, finalY + 8);
   finalY += bankH;
 
   // 6. FOOTER

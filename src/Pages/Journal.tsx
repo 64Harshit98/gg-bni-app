@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { db } from '../lib/Firebase';
 import {
   collection,
@@ -22,7 +22,7 @@ import { Variant, State, ACTION } from '../enums';
 import { Spinner } from '../constants/Spinner';
 import { ROUTES } from '../constants/routes.constants';
 import { Modal, PaymentModal } from '../constants/Modal';
-
+import ShinyText from '../Components/ShinyText';
 import { generatePdf } from '../UseComponents/pdfGenerator';
 import { getFirestoreOperations } from '../lib/ItemsFirebase';
 import { useSalesSettings } from '../context/SettingsContext';
@@ -111,29 +111,40 @@ const useJournalData = (companyId?: string) => {
         const dueAmount = paymentMethods.due || 0;
         const status: 'Paid' | 'Unpaid' = dueAmount > 0 ? 'Unpaid' : 'Paid';
 
-        const items = (data.items || []).map((item: any) => ({
-          id: item.id || '',
-          name: item.name || 'N/A',
-          quantity: Number(item.quantity) || 0,
-          finalPrice: type === 'Credit' ? (Number(item.finalPrice) || 0) : (Number(item.purchasePrice) || 0),
-          mrp: Number(item.mrp) || 0,
-          discount: item.discount || 0,
-          effectiveUnitPrice: item.effectiveUnitPrice || 0,
-          manualDiscount: item.manualDiscount || 0,
-          purchasePrice: item.purchasePrice || 0,
-          barcode: item.barcode || '',
-          stock: item.stock ?? item.Stock ?? 0,
-          gst: item.gst || 0,
-          taxRate: item.taxRate || item.gstPercent || 0,
-          hsnSac: item.hsnSac || '',
-          unit: item.unit || 'Pcs',
-        }));
+const items = (data.items || []).map((item: any) => {
+          const quantity = Number(item.quantity) || 0;
+          const purchasePrice = Number(item.purchasePrice) || 0;
+          const creditFinalPrice = Number(item.finalPrice) || 0;
+
+          const finalPrice = type === 'Credit' 
+            ? creditFinalPrice 
+            : (purchasePrice * quantity);
+
+          return {
+            id: item.id || '',
+            name: item.name || 'N/A',
+            quantity: quantity,
+            finalPrice: finalPrice, 
+            mrp: Number(item.mrp) || 0,
+            discount: item.discount || 0,
+            effectiveUnitPrice: item.effectiveUnitPrice || 0,
+            manualDiscount: item.manualDiscount || 0,
+            purchasePrice: purchasePrice,
+            barcode: item.barcode || '',
+            stock: item.stock ?? item.Stock ?? 0,
+            gst: item.gst || 0,
+            taxRate: item.taxRate || item.gstPercent || 0,
+            hsnSac: item.hsnSac || '',
+            unit: item.unit || 'Pcs',
+          };
+        });
 
         const calculatedTotal = Object.values(paymentMethods).reduce(
           (sum: number, value: any) => sum + (typeof value === 'number' ? value : 0),
           0
         );
         const returnHistory = data.returnHistory || [];
+        
 
         return {
           id: doc.id,
@@ -222,6 +233,34 @@ const Journal: React.FC = () => {
   const { currentUser, loading: authLoading } = useAuth();
   const { invoices, loading: dataLoading, error } = useJournalData(currentUser?.companyId);
   const navigate = useNavigate();
+  const daysRemaining = useMemo(() => {
+    // 1. Get subData exactly like SubscriptionPage
+    const subData = (currentUser as any)?.subscription || (currentUser as any)?.Subscription;
+
+    // 2. Get the raw expiry date
+    const rawDate = subData?.expiryDate;
+
+    if (!rawDate) return null;
+
+    // 3. Convert to JS Date using the EXACT logic from SubscriptionPage
+    const expiryDate = new Date(
+      (rawDate as any).toDate ? (rawDate as any).toDate() : rawDate
+    );
+
+    // 4. Calculate difference
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    expiryDate.setHours(0, 0, 0, 0);
+
+    const diffTime = expiryDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    return diffDays;
+  }, [currentUser]);
+
+  // Badge Visibility Logic
+  const showBadge = daysRemaining !== null && daysRemaining <= 5 && daysRemaining >= 0;
+  const isUrgent = daysRemaining !== null && daysRemaining <= 2;
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -392,7 +431,7 @@ const Journal: React.FC = () => {
             day: 'numeric', month: 'short', year: 'numeric',
             hour: 'numeric', minute: 'numeric', hour12: true
           }),
-          billedBy: salesSettings?.enableSalesmanSelection ? (invoice.salesmanName || 'Admin') : '',
+          billedBy: salesSettings?.enableSalesmanSelection ? (invoice.salesmanName || 'N/A') : '',
           roNumber: '',
         },
 
@@ -406,7 +445,6 @@ const Journal: React.FC = () => {
           accountNumber: billSettings.accountNumber || businessInfo?.accountNumber,
           bankName: billSettings.bankName || businessInfo?.bankName,
           ifsc: billSettings.ifscCode || '',
-          gstin: billSettings.companyGstin || businessInfo?.gstin
         }
       };
 
@@ -428,6 +466,7 @@ const Journal: React.FC = () => {
     setInvoiceToDelete(invoice);
     setModal({ message: "Are you sure you want to delete this invoice? This action cannot be undone and will restore item stock.", type: State.INFO });
   };
+  
 
   const confirmDeleteInvoice = async () => {
     if (!invoiceToDelete || !invoiceToDelete.items) return;
@@ -545,7 +584,7 @@ const Journal: React.FC = () => {
 
         return (
           <CustomCard key={invoice.id} onClick={() => handleInvoiceClick(invoice.id)} className="cursor-pointer transition-shadow hover:shadow-md">
-            <div className="flex justify-between items-end w-full mb-1 -mt-5 relative pointer-events-none">
+            <div className="flex justify-between items-end w-full -mt-5 relative pointer-events-none">
 
               {/* LEFT: Return History Badges */}
               <div className="flex justify-start gap-1 flex-wrap max-w-[50%] pointer-events-auto">
@@ -758,6 +797,23 @@ const Journal: React.FC = () => {
         </div>
       )}
 
+      {showBadge && (
+        <div className={`w-full text-center py-2 text-sm font-bold text-white shadow-sm transition-colors duration-300 ${isUrgent ? 'bg-red-300' : 'bg-amber-200'}`}>
+          <ShinyText
+            text={`Subscription expires in ${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'}.`}
+            speed={4}
+            delay={0}
+            color="#030303"
+            shineColor="#faf5f5"
+            spread={100}
+            direction="left"
+            yoyo={false}
+            pauseOnHover={false}
+            disabled={false}
+          />
+          <Link to="/subscription" className=" text-black ml-2 underline hover:text-gray-100">Renew Now</Link>
+        </div>
+      )}
       <div className="flex items-center justify-between p-2 px-2 z-20 relative">
         <div className="flex flex-1 items-center">
           <button onClick={() => setShowSearch(!showSearch)} className="text-slate-500 hover:text-slate-800 transition-colors mr-4">
@@ -768,7 +824,7 @@ const Journal: React.FC = () => {
             {!showSearch ? (
               <div className="flex flex-col items-center relative z-20"> {/* Shared Parent Container */}
 
-                <h1 className="text-4xl font-light text-slate-800">Transactions</h1>
+                <h1 className="text-3xl font-bold  text-slate-800">Transactions</h1>
 
                 <div
                   onClick={() => {

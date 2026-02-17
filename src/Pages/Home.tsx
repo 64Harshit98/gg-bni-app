@@ -25,6 +25,7 @@ import { TopSalespersonCard } from '../Components/TopSalesCard';
 import { PaymentChart } from '../Components/PaymentChart';
 import { RestockAlertsCard } from '../Components/RestockItems';
 import { TopEntitiesList } from '../Components/TopFiveEntities';
+import ShinyText from '../Components/ShinyText';
 
 
 export interface SmartMetric {
@@ -102,7 +103,34 @@ const DashboardContent = () => {
   const [isDataVisible, setIsDataVisible] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
+  const daysRemaining = useMemo(() => {
+    // 1. Get subData exactly like SubscriptionPage
+    const subData = (currentUser as any)?.subscription || (currentUser as any)?.Subscription;
 
+    // 2. Get the raw expiry date
+    const rawDate = subData?.expiryDate;
+
+    if (!rawDate) return null;
+
+    // 3. Convert to JS Date using the EXACT logic from SubscriptionPage
+    const expiryDate = new Date(
+      (rawDate as any).toDate ? (rawDate as any).toDate() : rawDate
+    );
+
+    // 4. Calculate difference
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    expiryDate.setHours(0, 0, 0, 0);
+
+    const diffTime = expiryDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    return diffDays;
+  }, [currentUser]);
+
+  // Badge Visibility Logic
+  const showBadge = daysRemaining !== null && daysRemaining <= 5 && daysRemaining >= 0;
+  const isUrgent = daysRemaining !== null && daysRemaining <= 2;
   const hasCataloguePermission = currentUser?.permissions?.includes(Permissions.ViewCatalogue);
   const currentItem = SiteItems.find(item => item.to === location.pathname);
   const currentLabel = currentItem ? currentItem.label : 'Dashboard';
@@ -322,6 +350,24 @@ const DashboardContent = () => {
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-100">
+      {showBadge && (
+        <div className={`w-full text-center py-2 text-sm font-bold text-white shadow-sm transition-colors duration-300 ${isUrgent ? 'bg-red-300' : 'bg-amber-200'}`}>
+          <ShinyText
+            text={`Subscription expires in ${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'}.`}
+            speed={4}
+            delay={0}
+            color="#030303"
+            shineColor="#faf5f5"
+            spread={100}
+            direction="left"
+            yoyo={false}
+            pauseOnHover={false}
+            disabled={false}
+          />
+          <Link to="/subscription" className=" text-black ml-2 underline hover:text-gray-100">Renew Now</Link>
+        </div>
+      )}
+
       <header className="flex flex-shrink-0 items-center justify-between border-b border-slate-300 bg-gray-100 p-2">
         <div className="relative w-14 flex justify-start">
           <button disabled={!hasCataloguePermission} onClick={() => setIsMenuOpen(!isMenuOpen)} className={`flex min-w-20 items-center justify-between gap-2 rounded-sm border border-slate-400 p-2 text-sm font-medium text-slate-700 transition-colors ${!hasCataloguePermission ? 'opacity-50 cursor-not-allowed bg-gray-100' : 'hover:bg-slate-200 cursor-pointer'}`}>
@@ -339,7 +385,7 @@ const DashboardContent = () => {
           )}
         </div>
         <div className="flex-1 text-center flex flex-col items-center justify-center">
-          <h1 className="text-2xl font-bold text-slate-800">Dashboard</h1>
+          <h1 className="text-3xl font-bold text-slate-800">Dashboard</h1>
           <p className="text-sm text-slate-500">{nameLoading ? '...' : businessName}</p>
         </div>
         <div className="w-14 flex justify-end">
@@ -350,6 +396,7 @@ const DashboardContent = () => {
           </ShowWrapper>
         </div>
       </header>
+
 
       <main className="flex-grow overflow-y-auto p-2 sm:p-2">
         <ShowWrapper requiredPermission={Permissions.ViewHidebutton}>

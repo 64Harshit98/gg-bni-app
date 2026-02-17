@@ -127,7 +127,7 @@ export const GenericCartList = <T extends CartItem>({
 }: GenericCartListProps<T>) => {
 
   return (
-    <div className="flex-1 overflow-y-auto p-2 space-y-2 pb-20">
+    <div className="flex-1 overflow-y-auto space-y-2 pb-20">
       {items.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-40 text-gray-400">
           <p>Cart is empty</p>
@@ -170,8 +170,8 @@ export const GenericCartList = <T extends CartItem>({
                   >
                     <FiTrash2 size={16} />
                   </button>
-                  <h3 className="font-semibold text-gray-800 text-sm truncate" title={item.name}>
-                    {item.name || 'Unnamed Item'}
+                  <h3 className="font-semibold text-gray-800 text-sm" title={item.name}>
+                    {item.name.slice(0, 30) || 'Unnamed Item'}
                   </h3>
 
                   <button

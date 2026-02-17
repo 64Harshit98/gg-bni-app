@@ -1,32 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
-import SignatureCanvas from 'react-signature-canvas'; // <--- 1. Import library
+import SignatureCanvas from 'react-signature-canvas';
 import { db } from '../../lib/Firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../../context/auth-context';
 import { State } from '../../enums';
 import { Modal } from '../../constants/Modal';
 
-// --- Interface for Bill Specific Settings ---
+// --- Interfaces ---
 export interface BillSettingsData {
-    // Tax & Registration
     companyGstin: string;
     msmeNumber: string;
     panNumber: string;
-
-    // Banking
     bankName: string;
     accountName: string;
     accountNumber: string;
     ifscCode: string;
-
-    // Terms
     termsAndConditions: string;
-
-    // Signature
-    signatureBase64?: string; // <--- 2. Add signature field
+    signatureBase64?: string;
 }
 
-// --- Interface for Read-Only Business Info ---
 interface BusinessInfoData {
     companyName: string;
     address: string;
@@ -36,8 +28,6 @@ interface BusinessInfoData {
 
 const BillSettings: React.FC = () => {
     const { currentUser } = useAuth();
-
-    // <--- 3. Ref to control the signature pad
     const sigPadRef = useRef<any>(null);
 
     const [isLoading, setIsLoading] = useState(true);
@@ -71,7 +61,7 @@ const BillSettings: React.FC = () => {
         return fullAddress;
     };
 
-    // --- 1. Load Data ---
+    // --- 1. Load Data with Priority Fallback ---
     useEffect(() => {
         const fetchData = async () => {
             if (!currentUser?.companyId) return;
@@ -80,35 +70,49 @@ const BillSettings: React.FC = () => {
                 setIsLoading(true);
                 const companyId = currentUser.companyId;
 
-                // A. Fetch Business Info
                 const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
-                const businessSnap = await getDoc(businessDocRef);
-
-                if (businessSnap.exists()) {
-                    const data = businessSnap.data();
-                    setBusinessInfo({
-                        companyName: data.businessName || data.name || '',
-                        address: formatAddress(data.streetAddress || data.city || data.state || data.postalCode ? data : null),
-                        phone: data.phoneNumber || data.mobile || '',
-                        email: data.email || ''
-                    });
-                }
-
-                // B. Fetch Bill Settings
                 const settingsDocRef = doc(db, 'companies', companyId, 'settings', 'bill');
-                const settingsSnap = await getDoc(settingsDocRef);
 
-                if (settingsSnap.exists()) {
-                    const data = settingsSnap.data() as BillSettingsData;
-                    setSettings(prev => ({ ...prev, ...data }));
+                const [businessSnap, settingsSnap] = await Promise.all([
+                    getDoc(businessDocRef),
+                    getDoc(settingsDocRef)
+                ]);
 
-                    // <--- 4. Load existing signature into canvas if it exists
-                    if (data.signatureBase64 && sigPadRef.current) {
-                        sigPadRef.current.fromDataURL(data.signatureBase64);
-                    }
+                const bData = businessSnap.exists() ? businessSnap.data() : {};
+                const sData = settingsSnap.exists() ? settingsSnap.data() : {};
+
+                setBusinessInfo({
+                    companyName: bData.businessName || bData.name || 'Not Set',
+                    address: formatAddress(bData),
+                    phone: bData.phoneNumber || bData.phone || 'Not Set',
+                    email: bData.email || 'Not Set'
+                });
+
+                const loadedSettings = {
+                    companyGstin: sData.companyGstin || bData.gstin || '',
+                    msmeNumber: sData.msmeNumber || bData.registrationNumber || '',
+                    panNumber: sData.panNumber || bData.panNumber || '',
+                    bankName: sData.bankName || bData.bankName || '',
+                    accountName: sData.accountName || bData.accountHolderName || '',
+                    accountNumber: sData.accountNumber || bData.accountNumber || '',
+                    ifscCode: sData.ifscCode || bData.ifscCode || '',
+                    termsAndConditions: sData.termsAndConditions || '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
+                    signatureBase64: sData.signatureBase64 || ''
+                };
+
+                setSettings(loadedSettings);
+
+                // FIX: Load signature after component has mounted and canvas is ready
+                if (loadedSettings.signatureBase64) {
+                    setTimeout(() => {
+                        if (sigPadRef.current) {
+                            sigPadRef.current.fromDataURL(loadedSettings.signatureBase64);
+                        }
+                    }, 200); // Tiny delay to ensure canvas DOM is ready
                 }
+
             } catch (error) {
-                console.error("Error fetching data:", error);
+                console.error("Error fetching bill settings:", error);
                 setModal({ message: "Failed to load settings.", type: State.ERROR });
             } finally {
                 setIsLoading(false);
@@ -118,19 +122,17 @@ const BillSettings: React.FC = () => {
         fetchData();
     }, [currentUser]);
 
-    // --- 2. Handle Inputs ---
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         setSettings(prev => ({ ...prev, [name]: value }));
     };
 
-    // Helper: Clear Signature
     const clearSignature = () => {
         sigPadRef.current?.clear();
         setSettings(prev => ({ ...prev, signatureBase64: '' }));
     };
 
-    // --- 3. Save to Firestore ---
+    // --- 2. Save Data ---
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!currentUser?.companyId) return;
@@ -138,30 +140,26 @@ const BillSettings: React.FC = () => {
         try {
             setIsSaving(true);
 
-            // <--- 5. Extract signature from canvas before saving
-            // If the canvas is empty, save empty string, otherwise save Base64 PNG
-            let currentSignature = '';
+            let currentSignature = settings.signatureBase64; // Keep old one if pad is empty?
+            
+            // If the user drew something new, get the data URL
             if (sigPadRef.current && !sigPadRef.current.isEmpty()) {
                 currentSignature = sigPadRef.current.getCanvas().toDataURL('image/png');
-            } else {
-                // Keep old signature if user didn't touch the pad but one existed? 
-                // Or clear it? Here we check if pad is empty. 
-                // If you want to keep existing signature if canvas wasn't touched, 
-                // you'd need more complex logic. 
-                // Current logic: If canvas is empty, signature is removed.
+            } else if (sigPadRef.current && sigPadRef.current.isEmpty()) {
+                // If they cleared it, set to empty
+                currentSignature = '';
             }
 
             const dataToSave = {
                 ...settings,
-                signatureBase64: currentSignature
+                signatureBase64: currentSignature,
+                updatedAt: serverTimestamp()
             };
 
             const docRef = doc(db, 'companies', currentUser.companyId, 'settings', 'bill');
             await setDoc(docRef, dataToSave, { merge: true });
 
-            // Update local state to match
             setSettings(prev => ({ ...prev, signatureBase64: currentSignature }));
-
             setModal({ message: "Bill settings saved successfully!", type: State.SUCCESS });
         } catch (error) {
             console.error("Error saving bill settings:", error);
@@ -184,7 +182,6 @@ const BillSettings: React.FC = () => {
         <div className="min-h-screen bg-gray-50 pb-24 relative">
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
-            {/* --- Page Header --- */}
             <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
                 <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
                     <h1 className="text-2xl font-bold text-gray-900">Invoice Configuration</h1>
@@ -194,8 +191,7 @@ const BillSettings: React.FC = () => {
 
             <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
 
-                {/* ... existing Company Details Section ... */}
-                {/* --- SECTION 1: Company Identity (Read Only) --- */}
+                {/* SECTION 1: Company Identity */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                     <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
                         <div>
@@ -208,35 +204,31 @@ const BillSettings: React.FC = () => {
                         <div className="md:col-span-2">
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Company Name</label>
                             <div className="p-3 bg-gray-50 border border-gray-200 rounded-md text-gray-800 font-medium">
-                                {businessInfo.companyName || 'N/A'}
+                                {businessInfo.companyName}
                             </div>
                         </div>
-
                         <div className="md:col-span-2">
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Address</label>
                             <div className="p-3 bg-gray-50 border border-gray-200 rounded-md text-gray-800">
-                                {businessInfo.address || 'N/A'}
+                                {businessInfo.address}
                             </div>
                         </div>
-
                         <div>
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Contact</label>
                             <div className="p-3 bg-gray-50 border border-gray-200 rounded-md text-gray-800">
-                                {businessInfo.phone || 'N/A'}
+                                {businessInfo.phone}
                             </div>
                         </div>
-
                         <div>
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email</label>
                             <div className="p-3 bg-gray-50 border border-gray-200 rounded-md text-gray-800">
-                                {businessInfo.email || 'N/A'}
+                                {businessInfo.email}
                             </div>
                         </div>
                     </div>
                 </div>
 
-                {/* ... existing Tax Section ... */}
-                {/* --- SECTION 2: Tax & Registration --- */}
+                {/* SECTION 2: Tax & Registration */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                     <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
                         <h2 className="text-lg font-semibold text-gray-800">Tax & Registration</h2>
@@ -249,7 +241,7 @@ const BillSettings: React.FC = () => {
                                 name="companyGstin"
                                 value={settings.companyGstin}
                                 onChange={handleChange}
-                                placeholder="27ABCDE1234F1Z5"
+                                placeholder="e.g. 27ABCDE1234F1Z5"
                                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none uppercase font-mono"
                             />
                         </div>
@@ -276,8 +268,7 @@ const BillSettings: React.FC = () => {
                     </div>
                 </div>
 
-                {/* ... existing Banking Section ... */}
-                {/* --- SECTION 3: Banking Details --- */}
+                {/* SECTION 3: Banking Details */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                     <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
                         <h2 className="text-lg font-semibold text-gray-800">Banking Information</h2>
@@ -327,7 +318,7 @@ const BillSettings: React.FC = () => {
                     </div>
                 </div>
 
-                {/* --- NEW SECTION: Digital Signature --- */}
+                {/* SECTION 4: Digital Signature */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                     <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
                         <div>
@@ -344,7 +335,6 @@ const BillSettings: React.FC = () => {
                     </div>
                     <div className="p-6">
                         <div className="border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 flex justify-center items-center overflow-hidden relative">
-                            {/* The Signature Canvas */}
                             <SignatureCanvas
                                 ref={sigPadRef}
                                 penColor="black"
@@ -358,13 +348,10 @@ const BillSettings: React.FC = () => {
                                 SIGN HERE
                             </div>
                         </div>
-                        <p className="text-xs text-gray-400 mt-2">
-                            Works on touch screens (mobile/tablet) and with mouse.
-                        </p>
                     </div>
                 </div>
 
-                {/* ... existing Terms Section ... */}
+                {/* SECTION 5: Terms & Conditions */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-20">
                     <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
                         <h2 className="text-lg font-semibold text-gray-800">Terms & Conditions</h2>
@@ -378,35 +365,24 @@ const BillSettings: React.FC = () => {
                             rows={5}
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none text-sm leading-relaxed"
                         />
-                        <p className="text-xs text-gray-400 mt-2">
-                            Tip: Press Enter to create new lines. These terms will be printed at the bottom of every invoice.
-                        </p>
                     </div>
                 </div>
 
             </div>
 
-            {/* --- FLOATING SAVE BUTTON --- */}
-            <div className="fixed bottom-0 left-0 right-0 p-4 bg-transparent z-20 flex justify-end md:px-8 mb-16">
+            {/* FLOATING SAVE BUTTON */}
+            <div className="fixed bottom-0 left-0 right-0 p-4 bg-transparent pb-18 flex justify-end md:px-8">
                 <button
                     onClick={handleSave}
                     disabled={isSaving}
                     className={`
-            w-full md:w-auto px-8 py-3 rounded-lg text-white font-bold text-lg shadow-md transition-all transform active:scale-[0.98]
-            ${isSaving ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 hover:shadow-lg'}
-          `}
+                        w-full md:w-auto px-8 py-3 rounded-lg text-white font-bold text-lg shadow-md transition-all transform active:scale-[0.98]
+                        ${isSaving ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}
+                    `}
                 >
-                    {isSaving ? (
-                        <div className="flex items-center justify-center gap-2">
-                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                            <span>Saving...</span>
-                        </div>
-                    ) : (
-                        'Save Changes'
-                    )}
+                    {isSaving ? 'Saving...' : 'Save Changes'}
                 </button>
             </div>
-
         </div>
     );
 };

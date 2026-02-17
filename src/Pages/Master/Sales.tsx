@@ -188,7 +188,7 @@ const Sales: React.FC = () => {
                 ...item,
                 id: crypto.randomUUID(),
                 productId: item.id,
-                isEditable: false,
+                isEditable: true,
                 customPrice: item.effectiveUnitPrice,
                 quantity: item.quantity || 1,
                 mrp: item.mrp || 0,
@@ -307,20 +307,25 @@ const Sales: React.FC = () => {
 
         const finalTaxable = toCurrency(accumulatorTaxable);
         const finalTax = toCurrency(accumulatorTax);
-        const finalPayableAmount = toCurrency(finalTaxable + finalTax);
+        const rawFinalAmount = toCurrency(finalTaxable + finalTax);
 
         let totalDiscountValue = 0;
 
         if (effectiveTaxMode === 'none') {
-            totalDiscountValue = toCurrency(accumulatorSubtotal - finalPayableAmount);
+            totalDiscountValue = toCurrency(accumulatorSubtotal - rawFinalAmount);
         } else {
             totalDiscountValue = toCurrency(accumulatorSubtotal - finalTaxable);
         }
 
+        const finalPayableAmount = Math.round(rawFinalAmount);
+
+        // 4. Calculate the Round Off difference
+        const roundOffAmount = toCurrency(finalPayableAmount - rawFinalAmount);
+
         return {
             subtotal: accumulatorSubtotal,
             totalDiscount: totalDiscountValue > 0 ? totalDiscountValue : 0,
-            roundOff: 0,
+            roundOff: roundOffAmount,
             taxableAmount: finalTaxable,
             taxAmount: finalTax,
             finalAmount: finalPayableAmount,
@@ -556,8 +561,13 @@ const Sales: React.FC = () => {
         const saveOperation = async (transaction: any, isNew: boolean, existingId?: string) => {
             const saleData: any = {
                 items: formatItemsForDB(items),
-                subtotal, discount: totalInvoiceDiscount, manualDiscount: completionData.discount || 0, revDiscount: completionData.revDiscount || 0,
-                roundOff, taxableAmount, taxAmount,
+                subtotal,
+                discount: totalInvoiceDiscount,
+                manualDiscount: completionData.discount || 0,
+                revDiscount: completionData.revDiscount || 0,
+                roundOff: roundOff,
+                taxableAmount,
+                taxAmount,
 
                 gstScheme: finalGstScheme,
                 taxType: finalTaxType,
@@ -800,7 +810,7 @@ const Sales: React.FC = () => {
                             <div className="justify-self-center w-full flex justify-center">{salesSettings?.enableSalesmanSelection && <select value={selectedWorker?.uid} onChange={e => setSelectedWorker(workers.find(w => w.uid === e.target.value) || null)} className="p-1 border rounded text-sm" disabled={!hasPermission(Permissions.ViewTransactions) || (isEditMode && !isManager)}><option value="">Salesman</option>{workers.map(w => <option key={w.uid} value={w.uid}>{w.name}</option>)}</select>}</div>
                             <div className="justify-self-end">{items.length > 0 && <button onClick={handleClearCart} className="text-xs text-red-600 bg-red-50 px-2 py-1 rounded border border-red-200 flex items-center gap-1"><FiTrash2 /> Clear</button>}</div>
                         </div>
-                        <div className="flex-shrink-0 grid grid-cols-2 px-2">
+                        <div className="flex-shrink-0 grid grid-cols-2 px-2 py-1">
                             {discountInfo && <div className="text-xs text-red-600">{discountInfo}</div>}
                             {priceInfo && <div className="text-xs text-red-600">{priceInfo}</div>}
                         </div>

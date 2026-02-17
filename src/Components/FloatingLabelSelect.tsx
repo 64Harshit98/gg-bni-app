@@ -31,7 +31,7 @@ export const FloatingLabelSelect = React.forwardRef<
         value={value}
         className={cn(
           // Base styles from FloatingLabelInput
-          'peer h-14 w-full text-base bg-transparent rounded-sm border border-gray-500 focus:outline-none focus:border-2 border-gray-500',
+          'peer h-14 w-full text-base bg-transparent rounded-sm border focus:outline-none focus:border-2 border-gray-500',
           // Padding adjusts for icon
           icon ? 'pl-10 pr-3' : 'px-3',
           className,

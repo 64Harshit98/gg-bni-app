@@ -23,7 +23,6 @@ const OrderingPage: React.FC = () => {
     const dbOperations = useDatabase();
     const [_items, setItems] = useState<Item[]>([]);
     const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
-    // const [selectedCategory, _setSelectedCategory] = useState('All');
     const [searchQuery, setSearchQuery] = useState('');
     const [pageIsLoading, setPageIsLoading] = useState(true);
     const [cart, setCart] = useState<any[]>([]);
@@ -33,7 +32,7 @@ const OrderingPage: React.FC = () => {
     const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
     const [customerName, setCustomerName] = useState('');
     const [customerPhone, setCustomerPhone] = useState('');
-    const [highlightedId, setHighlightedId] = useState<string | null>(null);
+    const [highlightedId, _setHighlightedId] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'My Shop' | 'Edit Shop'>('My Shop');
     const [sortOrder, setSortOrder] = useState<'A-Z' | 'Z-A'>('A-Z');
     const [isSortOpen, setIsSortOpen] = useState(false);
@@ -132,16 +131,6 @@ const OrderingPage: React.FC = () => {
         });
     }, [itemGroups, _items, searchQuery, sortOrder]);
 
-    const searchableItems = useMemo(() => {
-        if (!searchQuery.trim()) return [];
-
-        const query = searchQuery.toLowerCase();
-
-        return _items.filter(item =>
-            item.name.toLowerCase().includes(query)
-        );
-    }, [_items, searchQuery]);
-
     // --- Order Logic ---
     const handleConfirmAndSaveOrder = async () => {
         if (!customerName || !customerPhone) {
@@ -227,13 +216,14 @@ const OrderingPage: React.FC = () => {
                         </button>
                     </div>
                 </div>
-
                 {/* --- SEARCH BAR --- */}
                 <SearchBar
                     items={_items}
-                    setSearchQuery={setSearchQuery}
-                    onSelectItem={(item) => {
+                    placeholder="Search products..."
+                    onItemSelected={(item) => {
                         if (!item.id) return;
+
+                        setSearchQuery(item.name); // optional (agar query update karni hai)
 
                         navigate(
                             `/catalogue-home/my-shop/${item.itemGroupId}`,
@@ -244,9 +234,7 @@ const OrderingPage: React.FC = () => {
                             }
                         );
                     }}
-                    placeholder="Search products..."
                 />
-
                 {/* --- CATALOGUE COUNT & FILTER --- */}
                 <div className="max-w-7xl mx-auto px-1 flex items-center justify-between relative">
                     <div className="flex items-center gap-2">

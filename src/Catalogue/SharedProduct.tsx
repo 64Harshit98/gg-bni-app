@@ -14,6 +14,7 @@ import { serverTimestamp, doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 import { OrderInvoiceNumber } from '../UseComponents/InvoiceCounter';
 import { useLocation } from 'react-router-dom';
+import LeadPopUp from './PopUp';
 
 interface QuickListedToggleProps {
     itemId: string;
@@ -89,19 +90,21 @@ const SharedProduct: React.FC = () => {
         return key;
     };
 
-
     // --- New Firebase Sync Function ---
     const syncToUpcoming = async (
         updatedCart: { item: Item; quantity: number }[]
     ) => {
         if (!companyId || updatedCart.length === 0) return;
-
+        const leadData = JSON.parse(
+            sessionStorage.getItem("leadData") || "{}"
+        );
         try {
             const userKey = currentUser?.uid ?? getUserKey();
             const loginName = currentUser?.name || "Guest User";
 
             const itemsForFirebase = updatedCart.map(c => ({
                 id: String(c.item.id),
+                docId: c.item.firestoreDocId || c.item.id,
                 name: c.item.name,
                 quantity: c.quantity,
                 mrp:
@@ -111,7 +114,8 @@ const SharedProduct: React.FC = () => {
                     0
             }));
 
-            // 🔥 FIXED UPCOMING DOC (VERY IMPORTANT)
+
+            //  FIXED UPCOMING DOC (VERY IMPORTANT)
             const orderRef = doc(
                 db,
                 'companies',
@@ -132,21 +136,16 @@ const SharedProduct: React.FC = () => {
                 {
                     orderId: invoiceNumber,
                     invoiceNumber,
-
                     userId: userKey,
-                    userName: loginName,
-
+                    userName: leadData.name || loginName,
+                    userLoginPhone: leadData.number || "",
                     status: 'Upcoming',
-
                     items: itemsForFirebase,
-
                     totalAmount: itemsForFirebase.reduce(
                         (acc, curr) => acc + curr.mrp * curr.quantity,
                         0
                     ),
-
                     paidAmount: 0,
-
                     createdAt: snap.exists() ? snap.data().createdAt : serverTimestamp(),
                     updatedAt: serverTimestamp(),
                 },
@@ -306,6 +305,7 @@ const SharedProduct: React.FC = () => {
 
     return (
         <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative overflow-x-hidden">
+            <LeadPopUp companyId={companyId} companyName={companyName} />
             <header className="sticky top-0 bg-white border-b border-gray-100 shadow-sm z-[60]">
                 <div className="max-w-7xl mx-auto px-1 md:px-4 py-2 flex flex-col gap-2">
                     <div className="flex items-center justify-between">
@@ -357,8 +357,8 @@ const SharedProduct: React.FC = () => {
                 <div className="relative group md:max-w-md md:mx-auto w-full">
                     <SearchBar
                         items={allItems}
-                        setSearchQuery={setSearchQuery}
-                        onSelectItem={(item) => {
+                        onItemSelected={(item: any) => {
+                            setSearchQuery(item.name); // agar query update karni hai
                             navigate(
                                 `/product/${companyId}/${item.itemGroupId}`,
                                 { state: { highlightItemId: item.id } }

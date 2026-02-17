@@ -26,6 +26,7 @@ export interface Item {
   isListed?: boolean;
   imageUrl?: string | null;
   description?: string;
+  firestoreDocId?: string;
 }
 
 export interface ItemGroup {

@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { ChevronLeft, Trash2, Check, ChevronUp, X } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Footer from './Footer';
-import { doc, getDoc, setDoc, serverTimestamp, deleteDoc, collection} from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, deleteDoc, collection } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 import { FiPackage } from 'react-icons/fi';
 import { OrderInvoiceNumber } from '../UseComponents/InvoiceCounter';
 import { useAuth } from '../context/auth-context';
-
+import { increment, updateDoc } from "firebase/firestore";
+import LeadPopUp from './PopUp';
 
 interface CartItem {
     id: string | number;
@@ -172,62 +173,84 @@ const CartPage: React.FC = () => {
     const subtotal = cartItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
     const totalPay = subtotal;
 
-   const placeOrder = async () => {
-  if (!companyId || !currentUser?.uid) return;
+    const placeOrder = async () => {
+        if (!companyId || !currentUser?.uid) return;
 
-  setIsPlacing(true);
+        setIsPlacing(true);
 
-  try {
-    // 1️⃣ Create CONFIRMED order
-    const orderDocRef = doc(
-      collection(db, 'companies', companyId, 'Orders')
-    );
+        try {
+            // 1️⃣ Create CONFIRMED order
+            const orderDocRef = doc(
+                collection(db, 'companies', companyId, 'Orders')
+            );
 
-    const orderInvoiceNumber = await OrderInvoiceNumber(companyId);
+            const orderInvoiceNumber = await OrderInvoiceNumber(companyId);
 
-    await setDoc(orderDocRef, {
-      orderId: orderInvoiceNumber,
-      invoiceNumber: orderInvoiceNumber,
-      status: 'Confirmed',
-      totalAmount: totalPay,
-      paidAmount: 0,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      items: cartItems.map(i => ({
-        id: String(i.id),
-        name: i.name,
-        quantity: i.quantity,
-        mrp: i.price,
-        note: i.note || ''
-      })),
-      billingDetails: billing,
-      shippingDetails: isSameAsShipping ? billing : shipping,
-      userLoginPhone: billing.phone,
-      userName: billing.name
-    });
+            await setDoc(orderDocRef, {
+                orderId: orderInvoiceNumber,
+                invoiceNumber: orderInvoiceNumber,
+                status: 'Confirmed',
+                totalAmount: totalPay,
+                paidAmount: 0,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+                items: cartItems.map(i => ({
+                    id: String(i.id),
+                    name: i.name,
+                    quantity: i.quantity,
+                    mrp: i.price,
+                    note: i.note || ''
+                })),
+                billingDetails: billing,
+                shippingDetails: isSameAsShipping ? billing : shipping,
+                userLoginPhone: billing.phone,
+                userName: billing.name
+            });
 
-    // 2️⃣ DELETE UPCOMING (STEP 5 — YAHI HAI)
-    const upcomingRef = doc(
-      db,
-      'companies',
-      companyId,
-      'Orders',
-      `upcoming_${currentUser.uid}`
-    );
+            // STOCK UPDATE START
+            for (const item of cartItems) {
+                console.log("ITEM ID:", item.id);
+                const docId =
+                    (item as any).firestoreDocId || item.id;
 
-    await deleteDoc(upcomingRef);
+                if (!docId) continue;
 
-    // 3️⃣ Cleanup local state
-    localStorage.removeItem('temp_cart');
-    setCartItems([]);
-    navigate(-1);
+                const itemRef = doc(
+                    db,
+                    "companies",
+                    companyId,
+                    "items",
+                    String(docId)
+                );
 
-  } catch (e) {
-    console.error(e);
-  } finally {
-    setIsPlacing(false);
-  }
-};
+                await updateDoc(itemRef, {
+                    stock: increment(-item.quantity),
+                    updatedAt: serverTimestamp()
+                });
+            }
+
+            // 2️⃣ DELETE UPCOMING (STEP 5 — YAHI HAI)
+            const upcomingRef = doc(
+                db,
+                'companies',
+                companyId,
+                'Orders',
+                `upcoming_${currentUser.uid}`
+            );
+
+            await deleteDoc(upcomingRef);
+
+            // 3️⃣ Cleanup local state
+            localStorage.removeItem('temp_cart');
+            setCartItems([]);
+            navigate(-1);
+
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setIsPlacing(false);
+        }
+    };
 
 
     useEffect(() => {
@@ -268,6 +291,7 @@ const CartPage: React.FC = () => {
     return (
         <>
             <div className="bg-gray-50 min-h-screen font-sans text-[#1A3B5D] flex flex-col">
+                <LeadPopUp companyId={companyId} companyName={companyName} />
                 <header className="sticky top-0 bg-white border-b border-gray-100 shadow-sm z-[60]">
                     <div className="max-w-7xl mx-auto px-4 py-2 flex flex-col gap-2">
                         <div className="flex items-center justify-between">

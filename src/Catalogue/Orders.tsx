@@ -684,7 +684,11 @@ const OrdersPage: React.FC = () => {
     const statusCounts = useMemo(() => {
         return OrderStatuses.reduce((acc, status) => {
 
+<<<<<<< HEAD
             //  Completed = Completed + Paid
+=======
+            // 🔥 Completed = Completed + Paid
+>>>>>>> 5da296b (feat(components): \"Cards will be shown in UpComing stage when someone fill the popup of catalogue\")
             if (status === "Completed") {
                 acc[status] = Orders.filter(
                     o => o.status === "Completed" || o.status === "Paid"
@@ -1056,8 +1060,13 @@ const OrdersPage: React.FC = () => {
                                         })()}
 
                                 </div>
+<<<<<<< HEAD
                                 <div className={`flex justify-between items-start mt-1 w-full ${isUpcomingStatus ? 'pl-2 pr-1' : 'pl-6'}`}>
                                     <div className='flex-1 min-w-0'>
+=======
+                                <div className="flex justify-between items-start pl-6 mt-1">
+                                    <div>
+>>>>>>> 5da296b (feat(components): \"Cards will be shown in UpComing stage when someone fill the popup of catalogue\")
                                         {!isUpcomingStatus && (
                                             <h3 className="text-sm font-bold text-slate-800">
                                                 {Order.orderId}
@@ -1066,6 +1075,7 @@ const OrdersPage: React.FC = () => {
                                         <p className="text-gray-600 text-xs font-medium">{Order.userName}</p>
                                         <p className="text-[10px] text-gray-400 mt-1">{Order.time}</p>
                                         {isUpcomingStatus && (
+<<<<<<< HEAD
                                             <div className="mt-2 p-2 bg-slate-50/50 border border-slate-200 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-2 w-full">
                                                 {/* Left Side: Info */}
                                                 <div className="flex items-center gap-3 min-w-0 flex-1 w-full">
@@ -1074,6 +1084,16 @@ const OrdersPage: React.FC = () => {
                                                     </div>
                                                     <div className="flex flex-col min-w-0 flex-1 overflow-hidden">
                                                         <span className="text-[11px] font-bold text-slate-900 truncate whitespace-nowrap tracking-tight block w-full">
+=======
+                                            <div className="mt-2 p-2 bg-slate-50/50 border border-slate-200 rounded-lg flex items-center justify-between gap-3">
+                                                {/* Left Side: Info */}
+                                                <div className="flex items-center gap-3 min-w-0 flex-1">
+                                                    <div className="hidden sm:block">
+                                                        <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                                                    </div>
+                                                    <div className="flex flex-col min-w-0">
+                                                        <span className="text-[11px] font-bold text-slate-900 truncate tracking-tight">
+>>>>>>> 5da296b (feat(components): \"Cards will be shown in UpComing stage when someone fill the popup of catalogue\")
                                                             {Order.userLoginPhone}
                                                         </span>
                                                         <span className="text-[9px] text-slate-500 truncate leading-none">
@@ -1084,6 +1104,7 @@ const OrdersPage: React.FC = () => {
 
                                                 {/* Right Side: Buttons */}
                                                 {Order.userLoginPhone && (
+<<<<<<< HEAD
                                                     <div className="flex justify-center gap-1.5 px-2.5">
                                                         {Order.userLoginPhone && (
                                                             <>
@@ -1116,6 +1137,25 @@ const OrdersPage: React.FC = () => {
                                                                 </button>
                                                             </>
                                                         )}
+=======
+                                                    <div className="flex gap-1.5 shrink-0">
+                                                        <a
+                                                            href={`tel:${Order.userLoginPhone.replace(/\D/g, '')}`}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            className="h-8 px-3 flex items-center justify-center text-[10px] font-bold text-emerald-600 bg-white border border-emerald-200 rounded-md hover:bg-emerald-50 active:scale-95 transition-all shadow-sm"
+                                                        >
+                                                            Call
+                                                        </a>
+                                                        <a
+                                                            href={`https://wa.me/${Order.userLoginPhone.replace(/\D/g, '')}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            className="h-8 px-3 flex items-center justify-center text-[10px] font-bold text-white bg-[#25D366] rounded-md hover:bg-[#1ebe5d] active:scale-95 transition-all shadow-sm"
+                                                        >
+                                                            WhatsApp
+                                                        </a>
+>>>>>>> 5da296b (feat(components): \"Cards will be shown in UpComing stage when someone fill the popup of catalogue\")
                                                     </div>
                                                 )}
                                             </div>
@@ -1193,7 +1233,11 @@ const OrdersPage: React.FC = () => {
                                                                                 {method}
                                                                             </span>
                                                                             <span className="text-[9px] font-black text-green-600">
+<<<<<<< HEAD
                                                                                 ₹{formatAmount(Number(amount))}
+=======
+                                                                                ₹{Number(amount).toFixed(2)}
+>>>>>>> 5da296b (feat(components): \"Cards will be shown in UpComing stage when someone fill the popup of catalogue\")
                                                                             </span>
                                                                         </div>
                                                                     ))
@@ -1203,7 +1247,11 @@ const OrdersPage: React.FC = () => {
                                                                         {Order.paymentMethod}
                                                                     </span>
                                                                     <span className="text-[9px] font-black text-green-600">
+<<<<<<< HEAD
                                                                         ₹{formatAmount(paid)}
+=======
+                                                                        ₹{paid.toFixed(2)}
+>>>>>>> 5da296b (feat(components): \"Cards will be shown in UpComing stage when someone fill the popup of catalogue\")
                                                                     </span>
                                                                 </div>
                                                             ) : null
@@ -1217,7 +1265,11 @@ const OrdersPage: React.FC = () => {
                                                         </div>
                                                         <div className="text-right">
                                                             <p className="text-[7px] font-bold text-red-600 uppercase tracking-tighter leading-none mb-0.5">Due</p>
+<<<<<<< HEAD
                                                             <p className="text-[11px] font-black text-red-700 leading-none">₹{formatAmount(due)}</p>
+=======
+                                                            <p className="text-[11px] font-black text-red-700 leading-none">₹{due.toFixed(2)}</p>
+>>>>>>> 5da296b (feat(components): \"Cards will be shown in UpComing stage when someone fill the popup of catalogue\")
                                                         </div>
                                                     </div>
                                                 </div>

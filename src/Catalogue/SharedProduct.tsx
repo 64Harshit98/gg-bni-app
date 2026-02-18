@@ -58,7 +58,6 @@ const SharedProduct: React.FC = () => {
     const { businessName: companyName } = useBusinessName(companyId);
     const location = useLocation();
     const highlightItemId = location.state?.highlightItemId;
-
     const { currentUser, loading: authLoading } = useAuth();
     const dbOperations = useDatabase();
     const [activeHighlight, setActiveHighlight] = useState<string | null>(null);
@@ -69,12 +68,11 @@ const SharedProduct: React.FC = () => {
     const [pageIsLoading, setPageIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [itemsToRenderCount, setItemsToRenderCount] = useState(ITEMS_PER_BATCH_RENDER);
-
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
     const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
     const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
     const [selectedItemForDetails, setSelectedItemForDetails] = useState<Item | null>(null);
-
+    const [socialLinks, setSocialLinks] = useState<any>({});
     const observerRef = useRef<IntersectionObserver | null>(null);
     const loadMoreRef = useRef<HTMLDivElement | null>(null);
     const [sortOrder, setSortOrder] = useState<'A-Z' | 'Z-A' | 'Price: Low-High' | 'Price: High-Low'>('A-Z');
@@ -95,11 +93,21 @@ const SharedProduct: React.FC = () => {
         updatedCart: { item: Item; quantity: number }[]
     ) => {
         if (!companyId || updatedCart.length === 0) return;
-        const leadData = JSON.parse(
-            sessionStorage.getItem("leadData") || "{}"
-        );
+
         try {
-            const userKey = currentUser?.uid ?? getUserKey();
+            const leadData = JSON.parse(
+                localStorage.getItem("leadData") || "{}"
+            );
+
+            // 🔥 number normalize
+            const cleanNumber = (leadData.number || "")
+                .replace(/\D/g, "")
+                .trim();
+
+            // 🔥 stable key
+            const userKey =
+                cleanNumber || currentUser?.uid || getUserKey();
+
             const loginName = currentUser?.name || "Guest User";
 
             const itemsForFirebase = updatedCart.map(c => ({
@@ -114,20 +122,17 @@ const SharedProduct: React.FC = () => {
                     0
             }));
 
-
-            //  FIXED UPCOMING DOC (VERY IMPORTANT)
             const orderRef = doc(
                 db,
-                'companies',
+                "companies",
                 companyId,
-                'Orders',
+                "Orders",
                 `upcoming_${userKey}`
             );
 
-            // 🔍 Check if invoice already exists
             const snap = await getDoc(orderRef);
 
-            let invoiceNumber = snap.exists()
+            const invoiceNumber = snap.exists()
                 ? snap.data().invoiceNumber
                 : await OrderInvoiceNumber(companyId);
 
@@ -138,25 +143,25 @@ const SharedProduct: React.FC = () => {
                     invoiceNumber,
                     userId: userKey,
                     userName: leadData.name || loginName,
-                    userLoginPhone: leadData.number || "",
-                    status: 'Upcoming',
+                    userLoginPhone: cleanNumber || "",
+                    status: "Upcoming",
                     items: itemsForFirebase,
                     totalAmount: itemsForFirebase.reduce(
                         (acc, curr) => acc + curr.mrp * curr.quantity,
                         0
                     ),
                     paidAmount: 0,
-                    createdAt: snap.exists() ? snap.data().createdAt : serverTimestamp(),
+                    createdAt: snap.exists()
+                        ? snap.data().createdAt
+                        : serverTimestamp(),
                     updatedAt: serverTimestamp(),
                 },
                 { merge: true }
             );
-
         } catch (err) {
             console.error("Sync Upcoming Error:", err);
         }
     };
-
 
     useEffect(() => {
         if (cart.length > 0) {
@@ -223,6 +228,19 @@ const SharedProduct: React.FC = () => {
                 ]);
                 setAllItemGroups(fetchedItemGroups);
                 setAllItems(fetchedItems);
+                const businessRef = doc(
+                    db,
+                    "companies",
+                    companyId,
+                    "business_info",
+                    companyId
+                );
+
+                const businessSnap = await getDoc(businessRef);
+
+                if (businessSnap.exists()) {
+                    setSocialLinks(businessSnap.data());
+                }
             } catch (err: any) {
                 setError(err instanceof Error ? err.message : 'Failed to load data.');
             } finally {
@@ -272,7 +290,13 @@ const SharedProduct: React.FC = () => {
 
     useEffect(() => {
         const savedCart = localStorage.getItem('temp_cart');
-        if (savedCart) setCart(JSON.parse(savedCart));
+        if (savedCart) {
+            const parsed = JSON.parse(savedCart);
+            setCart(parsed);
+
+            // 👇 add this
+            syncToUpcoming(parsed);
+        }
     }, []);
 
     const handleOpenEditDrawer = (item: Item) => {
@@ -431,7 +455,13 @@ const SharedProduct: React.FC = () => {
                 {hasMoreItems && <div ref={loadMoreRef} className="h-20 flex justify-center items-center"><Spinner /></div>}
             </main>
 
-            <Footer companyName={companyName} />
+            <Footer
+                companyName={companyName}
+                instagram={socialLinks.instagram}
+                facebook={socialLinks.facebook}
+                twitter={socialLinks.twitter}
+                gmail={socialLinks.gmail}
+            />
 
             <ItemEditDrawer
                 item={selectedItemForEdit}

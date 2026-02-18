@@ -54,7 +54,8 @@ const LeadPopUp: React.FC<{ companyId?: string; companyName?: string }> = ({ com
                     createdAt: serverTimestamp(),
                 }
             );
-            sessionStorage.setItem(
+
+            localStorage.setItem(
                 "leadData",
                 JSON.stringify({
                     name: formData.name,

@@ -11,7 +11,8 @@ import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName';
 import SearchBar from './SearchBar';
 import { useLocation } from 'react-router-dom';
-
+import { db } from '../lib/Firebase';
+import { doc, getDoc } from 'firebase/firestore';
 const StockIndicator: React.FC<{ stock: number }> = ({ stock }) => {
     let colorClass = 'text-green-600 bg-green-100';
     if (stock <= 10 && stock > 0) colorClass = 'text-yellow-600 bg-yellow-100';
@@ -76,7 +77,7 @@ const MyShop: React.FC = () => {
     const [pageIsLoading, setPageIsLoading] = useState(true);
     const [_error, setError] = useState<string | null>(null);
     const [itemsToRenderCount, setItemsToRenderCount] = useState(ITEMS_PER_BATCH_RENDER);
-
+    const [socialLinks, setSocialLinks] = useState<any>({});
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
     const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
     const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
@@ -165,28 +166,51 @@ const MyShop: React.FC = () => {
 
 
     useEffect(() => {
-        if (authLoading || !currentUser || !dbOperations) {
-            if (!authLoading && (!currentUser || !dbOperations)) setPageIsLoading(false);
+        if (authLoading || !currentUser || !dbOperations || !companyId) {
+            if (!authLoading && (!currentUser || !dbOperations)) {
+                setPageIsLoading(false);
+            }
             return;
         }
+
         const fetchData = async () => {
             try {
                 setPageIsLoading(true);
                 setError(null);
+
                 const [fetchedItemGroups, fetchedItems] = await Promise.all([
                     dbOperations.getItemGroups(),
                     dbOperations.syncItems()
                 ]);
+
                 setAllItemGroups(fetchedItemGroups);
                 setAllItems(fetchedItems);
+
+                // 🔥 SAFE FIRESTORE CALL
+                const businessRef = doc(
+                    db,
+                    "companies",
+                    companyId,
+                    "business_info",
+                    companyId
+                );
+
+                const businessSnap = await getDoc(businessRef);
+
+                if (businessSnap.exists()) {
+                    setSocialLinks(businessSnap.data());
+                }
+
             } catch (err: any) {
-                setError(err.message || 'Failed to load initial data.');
+                setError(err.message || "Failed to load initial data.");
             } finally {
                 setPageIsLoading(false);
             }
         };
+
         fetchData();
-    }, [authLoading, currentUser, dbOperations]);
+
+    }, [authLoading, currentUser, dbOperations, companyId]);
 
     // 3. Updated Filter logic with safety checks
     const filteredItems = useMemo(() => {
@@ -523,7 +547,13 @@ const MyShop: React.FC = () => {
                 onAddToCart={addToCart}
                 initialQuantity={cart.find(i => i.item.id === selectedItemForDetails?.id)?.quantity || 1}
             />
-            <Footer companyName={companyName} />
+            <Footer
+                companyName={companyName}
+                instagram={socialLinks.instagram}
+                facebook={socialLinks.facebook}
+                twitter={socialLinks.twitter}
+                gmail={socialLinks.gmail}
+            />
         </div>
     );
 };

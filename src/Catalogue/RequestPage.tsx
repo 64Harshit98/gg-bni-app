@@ -152,21 +152,22 @@ function RequestPage() {
             <main className="p-4 flex-1 max-w-7xl mx-auto w-full">
 
                 {/* Main Toggle: Pending / Completed */}
-                <div className="flex bg-white p-1 rounded-sm shadow-sm mb-4 border border-gray-200">
-                    <button
-                        onClick={() => setStatus('pending')}
-                        className={`flex-1 py-2 text-sm font-bold rounded-sm transition-all ${status === 'pending' ? 'bg-[#1A3B5D] text-white' : 'text-gray-500'}`}
-                    >
-                        Pending
-                    </button>
-                    <button
-                        onClick={() => setStatus('completed')}
-                        className={`flex-1 py-2 text-sm font-bold rounded-sm transition-all ${status === 'completed' ? 'bg-[#1A3B5D] text-white' : 'text-gray-500'}`}
-                    >
-                        Completed
-                    </button>
+                <div className="sticky top-[56px] z-[90] bg-[#E9F0F7] py-2">
+                    <div className="flex bg-white p-1 rounded-sm shadow-sm mb-4 border border-gray-200">
+                        <button
+                            onClick={() => setStatus('pending')}
+                            className={`flex-1 py-2 text-sm font-bold rounded-sm transition-all ${status === 'pending' ? 'bg-[#1A3B5D] text-white' : 'text-gray-500'}`}
+                        >
+                            Pending
+                        </button>
+                        <button
+                            onClick={() => setStatus('completed')}
+                            className={`flex-1 py-2 text-sm font-bold rounded-sm transition-all ${status === 'completed' ? 'bg-[#1A3B5D] text-white' : 'text-gray-500'}`}
+                        >
+                            Completed
+                        </button>
+                    </div>
                 </div>
-
                 {/* Sub Toggle: Only visible when "Completed" is selected */}
                 {status === 'completed' && (
                     <div className="flex gap-2 mb-4">
@@ -213,31 +214,34 @@ function RequestPage() {
                                         <p className="text-xs text-gray-600 font-medium mt-1">
                                             📞 {req.customerNumber || "No Number"}
                                         </p>
-
-                                        <p className="text-[10px] text-gray-400 mt-1">
-                                            {formatDate(req.createdAt)}
-                                        </p>
                                     </div>
 
                                     {/* RIGHT SIDE */}
-                                    <div className="flex items-center gap-2">
-                                        <span
-                                            className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded border ${getStatusStyle(req.status)}`}
-                                        >
-                                            {req.status || "pending"}
-                                        </span>
-                                        {/* Arrow */}
-                                        <svg
-                                            xmlns="http://www.w3.org/2000/svg"
-                                            fill="none"
-                                            viewBox="0 0 24 24"
-                                            strokeWidth={2.5}
-                                            stroke="currentColor"
-                                            className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? "rotate-180" : ""
-                                                }`}
-                                        >
-                                            <path d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                                        </svg>
+                                    <div className="flex flex-col items-end gap-1">
+                                        <div className="flex items-center gap-2">
+                                            <span
+                                                className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded border ${getStatusStyle(req.status)}`}
+                                            >
+                                                {req.status || "pending"}
+                                            </span>
+
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                strokeWidth={2.5}
+                                                stroke="currentColor"
+                                                className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? "rotate-180" : ""
+                                                    }`}
+                                            >
+                                                <path d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                                            </svg>
+                                        </div>
+
+                                        {/* DATE */}
+                                        <p className="text-[10px] text-gray-400 font-medium">
+                                            {formatDate(req.createdAt)}
+                                        </p>
                                     </div>
                                 </div>
 

@@ -13,7 +13,7 @@ import { handleDatePresetChange } from '../../Pages/Reports/PNLReportComponents/
 import FilterSelect from '../../Pages/Reports/SalesReportComponents/FilterSelect';
 import DownloadChoiceModal from '../../Pages/Reports/ItemReportComponents/DownloadChoiceModal';
 import { type CustomerRow } from '../../Pages/Reports/CustomerReportComponents/customerReport.utils';
-import useCustomerReport from '../../Pages/Reports/CustomerReportComponents/useCustomerReport';
+import useCustomerReport from '../hooks/useCustomerReport';
 
 const CatalogueCustomerReport: React.FC = () => {
   const {
@@ -57,15 +57,19 @@ const CatalogueCustomerReport: React.FC = () => {
     const map = new Map<string, CustomerRow>();
 
     filteredSales.forEach((sale) => {
-      const key = sale.partyName;
+      const key = `${sale.partyName}-${sale.partyNumber}`;
+
       if (!map.has(key)) {
         map.set(key, {
-          customerName: key,
+          id: key,
+          customerName: sale.partyName,
+          customerNumber: sale.partyNumber || 'N/A',
           totalBills: 0,
           totalSales: 0,
           totalDue: 0,
         });
       }
+
       const row = map.get(key)!;
       row.totalBills += 1;
       row.totalSales += sale.totalAmount;
@@ -177,6 +181,10 @@ const CatalogueCustomerReport: React.FC = () => {
     {
       header: 'Customer',
       accessor: 'customerName',
+    },
+    {
+      header: 'Contact No',
+      accessor: 'customerNumber'
     },
     {
       header: 'Bills',
@@ -347,7 +355,7 @@ const CatalogueCustomerReport: React.FC = () => {
         <CustomTable<CustomerRow>
           data={customerRows}
           columns={tableColumns}
-          keyExtractor={(row) => row.customerName}
+          keyExtractor={(row) => row.id}
           emptyMessage="No customers found for selected period."
         />
       )}

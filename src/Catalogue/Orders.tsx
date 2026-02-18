@@ -90,6 +90,8 @@ export interface Order {
     }[];
     paymentStatus?: string
     updatedAt?: Date;
+    type?: string;
+    isLead?: boolean;
 }
 
 const formatDate = (date: Date): string => {
@@ -100,6 +102,10 @@ const formatDate = (date: Date): string => {
         day: '2-digit',
         month: '2-digit'
     });
+};
+
+const formatAmount = (amount: number) => {
+    return Number(amount || 0).toLocaleString('en-IN');
 };
 
 export const useOrdersData = (
@@ -150,7 +156,9 @@ export const useOrdersData = (
 
                     return {
                         id: doc.id,
-                        orderId: data.orderId || doc.id,
+                        orderId: data.orderId || '',
+                        type: data.type || "order",
+                        isLead: data.isLead || false,
                         totalAmount: Number(data.totalAmount || 0),
                         paidAmount: Number(data.paidAmount || 0),
                         status: data.status || 'Upcoming',
@@ -578,6 +586,13 @@ const OrdersPage: React.FC = () => {
 
         let result = Orders
             .filter(order => {
+
+                // ⭐ LEAD LOGIC
+                if (order.status === "Upcoming" && order.isLead) {
+                    // card tabhi dikhana jab items add ho
+                    return (order.items?.length || 0) > 0;
+                }
+
                 if (activeStatusTab === 'Completed') {
                     if (paymentFilter === 'unpaid') {
                         return order.status === 'Completed';
@@ -587,6 +602,7 @@ const OrdersPage: React.FC = () => {
 
                 return order.status === activeStatusTab;
             })
+
             .filter(order => {
                 const q = searchQuery.toLowerCase();
                 return (
@@ -952,22 +968,40 @@ const OrdersPage: React.FC = () => {
                                                 {/* Right Side: Buttons */}
                                                 {Order.userLoginPhone && (
                                                     <div className="flex gap-1.5 shrink-0">
-                                                        <a
-                                                            href={`tel:${Order.userLoginPhone.replace(/\D/g, '')}`}
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            className="h-8 px-3 flex items-center justify-center text-[10px] font-bold text-emerald-600 bg-white border border-emerald-200 rounded-md hover:bg-emerald-50 active:scale-95 transition-all shadow-sm"
+
+                                                        {Order.userLoginPhone && (
+                                                            <>
+                                                                <a
+                                                                    href={`tel:${Order.userLoginPhone.replace(/\D/g, '')}`}
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                    className="h-8 px-3 flex items-center justify-center text-[10px] font-bold text-emerald-600 bg-white border border-emerald-200 rounded-md hover:bg-emerald-50 active:scale-95 transition-all shadow-sm"
+                                                                >
+                                                                    Call
+                                                                </a>
+
+                                                                <a
+                                                                    href={`https://wa.me/${Order.userLoginPhone.replace(/\D/g, '')}`}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                    className="h-8 px-3 flex items-center justify-center text-[10px] font-bold text-white bg-[#25D366] rounded-md hover:bg-[#1ebe5d] active:scale-95 transition-all shadow-sm"
+                                                                >
+                                                                    WhatsApp
+                                                                </a>
+                                                            </>
+                                                        )}
+
+                                                        {/* ⭐ NEW DELETE BUTTON */}
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleDeleteOrder(Order.id);
+                                                            }}
+                                                            className="h-8 px-3 flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-md hover:bg-red-600 active:scale-95 transition-all shadow-sm"
                                                         >
-                                                            Call
-                                                        </a>
-                                                        <a
-                                                            href={`https://wa.me/${Order.userLoginPhone.replace(/\D/g, '')}`}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            className="h-8 px-3 flex items-center justify-center text-[10px] font-bold text-white bg-[#25D366] rounded-md hover:bg-[#1ebe5d] active:scale-95 transition-all shadow-sm"
-                                                        >
-                                                            WhatsApp
-                                                        </a>
+                                                            Delete
+                                                        </button>
+
                                                     </div>
                                                 )}
                                             </div>
@@ -975,7 +1009,8 @@ const OrdersPage: React.FC = () => {
                                     </div>
                                     <div className="text-right flex flex-col items-end">
                                         <div className="flex items-center gap-2">
-                                            <p className="text-[18px] font-bold text-black">₹{total.toFixed(2)}</p>
+                                            <p className="text-[18px] font-bold text-black">₹{formatAmount(total)}
+                                            </p>
                                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}><path d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
                                         </div>
                                         <p className="text-[10px] font-boldpx-2 py-0.5 mt-1">Items: {Order.items?.length || 0}</p>
@@ -1014,10 +1049,11 @@ const OrdersPage: React.FC = () => {
                                                                     <span className="font-xs italic text-slate-600">{item.note}</span>
                                                                 </p>
                                                             )}
-                                                            <p className="text-[10px] text-gray-400">₹{item.mrp} per unit</p>
+                                                            <p className="text-[10px] text-gray-400">₹{formatAmount(item.mrp)}per unit</p>
                                                         </div>
                                                         <div className="text-right ml-4">
-                                                            <p className="text-[13px] font-black text-slate-900">₹{item.mrp * item.quantity}</p>
+                                                            <p className="text-[13px] font-black text-slate-900">₹{formatAmount(item.mrp * item.quantity)}
+                                                            </p>
                                                             <p className="text-[9px] font-bold text-slate-500 bg-white">Qty: {item.quantity}</p>
                                                         </div>
                                                     </div>
@@ -1043,7 +1079,7 @@ const OrdersPage: React.FC = () => {
                                                                                 {method}
                                                                             </span>
                                                                             <span className="text-[9px] font-black text-green-600">
-                                                                                ₹{Number(amount).toFixed(2)}
+                                                                                ₹{formatAmount(Number(amount))}
                                                                             </span>
                                                                         </div>
                                                                     ))
@@ -1053,7 +1089,7 @@ const OrdersPage: React.FC = () => {
                                                                         {Order.paymentMethod}
                                                                     </span>
                                                                     <span className="text-[9px] font-black text-green-600">
-                                                                        ₹{paid.toFixed(2)}
+                                                                        ₹{formatAmount(paid)}
                                                                     </span>
                                                                 </div>
                                                             ) : null
@@ -1067,7 +1103,7 @@ const OrdersPage: React.FC = () => {
                                                         </div>
                                                         <div className="text-right">
                                                             <p className="text-[7px] font-bold text-red-600 uppercase tracking-tighter leading-none mb-0.5">Due</p>
-                                                            <p className="text-[11px] font-black text-red-700 leading-none">₹{due.toFixed(2)}</p>
+                                                            <p className="text-[11px] font-black text-red-700 leading-none">₹{formatAmount(due)}</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1324,7 +1360,7 @@ const OrdersPage: React.FC = () => {
                                 <div className="h-8 w-[1px] bg-gray-500 mx-2"></div>
                                 <div className="flex flex-col gap-1">
                                     <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest leading-none">Total Amount</span>
-                                    <span className="text-md font-black text-slate-900 leading-none">₹{editingOrder.totalAmount.toFixed(2)}</span>
+                                    <span className="text-md font-black text-slate-900 leading-none">₹{formatAmount(editingOrder.totalAmount)}  </span>
                                 </div>
                             </div>
 

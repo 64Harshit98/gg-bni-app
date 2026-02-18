@@ -128,6 +128,14 @@ const CatalogueLayout = () => {
                             <span className="text-lg">+</span>
                             <span>Requests</span>
                         </NavLink>
+                        <NavLink
+                            to={`${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`}
+                            end
+                            className={({ isActive }) => sidebarLinkClass(isActive)}
+                        >
+                            <span className="text-lg">+</span>
+                            <span>Orders Return</span>
+                        </NavLink>
 
                     </ShowWrapper>
                 </nav>

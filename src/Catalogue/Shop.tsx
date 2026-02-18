@@ -7,7 +7,7 @@ import { FiX, FiPackage, FiPlus } from 'react-icons/fi';
 import { Trash2, X, ChevronLeft } from 'lucide-react';
 import { Spinner } from '../constants/Spinner';
 import { db } from '../lib/Firebase';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { OrderInvoiceNumber } from '../UseComponents/InvoiceCounter';
 import { useNavigate } from 'react-router';
 import Footer from './Footer';
@@ -36,6 +36,7 @@ const OrderingPage: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'My Shop' | 'Edit Shop'>('My Shop');
     const [sortOrder, setSortOrder] = useState<'A-Z' | 'Z-A'>('A-Z');
     const [isSortOpen, setIsSortOpen] = useState(false);
+    const [socialLinks, setSocialLinks] = useState<any>({});
 
     // --- YOUR NEW STATES ---
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -49,8 +50,11 @@ const OrderingPage: React.FC = () => {
         }
 
         const fetchData = async () => {
+            if (!companyId) return;
+
             try {
                 setPageIsLoading(true);
+
                 const [fetchedItems, fetchedItemGroups] = await Promise.all([
                     dbOperations.syncItems(),
                     dbOperations.getItemGroups()
@@ -65,18 +69,32 @@ const OrderingPage: React.FC = () => {
                     }
                 });
 
-                const sortedGroups = Array.from(groupMap.values()).sort((a, b) =>
-                    a.name.localeCompare(b.name)
+                setItemGroups(
+                    Array.from(groupMap.values()).sort((a, b) =>
+                        a.name.localeCompare(b.name)
+                    )
                 );
-                setItemGroups(sortedGroups);
 
-            } catch (err: any) {
+                const businessRef = doc(
+                    db,
+                    "companies",
+                    companyId,
+                    "business_info",
+                    companyId
+                );
+
+                const businessSnap = await getDoc(businessRef);
+
+                if (businessSnap.exists()) {
+                    setSocialLinks(businessSnap.data());
+                }
+
+            } catch (err) {
                 console.error("Error fetching data:", err);
             } finally {
                 setPageIsLoading(false);
             }
         };
-
         fetchData();
     }, [authLoading, currentUser, dbOperations]);
 
@@ -380,7 +398,13 @@ const OrderingPage: React.FC = () => {
                 </div>
             )}
             <div className="w-full m-0 p-0">
-                <Footer companyName={companyName} />
+                <Footer
+                    companyName={companyName}
+                    instagram={socialLinks.instagram}
+                    facebook={socialLinks.facebook}
+                    twitter={socialLinks.twitter}
+                    gmail={socialLinks.gmail}
+                />
             </div>
         </div>
     );

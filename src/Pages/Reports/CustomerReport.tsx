@@ -10,7 +10,6 @@ import { IconClose } from '../../constants/Icons';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
 import { handleDatePresetChange } from './PNLReportComponents/pnlReport.utils';
-
 import FilterSelect from './SalesReportComponents/FilterSelect';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { type CustomerRow } from './CustomerReportComponents/customerReport.utils';

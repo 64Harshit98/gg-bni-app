@@ -70,16 +70,19 @@ const CartPage: React.FC = () => {
     const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
     const getUpcomingDocId = () => {
-        return currentUser?.uid
-            ? `upcoming_${currentUser.uid}`
-            : `upcoming_guest`;
-    };
+        const upcomingKey =
+            localStorage.getItem("upcoming_user_key");
 
+        if (!upcomingKey) return null;
+
+        return `upcoming_${upcomingKey}`;
+    };
 
     const syncToUpcoming = async (updatedCart: CartItem[]) => {
         if (!companyId) return;
 
         const docId = getUpcomingDocId();
+        if (!docId) return;
         const orderRef = doc(db, 'companies', companyId, 'Orders', docId);
         if (updatedCart.length === 0) {
             await deleteDoc(orderRef);
@@ -173,8 +176,31 @@ const CartPage: React.FC = () => {
     const subtotal = cartItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
     const totalPay = subtotal;
 
+    const isAddressValid = (addr: Address) => {
+        return (
+            addr.name?.trim() &&
+            addr.phone?.trim() &&
+            addr.phone.length === 10 &&
+            addr.city?.trim() &&
+            addr.state?.trim() &&
+            addr.address?.trim()
+        );
+    };
+
     const placeOrder = async () => {
         if (!companyId || !currentUser?.uid) return;
+
+        //  ADDRESS VALIDATION GUARD
+        const billingValid = isAddressValid(billing);
+        const shippingValid = isSameAsShipping
+            ? billingValid
+            : isAddressValid(shipping);
+
+        if (!billingValid || !shippingValid) {
+            alert("Please fill complete billing and shipping details");
+            return;
+        }
+
 
         setIsPlacing(true);
 
@@ -230,15 +256,19 @@ const CartPage: React.FC = () => {
             }
 
             // 2️⃣ DELETE UPCOMING (STEP 5 — YAHI HAI)
-            const upcomingRef = doc(
-                db,
-                'companies',
-                companyId,
-                'Orders',
-                `upcoming_${currentUser.uid}`
-            );
+            const upcomingDocId = getUpcomingDocId();
 
-            await deleteDoc(upcomingRef);
+            if (upcomingDocId) {
+                const upcomingRef = doc(
+                    db,
+                    "companies",
+                    companyId,
+                    "Orders",
+                    upcomingDocId
+                );
+
+                await deleteDoc(upcomingRef);
+            }
 
             // 3️⃣ Cleanup local state
             localStorage.removeItem('temp_cart');
@@ -277,8 +307,9 @@ const CartPage: React.FC = () => {
         syncToUpcoming(updatedCart);
     };
 
-
     const handleDrawerAction = () => {
+        if (cartItems.length === 0) return; // 🛡️ safety guard
+
         if (step === 1) {
             setStep(2);
             setIsDrawerOpen(false);
@@ -421,6 +452,24 @@ const CartPage: React.FC = () => {
                                                 <textarea value={billing.address} onChange={(e) => setBilling({ ...billing, address: e.target.value })} className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[10px] font-bold h-12 resize-none outline-none" placeholder="Details..."></textarea>
                                             </div>
                                         </div>
+
+                                        {/* MOBILE ONLY — Same as Shipping (between cards) */}
+                                        <div className="flex lg:hidden items-center gap-3 px-2 -mt-1">
+                                            <button
+                                                onClick={() => setIsSameAsShipping(!isSameAsShipping)}
+                                                className={`w-9 h-4.5 rounded-sm transition-all flex items-center px-1 ${isSameAsShipping ? 'bg-[#00A3E1]' : 'bg-gray-300'
+                                                    }`}
+                                            >
+                                                <div
+                                                    className={`bg-white w-3 h-3 rounded-sm shadow-sm transition-transform ${isSameAsShipping ? 'translate-x-4.5' : 'translate-x-0'
+                                                        }`}
+                                                />
+                                            </button>
+                                            <span className="text-[9px] font-black text-[#1A3B5D] uppercase tracking-wider">
+                                                Shipping same as billing
+                                            </span>
+                                        </div>
+
                                         <div className={`bg-white rounded-sm shadow-sm p-4 border border-gray-50 transition-all ${isSameAsShipping ? 'opacity-60 pointer-events-none grayscale-[0.5]' : 'opacity-100'}`}>
                                             <h3 className="text-[9px] font-black text-[#1A3B5D] uppercase tracking-widest mb-3 flex items-center gap-2">
                                                 <span className="w-1.5 h-1.5 bg-[#00A3E1] rounded-sm"></span> Shipping Address
@@ -459,7 +508,7 @@ const CartPage: React.FC = () => {
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-3 px-2">
+                                    <div className="hidden lg:flex items-center gap-3 px-2">
                                         <button onClick={() => setIsSameAsShipping(!isSameAsShipping)} className={`w-9 h-4.5 rounded-sm transition-all flex items-center px-1 ${isSameAsShipping ? 'bg-[#00A3E1]' : 'bg-gray-300'}`}>
                                             <div className={`bg-white w-3 h-3 rounded-sm shadow-sm transition-transform ${isSameAsShipping ? 'translate-x-4.5' : 'translate-x-0'}`} />
                                         </button>
@@ -525,8 +574,11 @@ const CartPage: React.FC = () => {
                                 <span className="text-2xl font-black text-[#00A3E1]">₹{totalPay.toLocaleString()}</span>
                             </div>
                         </div>
-                        <button onClick={handleDrawerAction} className="w-full bg-[#1A3B5D] text-white py-4 rounded-sm font-black text-[11px] uppercase tracking-[0.2em] shadow-xl">
-                            {step === 1 ? "Proceed to Shipping" : "Confirm & Pay Now"}
+                        <button
+                            onClick={handleDrawerAction}
+                            disabled={cartItems.length === 0}
+                            className={`w-full bg-[#1A3B5D] text-white py-4 rounded-sm font-black text-[11px] uppercase tracking-[0.2em] shadow-xl ${cartItems.length === 0 ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                            {step === 1 ? "Proceed to Shipping" : "Confirm Order"}
                         </button>
                     </div>
                 </div>
@@ -539,7 +591,10 @@ const CartPage: React.FC = () => {
                         </div>
                         <span className="text-xl font-black text-[#1A3B5D]">₹{totalPay.toLocaleString()}</span>
                     </div>
-                    <button onClick={() => step === 1 ? setStep(2) : setIsDrawerOpen(true)} className="bg-[#00A3E1] text-white px-10 py-3.5 rounded-sm font-black text-[10px] uppercase tracking-widest active:scale-95 transition-transform">
+                    <button
+                        onClick={() => step === 1 ? setStep(2) : setIsDrawerOpen(true)}
+                        disabled={cartItems.length === 0}
+                        className={`bg-[#00A3E1] text-white px-10 py-3.5 rounded-sm font-black text-[10px] uppercase tracking-widest active:scale-95 transition-transform${cartItems.length === 0 ? 'opacity-60 cursor-not-allowed' : ''} `}>
                         {step === 1 ? "Checkout" : "View Summary"}
                     </button>
                 </div>

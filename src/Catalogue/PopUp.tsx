@@ -63,6 +63,32 @@ const LeadPopUp: React.FC<{ companyId?: string; companyName?: string }> = ({ com
                 })
             );
             localStorage.setItem("leadSubmitted", "true");
+
+            // ⭐ EXISTING UPCOMING ORDER UPDATE KARO
+            try {
+                const upcomingUserKey =
+                    localStorage.getItem("upcoming_user_key");
+
+                if (upcomingUserKey && companyId) {
+                    const { doc, updateDoc } = await import("firebase/firestore");
+
+                    const orderRef = doc(
+                        db,
+                        "companies",
+                        companyId,
+                        "Orders",
+                        `upcoming_${upcomingUserKey}`
+                    );
+
+                    await updateDoc(orderRef, {
+                        userName: formData.name,
+                        userLoginPhone: formData.number
+                    });
+                }
+            } catch (err) {
+                console.log("No upcoming order to update");
+            }
+
             setStep(2);
             setTimeout(() => setIsVisible(false), 4000);
 

@@ -99,14 +99,23 @@ const SharedProduct: React.FC = () => {
                 localStorage.getItem("leadData") || "{}"
             );
 
-            // 🔥 number normalize
+            // number normalize
             const cleanNumber = (leadData.number || "")
                 .replace(/\D/g, "")
                 .trim();
 
-            // 🔥 stable key
-            const userKey =
-                cleanNumber || currentUser?.uid || getUserKey();
+            // STABLE UPCOMING KEY (FIXED)
+            let userKey: string =
+                localStorage.getItem("upcoming_user_key") || "";
+
+            if (!userKey) {
+                userKey =
+                    cleanNumber ||
+                    currentUser?.uid ||
+                    getUserKey();
+
+                localStorage.setItem("upcoming_user_key", userKey);
+            }
 
             const loginName = currentUser?.name || "Guest User";
 
@@ -136,24 +145,40 @@ const SharedProduct: React.FC = () => {
                 ? snap.data().invoiceNumber
                 : await OrderInvoiceNumber(companyId);
 
+            const existingData = snap.exists() ? snap.data() : {};
+
             await setDoc(
                 orderRef,
                 {
                     orderId: invoiceNumber,
                     invoiceNumber,
                     userId: userKey,
-                    userName: leadData.name || loginName,
-                    userLoginPhone: cleanNumber || "",
+
+                    // ⭐ NAME OVERWRITE NAHI HOGA
+                    userName:
+                        existingData.userName ||
+                        leadData.name ||
+                        loginName,
+
+                    userLoginPhone:
+                        existingData.userLoginPhone ||
+                        cleanNumber ||
+                        "",
+
                     status: "Upcoming",
+                    isLead: true, // ⭐ ADD THIS
+
                     items: itemsForFirebase,
                     totalAmount: itemsForFirebase.reduce(
                         (acc, curr) => acc + curr.mrp * curr.quantity,
                         0
                     ),
                     paidAmount: 0,
+
                     createdAt: snap.exists()
                         ? snap.data().createdAt
                         : serverTimestamp(),
+
                     updatedAt: serverTimestamp(),
                 },
                 { merge: true }
@@ -162,6 +187,7 @@ const SharedProduct: React.FC = () => {
             console.error("Sync Upcoming Error:", err);
         }
     };
+
 
     useEffect(() => {
         if (cart.length > 0) {

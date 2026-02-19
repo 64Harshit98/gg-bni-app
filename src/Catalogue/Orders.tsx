@@ -554,7 +554,7 @@ const OrdersPage: React.FC = () => {
     const statusCounts = useMemo(() => {
         return OrderStatuses.reduce((acc, status) => {
 
-            // 🔥 Completed = Completed + Paid
+            //  Completed = Completed + Paid
             if (status === "Completed") {
                 acc[status] = Orders.filter(
                     o => o.status === "Completed" || o.status === "Paid"
@@ -587,12 +587,16 @@ const OrdersPage: React.FC = () => {
         let result = Orders
             .filter(order => {
 
-                // ⭐ LEAD LOGIC
-                if (order.status === "Upcoming" && order.isLead) {
-                    // card tabhi dikhana jab items add ho
-                    return (order.items?.length || 0) > 0;
+                //  UPCOMING TAB
+                if (activeStatusTab === "Upcoming") {
+                    if (order.status === "Upcoming" && order.isLead) {
+                        // lead tabhi dikhe jab items ho
+                        return (order.items?.length || 0) > 0;
+                    }
+                    return order.status === "Upcoming";
                 }
 
+                //  COMPLETED TAB
                 if (activeStatusTab === 'Completed') {
                     if (paymentFilter === 'unpaid') {
                         return order.status === 'Completed';
@@ -600,6 +604,7 @@ const OrdersPage: React.FC = () => {
                     return order.status === 'Paid';
                 }
 
+                //  NORMAL TABS (Confirmed, Packed)
                 return order.status === activeStatusTab;
             })
 
@@ -611,7 +616,7 @@ const OrdersPage: React.FC = () => {
                 );
             });
 
-        // Paid tab me latest order sabse upar
+        //  Paid tab me latest order upar
         if (activeStatusTab === 'Completed' && paymentFilter === 'paid') {
             result = result.sort((a, b) => {
                 const aTime = a.updatedAt
@@ -630,7 +635,6 @@ const OrdersPage: React.FC = () => {
 
     }, [Orders, activeStatusTab, paymentFilter, searchQuery]);
 
-
     const handleOrderClick = (uiKey: string) => {
         setExpandedorderId(prevId => (prevId === uiKey ? null : uiKey));
     };
@@ -647,65 +651,47 @@ const OrdersPage: React.FC = () => {
         }
     };
 
-    const handleUpdateStatus = async (orderId: string, currentStatus: OrderStatus, manualNextStatus?: OrderStatus) => {
+    const handleUpdateStatus = async (
+        orderId: string,
+        currentStatus: OrderStatus,
+        manualNextStatus?: OrderStatus
+    ) => {
         setIsUpdatingStatus(orderId);
+
         try {
             const nextStatusMap: Record<OrderStatus, OrderStatus> = {
-                'Upcoming': 'Confirmed',
-                'Confirmed': 'Packed',
-                'Packed': 'Completed',
-                'Completed': 'Completed',
-                'Paid': 'Paid'
+                Upcoming: "Confirmed",
+                Confirmed: "Packed",
+                Packed: "Completed",
+                Completed: "Completed",
+                Paid: "Paid"
             };
 
-            // Agar toggle se manualNextStatus aaya hai toh woh use karo
-            const nextStatus = manualNextStatus || nextStatusMap[currentStatus];
+            const nextStatus =
+                manualNextStatus || nextStatusMap[currentStatus];
 
             if (!currentUser?.companyId) return;
-            const OrderRef = doc(db, 'companies', currentUser.companyId, 'Orders', orderId);
 
+            const OrderRef = doc(
+                db,
+                "companies",
+                currentUser.companyId,
+                "Orders",
+                orderId
+            );
 
             await updateDoc(OrderRef, {
                 status: nextStatus,
+                isLead: false,
                 updatedAt: serverTimestamp()
             });
+
         } catch (err) {
             console.error("Error updating status:", err);
         } finally {
             setIsUpdatingStatus(null);
         }
     };
-
-    // const handleSettleOrderPayment = async (Order: any, amountPaidNow: number, method: string) => {
-    //     if (!currentUser?.companyId) return;
-    //     try {
-    //         const OrderRef = doc(db, 'companies', currentUser.companyId, 'Orders', Order.id);
-    //         await runTransaction(db, async (transaction) => {
-    //             const OrderDoc = await transaction.get(OrderRef);
-    //             if (!OrderDoc.exists()) throw "Order not found!";
-
-    //             const data = OrderDoc.data();
-    //             const totalToPay = Number(data.totalAmount || 0);
-    //             const alreadyPaid = Number(data.paidAmount || 0);
-    //             const newPaidTotal = alreadyPaid + Number(amountPaidNow);
-    //             const isFullyPaid = Math.round(newPaidTotal) >= Math.round(totalToPay);
-    //             const newStatus = isFullyPaid ? 'Paid' : 'Completed';
-
-    //             transaction.update(OrderRef, {
-    //                 paidAmount: newPaidTotal,
-    //                 status: newStatus,
-    //                 // Yeh do lines sabse zaroori hain UI ke liye
-    //                 paymentMethod: method,
-    //                 [`paymentMethods.${method}`]: (data.paymentMethods?.[method] || 0) + Number(amountPaidNow),
-    //                 updatedAt: serverTimestamp()
-    //             });
-    //         });
-    //         setModal({ message: "Payment updated successfully!", type: State.SUCCESS });
-    //         setShowPaymentModal(null);
-    //     } catch (err: any) {
-    //         setModal({ message: "Error: " + err.toString(), type: State.ERROR });
-    //     }
-    // };
 
     return (
         <div className="flex min-h-screen w-full flex-col bg-gray-100 mb-10">
@@ -877,15 +863,16 @@ const OrdersPage: React.FC = () => {
                                         ))}
                                     </div>
                                 )}
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); setEditingOrder(Order); }}
-                                    className="absolute top-5 left-2 p-2 bg-white/90 backdrop-blur-sm text-slate-500 rounded-sm transition-all duration-300 z-20 group"
-                                >
-                                    <div className="flex items-center cursor-pointer">
-                                        <IconEdit className='h-3 w-3' />
-                                    </div>
-                                </button>
-
+                                {!isUpcomingStatus && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); setEditingOrder(Order); }}
+                                        className="absolute top-5 left-2 p-2 bg-white/90 backdrop-blur-sm text-slate-500 rounded-sm transition-all duration-300 z-20 group"
+                                    >
+                                        <div className="flex items-center cursor-pointer">
+                                            <IconEdit className='h-3 w-3' />
+                                        </div>
+                                    </button>
+                                )}
                                 <div className="absolute right-5 top-0 flex gap-1">
                                     {/* PAYMENT METHOD BADGES (DUE EXCLUDED) */}
                                     {Order.paymentMethods &&
@@ -939,8 +926,8 @@ const OrdersPage: React.FC = () => {
                                         })()}
 
                                 </div>
-                                <div className="flex justify-between items-start pl-6 mt-1">
-                                    <div>
+                                <div className={`flex justify-between items-start mt-1 w-full ${isUpcomingStatus ? 'pl-2 pr-1' : 'pl-6'}`}>
+                                    <div className='flex-1 min-w-0'>
                                         {!isUpcomingStatus && (
                                             <h3 className="text-sm font-bold text-slate-800">
                                                 {Order.orderId}
@@ -949,14 +936,14 @@ const OrdersPage: React.FC = () => {
                                         <p className="text-gray-600 text-xs font-medium">{Order.userName}</p>
                                         <p className="text-[10px] text-gray-400 mt-1">{Order.time}</p>
                                         {isUpcomingStatus && (
-                                            <div className="mt-2 p-2 bg-slate-50/50 border border-slate-200 rounded-lg flex items-center justify-between gap-3">
+                                            <div className="mt-2 p-2 bg-slate-50/50 border border-slate-200 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-2 w-full">
                                                 {/* Left Side: Info */}
-                                                <div className="flex items-center gap-3 min-w-0 flex-1">
+                                                <div className="flex items-center gap-3 min-w-0 flex-1 w-full">
                                                     <div className="hidden sm:block">
                                                         <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
                                                     </div>
-                                                    <div className="flex flex-col min-w-0">
-                                                        <span className="text-[11px] font-bold text-slate-900 truncate tracking-tight">
+                                                    <div className="flex flex-col min-w-0 flex-1 overflow-hidden">
+                                                        <span className="text-[11px] font-bold text-slate-900 truncate whitespace-nowrap tracking-tight block w-full">
                                                             {Order.userLoginPhone}
                                                         </span>
                                                         <span className="text-[9px] text-slate-500 truncate leading-none">
@@ -967,8 +954,7 @@ const OrdersPage: React.FC = () => {
 
                                                 {/* Right Side: Buttons */}
                                                 {Order.userLoginPhone && (
-                                                    <div className="flex gap-1.5 shrink-0">
-
+                                                    <div className="flex justify-center gap-1.5 px-2.5">
                                                         {Order.userLoginPhone && (
                                                             <>
                                                                 <a
@@ -988,20 +974,18 @@ const OrdersPage: React.FC = () => {
                                                                 >
                                                                     WhatsApp
                                                                 </a>
+
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleDeleteOrder(Order.id);
+                                                                    }}
+                                                                    className="h-8 px-3 flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-md hover:bg-red-600 active:scale-95 transition-all shadow-sm"
+                                                                >
+                                                                    Delete
+                                                                </button>
                                                             </>
                                                         )}
-
-                                                        {/* ⭐ NEW DELETE BUTTON */}
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleDeleteOrder(Order.id);
-                                                            }}
-                                                            className="h-8 px-3 flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-md hover:bg-red-600 active:scale-95 transition-all shadow-sm"
-                                                        >
-                                                            Delete
-                                                        </button>
-
                                                     </div>
                                                 )}
                                             </div>

@@ -23,6 +23,8 @@ import CatalogueItemReport from '../Catalogue/CatalogueReports/CatalogueItemRepo
 import CatalogueCustomerReport from '../Catalogue/CatalogueReports/CatalogueCustomerReport';
 import CatalogueUserReport from '../Catalogue/CatalogueReports/CatalogueUserReport';
 import CatalogueTaxReport from '../Catalogue/CatalogueReports/CatalogueTaxReport';
+import CatalogueRegistration3 from '../Catalogue/Registration/CatalogueRegistration3';
+import CatalogueRegistration2 from '../Catalogue/Registration/CatalogueRegistration2';
 // import SharedProduct from '../Catalogue/SharedProduct';
 
 const Home = lazy(() => import('../Pages/Home'));
@@ -346,6 +348,16 @@ const router = createBrowserRouter([
           {
             path: ROUTES.CATALOGUE_ACCOUNTS,
             element: <CatalogueAccounts />,
+            handle: { requiredPermission: null },
+          },
+          {
+            path: ROUTES.CATA_REGISTER,
+            element: <CatalogueRegistration3 />,
+            handle: { requiredPermission: null },
+          },
+          {
+            path: ROUTES.CATA_COMINGSOON,
+            element: <CatalogueRegistration2 />,
             handle: { requiredPermission: null },
           },
           {

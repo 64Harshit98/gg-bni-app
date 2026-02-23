@@ -68,10 +68,13 @@ export interface ItemSettings {
     settingType?: 'item';
     requirePurchasePrice?: boolean;
     requireDiscount?: boolean;
+    requireSaleDiscount?: boolean;
+    requirePurchaseDiscount?: boolean;
     requireTax?: boolean;
     requireBarcode?: boolean;
     requireRestockQuantity?: boolean;
     autoGenerateBarcode?: boolean;
+    requireMOQ?:boolean
 }
 
 
@@ -238,7 +241,13 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
         const unsubscribeItem = onSnapshot(qItem, (snapshot) => {
             if (!snapshot.empty) {
                 const docData = snapshot.docs[0].data() as ItemSettings;
-                setItemSettings(docData);
+
+                const normalized: ItemSettings = {
+                    ...getDefaultItemSettings(companyId),
+                    ...docData,
+                };
+
+                setItemSettings(normalized);
             } else {
                 console.warn(`SettingsProvider: No 'item' settings found for company ${companyId}. Using defaults.`);
                 setItemSettings(getDefaultItemSettings(companyId));

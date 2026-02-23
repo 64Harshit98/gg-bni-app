@@ -67,4 +67,6 @@ export const ROUTES = {
   CATA_PERMISSION_SETTING:'cata-permission-setting',
   CATA_EDIT:'cata-edit-profile',
   CATA_REQUEST:'requests',
+  CATA_REGISTER:'catalogue-register',
+  CATA_COMINGSOON:'coming-soon'
 };

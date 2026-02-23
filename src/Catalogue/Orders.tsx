@@ -267,12 +267,12 @@ const OrdersPage: React.FC = () => {
     const [activeStatusTab, setActiveStatusTab] = useState<OrderStatus>(
         (location.state?.defaultStatus as OrderStatus) || 'Confirmed'
     );
-
     const [activeDateFilter, setActiveDateFilter] = useState<string>('today');
     const [companyInfo, setCompanyInfo] = useState<any>(null);
     const [showPaymentModal, setShowPaymentModal] = useState<Order | null>(null);
     const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
     const [selectedItemForEdit, setSelectedItemForEdit] = useState<any>(null);
+    const [billSettings, setBillSettings] = useState<any>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [showSearch, setShowSearch] = useState(false);
     const [expandedorderId, setExpandedorderId] = useState<string | null>(null);
@@ -377,6 +377,34 @@ const OrdersPage: React.FC = () => {
         fetchCompanyInfo();
     }, [currentUser]);
 
+    useEffect(() => {
+        const fetchBillSettings = async () => {
+            if (!currentUser?.companyId) return;
+
+            try {
+                const ref = doc(
+                    db,
+                    'companies',
+                    currentUser.companyId,
+                    'settings',
+                    'bill'
+                );
+
+                const snap = await getDoc(ref);
+
+                if (snap.exists()) {
+                    setBillSettings(snap.data());
+                } else {
+                    setBillSettings({});
+                }
+            } catch (err) {
+                console.error("Bill settings fetch error:", err);
+                setBillSettings({});
+            }
+        };
+
+        fetchBillSettings();
+    }, [currentUser?.companyId]);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -409,19 +437,49 @@ const OrdersPage: React.FC = () => {
 
     // PDF & Sharing Functions (Same as provided)
     const handlePdfAction = async (Order: Order, action: ACTION) => {
+        if (!billSettings) {
+            setModal({
+                message: "Bill settings loading… please try again",
+                type: State.ERROR,
+            });
+            return;
+        }
         setIsGeneratingPdf(true);
+        console.log("Bill settings in Orders:", billSettings);
         try {
             const data: InvoiceData = {
                 companyName: companyInfo?.name || "Your Store",
                 companyAddress: companyInfo?.address || "Store Address",
                 companyContact: companyInfo?.ownerPhoneNumber || "Phone",
                 companyEmail: companyInfo?.email || "",
+
+                // GST
+                companyGstin:
+                    billSettings?.companyGstin !== undefined
+                        ? billSettings.companyGstin
+                        : (companyInfo?.gstin || ""),
+
+                // MSME
+                msmeNumber: billSettings?.msmeNumber || "",
+
+                // SIGNATURE
+                signatureBase64:
+                    billSettings?.signatureBase64?.startsWith("data:image")
+                        ? billSettings.signatureBase64
+                        : undefined,
+
                 billTo: {
                     name: Order.userName || "Customer",
                     address: Order.billingDetails?.address || "N/A",
                     phone: Order.billingDetails?.phone || "N/A",
                 },
-                invoice: { number: Order.orderId, date: Order.time, billedBy: "Admin" },
+
+                invoice: {
+                    number: Order.orderId,
+                    date: Order.time,
+                    billedBy: "Admin",
+                },
+
                 items: (Order.items || []).map((item, index) => ({
                     sno: index + 1,
                     name: item.name,
@@ -431,15 +489,40 @@ const OrdersPage: React.FC = () => {
                     listPrice: item.mrp,
                     gstPercent: 18,
                     discountAmount: 0,
+                    amount: item.mrp * item.quantity,
                 })),
-                terms: "1. Goods once sold will not be taken back.",
+
+                // TERMS (MOST IMPORTANT)
+                terms:
+                    billSettings?.termsAndConditions ??
+                    "Goods once sold will not be taken back.",
+
                 finalAmount: Order.totalAmount,
+
+                // BANK
                 bankDetails: {
-                    accountName: companyInfo?.name,
-                    accountNumber: companyInfo?.accountNo,
-                    bankName: companyInfo?.bankBranch,
-                    gstin: companyInfo?.gstin
-                }
+                    accountName:
+                        billSettings?.accountName ??
+                        companyInfo?.accountNo ??
+                        "",
+
+                    accountNumber:
+                        billSettings?.accountNumber ??
+                        companyInfo?.accountNo ??
+                        "",
+
+                    bankName:
+                        billSettings?.bankName ??
+                        companyInfo?.bankBranch ??
+                        "",
+
+                    ifsc: billSettings?.ifscCode ?? "",
+
+                    gstin:
+                        billSettings?.companyGstin ??
+                        companyInfo?.gstin ??
+                        "",
+                },
             };
             await generatePdf(data, action);
             setSelectedOrderForAction(null);
@@ -503,12 +586,34 @@ const OrdersPage: React.FC = () => {
                 companyAddress: companyInfo?.address || "Store Address",
                 companyContact: companyInfo?.ownerPhoneNumber || "Phone",
                 companyEmail: companyInfo?.email || "",
+
+                // GST
+                companyGstin:
+                    billSettings?.companyGstin !== undefined
+                        ? billSettings.companyGstin
+                        : (companyInfo?.gstin || ""),
+
+                // MSME
+                msmeNumber: billSettings?.msmeNumber || "",
+
+                // SIGNATURE
+                signatureBase64:
+                    billSettings?.signatureBase64?.startsWith("data:image")
+                        ? billSettings.signatureBase64
+                        : undefined,
+
                 billTo: {
                     name: Order.userName || "Customer",
                     address: Order.billingDetails?.address || "N/A",
                     phone: Order.billingDetails?.phone || "N/A",
                 },
-                invoice: { number: Order.orderId, date: Order.time, billedBy: "Admin" },
+
+                invoice: {
+                    number: Order.orderId,
+                    date: Order.time,
+                    billedBy: "Admin",
+                },
+
                 items: (Order.items || []).map((item, index) => ({
                     sno: index + 1,
                     name: item.name,
@@ -518,15 +623,40 @@ const OrdersPage: React.FC = () => {
                     listPrice: item.mrp,
                     gstPercent: 18,
                     discountAmount: 0,
+                    amount: item.mrp * item.quantity,
                 })),
-                terms: "1. Goods once sold will not be taken back.",
+
+                // TERMS (MOST IMPORTANT)
+                terms:
+                    billSettings?.termsAndConditions ??
+                    "Goods once sold will not be taken back.",
+
                 finalAmount: Order.totalAmount,
+
+                // BANK
                 bankDetails: {
-                    accountName: companyInfo?.name,
-                    accountNumber: companyInfo?.accountNo,
-                    bankName: companyInfo?.bankBranch,
-                    gstin: companyInfo?.gstin
-                }
+                    accountName:
+                        billSettings?.accountName ??
+                        companyInfo?.accountNo ??
+                        "",
+
+                    accountNumber:
+                        billSettings?.accountNumber ??
+                        companyInfo?.accountNo ??
+                        "",
+
+                    bankName:
+                        billSettings?.bankName ??
+                        companyInfo?.bankBranch ??
+                        "",
+
+                    ifsc: billSettings?.ifscCode ?? "",
+
+                    gstin:
+                        billSettings?.companyGstin ??
+                        companyInfo?.gstin ??
+                        "",
+                },
             };
             const pdfBlob = await generatePdf(data, ACTION.BLOB);
             if (!pdfBlob || !(pdfBlob instanceof Blob)) throw new Error("PDF generation failed");
@@ -1239,7 +1369,7 @@ const OrdersPage: React.FC = () => {
 
             {showPaymentModal && (() => {
 
-                // ✅ Updated total calculate karo (items se)
+                // Updated total calculate karo (items se)
                 const updatedTotal =
                     (showPaymentModal.items || []).reduce(
                         (sum, item) =>
@@ -1247,10 +1377,10 @@ const OrdersPage: React.FC = () => {
                         0
                     );
 
-                // ✅ Current paid
+                // Current paid
                 const alreadyPaid = Number(showPaymentModal.paidAmount || 0);
 
-                // ✅ Current due
+                // Current due
                 const currentDue = Math.max(0, updatedTotal - alreadyPaid);
 
                 return (
@@ -1260,9 +1390,9 @@ const OrdersPage: React.FC = () => {
                         invoice={{
                             id: showPaymentModal.id,
                             invoiceNumber: showPaymentModal.orderId,
-                            amount: currentDue,      // 🔥 drawer me updated due
+                            amount: currentDue,      //  drawer me updated due
                             partyName: showPaymentModal.userName,
-                            dueAmount: currentDue,   // 🔥 same due
+                            dueAmount: currentDue,   //  same due
                             time: showPaymentModal.time,
                             status: currentDue === 0 ? 'Paid' : 'Unpaid',
                             type: 'Credit',

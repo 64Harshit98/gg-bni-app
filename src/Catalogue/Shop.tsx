@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth, useDatabase } from '../context/auth-context';
 import type { Item, ItemGroup } from '../constants/models';
+import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting'
 import { Modal } from '../constants/Modal';
 import { State } from '../enums';
 import { FiX, FiPackage, FiPlus } from 'react-icons/fi';

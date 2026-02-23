@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { ShoppingCart, Edit3, Minus, Plus, ChevronLeft } from 'lucide-react';
+import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting'
+import { ShoppingCart, Minus, Plus, ChevronLeft } from 'lucide-react';
 import { useAuth, useDatabase } from '../context/auth-context';
 import type { Item, ItemGroup } from '../constants/models';
-import { FiStar, FiCheckSquare, FiLoader, FiPackage, FiPlus } from 'react-icons/fi';
+import { FiPackage, FiPlus } from 'react-icons/fi';
 import { ItemEditDrawer } from '../Components/ItemDrawer';
 import { ItemDetailDrawer } from '../Components/ItemDetails';
 import { Spinner } from '../constants/Spinner';
@@ -16,40 +17,6 @@ import { OrderInvoiceNumber } from '../UseComponents/InvoiceCounter';
 import { useLocation } from 'react-router-dom';
 import LeadPopUp from './PopUp';
 
-interface QuickListedToggleProps {
-    itemId: string;
-    isListed: boolean;
-    onToggle: (itemId: string, newState: boolean) => Promise<void>;
-    disabled?: boolean;
-}
-
-const QuickListedToggle: React.FC<QuickListedToggleProps> = ({ itemId, isListed, onToggle, disabled }) => {
-    const [isLoading, setIsLoading] = useState(false);
-    const handleClick = async (e: React.MouseEvent) => {
-        e.stopPropagation();
-        if (disabled || isLoading) return;
-        setIsLoading(true);
-        try {
-            await onToggle(itemId, !isListed);
-        } catch (error) {
-            console.error("Error toggling listed status:", error);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    return (
-        <button
-            onClick={handleClick}
-            disabled={disabled || isLoading}
-            className={`flex-1 py-1.5 rounded-sm text-[9px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1 ${isListed ? 'bg-green-500 text-white shadow-sm' : 'bg-gray-100 text-gray-400'}`}
-        >
-            {isLoading ? <FiLoader className="animate-spin" size={10} /> : isListed ? <FiCheckSquare size={10} /> : <FiStar size={10} />}
-            {isListed ? 'Listed' : 'List'}
-        </button>
-    );
-};
-
 const ITEMS_PER_BATCH_RENDER = 24;
 
 const SharedProduct: React.FC = () => {
@@ -61,12 +28,12 @@ const SharedProduct: React.FC = () => {
     const { currentUser, loading: authLoading } = useAuth();
     const dbOperations = useDatabase();
     const [activeHighlight, setActiveHighlight] = useState<string | null>(null);
-    const [isViewMode, _setIsViewMode] = useState(true);
     const [allItems, setAllItems] = useState<Item[]>([]);
     const [allItemGroups, setAllItemGroups] = useState<ItemGroup[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [pageIsLoading, setPageIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [catalogueSettings, setCatalogueSettings] = useState<CatalogueSalesSettings | null>(null);
     const [itemsToRenderCount, setItemsToRenderCount] = useState(ITEMS_PER_BATCH_RENDER);
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
     const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
@@ -127,9 +94,9 @@ const SharedProduct: React.FC = () => {
                 name: c.item.name,
                 quantity: c.quantity,
                 mrp:
+                    (c.item as any).effectivePrice ||
+                    (c.item as any).salesPrice ||
                     (c.item as any).mrp ||
-                    (c.item as any).rate ||
-                    (c.item as any).price ||
                     0
             }));
 
@@ -156,7 +123,7 @@ const SharedProduct: React.FC = () => {
                     invoiceNumber,
                     userId: userKey,
 
-                    // ⭐ NAME OVERWRITE NAHI HOGA
+                    //  NAME OVERWRITE NAHI HOGA
                     userName:
                         existingData.userName ||
                         leadData.name ||
@@ -168,7 +135,7 @@ const SharedProduct: React.FC = () => {
                         "",
 
                     status: "Upcoming",
-                    isLead: true, // ⭐ ADD THIS
+                    isLead: true, //  ADD THIS
 
                     items: itemsForFirebase,
                     totalAmount: itemsForFirebase.reduce(
@@ -212,37 +179,83 @@ const SharedProduct: React.FC = () => {
         }
     }, [highlightItemId]);
 
+    const getEffectivePrice = (item: Item) => {
+        const priceMode = catalogueSettings?.priceDisplayMode || 'both';
+
+        const mrp = (item as any).mrp || 0;
+        const salePrice = (item as any).salesPrice || mrp;
+
+        const hasDiscount = salePrice < mrp;
+
+        //  priority logic
+        if (priceMode === 'mrp') return mrp;
+        if (priceMode === 'salePrice') return salePrice;
+
+        // both mode OR discount badge
+        if (hasDiscount) return salePrice;
+
+        return salePrice || mrp;
+    };
+
     const addToCart = useCallback((item: Item) => {
         setCart(prev => {
             const existing = prev.find(i => i.item.id === item.id);
+
+            const moqQty = (item as any).moq || 1;
+            const effectivePrice = getEffectivePrice(item);
+
+            const itemWithPrice = {
+                ...item,
+                effectivePrice //  store final price
+            };
+
             const newCart = existing
                 ? prev.map(i =>
-                    i.item.id === item.id ? { ...i, quantity: i.quantity + 1 } : i
+                    i.item.id === item.id
+                        ? { ...i, quantity: i.quantity + moqQty }
+                        : i
                 )
-                : [...prev, { item, quantity: 1 }];
+                : [...prev, { item: itemWithPrice, quantity: moqQty }];
 
             localStorage.setItem('temp_cart', JSON.stringify(newCart));
             return newCart;
         });
-    }, []);
+    }, [catalogueSettings]);
 
 
     const updateQuantity = (itemId: string, delta: number) => {
-        setCart(prev => {
-            const newCart = prev.map(i => {
+    setCart(prev => {
+        const newCart = prev
+            .map(i => {
                 if (i.item.id === itemId) {
-                    const newQty = Math.max(0, i.quantity + delta);
+                    const allowZero =
+                        catalogueSettings?.allowQuantityDecreaseToZero;
+
+                    const moqQty = (i.item as any).moq || 1;
+
+                    let newQty: number;
+
+                    // ✅ STEP BASED CHANGE (IMPORTANT)
+                    const stepChange = delta > 0 ? moqQty : -moqQty;
+
+                    if (allowZero) {
+                        newQty = Math.max(0, i.quantity + stepChange);
+                    } else {
+                        newQty = Math.max(moqQty, i.quantity + stepChange);
+                    }
+
                     return { ...i, quantity: newQty };
                 }
                 return i;
-            }).filter(i => i.quantity > 0);
+            })
+            .filter(i => i.quantity > 0);
 
-            localStorage.setItem('temp_cart', JSON.stringify(newCart));
+        localStorage.setItem('temp_cart', JSON.stringify(newCart));
 
-            syncToUpcoming(newCart); // <-- Ye line add hui hai
-            return newCart;
-        });
-    };
+        syncToUpcoming(newCart);
+        return newCart;
+    });
+};
     const cartCount = useMemo(() => cart.reduce((acc, curr) => acc + curr.quantity, 0), [cart]);
 
     useEffect(() => {
@@ -254,6 +267,19 @@ const SharedProduct: React.FC = () => {
                     dbOperations.getItemGroups(),
                     dbOperations.syncItems()
                 ]);
+                const settingsRef = doc(
+                    db,
+                    'companies',
+                    companyId,
+                    'settings',
+                    'catalogue-sales-settings'
+                );
+
+                const settingsSnap = await getDoc(settingsRef);
+
+                if (settingsSnap.exists()) {
+                    setCatalogueSettings(settingsSnap.data() as CatalogueSalesSettings);
+                }
                 setAllItemGroups(fetchedItemGroups);
                 setAllItems(fetchedItems);
                 const businessRef = doc(
@@ -280,9 +306,23 @@ const SharedProduct: React.FC = () => {
 
     const filteredItems = useMemo(() => {
         const result = allItems.filter(item => {
+            //  hide unlisted items (LIVE RULE)
+            if (!item.isListed) return false;
+
             const matchesGroup = item.itemGroupId === groupId;
-            if (isViewMode && !item.isListed) return false;
-            return matchesGroup && item.name.toLowerCase().includes(searchQuery.toLowerCase());
+
+            //  hide out of stock (existing logic)
+            if (
+                !catalogueSettings?.showOutOfStockItems &&
+                (item.stock || 0) <= 0
+            ) {
+                return false;
+            }
+
+            return (
+                matchesGroup &&
+                item.name.toLowerCase().includes(searchQuery.toLowerCase())
+            );
         });
 
         return [...result].sort((a, b) => {
@@ -292,7 +332,7 @@ const SharedProduct: React.FC = () => {
             if (sortOrder === 'Price: High-Low') return (b.mrp || 0) - (a.mrp || 0);
             return 0;
         });
-    }, [allItems, searchQuery, isViewMode, sortOrder, groupId]);
+    }, [allItems, searchQuery, sortOrder, groupId, catalogueSettings]);
 
     const currentCategoryName = useMemo(() => {
         const group = allItemGroups.find(g => g.id === groupId);
@@ -327,24 +367,9 @@ const SharedProduct: React.FC = () => {
         }
     }, []);
 
-    const handleOpenEditDrawer = (item: Item) => {
-        setSelectedItemForEdit(item);
-        setIsDrawerOpen(true);
-    };
-
     const handleOpenDetailDrawer = (item: Item) => {
         setSelectedItemForDetails(item);
         setIsDetailDrawerOpen(true);
-    };
-
-    const handleToggleListed = async (itemId: string, newState: boolean) => {
-        if (!dbOperations) return;
-        try {
-            await dbOperations.updateItem(itemId, { isListed: newState });
-            setAllItems(prev => prev.map(item => item.id === itemId ? { ...item, isListed: newState } as Item : item));
-        } catch (err) {
-            console.error("Failed to update listed status:", err);
-        }
     };
 
     if (authLoading || (pageIsLoading && allItems.length === 0)) {
@@ -444,35 +469,125 @@ const SharedProduct: React.FC = () => {
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                     {itemsToDisplay.map((item) => {
                         const cartItem = cart.find(i => i.item.id === item.id);
+                        const isOutOfStock = (item.stock || 0) <= 0;
+                        const disableAddToCart =
+                            catalogueSettings?.disableOutOfStockAddToCart &&
+                            isOutOfStock;
+                        const priceMode = catalogueSettings?.priceDisplayMode || 'both';
+                        const salePrice = item.salesPrice || item.mrp;
+                        const hasDiscount = salePrice < (item.mrp || 0);
+                        const discountPercent = item.mrp && hasDiscount ? Math.round(((item.mrp - salePrice) / item.mrp) * 100) : 0;
+                        const showDiscountBadge = catalogueSettings?.showDiscountBadge && priceMode !== 'mrp' && hasDiscount;
                         return (
-                            <div id={item.id} key={item.id} onClick={() => isViewMode ? handleOpenDetailDrawer(item) : handleOpenEditDrawer(item)} className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col transition-all duration-300 relative group hover:shadow-md cursor-pointer ${activeHighlight === item.id ? 'ring-2 ring-[#00A3E1] scale-105 bg-blue-50 border-[#00A3E1]' : 'border-gray-100'}${!isViewMode ? 'ring-1 ring-[#00A3E1]/10' : ''}`}>
+                            <div
+                                id={item.id}
+                                key={item.id}
+                                onClick={() => handleOpenDetailDrawer(item)}
+                                className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col transition-all duration-300 relative group hover:shadow-md cursor-pointer ${activeHighlight === item.id
+                                    ? 'ring-2 ring-[#00A3E1] scale-105 bg-blue-50 border-[#00A3E1]'
+                                    : 'border-gray-100'
+                                    }`}
+                            >
+                                {/* IMAGE */}
                                 <div className="aspect-square bg-[#F8FAFC] flex items-center justify-center relative overflow-hidden">
-                                    {item.imageUrl ? <img src={item.imageUrl} alt={item.name} className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" /> : <FiPackage className="w-10 h-10 text-gray-200" />}
-                                    {!isViewMode && <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm p-1.5 rounded-sm shadow-sm"><Edit3 size={10} className="text-[#00A3E1]" /></div>}
+                                    {item.imageUrl ? (
+                                        <img
+                                            src={item.imageUrl}
+                                            alt={item.name}
+                                            className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110"
+                                        />
+                                    ) : (
+                                        <FiPackage className="w-10 h-10 text-gray-200" />
+                                    )}
+
+                                    {/*  DISCOUNT BADGE */}
+                                    {showDiscountBadge && (
+                                        <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-tight shadow-md">
+                                            {discountPercent}% OFF
+                                        </div>
+                                    )}
                                 </div>
+
+                                {/* CONTENT */}
                                 <div className="p-3 flex flex-col flex-1">
-                                    <h3 className="text-[10px] font-black text-[#1A3B5D] mb-1 truncate uppercase leading-tight">{item.name}</h3>
-                                    <div className="flex items-center justify-between mb-3">
-                                        <p className="text-xs font-black text-[#00A3E1]">₹{item.mrp}</p>
+                                    <h3 className="text-[10px] font-black text-[#1A3B5D] mb-1 truncate uppercase leading-tight">
+                                        {item.name}
+                                    </h3>
+
+                                    {/* PRICE */}
+                                    <div className="flex items-center justify-between w-full">
+                                        {/* LEFT */}
+                                        <div className="flex flex-col">
+                                            {priceMode === 'mrp' && (
+                                                <p className="text-xs font-black text-[#00A3E1]">
+                                                    MRP ₹{item.mrp}
+                                                </p>
+                                            )}
+
+                                            {priceMode === 'salePrice' && (
+                                                <p className="text-xs font-black text-[#00A3E1]">
+                                                    ₹{salePrice}
+                                                </p>
+                                            )}
+
+                                            {priceMode === 'both' && (
+                                                <p className="text-xs font-black text-[#1A3B5D]">
+                                                    MRP ₹{item.mrp}
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        {/* RIGHT */}
+                                        {priceMode === 'both' && (
+                                            <p className="text-xs font-black text-[#00A3E1]">
+                                                Sale ₹{salePrice}
+                                            </p>
+                                        )}
                                     </div>
+
+                                    {/* CART AREA */}
                                     <div className="mt-auto flex gap-1">
-                                        {isViewMode ? (
-                                            cartItem ? (
-                                                <div className="w-full flex items-center justify-between bg-gray-50 rounded-sm px-1 py-1 border border-gray-100">
-                                                    <button onClick={(e) => { e.stopPropagation(); updateQuantity(item.id!, -1); }} className="p-1.5 bg-white shadow-sm text-[#00A3E1] hover:bg-[#00A3E1] hover:text-white rounded-sm transition-all"><Minus size={12} strokeWidth={3} /></button>
-                                                    <span className="text-xs font-black text-[#1A3B5D]">{cartItem.quantity}</span>
-                                                    <button onClick={(e) => { e.stopPropagation(); updateQuantity(item.id!, 1); }} className="p-1.5 bg-white shadow-sm text-[#00A3E1] hover:bg-[#00A3E1] hover:text-white rounded-sm transition-all"><Plus size={12} strokeWidth={3} /></button>
-                                                </div>
-                                            ) : (
-                                                <button onClick={(e) => { e.stopPropagation(); addToCart(item); }} className="w-full bg-[#00A3E1] text-white py-2 rounded-xs text-[9px] font-black uppercase tracking-widest shadow-sm active:scale-95 transition-all flex items-center justify-center gap-2">
-                                                    <Plus size={12} /> Add to Cart
+                                        {cartItem ? (
+                                            <div className="w-full flex items-center justify-between bg-gray-50 rounded-sm px-1 py-1 border border-gray-100">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        updateQuantity(item.id!, -1);
+                                                    }}
+                                                    className="p-1.5 bg-white shadow-sm text-[#00A3E1] hover:bg-[#00A3E1] hover:text-white rounded-sm transition-all"
+                                                >
+                                                    <Minus size={12} strokeWidth={3} />
                                                 </button>
-                                            )
+
+                                                <span className="text-xs font-black text-[#1A3B5D]">
+                                                    {cartItem.quantity}
+                                                </span>
+
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        updateQuantity(item.id!, 1);
+                                                    }}
+                                                    className="p-1.5 bg-white shadow-sm text-[#00A3E1] hover:bg-[#00A3E1] hover:text-white rounded-sm transition-all"
+                                                >
+                                                    <Plus size={12} strokeWidth={3} />
+                                                </button>
+                                            </div>
                                         ) : (
-                                            <>
-                                                <button onClick={(e) => { e.stopPropagation(); handleOpenEditDrawer(item); }} className="flex-1 bg-gray-50 text-[#1A3B5D] py-1.5 rounded-sm text-[9px] font-black uppercase border border-gray-100">Edit</button>
-                                                <QuickListedToggle itemId={item.id!} isListed={item.isListed ?? false} onToggle={handleToggleListed} />
-                                            </>
+                                            <button
+                                                disabled={disableAddToCart}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (disableAddToCart) return;
+                                                    addToCart(item);
+                                                }}
+                                                className={`w-full py-2 rounded-xs text-[9px] font-black uppercase tracking-widest shadow-sm transition-all flex items-center justify-center gap-2 ${disableAddToCart
+                                                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                                    : 'bg-[#00A3E1] text-white active:scale-95'
+                                                    }`}
+                                            >
+                                                <Plus size={12} /> Add to Cart
+                                            </button>
                                         )}
                                     </div>
                                 </div>
@@ -499,6 +614,7 @@ const SharedProduct: React.FC = () => {
             />
 
             <ItemDetailDrawer
+                catalogueSettings={catalogueSettings}
                 item={selectedItemForDetails}
                 isOpen={isDetailDrawerOpen}
                 onClose={() => { setIsDetailDrawerOpen(false); setSelectedItemForDetails(null); }}

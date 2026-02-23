@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { ShoppingCart, Edit3, X, Minus, Plus, Trash2, ChevronLeft } from 'lucide-react';
+import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting'
 import { useAuth, useDatabase } from '../context/auth-context';
 import type { Item, ItemGroup } from '../constants/models';
 import { FiStar, FiCheckSquare, FiLoader, FiPackage, FiPlus } from 'react-icons/fi';
@@ -82,7 +83,7 @@ const MyShop: React.FC = () => {
     const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
     const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
     const [selectedItemForDetails, setSelectedItemForDetails] = useState<Item | null>(null);
-
+    const [catalogueSettings, setCatalogueSettings] = useState<CatalogueSalesSettings | null>(null);
     const observerRef = useRef<IntersectionObserver | null>(null);
     const loadMoreRef = useRef<HTMLDivElement | null>(null);
     const [sortOrder, setSortOrder] = useState<'A-Z' | 'Z-A' | 'Price: Low-High' | 'Price: High-Low'>('A-Z');
@@ -117,7 +118,10 @@ const MyShop: React.FC = () => {
     const updateQuantity = (itemId: string, delta: number) => {
         setCart(prev => prev.map(i => {
             if (i.item.id === itemId) {
-                const newQty = Math.max(0, i.quantity + delta);
+                const allowZero = catalogueSettings?.allowQuantityDecreaseToZero;
+                const newQty = allowZero
+                    ? Math.max(0, i.quantity + delta)
+                    : Math.max(1, i.quantity + delta);
                 return { ...i, quantity: newQty };
             }
             return i;
@@ -201,6 +205,21 @@ const MyShop: React.FC = () => {
                     setSocialLinks(businessSnap.data());
                 }
 
+                //  FETCH CATALOGUE SETTINGS
+                const settingsRef = doc(
+                    db,
+                    'companies',
+                    companyId,
+                    'settings',
+                    'catalogue-sales-settings'
+                );
+
+                const settingsSnap = await getDoc(settingsRef);
+
+                if (settingsSnap.exists()) {
+                    setCatalogueSettings(settingsSnap.data() as CatalogueSalesSettings);
+                }
+
             } catch (err: any) {
                 setError(err.message || "Failed to load initial data.");
             } finally {
@@ -218,11 +237,27 @@ const MyShop: React.FC = () => {
 
         const result = allItems.filter(item => {
             if (!item) return false;
-            if (isViewMode && !item.isListed) return false;
 
-            const matchesCategory = activeCat === 'All' || item.itemGroupId === activeCat;
+            //  hide unlisted items in LIVE view
+            if (isViewMode && !item.isListed) {
+                return false;
+            }
+
+            //  hide out of stock (existing)
+            if (
+                isViewMode &&
+                !catalogueSettings?.showOutOfStockItems &&
+                (item.stock || 0) <= 0
+            ) {
+                return false;
+            }
+
+            const matchesCategory =
+                activeCat === 'All' || item.itemGroupId === activeCat;
+
             const itemName = item.name?.toLowerCase() || "";
-            const matchesSearch = itemName.includes(searchQuery.toLowerCase()) ||
+            const matchesSearch =
+                itemName.includes(searchQuery.toLowerCase()) ||
                 (item.barcode && item.barcode.includes(searchQuery));
 
             return matchesCategory && matchesSearch;
@@ -237,7 +272,7 @@ const MyShop: React.FC = () => {
             if (sortOrder === 'Price: High-Low') return (b.mrp || 0) - (a.mrp || 0);
             return 0;
         });
-    }, [allItems, selectedCategory, searchQuery, isViewMode, sortOrder, groupId]);
+    }, [allItems, selectedCategory, searchQuery, isViewMode, sortOrder, groupId, catalogueSettings]);
 
     const itemsToDisplay = useMemo(() => filteredItems.slice(0, itemsToRenderCount), [filteredItems, itemsToRenderCount]);
     const hasMoreItems = useMemo(() => itemsToRenderCount < filteredItems.length, [itemsToRenderCount, filteredItems.length]);
@@ -396,17 +431,34 @@ const MyShop: React.FC = () => {
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
                     {itemsToDisplay.map((item) => {
                         const cartItem = cart.find(i => i.item.id === item.id);
+                        const isOutOfStock = (item.stock || 0) <= 0;
+                        const disableAddToCart = catalogueSettings?.disableOutOfStockAddToCart && isOutOfStock; catalogueSettings?.priceDisplayMode === 'both';
+                        const priceMode = catalogueSettings?.priceDisplayMode || 'both';
+                        const salePrice = item.salesPrice || item.mrp;
+                        //  discount logic
+                        const hasDiscount = salePrice < (item.mrp || 0);
+                        const discountPercent =
+                            item.mrp && hasDiscount
+                                ? Math.round(((item.mrp - salePrice) / item.mrp) * 100)
+                                : 0;
+
+                        const showDiscountBadge =
+                            catalogueSettings?.showDiscountBadge &&
+                            priceMode !== 'mrp' &&
+                            hasDiscount;
                         return (
                             <div
                                 id={item.id}
                                 key={item.id}
                                 onClick={() => isViewMode ? handleOpenDetailDrawer(item) : handleOpenEditDrawer(item)}
-                                className={`bg-white rounded-sm overflow-hidden shadow-sm border transition-all duration-300 relative group hover:shadow-md cursor-pointer 
-    ${highlightedId === item.id ? 'ring-2 ring-[#00A3E1] shadow-lg scale-[1.02]' : 'border-gray-100'} 
-    ${!isViewMode ? 'ring-1 ring-[#00A3E1]/10' : ''}
-`}
+                                className={`bg-white rounded-sm overflow-hidden shadow-sm border transition-all duration-300 relative group hover:shadow-md cursor-pointer ${highlightedId === item.id ? 'ring-2 ring-[#00A3E1] shadow-lg scale-[1.02]' : 'border-gray-100'} ${!isViewMode ? 'ring-1 ring-[#00A3E1]/10' : ''}`}
                             >
                                 <div className="aspect-square bg-[#F8FAFC] flex items-center justify-center relative overflow-hidden">
+                                    {showDiscountBadge && (
+                                        <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-tight shadow-md">
+                                            {discountPercent}% OFF
+                                        </div>
+                                    )}
                                     {item.imageUrl ? (
                                         <img src={item.imageUrl} alt={item.name} className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" />
                                     ) : (
@@ -422,8 +474,36 @@ const MyShop: React.FC = () => {
                                 <div className="p-3 flex flex-col flex-1">
                                     <h3 className="text-[10px] font-black text-[#1A3B5D] mb-1 truncate uppercase leading-tight">{item.name}</h3>
                                     <div className="flex items-center justify-between mb-3">
-                                        <p className="text-xs font-black text-[#00A3E1]">₹{item.mrp}</p>
-                                        <StockIndicator stock={item.stock || 0} />
+                                        <div className="flex items-center justify-between mb-3 w-full">
+                                            {/* LEFT */}
+                                            <div className="flex flex-col">
+                                                {priceMode === 'mrp' && (
+                                                    <p className="text-xs font-black text-[#00A3E1]">
+                                                        MRP ₹{item.mrp}
+                                                    </p>
+                                                )}
+
+                                                {priceMode === 'salePrice' && (
+                                                    <p className="text-xs font-black text-[#00A3E1]">
+                                                        ₹{salePrice}
+                                                    </p>
+                                                )}
+
+                                                {priceMode === 'both' && (
+                                                    <p className="text-xs font-black text-[#1A3B5D]">
+                                                        MRP ₹{item.mrp}
+                                                    </p>
+                                                )}
+                                            </div>
+
+                                            {/* RIGHT */}
+                                            {priceMode === 'both' && (
+                                                <p className="text-xs font-black text-[#00A3E1]">
+                                                    Sale ₹{salePrice}
+                                                </p>
+                                            )}
+                                            <StockIndicator stock={item.stock || 0} />
+                                        </div>
                                     </div>
 
                                     <div className="mt-1 flex gap-1">
@@ -446,12 +526,13 @@ const MyShop: React.FC = () => {
                                                 </div>
                                             ) : (
                                                 <button
+                                                    disabled={disableAddToCart}
                                                     onClick={(e) => {
                                                         e.stopPropagation();
-                                                        addToCart(item);
+                                                        if (disableAddToCart) return;
+                                                        addToCart(item, catalogueSettings?.defaultCartQuantity || 1);
                                                     }}
-                                                    className="w-full bg-[#00A3E1] text-white py-2 rounded-sm text-[9px] font-black uppercase tracking-widest shadow-sm active:scale-95 transition-all flex items-center justify-center gap-2"
-                                                >
+                                                    className={`w-full py-2 rounded-sm text-[9px] font-black uppercase tracking-widest shadow-sm transition-all flex items-center justify-center gap-2 ${disableAddToCart ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#00A3E1] text-white active:scale-95'}`}>
                                                     <Plus size={12} />
                                                     Add to Cart
                                                 </button>
@@ -541,6 +622,7 @@ const MyShop: React.FC = () => {
             />
 
             <ItemDetailDrawer
+                catalogueSettings={catalogueSettings}
                 item={selectedItemForDetails}
                 isOpen={isDetailDrawerOpen}
                 onClose={() => { setIsDetailDrawerOpen(false); setSelectedItemForDetails(null); }}

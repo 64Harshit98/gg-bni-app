@@ -19,6 +19,11 @@ interface CartItem {
     image: string;
     note: string;
     imageUrl?: string;
+    moq?: number
+}
+
+interface CatalogueSalesSettings {
+    minimumOrderValue: number;
 }
 
 interface Address {
@@ -32,7 +37,6 @@ interface Address {
 const useBusinessName = (companyId?: string) => {
     const [businessName, setBusinessName] = useState<string>('');
     const [loading, setLoading] = useState(true);
-
     useEffect(() => {
         if (!companyId) {
             setLoading(false);
@@ -63,11 +67,12 @@ const CartPage: React.FC = () => {
     const [isPlacing, setIsPlacing] = useState(false);
     const { companyId } = useParams<{ companyId: string }>();
     const { businessName: companyName } = useBusinessName(companyId);
-
+    const [salesSettings, setSalesSettings] = useState<CatalogueSalesSettings | null>(null);
     const [shipping, setShipping] = useState<Address>({ name: '', phone: '', city: '', state: '', address: '' });
     const [billing, setBilling] = useState<Address>({ name: '', phone: '', city: '', state: '', address: '' });
     const [isSameAsShipping, setIsSameAsShipping] = useState<boolean>(false);
     const [cartItems, setCartItems] = useState<CartItem[]>([]);
+    const [movError, setMovError] = useState<string | null>(null);
 
     const getUpcomingDocId = () => {
         const upcomingKey =
@@ -114,7 +119,7 @@ const CartPage: React.FC = () => {
                 createdAt: serverTimestamp(),
                 userId: currentUser?.uid || null
             },
-            { merge: true } // 🔥 VERY IMPORTANT
+            { merge: true } // VERY IMPORTANT
         );
     };
 
@@ -128,9 +133,14 @@ const CartPage: React.FC = () => {
                     id: entry.item.id,
                     name: entry.item.name,
                     category: entry.item.category || 'Product',
-                    price: entry.item.mrp || 0,
+                    price:
+                        entry.item.effectivePrice ||
+                        entry.item.salesPrice ||
+                        entry.item.mrp ||
+                        0,
                     quantity: entry.quantity,
-                    image: entry.item.imageUrl || 'https://via.placeholder.com/150',
+                    imageUrl: entry.item.imageUrl || 'https://via.placeholder.com/150',
+                    moq: entry.item.moq || 1,
                     note: ''
                 }));
                 setCartItems(formattedItems);
@@ -144,7 +154,16 @@ const CartPage: React.FC = () => {
         const updatedItems = cartItems
             .map(item => {
                 if (item.id === id) {
-                    const newQty = item.quantity + delta;
+                    const moqQty = item.moq || 1;
+
+                    //  MOQ STEP LOGIC
+                    const stepChange = delta > 0 ? moqQty : -moqQty;
+
+                    let newQty = item.quantity + stepChange;
+
+                    // MOQ se neeche lock
+                    newQty = Math.max(moqQty, newQty);
+
                     return { ...item, quantity: newQty };
                 }
                 return item;
@@ -153,21 +172,54 @@ const CartPage: React.FC = () => {
 
         setCartItems(updatedItems);
 
-        // localStorage sync
+        // localStorage sync (IMPORTANT)
         localStorage.setItem(
             'temp_cart',
             JSON.stringify(
                 updatedItems.map(i => ({
-                    item: { id: i.id, name: i.name, mrp: i.price },
+                    item: {
+                        id: i.id,
+                        name: i.name,
+                        mrp: i.price,
+                        imageUrl: i.imageUrl || '',
+                        moq: i.moq || 1
+                    },
                     quantity: i.quantity
                 }))
             )
         );
 
-        // 🔥 UPCOMING LIVE UPDATE
         syncToUpcoming(updatedItems);
     };
 
+    useEffect(() => {
+        if (!companyId) return;
+
+        const fetchSalesSettings = async () => {
+            try {
+                const ref = doc(
+                    db,
+                    "companies",
+                    companyId,
+                    "settings",
+                    "catalogue-sales-settings"
+                );
+
+                const snap = await getDoc(ref);
+
+                if (snap.exists()) {
+                    setSalesSettings(snap.data() as CatalogueSalesSettings);
+                } else {
+                    setSalesSettings({ minimumOrderValue: 0 });
+                }
+            } catch (err) {
+                console.error("Failed to load MOV:", err);
+                setSalesSettings({ minimumOrderValue: 0 });
+            }
+        };
+
+        fetchSalesSettings();
+    }, [companyId]);
 
     const updateItemNote = (id: string | number, note: string) => {
         setCartItems(prev => prev.map(item => item.id === id ? { ...item, note } : item));
@@ -175,6 +227,11 @@ const CartPage: React.FC = () => {
 
     const subtotal = cartItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
     const totalPay = subtotal;
+
+    const isMovValid = () => {
+        if (!salesSettings) return true;
+        return totalPay >= (salesSettings.minimumOrderValue || 0);
+    };
 
     const isAddressValid = (addr: Address) => {
         return (
@@ -189,7 +246,15 @@ const CartPage: React.FC = () => {
 
     const placeOrder = async () => {
         if (!companyId || !currentUser?.uid) return;
+        if (!isMovValid()) {
+            const required = salesSettings?.minimumOrderValue || 0;
+            const short = required - totalPay;
 
+            setMovError(
+                `Minimum order value is ₹${required}. Please add ₹${short} more to place order.`
+            );
+            return;
+        }
         //  ADDRESS VALIDATION GUARD
         const billingValid = isAddressValid(billing);
         const shippingValid = isSameAsShipping
@@ -303,21 +368,32 @@ const CartPage: React.FC = () => {
             )
         );
 
-        // 🔥 UPCOMING LIVE UPDATE / DELETE
+        //  UPCOMING LIVE UPDATE / DELETE
         syncToUpcoming(updatedCart);
     };
 
     const handleDrawerAction = () => {
-        if (cartItems.length === 0) return; // 🛡️ safety guard
+        if (cartItems.length === 0) return;
 
         if (step === 1) {
             setStep(2);
             setIsDrawerOpen(false);
         } else {
+            //  MOV CHECK FOR MOBILE
+            if (!isMovValid()) {
+                const required = salesSettings?.minimumOrderValue || 0;
+                const short = required - totalPay;
+
+                setMovError(
+                    `Minimum order value is ₹${required}. Please add ₹${short} more to place order.`
+                );
+                return;
+            }
+
             placeOrder();
             setIsDrawerOpen(false);
         }
-    };
+    };;
 
     return (
         <>
@@ -338,6 +414,34 @@ const CartPage: React.FC = () => {
                 </header>
 
                 <main className="max-w-6xl mx-auto p-4 lg:p-6 w-full flex-grow">
+                    {movError && (
+                        <div className="mb-4 bg-white border border-red-200 rounded-lg shadow-sm overflow-hidden">
+                            <div className="flex items-start gap-3 p-4">
+                                {/* left icon */}
+                                <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                                    <span className="text-red-600 font-bold">!</span>
+                                </div>
+
+                                {/* text */}
+                                <div className="flex-1">
+                                    <h4 className="text-sm font-bold text-red-700">
+                                        Minimum Order Not Met
+                                    </h4>
+                                    <p className="text-xs text-gray-600 mt-0.5">
+                                        {movError}
+                                    </p>
+                                </div>
+
+                                {/* close */}
+                                <button
+                                    onClick={() => setMovError(null)}
+                                    className="text-gray-400 hover:text-red-500 font-bold"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                        </div>
+                    )}
                     <div className="mb-6 flex items-center justify-center lg:justify-start gap-4">
                         <button onClick={() => setStep(1)} className="flex items-center gap-2">
                             <span className={`w-6 h-6 rounded-sm flex items-center justify-center text-[10px] font-black transition-all ${step === 1 ? 'bg-[#00A3E1] text-white' : 'bg-green-500 text-white'}`}>

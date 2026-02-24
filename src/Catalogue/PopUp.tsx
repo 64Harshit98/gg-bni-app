@@ -1,24 +1,51 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../lib/Firebase';
 import { collection, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { X, CheckCircle } from 'lucide-react';
 
-const LeadPopUp: React.FC<{ companyId?: string; companyName?: string }> = ({ companyId, companyName }) => {
+interface LeadPopUpProps {
+    companyId?: string;
+    companyName?: string;
+    forceOpen?: boolean;
+    onLeadSubmit?: () => void;
+}
+
+const LeadPopUp: React.FC<LeadPopUpProps> = ({
+    companyId,
+    companyName,
+    forceOpen,
+    onLeadSubmit
+}) => {
     const [isVisible, setIsVisible] = useState(false);
     const [step, setStep] = useState(1); // 1: Form, 2: Success
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState({ name: '', number: '' });
+    const [cardFile, setCardFile] = useState<File | null>(null);
+    const [cardPreview, setCardPreview] = useState<string | null>(null);
 
     useEffect(() => {
         const isFilled = localStorage.getItem("leadSubmitted");
-        if (isFilled) return;
 
+        // agar lead already filled hai → kabhi popup nahi
+        if (isFilled === "true") {
+            setIsVisible(false);
+            return;
+        }
+
+        // FORCE OPEN (add to cart case)
+        if (forceOpen) {
+            setIsVisible(true);
+            return;
+        }
+
+        // normal auto popup
         const timer = setTimeout(() => {
             setIsVisible(true);
         }, 5000);
 
         return () => clearTimeout(timer);
-    }, []);
+    }, [forceOpen]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -42,12 +69,26 @@ const LeadPopUp: React.FC<{ companyId?: string; companyName?: string }> = ({ com
                 setTimeout(() => setIsVisible(false), 4000);
                 return;
             }
+
+            let businessCardUrl = "Placeholder";
+
+            if (cardFile && companyId) {
+                const storage = getStorage();
+                const storageRef = ref(
+                    storage,
+                    `companies/companyId/AuthorizedUser/${Date.now()}_${cardFile.name}`
+                );
+
+                await uploadBytes(storageRef, cardFile);
+                businessCardUrl = await getDownloadURL(storageRef);
+            }
+
             await addDoc(
                 collection(db, "companies", companyId, "AuthorizedUser"),
                 {
                     customerName: formData.name,
                     customerNumber: formData.number,
-                    businessCard: "Placeholder",
+                    businessCard: businessCardUrl,
                     companyId,
                     companyName: companyName || "Shared Catalogue",
                     status: "pending",
@@ -63,8 +104,9 @@ const LeadPopUp: React.FC<{ companyId?: string; companyName?: string }> = ({ com
                 })
             );
             localStorage.setItem("leadSubmitted", "true");
+            onLeadSubmit?.(); // parent ko bolo lead fill ho gaya
 
-            // ⭐ EXISTING UPCOMING ORDER UPDATE KARO
+            // EXISTING UPCOMING ORDER UPDATE KARO
             try {
                 const upcomingUserKey =
                     localStorage.getItem("upcoming_user_key");
@@ -99,6 +141,14 @@ const LeadPopUp: React.FC<{ companyId?: string; companyName?: string }> = ({ com
         }
     };
 
+    const handleCardUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setCardFile(file);
+        setCardPreview(URL.createObjectURL(file));
+    };
+
     const handleNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const value = e.target.value.replace(/\D/g, ''); // Sirf numbers allow karega (Regex)
         if (value.length <= 10) {
@@ -115,7 +165,6 @@ const LeadPopUp: React.FC<{ companyId?: string; companyName?: string }> = ({ com
                 {/* Close Button */}
                 <button
                     onClick={() => {
-                        localStorage.setItem("leadSubmitted", "true");
                         setIsVisible(false);
                     }}
                     className="absolute top-3 right-3 text-gray-400 hover:text-red-500 transition-colors"
@@ -157,13 +206,23 @@ const LeadPopUp: React.FC<{ companyId?: string; companyName?: string }> = ({ com
                             {/* Business Card Upload */}
                             <div className="relative">
                                 <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">
-                                    Business Card (Optional)
+                                    Business Card
                                 </label>
-                                <div className="flex items-center justify-center w-full h-14 border-2 border-dashed border-gray-200 bg-gray-50 rounded-xs">
-                                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 italic">
-                                        Business Card Placeholder
-                                    </span>
-                                </div>
+
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={handleCardUpload}
+                                    className="w-full text-xs"
+                                />
+
+                                {cardPreview && (
+                                    <img
+                                        src={cardPreview}
+                                        alt="Business Card Preview"
+                                        className="mt-2 h-24 object-contain border rounded"
+                                    />
+                                )}
                             </div>
 
                             <button

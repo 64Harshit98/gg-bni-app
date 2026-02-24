@@ -251,36 +251,43 @@ function RequestPage() {
                                         className="mt-4 border-t pt-4"
                                         onClick={(e) => e.stopPropagation()}
                                     >
-                                        {/* Business Card */}
-                                        <div className="border-2 border-dashed border-gray-200 bg-gray-50 rounded-sm h-16 flex items-center justify-center">
-                                            {req.businessCard &&
-                                                req.businessCard !== "Placeholder" ? (
-                                                <img
-                                                    src={req.businessCard}
-                                                    alt="Business Card"
-                                                    className="h-full object-contain"
-                                                />
+                                        {/* Business Card - Optimized Container */}
+                                        <div className="relative w-full overflow-hidden rounded-md border border-gray-200 bg-gray-100 group">
+                                            {req.businessCard && req.businessCard !== "Placeholder" ? (
+                                                <div className="flex flex-col">
+                                                    <img
+                                                        src={req.businessCard}
+                                                        alt="Business Card"
+                                                        className="w-full h-auto max-h-[250px] object-contain transition-transform duration-300 hover:scale-105"
+                                                    />
+                                                    {/* View Full Image Hint */}
+                                                    <div className="absolute bottom-2 right-2 bg-black/50 text-white text-[10px] px-2 py-1 rounded backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        Click to zoom
+                                                    </div>
+                                                </div>
                                             ) : (
-                                                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 italic">
-                                                    Business Card Placeholder
-                                                </span>
+                                                <div className="h-32 flex items-center justify-center">
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 italic">
+                                                        No Business Card Provided
+                                                    </span>
+                                                </div>
                                             )}
                                         </div>
 
-                                        {/* Buttons */}
-                                        <div className="grid grid-cols-2 gap-3 pt-4 mt-4 border-t">
+                                        {/* Action Buttons - More Professional spacing */}
+                                        <div className="grid grid-cols-2 gap-3 pt-4 mt-4 border-t border-dashed">
                                             <button
-                                                className="py-2.5 bg-red-500 text-white text-xs font-bold rounded-sm"
+                                                className="py-2.5 bg-white border border-red-500 text-red-500 hover:bg-red-50 text-xs font-bold rounded-sm transition-colors"
                                                 onClick={() => updateRequestStatus(req.id, "decline")}
                                             >
                                                 Decline
                                             </button>
 
                                             <button
-                                                className="py-2.5 bg-emerald-500 text-white text-xs font-bold rounded-sm"
+                                                className="py-2.5 bg-emerald-600 text-white hover:bg-emerald-700 text-xs font-bold rounded-sm shadow-sm transition-colors"
                                                 onClick={() => updateRequestStatus(req.id, "approved")}
                                             >
-                                                Approved
+                                                Approve Request
                                             </button>
                                         </div>
                                     </div>

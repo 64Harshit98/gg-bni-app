@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth, useDatabase } from '../context/auth-context';
 import type { Item, ItemGroup } from '../constants/models';
-import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting'
 import { Modal } from '../constants/Modal';
 import { State } from '../enums';
 import { FiX, FiPackage, FiPlus } from 'react-icons/fi';
@@ -149,6 +148,15 @@ const OrderingPage: React.FC = () => {
             return b.name.localeCompare(a.name);
         });
     }, [itemGroups, _items, searchQuery, sortOrder]);
+
+    const getGroupImages = (groupId: string): string[] => {
+        const imgs = _items
+            .filter(item => item.itemGroupId === groupId)
+            .map(item => item.imageUrl)
+            .filter(Boolean) as string[];
+
+        return imgs.slice(0, 4); // max 4 images
+    };
 
     // --- Order Logic ---
     const handleConfirmAndSaveOrder = async () => {
@@ -298,7 +306,7 @@ const OrderingPage: React.FC = () => {
                     {filteredItems.map(group => {
                         // Count calculation based on existing _items state
                         const itemCount = _items.filter(item => item.itemGroupId === group.id).length;
-
+                        const collageImages = getGroupImages(group.id!);
                         return (
                             <div
                                 id={group.id}
@@ -312,11 +320,33 @@ const OrderingPage: React.FC = () => {
                                 }}
                                 className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col transition-all group cursor-pointer active:scale-95 ${highlightedId === group.id ? 'ring-2 ring-[#00A3E1] shadow-lg scale-[1.02]' : 'border-gray-100'}`}>
                                 {/* --- IMAGE SECTION WITH TOP BADGE --- */}
-                                <div className="aspect-square bg-[#F8FAFC] relative overflow-hidden flex items-center justify-center">
-                                    {group.imageUrl ? (
-                                        <img src={group.imageUrl} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt={group.name} />
+                                <div className="aspect-square bg-[#F8FAFC] relative overflow-hidden">
+                                    {collageImages.length > 0 ? (
+                                        <div className="grid grid-cols-2 grid-rows-2 w-full h-full gap-[2px] p-[2px]">
+                                            {collageImages.map((img, index) => (
+                                                <div key={index} className="w-full h-full overflow-hidden rounded-[2px]">
+                                                    <img
+                                                        src={img}
+                                                        alt={`product-${index}`}
+                                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                                                    />
+                                                </div>
+                                            ))}
+
+                                            {/* filler if less than 4 */}
+                                            {Array.from({ length: 4 - collageImages.length }).map((_, i) => (
+                                                <div
+                                                    key={`empty-${i}`}
+                                                    className="w-full h-full bg-gray-100 flex items-center justify-center"
+                                                >
+                                                    <FiPackage className="h-4 w-4 text-gray-300" />
+                                                </div>
+                                            ))}
+                                        </div>
                                     ) : (
-                                        <FiPackage className="h-10 w-10 text-gray-200" />
+                                        <div className="w-full h-full flex items-center justify-center">
+                                            <FiPackage className="h-10 w-10 text-gray-200" />
+                                        </div>
                                     )}
                                 </div>
 

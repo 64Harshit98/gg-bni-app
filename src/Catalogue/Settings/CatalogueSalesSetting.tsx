@@ -22,6 +22,9 @@ export interface CatalogueSalesSettings {
   allowQuantityDecreaseToZero: boolean
   enableLeadPopup: boolean
   minimumOrderValue: number
+  voucherPrefix?: string
+  currentVoucherNumber?: number
+  copyVoucherAfterSaving?: boolean
 }
 
 export const getDefaultCatalogueSalesSettings = (companyId: string): CatalogueSalesSettings => ({
@@ -35,6 +38,9 @@ export const getDefaultCatalogueSalesSettings = (companyId: string): CatalogueSa
   allowQuantityDecreaseToZero: false,
   enableLeadPopup: false,
   minimumOrderValue: 0,
+  voucherPrefix: 'SLS-',
+  currentVoucherNumber: 1,
+  copyVoucherAfterSaving: false,
 });
 
 const CatalogueSalesSettings: React.FC = () => {
@@ -122,6 +128,7 @@ const CatalogueSalesSettings: React.FC = () => {
     const numericFields: (keyof CatalogueSalesSettings)[] = [
       'defaultCartQuantity',
       'minimumOrderValue',
+      'currentVoucherNumber'
     ];
 
     if (numericFields.includes(field)) {
@@ -295,6 +302,59 @@ const CatalogueSalesSettings: React.FC = () => {
             <p className="text-xs text-gray-500 mt-2">
               Customer cannot place order below this amount.
             </p>
+          </div>
+
+          {/* Card 5 — Voucher Numbering & Options */}
+          <div className="bg-white rounded-lg p-6 shadow-md mb-2">
+            <h2 className="text-lg font-semibold text-gray-800 mb-4">
+              Voucher Numbering & Options
+            </h2>
+
+            <div className="flex items-center mb-4">
+              <input
+                type="checkbox"
+                checked={settings.copyVoucherAfterSaving ?? false}
+                onChange={(e) =>
+                  handleCheckboxChange('copyVoucherAfterSaving', e.target.checked)
+                }
+                className="w-4 h-4 text-blue-600 rounded"
+              />
+              <label className="ml-2 text-gray-700 text-sm font-medium">
+                Keep items in cart after saving (Copy Voucher)
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-gray-700 text-sm font-medium mb-1">
+                  Voucher Prefix
+                </label>
+                <input
+                  type="text"
+                  value={settings.voucherPrefix || ''}
+                  onChange={(e) =>
+                    handleChange('voucherPrefix', e.target.value)
+                  }
+                  className="w-full p-3 border border-gray-300 rounded-lg"
+                  placeholder="e.g., SLS-"
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-700 text-sm font-medium mb-1">
+                  Next Voucher Number
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={settings.currentVoucherNumber ?? 1}
+                  onChange={(e) =>
+                    handleChange('currentVoucherNumber', e.target.value)
+                  }
+                  className="w-full p-3 border border-gray-300 rounded-lg"
+                />
+              </div>
+            </div>
           </div>
         </form>
       </main>

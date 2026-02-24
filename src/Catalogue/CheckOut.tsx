@@ -5,9 +5,9 @@ import Footer from './Footer';
 import { doc, getDoc, setDoc, serverTimestamp, deleteDoc, collection } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 import { FiPackage } from 'react-icons/fi';
-import { OrderInvoiceNumber } from '../UseComponents/InvoiceCounter';
 import { useAuth } from '../context/auth-context';
 import { increment, updateDoc } from "firebase/firestore";
+import { runTransaction } from "firebase/firestore";
 import LeadPopUp from './PopUp';
 
 interface CartItem {
@@ -24,6 +24,8 @@ interface CartItem {
 
 interface CatalogueSalesSettings {
     minimumOrderValue: number;
+    voucherPrefix?: string;
+    currentVoucherNumber?: number;
 }
 
 interface Address {
@@ -244,6 +246,49 @@ const CartPage: React.FC = () => {
         );
     };
 
+    const generateCatalogueInvoiceNumber = async (): Promise<string> => {
+        if (!companyId) throw new Error("Missing companyId");
+
+        const settingsRef = doc(
+            db,
+            "companies",
+            companyId,
+            "settings",
+            "catalogue-sales-settings"
+        );
+
+        const finalInvoice = await runTransaction(db, async (transaction) => {
+            const snap = await transaction.get(settingsRef);
+
+            let prefix = "ORD-";
+            let currentNumber = 1001;
+
+            if (snap.exists()) {
+                const data = snap.data() as CatalogueSalesSettings;
+                prefix = data.voucherPrefix || "ORD-";
+                currentNumber = data.currentVoucherNumber || 1001;
+            }
+
+            //  next number prepare
+            const padded = String(currentNumber).padStart(4, "0");
+            const invoice = `${prefix}${padded}`;
+
+            //  atomic increment
+            transaction.set(
+                settingsRef,
+                {
+                    currentVoucherNumber: currentNumber + 1,
+                    updatedAt: serverTimestamp(),
+                },
+                { merge: true }
+            );
+
+            return invoice;
+        });
+
+        return finalInvoice;
+    };  
+
     const placeOrder = async () => {
         if (!companyId || !currentUser?.uid) return;
         if (!isMovValid()) {
@@ -275,7 +320,7 @@ const CartPage: React.FC = () => {
                 collection(db, 'companies', companyId, 'Orders')
             );
 
-            const orderInvoiceNumber = await OrderInvoiceNumber(companyId);
+            const orderInvoiceNumber = await generateCatalogueInvoiceNumber();
 
             await setDoc(orderDocRef, {
                 orderId: orderInvoiceNumber,

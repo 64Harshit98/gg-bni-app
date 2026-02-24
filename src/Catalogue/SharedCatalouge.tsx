@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting'
 import { useParams, useNavigate } from 'react-router-dom';
 import { getItemGroupsByCompany, getItemsByCompany } from '../lib/ItemsFirebase';
 import type { ItemGroup, Item } from '../constants/models';
@@ -89,6 +88,14 @@ const SharedCataloguePage: React.FC = () => {
         );
     };
 
+    const getGroupImages = (groupId: string): string[] => {
+        const imgs = allItems
+            .filter(item => item.itemGroupId === groupId)
+            .map(item => item.imageUrl)
+            .filter(Boolean) as string[];
+
+        return imgs.slice(0, 4); // max 4 images
+    };
 
     const filteredItems = useMemo(() => {
         if (!searchQuery.trim()) return itemGroups;
@@ -239,20 +246,40 @@ const SharedCataloguePage: React.FC = () => {
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                     {filteredItems.map(group => {
                         const itemCount = allItems.filter(item => item.itemGroupId === group.id).length;
-                        console.log("Group ID:", group.id);
-                        console.log("Sample Item:", allItems[0]);
-
+                        const collageImages = getGroupImages(group.id!);
                         return (
                             <div
                                 key={group.id}
                                 onClick={() => navigate(`/product/${companyId}/${group.id}`)}
                                 className="bg-white rounded-sm overflow-hidden shadow-sm border border-gray-100 flex flex-col transition-all group cursor-pointer active:scale-95"
                             >
-                                <div className="aspect-square bg-[#F8FAFC] relative overflow-hidden flex items-center justify-center">
-                                    {group.imageUrl ? (
-                                        <img src={group.imageUrl} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt={group.name} />
+                                <div className="aspect-square bg-[#F8FAFC] relative overflow-hidden">
+                                    {collageImages.length > 0 ? (
+                                        <div className="grid grid-cols-2 grid-rows-2 w-full h-full gap-[2px] p-[2px]">
+                                            {collageImages.map((img, index) => (
+                                                <div key={index} className="w-full h-full overflow-hidden rounded-[2px]">
+                                                    <img
+                                                        src={img}
+                                                        alt={`product-${index}`}
+                                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                                                    />
+                                                </div>
+                                            ))}
+
+                                            {/* filler boxes */}
+                                            {Array.from({ length: 4 - collageImages.length }).map((_, i) => (
+                                                <div
+                                                    key={`empty-${i}`}
+                                                    className="w-full h-full bg-gray-100 flex items-center justify-center"
+                                                >
+                                                    <FiPackage className="h-4 w-4 text-gray-300" />
+                                                </div>
+                                            ))}
+                                        </div>
                                     ) : (
-                                        <FiPackage className="h-10 w-10 text-gray-200" />
+                                        <div className="w-full h-full flex items-center justify-center">
+                                            <FiPackage className="h-10 w-10 text-gray-200" />
+                                        </div>
                                     )}
                                 </div>
 

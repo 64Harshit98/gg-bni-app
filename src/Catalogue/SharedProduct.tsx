@@ -37,6 +37,8 @@ const SharedProduct: React.FC = () => {
     const [itemsToRenderCount, setItemsToRenderCount] = useState(ITEMS_PER_BATCH_RENDER);
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
     const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
+    const [isLeadFilled, setIsLeadFilled] = useState(false);
+    const [forceLeadOpen, setForceLeadOpen] = useState(false);
     const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
     const [selectedItemForDetails, setSelectedItemForDetails] = useState<Item | null>(null);
     const [socialLinks, setSocialLinks] = useState<any>({});
@@ -198,6 +200,18 @@ const SharedProduct: React.FC = () => {
     };
 
     const addToCart = useCallback((item: Item) => {
+        //  SINGLE SOURCE OF TRUTH
+        const alreadyFilled =
+            localStorage.getItem("leadSubmitted") === "true";
+
+        // lead not filled → popup dikhao
+        if (!alreadyFilled) {
+            setForceLeadOpen(false);
+            setTimeout(() => setForceLeadOpen(true), 0);
+            return;
+        }
+
+        // lead filled → cart allow
         setCart(prev => {
             const existing = prev.find(i => i.item.id === item.id);
 
@@ -206,7 +220,7 @@ const SharedProduct: React.FC = () => {
 
             const itemWithPrice = {
                 ...item,
-                effectivePrice //  store final price
+                effectivePrice
             };
 
             const newCart = existing
@@ -220,42 +234,37 @@ const SharedProduct: React.FC = () => {
             localStorage.setItem('temp_cart', JSON.stringify(newCart));
             return newCart;
         });
-    }, [catalogueSettings]);
-
+    }, [getEffectivePrice]);
 
     const updateQuantity = (itemId: string, delta: number) => {
-    setCart(prev => {
-        const newCart = prev
-            .map(i => {
-                if (i.item.id === itemId) {
-                    const allowZero =
-                        catalogueSettings?.allowQuantityDecreaseToZero;
+        setCart(prev => {
+            const newCart = prev
+                .map(i => {
+                    if (i.item.id === itemId) {
+                        //  MOQ safe fallback
+                        const moqQty =
+                            (i.item as any).moq && (i.item as any).moq > 0
+                                ? (i.item as any).moq
+                                : 1;
 
-                    const moqQty = (i.item as any).moq || 1;
+                        const stepChange = delta > 0 ? moqQty : -moqQty;
+                        const newQty = i.quantity + stepChange;
 
-                    let newQty: number;
+                        //  UNIVERSAL REMOVE RULE
+                        if (newQty < moqQty) return null;
 
-                    // ✅ STEP BASED CHANGE (IMPORTANT)
-                    const stepChange = delta > 0 ? moqQty : -moqQty;
-
-                    if (allowZero) {
-                        newQty = Math.max(0, i.quantity + stepChange);
-                    } else {
-                        newQty = Math.max(moqQty, i.quantity + stepChange);
+                        return { ...i, quantity: newQty };
                     }
+                    return i;
+                })
+                .filter(Boolean) as { item: Item; quantity: number }[];
 
-                    return { ...i, quantity: newQty };
-                }
-                return i;
-            })
-            .filter(i => i.quantity > 0);
+            localStorage.setItem('temp_cart', JSON.stringify(newCart));
+            syncToUpcoming(newCart);
 
-        localStorage.setItem('temp_cart', JSON.stringify(newCart));
-
-        syncToUpcoming(newCart);
-        return newCart;
-    });
-};
+            return newCart;
+        });
+    };
     const cartCount = useMemo(() => cart.reduce((acc, curr) => acc + curr.quantity, 0), [cart]);
 
     useEffect(() => {
@@ -303,6 +312,14 @@ const SharedProduct: React.FC = () => {
         };
         fetchData();
     }, [authLoading, currentUser, dbOperations, companyId]);
+
+    useEffect(() => {
+        const leadData = JSON.parse(localStorage.getItem("leadData") || "{}");
+
+        if (leadData?.number && localStorage.getItem("leadSubmitted")) {
+            setIsLeadFilled(true);
+        }
+    }, []);
 
     const filteredItems = useMemo(() => {
         const result = allItems.filter(item => {
@@ -382,7 +399,15 @@ const SharedProduct: React.FC = () => {
 
     return (
         <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative overflow-x-hidden">
-            <LeadPopUp companyId={companyId} companyName={companyName} />
+            <LeadPopUp
+                companyId={companyId}
+                companyName={companyName}
+                forceOpen={forceLeadOpen}
+                onLeadSubmit={() => {
+                    setIsLeadFilled(true);
+                    setForceLeadOpen(false);
+                }}
+            />
             <header className="sticky top-0 bg-white border-b border-gray-100 shadow-sm z-[60]">
                 <div className="max-w-7xl mx-auto px-1 md:px-4 py-2 flex flex-col gap-2">
                     <div className="flex items-center justify-between">

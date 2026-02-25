@@ -1276,14 +1276,50 @@ const OrdersPage: React.FC = () => {
                                             )}
                                         </div>
                                         {/* Buttons Section - Updated Grid & Logic */}
-                                        {!isUpcomingStatus && (
+                                        {(
                                             <div
-                                                className={`grid ${isFinalStage
-                                                    ? (isPaid ? 'grid-cols-3' : 'grid-cols-4')
-                                                    : 'grid-cols-4'
+                                                className={`grid ${isUpcomingStatus
+                                                    ? 'grid-cols-3'
+                                                    : isFinalStage
+                                                        ? (isPaid ? 'grid-cols-3' : 'grid-cols-4')
+                                                        : 'grid-cols-4'
                                                     } gap-3 pt-6 border-t`}
                                             >
-                                                {isFinalStage ? (
+
+                                                {/* UPCOMING STAGE BUTTONS */}
+                                                {isUpcomingStatus && Order.userLoginPhone && (
+                                                    <>
+                                                        <a
+                                                            href={`tel:${Order.userLoginPhone.replace(/\D/g, '')}`}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            className="py-2.5 bg-white border border-emerald-200 text-emerald-600 text-xs font-bold rounded-sm text-center"
+                                                        >
+                                                            Call
+                                                        </a>
+
+                                                        <a
+                                                            href={`https://wa.me/${Order.userLoginPhone.replace(/\D/g, '')}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            className="py-2.5 bg-[#25D366] text-white text-xs font-bold rounded-sm text-center"
+                                                        >
+                                                            WhatsApp
+                                                        </a>
+
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleDeleteOrder(Order.id);
+                                                            }}
+                                                            className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm cursor-pointer"
+                                                        >
+                                                            Delete
+                                                        </button>
+                                                    </>
+                                                )}
+
+                                                {!isUpcomingStatus && (isFinalStage ? (
                                                     <>
                                                         {/* DELETE */}
                                                         <button
@@ -1291,7 +1327,7 @@ const OrdersPage: React.FC = () => {
                                                                 e.stopPropagation();
                                                                 handleDeleteOrder(Order.id);
                                                             }}
-                                                            className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm"
+                                                            className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm cursor-pointer"
                                                         >
                                                             Delete
                                                         </button>
@@ -1381,7 +1417,7 @@ const OrdersPage: React.FC = () => {
                                                             {isUpdatingStatus === Order.id ? '...' : 'Next'}
                                                         </button>
                                                     </>
-                                                )}
+                                                ))}
                                             </div>
                                         )}
                                     </div>

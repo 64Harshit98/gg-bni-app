@@ -48,7 +48,7 @@ function RequestPage() {
         switch (status) {
             case "approved":
                 return "bg-green-50 text-green-600 border-green-100";
-            case "decline":
+            case "declined":
                 return "bg-red-50 text-red-600 border-red-100";
             default:
                 return "bg-blue-50 text-blue-600 border-blue-100"; // pending
@@ -57,7 +57,7 @@ function RequestPage() {
 
     const updateRequestStatus = async (
         requestId: string,
-        newStatus: "approved" | "decline"
+        newStatus: "approved" | "declined"
     ) => {
         if (!companyId) return;
 
@@ -93,7 +93,7 @@ function RequestPage() {
         }
 
         if (status === "completed") {
-            return req.status === subStatus; // approved / decline
+            return req.status === subStatus; // approved / declined
         }
 
         return true;
@@ -172,10 +172,10 @@ function RequestPage() {
                 {status === 'completed' && (
                     <div className="flex gap-2 mb-4">
                         <button
-                            onClick={() => setSubStatus('decline')}
-                            className={`flex-1 py-2 text-xs font-bold rounded-sm border transition-all ${subStatus === 'decline' ? 'bg-red-100 border-red-500 text-red-600' : 'bg-white border-gray-200 text-gray-500'}`}
+                            onClick={() => setSubStatus('declined')}
+                            className={`flex-1 py-2 text-xs font-bold rounded-sm border transition-all ${subStatus === 'declined' ? 'bg-red-100 border-red-500 text-red-600' : 'bg-white border-gray-200 text-gray-500'}`}
                         >
-                            Decline
+                            Declined
                         </button>
                         <button
                             onClick={() => setSubStatus('approved')}
@@ -275,21 +275,38 @@ function RequestPage() {
                                         </div>
 
                                         {/* Action Buttons - More Professional spacing */}
-                                        <div className="grid grid-cols-2 gap-3 pt-4 mt-4 border-t border-dashed">
-                                            <button
-                                                className="py-2.5 bg-white border border-red-500 text-red-500 hover:bg-red-50 text-xs font-bold rounded-sm transition-colors"
-                                                onClick={() => updateRequestStatus(req.id, "decline")}
-                                            >
-                                                Decline
-                                            </button>
+                                        {(() => {
+                                            const showDecline = req.status === "pending" || req.status === "approved";
+                                            const showApprove = req.status === "pending" || req.status === "declined";
+                                            const bothVisible = showDecline && showApprove;
 
-                                            <button
-                                                className="py-2.5 bg-emerald-600 text-white hover:bg-emerald-700 text-xs font-bold rounded-sm shadow-sm transition-colors"
-                                                onClick={() => updateRequestStatus(req.id, "approved")}
-                                            >
-                                                Approve Request
-                                            </button>
-                                        </div>
+                                            return (
+                                                <div
+                                                    className={`grid gap-3 pt-4 mt-4 border-t border-dashed ${bothVisible ? "grid-cols-2" : "grid-cols-1"
+                                                        }`}
+                                                >
+                                                    {/* Decline button */}
+                                                    {showDecline && (
+                                                        <button
+                                                            className="py-2.5 bg-white border border-red-500 text-red-500 hover:bg-red-50 text-xs font-bold rounded-sm transition-colors"
+                                                            onClick={() => updateRequestStatus(req.id, "declined")}
+                                                        >
+                                                            Decline
+                                                        </button>
+                                                    )}
+
+                                                    {/* Approve button */}
+                                                    {showApprove && (
+                                                        <button
+                                                            className="py-2.5 bg-emerald-600 text-white hover:bg-emerald-700 text-xs font-bold rounded-sm shadow-sm transition-colors"
+                                                            onClick={() => updateRequestStatus(req.id, "approved")}
+                                                        >
+                                                            Approve Request
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
                                 )}
                             </div>

@@ -11,6 +11,48 @@ interface LeadPopUpProps {
     onLeadSubmit?: () => void;
 }
 
+const compressImage = (file: File, maxWidth = 1000, quality = 0.7): Promise<File> => {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        const reader = new FileReader();
+
+        reader.readAsDataURL(file);
+        reader.onload = (e) => {
+            img.src = e.target?.result as string;
+        };
+
+        img.onload = () => {
+            const canvas = document.createElement("canvas");
+            const scale = Math.min(maxWidth / img.width, 1);
+
+            canvas.width = img.width * scale;
+            canvas.height = img.height * scale;
+
+            const ctx = canvas.getContext("2d");
+            if (!ctx) return reject("Canvas error");
+
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+            canvas.toBlob(
+                (blob) => {
+                    if (!blob) return reject("Compression failed");
+
+                    const compressedFile = new File([blob], file.name, {
+                        type: "image/jpeg",
+                        lastModified: Date.now(),
+                    });
+
+                    resolve(compressedFile);
+                },
+                "image/jpeg",
+                quality
+            );
+        };
+
+        img.onerror = reject;
+    });
+};
+
 const LeadPopUp: React.FC<LeadPopUpProps> = ({
     companyId,
     companyName,
@@ -64,9 +106,27 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
             const existing = await getDocs(q);
 
             if (!existing.empty) {
-                setStep(3);   // show duplicate UI
+                const docData = existing.docs[0].data();
+
+                // localStorage sync
+                localStorage.setItem(
+                    "leadData",
+                    JSON.stringify({
+                        name: docData.customerName,
+                        number: docData.customerNumber
+                    })
+                );
+                localStorage.setItem("leadSubmitted", "true");
+
+                // MOST IMPORTANT — parent notify
+                onLeadSubmit?.();
+
+                setStep(3);
                 setLoading(false);
-                setTimeout(() => setIsVisible(false), 4000);
+
+                // thoda fast close
+                setTimeout(() => setIsVisible(false), 1500);
+
                 return;
             }
 
@@ -141,12 +201,23 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
         }
     };
 
-    const handleCardUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleCardUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        setCardFile(file);
-        setCardPreview(URL.createObjectURL(file));
+        try {
+            // compress before save
+            const compressed = await compressImage(file, 1000, 0.7);
+
+            setCardFile(compressed);
+            setCardPreview(URL.createObjectURL(compressed));
+        } catch (err) {
+            console.error("Compression failed, using original", err);
+
+            // fallback
+            setCardFile(file);
+            setCardPreview(URL.createObjectURL(file));
+        }
     };
 
     const handleNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -205,26 +276,60 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
 
                             {/* Business Card Upload */}
                             <div className="relative">
-                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">
+                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-1">
                                     Business Card
                                 </label>
 
+                                {/* Gallery/File picker */}
                                 <input
+                                    id="businessCardFile"
                                     type="file"
                                     accept="image/*"
                                     onChange={handleCardUpload}
-                                    className="w-full text-xs"
+                                    className="hidden"
                                 />
 
+                                {/* Camera capture */}
+                                <input
+                                    id="businessCardCamera"
+                                    type="file"
+                                    accept="image/*"
+                                    capture="environment"
+                                    onChange={handleCardUpload}
+                                    className="hidden"
+                                />
+
+                                {/* Custom buttons */}
+                                <div className="grid grid-cols-2 gap-2">
+
+                                    {/* Choose from gallery */}
+                                    <label
+                                        htmlFor="businessCardFile"
+                                        className="cursor-pointer flex items-center justify-center gap-2 py-3 text-[11px] font-bold text-slate-700 bg-gray-100 border border-gray-200 rounded-xs hover:bg-gray-200 active:scale-95 transition-all"
+                                    >
+                                        🖼 Choose File
+                                    </label>
+
+                                    {/* Camera capture */}
+                                    <label
+                                        htmlFor="businessCardCamera"
+                                        className="cursor-pointer flex items-center justify-center gap-2 py-3 text-[11px] font-bold text-white bg-[#00A3E1] rounded-xs hover:bg-[#1A3B5D] active:scale-95 transition-all"
+                                    >
+                                        📸 Click Photo
+                                    </label>
+                                </div>
+
+                                {/* Preview */}
                                 {cardPreview && (
-                                    <img
-                                        src={cardPreview}
-                                        alt="Business Card Preview"
-                                        className="mt-2 h-24 object-contain border rounded"
-                                    />
+                                    <div className="mt-3 border rounded-xs p-2 bg-gray-50">
+                                        <img
+                                            src={cardPreview}
+                                            alt="Business Card Preview"
+                                            className="h-28 w-full object-contain"
+                                        />
+                                    </div>
                                 )}
                             </div>
-
                             <button
                                 disabled={loading}
                                 className={`w-full py-4 rounded-xs font-black text-xs uppercase tracking-widest text-white shadow-lg transition-all active:scale-95 ${loading ? 'bg-gray-300' : 'bg-[#00A3E1] hover:bg-[#1A3B5D]'}`}

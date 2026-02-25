@@ -23,23 +23,23 @@ const CatalogueMasters = () => {
       <div className="flex-grow p-6 overflow-y-auto bg-gray-100 box-border">
         {isDefaultMastersView ? (
           <>
-            <Link to={ROUTES.CATA_SALE_SETTING} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline">
+            <Link to={`${ROUTES.CHOME}/${ROUTES.CATA_SALE_SETTING}`} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline">
               <span className="text-lg font-medium">Sales Setting</span>
               <span className="text-xl text-gray-500">→</span>
             </Link>
-            <Link to={ROUTES.CATA_BILL_SETTING} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline">
+            <Link to={`${ROUTES.CHOME}/${ROUTES.CATA_BILL_SETTING}`} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline">
               <span className="text-lg font-medium">Bill Setting</span>
               <span className="text-xl text-gray-500">→</span>
             </Link>
-            <Link to={ROUTES.CATA_ITEM_SETTING} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline">
+            <Link to={`${ROUTES.CHOME}/${ROUTES.CATA_ITEM_SETTING}`} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline">
               <span className="text-lg font-medium">Item Setting</span>
               <span className="text-xl text-gray-500">→</span>
             </Link>
-            <Link to={ROUTES.CATA_USER_SETTING} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline">
+            <Link to={`${ROUTES.CHOME}/${ROUTES.CATA_USER_SETTING}`} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline">
               <span className="text-lg font-medium">User Setting</span>
               <span className="text-xl text-gray-500">→</span>
             </Link>
-            <Link to={ROUTES.CATA_PERMISSION_SETTING} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline">
+            <Link to={`${ROUTES.CHOME}/${ROUTES.CATA_PERMISSION_SETTING}`} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline">
               <span className="text-lg font-medium">Permission Setting</span>
               <span className="text-xl text-gray-500">→</span>
             </Link>

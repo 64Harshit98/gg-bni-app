@@ -11,7 +11,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName';
 import SearchBar from './SearchBar';
-import { serverTimestamp, doc, setDoc, getDoc } from 'firebase/firestore';
+import { serverTimestamp, doc, setDoc, getDoc, collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 import { OrderInvoiceNumber } from '../UseComponents/InvoiceCounter';
 import { useLocation } from 'react-router-dom';
@@ -37,7 +37,7 @@ const SharedProduct: React.FC = () => {
     const [itemsToRenderCount, setItemsToRenderCount] = useState(ITEMS_PER_BATCH_RENDER);
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
     const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
-    const [isLeadFilled, setIsLeadFilled] = useState(false);
+    const [_isLeadFilled, setIsLeadFilled] = useState(false);
     const [forceLeadOpen, setForceLeadOpen] = useState(false);
     const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
     const [selectedItemForDetails, setSelectedItemForDetails] = useState<Item | null>(null);
@@ -47,6 +47,9 @@ const SharedProduct: React.FC = () => {
     const [sortOrder, setSortOrder] = useState<'A-Z' | 'Z-A' | 'Price: Low-High' | 'Price: High-Low'>('A-Z');
     const [isSortOpen, setIsSortOpen] = useState(false);
     const [cart, setCart] = useState<{ item: Item; quantity: number }[]>([]);
+    const [leadStatus, setLeadStatus] = useState<"approved" | "pending" | "declined" | null>(null);
+    const [_checkingApproval, setCheckingApproval] = useState<boolean>(true);
+    const [leadPhone, setLeadPhone] = useState<string>("");
 
     const getUserKey = () => {
         let key = localStorage.getItem('guest_uid');
@@ -111,7 +114,17 @@ const SharedProduct: React.FC = () => {
             );
 
             const snap = await getDoc(orderRef);
+            const leadSubmitted =
+                localStorage.getItem("leadSubmitted") === "true";
 
+            const leadJustSubmitted =
+                localStorage.getItem("leadJustSubmitted") === "true";
+
+            //  BLOCK only when:
+            // old lead AND upcoming doc exist nahi karta
+            if (leadSubmitted && !leadJustSubmitted && !snap.exists()) {
+                return;
+            }
             const invoiceNumber = snap.exists()
                 ? snap.data().invoiceNumber
                 : await OrderInvoiceNumber(companyId);
@@ -154,11 +167,11 @@ const SharedProduct: React.FC = () => {
                 },
                 { merge: true }
             );
+            localStorage.removeItem("leadJustSubmitted");
         } catch (err) {
             console.error("Sync Upcoming Error:", err);
         }
     };
-
 
     useEffect(() => {
         if (cart.length > 0) {
@@ -260,11 +273,12 @@ const SharedProduct: React.FC = () => {
                 .filter(Boolean) as { item: Item; quantity: number }[];
 
             localStorage.setItem('temp_cart', JSON.stringify(newCart));
-            syncToUpcoming(newCart);
-
             return newCart;
         });
     };
+    const isUserApproved = leadStatus === "approved";
+    const isUserDeclined = leadStatus === "declined";
+    const isUserPending = leadStatus === "pending";
     const cartCount = useMemo(() => cart.reduce((acc, curr) => acc + curr.quantity, 0), [cart]);
 
     useEffect(() => {
@@ -312,6 +326,54 @@ const SharedProduct: React.FC = () => {
         };
         fetchData();
     }, [authLoading, currentUser, dbOperations, companyId]);
+
+    useEffect(() => {
+        if (!companyId) return;
+
+        const leadData = JSON.parse(
+            localStorage.getItem("leadData") || "{}"
+        );
+
+        const phone = (leadData.number || "")
+            .replace(/\D/g, "")
+            .trim();
+
+        if (!phone) {
+            setLeadStatus(null);
+            setCheckingApproval(false);
+            return;
+        }
+
+        setCheckingApproval(true);
+
+        // 🔥 DIRECT QUERY (REALTIME)
+        const q = query(
+            collection(db, "companies", companyId, "AuthorizedUser"),
+            where("customerNumber", "==", phone)
+        );
+
+        const unsubscribe = onSnapshot(
+            q,
+            (snapshot) => {
+                if (snapshot.empty) {
+                    setLeadStatus(null);
+                } else {
+                    const data = snapshot.docs[0].data();
+                    const status = data.status || "pending";
+                    setLeadStatus(status);
+                }
+
+                setCheckingApproval(false);
+            },
+            (error) => {
+                console.error("Realtime approval error:", error);
+                setLeadStatus(null);
+                setCheckingApproval(false);
+            }
+        );
+
+        return () => unsubscribe();
+    }, [companyId, leadPhone]);
 
     useEffect(() => {
         const leadData = JSON.parse(localStorage.getItem("leadData") || "{}");
@@ -378,9 +440,6 @@ const SharedProduct: React.FC = () => {
         if (savedCart) {
             const parsed = JSON.parse(savedCart);
             setCart(parsed);
-
-            // 👇 add this
-            syncToUpcoming(parsed);
         }
     }, []);
 
@@ -402,10 +461,17 @@ const SharedProduct: React.FC = () => {
             <LeadPopUp
                 companyId={companyId}
                 companyName={companyName}
-                forceOpen={forceLeadOpen}
+                forceOpen={forceLeadOpen && !leadStatus}
                 onLeadSubmit={() => {
                     setIsLeadFilled(true);
                     setForceLeadOpen(false);
+                    localStorage.setItem("leadJustSubmitted", "true");
+
+                    const leadData = JSON.parse(
+                        localStorage.getItem("leadData") || "{}"
+                    );
+
+                    setLeadPhone(leadData.number || "");
                 }}
             />
             <header className="sticky top-0 bg-white border-b border-gray-100 shadow-sm z-[60]">
@@ -453,6 +519,17 @@ const SharedProduct: React.FC = () => {
             </header>
 
             <main className="p-3 md:p-6 space-y-4 flex-1 max-w-7xl mx-auto w-full pb-24">
+                {isUserDeclined && (
+                    <div className="max-w-7xl mx-auto mb-3 p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-bold rounded-sm text-center">
+                        Your request has been declined. Please contact the business.
+                    </div>
+                )}
+
+                {isUserPending && (
+                    <div className="max-w-7xl mx-auto mb-3 p-3 bg-yellow-50 border border-yellow-200 text-yellow-700 text-xs font-bold rounded-sm text-center">
+                        Your request is under review. Prices will be visible after approval.
+                    </div>
+                )}
                 <div className='hidden md:flex items-center justify-center'>
                     <h1 className="text-xs md:text-sm font-black text-[#00A3E1] uppercase tracking-tighter">{currentCategoryName}</h1>
                 </div>
@@ -540,7 +617,7 @@ const SharedProduct: React.FC = () => {
                                     </h3>
 
                                     {/* PRICE */}
-                                    <div className="flex items-center justify-between w-full">
+                                    {isUserApproved ? (<div className="flex items-center justify-between w-full">
                                         {/* LEFT */}
                                         <div className="flex flex-col">
                                             {priceMode === 'mrp' && (
@@ -568,7 +645,13 @@ const SharedProduct: React.FC = () => {
                                                 Sale ₹{salePrice}
                                             </p>
                                         )}
-                                    </div>
+                                    </div>) : (
+                                        <div className="mt-2 w-full text-center">
+                                            <span className="inline-block text-[9px] font-semibold text-gray-500 bg-gray-50 border border-gray-200 px-2 py-1 rounded-sm leading-tight">
+                                                Price will be visible after approval
+                                            </span>
+                                        </div>
+                                    )}
 
                                     {/* CART AREA */}
                                     <div className="mt-auto flex gap-1">

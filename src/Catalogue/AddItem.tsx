@@ -55,24 +55,6 @@ const ItemAdd: React.FC = () => {
 
     const isActive = (path: string) => location.pathname === path;
 
-    useEffect(() => {
-        const mrp = parseFloat(itemMRP);
-        const sale = parseFloat(itemSalesPrice);
-
-        // valid numbers check
-        if (!isNaN(mrp) && !isNaN(sale) && mrp > 0 && sale >= 0) {
-            const discount = ((mrp - sale) / mrp) * 100;
-
-            // avoid negative / crazy values
-            const safeDiscount = Math.max(0, Math.min(100, discount));
-
-            setItemDiscount(safeDiscount.toFixed(2));
-        } else {
-            // optional: clear when invalid
-            // setItemDiscount('');
-        }
-    }, [itemMRP, itemSalesPrice]);
-
     // --- 1. Fetch Categories ---
     const fetchGroups = async () => {
         if (!dbOperations) return;
@@ -228,10 +210,6 @@ const ItemAdd: React.FC = () => {
 
         // --- 3. Discount Logic ---
         let finalSaleDiscount = parseFloat(itemDiscount) || 0;
-        if (mrpValue > 0 && saleValue > 0) {
-            finalSaleDiscount = 0;
-        }
-
         let finalPurchaseDiscount = parseFloat(PurchaseDiscount) || 0;
         if (mrpValue > 0 && purchaseValue > 0) {
             finalPurchaseDiscount = 0;
@@ -649,9 +627,9 @@ const ItemAdd: React.FC = () => {
                                     <input
                                         type="number"
                                         value={itemDiscount}
-                                        readOnly
+                                        onChange={(e) => setItemDiscount(e.target.value)}
                                         className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500"
-                                        placeholder="Auto calculated"
+                                        placeholder="Enter discount"
                                     />
                                 </div>
                                 <div>

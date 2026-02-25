@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ChevronLeft, Trash2, Check, ChevronUp, X } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Footer from './Footer';
-import { doc, getDoc, setDoc, serverTimestamp, deleteDoc, collection } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, deleteDoc, collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 import { FiPackage } from 'react-icons/fi';
 import { useAuth } from '../context/auth-context';
@@ -75,7 +75,10 @@ const CartPage: React.FC = () => {
     const [isSameAsShipping, setIsSameAsShipping] = useState<boolean>(false);
     const [cartItems, setCartItems] = useState<CartItem[]>([]);
     const [movError, setMovError] = useState<string | null>(null);
-
+    const [orderSuccess, setOrderSuccess] = useState(false);
+    const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
+    const [leadStatus, setLeadStatus] = useState<"approved" | "pending" | "declined" | null>(null);
+    const [approvalError, setApprovalError] = useState<string | null>(null);
     const getUpcomingDocId = () => {
         const upcomingKey =
             localStorage.getItem("upcoming_user_key");
@@ -223,6 +226,38 @@ const CartPage: React.FC = () => {
         fetchSalesSettings();
     }, [companyId]);
 
+    useEffect(() => {
+        if (!companyId) return;
+
+        const leadData = JSON.parse(
+            localStorage.getItem("leadData") || "{}"
+        );
+
+        const phone = (leadData.number || "")
+            .replace(/\D/g, "")
+            .trim();
+
+        if (!phone) {
+            setLeadStatus(null);
+            return;
+        }
+
+        const q = query(
+            collection(db, "companies", companyId, "AuthorizedUser"),
+            where("customerNumber", "==", phone)
+        );
+
+        const unsubscribe = onSnapshot(q, (snap) => {
+            if (snap.empty) {
+                setLeadStatus(null);
+            } else {
+                setLeadStatus(snap.docs[0].data().status || "pending");
+            }
+        });
+
+        return () => unsubscribe();
+    }, [companyId]);
+
     const updateItemNote = (id: string | number, note: string) => {
         setCartItems(prev => prev.map(item => item.id === id ? { ...item, note } : item));
     };
@@ -270,8 +305,7 @@ const CartPage: React.FC = () => {
             }
 
             //  next number prepare
-            const padded = String(currentNumber).padStart(4, "0");
-            const invoice = `${prefix}${padded}`;
+            const invoice = `${prefix}${currentNumber}`;
 
             //  atomic increment
             transaction.set(
@@ -287,8 +321,9 @@ const CartPage: React.FC = () => {
         });
 
         return finalInvoice;
-    };  
+    };
 
+    const isUserApproved = leadStatus === "approved";
     const placeOrder = async () => {
         if (!companyId || !currentUser?.uid) return;
         if (!isMovValid()) {
@@ -383,7 +418,8 @@ const CartPage: React.FC = () => {
             // 3️⃣ Cleanup local state
             localStorage.removeItem('temp_cart');
             setCartItems([]);
-            navigate(-1);
+            setPlacedOrderId(orderInvoiceNumber);
+            setOrderSuccess(true);
 
         } catch (e) {
             console.error(e);
@@ -444,6 +480,49 @@ const CartPage: React.FC = () => {
         <>
             <div className="bg-gray-50 min-h-screen font-sans text-[#1A3B5D] flex flex-col">
                 <LeadPopUp companyId={companyId} companyName={companyName} />
+                {orderSuccess && (
+                    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                        <div className="bg-white rounded-sm shadow-2xl max-w-md w-full p-8 text-center animate-in zoom-in duration-300">
+
+                            {/* icon */}
+                            <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center">
+                                <Check size={36} className="text-green-600" strokeWidth={3} />
+                            </div>
+
+                            {/* title */}
+                            <h2 className="text-xl font-black text-[#1A3B5D] uppercase tracking-tight">
+                                Order Placed Successfully
+                            </h2>
+
+                            {/* subtitle */}
+                            <p className="text-xs text-gray-500 mt-2">
+                                Your order has been received and is being processed.
+                            </p>
+
+                            {/* order id */}
+                            {placedOrderId && (
+                                <div className="mt-4 bg-gray-50 border border-gray-200 rounded-sm p-3">
+                                    <p className="text-[10px] text-gray-400 font-bold uppercase">
+                                        Order ID
+                                    </p>
+                                    <p className="text-sm font-black text-[#1A3B5D]">
+                                        {placedOrderId}
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* buttons */}
+                            <div className="flex gap-3 mt-6">
+                                <button
+                                    onClick={() => navigate(-1)}
+                                    className="flex-1 py-3 bg-gray-100 text-[#1A3B5D] text-xs font-black rounded-sm"
+                                >
+                                    Continue Shopping
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
                 <header className="sticky top-0 bg-white border-b border-gray-100 shadow-sm z-[60]">
                     <div className="max-w-7xl mx-auto px-4 py-2 flex flex-col gap-2">
                         <div className="flex items-center justify-between">
@@ -480,6 +559,31 @@ const CartPage: React.FC = () => {
                                 {/* close */}
                                 <button
                                     onClick={() => setMovError(null)}
+                                    className="text-gray-400 hover:text-red-500 font-bold"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                    {approvalError && (
+                        <div className="mb-4 bg-white border border-red-200 rounded-lg shadow-sm overflow-hidden">
+                            <div className="flex items-start gap-3 p-4">
+                                <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                                    <span className="text-red-600 font-bold">!</span>
+                                </div>
+
+                                <div className="flex-1">
+                                    <h4 className="text-sm font-bold text-red-700">
+                                        Order Not Allowed
+                                    </h4>
+                                    <p className="text-xs text-gray-600 mt-0.5">
+                                        {approvalError}
+                                    </p>
+                                </div>
+
+                                <button
+                                    onClick={() => setApprovalError(null)}
                                     className="text-gray-400 hover:text-red-500 font-bold"
                                 >
                                     ✕
@@ -684,7 +788,36 @@ const CartPage: React.FC = () => {
                                 </div>
                                 <button
                                     disabled={isPlacing || cartItems.length === 0}
-                                    onClick={() => step === 1 ? setStep(2) : placeOrder()}
+                                    onClick={() => {
+                                        if (step === 1) {
+
+                                            // APPROVAL GUARD
+                                            if (!isUserApproved) {
+                                                setApprovalError(
+                                                    leadStatus === "declined"
+                                                        ? "Your account is declined. You cannot place orders."
+                                                        : "Your account is not approved yet. Please wait for approval."
+                                                );
+                                                return;
+                                            }
+
+                                            // MOV check
+                                            if (!isMovValid()) {
+                                                const required = salesSettings?.minimumOrderValue || 0;
+                                                const short = required - totalPay;
+
+                                                setMovError(
+                                                    `Minimum order value is ₹${required}. Please add ₹${short} more to place order.`
+                                                );
+                                                return;
+                                            }
+
+                                            setMovError(null);
+                                            setStep(2);
+                                        } else {
+                                            placeOrder();
+                                        }
+                                    }}
                                     className={`w-full bg-[#00A3E1] text-white py-4 rounded-sm font-black text-[10px] uppercase tracking-widest shadow-lg hover:brightness-110 transition-all active:scale-95 flex items-center justify-center 
                                       ${(isPlacing || cartItems.length === 0) ? 'opacity-70 cursor-not-allowed' : ''}`}
                                 >
@@ -741,7 +874,25 @@ const CartPage: React.FC = () => {
                         <span className="text-xl font-black text-[#1A3B5D]">₹{totalPay.toLocaleString()}</span>
                     </div>
                     <button
-                        onClick={() => step === 1 ? setStep(2) : setIsDrawerOpen(true)}
+                        onClick={() => {
+                            if (step === 1) {
+                                // MOV check FIRST
+                                if (!isMovValid()) {
+                                    const required = salesSettings?.minimumOrderValue || 0;
+                                    const short = required - totalPay;
+
+                                    setMovError(
+                                        `Minimum order value is ₹${required}. Please add ₹${short} more to place order.`
+                                    );
+                                    return;
+                                }
+
+                                setMovError(null);
+                                setStep(2);
+                            } else {
+                                setIsDrawerOpen(true);
+                            }
+                        }}
                         disabled={cartItems.length === 0}
                         className={`bg-[#00A3E1] text-white px-10 py-3.5 rounded-sm font-black text-[10px] uppercase tracking-widest active:scale-95 transition-transform${cartItems.length === 0 ? 'opacity-60 cursor-not-allowed' : ''} `}>
                         {step === 1 ? "Checkout" : "View Summary"}

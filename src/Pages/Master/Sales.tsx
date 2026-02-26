@@ -4,7 +4,7 @@ import { useAuth, useDatabase } from '../../context/auth-context';
 import type { Item, SalesItem as OriginalSalesItem } from '../../constants/models';
 import { ROUTES } from '../../constants/routes.constants';
 import { db } from '../../lib/Firebase';
-import { collection, serverTimestamp, doc, increment as firebaseIncrement, runTransaction, getDocs, query, where } from 'firebase/firestore';
+import { collection, serverTimestamp, doc, increment as firebaseIncrement, runTransaction, getDocs, query, where, getDoc } from 'firebase/firestore';
 import SearchableItemInput from '../../UseComponents/SearchIteminput';
 import BarcodeScanner from '../../UseComponents/BarcodeScanner';
 import PaymentDrawer, { type PaymentCompletionData } from '../../Components/PaymentDrawer';
@@ -21,6 +21,12 @@ import { FiTrash2, FiX, FiChevronDown } from 'react-icons/fi';
 import { GenericBillFooter } from '../../Components/Footer';
 import { IconScanCircle } from '../../constants/Icons';
 import QRCode from 'react-qr-code';
+import { FiSend } from 'react-icons/fi';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { storage } from '../../lib/Firebase';
+import { generatePdfBlob } from '../../UseComponents/pdfGenerator';
+import { getFirestoreOperations } from '../../lib/ItemsFirebase';
+import { botMasterService } from '../Additional/Whatsapp/WhatsappApi';
 
 export interface SalesItem extends OriginalSalesItem {
     isEditable: boolean;
@@ -58,12 +64,12 @@ const Sales: React.FC = () => {
     const { currentUser, loading: authLoading, hasPermission } = useAuth();
     const dbOperations = useDatabase();
     const { salesSettings, loadingSettings } = useSalesSettings();
-
     const invoiceToEdit = location.state?.invoiceData;
     const isEditMode = location.state?.isEditMode === true && !!invoiceToEdit;
 
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
-    const [savedBillData, setSavedBillData] = useState<{ id: string, number: string } | null>(null);
+    const [savedBillData, setSavedBillData] = useState<{ id: string, number: string, invoiceData?: any } | null>(null);
+    const [sendingPdf, setSendingPdf] = useState(false);
 
     const [items, setItems] = useState<SalesItem[]>(() => {
         if (isEditMode) return [];
@@ -606,7 +612,7 @@ const Sales: React.FC = () => {
                 });
                 showSuccessModal("Invoice Updated", ROUTES.JOURNAL);
             } else {
-                let result;
+                let result: any = null;
                 await runTransaction(db, async (transaction) => {
                     result = await saveOperation(transaction, true);
 
@@ -623,14 +629,145 @@ const Sales: React.FC = () => {
                     }
                 });
                 if (result) {
+                    // 1. Capture the invoice data before clearing the cart
+                    const invoiceData = {
+                        id: result.id,
+                        invoiceNumber: result.number,
+                        amount: finalInvoiceTotal,
+                        partyName: completionData.partyName || 'Cash',
+                        partyNumber: completionData.partyNumber || '',
+                        partyAddress: completionData.partyAddress || '',
+                        partyGstin: completionData.partyGST || '',
+                        createdAt: new Date(),
+                        manualDiscount: completionData.discount || 0,
+                        salesmanName: finalSalesman.name,
+                        items: items.map(item => ({ ...item })) // Deep copy the cart items
+                    };
+
                     setIsDrawerOpen(false);
-                    setSavedBillData(result);
+                    // 2. Pass the invoiceData into the modal
+                    setSavedBillData({ id: result.id, number: result.number, invoiceData: invoiceData });
                     localStorage.removeItem('sales_cart_draft');
                     setItems([]);
                 }
             }
         } catch (e: any) {
             console.error(e); setModal({ message: "Error saving", type: State.ERROR });
+        }
+    };
+
+    const preparePdfData = async (invoice: any) => {
+        if (!currentUser?.companyId) return null;
+        const dbOps = getFirestoreOperations(currentUser.companyId);
+        const [businessInfo, fetchedItems, billSettingsSnap] = await Promise.all([
+            dbOps.getBusinessInfo(),
+            dbOps.syncItems(),
+            getDoc(doc(db, 'companies', currentUser.companyId, 'settings', 'bill'))
+        ]);
+        const billSettings = billSettingsSnap.exists() ? billSettingsSnap.data() : {};
+
+        const populatedItems = (invoice.items || []).map((item: any, index: number) => {
+            const fullItem = fetchedItems.find((fi: any) => fi.id === item.productId || fi.id === item.id);
+            const finalTaxRate = item.taxRate || item.tax || fullItem?.tax || 0;
+            const itemAmount = (item.finalPrice !== undefined && item.finalPrice !== null) ? item.finalPrice : (item.mrp * item.quantity);
+
+            return {
+                sno: index + 1,
+                name: item.name,
+                quantity: item.quantity,
+                unit: fullItem?.unit || item.unit || "Pcs",
+                listPrice: item.mrp,
+                gstPercent: finalTaxRate,
+                hsn: fullItem?.hsnSac || item.hsnSac || "N/A",
+                discountAmount: item.discount || 0,
+                amount: itemAmount
+            };
+        });
+
+        return {
+            gstScheme: salesSettings?.gstScheme || '',
+            taxType: salesSettings?.taxType || '',
+            companyName: businessInfo?.name || 'Your Company',
+            companyAddress: businessInfo?.address || 'Your Address',
+            companyContact: businessInfo?.phoneNumber || 'Your Phone',
+            companyEmail: businessInfo?.email || '',
+            signatureBase64: billSettings.signatureBase64 || '',
+            companyGstin: billSettings.companyGstin || businessInfo?.gstin || '',
+            msmeNumber: billSettings.msmeNumber || '',
+            panNumber: billSettings.panNumber || '',
+            billDiscount: invoice.manualDiscount || 0,
+            billTo: { name: invoice.partyName, address: invoice.partyAddress || '', phone: invoice.partyNumber || '', gstin: invoice.partyGstin || '' },
+            invoice: {
+                number: invoice.invoiceNumber,
+                date: new Date(invoice.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: 'numeric', hour12: true }),
+                billedBy: salesSettings?.enableSalesmanSelection ? (invoice.salesmanName || 'N/A') : '',
+                roNumber: '',
+            },
+            items: populatedItems,
+            terms: billSettings.termsAndConditions || 'Goods once sold will not be taken back.',
+            finalAmount: invoice.amount,
+            bankDetails: {
+                accountName: billSettings.accountName || businessInfo?.accountHolderName,
+                accountNumber: billSettings.accountNumber || businessInfo?.accountNumber,
+                bankName: billSettings.bankName || businessInfo?.bankName,
+                ifsc: billSettings.ifscCode || '',
+            }
+        };
+    };
+
+    const handleSendWhatsapp = async (invoice: any) => {
+        if (!invoice.partyNumber) {
+            setModal({ message: "Customer phone number is missing.", type: State.ERROR });
+            return;
+        }
+        setSendingPdf(true);
+        try {
+            if (!currentUser?.companyId || !currentUser?.uid) throw new Error("User context missing.");
+
+            const businessDocRef = doc(db, 'companies', currentUser.companyId, 'business_info', currentUser.companyId);
+            const businessSnap = await getDoc(businessDocRef);
+            const { botMasterToken, whatsappNumber } = businessSnap.data() || {};
+
+            if (!botMasterToken || !whatsappNumber) {
+                setModal({ message: "Company WhatsApp is not linked. Please setup WhatsApp first.", type: State.ERROR });
+                setSendingPdf(false);
+                return;
+            }
+
+            const dataForPdf = await preparePdfData(invoice);
+            if (!dataForPdf) throw new Error("Failed to prepare invoice data.");
+            const pdfBlob = await generatePdfBlob(dataForPdf);
+
+            const safeNum = invoice.invoiceNumber.replace(/[\/\\?%*:|"<>]/g, '-');
+            const cleanName = `${safeNum}.pdf`;
+            const storageRef = ref(storage, cleanName);
+            await uploadBytes(storageRef, pdfBlob);
+
+            const fileUrl = await getDownloadURL(storageRef);
+            const message = `Hello ${invoice.partyName},\n\nHere is your invoice #${invoice.invoiceNumber}.\nAmount: ${invoice.amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}\n\nThank you!`;
+
+            const response = await botMasterService.sendPdfFromUrl(botMasterToken, whatsappNumber, invoice.partyNumber, message, fileUrl, cleanName);
+
+            let isSuccess = false;
+            if (Array.isArray(response) && response.length > 0) {
+                if (response[0].status === 'sent' || response[0].status === 'delivered') isSuccess = true;
+            } else if (response?.status === 'sent' || response?.status === 'success' || response?.status === 200) {
+                isSuccess = true;
+            }
+
+            if (isSuccess) {
+                setModal({ message: "Invoice sent via WhatsApp!", type: State.SUCCESS });
+                setTimeout(async () => {
+                    try { await deleteObject(storageRef); } catch (e) { console.warn("Could not auto-delete:", e); }
+                }, 60000);
+            } else {
+                throw new Error("API reported failure.");
+            }
+        } catch (err: any) {
+            console.error("WhatsApp Send Error:", err);
+            setModal({ message: "Failed to send WhatsApp invoice.", type: State.ERROR });
+        } finally {
+            setSendingPdf(false);
         }
     };
 
@@ -899,6 +1036,7 @@ const Sales: React.FC = () => {
                 subtotal={subtotal} billTotal={amountToPayNow}
                 onPaymentComplete={handleSavePayment}
                 initialDiscount={invoiceToEdit?.manualDiscount}
+                allowDueBilling={salesSettings?.allowDueBilling}
                 isPartyNameEditable={!isEditMode}
                 initialPartyName={isEditMode ? invoiceToEdit?.partyName : ''}
                 initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : ''}
@@ -930,6 +1068,21 @@ const Sales: React.FC = () => {
                             Ask customer to scan this QR code to download their bill.
                         </p>
 
+                        {/* --- NEW WHATSAPP BUTTON --- */}
+                        {savedBillData.invoiceData?.partyNumber ? (
+                            <button
+                                onClick={() => handleSendWhatsapp(savedBillData.invoiceData)}
+                                disabled={sendingPdf}
+                                className="w-full bg-green-500 text-white py-3 rounded-lg font-semibold hover:bg-green-600 transition-colors flex items-center justify-center gap-2 mb-3 disabled:opacity-50"
+                            >
+                                {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
+                            </button>
+                        ) : (
+                            <p className="text-xs text-amber-600 mb-3 text-center bg-amber-50 p-2 rounded w-full border border-amber-200">
+                                No phone number provided for WhatsApp.
+                            </p>
+                        )}
+
                         <button
                             onClick={handleCloseQrModal}
                             className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
@@ -939,7 +1092,6 @@ const Sales: React.FC = () => {
                     </div>
                 </div>
             )}
-
         </div>
     );
 };

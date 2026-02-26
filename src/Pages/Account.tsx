@@ -267,17 +267,21 @@ const Account: React.FC = () => {
             </Link>
           </div>
           <div className="mt-4 mb-6 flex justify-center ">
-            <Link
-              to={ROUTES.ADDITIONAL_FEATURES}
-              className="
+            <ShowWrapper
+              requiredPermission={Permissions.ViewReports}
+            >
+              <Link
+                to={ROUTES.ADDITIONAL_FEATURES}
+                className="
                 rounded-sm bg-white py-3 px-8 font-semibold shadow-md mb-2
                 border border-gray-200 text-gray-800
                 hover:shadow-lg
               "
-            >
-              <span className="text-lg font-medium">Add Ons</span>
-              <span className="text-xl text-gray-600">→</span>
-            </Link>
+              >
+                <span className="text-lg font-medium">Add Ons</span>
+                <span className="text-xl text-gray-600">→</span>
+              </Link>
+            </ShowWrapper>
           </div>
           <div className="mt-2 flex justify-center">
             <button

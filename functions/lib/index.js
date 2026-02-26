@@ -1,6 +1,37 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const axios = require("axios");
+const cors = require("cors")({ origin: true }); // Allows your frontend to talk to this function
 
+exports.botmasterProxy = functions.https.onRequest((req, res) => {
+    cors(req, res, async () => {
+        try {
+            // req.url contains everything after the function name (e.g., /api/v1/?action=send)
+            const targetUrl = `https://api.botmastersender.com${req.url}`;
+
+            // Forward the exact request to BotMaster
+            const response = await axios({
+                method: req.method,
+                url: targetUrl,
+                data: req.body,
+                headers: {
+                    "Content-Type": "application/json"
+                }
+            });
+
+            // Send BotMaster's response back to your React app
+            res.status(response.status).send(response.data);
+
+        } catch (error) {
+            console.error("Proxy Error:", error.message);
+            if (error.response) {
+                res.status(error.response.status).send(error.response.data);
+            } else {
+                res.status(500).send({ error: "Cloud Function Proxy failed." });
+            }
+        }
+    });
+});
 admin.initializeApp();
 const db = admin.firestore();
 
@@ -15,10 +46,10 @@ const db = admin.firestore();
  */
 exports.registerCompanyAndUser = functions.https.onCall(async (data, context) => {
     // 1. Destructure all incoming data
-    const { 
-        email, password, name, phoneNumber, role, 
-        businessData, 
-        planDetails, 
+    const {
+        email, password, name, phoneNumber, role,
+        businessData,
+        planDetails,
         salesSettings // <--- New parameter
     } = data;
 
@@ -63,7 +94,7 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
         const companyRootRef = db.doc(`companies/${newCompanyId}`);
         const userDocRef = db.doc(`companies/${newCompanyId}/users/${userRecord.uid}`);
         const businessInfoRef = db.doc(`companies/${newCompanyId}/business_info/${newCompanyId}`);
-        
+
         // NEW: Reference for Sales Settings
         const salesSettingsRef = db.doc(`companies/${newCompanyId}/settings/sales-settings`);
 
@@ -75,12 +106,12 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             ownerUID: userRecord.uid,
             ownerPhoneNumber: phoneNumber || '',
-            
+
             // Plan Info
             pack: planDetails?.pack || "pro",
             validity: planDetails?.validity || "active",
-            expiryDate: planDetails?.expiryDate 
-                ? admin.firestore.Timestamp.fromDate(new Date(planDetails.expiryDate)) 
+            expiryDate: planDetails?.expiryDate
+                ? admin.firestore.Timestamp.fromDate(new Date(planDetails.expiryDate))
                 : null,
             isTrial: !!planDetails?.isTrial
         };
@@ -150,7 +181,7 @@ exports.inviteUserToCompany = functions.https.onCall(async (data, context) => {
     try {
         const userRecord = await admin.auth().createUser({ email, password, displayName: fullName });
         await admin.auth().setCustomUserClaims(userRecord.uid, { companyId, role });
-        
+
         const userDocRef = db.doc(`companies/${companyId}/users/${userRecord.uid}`);
         await userDocRef.set({
             name: fullName, phoneNumber: phoneNumber || '', email, role,

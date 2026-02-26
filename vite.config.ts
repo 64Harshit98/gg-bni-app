@@ -15,4 +15,13 @@ export default defineConfig({
     },
 
   },
+   server: {
+    proxy: {
+      '/botmaster-api': {
+        target: 'https://api.botmastersender.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/botmaster-api/, ''),
+      },
+    },
+  },
 });

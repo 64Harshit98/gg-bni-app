@@ -1,4 +1,15 @@
-// src/constants/models.ts
+export interface Invoice {
+  id: string;
+  invoiceNumber: string;
+  companyId: string;
+  partyName?: string;
+  partyNumber?: string;
+  totalAmount: number;
+  items: any[]; // You can be more specific if you have a SalesItem type
+  createdAt?: any;
+  salesmanId?: string;
+  // Add other fields you use, like taxAmount, subtotal, etc.
+}
 
 export interface Item {
   id?: string;

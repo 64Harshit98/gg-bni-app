@@ -77,6 +77,11 @@ const TaxReport = lazy(() => import('../Pages/Reports/TaxReport'));
 const CustomerReport = lazy(() => import('../Pages/Reports/CustomerReport'));
 const DownloadBill = lazy(() => import('../Pages/Auth/DownloadBill'));
 const BillSettings = lazy(() => import('../Pages/Settings/BillSetting'));
+const AdditionalServices = lazy(() => import('../Pages/Account/AdditionalFeatures'));
+const WAVerification = lazy(() => import('../Pages/Additional/Whatsapp/WAVerification'));
+const WADetails = lazy(() => import('../Pages/Additional/Whatsapp/WADetails'));
+const WALanding = lazy(() => import('../Pages/Additional/Whatsapp/WALanding'));
+const WAPlan = lazy(() => import('../Pages/Additional/Whatsapp/WAPlan'));
 
 const ManageItems = lazy(() => import('../Pages/Master/ManageItems'));
 
@@ -217,6 +222,31 @@ const router = createBrowserRouter([
                 path: ROUTES.USER_ADD,
                 element: <UserAdd />,
                 handle: { requiredPermission: Permissions.CreateUsers },
+              },
+              {
+                path: ROUTES.WHATSAPP_DETAILS,
+                element: <WADetails />,
+                handle: { requiredPermission: Permissions.ViewItemReport },
+              },
+              {
+                path: ROUTES.WHATSAPP_VERIFICATION,
+                element: <WAVerification />,
+                handle: { requiredPermission: Permissions.ViewItemReport },
+              },
+              {
+                path: ROUTES.WHATSAPP_LANDING,
+                element: <WALanding />,
+                handle: { requiredPermission: Permissions.ViewItemReport },
+              },
+              {
+                path: ROUTES.WHATSAPP_PLAN,
+                element: <WAPlan />,
+                handle: { requiredPermission: Permissions.ViewItemReport },
+              },
+              {
+                path: ROUTES.ADDITIONAL_FEATURES,
+                element: <AdditionalServices />,
+                handle: { requiredPermission: Permissions.ViewItemReport },
               },
               {
                 path: ROUTES.REPORTS.substring(1),

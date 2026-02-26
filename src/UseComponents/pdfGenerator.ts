@@ -1,6 +1,8 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { ACTION } from '../enums';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../lib/Firebase';
 
 export interface InvoiceData {
   gstScheme?: string;       // 'REGULAR', 'COMPOSITION', 'NONE'
@@ -609,4 +611,79 @@ const convertNumberToWords = (amount: number): string => {
   }
 
   return str.trim();
+};
+export const preparePdfData = async (invoiceData: any) => {
+  // 1. Fetch Company Details (Safe Fetch)
+  let companyData: any = {
+    name: 'My Company',
+    address: '',
+    phone: '',
+    email: '',
+    gstin: ''
+  };
+
+  if (invoiceData.companyId) {
+    try {
+      const companyDoc = await getDoc(doc(db, 'companies', invoiceData.companyId));
+      if (companyDoc.exists()) {
+        // Merge with defaults to ensure no field is undefined
+        companyData = { ...companyData, ...companyDoc.data() };
+      }
+    } catch (error) {
+      console.error("Error fetching company for PDF:", error);
+    }
+  }
+
+  // 2. Return Data with "Bulletproof" Defaults
+  // We add defaults for ANY field that might be .toUpperCase()'d
+  return {
+    ...invoiceData,
+
+    // --- TEXT FIELDS (The likely culprits) ---
+    type: invoiceData.type || 'SALES',              // Fixes 'undefined' type
+    voucherName: invoiceData.voucherName || 'Tax Invoice',
+    currency: invoiceData.currency || 'INR',        // Fixes currency crash
+    status: invoiceData.status || 'Paid',           // Fixes status crash
+    paymentStatus: invoiceData.paymentStatus || 'Paid',
+    taxType: invoiceData.taxType || 'exclusive',
+    gstScheme: invoiceData.gstScheme || 'regular',
+    partyName: invoiceData.partyName || 'Cash Customer',
+    invoiceNumber: invoiceData.invoiceNumber || 'INV-000',
+    mode: invoiceData.mode || 'print',              // Some generators check 'mode'
+
+    // --- OBJECTS ---
+    company: companyData,
+    settings: invoiceData.settings || {},           // Prevents settings.something crash
+
+    // --- NUMBERS ---
+    totalAmount: invoiceData.totalAmount || 0,
+    subtotal: invoiceData.subtotal || 0,
+    taxAmount: invoiceData.taxAmount || 0,
+    roundOff: invoiceData.roundOff || 0,
+
+    // --- ARRAYS ---
+    items: (invoiceData.items || []).map((item: any) => ({
+      ...item,
+      name: item.name || 'Item',
+      unit: item.unit || 'pcs',
+      hsn: item.hsn || '',
+      gstRate: item.gstRate || item.tax || 0,
+      quantity: item.quantity || 0,
+      price: item.price || item.rate || 0,
+      amount: item.amount || 0,
+      // Ensure these exist for items too
+      taxType: item.taxType || 'exclusive'
+    }))
+  };
+};
+export const generatePdfBlob = async (data: InvoiceData): Promise<Blob> => {
+  // Call the main function with ACTION.BLOB
+  const result = await generatePdf(data, ACTION.BLOB);
+
+  // Ensure we actually got a Blob back
+  if (result instanceof Blob) {
+    return result;
+  }
+
+  throw new Error("Failed to generate PDF Blob");
 };

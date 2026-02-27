@@ -11,9 +11,11 @@ interface ItemDetailDrawerProps {
     onAddToCart: (item: Item, quantity: number, isFromDrawer?: boolean) => void;
     initialQuantity?: number;
     catalogueSettings?: CatalogueSalesSettings | null;
+    isCustomerApproved?: boolean;
+    onRequireLead?: () => void;
 }
 
-export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({ item, isOpen, onClose, onAddToCart, catalogueSettings, initialQuantity = 1 }) => {
+export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({ item, isOpen, onClose, onAddToCart, catalogueSettings, initialQuantity = 1, isCustomerApproved = true, onRequireLead }) => {
     const [quantity, setQuantity] = useState(initialQuantity > 0 ? initialQuantity : 1);
     const [isAdding, setIsAdding] = useState(false);
 
@@ -26,6 +28,12 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({ item, isOpen
     if (!item) return null;
     const priceMode = catalogueSettings?.priceDisplayMode || 'both';
     const salePrice = item.salesPrice || item.mrp;
+    const mrp = item.mrp || 0;
+    const hasBothPrices =
+        item.salesPrice &&
+        item.mrp &&
+        item.salesPrice < item.mrp;
+    const shouldHidePrice = !isCustomerApproved;
 
     //  discount logic
     const hasDiscount = salePrice < (item.mrp || 0);
@@ -42,7 +50,7 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({ item, isOpen
     const isOutOfStock = (item.stock || 0) <= 0;
 
     const disableAddToCart =
-        catalogueSettings?.disableOutOfStockAddToCart && isOutOfStock;
+        catalogueSettings?.enableOutOfStockNotification && isOutOfStock;
 
     const allowZero = catalogueSettings?.allowQuantityDecreaseToZero;
     const updateQuantity = (newQty: number) => {
@@ -53,6 +61,10 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({ item, isOpen
     };
 
     const handleAddToCartClick = () => {
+        if (!isCustomerApproved) {
+            onRequireLead?.();
+            return;
+        }
         if (disableAddToCart) return;
         setIsAdding(true);
         onAddToCart(item, quantity, true);
@@ -116,32 +128,39 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({ item, isOpen
                                 </p>
                             )}
                             <div className="flex items-center justify-between mt-1">
-                                {/* LEFT */}
-                                <div className="flex flex-col">
-                                    {priceMode === 'mrp' && (
-                                        <p className="text-xl font-black text-gray-900 leading-none">
-                                            MRP ₹{item.mrp.toFixed(2)}
-                                        </p>
-                                    )}
+                                {!shouldHidePrice ? (
+                                    <div className="flex items-center gap-2">
+                                        {priceMode === 'mrp' && (
+                                            <p className="text-xl font-black text-gray-900">
+                                                ₹{mrp}
+                                            </p>
+                                        )}
 
-                                    {priceMode === 'salePrice' && (
-                                        <p className="text-xl font-black text-gray-900 leading-none">
-                                            ₹{salePrice.toFixed(2)}
-                                        </p>
-                                    )}
+                                        {priceMode === 'salePrice' && (
+                                            <p className="text-xl font-black text-[#00A3E1]">
+                                                ₹{salePrice}
+                                            </p>
+                                        )}
 
-                                    {priceMode === 'both' && (
-                                        <p className="text-lg font-black text-gray-900 leading-none">
-                                            MRP ₹{item.mrp.toFixed(2)}
-                                        </p>
-                                    )}
-                                </div>
-
-                                {/* RIGHT */}
-                                {priceMode === 'both' && (
-                                    <p className="text-lg font-black text-[#00A3E1] leading-none">
-                                        Sale ₹{salePrice.toFixed(2)}
-                                    </p>
+                                        {priceMode === 'both' && hasBothPrices ? (
+                                            <>
+                                                <p className="text-sm font-bold text-gray-400 line-through">
+                                                    ₹{mrp}
+                                                </p>
+                                                <p className="text-xl font-black text-[#00A3E1]">
+                                                    ₹{salePrice}
+                                                </p>
+                                            </>
+                                        ) : priceMode === 'both' ? (
+                                            <p className="text-xl font-black text-[#00A3E1]">
+                                                ₹{salePrice}
+                                            </p>
+                                        ) : null}
+                                    </div>
+                                ) : (
+                                    <span className="text-[10px] font-semibold text-gray-500 bg-gray-50 border border-gray-200 px-2 py-1 rounded-sm">
+                                        Price will be visible after approval
+                                    </span>
                                 )}
                             </div>
 
@@ -177,12 +196,32 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({ item, isOpen
 
                         {/* 4. FULL WIDTH BUTTON */}
                         <button
-                            onClick={handleAddToCartClick}
-                            disabled={isAdding || disableAddToCart}
-                            className={`w-full py-3.5 rounded-sm font-black text-[10px] uppercase tracking-[0.2em] shadow-lg flex items-center justify-center gap-2 active:scale-[0.97] transition-all mb-4 ${disableAddToCart ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#00A3E1] text-white shadow-blue-200'
-                                }`}>
+                            onClick={() => {
+                                if (shouldHidePrice) return;
+
+                                if (isOutOfStock && catalogueSettings?.enableOutOfStockNotification) {
+                                    console.log("Notify customer");
+                                    return;
+                                }
+
+                                handleAddToCartClick();
+                            }}
+                            disabled={isAdding || disableAddToCart || shouldHidePrice}
+                            className={`w-full py-3.5 rounded-sm font-black text-[10px] uppercase tracking-[0.2em] shadow-lg flex items-center justify-center gap-2 active:scale-[0.97] transition-all mb-4 ${disableAddToCart || shouldHidePrice
+                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                : 'bg-[#00A3E1] text-white shadow-blue-200'
+                                }`}
+                        >
                             {isAdding ? <Spinner /> : <ShoppingCart size={16} />}
-                            {isAdding ? 'Adding...' : 'Add to Cart'}
+
+                            {/* TEXT SWITCH */}
+                            {shouldHidePrice
+                                ? 'View Price'
+                                : isOutOfStock && catalogueSettings?.enableOutOfStockNotification
+                                    ? 'Notify Me'
+                                    : isAdding
+                                        ? 'Adding...'
+                                        : 'Add to Cart'}
                         </button>
                     </div>
                 </div>

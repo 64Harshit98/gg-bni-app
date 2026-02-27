@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ACTION } from '../enums/action.enum'
-import { generatePdf } from '../UseComponents/pdfGenerator'
-import type { InvoiceData } from '../UseComponents/pdfGenerator';
+import { generateCatalogueBill } from '../Catalogue/CatalogueBill/CatalogueBill'
+import type { CatalogueInvoiceData } from '../Catalogue/CatalogueBill/CatalogueBill';
 import { useLocation } from 'react-router-dom';
 import { db } from '../lib/Firebase';
 import QRCode from 'react-qr-code';
@@ -48,6 +48,7 @@ export interface OrderItem {
     updatedAt?: Timestamp;
     restockQuantity?: number;
     finalPrice?: number;
+    imageBase64?:string;
 }
 
 // 1. Updated Status Types
@@ -186,6 +187,7 @@ export const useOrdersData = (
                                 mrp: Number(i.mrp || 0),
                                 finalPrice: Number(i.finalPrice ?? i.amount ?? (i.mrp * i.quantity)),
                                 note: i.note || '',
+                                imageBase64: i.imageBase64 || i.imageUrl
                             }))
                             : [],
                     };
@@ -447,84 +449,44 @@ const OrdersPage: React.FC = () => {
         setIsGeneratingPdf(true);
         console.log("Bill settings in Orders:", billSettings);
         try {
-            const data: InvoiceData = {
-                companyName: companyInfo?.name || "Your Store",
-                companyAddress: companyInfo?.address || "Store Address",
-                companyContact: companyInfo?.ownerPhoneNumber || "Phone",
-                companyEmail: companyInfo?.email || "",
-
-                // GST
-                companyGstin:
-                    billSettings?.companyGstin !== undefined
-                        ? billSettings.companyGstin
-                        : (companyInfo?.gstin || ""),
-
-                // MSME
-                msmeNumber: billSettings?.msmeNumber || "",
-
-                // SIGNATURE
-                signatureBase64:
-                    billSettings?.signatureBase64?.startsWith("data:image")
-                        ? billSettings.signatureBase64
-                        : undefined,
-
-                billTo: {
-                    name: Order.userName || "Customer",
-                    address: Order.billingDetails?.address || "N/A",
-                    phone: Order.billingDetails?.phone || "N/A",
+            const data: CatalogueInvoiceData = {
+                company: {
+                    name: companyInfo?.name || "Your Store",
+                    address: companyInfo?.address || "Store Address",
+                    phone: companyInfo?.ownerPhoneNumber || "Phone",
+                    logoBase64: billSettings?.logoBase64,
                 },
 
-                invoice: {
-                    number: Order.orderId,
+                customer: {
+                    name: Order.userName || "Customer",
+                    phone: Order.billingDetails?.phone || "",
+                    address: Order.billingDetails?.address || "",
+                },
+
+                order: {
+                    orderId: Order.orderId,
                     date: Order.time,
-                    billedBy: "Admin",
                 },
 
                 items: (Order.items || []).map((item, index) => ({
                     sno: index + 1,
                     name: item.name,
-                    hsn: "8517",
-                    quantity: item.quantity,
-                    unit: "PCS",
-                    listPrice: item.mrp,
-                    gstPercent: 18,
-                    discountAmount: 0,
-                    amount: item.mrp * item.quantity,
+                    qty: item.quantity,
+                    price: item.mrp,
+                    total: item.mrp * item.quantity,
+                    imageBase64: item.imageBase64, // optional
                 })),
 
-                // TERMS (MOST IMPORTANT)
-                terms:
-                    billSettings?.termsAndConditions ??
-                    "Goods once sold will not be taken back.",
-
-                finalAmount: Order.totalAmount,
-
-                // BANK
-                bankDetails: {
-                    accountName:
-                        billSettings?.accountName ??
-                        companyInfo?.accountNo ??
-                        "",
-
-                    accountNumber:
-                        billSettings?.accountNumber ??
-                        companyInfo?.accountNo ??
-                        "",
-
-                    bankName:
-                        billSettings?.bankName ??
-                        companyInfo?.bankBranch ??
-                        "",
-
-                    ifsc: billSettings?.ifscCode ?? "",
-
-                    gstin:
-                        billSettings?.companyGstin ??
-                        companyInfo?.gstin ??
-                        "",
-                },
+                grandTotal: Order.totalAmount,
             };
-            await generatePdf(data, action);
+            await generateCatalogueBill(
+                data,
+                action === ACTION.PRINT
+                    ? 'print'
+                    : action === ACTION.BLOB
+                        ? 'blob'
+                        : 'download'
+            );
             setSelectedOrderForAction(null);
         } catch (err) {
             setModal({ message: "Failed to generate PDF", type: State.ERROR });
@@ -581,84 +543,37 @@ const OrdersPage: React.FC = () => {
     const handleShareBill = async (Order: Order) => {
         setIsGeneratingPdf(true);
         try {
-            const data: InvoiceData = {
-                companyName: companyInfo?.name || "Your Store",
-                companyAddress: companyInfo?.address || "Store Address",
-                companyContact: companyInfo?.ownerPhoneNumber || "Phone",
-                companyEmail: companyInfo?.email || "",
-
-                // GST
-                companyGstin:
-                    billSettings?.companyGstin !== undefined
-                        ? billSettings.companyGstin
-                        : (companyInfo?.gstin || ""),
-
-                // MSME
-                msmeNumber: billSettings?.msmeNumber || "",
-
-                // SIGNATURE
-                signatureBase64:
-                    billSettings?.signatureBase64?.startsWith("data:image")
-                        ? billSettings.signatureBase64
-                        : undefined,
-
-                billTo: {
-                    name: Order.userName || "Customer",
-                    address: Order.billingDetails?.address || "N/A",
-                    phone: Order.billingDetails?.phone || "N/A",
+            const data: CatalogueInvoiceData = {
+                company: {
+                    name: companyInfo?.name || "Your Store",
+                    address: companyInfo?.address || "Store Address",
+                    phone: companyInfo?.ownerPhoneNumber || "Phone",
+                    logoBase64: billSettings?.logoBase64,
                 },
 
-                invoice: {
-                    number: Order.orderId,
+                customer: {
+                    name: Order.userName || "Customer",
+                    phone: Order.billingDetails?.phone || "",
+                    address: Order.billingDetails?.address || "",
+                },
+
+                order: {
+                    orderId: Order.orderId,
                     date: Order.time,
-                    billedBy: "Admin",
                 },
 
                 items: (Order.items || []).map((item, index) => ({
                     sno: index + 1,
                     name: item.name,
-                    hsn: "8517",
-                    quantity: item.quantity,
-                    unit: "PCS",
-                    listPrice: item.mrp,
-                    gstPercent: 18,
-                    discountAmount: 0,
-                    amount: item.mrp * item.quantity,
+                    qty: item.quantity,
+                    price: item.mrp,
+                    total: item.mrp * item.quantity,
+                    imageBase64: item.imageBase64, // optional
                 })),
 
-                // TERMS (MOST IMPORTANT)
-                terms:
-                    billSettings?.termsAndConditions ??
-                    "Goods once sold will not be taken back.",
-
-                finalAmount: Order.totalAmount,
-
-                // BANK
-                bankDetails: {
-                    accountName:
-                        billSettings?.accountName ??
-                        companyInfo?.accountNo ??
-                        "",
-
-                    accountNumber:
-                        billSettings?.accountNumber ??
-                        companyInfo?.accountNo ??
-                        "",
-
-                    bankName:
-                        billSettings?.bankName ??
-                        companyInfo?.bankBranch ??
-                        "",
-
-                    ifsc: billSettings?.ifscCode ?? "",
-
-                    gstin:
-                        billSettings?.companyGstin ??
-                        companyInfo?.gstin ??
-                        "",
-                },
+                grandTotal: Order.totalAmount,
             };
-            const pdfBlob = await generatePdf(data, ACTION.BLOB);
+            const pdfBlob = await generateCatalogueBill(data, 'blob');
             if (!pdfBlob || !(pdfBlob instanceof Blob)) throw new Error("PDF generation failed");
             const file = new File([pdfBlob], `Bill_${Order.orderId}.pdf`, { type: 'application/pdf' });
 

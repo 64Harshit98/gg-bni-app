@@ -20,7 +20,6 @@ export interface ItemSettings {
     requireTax: boolean;
     requireBarcode: boolean;
     requireRestockQuantity: boolean;
-    requireMOQ: boolean;
     autoGenerateBarcode: boolean;
 }
 
@@ -33,7 +32,7 @@ export const getDefaultItemSettings = (companyId: string): ItemSettings => ({
     requireTax: false,
     requireBarcode: false,
     requireRestockQuantity: false,
-    requireMOQ: false,
+
     autoGenerateBarcode: true,
 });
 
@@ -169,23 +168,6 @@ const CatalogueItemSetting: React.FC = () => {
                                 />
                                 <label htmlFor="req-purchase-discount" className="ml-2 text-sm font-medium text-gray-700">
                                     Require Purchase Discount (%)
-                                </label>
-                            </div>
-                            <div className="flex items-center">
-                                <input
-                                    type="checkbox"
-                                    id="req-moq"
-                                    checked={settings.requireMOQ ?? false}
-                                    onChange={(e) =>
-                                        handleCheckboxChange('requireMOQ', e.target.checked)
-                                    }
-                                    className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500"
-                                />
-                                <label
-                                    htmlFor="req-moq"
-                                    className="ml-2 text-sm font-medium text-gray-700"
-                                >
-                                    Require MOQ (Minimum Order Quantity)
                                 </label>
                             </div>
                             <div className="flex items-center">

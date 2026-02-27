@@ -432,9 +432,14 @@ const MyShop: React.FC = () => {
                     {itemsToDisplay.map((item) => {
                         const cartItem = cart.find(i => i.item.id === item.id);
                         const isOutOfStock = (item.stock || 0) <= 0;
-                        const disableAddToCart = catalogueSettings?.disableOutOfStockAddToCart && isOutOfStock; catalogueSettings?.priceDisplayMode === 'both';
-                        const priceMode = catalogueSettings?.priceDisplayMode || 'both';
+                        const showNotifyButton = catalogueSettings?.enableOutOfStockNotification && isOutOfStock;
+                        const disableAddToCart = !catalogueSettings?.enableOutOfStockNotification && isOutOfStock;
                         const salePrice = item.salesPrice || item.mrp;
+                        const mrp = item.mrp || 0;
+                        const hasBothPrices =
+                            item.salesPrice &&
+                            item.mrp &&
+                            item.salesPrice < item.mrp;
                         //  discount logic
                         const hasDiscount = salePrice < (item.mrp || 0);
                         const discountPercent =
@@ -444,7 +449,6 @@ const MyShop: React.FC = () => {
 
                         const showDiscountBadge =
                             catalogueSettings?.showDiscountBadge &&
-                            priceMode !== 'mrp' &&
                             hasDiscount;
                         return (
                             <div
@@ -473,33 +477,21 @@ const MyShop: React.FC = () => {
 
                                 <div className="p-3 flex flex-col flex-1">
                                     <h3 className="text-[10px] font-black text-[#1A3B5D] mb-1 truncate uppercase leading-tight">{item.name}</h3>
-                                    <div className="flex items-center justify-between mb-3">
-                                        <div className="flex items-center justify-between mb-3 w-full">
-                                            {/* LEFT */}
-                                            <div className="flex flex-col">
-                                                {priceMode === 'mrp' && (
-                                                    <p className="text-xs font-black text-[#00A3E1]">
-                                                        MRP ₹{item.mrp}
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center justify-between w-full">
+                                            {hasBothPrices ? (
+                                                <>
+                                                    <p className="text-[11px] font-bold text-gray-400 line-through">
+                                                        ₹{mrp}
                                                     </p>
-                                                )}
 
-                                                {priceMode === 'salePrice' && (
                                                     <p className="text-xs font-black text-[#00A3E1]">
                                                         ₹{salePrice}
                                                     </p>
-                                                )}
-
-                                                {priceMode === 'both' && (
-                                                    <p className="text-xs font-black text-[#1A3B5D]">
-                                                        MRP ₹{item.mrp}
-                                                    </p>
-                                                )}
-                                            </div>
-
-                                            {/* RIGHT */}
-                                            {priceMode === 'both' && (
+                                                </>
+                                            ) : (
                                                 <p className="text-xs font-black text-[#00A3E1]">
-                                                    Sale ₹{salePrice}
+                                                    ₹{salePrice}
                                                 </p>
                                             )}
                                             <StockIndicator stock={item.stock || 0} />
@@ -524,6 +516,16 @@ const MyShop: React.FC = () => {
                                                         <Plus size={12} strokeWidth={3} />
                                                     </button>
                                                 </div>
+                                            ) : showNotifyButton ? (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        alert("We will notify you when item is back in stock");
+                                                    }}
+                                                    className="w-full py-2 rounded-sm text-[9px] font-black uppercase tracking-widest shadow-sm transition-all flex items-center justify-center gap-2 bg-orange-500 text-white active:scale-95"
+                                                >
+                                                    🔔 Notify Me
+                                                </button>
                                             ) : (
                                                 <button
                                                     disabled={disableAddToCart}
@@ -532,7 +534,11 @@ const MyShop: React.FC = () => {
                                                         if (disableAddToCart) return;
                                                         addToCart(item, catalogueSettings?.defaultCartQuantity || 1);
                                                     }}
-                                                    className={`w-full py-2 rounded-sm text-[9px] font-black uppercase tracking-widest shadow-sm transition-all flex items-center justify-center gap-2 ${disableAddToCart ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#00A3E1] text-white active:scale-95'}`}>
+                                                    className={`w-full py-2 rounded-sm text-[9px] font-black uppercase tracking-widest shadow-sm transition-all flex items-center justify-center gap-2 ${disableAddToCart
+                                                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                                        : 'bg-[#00A3E1] text-white active:scale-95'
+                                                        }`}
+                                                >
                                                     <Plus size={12} />
                                                     Add to Cart
                                                 </button>

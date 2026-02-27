@@ -11,7 +11,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName';
 import SearchBar from './SearchBar';
-import { serverTimestamp, doc, setDoc, getDoc, collection, onSnapshot, query, where } from 'firebase/firestore';
+import { serverTimestamp, doc, setDoc, getDoc, getDocs, updateDoc, collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 import { OrderInvoiceNumber } from '../UseComponents/InvoiceCounter';
 import { useLocation } from 'react-router-dom';
@@ -194,24 +194,6 @@ const SharedProduct: React.FC = () => {
         }
     }, [highlightItemId]);
 
-    const getEffectivePrice = (item: Item) => {
-        const priceMode = catalogueSettings?.priceDisplayMode || 'both';
-
-        const mrp = (item as any).mrp || 0;
-        const salePrice = (item as any).salesPrice || mrp;
-
-        const hasDiscount = salePrice < mrp;
-
-        //  priority logic
-        if (priceMode === 'mrp') return mrp;
-        if (priceMode === 'salePrice') return salePrice;
-
-        // both mode OR discount badge
-        if (hasDiscount) return salePrice;
-
-        return salePrice || mrp;
-    };
-
     const addToCart = useCallback((item: Item) => {
         //  SINGLE SOURCE OF TRUTH
         const alreadyFilled =
@@ -229,11 +211,9 @@ const SharedProduct: React.FC = () => {
             const existing = prev.find(i => i.item.id === item.id);
 
             const moqQty = (item as any).moq || 1;
-            const effectivePrice = getEffectivePrice(item);
 
             const itemWithPrice = {
                 ...item,
-                effectivePrice
             };
 
             const newCart = existing
@@ -247,7 +227,118 @@ const SharedProduct: React.FC = () => {
             localStorage.setItem('temp_cart', JSON.stringify(newCart));
             return newCart;
         });
-    }, [getEffectivePrice]);
+    }, []);
+
+    const handleNotifyRequest = async (item: Item) => {
+        try {
+            if (!companyId) return;
+
+            const leadData = JSON.parse(
+                localStorage.getItem("leadData") || "{}"
+            );
+
+            const name = leadData?.name || "Guest User";
+            const number = (leadData?.number || "")
+                .replace(/\D/g, "")
+                .trim();
+
+            if (!number) {
+                alert("Please fill your details first");
+                setForceLeadOpen(true);
+                return;
+            }
+
+            // SEPARATE COLLECTION (IMPORTANT)
+            const ref = doc(
+                db,
+                "companies",
+                companyId,
+                "NotifyRequests",
+                number
+            );
+
+            const snap = await getDoc(ref);
+
+            let existingItems: any[] = [];
+
+            if (snap.exists()) {
+                existingItems = snap.data()?.items || [];
+            }
+
+            const alreadyExists = existingItems.find(
+                (i: any) => i.id === item.id
+            );
+
+            const updatedItems = alreadyExists
+                ? existingItems
+                : [
+                    ...existingItems,
+                    {
+                        id: item.id,
+                        name: item.name,
+                        qty: 1,
+                    },
+                ];
+
+            await setDoc(
+                ref,
+                {
+                    customerName: name,
+                    customerNumber: number,
+                    type: "notify",
+                    items: updatedItems,
+
+                    // CRITICAL FIELDS
+                    inStock: false,
+                    messageSent: false,
+
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp(),
+                },
+                { merge: true }
+            );
+
+            alert("You will be notified when item is back in stock");
+        } catch (err) {
+            console.error("Notify error:", err);
+        }
+    };
+
+    const syncNotifyStockStatus = async (items: Item[]) => {
+        if (!companyId) return;
+
+        try {
+            const notifySnap = await getDocs(
+                collection(db, "companies", companyId, "NotifyRequests")
+            );
+
+            const updates: Promise<any>[] = [];
+
+            notifySnap.forEach(docSnap => {
+                const data = docSnap.data();
+                const notifyItems = data.items || [];
+
+                // check if ANY item now in stock
+                const isAnyAvailable = notifyItems.some((ni: any) => {
+                    const matchedItem = items.find(i => i.id === ni.id);
+                    return matchedItem && (matchedItem.stock || 0) > 0;
+                });
+
+                if (isAnyAvailable && data.inStock === false) {
+                    updates.push(
+                        updateDoc(docSnap.ref, {
+                            inStock: true,
+                            updatedAt: new Date(),
+                        })
+                    );
+                }
+            });
+
+            await Promise.all(updates);
+        } catch (err) {
+            console.error("Notify stock sync error:", err);
+        }
+    };
 
     const updateQuantity = (itemId: string, delta: number) => {
         setCart(prev => {
@@ -305,6 +396,7 @@ const SharedProduct: React.FC = () => {
                 }
                 setAllItemGroups(fetchedItemGroups);
                 setAllItems(fetchedItems);
+                syncNotifyStockStatus(fetchedItems);
                 const businessRef = doc(
                     db,
                     "companies",
@@ -346,7 +438,7 @@ const SharedProduct: React.FC = () => {
 
         setCheckingApproval(true);
 
-        // 🔥 DIRECT QUERY (REALTIME)
+        // DIRECT QUERY (REALTIME)
         const q = query(
             collection(db, "companies", companyId, "AuthorizedUser"),
             where("customerNumber", "==", phone)
@@ -572,14 +664,17 @@ const SharedProduct: React.FC = () => {
                     {itemsToDisplay.map((item) => {
                         const cartItem = cart.find(i => i.item.id === item.id);
                         const isOutOfStock = (item.stock || 0) <= 0;
-                        const disableAddToCart =
-                            catalogueSettings?.disableOutOfStockAddToCart &&
-                            isOutOfStock;
-                        const priceMode = catalogueSettings?.priceDisplayMode || 'both';
+                        const showNotifyButton = catalogueSettings?.enableOutOfStockNotification && isOutOfStock;
+                        const disableAddToCart = !catalogueSettings?.enableOutOfStockNotification && isOutOfStock;
                         const salePrice = item.salesPrice || item.mrp;
+                        const mrp = item.mrp || 0;
+                        const hasBothPrices =
+                            item.salesPrice &&
+                            item.mrp &&
+                            item.salesPrice < item.mrp;
                         const hasDiscount = salePrice < (item.mrp || 0);
                         const discountPercent = item.mrp && hasDiscount ? Math.round(((item.mrp - salePrice) / item.mrp) * 100) : 0;
-                        const showDiscountBadge = catalogueSettings?.showDiscountBadge && priceMode !== 'mrp' && hasDiscount;
+                        const showDiscountBadge = catalogueSettings?.showDiscountBadge && hasDiscount;
                         return (
                             <div
                                 id={item.id}
@@ -618,33 +713,25 @@ const SharedProduct: React.FC = () => {
 
                                     {/* PRICE */}
                                     {isUserApproved ? (<div className="flex items-center justify-between w-full">
-                                        {/* LEFT */}
-                                        <div className="flex flex-col">
-                                            {priceMode === 'mrp' && (
-                                                <p className="text-xs font-black text-[#00A3E1]">
-                                                    MRP ₹{item.mrp}
-                                                </p>
-                                            )}
+                                        <div className="flex items-center justify-between w-full">
+                                            {hasBothPrices ? (
+                                                <>
+                                                    {/* struck MRP */}
+                                                    <p className="text-[11px] font-bold text-gray-400 line-through">
+                                                        ₹{mrp}
+                                                    </p>
 
-                                            {priceMode === 'salePrice' && (
+                                                    {/* sale */}
+                                                    <p className="text-xs font-black text-[#00A3E1]">
+                                                        ₹{salePrice}
+                                                    </p>
+                                                </>
+                                            ) : (
                                                 <p className="text-xs font-black text-[#00A3E1]">
                                                     ₹{salePrice}
                                                 </p>
                                             )}
-
-                                            {priceMode === 'both' && (
-                                                <p className="text-xs font-black text-[#1A3B5D]">
-                                                    MRP ₹{item.mrp}
-                                                </p>
-                                            )}
                                         </div>
-
-                                        {/* RIGHT */}
-                                        {priceMode === 'both' && (
-                                            <p className="text-xs font-black text-[#00A3E1]">
-                                                Sale ₹{salePrice}
-                                            </p>
-                                        )}
                                     </div>) : (
                                         <div className="mt-2 w-full text-center">
                                             <span className="inline-block text-[9px] font-semibold text-gray-500 bg-gray-50 border border-gray-200 px-2 py-1 rounded-sm leading-tight">
@@ -681,7 +768,19 @@ const SharedProduct: React.FC = () => {
                                                     <Plus size={12} strokeWidth={3} />
                                                 </button>
                                             </div>
+                                        ) : showNotifyButton ? (
+                                            //  CASE 1: Notify enabled + OOS
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleNotifyRequest(item);
+                                                }}
+                                                className="w-full py-2 rounded-xs text-[9px] font-black uppercase tracking-widest shadow-sm transition-all flex items-center justify-center gap-2 bg-orange-500 text-white active:scale-95"
+                                            >
+                                                🔔 Notify Me
+                                            </button>
                                         ) : (
+                                            // CASE 2: normal add to cart (may be disabled)
                                             <button
                                                 disabled={disableAddToCart}
                                                 onClick={(e) => {
@@ -728,6 +827,10 @@ const SharedProduct: React.FC = () => {
                 onClose={() => { setIsDetailDrawerOpen(false); setSelectedItemForDetails(null); }}
                 onAddToCart={addToCart}
                 initialQuantity={cart.find(i => i.item.id === selectedItemForDetails?.id)?.quantity || 1}
+                isCustomerApproved={isUserApproved}
+                onRequireLead={() => {
+                    setForceLeadOpen(true);
+                }}
             />
         </div>
     );

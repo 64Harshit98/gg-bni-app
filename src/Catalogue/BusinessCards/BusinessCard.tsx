@@ -10,7 +10,7 @@ function BusinessCard() {
     const [data, setData] = useState<any>(null);
     const [activeIndex, setActiveIndex] = useState(0);
     const scrollRef = useRef<HTMLDivElement>(null);
-    
+
     // Cards ke liye references
     const cardRef1 = useRef<HTMLDivElement>(null);
     const cardRef2 = useRef<HTMLDivElement>(null);
@@ -26,7 +26,7 @@ function BusinessCard() {
     // Card Download Karne ka function
     const downloadCard = async (ref: React.RefObject<HTMLDivElement | null>, name: string) => {
         if (ref.current === null) return;
-        
+
         try {
             const dataUrl = await toPng(ref.current, { cacheBust: true, pixelRatio: 3 });
             const link = document.createElement('a');
@@ -75,6 +75,16 @@ function BusinessCard() {
 
     const cards = [0, 1];
 
+    const formatName = (fullName: string) => {
+        if (!fullName) return "";
+
+        const parts = fullName.trim().split(/\s+/);
+
+        if (parts.length === 1) return parts[0]; // sirf ek naam
+
+        return `${parts[0]} ${parts[parts.length - 1]}`;
+    };
+
     return (
         <div className="relative w-full">
             <div
@@ -92,9 +102,9 @@ function BusinessCard() {
                             <FiShare2 size={10} />
                         </button>
                     </div>
-                    
+
                     <div className="w-[60%] bg-[#00425A] text-white p-3 flex flex-col justify-center">
-                        <h2 className="text-xs font-bold uppercase truncate">{data.personName}</h2>
+                        <h2 className="text-xs font-bold uppercase truncate">{formatName(data.personName)}</h2>
                         <p className="text-[7px] mb-2 opacity-80">{data.role}</p>
                         <div className="space-y-0.5 text-[7px] opacity-90 italic font-light">
                             <p className="truncate">📍 {data.address}</p>
@@ -136,7 +146,7 @@ function BusinessCard() {
                     </div>
 
                     <div className="flex-1 flex flex-col items-center justify-center border-y border-gray-50 my-2 py-2">
-                        <h2 className="text-xl font-black uppercase italic tracking-tight text-gray-900 leading-none">{data.personName}</h2>
+                        <h2 className="text-xl font-black uppercase italic tracking-tight text-gray-900 leading-none">{formatName(data.personName)}</h2>
                         <div className="h-0.5 w-8 bg-orange-400 mt-2 rounded-sm"></div>
                     </div>
 

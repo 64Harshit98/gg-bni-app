@@ -193,12 +193,6 @@ const ItemAdd: React.FC = () => {
             setModal({ message: 'Restock quantity required.', type: State.ERROR });
             return;
         }
-
-        if (itemSettings?.requireMOQ === true && !moq.trim()) {
-            setModal({ message: 'MOQ required.', type: State.ERROR });
-            return;
-        }
-
         // --- 2. Price Logic Validation ---
         const mrpValue = parseFloat(itemMRP) || 0;
         const saleValue = parseFloat(itemSalesPrice) || 0;
@@ -562,24 +556,7 @@ const ItemAdd: React.FC = () => {
                                 <input type="text" value={itemName} onChange={(e) => setItemName(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500 outline-none" placeholder="e.g. Apple" />
                             </div>
 
-                            <div className='grid grid-cols-2 gap-4'>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-600 mb-1">
-                                        MOQ
-                                        {itemSettings?.requireMOQ && (
-                                            <span className="text-red-500 ml-0.5">*</span>
-                                        )}
-                                    </label>
-                                    <input
-                                        type="number"
-                                        value={moq}
-                                        onChange={(e) => setMoq(e.target.value)}
-                                        className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500"
-                                        placeholder="1"
-                                    />
-                                    <p className="text-[10px] text-gray-400">Minimum Item Quantity</p>
-                                </div>
-
+                            <div className='w-full'>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:ml-0.5 after:text-red-500">Barcode</label>
                                     <div className="flex gap-2">
@@ -593,16 +570,23 @@ const ItemAdd: React.FC = () => {
                             <div className='grid grid-cols-2 gap-4'>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">MRP</label>
-                                    <input type="number" value={itemMRP} onChange={(e) => setItemMRP(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0.00" />
-                                    <p className="text-[10px] text-gray-400">Required if Sale Price is empty</p>
+                                    <input type="number" value={itemMRP} onChange={(e) => setItemMRP(e.target.value)} className="w-full p-3 border border-gray-300 rounded-md focus:ring-sky-500" placeholder="0.00" />
                                 </div>
+
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">Category</label>
-                                    <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm bg-white focus:ring-sky-500">
-                                        <option value="" disabled>Select Category</option>
-                                        {itemGroups.map(g => <option key={g.id} value={g.id!}>{g.name}</option>)}
-                                    </select>
+                                    <label className="block text-sm font-medium text-gray-600 mb-1">
+                                        MOQ
+                                    </label>
+                                    <input
+                                        type="number"
+                                        value={moq}
+                                        onChange={(e) => setMoq(e.target.value)}
+                                        className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500"
+                                        placeholder="1"
+                                    />
+                                    <p className="text-[10px] text-gray-400">Minimum Item Quantity</p>
                                 </div>
+
                                 <div>
                                     <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">Sales Price</label>
                                     <input type="number" value={itemSalesPrice} onChange={(e) => setItemSalesPrice(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0.00" />
@@ -663,14 +647,20 @@ const ItemAdd: React.FC = () => {
                                     <input type="number" value={restockQuantity} onChange={(e) => setRestockQuantity(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />
                                 </div>
                             </div>
-
+                            <div>
+                                <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">Category</label>
+                                <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm bg-white focus:ring-sky-500">
+                                    <option value="" disabled>Select Category</option>
+                                    {itemGroups.map(g => <option key={g.id} value={g.id!}>{g.name}</option>)}
+                                </select>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                {/* --- MOBILE FIXED FOOTER --- */}
-                <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-transparent flex justify-center pb-18">
-                    <button onClick={handleAddItem} disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)} className="w-48 max-w-sm bg-sky-500 text-white py-3 px-6 rounded-lg text-lg font-semibold hover:bg-sky-600 disabled:bg-gray-400 flex items-center justify-center gap-2 shadow-md">
+                {/* --- MOBILE FIXED FOOTER (Button) --- */}
+                <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-gray-100 border-t border-gray-200 z-20 flex justify-center pb-20">
+                    <button onClick={handleAddItem} disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)} className="w-full max-w-sm bg-sky-500 text-white py-3 px-6 rounded-lg text-lg font-semibold hover:bg-sky-600 disabled:bg-gray-400 flex items-center justify-center gap-2 shadow-md">
                         {isSaving ? <Spinner /> : 'Add Item'}
                     </button>
                 </div>

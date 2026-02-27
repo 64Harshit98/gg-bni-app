@@ -10,7 +10,6 @@ import { CustomButton } from '../../Components';
 import { Modal } from '../../constants/Modal';
 import { IconClose } from '../../constants/Icons';
 
-
 interface AppUser {
     uid: string;
     name?: string;
@@ -269,7 +268,7 @@ const ManageUsersPage: React.FC = () => {
                                             <p className="text-sm text-gray-600">Phone: {user.phoneNumber || 'Not Provided'}</p>
                                             <p className="text-xs text-gray-500 mt-1">Role: {user.role || 'Not Assigned'}</p>
                                         </div>
-                                        <button onClick={() => handleEditClick(user)} className='flex p-2 justify-right bg-white text-black border border-gray-300 hover:bg-gray-100 border-2 rounded-sm '>
+                                        <button onClick={() => handleEditClick(user)} className='flex p-2 justify-right bg-white text-black border border-gray-300 hover:bg-gray-100 rounded-sm '>
                                             Edit
                                         </button>
                                     </div>

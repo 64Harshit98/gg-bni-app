@@ -48,7 +48,7 @@ export interface OrderItem {
     updatedAt?: Timestamp;
     restockQuantity?: number;
     finalPrice?: number;
-    imageBase64?:string;
+    imageBase64?: string;
 }
 
 // 1. Updated Status Types
@@ -296,6 +296,7 @@ const OrdersPage: React.FC = () => {
     const dbOperations = useDatabase();
     const [_error, setError] = useState<string | null>(null);
     const [availableItems, setAvailableItems] = useState<Item[]>([]);
+    const [pendingRequestCount, setPendingRequestCount] = useState(0);
 
     const { currentUser } = useAuth();
     const { Orders, loading: dataLoading, error } = useOrdersData(
@@ -436,6 +437,27 @@ const OrdersPage: React.FC = () => {
         fetchData();
     }, [dbOperations, currentUser?.companyId]);
 
+    useEffect(() => {
+        if (!currentUser?.companyId) return;
+
+        const fetchPendingRequests = async () => {
+            try {
+                const snap = await getDocs(
+                    collection(db, "companies", currentUser.companyId, "AuthorizedUser")
+                );
+
+                const pending = snap.docs.filter(
+                    (d: any) => d.data()?.status === "pending"
+                ).length;
+
+                setPendingRequestCount(pending);
+            } catch (err) {
+                console.error("Pending request fetch error:", err);
+            }
+        };
+
+        fetchPendingRequests();
+    }, [currentUser?.companyId]);
 
     // PDF & Sharing Functions (Same as provided)
     const handlePdfAction = async (Order: Order, action: ACTION) => {
@@ -812,7 +834,34 @@ const OrdersPage: React.FC = () => {
 
             {/* --- 6. UPDATED STEPPER SECTION --- */}
             <div className={`bg-white shadow-sm sticky z-[50] bOrder-b top-[72px]`}>
-                <div className="flex items-center w-full px-2 md:px-10 pt-10 pb-8 overflow-x-auto no-scrollbar bg-white">
+
+                {/* REQUEST STRIP (30% height feel) */}
+                <div
+                    onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`)}
+                    className="mx-3 mt-2 mb-2 rounded-sm cursor-pointer
+               bg-white border border-slate-200
+               px-3 py-2 flex items-center justify-between
+               shadow-sm hover:bg-slate-50 active:scale-[0.99] transition-all"
+                >
+                    <div className="flex flex-col">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                            Customer Requests
+                        </span>
+                        <span className="text-xs font-black text-slate-800">
+                            View All Requests →
+                        </span>
+                    </div>
+
+                    {/* 🔴 Pending Count Badge */}
+                    <div className="min-w-[26px] h-[22px] px-2 flex items-center justify-center
+                    text-[11px] font-black rounded-sm
+                    bg-red-500 text-white">
+                        {pendingRequestCount}
+                    </div>
+                </div>
+
+                {/* ORDER TIMELINE */}
+                <div className="flex items-center w-full px-2 md:px-10 pt-8 pb-6 overflow-x-auto no-scrollbar bg-white">
                     {OrderStatuses.map((status, index) => {
                         const activeIndex = OrderStatuses.indexOf(activeStatusTab);
                         const isCompleted = index < activeIndex;
@@ -825,32 +874,33 @@ const OrdersPage: React.FC = () => {
                                     className="relative flex flex-col items-center flex-1 min-w-0 cursor-pointer"
                                     onClick={() => setActiveStatusTab(status)}
                                 >
-                                    <span className={`absolute ${index % 2 === 0 ? 'bottom-full mb-2' : 'top-full mt-2'} 
-                                        text-center text-[8px] sm:text-[10px] md:text-[11px] uppercase tracking-tighter 
-                                        ${isActive ? 'text-orange-600 font-black' : 'text-gray-400 font-bold'} whitespace-nowrap`}
+                                    <span
+                                        className={`absolute ${index % 2 === 0 ? 'bottom-full mb-2' : 'top-full mt-2'
+                                            } text-center text-[8px] sm:text-[10px] md:text-[11px] uppercase tracking-tighter ${isActive ? 'text-orange-600 font-black' : 'text-gray-400 font-bold'} whitespace-nowrap`}
                                     >
                                         {status}
                                     </span>
-
-
-
-                                    <div className={`w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center transition-all duration-300 z-10 bOrder-[2px] md:bOrder-[3px] 
-                                        ${isCompleted || isActive ? 'bg-orange-500 bOrder-orange-200 text-white' : 'bg-gray-200 bOrder-gray-300 text-gray-500'} 
-                                        ${isActive ? 'scale-110 shadow-md ring-2 ring-orange-100' : ''}`}
-                                    >
-                                        <span className="text-[10px] md:text-xs font-black">{count}</span>
+                                    <div
+                                        className={`w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center transition-all duration-300 z-10 ${isCompleted || isActive
+                                            ? 'bg-orange-500 border-orange-200 text-white'
+                                            : 'bg-gray-200 border-gray-300 text-gray-500'} ${isActive ? 'scale-110 shadow-md ring-2 ring-orange-100' : ''}`}>
+                                        <span className="text-[10px] md:text-xs font-black">
+                                            {count}
+                                        </span>
                                     </div>
                                 </div>
 
                                 {index < OrderStatuses.length - 1 && (
-                                    <div className={`flex-auto h-0.5 md:h-1.5 transition-colors duration-500 ${index < activeIndex ? 'bg-orange-500' : 'bg-gray-200'}`} />
+                                    <div
+                                        className={`flex-auto h-0.5 md:h-1.5 transition-colors duration-500 ${index < activeIndex ? 'bg-orange-500' : 'bg-gray-200'
+                                            }`}
+                                    />
                                 )}
                             </React.Fragment>
                         );
                     })}
                 </div>
             </div>
-
             {activeStatusTab === 'Completed' && (
                 <div className="sticky top-[178px] z-[90] flex p-1 bg-white mx-4 mt-2 rounded-sm shadow-sm border border-slate-200 max-w-md md:mx-auto w-[92%]">
                     {['unpaid', 'paid'].map((f) => (

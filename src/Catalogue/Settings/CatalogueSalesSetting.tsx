@@ -15,7 +15,7 @@ export interface CatalogueSalesSettings {
   companyId: string
   settingType: 'catalogueSales'
   showOutOfStockItems: boolean
-  disableOutOfStockAddToCart: boolean
+  enableOutOfStockNotification: boolean
   priceDisplayMode: 'mrp' | 'salePrice' | 'both'
   showDiscountBadge: boolean
   defaultCartQuantity: number
@@ -31,7 +31,7 @@ export const getDefaultCatalogueSalesSettings = (companyId: string): CatalogueSa
   companyId,
   settingType: 'catalogueSales',
   showOutOfStockItems: true,
-  disableOutOfStockAddToCart: true,
+  enableOutOfStockNotification: true,
   priceDisplayMode: 'both',
   showDiscountBadge: true,
   defaultCartQuantity: 1,
@@ -199,86 +199,25 @@ const CatalogueSalesSettings: React.FC = () => {
                 Show Out of Stock Items
               </label>
             </div>
-
             <div className="flex items-center">
               <input
                 type="checkbox"
-                checked={settings.disableOutOfStockAddToCart}
+                checked={settings.enableOutOfStockNotification}
                 onChange={(e) =>
                   handleCheckboxChange(
-                    'disableOutOfStockAddToCart',
+                    'enableOutOfStockNotification',
                     e.target.checked
                   )
                 }
                 className="w-4 h-4"
               />
               <label className="ml-2 text-sm">
-                Disable Add to Cart when Out of Stock
+                Notify customers when item is out of stock
               </label>
             </div>
           </div>
 
-          {/* Card 2 */}
-          <div className="bg-white rounded-lg p-6 shadow-md mb-2">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">
-              Pricing Display
-            </h2>
-
-            <select
-              value={settings.priceDisplayMode}
-              onChange={(e) =>
-                handleChange('priceDisplayMode', e.target.value)
-              }
-              className="w-full p-3 border rounded-lg mb-4"
-            >
-              <option value="mrp">Show MRP Only</option>
-              <option value="salePrice">Show Sale Price Only</option>
-              <option value="both">Show Both</option>
-            </select>
-
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                checked={settings.showDiscountBadge}
-                onChange={(e) =>
-                  handleCheckboxChange(
-                    'showDiscountBadge',
-                    e.target.checked
-                  )
-                }
-                className="w-4 h-4"
-              />
-              <label className="ml-2 text-sm">
-                Show Discount Badge
-              </label>
-            </div>
-          </div>
-
-          {/* Card 3 */}
-          <div className="bg-white rounded-lg p-6 shadow-md mb-2">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">
-              Conversion
-            </h2>
-
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                checked={settings.enableLeadPopup}
-                onChange={(e) =>
-                  handleCheckboxChange(
-                    'enableLeadPopup',
-                    e.target.checked
-                  )
-                }
-                className="w-4 h-4"
-              />
-              <label className="ml-2 text-sm">
-                Enable Lead Popup for Buyers
-              </label>
-            </div>
-          </div>
-
-          {/* Card 4 — Minimum Order Value */}
+          {/* Card 2 — Minimum Order Value */}
           <div className="bg-white rounded-lg p-6 shadow-md mb-2">
             <h2 className="text-lg font-semibold text-gray-800 mb-4">
               Order Rules
@@ -304,26 +243,11 @@ const CatalogueSalesSettings: React.FC = () => {
             </p>
           </div>
 
-          {/* Card 5 — Voucher Numbering & Options */}
+          {/* Card 3 — Voucher Numbering & Options */}
           <div className="bg-white rounded-lg p-6 shadow-md mb-2">
             <h2 className="text-lg font-semibold text-gray-800 mb-4">
               Voucher Numbering & Options
             </h2>
-
-            <div className="flex items-center mb-4">
-              <input
-                type="checkbox"
-                checked={settings.copyVoucherAfterSaving ?? false}
-                onChange={(e) =>
-                  handleCheckboxChange('copyVoucherAfterSaving', e.target.checked)
-                }
-                className="w-4 h-4 text-blue-600 rounded"
-              />
-              <label className="ml-2 text-gray-700 text-sm font-medium">
-                Keep items in cart after saving (Copy Voucher)
-              </label>
-            </div>
-
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-gray-700 text-sm font-medium mb-1">

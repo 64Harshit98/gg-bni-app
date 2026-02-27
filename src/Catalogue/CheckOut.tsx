@@ -324,6 +324,7 @@ const CartPage: React.FC = () => {
     };
 
     const isUserApproved = leadStatus === "approved";
+    const shouldShowPrice = isUserApproved;
     const placeOrder = async () => {
         if (!companyId || !currentUser?.uid) return;
         if (!isMovValid()) {
@@ -514,7 +515,7 @@ const CartPage: React.FC = () => {
                             {/* buttons */}
                             <div className="flex gap-3 mt-6">
                                 <button
-                                    onClick={() => navigate(-1)}
+                                    onClick={() => navigate(`/catalogue/${companyId}`)}
                                     className="flex-1 py-3 bg-gray-100 text-[#1A3B5D] text-xs font-black rounded-sm"
                                 >
                                     Continue Shopping
@@ -635,7 +636,9 @@ const CartPage: React.FC = () => {
                                                         </div>
 
                                                         <div className="flex flex-wrap items-center justify-between mt-2 gap-2">
-                                                            <span className="font-black text-[#1A3B5D] text-sm shrink-0">₹{item.price}</span>
+                                                            <span className="font-black text-[#1A3B5D] text-sm shrink-0">
+                                                                {shouldShowPrice ? `₹${item.price}` : "Price hidden"}
+                                                            </span>
                                                             <input
                                                                 type="text"
                                                                 placeholder="Note..."
@@ -776,31 +779,22 @@ const CartPage: React.FC = () => {
                                 <h3 className="text-[#1A3B5D] font-black text-xs uppercase tracking-wider mb-4 pb-2 border-b border-gray-50">Order Summary</h3>
                                 <div className="space-y-3 mb-6">
                                     <div className="flex justify-between items-center text-[10px] font-bold text-gray-400 uppercase">
-                                        <span>Subtotal</span> <span className="text-[#1A3B5D]">₹{subtotal.toLocaleString()}</span>
+                                        <span>Subtotal</span> <span className="text-[#1A3B5D]"> {shouldShowPrice ? `₹${subtotal.toLocaleString()}` : "—"}</span>
                                     </div>
                                     <div className="flex justify-between items-center text-[10px] font-bold text-gray-400 uppercase">
                                         <span>Delivery</span> <span className="text-green-500">Free</span>
                                     </div>
                                     <div className="pt-3 border-t border-gray-50 flex justify-between items-center">
                                         <span className="text-[#00A3E1] font-black text-xs uppercase">Total Pay</span>
-                                        <span className="text-xl font-black text-[#00A3E1]">₹{totalPay.toLocaleString()}</span>
+                                        <span className="text-xl font-black text-[#00A3E1]">
+                                            {shouldShowPrice ? `₹${totalPay.toLocaleString()}` : "—"}
+                                        </span>
                                     </div>
                                 </div>
                                 <button
                                     disabled={isPlacing || cartItems.length === 0}
                                     onClick={() => {
                                         if (step === 1) {
-
-                                            // APPROVAL GUARD
-                                            if (!isUserApproved) {
-                                                setApprovalError(
-                                                    leadStatus === "declined"
-                                                        ? "Your account is declined. You cannot place orders."
-                                                        : "Your account is not approved yet. Please wait for approval."
-                                                );
-                                                return;
-                                            }
-
                                             // MOV check
                                             if (!isMovValid()) {
                                                 const required = salesSettings?.minimumOrderValue || 0;
@@ -846,14 +840,18 @@ const CartPage: React.FC = () => {
                         </div>
                         <div className="space-y-4 mb-8">
                             <div className="flex justify-between text-[11px] font-bold uppercase tracking-widest text-gray-400">
-                                <span>Items ({cartItems.length})</span> <span className="text-[#1A3B5D]">₹{subtotal.toLocaleString()}</span>
+                                <span>Items ({cartItems.length})</span> <span className="text-[#1A3B5D]">
+                                    {shouldShowPrice ? `₹${subtotal.toLocaleString()}` : "—"}
+                                </span>
                             </div>
                             <div className="flex justify-between text-[11px] font-bold uppercase tracking-widest text-gray-400">
                                 <span>Shipping</span> <span className="text-green-500">Free</span>
                             </div>
                             <div className="pt-4 border-t border-gray-100 flex justify-between items-center">
                                 <span className="text-[#1A3B5D] font-black text-sm uppercase">Amount Payable</span>
-                                <span className="text-2xl font-black text-[#00A3E1]">₹{totalPay.toLocaleString()}</span>
+                                <span className="text-2xl font-black text-[#00A3E1]">
+                                    {shouldShowPrice ? `₹${totalPay.toLocaleString()}` : "—"}
+                                </span>
                             </div>
                         </div>
                         <button
@@ -871,7 +869,9 @@ const CartPage: React.FC = () => {
                             <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Total Pay</span>
                             <ChevronUp size={12} className="text-[#00A3E1]" />
                         </div>
-                        <span className="text-xl font-black text-[#1A3B5D]">₹{totalPay.toLocaleString()}</span>
+                        <span className="text-xl font-black text-[#1A3B5D]">
+                            {shouldShowPrice ? `₹${totalPay.toLocaleString()}` : "—"}
+                        </span>
                     </div>
                     <button
                         onClick={() => {

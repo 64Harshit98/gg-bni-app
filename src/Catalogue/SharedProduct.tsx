@@ -50,6 +50,8 @@ const SharedProduct: React.FC = () => {
     const [leadStatus, setLeadStatus] = useState<"approved" | "pending" | "declined" | null>(null);
     const [_checkingApproval, setCheckingApproval] = useState<boolean>(true);
     const [leadPhone, setLeadPhone] = useState<string>("");
+    const [showNotifySuccess, setShowNotifySuccess] = useState(false);
+    const [notifiedItems, setNotifiedItems] = useState<Record<string, boolean>>({});
 
     const getUserKey = () => {
         let key = localStorage.getItem('guest_uid');
@@ -180,6 +182,16 @@ const SharedProduct: React.FC = () => {
     }, [cart]);
 
     useEffect(() => {
+        if (showNotifySuccess) {
+            const t = setTimeout(() => {
+                setShowNotifySuccess(false);
+            }, 3000);
+
+            return () => clearTimeout(t);
+        }
+    }, [showNotifySuccess]);
+
+    useEffect(() => {
         if (highlightItemId) {
             setActiveHighlight(highlightItemId);
 
@@ -233,6 +245,17 @@ const SharedProduct: React.FC = () => {
         try {
             if (!companyId) return;
 
+            // SAME CHECK as Add to Cart
+            const alreadyFilled =
+                localStorage.getItem("leadSubmitted") === "true";
+
+            // lead not filled → popup dikhao
+            if (!alreadyFilled) {
+                setForceLeadOpen(false);
+                setTimeout(() => setForceLeadOpen(true), 0);
+                return;
+            }
+
             const leadData = JSON.parse(
                 localStorage.getItem("leadData") || "{}"
             );
@@ -243,12 +266,11 @@ const SharedProduct: React.FC = () => {
                 .trim();
 
             if (!number) {
-                alert("Please fill your details first");
                 setForceLeadOpen(true);
                 return;
             }
 
-            // SEPARATE COLLECTION (IMPORTANT)
+            //  rest same
             const ref = doc(
                 db,
                 "companies",
@@ -277,6 +299,7 @@ const SharedProduct: React.FC = () => {
                         id: item.id,
                         name: item.name,
                         qty: 1,
+                        inStock: (item.stock || 0) > 0,
                     },
                 ];
 
@@ -287,20 +310,60 @@ const SharedProduct: React.FC = () => {
                     customerNumber: number,
                     type: "notify",
                     items: updatedItems,
-
-                    // CRITICAL FIELDS
                     inStock: false,
                     messageSent: false,
-
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp(),
                 },
                 { merge: true }
             );
 
-            alert("You will be notified when item is back in stock");
+            setShowNotifySuccess(true);
+            setNotifiedItems(prev => ({ ...prev, [item.id!]: true }));
         } catch (err) {
             console.error("Notify error:", err);
+        }
+    };
+
+    const fetchUserNotifyStatus = async () => {
+        try {
+            if (!companyId) return;
+
+            const leadData = JSON.parse(
+                localStorage.getItem("leadData") || "{}"
+            );
+
+            const number = (leadData?.number || "")
+                .replace(/\D/g, "")
+                .trim();
+
+            if (!number) return;
+
+            const ref = doc(
+                db,
+                "companies",
+                companyId,
+                "NotifyRequests",
+                number
+            );
+
+            const snap = await getDoc(ref);
+
+            if (!snap.exists()) return;
+
+            const items = snap.data()?.items || [];
+
+            const map: Record<string, boolean> = {};
+
+            items.forEach((i: any) => {
+                if (i.id) {
+                    map[i.id] = true;
+                }
+            });
+
+            setNotifiedItems(map);
+        } catch (err) {
+            console.error("Fetch notify status error:", err);
         }
     };
 
@@ -316,24 +379,31 @@ const SharedProduct: React.FC = () => {
 
             notifySnap.forEach(docSnap => {
                 const data = docSnap.data();
-                const notifyItems = data.items || [];
-
-                // check if ANY item now in stock
-                const isAnyAvailable = notifyItems.some((ni: any) => {
+                const notifyItems = (data.items || []).map((ni: any) => {
                     const matchedItem = items.find(i => i.id === ni.id);
-                    return matchedItem && (matchedItem.stock || 0) > 0;
-                });
+                    const isNowInStock = matchedItem && (matchedItem.stock || 0) > 0;
 
-                if (isAnyAvailable && data.inStock === false) {
+                    return {
+                        ...ni,
+                        inStock: Boolean(isNowInStock)
+                    };
+                });
+                // check if ANY item now in stock
+                const isAnyAvailable = notifyItems.some(
+                    (ni: any) => ni.inStock === true
+                );
+
+                // ALWAYS sync — not only when true
+                if (data.inStock !== isAnyAvailable) {
                     updates.push(
                         updateDoc(docSnap.ref, {
-                            inStock: true,
+                            inStock: isAnyAvailable,
+                            items: notifyItems,
                             updatedAt: new Date(),
                         })
                     );
                 }
             });
-
             await Promise.all(updates);
         } catch (err) {
             console.error("Notify stock sync error:", err);
@@ -475,6 +545,10 @@ const SharedProduct: React.FC = () => {
         }
     }, []);
 
+    useEffect(() => {
+        fetchUserNotifyStatus();
+    }, [companyId]);
+
     const filteredItems = useMemo(() => {
         const result = allItems.filter(item => {
             //  hide unlisted items (LIVE RULE)
@@ -563,7 +637,13 @@ const SharedProduct: React.FC = () => {
                         localStorage.getItem("leadData") || "{}"
                     );
 
-                    setLeadPhone(leadData.number || "");
+                    const phone = leadData.number || "";
+                    setLeadPhone(phone);
+
+                    //  CRITICAL FIX — fetch again after lead submit
+                    setTimeout(() => {
+                        fetchUserNotifyStatus();
+                    }, 300);
                 }}
             />
             <header className="sticky top-0 bg-white border-b border-gray-100 shadow-sm z-[60]">
@@ -614,6 +694,18 @@ const SharedProduct: React.FC = () => {
                 {isUserDeclined && (
                     <div className="max-w-7xl mx-auto mb-3 p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-bold rounded-sm text-center">
                         Your request has been declined. Please contact the business.
+                    </div>
+                )}
+
+                {showNotifySuccess && (
+                    <div className="max-w-7xl mx-auto mb-3 p-3 bg-green-50 border border-green-200 text-green-700 text-xs font-bold rounded-sm text-center relative animate-fade-in">
+                        You will be notified when item is back in stock
+                        <button
+                            onClick={() => setShowNotifySuccess(false)}
+                            className="absolute right-2 top-2 text-green-600 font-black"
+                        >
+                            ✕
+                        </button>
                     </div>
                 )}
 
@@ -773,11 +865,15 @@ const SharedProduct: React.FC = () => {
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    handleNotifyRequest(item);
+                                                    if (!notifiedItems[item.id!]) {
+                                                        handleNotifyRequest(item);
+                                                    }
                                                 }}
-                                                className="w-full py-2 rounded-xs text-[9px] font-black uppercase tracking-widest shadow-sm transition-all flex items-center justify-center gap-2 bg-orange-500 text-white active:scale-95"
-                                            >
-                                                🔔 Notify Me
+                                                className={`w-full py-2 rounded-xs text-[9px] font-black uppercase tracking-widest shadow-sm transition-all flex items-center justify-center gap-2 ${notifiedItems[item.id!]
+                                                    ? 'bg-green-600 text-white cursor-default'
+                                                    : 'bg-orange-500 text-white active:scale-95'
+                                                    }`}>
+                                                {notifiedItems[item.id!] ? '✓ We will notify you' : '🔔 Notify Me'}
                                             </button>
                                         ) : (
                                             // CASE 2: normal add to cart (may be disabled)

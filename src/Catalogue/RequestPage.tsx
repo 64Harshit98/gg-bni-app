@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronLeft } from 'lucide-react'
-import { collection, getDocs, doc, updateDoc, deleteDoc } from "firebase/firestore";
+import { collection, doc, updateDoc, deleteDoc, onSnapshot } from "firebase/firestore";
 import { db } from '../lib/Firebase';
 import { useAuth } from "../context/auth-context";
 import { Search, Phone, Filter } from 'lucide-react'
@@ -14,7 +14,7 @@ type RequestType = {
     status?: string;
     createdAt?: any;
     type?: 'notify' | 'approval';
-    items?: { name: string; qty?: number }[];
+    items?: { name: string; qty?: number, id?: string, inStock?: boolean }[];
     inStock?: boolean;
     messageSent?: boolean;
 };
@@ -65,19 +65,46 @@ function RequestPage() {
     };
 
     const getNotifyCardStyle = (req: RequestType) => {
-        // Case 1: Out of stock + message NOT sent → RED
-        if (req.inStock === false && req.messageSent === false) {
-            return "bg-red-100 border-red-200";
+        const messageSent = !!req.messageSent;
+
+        const items = req.items || [];
+
+        // check if ANY item is in stock
+        const anyInStock = items.some(i => i.inStock === true);
+
+        // check if ALL items out of stock
+        const allOutOfStock =
+            items.length > 0 &&
+            items.every(i => i.inStock === false || i.inStock === undefined);
+
+        // ALL OOS
+        if (allOutOfStock) {
+            return `
+            bg-gradient-to-br from-red-50 to-red-100
+            border-red-200
+            shadow-[0_1px_0_rgba(0,0,0,0.03)]
+            hover:shadow-sm
+        `;
         }
 
-        // Case 2: In stock + message NOT sent → YELLOW
-        if (req.inStock === true && req.messageSent === false) {
-            return "bg-yellow-100 border-yellow-200";
+        // ANY available but message not sent
+        if (anyInStock && !messageSent) {
+            return `
+            bg-gradient-to-br from-amber-50 to-yellow-100
+            border-yellow-200
+            shadow-[0_1px_0_rgba(0,0,0,0.03)]
+            hover:shadow-sm
+        `;
         }
 
-        // Case 3: In stock + message sent → GREEN
-        if (req.inStock === true && req.messageSent === true) {
-            return "bg-emerald-100 border-emerald-200";
+        // message sent + available
+        if (anyInStock && messageSent) {
+            return `
+            bg-gradient-to-br from-emerald-50 to-emerald-100
+            border-emerald-200
+            shadow-[0_1px_0_rgba(0,0,0,0.03)]
+            hover:shadow-sm
+        `;
         }
 
         return "bg-white border-gray-100";
@@ -178,35 +205,26 @@ function RequestPage() {
     useEffect(() => {
         if (!companyId) return;
 
-        const fetchRequests = async () => {
-            const [approvalSnap, notifySnap] = await Promise.all([
-                getDocs(
-                    collection(db, "companies", companyId, "AuthorizedUser")
-                ),
-                getDocs(
-                    collection(db, "companies", companyId, "NotifyRequests")
-                ),
-            ]);
+        const approvalRef = collection(
+            db,
+            "companies",
+            companyId,
+            "AuthorizedUser"
+        );
 
-            const approvalList = approvalSnap.docs.map(doc => ({
-                id: doc.id,
-                type: "approval",
-                ...doc.data(),
-            }));
+        const notifyRef = collection(
+            db,
+            "companies",
+            companyId,
+            "NotifyRequests"
+        );
 
-            const notifyList = notifySnap.docs.map(doc => {
-                console.log("Notify doc data:", doc.data()); // 👈 ADD THIS
-                return {
-                    id: doc.id,
-                    type: "notify",
-                    ...doc.data(),
-                };
-            });
+        let approvalData: any[] = [];
+        let notifyData: any[] = [];
 
-            //  MERGE
-            const combined = [...approvalList, ...notifyList];
+        const mergeAndSet = () => {
+            const combined = [...approvalData, ...notifyData];
 
-            // DEDUPE BY TYPE + NUMBER
             const uniqueMap = new Map<string, any>();
 
             combined.forEach((item: any) => {
@@ -215,24 +233,52 @@ function RequestPage() {
                         ? `approval_${item.customerNumber}`
                         : `notify_${item.customerNumber}`;
 
-                // latest wala rakhenge (createdAt desc later)
-                if (!uniqueMap.has(key)) {
-                    uniqueMap.set(key, item);
-                }
+                uniqueMap.set(key, item);
             });
 
             const merged = Array.from(uniqueMap.values()).sort(
-                (a: any, b: any) => {
-                    const aTime = a.createdAt?.seconds || 0;
-                    const bTime = b.createdAt?.seconds || 0;
-                    return bTime - aTime;
-                }
-            ) as RequestType[];
+                (a: any, b: any) =>
+                    (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)
+            );
 
             setRequests(merged);
         };
 
-        fetchRequests();
+        // approval realtime
+        const unsubApproval = onSnapshot(approvalRef, (snap) => {
+            approvalData = snap.docs.map(doc => ({
+                id: doc.id,
+                type: "approval",
+                ...doc.data(),
+            }));
+            mergeAndSet();
+        });
+
+        // notify realtime
+        const unsubNotify = onSnapshot(notifyRef, (snap) => {
+            notifyData = snap.docs.map((docSnap) => {
+                const data = docSnap.data() as Partial<RequestType>;
+
+                return {
+                    id: docSnap.id,
+                    type: "notify" as const,
+
+                    // spread safe
+                    ...data,
+
+                    // boolean normalize (SUPER SAFE)
+                    inStock: Boolean(data?.inStock),
+                    messageSent: Boolean(data?.messageSent),
+                };
+            });
+
+            mergeAndSet();
+        });
+
+        return () => {
+            unsubApproval();
+            unsubNotify();
+        };
     }, [companyId]);
 
     const markMessageSent = async (requestId: string) => {
@@ -265,7 +311,6 @@ function RequestPage() {
 
         try {
             if (req.type === "notify") {
-                console.log("Notify status:", req.inStock, req.messageSent);
                 await deleteDoc(
                     doc(db, "companies", companyId, "NotifyRequests", req.id)
                 );
@@ -354,7 +399,7 @@ function RequestPage() {
                                 : 'text-gray-500'
                                 }`}
                         >
-                            Notify Requests
+                            Pre-Order Requests
                         </button>
 
                         <button
@@ -368,7 +413,7 @@ function RequestPage() {
                         </button>
                     </div>
                 </div>
-                {/* 🟢 Notify Legend */}
+                {/* Notify Legend */}
                 {requestType === "notify" && (
                     <div className="flex justify-start mb-3 px-1">
                         <NotifyLegend />
@@ -457,7 +502,8 @@ function RequestPage() {
                                                 {req.customerName || "No Name"}
                                             </h3>
 
-                                            <p className="text-xs font-medium flex items-center gap-1.5 text-emerald-600 bg-emerald-50 border border-emerald-200 p-0.5 rounded-xs">
+                                            <p
+                                                className={`text-xs font-medium flex items-center gap-1.5 p-0.5 rounded-xs border ${req.type === "notify" ? "text-gray-600 bg-gray-50 border-gray-200" : "text-emerald-600 bg-emerald-50 border-emerald-200"}`}>
                                                 <Phone size={14} className="text-gray-400" />
                                                 {req.customerNumber || "No Number"}
                                             </p>
@@ -506,11 +552,23 @@ function RequestPage() {
                                                     req.items.map((item, idx) => (
                                                         <div
                                                             key={idx}
-                                                            className="text-xs border border-gray-200 rounded p-2 bg-gray-50 flex justify-between"
+                                                            className="text-xs border border-gray-200 rounded p-2 bg-gray-50 flex justify-between items-center"
                                                         >
                                                             <span className="font-semibold text-slate-700">
                                                                 {item.name}
                                                             </span>
+
+                                                            {/* NEW STOCK LABEL */}
+                                                            {!item.inStock && (
+                                                                <span className="text-[9px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-xs">
+                                                                    Out of Stock
+                                                                </span>
+                                                            )}
+                                                            {item.inStock && (
+                                                                <span className="text-[10px] font-bold text-green-500 bg-green-50 border border-green-300 px-2 py-0.5 rounded-xs">
+                                                                    In Stock
+                                                                </span>
+                                                            )}
                                                         </div>
                                                     ))
                                                 ) : (

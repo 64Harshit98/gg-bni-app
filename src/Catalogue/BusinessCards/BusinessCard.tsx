@@ -95,10 +95,10 @@ function BusinessCard() {
                 {/* ================= DESIGN 1 ================= */}
                 <div ref={cardRef1} className="relative flex-shrink-0 w-[280px] h-[155px] flex rounded shadow-md overflow-hidden bg-white border border-gray-200 snap-center">
                     <div className="absolute top-1.5 right-1.5 flex gap-1 z-20">
-                        <button onClick={() => downloadCard(cardRef1, 'design1')} className="p-1 bg-black/40 hover:bg-black/60 rounded-full text-white">
+                        <button onClick={() => downloadCard(cardRef1, 'design1')} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
                             <FiDownload size={10} />
                         </button>
-                        <button onClick={handleShare} className="p-1 bg-black/40 hover:bg-black/60 rounded-full text-white">
+                        <button onClick={handleShare} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
                             <FiShare2 size={10} />
                         </button>
                     </div>
@@ -107,10 +107,9 @@ function BusinessCard() {
                         <h2 className="text-xs font-bold uppercase truncate">{formatName(data.personName)}</h2>
                         <p className="text-[7px] mb-2 opacity-80">{data.role}</p>
                         <div className="space-y-0.5 text-[7px] opacity-90 italic font-light">
-                            <p className="truncate">📍 {data.address}</p>
+                            <p className="">📍 {data.address}</p>
                             <p>📞 {data.phone}</p>
                             <p className="truncate">✉️ {data.email}</p>
-                            <p className="truncate">🌐 {data.website}</p>
                         </div>
                     </div>
                     <div className="w-[40%] flex flex-col items-center justify-center p-2 text-center bg-white">
@@ -122,7 +121,7 @@ function BusinessCard() {
 
                 {/* ================= DESIGN 2 ================= */}
                 <div ref={cardRef2} className="relative flex-shrink-0 w-[280px] h-[155px] flex flex-col rounded-sm shadow-lg overflow-hidden bg-white border border-gray-100 snap-center p-4">
-                    <div className="absolute top-2 right-2 flex gap-1 z-20">
+                    <div className="absolute top-2 right-2 flex gap-1 z-20 mt-1">
                         <button onClick={() => downloadCard(cardRef2, 'design2')} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
                             <FiDownload size={10} />
                         </button>
@@ -131,7 +130,7 @@ function BusinessCard() {
                         </button>
                     </div>
 
-                    <div className="flex justify-between items-center w-full mb-3">
+                    <div className="flex justify-between items-center w-full mb-1">
                         <div className="flex items-center gap-2">
                             <div className="flex flex-col">
                                 <h3 className="font-extrabold text-[8px] uppercase tracking-wider text-gray-800 leading-none">{data.companyName}</h3>
@@ -148,33 +147,24 @@ function BusinessCard() {
                     <div className="flex-1 flex flex-col items-center justify-center border-y border-gray-50 my-2 py-2">
                         <h2 className="text-xl font-black uppercase italic tracking-tight text-gray-900 leading-none">{formatName(data.personName)}</h2>
                         <div className="h-0.5 w-8 bg-orange-400 mt-2 rounded-sm"></div>
+                        <div className="flex items-center gap-1.5 mt-1">
+                            <span className="text-[7px]">{data.email}</span>
+                        </div>
                     </div>
 
                     <div className="mt-auto">
-                        <div className="flex items-center justify-between text-[7px] font-semibold text-gray-600 px-1 mb-1.5">
-                            <div className="flex items-center gap-1.5">
-                                <span className="text-orange-500">✉️</span>
-                                <span className="truncate max-w-[70px]">{data.email}</span>
-                            </div>
+                        <div className="flex items-center justify-between text-[7px] font-semibold text-gray-600 px-1 mb-1.5 gap-1.5">
                             <div className="h-3 w-[1px] bg-gray-200"></div>
                             <div className="flex items-center gap-1.5">
                                 <span className="text-orange-500">📞</span>
                                 <span>{data.phone}</span>
                             </div>
                             <div className="h-3 w-[1px] bg-gray-200"></div>
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center">
                                 <span className="text-orange-500">📍</span>
-                                <span className="truncate max-w-[70px]">{data.address}</span>
+                                <span className="">{data.address}</span>
                             </div>
                         </div>
-                        <div className="flex items-center justify-center gap-1 text-[7px] font-bold text-cyan-700 bg-cyan-50/50 py-0.5 rounded-sm">
-                            <span className="text-[8px]">🔗</span>
-                            <span className="truncate max-w-[200px] italic">{data.website}</span>
-                        </div>
-                    </div>
-                    <div className="absolute bottom-1 right-3 flex items-center gap-1 opacity-30">
-                        <div className="w-3 h-3 border border-gray-400 border-dashed rounded-[1px]"></div>
-                        <span className="text-[4px] font-bold">SCAN</span>
                     </div>
                 </div>
             </div>

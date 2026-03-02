@@ -47,7 +47,6 @@ export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     gstScheme: 'none',
     taxType: 'inclusive',
     lockTaxToggle: false,
-
     enableRounding: true,
     roundingInterval: 1,
     cartInsertionOrder: 'top',

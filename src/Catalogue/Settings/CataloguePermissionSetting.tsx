@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { db } from '../../lib/Firebase';
-import { doc, getDoc, setDoc, collection } from 'firebase/firestore';
+import React, { useState, useMemo } from 'react';
+//  BACKEND IMPORTS COMMENTED
+// import { db } from '../../lib/Firebase';
+// import { doc, getDoc, setDoc, collection } from 'firebase/firestore';
+
 import { Cata_Permissions as Permissions } from '../../Catalogue/enum/cata_permissions.enum';
 import { ROLES } from '../../enums';
-import Loading from '../../Pages/Loading/Loading';
+// import Loading from '../../Pages/Loading/Loading';
 import { useNavigate } from 'react-router';
-import { useAuth } from '../../context/auth-context';
+// import { useAuth } from '../../context/auth-context';
 
 type RolePermissionsMap = Record<string, Permissions[]>;
 
@@ -13,10 +15,9 @@ export const EXCLUDED_OWNER_PERMISSIONS: Permissions[] = [
     Permissions.ViewAttendance,
 ];
 
-//  SALESMAN safe permissions
+// SALESMAN safe permissions
 const DEFAULT_PERMISSIONS_MAP: Record<string, Permissions[]> = {
     [ROLES.SALESMAN]: [
-        // Dashboard
         Permissions.ViewDashboard,
         Permissions.ViewCatalogue,
         Permissions.ViewFilter,
@@ -25,16 +26,12 @@ const DEFAULT_PERMISSIONS_MAP: Record<string, Permissions[]> = {
         Permissions.ViewSalesbarchart,
         Permissions.ViewTopSoldItems,
         Permissions.ViewTopCustomers,
-
-        // Orders
         Permissions.CreateOrders,
         Permissions.CreateOrdersReturn,
     ],
 
-    // manager disabled
     [ROLES.MANAGER]: [],
 
-    // owner full
     [ROLES.OWNER]: Object.values(Permissions).filter(
         (permission) => !EXCLUDED_OWNER_PERMISSIONS.includes(permission)
     ),
@@ -65,33 +62,83 @@ const permissionGroups = {
         title: 'Dashboard & General',
         permissions: [
             Permissions.ViewDashboard,
-            Permissions.ViewFilter,
             Permissions.ViewHidebutton,
-            Permissions.ViewAttendance,
+            Permissions.ViewFilter,
             Permissions.ViewOrderscard,
             Permissions.ViewSalesbarchart,
-            Permissions.Viewrestockcard,
+            Permissions.ViewPaymentmethods,
             Permissions.ViewTopSoldItems,
+            Permissions.ViewTopSalesperson,
             Permissions.ViewTopCustomers,
+            Permissions.ViewAttendance,
+            Permissions.Viewrestockcard,
+            Permissions.ViewCatalogue,
         ],
     },
-    sales: {
-        title: 'Orders & Reports',
+
+    transactions: {
+        title: 'Transactions',
         permissions: [
+            Permissions.ViewFilterbutton,
+            Permissions.ViewEditReturn,
             Permissions.CreateOrders,
             Permissions.CreateOrdersReturn,
+            Permissions.PrintQR,
+        ],
+    },
+
+    reports: {
+        title: 'Reports',
+        permissions: [
+            Permissions.ViewReports,
+            Permissions.ViewItemReport,
+            Permissions.ViewSalesReport,
+            Permissions.ViewPNLReport,
+            Permissions.ViewDownloadPDF,
+        ],
+    },
+
+    settings: {
+        title: 'Settings & Billing',
+        permissions: [
+            Permissions.ChangeViewtype,
+            Permissions.SalesmanwiseBilling,
+            Permissions.RoundingOff,
+            Permissions.ItemwiseDiscount,
+            Permissions.LockDiscountPrice,
+            Permissions.AllownegativeStock,
+            Permissions.AllowDueBilling,
+        ],
+    },
+
+    management: {
+        title: 'Inventory & User Management',
+        permissions: [
+            Permissions.ManageItemGroup,
+            Permissions.ManageItems,
+            Permissions.ManageUsers,
+            Permissions.ManageEditProfile,
+            Permissions.CreateUsers,
+            Permissions.SetPermissions,
         ],
     },
 };
 
 const CataloguePermissionSetting: React.FC = () => {
+    const navigate = useNavigate();
+
+    // AUTH DISABLED
+    // const { currentUser } = useAuth();
+
+    //  LOCAL MOCK STATE
     const [rolePermissions, setRolePermissions] =
-        useState<RolePermissionsMap>({});
-    const [loading, setLoading] = useState(true);
+        useState<RolePermissionsMap>({
+            [ROLES.SALESMAN]: getDefaultPermissions(ROLES.SALESMAN),
+        });
+
+    const [loading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
-    const navigate = useNavigate();
-    const { currentUser } = useAuth();
 
     const ALL_ROLES = useMemo(() => Object.values(ROLES), []);
 
@@ -101,90 +148,15 @@ const CataloguePermissionSetting: React.FC = () => {
         [ALL_ROLES]
     );
 
-
     const [selectedRole, setSelectedRole] =
         useState<string>(ROLES.SALESMAN);
 
+    //  FIRESTORE FETCH COMPLETELY DISABLED
+    /*
     useEffect(() => {
-        if (!currentUser?.companyId) {
-            setLoading(false);
-            return;
-        }
-
-        const companyId = currentUser.companyId;
-
-        const fetchAndEnsurePermissions = async () => {
-            try {
-                const permissionsMap: RolePermissionsMap = {};
-                const permissionsCollectionRef = collection(
-                    db,
-                    'companies',
-                    companyId,
-                    'permissions'
-                );
-
-                for (const role of ALL_ROLES) {
-                    const docRef = doc(permissionsCollectionRef, role);
-                    const docSnap = await getDoc(docRef);
-
-                    let finalPermissions: Permissions[] = [];
-                    let shouldUpdateDB = false;
-
-                    if (docSnap.exists()) {
-                        let data = docSnap.data().allowedPermissions || [];
-
-                        if (typeof data === 'string') {
-                            try {
-                                data = JSON.parse(data);
-                            } catch {
-                                data = [];
-                            }
-                        }
-
-                        if (role === ROLES.OWNER) {
-                            finalPermissions = getSafePermissionsToSave(
-                                role,
-                                Object.values(Permissions)
-                            );
-                            shouldUpdateDB = true;
-                        } else {
-                            finalPermissions = Array.isArray(data) ? data : [];
-                        }
-                    } else {
-                        const defaults = getDefaultPermissions(role);
-                        finalPermissions = getSafePermissionsToSave(
-                            role,
-                            defaults
-                        );
-                        shouldUpdateDB = true;
-                    }
-
-                    if (shouldUpdateDB) {
-                        await setDoc(
-                            docRef,
-                            {
-                                allowedPermissions: finalPermissions,
-                                companyId,
-                                role,
-                            },
-                            { merge: true }
-                        );
-                    }
-
-                    permissionsMap[role] = finalPermissions;
-                }
-
-                setRolePermissions(permissionsMap);
-            } catch (err) {
-                console.error('Error fetching permissions:', err);
-                setError('Failed to load permissions.');
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchAndEnsurePermissions();
-    }, [ALL_ROLES, currentUser?.companyId]);
+      // backend disabled
+    }, []);
+    */
 
     const handlePermissionChange = (
         role: string,
@@ -208,44 +180,18 @@ const CataloguePermissionSetting: React.FC = () => {
         });
     };
 
+    //  SAVE API DISABLED (FRONTEND ONLY)
     const handleSaveChanges = async (role: string) => {
-        if (!currentUser?.companyId) return;
-
         try {
-            setSuccessMessage(null);
-            setError(null);
-
-            const rawPermissions = rolePermissions[role] || [];
-            const permissionsToSave = getSafePermissionsToSave(
-                role,
-                rawPermissions
-            );
-
-            const docRef = doc(
-                db,
-                'companies',
-                currentUser.companyId,
-                'permissions',
-                role
-            );
-
-            await setDoc(
-                docRef,
-                { allowedPermissions: permissionsToSave },
-                { merge: true }
-            );
-
-            setSuccessMessage(
-                `Permissions for ${role} updated successfully!`
-            );
+            setSuccessMessage(`(Mock) Permissions for ${role} updated!`);
             setTimeout(() => setSuccessMessage(null), 3000);
         } catch (err) {
-            console.error('Error updating permissions:', err);
             setError(`Failed to update permissions for ${role}.`);
         }
     };
 
-    if (loading) return <Loading />;
+    // if (loading) return <Loading />;
+    if (loading) return null;
 
     return (
         <div className="bg-gray-100 min-h-screen mb-16">
@@ -267,11 +213,10 @@ const CataloguePermissionSetting: React.FC = () => {
                         <button
                             key={role}
                             onClick={() => setSelectedRole(role)}
-                            className={`px-6 py-2 rounded-md text-sm font-medium transition-all capitalize m-0.5 ${
-                                selectedRole === role
-                                    ? 'bg-white text-sky-500 shadow-sm'
-                                    : 'text-gray-600 hover:text-gray-900'
-                            }`}
+                            className={`px-6 py-2 rounded-md text-sm font-medium transition-all capitalize m-0.5 ${selectedRole === role
+                                ? 'bg-white text-sky-500 shadow-sm'
+                                : 'text-gray-600 hover:text-gray-900'
+                                }`}
                         >
                             {role}
                         </button>
@@ -302,53 +247,45 @@ const CataloguePermissionSetting: React.FC = () => {
                     </div>
 
                     <div className="space-y-6">
-                        {Object.values(permissionGroups).map(
-                            (group, index) => (
-                                <fieldset
-                                    key={group.title}
-                                    className={`p-4 border border-gray-200 rounded-lg bg-gray-50/50 ${
-                                        index > 0 ? 'pt-4' : ''
+                        {Object.values(permissionGroups).map((group, index) => (
+                            <fieldset
+                                key={group.title}
+                                className={`p-4 border border-gray-200 rounded-lg bg-gray-50/50 ${index > 0 ? 'pt-4' : ''
                                     }`}
-                                >
-                                    <legend className="text-md font-bold text-gray-700 px-2 bg-white">
-                                        {group.title}
-                                    </legend>
+                            >
+                                <legend className="text-md font-bold text-gray-700 px-2 bg-white">
+                                    {group.title}
+                                </legend>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
-                                        {group.permissions.map(
-                                            (permission) => (
-                                                <label
-                                                    key={permission}
-                                                    className="flex items-center space-x-3 p-2 rounded transition hover:bg-white hover:shadow-sm cursor-pointer"
-                                                >
-                                                    <input
-                                                        type="checkbox"
-                                                        className="h-5 w-5 rounded border-gray-300 text-sky-500"
-                                                        checked={
-                                                            rolePermissions[
-                                                                selectedRole
-                                                            ]?.includes(
-                                                                permission
-                                                            ) || false
-                                                        }
-                                                        onChange={(e) =>
-                                                            handlePermissionChange(
-                                                                selectedRole,
-                                                                permission,
-                                                                e.target.checked
-                                                            )
-                                                        }
-                                                    />
-                                                    <span className="text-sm text-gray-600 font-medium">
-                                                        {permission}
-                                                    </span>
-                                                </label>
-                                            )
-                                        )}
-                                    </div>
-                                </fieldset>
-                            )
-                        )}
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
+                                    {group.permissions.map((permission) => (
+                                        <label
+                                            key={permission}
+                                            className="flex items-center space-x-3 p-2 rounded transition hover:bg-white hover:shadow-sm cursor-pointer"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                className="h-5 w-5 rounded border-gray-300 text-sky-500"
+                                                checked={
+                                                    rolePermissions[selectedRole]?.includes(permission) ||
+                                                    false
+                                                }
+                                                onChange={(e) =>
+                                                    handlePermissionChange(
+                                                        selectedRole,
+                                                        permission,
+                                                        e.target.checked
+                                                    )
+                                                }
+                                            />
+                                            <span className="text-sm text-gray-600 font-medium">
+                                                {permission}
+                                            </span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </fieldset>
+                        ))}
                     </div>
                 </div>
             </div>

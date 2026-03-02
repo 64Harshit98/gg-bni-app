@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getItemGroupsByCompany, getItemsByCompany } from '../lib/ItemsFirebase';
 import type { ItemGroup, Item } from '../constants/models';
 import { FiPackage, FiPlus } from 'react-icons/fi';
-import { ShoppingCart, ChevronLeft } from 'lucide-react';
+import { ShoppingCart} from 'lucide-react';
 import { Spinner } from '../constants/Spinner';
 import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName.tsx';
@@ -153,13 +153,6 @@ const SharedCataloguePage: React.FC = () => {
             <header className="sticky top-0 z-[60] bg-white border-b border-gray-100 shadow-sm">
                 <div className="max-w-7xl mx-auto px-3 py-3 flex justify-between items-center">
                     <div className="flex items-center gap-3">
-                        <button
-                            onClick={() => navigate(-1)}
-                            className="p-2 hover:bg-gray-100 rounded-sm transition-colors"
-                        >
-                            <ChevronLeft size={20} className="text-[#1A3B5D]" />
-                        </button>
-
                         <div className="flex items-center gap-1.5">
                             <div className="w-1 h-5 bg-[#00A3E1] rounded-sm"></div>
                             <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">

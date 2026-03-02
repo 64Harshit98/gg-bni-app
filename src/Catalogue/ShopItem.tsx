@@ -10,6 +10,7 @@ import { Spinner } from '../constants/Spinner';
 import { useNavigate, useParams } from 'react-router-dom';
 import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName';
+import { syncNotifyStock } from "../../src/Catalogue/utils/syncNotifyStock";
 import SearchBar from './SearchBar';
 import { useLocation } from 'react-router-dom';
 import { db } from '../lib/Firebase';
@@ -305,6 +306,17 @@ const MyShop: React.FC = () => {
         if (!dbOperations) return;
         try {
             await dbOperations.updateItem(itemId, { isListed: newState });
+            const updatedItem = allItems.find(i => i.id === itemId);
+
+            if (updatedItem && companyId) {
+                const isNowInStock = (updatedItem.stock || 0) > 0;
+
+                await syncNotifyStock(
+                    companyId,
+                    updatedItem.id!,
+                    isNowInStock
+                );
+            }
             setAllItems(prev => prev.map(item => item.id === itemId ? { ...item, isListed: newState } as Item : item));
         } catch (err) {
             console.error("Failed to update listed status:", err);
@@ -623,8 +635,33 @@ const MyShop: React.FC = () => {
             <ItemEditDrawer
                 item={selectedItemForEdit}
                 isOpen={isDrawerOpen}
-                onClose={() => { setIsDrawerOpen(false); setSelectedItemForEdit(null); }}
-                onSaveSuccess={(updated) => setAllItems(prev => prev.map(i => i.id === selectedItemForEdit?.id ? { ...i, ...updated } as Item : i))}
+                onClose={() => {
+                    setIsDrawerOpen(false);
+                    setSelectedItemForEdit(null);
+                }}
+                onSaveSuccess={async (updated) => {
+                    setAllItems(prev =>
+                        prev.map(i =>
+                            i.id === selectedItemForEdit?.id
+                                ? { ...i, ...updated }
+                                : i
+                        )
+                    );
+
+                    // REAL STOCK SYNC
+                    if (companyId && selectedItemForEdit) {
+                        const newStock =
+                            updated.stock ?? selectedItemForEdit.stock ?? 0;
+
+                        const isNowInStock = newStock > 0;
+
+                        await syncNotifyStock(
+                            companyId,
+                            selectedItemForEdit.id!,
+                            isNowInStock
+                        );
+                    }
+                }}
             />
 
             <ItemDetailDrawer

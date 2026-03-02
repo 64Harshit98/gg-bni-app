@@ -6,12 +6,7 @@ import {
   formatDateForInput,
   type PurchaseRecord,
 } from './PurchaseReportComponents/purchaseReports.utils';
-  formatDate,
-  formatDateForInput,
-  type PurchaseRecord,
-} from './PurchaseReportComponents/purchaseReports.utils';
 import { jsPDF } from 'jspdf';
-import FilterSelect from './PurchaseReportComponents/FilterSelect';
 import FilterSelect from './PurchaseReportComponents/FilterSelect';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -98,7 +93,6 @@ const PurchaseReport: React.FC = () => {
 
   const handleApplyFilters = () => {
     const start = customStartDate ? new Date(customStartDate) : new Date(0);
-    const start = customStartDate ? new Date(customStartDate) : new Date(0);
     start.setHours(0, 0, 0, 0);
 
     const end = customEndDate ? new Date(customEndDate) : new Date();
@@ -140,21 +134,12 @@ const PurchaseReport: React.FC = () => {
     }
 
     const newFilteredPurchases = [...purchases];
-    const newFilteredPurchases = [...purchases];
 
     newFilteredPurchases.sort((a, b) => {
       const key = sortConfig.key;
       const direction = sortConfig.direction === 'asc' ? 1 : -1;
 
       if (key === 'items') {
-        const totalItemsA = a.items.reduce(
-          (sum, item) => sum + item.quantity,
-          0,
-        );
-        const totalItemsB = b.items.reduce(
-          (sum, item) => sum + item.quantity,
-          0,
-        );
         const totalItemsA = a.items.reduce(
           (sum, item) => sum + item.quantity,
           0,
@@ -190,17 +175,10 @@ const PurchaseReport: React.FC = () => {
     const totalOrders = newFilteredPurchases.length;
     const averagePurchaseValue =
       totalOrders > 0 ? totalPurchases / totalOrders : 0;
-    const averagePurchaseValue =
-      totalOrders > 0 ? totalPurchases / totalOrders : 0;
+
 
     return {
       filteredPurchases: newFilteredPurchases,
-      summary: {
-        totalPurchases,
-        totalOrders,
-        totalItemsPurchased,
-        averagePurchaseValue,
-      },
       summary: {
         totalPurchases,
         totalOrders,
@@ -319,9 +297,6 @@ const PurchaseReport: React.FC = () => {
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
           Purchase Report
         </h1>
-        <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
-          Purchase Report
-        </h1>
         <button onClick={() => navigate(-1)} className="p-2">
           <IconClose width={20} height={20} />
         </button>
@@ -330,10 +305,6 @@ const PurchaseReport: React.FC = () => {
       {/* FILTERS */}
       <div className="bg-white p-4 rounded-lg shadow-md mb-2">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          <FilterSelect
-            value={datePreset}
-            onChange={(e) => handleDatePresetChange(e.target.value)}
-          >
           <FilterSelect
             value={datePreset}
             onChange={(e) => handleDatePresetChange(e.target.value)}
@@ -423,7 +394,7 @@ const PurchaseReport: React.FC = () => {
             }}
             className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 transition"
           >
-            Download
+            Download Report
           </button>
         </div>
       </div>

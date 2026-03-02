@@ -289,12 +289,12 @@ const ItemReport: React.FC = () => {
         />
       </div>
 
-      <div className="bg-white p-4 rounded-lg flex flex-col md:flex-row justify-between items-center gap-4">
+      <div className="bg-white p-4 rounded-lg shadow-md flex justify-between items-center">
         <h2 className="text-lg font-semibold text-gray-700">Report Details</h2>
         <div className="flex items-center space-x-3 w-full md:w-auto overflow-x-auto">
           <button
             onClick={() => setIsListVisible(!isListVisible)}
-            className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition whitespace-nowrap"
+            className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition"
           >
             {isListVisible ? 'Hide List' : 'Show List'}
           </button>
@@ -312,7 +312,7 @@ const ItemReport: React.FC = () => {
                 setIsDownloadModalOpen(true);
               }
             }}
-            className="bg-blue-600 text-white font-semibold rounded-md py-2 px-4 shadow-sm hover:bg-blue-700 whitespace-nowrap"
+            className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 transition"
           >
             Download Report
           </button>

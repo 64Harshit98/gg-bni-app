@@ -27,6 +27,19 @@ export default function useCustomerReport() {
     type: State.INFO,
     message: '',
   });
+  const [sortConfig, setSortConfig] = useState<{
+    key: string; // Changed from keyof Sale to string
+    direction: 'asc' | 'desc';
+  }>({ key: 'partyName', direction: 'asc' });
+
+  // Update handleSort to accept a string key
+  const handleSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
 
   useEffect(() => {
     const today = new Date();
@@ -70,6 +83,7 @@ export default function useCustomerReport() {
             return {
               id: doc.id,
               partyName: data.partyName || 'N/A',
+              partyNumber: data.partyNumber || 'N/A',
               totalAmount: data.totalAmount || 0,
               dueAmount: data.dueAmount || 0,
               createdAt:
@@ -93,6 +107,8 @@ export default function useCustomerReport() {
   return {
     navigate,
     sales,
+    sortConfig,
+    handleSort,
     loading,
     error,
     authLoading,

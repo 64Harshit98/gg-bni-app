@@ -1,5 +1,6 @@
 {
     "prettier.bracketSameLine": true,
     "prettier.useTabs": true,
-    "prettier.vueIndentScriptAndStyle": true
+    "prettier.vueIndentScriptAndStyle": true,
+    "faah.cooldownMs": 2000
 }

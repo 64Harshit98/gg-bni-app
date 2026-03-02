@@ -90,7 +90,8 @@ const WAVerification = lazy(() => import('../Pages/Additional/Whatsapp/WAVerific
 const WADetails = lazy(() => import('../Pages/Additional/Whatsapp/WADetails'));
 const WALanding = lazy(() => import('../Pages/Additional/Whatsapp/WALanding'));
 const WAPlan = lazy(() => import('../Pages/Additional/Whatsapp/WAPlan'));
-
+const ItemSoldReport = lazy(() => import('../Pages/Reports/ItemSoldReport'));
+const ItemReports = lazy(() => import('../Pages/Reports/Items'));
 const ManageItems = lazy(() => import('../Pages/Master/ManageItems'));
 
 const router = createBrowserRouter([
@@ -259,6 +260,16 @@ const router = createBrowserRouter([
               {
                 path: ROUTES.REPORTS.substring(1),
                 element: <Reports />,
+                handle: { requiredPermission: Permissions.ViewItemReport },
+              },
+              {
+                path: ROUTES.ITEM_REPORTS,
+                element: <ItemReports />,
+                handle: { requiredPermission: Permissions.ViewItemReport },
+              },
+              {
+                path: ROUTES.ITEM_SOLD_REPORT,
+                element: <ItemSoldReport />,
                 handle: { requiredPermission: Permissions.ViewItemReport },
               },
               {

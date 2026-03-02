@@ -69,6 +69,104 @@ export default function useItemReport() {
     fetchAllData();
   }, [firestoreApi, authLoading]);
 
+  const deleteItemsByCategory = async (categoryId: string) => {
+    if (!firestoreApi) return;
+    setIsLoading(true);
+    try {
+      // 1. Find all items that belong to this category and delete them
+      const itemsToDelete = items.filter(item => item.itemGroupId === categoryId);
+      await Promise.all(
+        itemsToDelete.map(item => {
+          if (item.id) return firestoreApi.deleteItem(item.id);
+          return Promise.resolve();
+        })
+      );
+
+      // 2. Delete the Item Group (Category) itself
+      // Note: Make sure 'deleteItemGroup' matches the method name in your ItemsFirebase.ts
+      await firestoreApi.deleteItemGroup(categoryId);
+
+      // 3. Update local state to remove items and the group
+      setItems(prevItems => prevItems.filter(item => item.itemGroupId !== categoryId));
+      setItemGroups(prevGroups => prevGroups.filter(group => group.id !== categoryId));
+
+      // 4. Reset the dropdown selection since this category no longer exists
+      if (appliedItemGroupId === categoryId) setAppliedItemGroupId('');
+      if (itemGroupId === categoryId) setItemGroupId('');
+
+      setFeedbackModal({
+        isOpen: true,
+        type: State.SUCCESS,
+        message: 'Category and its items deleted successfully.',
+      });
+    } catch (err) {
+      console.error("Error deleting category:", err);
+      setFeedbackModal({
+        isOpen: true,
+        type: State.ERROR,
+        message: 'Failed to delete category and items.',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const deleteAllItems = async () => {
+    if (!firestoreApi) return;
+    setIsLoading(true);
+    try {
+      // 1. Delete all items from Firebase
+      await Promise.all(
+        items.map(item => {
+          if (item.id) return firestoreApi.deleteItem(item.id);
+          return Promise.resolve();
+        })
+      );
+
+      // 2. Delete all Item Groups (Categories) from Firebase
+      await Promise.all(
+        itemGroups.map(group => {
+          if (group.id) return firestoreApi.deleteItemGroup(group.id);
+          return Promise.resolve();
+        })
+      );
+
+      // 3. Clear all local state
+      setItems([]);
+      setItemGroups([]);
+      setAppliedItemGroupId('');
+      setItemGroupId('');
+
+      setFeedbackModal({
+        isOpen: true,
+        type: State.SUCCESS,
+        message: 'Entire inventory and all categories deleted successfully.',
+      });
+    } catch (err) {
+      console.error("Error clearing inventory:", err);
+      setFeedbackModal({
+        isOpen: true,
+        type: State.ERROR,
+        message: 'Failed to delete inventory.',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // --- NEW: Add the deleteItem function here ---
+  const deleteItem = async (itemId: string) => {
+    if (!firestoreApi) throw new Error("Firestore API not initialized");
+
+    // 1. Delete from Firebase 
+    // (Make sure 'deleteItem' matches the exact method name in your ItemsFirebase file)
+    await firestoreApi.deleteItem(itemId);
+
+    // 2. Update local state to remove the item from the list instantly
+    setItems((prevItems) => prevItems.filter((item) => item.id !== itemId));
+  };
+  // ---------------------------------------------
+
   return {
     items,
     appliedItemGroupId,
@@ -85,5 +183,8 @@ export default function useItemReport() {
     isLoading,
     feedbackModal,
     isDownloadModalOpen,
+    deleteItem,
+    deleteItemsByCategory,
+    deleteAllItems,
   };
 }

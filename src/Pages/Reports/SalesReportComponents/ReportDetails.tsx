@@ -1,9 +1,18 @@
+
+// 1. Define the shape of your props here
+interface ReportDetailsProps {
+  setIsListVisible: (visible: boolean) => void;
+  isListVisible: boolean;
+  downloadAsPdf: () => void;
+  filteredSales: any[]; // Replace 'any' with your actual Sales type if you have one
+}
+
 export default function ReportDetails({
   setIsListVisible,
   isListVisible,
   downloadAsPdf,
   filteredSales,
-}) {
+}: ReportDetailsProps) { // 2. Apply the interface here
   return (
     <div className="bg-white p-4 rounded-lg shadow-md flex justify-between items-center">
       <h2 className="text-lg font-semibold text-gray-700">Report Details</h2>
@@ -19,7 +28,7 @@ export default function ReportDetails({
           disabled={filteredSales.length === 0}
           className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 "
         >
-          Download PDF
+          Download Report
         </button>
       </div>
     </div>

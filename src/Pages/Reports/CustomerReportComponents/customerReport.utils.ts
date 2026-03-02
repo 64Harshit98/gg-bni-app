@@ -1,6 +1,7 @@
 export interface Sale {
   id: string;
   partyName: string;
+  partyNumber: string;
   totalAmount: number;
   dueAmount?: number;
   createdAt: Date;
@@ -10,8 +11,9 @@ export interface Sale {
 export interface CustomerRow {
   id: string;
   customerName: string;
+  customerNumber: string;
   totalBills: number;
   totalSales: number;
   totalDue: number;
-  customerNumber: string;
+  sortKey: string;
 }

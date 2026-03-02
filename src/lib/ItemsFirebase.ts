@@ -90,38 +90,42 @@ export const getFirestoreOperations = (companyId: string) => {
     syncItems: async (): Promise<Item[]> => {
       let localItems: Item[] = (await get(STORE_KEY)) || [];
       const lastSyncTime = await get(TIME_KEY);
-
-      let q;
-      if (lastSyncTime) {
-        const lastDate = new Date(lastSyncTime);
-        q = query(itemRef, where('updatedAt', '>', lastDate));
-      } else {
-        q = query(itemRef);
-      }
-
-      const snapshot = await getDocs(q);
-
-      if (snapshot.empty) {
-        return localItems.filter(i => !i.isDeleted);
-      }
-
-      const fetchedItems = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as Item) }));
       const itemMap = new Map(localItems.map(i => [i.id, i]));
 
-      fetchedItems.forEach(newItem => {
-        if (newItem.isDeleted) {
-          itemMap.delete(newItem.id);
-        } else {
-          itemMap.set(newItem.id, newItem);
-        }
+      let itemsQuery;
+      let deletedQuery;
+
+      if (lastSyncTime) {
+        const lastDate = new Date(lastSyncTime);
+        itemsQuery = query(itemRef, where('updatedAt', '>', lastDate));
+        // Query our tombstones for anything deleted since last sync
+        deletedQuery = query(collection(companyRef, 'deletedItems'), where('deletedAt', '>', lastDate));
+      } else {
+        itemsQuery = query(itemRef);
+        // If it's a first-time sync, we don't need to check tombstones because 
+        // the item query will naturally only pull existing items.
+      }
+
+      // Fetch new/updated items
+      const itemsSnapshot = await getDocs(itemsQuery);
+      itemsSnapshot.docs.forEach(doc => {
+        itemMap.set(doc.id, { id: doc.id, ...(doc.data() as Item) });
       });
+
+      // Fetch tombstones (only if we had a lastSyncTime)
+      if (deletedQuery) {
+        const deletedSnapshot = await getDocs(deletedQuery);
+        deletedSnapshot.docs.forEach(doc => {
+          itemMap.delete(doc.id); // Remove the hard-deleted items from local cache
+        });
+      }
 
       const mergedItems = Array.from(itemMap.values());
 
       await set(STORE_KEY, mergedItems);
       await set(TIME_KEY, new Date().toISOString());
 
-      return mergedItems.filter(i => !i.isDeleted);
+      return mergedItems;
     },
 
 
@@ -156,10 +160,17 @@ export const getFirestoreOperations = (companyId: string) => {
 
     deleteItem: async (id: string): Promise<void> => {
       const docRef = doc(itemRef, id);
-      await updateDoc(docRef, {
-        isDeleted: true,
-        updatedAt: serverTimestamp()
-      });
+      const tombstoneRef = doc(collection(companyRef, 'deletedItems'), id);
+
+      const batch = writeBatch(db);
+
+      // 1. Hard delete the actual item
+      batch.delete(docRef);
+
+      // 2. Log the deletion time so offline devices can catch up
+      batch.set(tombstoneRef, { deletedAt: serverTimestamp() });
+
+      await batch.commit();
     },
 
 

@@ -48,10 +48,10 @@ const Reports = () => {
             </ShowWrapper>
             <ShowWrapper requiredPermission={Permissions.ViewItemReport}>
               <Link
-                to={ROUTES.ITEM_REPORT}
+                to={ROUTES.ITEM_REPORTS}
                 className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
               >
-                <span className="text-lg font-medium">Item Report</span>
+                <span className="text-lg font-medium">Item Reports</span>
                 <span className="text-xl text-gray-500">→</span>
               </Link>
             </ShowWrapper>
@@ -88,15 +88,6 @@ const Reports = () => {
                 className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
               >
                 <span className="text-lg font-medium">Customer Report</span>
-                <span className="text-xl text-gray-500">→</span>
-              </Link>
-            </ShowWrapper>
-            <ShowWrapper requiredPermission={Permissions.ViewPNLReport}>
-              <Link
-                to={ROUTES.MANAGE_ITEMS}
-                className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
-              >
-                <span className="text-lg font-medium">Manage Items</span>
                 <span className="text-xl text-gray-500">→</span>
               </Link>
             </ShowWrapper>

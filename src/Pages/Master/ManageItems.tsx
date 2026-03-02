@@ -21,7 +21,9 @@ type SortOption =
   | 'MRP_ASC'
   | 'MRP_DESC'
   | 'PURCHASE_ASC'
-  | 'PURCHASE_DESC';
+  | 'PURCHASE_DESC'
+  | 'VALUE_ASC'
+  | 'VALUE_DESC';
 
 const ManageItems: React.FC = () => {
   const navigate = useNavigate();
@@ -37,12 +39,16 @@ const ManageItems: React.FC = () => {
     setIsListVisible,
     isLoading,
     deleteItem,
+    deleteAllItems,
+    deleteItemsByCategory,
   } = useItemReport();
 
   /* -------------------- STATE -------------------- */
   const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(
     null,
   );
+  const [isConfirmingDeleteCategory, setIsConfirmingDeleteCategory] = useState(false);
+  const [isConfirmingDeleteAll, setIsConfirmingDeleteAll] = useState(false);
   const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
   const [itemPendingDelete, setItemPendingDelete] = useState<Item | null>(null);
   const [modal, setModal] = useState<{ message: string; type: State } | null>(
@@ -72,6 +78,10 @@ const ManageItems: React.FC = () => {
           return (a.purchasePrice || 0) - (b.purchasePrice || 0);
         case 'PURCHASE_DESC':
           return (b.purchasePrice || 0) - (a.purchasePrice || 0);
+        case 'VALUE_ASC':
+          return (a.purchasePrice * a.stock || 0) - (b.purchasePrice * b.stock || 0);
+        case 'VALUE_DESC':
+          return (b.purchasePrice * b.stock || 0) - (a.purchasePrice * a.stock || 0);
         default:
           return 0;
       }
@@ -96,7 +106,7 @@ const ManageItems: React.FC = () => {
   };
 
   const confirmDelete = async () => {
-    if (!itemPendingDelete) return;
+    if (!itemPendingDelete || !itemPendingDelete.id) return;
     try {
       await deleteItem(itemPendingDelete.id);
       setModal({ message: 'Item deleted successfully', type: State.SUCCESS });
@@ -141,11 +151,12 @@ const ManageItems: React.FC = () => {
       </div>
 
       {/* -------------------- FILTERS -------------------- */}
-      <div className="bg-white p-3 border-b">
-        <h2 className="text-sm font-semibold text-gray-700 mb-2 text-center">
+      <div className="bg-white p-3 border-b flex flex-col gap-4">
+        <h2 className="text-sm font-semibold text-gray-700 mb-0 text-center">
           FILTERS
         </h2>
 
+        {/* --- Top Row: Dropdown & Apply --- */}
         <div className="flex flex-wrap gap-3 items-end">
           <FilterSelect
             label="Item Group"
@@ -168,8 +179,26 @@ const ManageItems: React.FC = () => {
             Apply
           </button>
         </div>
-      </div>
 
+        {/* --- Bottom Row: Delete Buttons --- */}
+        <div className="flex flex-wrap gap-3 items-center">
+          {appliedItemGroupId && appliedItemGroupId !== UNASSIGNED_GROUP_NAME && (
+            <button
+              onClick={() => setIsConfirmingDeleteCategory(true)}
+              className="px-4 py-2 bg-red-100 text-red-700 rounded-md font-semibold hover:bg-red-200 transition text-sm"
+            >
+              Delete Category
+            </button>
+          )}
+
+          <button
+            onClick={() => setIsConfirmingDeleteAll(true)}
+            className="px-4 py-2 bg-red-600 text-white rounded-md font-semibold hover:bg-red-700 transition text-sm ml-auto"
+          >
+            Delete Inventory
+          </button>
+        </div>
+      </div>
       {/* -------------------- LIST TOGGLE + SORT -------------------- */}
       <div className="bg-white p-3 flex flex-wrap gap-2 justify-between items-center border-b">
         <h2 className="font-semibold text-gray-700">Item List</h2>
@@ -186,6 +215,8 @@ const ManageItems: React.FC = () => {
             <option value="MRP_DESC">MRP (High → Low)</option>
             <option value="PURCHASE_ASC">Purchase (Low → High)</option>
             <option value="PURCHASE_DESC">Purchase (High → Low)</option>
+            <option value="VALUE_ASC">Value (Low → High)</option>
+            <option value="VALUE_DESC">Value (High → Low)</option>
           </select>
 
           <button
@@ -270,7 +301,7 @@ const ManageItems: React.FC = () => {
         item={selectedItemForEdit}
         isOpen={isEditDrawerOpen}
         onClose={closeEditDrawer}
-        onSaveSuccess={() => {}}
+        onSaveSuccess={() => { }}
       />
 
       {/* -------------------- DELETE CONFIRM MODAL -------------------- */}
@@ -280,6 +311,31 @@ const ManageItems: React.FC = () => {
           message={`Are you sure you want to delete "${itemPendingDelete.name}"?`}
           onClose={() => setItemPendingDelete(null)}
           onConfirm={confirmDelete}
+          showConfirmButton={true}
+        />
+      )}
+      {isConfirmingDeleteCategory && (
+        <Modal
+          type={State.WARNING}
+          message="Are you sure you want to delete ALL items in this category? This cannot be undone."
+          onClose={() => setIsConfirmingDeleteCategory(false)}
+          onConfirm={() => {
+            deleteItemsByCategory(appliedItemGroupId);
+            setIsConfirmingDeleteCategory(false);
+          }}
+          showConfirmButton={true}
+        />
+      )}
+
+      {isConfirmingDeleteAll && (
+        <Modal
+          type={State.WARNING}
+          message="DANGER: Are you sure you want to delete your ENTIRE inventory? This cannot be undone."
+          onClose={() => setIsConfirmingDeleteAll(false)}
+          onConfirm={() => {
+            deleteAllItems();
+            setIsConfirmingDeleteAll(false);
+          }}
           showConfirmButton={true}
         />
       )}

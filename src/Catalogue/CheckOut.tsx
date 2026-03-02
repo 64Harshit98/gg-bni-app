@@ -637,7 +637,7 @@ const CartPage: React.FC = () => {
 
                                                         <div className="flex flex-wrap items-center justify-between mt-2 gap-2">
                                                             <span className="font-black text-[#1A3B5D] text-sm shrink-0">
-                                                                {shouldShowPrice ? `₹${item.price}` : "Price hidden"}
+                                                                {shouldShowPrice ? `₹${item.price}` : "---"}
                                                             </span>
                                                             <input
                                                                 type="text"
@@ -801,7 +801,7 @@ const CartPage: React.FC = () => {
                                                 const short = required - totalPay;
 
                                                 setMovError(
-                                                    `Minimum order value is ₹${required}. Please add ₹${short} more to place order.`
+                                                    `Please add ₹${short} more to place order.`
                                                 );
                                                 return;
                                             }

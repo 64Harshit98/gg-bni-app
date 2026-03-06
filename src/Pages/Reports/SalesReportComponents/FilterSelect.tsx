@@ -19,7 +19,7 @@ export default function FilterSelect({
       <select
         value={value}
         onChange={onChange}
-        className="w-full p-2.5 text-sm text-center bg-gray-50 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+        className="w-full p-2.5 text-sm text-center bg-gray-50 border border-gray-300 rounded-sm focus:ring-blue-500 focus:border-blue-500"
       >
         {children}
       </select>

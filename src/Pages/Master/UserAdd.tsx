@@ -4,7 +4,7 @@ import { ROUTES } from '../../constants/routes.constants';
 import { ROLES, Variant } from '../../enums';
 import { useAuth } from '../../context/auth-context';
 import { inviteUser } from '../../lib/AuthOperations';
-import { FiChevronLeft } from 'react-icons/fi';
+import { FiX } from 'react-icons/fi';
 import { FloatingLabelInput } from '../../Components/ui/FloatingLabelInput';
 import { CustomButton } from '../../Components/CustomButton';
 import { ReusableDropdown, type Option } from '../../Components/Dropdown';
@@ -87,46 +87,59 @@ const UserAdd: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-100 p-6">
-      <button
-        onClick={() => navigate(ROUTES.HOME)}
-        className="self-start mb-8 transition-opacity hover:opacity-75"
-        aria-label="Go back"
-      >
-        <FiChevronLeft className="w-7 h-7" />
-      </button>
-      <h1 className="text-4xl font-bold mb-6">Add New User</h1>
+    <div className="flex items-center justify-center p-4 sm:p-6 lg:p-8">
+      <div className="bg-white rounded-xs shadow-xl border border-slate-100 p-6 sm:p-10 w-full max-w-2xl transition-all">
 
-      <div className="w-full max-w-lg mx-auto">
+        {/* Header Section */}
+        <div className="flex items-start gap-4 border-b border-slate-200 pb-6 mb-8">
+          <button
+            onClick={() => navigate(ROUTES.HOME)}
+            className="mt-1 p-2 -ml-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-colors"
+            aria-label="Go back"
+          >
+            <FiX className="w-6 h-6" />
+          </button>
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 tracking-tight">Add New User</h1>
+            <p className="text-sm text-slate-500 mt-1">Fill in the details below to invite a new team member.</p>
+          </div>
+        </div>
 
-        <form onSubmit={handleAddUser} className="flex flex-col space-y-6">
-          <FloatingLabelInput
-            id="fullName"
-            type="text"
-            label="Full Name"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            required
-            disabled={isSubmitting}
-          />
-          <FloatingLabelInput
-            id="phoneNumber"
-            type="tel"
-            label="Phone Number"
-            value={phoneNumber}
-            onChange={(e) => setPhoneNumber(e.target.value)}
-            required
-            disabled={isSubmitting}
-          />
+        {/* Form Section */}
+        <form onSubmit={handleAddUser} className="space-y-6">
+
+          {/* Two-column grid for Name and Phone */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <FloatingLabelInput
+              id="fullName"
+              type="text"
+              label="Full Name"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              required
+              disabled={isSubmitting}
+            />
+            <FloatingLabelInput
+              id="phoneNumber"
+              type="tel"
+              label="Phone Number"
+              value={phoneNumber}
+              onChange={(e) => setPhoneNumber(e.target.value)}
+              required
+              disabled={isSubmitting}
+            />
+          </div>
+
           <FloatingLabelInput
             id="email"
             type="email"
-            label="Email"
+            label="Email Address"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
             disabled={isSubmitting}
           />
+
           <FloatingLabelInput
             id="password"
             type="password"
@@ -137,24 +150,47 @@ const UserAdd: React.FC = () => {
             disabled={isSubmitting}
           />
 
-          <ReusableDropdown
-            options={roleOptions}
-            value={role}
-            onChange={setRole}
-            placeholder="Select a role..."
-            disabled={isSubmitting}
-            className="w-full"
-          />
+          <div className="w-full relative z-10">
+            <ReusableDropdown
+              options={roleOptions}
+              value={role}
+              onChange={setRole}
+              placeholder="Select a role..."
+              disabled={isSubmitting}
+              className="w-full"
+            />
+          </div>
 
+          {/* Styled Feedback Messages */}
+          {error && (
+            <div className="p-4 rounded-lg bg-red-50 border border-red-100">
+              <p className="text-sm text-red-600 font-medium">{error}</p>
+            </div>
+          )}
+          {success && (
+            <div className="p-4 rounded-lg bg-emerald-50 border border-emerald-100">
+              <p className="text-sm text-emerald-600 font-medium">{success}</p>
+            </div>
+          )}
 
-          {error && <p className="text-sm text-center text-red-600 font-medium">{error}</p>}
-          {success && <p className="text-sm text-center text-green-600 font-medium">{success}</p>}
-
-          <div className="pt-4">
-            <CustomButton type="submit" variant={Variant.Save} disabled={isSubmitting}>
-              {isSubmitting ? 'Adding User...' : 'Add User'}
+          {/* Submit Button */}
+          <div className="pt-4 border-t border-slate-100 mt-8">
+            <CustomButton
+              type="submit"
+              variant={Variant.Filled}
+              disabled={isSubmitting}
+              className="w-full sm:w-auto sm:px-12 py-3 h-auto text-base"
+            >
+              {isSubmitting ? (
+                <span className="flex items-center gap-2">
+                  Adding User...
+                </span>
+              ) : (
+                'Add User'
+              )}
             </CustomButton>
           </div>
+
         </form>
       </div>
     </div>

@@ -7,6 +7,7 @@ import { botMasterService } from '../Additional/Whatsapp/WhatsappApi';
 import { CustomCard } from '../../Components/CustomCard';
 import { IconChevronDown } from '../../constants/Icons';
 import { ROUTES } from '../../constants/routes.constants';
+import { IconClose } from '../../constants/Icons';
 
 // 1. Added isLocked to the interface
 interface ServiceItem {
@@ -94,9 +95,26 @@ const AdditionalServices: React.FC = () => {
     return (
         <div className="flex h-screen w-full flex-col overflow-hidden bg-gray-100 mb-10">
             {/* Header */}
-            <div className="z-30 bg-gray-100 pb-4 pt-4 px-4 shadow-sm flex-none">
-                <h1 className="text-4xl font-light text-slate-800">Services</h1>
-                <p className="text-sm text-slate-500 mt-1">Explore additional features and tools</p>
+            <div className="z-30 bg-white border-b border-gray-100 pb-6 pt-6 px-6 shadow-sm flex-none">
+                <div className="flex items-start gap-4">
+                    <button
+                        onClick={() => navigate(-1)}
+                        className="mt-1 flex items-center justify-center p-2 rounded-full bg-gray-50 text-gray-500 hover:bg-gray-200 hover:text-gray-900 transition-all"
+                        title="Go Back"
+                    >
+                        <IconClose />
+                    </button>
+
+                    {/* Title & Subtitle Group */}
+                    <div className="flex flex-col">
+                        <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
+                            Services
+                        </h1>
+                        <p className="text-sm text-gray-500 mt-1">
+                            Explore additional features and tools
+                        </p>
+                    </div>
+                </div>
             </div>
 
             {/* List */}

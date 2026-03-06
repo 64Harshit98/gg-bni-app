@@ -66,24 +66,6 @@ const Reports = () => {
             </ShowWrapper>
             <ShowWrapper requiredPermission={Permissions.ViewPNLReport}>
               <Link
-                to={ROUTES.RESTOCK_REPORT}
-                className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
-              >
-                <span className="text-lg font-medium">Restock Report</span>
-                <span className="text-xl text-gray-500">→</span>
-              </Link>
-            </ShowWrapper>
-            <ShowWrapper requiredPermission={Permissions.ViewPNLReport}>
-              <Link
-                to={ROUTES.TAX_REPORT}
-                className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
-              >
-                <span className="text-lg font-medium">Tax Report</span>
-                <span className="text-xl text-gray-500">→</span>
-              </Link>
-            </ShowWrapper>
-            <ShowWrapper requiredPermission={Permissions.ViewPNLReport}>
-              <Link
                 to={ROUTES.CUSTOMER_REPORT}
                 className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
               >
@@ -91,6 +73,46 @@ const Reports = () => {
                 <span className="text-xl text-gray-500">→</span>
               </Link>
             </ShowWrapper>
+            <ShowWrapper requiredPermission={Permissions.ViewPNLReport}>
+              <Link
+                to={ROUTES.PARTY_LEDGER}
+                className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
+              >
+                <span className="text-lg font-medium">Party Ledger</span>
+                <span className="text-xl text-gray-500">→</span>
+              </Link>
+            </ShowWrapper>
+            <ShowWrapper requiredPermission={Permissions.ViewPNLReport}>
+              <div
+                className="flex justify-between items-center bg-gray-50 p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-400 cursor-not-allowed relative overflow-hidden"
+              >
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">
+                    Coming Soon
+                  </span>
+                  <span className="text-lg font-medium">Restock Report</span>
+                </div>
+
+                {/* Optional: Keep the arrow but make it look disabled, or remove it */}
+                <span className="text-xl text-gray-300">→</span>
+              </div>
+            </ShowWrapper>
+            <ShowWrapper requiredPermission={Permissions.ViewPNLReport}>
+              <div
+                className="flex justify-between items-center bg-gray-50 p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-400 cursor-not-allowed relative overflow-hidden"
+              >
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">
+                    Coming Soon
+                  </span>
+                  <span className="text-lg font-medium">Tax Report</span>
+                </div>
+
+                {/* Optional: Keep the arrow but make it look disabled, or remove it */}
+                <span className="text-xl text-gray-300">→</span>
+              </div>
+            </ShowWrapper>
+
           </>
         ) : (
           <div className="bg-white p-6 rounded-xl shadow-md mt-6 min-h-[200px] flex justify-center items-center text-gray-500 italic">

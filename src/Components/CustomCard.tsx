@@ -7,33 +7,33 @@ interface CustomCardProps extends React.HTMLAttributes<HTMLDivElement> {
     active?: boolean;
     title?: string;
     value?: string | number;
-    titleClassName?: string; 
+    titleClassName?: string;
     valueClassName?: string;
 }
 
 const CustomCard = React.forwardRef<HTMLDivElement, CustomCardProps>(
-    ({ 
-        children, 
-        className, 
-        variant = CardVariant.Default, 
-        active, 
-        title, 
-        value, 
-        titleClassName, 
-        valueClassName, 
-        ...props 
+    ({
+        children,
+        className,
+        variant = CardVariant.Default,
+        active,
+        title,
+        value,
+        titleClassName,
+        valueClassName,
+        ...props
     }, ref) => {
-        
+
         const baseClasses = 'flex flex-col bg-white transition-all duration-200';
 
         const variantClasses = {
-            [CardVariant.Default]: 
+            [CardVariant.Default]:
                 'mb-2 rounded-sm border border-slate-200 p-5.5 shadow-sm',
-            
-            [CardVariant.Summary]: 
+
+            [CardVariant.Summary]:
                 'p-4 rounded-lg shadow-md text-center items-center justify-center min-h-[100px]',
-            
-            [CardVariant.Outline]: 
+
+            [CardVariant.Outline]:
                 'rounded-sm border-2 border-dashed border-slate-300 p-6 hover:border-slate-400',
         };
 

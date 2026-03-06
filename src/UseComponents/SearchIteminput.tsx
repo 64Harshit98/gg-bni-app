@@ -94,12 +94,12 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
         if (isDropdownOpen && activeIndex >= 0 && listRef.current) {
             // Find the HTML element corresponding to the active index
             const activeItemElement = listRef.current.children[activeIndex] as HTMLElement;
-            
+
             if (activeItemElement) {
                 // Scroll to the element smoothly
                 activeItemElement.scrollIntoView({
                     block: 'nearest', // 'nearest' ensures it doesn't jump if already visible
-                    behavior: 'smooth' 
+                    behavior: 'smooth'
                 });
             }
         }
@@ -122,10 +122,20 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
     };
 
     // --- KEYBOARD NAVIGATION ---
-    const handleKeyDown = (e: React.KeyboardEvent) => {
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (!isDropdownOpen) {
             if (e.key === 'ArrowDown' && searchQuery) {
                 setIsDropdownOpen(true);
+            }
+            // Add a check here in case the dropdown is closed but they scan anyway
+            if (e.key === 'Enter' && searchQuery.trim()) {
+                e.preventDefault();
+                const exactMatch = items.find(
+                    item => item.barcode && item.barcode.toLowerCase() === searchQuery.trim().toLowerCase()
+                );
+                if (exactMatch) {
+                    handleSelect(exactMatch);
+                }
             }
             return;
         }
@@ -138,6 +148,21 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
             setActiveIndex(prev => (prev > 0 ? prev - 1 : 0));
         } else if (e.key === 'Enter') {
             e.preventDefault();
+
+            // 1. FIRST check for an exact barcode match from the scanner
+            const trimmedQuery = searchQuery.trim();
+            if (trimmedQuery) {
+                const exactMatch = items.find(
+                    item => item.barcode && item.barcode.toLowerCase() === trimmedQuery.toLowerCase()
+                );
+
+                if (exactMatch) {
+                    handleSelect(exactMatch);
+                    return; // Stop execution here since we found the exact item
+                }
+            }
+
+            // 2. Fallback: If no exact match, select the highlighted item from the dropdown
             if (activeIndex >= 0 && activeIndex < filteredItems.length) {
                 handleSelect(filteredItems[activeIndex]);
             }
@@ -148,7 +173,7 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
 
     return (
         <div className="relative w-full group" ref={dropdownRef}>
-            
+
             {/* INPUT CONTAINER */}
             <div className="relative flex items-center">
                 <div className="absolute left-3 text-gray-400 pointer-events-none">
@@ -175,7 +200,7 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
                 />
 
                 {searchQuery && (
-                    <button 
+                    <button
                         onClick={handleClear}
                         className="absolute right-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 p-1 rounded-full transition-colors"
                     >
@@ -186,11 +211,11 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
 
             {/* FLOATING DROPDOWN */}
             {isDropdownOpen && searchQuery && (
-                <div 
+                <div
                     ref={listRef} // Attached Ref here for scrolling
                     className="absolute top-full left-0 right-0 z-50 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl max-h-72 overflow-y-auto overflow-x-hidden scroll-smooth"
                 >
-                    
+
                     {isLoading ? (
                         <div className="p-4 flex items-center justify-center text-gray-500 gap-2">
                             <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>

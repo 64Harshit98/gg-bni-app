@@ -93,6 +93,7 @@ const WAPlan = lazy(() => import('../Pages/Additional/Whatsapp/WAPlan'));
 const ItemSoldReport = lazy(() => import('../Pages/Reports/ItemSoldReport'));
 const ItemReports = lazy(() => import('../Pages/Reports/Items'));
 const ManageItems = lazy(() => import('../Pages/Master/ManageItems'));
+const PartyLedger = lazy(() => import('../Pages/Reports/PartyLedger'));
 
 const router = createBrowserRouter([
   {
@@ -300,6 +301,11 @@ const router = createBrowserRouter([
               {
                 path: ROUTES.PURCHASE_REPORT,
                 element: <PurchaseReport />,
+                handle: { requiredPermission: Permissions.ViewPurchaseReport },
+              },
+              {
+                path: ROUTES.PARTY_LEDGER,
+                element: <PartyLedger />,
                 handle: { requiredPermission: Permissions.ViewPurchaseReport },
               },
               {

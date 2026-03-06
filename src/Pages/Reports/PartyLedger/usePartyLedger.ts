@@ -119,7 +119,7 @@ export default function usePartyLedger() {
                     return {
                         id: doc.id,
                         invoiceNumber: data.invoiceNumber,
-                        partyName: data.partyName || 'N/A',
+                        partyName: data.partyName || 'Unknown Party',
                         partyNumber: data.partyNumber || '',
                         totalAmount: data.totalAmount || 0,
                         dueAmount: data.paymentMethods?.due ?? data.dueAmount ?? 0,

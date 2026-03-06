@@ -252,7 +252,7 @@ const SalesReport: React.FC = () => {
   if (error) return <div className="p-4 text-center text-red-500">{error}</div>;
 
   return (
-    <div className="min-h-screen bg-gray-100 p-2 pb-16">
+    <div className="min-h-screen bg-gray-100 p-2 pb-16 md:p-6 md:pb-16">
       {feedbackModal.isOpen && (
         <Modal
           type={feedbackModal.type}
@@ -270,8 +270,8 @@ const SalesReport: React.FC = () => {
       />
 
       {/* HEADER */}
-      <div className="flex items-center justify-between pb-3 border-b mb-2">
-        <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
+      <div className="flex items-center justify-between pb-3 border-b mb-2 md:mb-4">
+        <h1 className="flex-1 text-xl text-center font-bold text-gray-800 md:text-2xl">
           Sales Report
         </h1>
         <button onClick={() => navigate(-1)} className="p-2">
@@ -280,20 +280,29 @@ const SalesReport: React.FC = () => {
       </div>
 
       {/* FILTERS */}
-      <div className="bg-white p-2 rounded-lg shadow-md mb-2">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          <FilterSelect
-            value={datePreset}
-            onChange={(e) => handleDatePresetChange(e.target.value)}
-          >
-            <option value="today">Today</option>
-            <option value="yesterday">Yesterday</option>
-            <option value="last7">Last 7 Days</option>
-            <option value="last30">Last 30 Days</option>
-            <option value="custom">Custom</option>
-          </FilterSelect>
+      <div className="bg-white p-2 rounded-lg shadow-md mb-2 md:p-5 md:mb-4 md:rounded-xl">
 
-          <div className="grid grid-cols-2 gap-4">
+        {/* Row 1 (md+): preset selector alone */}
+        {/* Row 2 (md+): date inputs */}
+        {/* Mobile: all stacked as before via grid-cols-1 */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 md:grid-cols-1 md:gap-3">
+
+          {/* Preset selector — full width on md+ */}
+          <div className="sm:col-span-1 md:col-span-1">
+            <FilterSelect
+              value={datePreset}
+              onChange={(e) => handleDatePresetChange(e.target.value)}
+            >
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="last7">Last 7 Days</option>
+              <option value="last30">Last 30 Days</option>
+              <option value="custom">Custom</option>
+            </FilterSelect>
+          </div>
+
+          {/* Date inputs */}
+          <div className="grid grid-cols-2 gap-4 sm:col-span-2 md:col-span-1 md:grid-cols-2 md:gap-4">
             <input
               type="date"
               value={customStartDate}
@@ -301,7 +310,7 @@ const SalesReport: React.FC = () => {
                 setCustomStartDate(e.target.value);
                 setDatePreset('custom');
               }}
-              className="w-full p-2 text-sm bg-gray-50 border rounded-md"
+              className="w-full p-2 text-sm bg-gray-50 border rounded-md md:p-2.5"
             />
             <input
               type="date"
@@ -310,21 +319,24 @@ const SalesReport: React.FC = () => {
                 setCustomEndDate(e.target.value);
                 setDatePreset('custom');
               }}
-              className="w-full p-2 text-sm bg-gray-50 border rounded-md"
+              className="w-full p-2 text-sm bg-gray-50 border rounded-md md:p-2.5"
             />
           </div>
         </div>
 
-        <button
-          onClick={handleApplyFilters}
-          className="w-full mt-2 px-3 py-1 bg-blue-600 text-white text-lg font-semibold rounded-lg hover:bg-blue-700"
-        >
-          Apply
-        </button>
+        {/* Apply button — edge-to-edge on mobile, constrained on md+ */}
+        <div className="mt-2 md:mt-3 md:flex md:justify-center">
+          <button
+            onClick={handleApplyFilters}
+            className="w-full mt-0 px-3 py-1 bg-blue-600 text-white text-lg font-semibold rounded-lg hover:bg-blue-700 md:w-auto md:px-10 md:py-2"
+          >
+            Apply
+          </button>
+        </div>
       </div>
 
-      {/* SUMMARY */}
-      <div className="grid grid-cols-2 gap-2 mb-2">
+      {/* SUMMARY — 2 cols on mobile, 4 cols on md+ */}
+      <div className="grid grid-cols-2 gap-2 mb-2 md:grid-cols-4 md:gap-4 md:mb-4">
         <CustomCard
           variant={CardVariant.Summary}
           title="Total Sales"

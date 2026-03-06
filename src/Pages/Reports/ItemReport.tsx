@@ -230,10 +230,10 @@ const ItemReport: React.FC = () => {
       </div>
 
       <div className="bg-white p-2 rounded-lg mb-2">
-        <h2 className="text-center font-semibold text-gray-700 mb-2">
+        <h2 className="text-center text-sm font-semibold text-gray-700 uppercase tracking-wider mb-2">
           FILTERS
         </h2>
-        <div className="flex space-x-3 items-end">
+        <div className="flex w-full gap-2 items-end sm:items-center">
           <FilterSelect
             label="Item Group"
             value={itemGroupId}
@@ -249,7 +249,7 @@ const ItemReport: React.FC = () => {
           </FilterSelect>
           <button
             onClick={handleApplyFilters}
-            className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 transition"
+            className="w-[28%] py-2 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 transition self-end sm:self-auto"
           >
             Apply
           </button>
@@ -289,12 +289,12 @@ const ItemReport: React.FC = () => {
         />
       </div>
 
-      <div className="bg-white p-4 rounded-lg shadow-md flex justify-between items-center">
-        <h2 className="text-lg font-semibold text-gray-700">Report Details</h2>
-        <div className="flex items-center space-x-3 w-full md:w-auto overflow-x-auto">
+      <div className="bg-white p-4 rounded-lg shadow-md flex flex-col md:flex-row md:justify-between md:items-center gap-3">
+        <h2 className="text-lg font-semibold text-gray-700 text-center md:text-left">Report Details</h2>
+        <div className="flex items-stretch gap-3">
           <button
             onClick={() => setIsListVisible(!isListVisible)}
-            className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition"
+            className="flex-1 md:flex-none px-4 py-2 min-h-[44px] bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition"
           >
             {isListVisible ? 'Hide List' : 'Show List'}
           </button>
@@ -312,7 +312,7 @@ const ItemReport: React.FC = () => {
                 setIsDownloadModalOpen(true);
               }
             }}
-            className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 transition"
+            className="flex-1 md:flex-none px-4 py-2 min-h-[44px] bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 disabled:opacity-50"
           >
             Download Report
           </button>

@@ -9,6 +9,10 @@ import { useAuth } from '../context/auth-context';
 import { increment, updateDoc } from "firebase/firestore";
 import { runTransaction } from "firebase/firestore";
 import LeadPopUp from './PopUp';
+// import { getCompressedBase64 } from './utils/imageCache';
+import { CatalogueBill, prepareCatalogueBillData } from './CatalogueBill/CatalogueBill'
+import { ACTION } from '../enums';
+
 
 interface CartItem {
     id: string | number;
@@ -325,6 +329,29 @@ const CartPage: React.FC = () => {
 
     const isUserApproved = leadStatus === "approved";
     const shouldShowPrice = isUserApproved;
+
+    // const prepareInvoiceItems = async () => {
+    //     return await Promise.all(
+    //         cartItems.map(async (item, index) => {
+    //             const base64 = item.imageUrl
+    //                 ? await getCompressedBase64(item.imageUrl)
+    //                 : undefined;
+
+    //             // DEBUG LOG — YAHI DEKHNA HAI
+    //             console.log("BASE64:", base64?.slice(0, 50));
+
+    //             return {
+    //                 sno: index + 1,
+    //                 name: item.name,
+    //                 qty: item.quantity,
+    //                 price: item.price,
+    //                 total: item.price * item.quantity,
+    //                 imageBase64: base64,
+    //             };
+    //         })
+    //     );
+    // };
+
     const placeOrder = async () => {
         if (!companyId || !currentUser?.uid) return;
         if (!isMovValid()) {
@@ -371,7 +398,8 @@ const CartPage: React.FC = () => {
                     name: i.name,
                     quantity: i.quantity,
                     mrp: i.price,
-                    note: i.note || ''
+                    note: i.note || '',
+                    imageUrl: i.imageUrl || "" 
                 })),
                 billingDetails: billing,
                 shippingDetails: isSameAsShipping ? billing : shipping,
@@ -381,7 +409,6 @@ const CartPage: React.FC = () => {
 
             // STOCK UPDATE START
             for (const item of cartItems) {
-                console.log("ITEM ID:", item.id);
                 const docId =
                     (item as any).firestoreDocId || item.id;
 
@@ -421,6 +448,60 @@ const CartPage: React.FC = () => {
             setCartItems([]);
             setPlacedOrderId(orderInvoiceNumber);
             setOrderSuccess(true);
+
+            // ===== GENERATE CATALOGUE BILL (FIXED) =====
+            try {
+                // const invoiceItems = await prepareInvoiceItems();
+
+                //  raw data
+                const rawBillData = {
+                    companyId,
+
+                    // company ka data Firestore se aayega
+                    companyName: "",          // leave empty
+                    companyAddress: "",
+                    companyContact: "",
+
+                    billTo: {
+                        name: billing.name,
+                        phone: billing.phone,
+                        address: billing.address,
+                        email: "",
+                        gstin: "",
+                    },
+
+                    invoice: {
+                        number: orderInvoiceNumber,
+                        date: new Date().toLocaleDateString(),
+                        billedBy: "",
+                        roNumber: "",
+                    },
+
+                    items: cartItems.map((item, index) => ({
+                        sno: index + 1,
+                        name: item.name,
+                        hsn: "",
+                        quantity: item.quantity,
+                        unit: "PCS",
+                        listPrice: item.price,
+                        gstPercent: 0,
+                        discountAmount: 0,
+                        amount: item.price * item.quantity,
+                    })),
+
+                    terms: "",
+                };
+
+                // DB se company inject
+                const preparedData = await prepareCatalogueBillData(rawBillData);
+
+                console.log("Catalogue company final:", preparedData.companyName);
+                console.log("FINAL PDF DATA", preparedData);2
+                //  generate pdf
+                await CatalogueBill(preparedData, ACTION.BLOB);
+            } catch (e) {
+                console.error("PDF generation failed", e);
+            }
 
         } catch (e) {
             console.error(e);

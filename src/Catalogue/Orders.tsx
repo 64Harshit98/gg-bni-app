@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ACTION } from '../enums/action.enum'
-import { generateCatalogueBill } from '../Catalogue/CatalogueBill/CatalogueBill'
-import type { CatalogueInvoiceData } from '../Catalogue/CatalogueBill/CatalogueBill';
 import { useLocation } from 'react-router-dom';
 import { db } from '../lib/Firebase';
 import QRCode from 'react-qr-code';
@@ -33,6 +31,8 @@ import { State } from '../enums';
 import { FiSearch, FiX } from 'react-icons/fi';
 import { IconEdit, IconFilter } from '../constants/Icons';
 import type { Item } from '../constants/models';
+import { CatalogueBill, prepareCatalogueBillData } from './CatalogueBill/CatalogueBill'
+import { getCompressedBase64 } from "./utils/imageCache";
 
 export interface OrderItem {
     id: string;
@@ -49,6 +49,8 @@ export interface OrderItem {
     restockQuantity?: number;
     finalPrice?: number;
     imageBase64?: string;
+    imageUrl?: string
+    salesPrice?: number
 }
 
 // 1. Updated Status Types
@@ -185,9 +187,11 @@ export const useOrdersData = (
                                 name: i.name,
                                 quantity: Number(i.quantity || 0),
                                 mrp: Number(i.mrp || 0),
+                                salesPrice: Number(i.salesPrice || 0),
                                 finalPrice: Number(i.finalPrice ?? i.amount ?? (i.mrp * i.quantity)),
                                 note: i.note || '',
-                                imageBase64: i.imageBase64 || i.imageUrl
+                                imageUrl: i.imageUrl || "",
+                                imageBase64: ""
                             }))
                             : [],
                     };
@@ -274,7 +278,7 @@ const OrdersPage: React.FC = () => {
     const [showPaymentModal, setShowPaymentModal] = useState<Order | null>(null);
     const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
     const [selectedItemForEdit, setSelectedItemForEdit] = useState<any>(null);
-    const [billSettings, setBillSettings] = useState<any>(null);
+    const [_billSettings, setBillSettings] = useState<any>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [showSearch, setShowSearch] = useState(false);
     const [expandedorderId, setExpandedorderId] = useState<string | null>(null);
@@ -461,23 +465,14 @@ const OrdersPage: React.FC = () => {
 
     // PDF & Sharing Functions (Same as provided)
     const handlePdfAction = async (Order: Order, action: ACTION) => {
-        if (!billSettings) {
-            setModal({
-                message: "Bill settings loading… please try again",
-                type: State.ERROR,
-            });
-            return;
-        }
-        setIsGeneratingPdf(true);
-        console.log("Bill settings in Orders:", billSettings);
+        console.log("ORDER ITEMS:", Order.items)
         try {
-            const data: CatalogueInvoiceData = {
-                company: {
-                    name: companyInfo?.name || "Your Store",
-                    address: companyInfo?.address || "Store Address",
-                    phone: companyInfo?.ownerPhoneNumber || "Phone",
-                    logoBase64: billSettings?.logoBase64,
-                },
+            const rawBillData = {
+                companyId: currentUser?.companyId,
+
+                companyName: companyInfo?.name || "",
+                companyAddress: companyInfo?.address || "",
+                companyPhone: companyInfo?.ownerPhoneNumber || "",
 
                 customer: {
                     name: Order.userName || "Customer",
@@ -490,33 +485,56 @@ const OrdersPage: React.FC = () => {
                     date: Order.time,
                 },
 
-                items: (Order.items || []).map((item, index) => ({
-                    sno: index + 1,
-                    name: item.name,
-                    qty: item.quantity,
-                    price: item.mrp,
-                    total: item.mrp * item.quantity,
-                    imageBase64: item.imageBase64, // optional
-                })),
+                items: await Promise.all(
+                    (Order.items || []).map(async (item, index) => {
+
+                        let base64 = item.imageBase64;
+
+                        if (!base64 && item.imageUrl) {
+                            const proxyUrl = item.imageUrl.replace(
+                                "https://firebasestorage.googleapis.com",
+                                "/firebase-image"
+                            );
+
+                            base64 = await getCompressedBase64(proxyUrl);
+                        }
+                        console.log("IMAGE URL:", item.imageUrl);
+                        console.log("BASE64:", base64?.slice(0, 50));
+                        const mrp = item.mrp || 0;
+                        const salePrice = item.salesPrice || item.mrp || 0;
+
+                        return {
+                            sno: index + 1,
+                            name: item.name,
+                            qty: item.quantity,
+                            mrp: mrp,
+                            price: salePrice,
+                            total: salePrice * item.quantity,
+                            imageBase64: base64
+                        };
+                    })
+                ),
 
                 grandTotal: Order.totalAmount,
             };
-            await generateCatalogueBill(
-                data,
-                action === ACTION.PRINT
-                    ? 'print'
-                    : action === ACTION.BLOB
-                        ? 'blob'
-                        : 'download'
-            );
-            setSelectedOrderForAction(null);
+            const preparedData = await prepareCatalogueBillData(rawBillData);
+
+            if (action === ACTION.PRINT) {
+                await CatalogueBill(preparedData, "print");
+            }
+
+            if (action === ACTION.DOWNLOAD) {
+                await CatalogueBill(preparedData, "download");
+            }
+
         } catch (err) {
-            setModal({ message: "Failed to generate PDF", type: State.ERROR });
-        } finally {
-            setIsGeneratingPdf(false);
+            console.error("Catalogue bill error:", err);
+            setModal({
+                message: "Bill generation failed",
+                type: State.ERROR,
+            });
         }
     };
-
 
     const handleSaveSuccess = (updatedItemData: Partial<Item>) => {
         if (!selectedItemForEdit) return;
@@ -564,14 +582,11 @@ const OrdersPage: React.FC = () => {
 
     const handleShareBill = async (Order: Order) => {
         setIsGeneratingPdf(true);
+
         try {
-            const data: CatalogueInvoiceData = {
-                company: {
-                    name: companyInfo?.name || "Your Store",
-                    address: companyInfo?.address || "Store Address",
-                    phone: companyInfo?.ownerPhoneNumber || "Phone",
-                    logoBase64: billSettings?.logoBase64,
-                },
+
+            const rawBillData = {
+                companyId: currentUser?.companyId,
 
                 customer: {
                     name: Order.userName || "Customer",
@@ -584,32 +599,61 @@ const OrdersPage: React.FC = () => {
                     date: Order.time,
                 },
 
-                items: (Order.items || []).map((item, index) => ({
-                    sno: index + 1,
-                    name: item.name,
-                    qty: item.quantity,
-                    price: item.mrp,
-                    total: item.mrp * item.quantity,
-                    imageBase64: item.imageBase64, // optional
-                })),
+                items: (Order.items || []).map((item, index) => {
+
+                    const mrp = item.mrp || 0;
+                    const salePrice = item.salesPrice || item.mrp || 0;
+
+                    return {
+                        sno: index + 1,
+                        name: item.name,
+                        qty: item.quantity,
+                        mrp: mrp,
+                        price: salePrice,
+                        total: salePrice * item.quantity,
+                        imageBase64: item.imageBase64,
+                    };
+                }),
 
                 grandTotal: Order.totalAmount,
             };
-            const pdfBlob = await generateCatalogueBill(data, 'blob');
-            if (!pdfBlob || !(pdfBlob instanceof Blob)) throw new Error("PDF generation failed");
-            const file = new File([pdfBlob], `Bill_${Order.orderId}.pdf`, { type: 'application/pdf' });
 
+            const preparedData = await prepareCatalogueBillData(rawBillData);
+
+            //  BLOB generate
+            const pdfBlob = await CatalogueBill(preparedData, "blob");
+
+            if (!pdfBlob) throw new Error("PDF generation failed");
+
+            const file = new File(
+                [pdfBlob],
+                `Estimate_${Order.orderId}.pdf`,
+                { type: "application/pdf" }
+            );
+
+            //  Native share (mobile / supported browser)
             if (navigator.canShare && navigator.canShare({ files: [file] })) {
                 await navigator.share({
                     files: [file],
-                    title: `Invoice #${Order.orderId}`,
-                    text: `Hi ${Order.userName}, your bill is ready.`,
+                    title: `Estimate #${Order.orderId}`,
+                    text: `Hi ${Order.userName}, your estimate is ready.`,
                 });
-            } else {
-                const billUrl = `${window.location.origin}/download-bill/${currentUser?.companyId}/${Order.id}`;
-                const message = `*Invoice from ${companyInfo?.name}*%0A*Amount:* ₹${Order.totalAmount}%0A*Download:* ${billUrl}`;
-                window.open(`https://wa.me/${Order.billingDetails?.phone?.replace(/\D/g, '')}?text=${message}`, '_blank');
             }
+            else {
+                // fallback whatsapp link
+                const billUrl = `${window.location.origin}/download-bill/${currentUser?.companyId}/${Order.id}`;
+
+                const message =
+                    `*Estimate from ${companyInfo?.name}*%0A` +
+                    `Amount: ₹${Order.totalAmount}%0A` +
+                    `Download: ${billUrl}`;
+
+                window.open(
+                    `https://wa.me/${Order.billingDetails?.phone?.replace(/\D/g, "")}?text=${message}`,
+                    "_blank"
+                );
+            }
+
         } catch (err) {
             console.error("Sharing error:", err);
             alert("Sharing failed. Please use Download option.");
@@ -852,7 +896,7 @@ const OrdersPage: React.FC = () => {
                         </span>
                     </div>
 
-                    {/* 🔴 Pending Count Badge */}
+                    {/*  Pending Count Badge */}
                     <div className="min-w-[26px] h-[22px] px-2 flex items-center justify-center
                     text-[11px] font-black rounded-sm
                     bg-red-500 text-white">
@@ -861,7 +905,7 @@ const OrdersPage: React.FC = () => {
                 </div>
 
                 {/* ORDER TIMELINE */}
-                <div className="flex items-center w-full px-2 md:px-10 pt-8 pb-6 overflow-x-auto no-scrollbar bg-white">
+                <div className="flex items-center w-full px-2 md:px-10 pt-8 pb-9 bg-white">
                     {OrderStatuses.map((status, index) => {
                         const activeIndex = OrderStatuses.indexOf(activeStatusTab);
                         const isCompleted = index < activeIndex;
@@ -1401,9 +1445,45 @@ const OrdersPage: React.FC = () => {
                     <div className="bg-white rounded-sm p-6 w-full max-w-sm shadow-xl" onClick={e => e.stopPropagation()}>
                         <h3 className="text-sm font-bold mb-4">Select Action</h3>
                         <div className="flex flex-col gap-3">
-                            <button onClick={() => { handleShareBill(selectedOrderForAction); setSelectedOrderForAction(null); }} className="w-full bg-[#25D366] text-white py-2.5 rounded-sm font-bold flex items-center justify-center gap-2">Share on WhatsApp</button>
-                            <button onClick={() => handlePdfAction(selectedOrderForAction, ACTION.DOWNLOAD)} className="w-full bg-blue-600 text-white py-2.5 rounded-sm font-bold">{isGeneratingPdf ? <Spinner /> : 'Download PDF'}</button>
-                            <button onClick={() => handlePdfAction(selectedOrderForAction, ACTION.PRINT)} className="w-full bOrder py-2.5 rounded-sm font-bold">Print Directly</button>
+                            <button
+                                onClick={() => {
+                                    const order = selectedOrderForAction;
+                                    setSelectedOrderForAction(null);
+
+                                    setTimeout(() => {
+                                        handleShareBill(order);
+                                    }, 50);
+                                }}
+                                className="w-full bg-[#25D366] text-white py-2.5 rounded-sm font-bold"
+                            >
+                                Share on WhatsApp
+                            </button>
+                            <button
+                                onClick={() => {
+                                    const order = selectedOrderForAction;
+                                    setSelectedOrderForAction(null);   // modal close immediately
+
+                                    setTimeout(() => {
+                                        handlePdfAction(order, ACTION.DOWNLOAD);
+                                    }, 50);
+                                }}
+                                className="w-full bg-blue-600 text-white py-2.5 rounded-sm font-bold"
+                            >
+                                {isGeneratingPdf ? <Spinner /> : 'Download PDF'}
+                            </button>
+                            <button
+                                onClick={() => {
+                                    const order = selectedOrderForAction;
+                                    setSelectedOrderForAction(null);
+
+                                    setTimeout(() => {
+                                        handlePdfAction(order, ACTION.PRINT);
+                                    }, 50);
+                                }}
+                                className="w-full border py-2.5 rounded-sm font-bold"
+                            >
+                                Print Directly
+                            </button>
                             <button onClick={() => setShowQrModal(selectedOrderForAction)} className="w-full bg-gray-900 text-white py-2.5 rounded-sm font-bold">Generate QR Code</button>
                         </div>
                     </div>

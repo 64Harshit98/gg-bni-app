@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { collection, query, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 import { useAuth } from '../../context/auth-context';
-import { ROUTES } from '../../constants/routes.constants';
 import { Spinner } from '../../constants/Spinner';
 import { Permissions, ROLES, State, Variant } from '../../enums'; // Import ROLES
 import { CustomButton } from '../../Components';
@@ -99,10 +98,6 @@ const CatalogueUserSetting: React.FC = () => {
         fetchUsers();
     }, [currentUser, currentUser?.companyId, canManageUsers, authLoading, navigate]);
 
-    const handleAddUser = () => {
-        navigate(ROUTES.USER_ADD);
-    };
-
     const handleEditClick = (user: AppUser) => {
         setEditingUserId(user.uid);
         // --- FIX: Pre-fill the 'name' field as well ---
@@ -185,14 +180,11 @@ const CatalogueUserSetting: React.FC = () => {
         <div className="flex flex-col min-h-screen bg-gray-100 w-full mb-15">
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
-            <div className="flex items-center justify-between p-3 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
+            <div className="flex items-center p-3 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
                 <button onClick={() => navigate(-1)} className="text-gray-600 hover:text-gray-900 p-1">
                     <IconClose />
                 </button>
                 <h1 className="text-lg font-semibold text-gray-800">Manage Users</h1>
-                <CustomButton onClick={handleAddUser} variant={Variant.Save} className='flex justify-right ml-10'>
-                    Add User
-                </CustomButton>
             </div>
 
 

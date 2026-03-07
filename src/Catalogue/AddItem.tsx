@@ -464,7 +464,9 @@ const ItemAdd: React.FC = () => {
                 itemGroupId: 'Fruits',
                 stock: 50,
                 barcode: '1001',
-                restockQuantity: 10
+                restockQuantity: 10,
+                moq:10,
+                imageUrl:"https/unsplash.com",
             },
         ];
         const ws = XLSX.utils.json_to_sheet(sampleData);
@@ -655,6 +657,52 @@ const ItemAdd: React.FC = () => {
                                 </select>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                {/* RIGHT BLOCK DESKTOP VIEW */}
+
+                <div className="hidden md:flex w-[35%] flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
+                    <div className="flex-1 p-6 flex flex-col">
+
+                        <div className="bg-sky-50 rounded-xl p-5 border border-sky-100">
+                            <h2 className="text-lg font-bold text-sky-800 mb-2">Bulk Import</h2>
+                            <p className="text-sm text-sky-600 mb-4">
+                                Upload Excel/CSV. Missing categories created automatically.
+                            </p>
+
+                            <div className="flex flex-col gap-3">
+                                <button
+                                    onClick={() => fileInputRef.current?.click()}
+                                    disabled={isUploading}
+                                    className="w-full bg-white text-sky-600 border border-sky-200 py-3 px-4 rounded-lg font-semibold hover:bg-sky-50 disabled:bg-gray-100 flex items-center justify-center gap-2"
+                                >
+                                    {isUploading ? <Spinner /> : 'Upload Excel File'}
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={handleDownloadSample}
+                                    disabled={isUploading}
+                                    className="text-sm text-sky-500 hover:text-sky-700 underline text-center"
+                                >
+                                    Download Sample Template
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="flex-grow"></div>
+
+                        <div className="border-t border-gray-100 pb-10">
+                            <button
+                                onClick={handleAddItem}
+                                disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)}
+                                className="w-full bg-sky-600 text-white py-4 px-6 rounded-xl text-lg font-bold hover:bg-sky-700 disabled:bg-gray-300 flex items-center justify-center gap-2"
+                            >
+                                {isSaving ? <Spinner /> : 'Add Item'}
+                            </button>
+                        </div>
+
                     </div>
                 </div>
 

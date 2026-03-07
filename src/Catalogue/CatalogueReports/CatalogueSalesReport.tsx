@@ -22,14 +22,15 @@ interface OrderItem { // Renamed from SalesItem
 interface PaymentMethods {
     [key: string]: number;
 }
-interface OrderRecord { // Renamed from SaleRecord
+interface OrderRecord {
     id: string;
-    partyName: string; // Will use 'userName' from order
+    partyName: string;
     totalAmount: number;
-    paymentMethods: PaymentMethods; // Orders may not have this, will default to {}
-    createdAt: number; // Using number for timestamp (milliseconds)
+    paymentMethods: PaymentMethods;
+    createdAt: number;
     items: OrderItem[];
-    invoiceNumber: string; // Get invoiceNumber
+    invoiceNumber: string;
+    status: string;
     [key: string]: any;
 }
 
@@ -253,8 +254,7 @@ const OrdersReport: React.FC = () => {
             try {
                 // --- FIX: Query 'Orders' collection AND filter by 'Completed' status ---
                 const q = query(
-                    collection(db, 'companies', companyId, 'Orders'), // Changed to 'Orders'
-                    where('status', '==', 'Completed'),               // Added status filter
+                    collection(db, 'companies', companyId, 'Orders'), // Changed to 'Orders'       
                     where('createdAt', '>=', Timestamp.fromDate(start)),
                     where('createdAt', '<=', Timestamp.fromDate(end)),
                     orderBy('createdAt', 'desc')
@@ -263,18 +263,21 @@ const OrdersReport: React.FC = () => {
                 );
 
                 const querySnapshot = await getDocs(q);
-                const fetchedSales: OrderRecord[] = querySnapshot.docs.map(doc => {
-                    const data = doc.data();
-                    return {
-                        id: doc.id,
-                        partyName: data.userName || 'N/A', // Use userName from Order
-                        totalAmount: data.totalAmount || 0,
-                        paymentMethods: data.paymentMethods || {}, // Use paymentMethods from Order
-                        createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toMillis() : Date.now(),
-                        items: data.items || [],
-                        invoiceNumber: data.orderId || doc.id, // Use orderId
-                    };
-                });
+                const fetchedSales: OrderRecord[] = querySnapshot.docs
+                    .map(doc => {
+                        const data = doc.data();
+                        return {
+                            id: doc.id,
+                            partyName: data.userName || 'N/A', // Use userName from Order
+                            totalAmount: data.totalAmount || 0,
+                            status: data.status || "",
+                            paymentMethods: data.paymentMethods || {}, // Use paymentMethods from Order
+                            createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toMillis() : Date.now(),
+                            items: data.items || [],
+                            invoiceNumber: data.orderId || doc.id, // Use orderId
+                        };
+                    })
+                    .filter(order => order.status === 'Completed' || order.status === 'Paid');
                 setSales(fetchedSales);
             } catch (err) {
                 console.error("Error fetching completed orders:", err);

@@ -9,6 +9,7 @@ function BusinessCard() {
     const { currentUser } = useAuth();
     const [data, setData] = useState<any>(null);
     const [activeIndex, setActiveIndex] = useState(0);
+    const [uploadedCard, setUploadedCard] = useState<string | null>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
 
     // Cards ke liye references
@@ -25,16 +26,42 @@ function BusinessCard() {
 
     // Card Download Karne ka function
     const downloadCard = async (ref: React.RefObject<HTMLDivElement | null>, name: string) => {
-        if (ref.current === null) return;
+        if (!ref.current) return;
+
+        const buttons = ref.current.querySelectorAll(".no-export");
 
         try {
-            const dataUrl = await toPng(ref.current, { cacheBust: true, pixelRatio: 3 });
-            const link = document.createElement('a');
+            // hide buttons
+            buttons.forEach((el) => ((el as HTMLElement).style.display = "none"));
+
+            const dataUrl = await toPng(ref.current, {
+                cacheBust: true,
+                pixelRatio: 3
+            });
+
+            const link = document.createElement("a");
             link.download = `${name}-business-card.png`;
             link.href = dataUrl;
             link.click();
+
         } catch (err) {
-            console.error('Oops, something went wrong!', err);
+            console.error("Image generation error:", err);
+        } finally {
+            // show buttons again
+            buttons.forEach((el) => ((el as HTMLElement).style.display = "flex"));
+        }
+    };
+
+    const handleUploadCard = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const fileURL = URL.createObjectURL(file);
+
+        if (file.type === "application/pdf") {
+            setUploadedCard(fileURL + "#pdf");
+        } else {
+            setUploadedCard(fileURL);
         }
     };
 
@@ -73,7 +100,7 @@ function BusinessCard() {
 
     if (!data) return <div className="p-4 text-[10px]">Loading...</div>;
 
-    const cards = [0, 1];
+    const cards = [0, 1, 2];
 
     const formatName = (fullName: string) => {
         if (!fullName) return "";
@@ -94,7 +121,7 @@ function BusinessCard() {
             >
                 {/* ================= DESIGN 1 ================= */}
                 <div ref={cardRef1} className="relative flex-shrink-0 w-[280px] h-[155px] flex rounded shadow-md overflow-hidden bg-white border border-gray-200 snap-center">
-                    <div className="absolute top-1.5 right-1.5 flex gap-1 z-20">
+                    <div className="absolute top-1.5 right-1.5 flex gap-1 z-20 no-export">
                         <button onClick={() => downloadCard(cardRef1, 'design1')} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
                             <FiDownload size={10} />
                         </button>
@@ -121,7 +148,7 @@ function BusinessCard() {
 
                 {/* ================= DESIGN 2 ================= */}
                 <div ref={cardRef2} className="relative flex-shrink-0 w-[280px] h-[155px] flex flex-col rounded-sm shadow-lg overflow-hidden bg-white border border-gray-100 snap-center p-4">
-                    <div className="absolute top-2 right-2 flex gap-1 z-20 mt-1">
+                    <div className="absolute top-2 right-2 flex gap-1 z-20 mt-1 no-export">
                         <button onClick={() => downloadCard(cardRef2, 'design2')} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
                             <FiDownload size={10} />
                         </button>
@@ -166,6 +193,74 @@ function BusinessCard() {
                             </div>
                         </div>
                     </div>
+                </div>
+
+                {/* ================= DESIGN 3 (UPLOAD CARD) ================= */}
+                <div className="relative flex-shrink-0 w-[280px] h-[155px] flex flex-col items-center justify-center rounded-sm shadow-lg overflow-hidden bg-white border border-dashed border-gray-300 snap-center p-4">
+
+                    {!uploadedCard ? (
+                        <>
+                            <label className="flex flex-col items-center justify-center cursor-pointer text-center">
+                                <div className="text-gray-400 text-xs font-semibold mb-2">
+                                    Upload Your Business Card
+                                </div>
+
+                                <div className="px-3 py-1 bg-blue-600 text-white text-[10px] rounded">
+                                    Upload Card
+                                </div>
+
+                                <input
+                                    type="file"
+                                    accept="image/*,application/pdf"
+                                    className="hidden"
+                                    onChange={handleUploadCard}
+                                />
+                            </label>
+                        </>
+                    ) : (
+                        <>
+                            {/* Preview */}
+                            {uploadedCard?.includes("#pdf") ? (
+                                <iframe
+                                    src={uploadedCard.replace("#pdf", "")}
+                                    className="w-full h-full border-0 rounded"
+                                />
+                            ) : (
+                                <img
+                                    src={uploadedCard}
+                                    alt="Uploaded card"
+                                    className="w-full h-full object-cover rounded"
+                                />
+                            )}
+
+                            {/* Buttons */}
+                            <div className="absolute top-1.5 right-1.5 flex gap-1 z-20 no-export">
+                                <a
+                                    href={uploadedCard}
+                                    download="my-business-card"
+                                    className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100"
+                                >
+                                    <FiDownload size={10} />
+                                </a>
+
+                                <button
+                                    onClick={() => setUploadedCard(null)}
+                                    className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100"
+                                >
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        className="w-[10px] h-[10px]"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="3"
+                                    >
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M18 6L6 18M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </>
+                    )}
                 </div>
             </div>
 

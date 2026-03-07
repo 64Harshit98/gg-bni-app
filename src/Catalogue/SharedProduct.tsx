@@ -52,6 +52,7 @@ const SharedProduct: React.FC = () => {
     const [leadPhone, setLeadPhone] = useState<string>("");
     const [showNotifySuccess, setShowNotifySuccess] = useState(false);
     const [notifiedItems, setNotifiedItems] = useState<Record<string, boolean>>({});
+    const cartIconRef = useRef<HTMLButtonElement | null>(null);
 
     const getUserKey = () => {
         let key = localStorage.getItem('guest_uid');
@@ -95,17 +96,26 @@ const SharedProduct: React.FC = () => {
 
             const loginName = currentUser?.name || "Guest User";
 
-            const itemsForFirebase = updatedCart.map(c => ({
-                id: String(c.item.id),
-                docId: c.item.firestoreDocId || c.item.id,
-                name: c.item.name,
-                quantity: c.quantity,
-                mrp:
-                    (c.item as any).effectivePrice ||
+            const itemsForFirebase = updatedCart.map(c => {
+
+                const mrp = c.item.mrp || 0;
+                const salePrice =
                     (c.item as any).salesPrice ||
-                    (c.item as any).mrp ||
-                    0
-            }));
+                    (c.item as any).effectivePrice ||
+                    mrp;
+
+                return {
+                    id: String(c.item.id),
+                    docId: c.item.firestoreDocId || c.item.id,
+                    name: c.item.name,
+                    quantity: c.quantity,
+
+                    mrp: mrp,
+                    salesPrice: salePrice,
+
+                    finalPrice: salePrice * c.quantity
+                };
+            });
 
             const orderRef = doc(
                 db,
@@ -410,6 +420,38 @@ const SharedProduct: React.FC = () => {
         }
     };
 
+    const animateToCart = (img: HTMLImageElement) => {
+        if (!cartIconRef.current) return;
+
+        const cartRect = cartIconRef.current.getBoundingClientRect();
+        const imgRect = img.getBoundingClientRect();
+
+        const clone = img.cloneNode(true) as HTMLImageElement;
+
+        clone.style.position = "fixed";
+        clone.style.left = `${imgRect.left}px`;
+        clone.style.top = `${imgRect.top}px`;
+        clone.style.width = `${imgRect.width}px`;
+        clone.style.height = `${imgRect.height}px`;
+        clone.style.transition = "all 0.6s ease";
+        clone.style.zIndex = "9999";
+        clone.style.pointerEvents = "none";
+
+        document.body.appendChild(clone);
+
+        requestAnimationFrame(() => {
+            clone.style.left = `${cartRect.left}px`;
+            clone.style.top = `${cartRect.top}px`;
+            clone.style.width = "20px";
+            clone.style.height = "20px";
+            clone.style.opacity = "0.5";
+        });
+
+        setTimeout(() => {
+            clone.remove();
+        }, 600);
+    };
+
     const updateQuantity = (itemId: string, delta: number) => {
         setCart(prev => {
             const newCart = prev
@@ -675,6 +717,7 @@ const SharedProduct: React.FC = () => {
 
                         {/* Right Side Cart Button (Already optimized) */}
                         <button
+                            ref={cartIconRef}
                             onClick={() => navigate(`/checkout/${companyId}`)}
                             className="flex items-center justify-center gap-2 bg-[#00A3E1] text-white py-2 px-3 md:px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative mr-1 md:mr-0"
                         >
@@ -752,7 +795,7 @@ const SharedProduct: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
                     {itemsToDisplay.map((item) => {
                         const cartItem = cart.find(i => i.item.id === item.id);
                         const isOutOfStock = (item.stock || 0) <= 0;
@@ -882,6 +925,9 @@ const SharedProduct: React.FC = () => {
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     if (disableAddToCart) return;
+                                                    const card = e.currentTarget.closest(".group");
+                                                    const img = card?.querySelector("img") as HTMLImageElement;
+                                                    if (img) animateToCart(img);
                                                     addToCart(item);
                                                 }}
                                                 className={`w-full py-2 rounded-xs text-[9px] font-black uppercase tracking-widest shadow-sm transition-all flex items-center justify-center gap-2 ${disableAddToCart

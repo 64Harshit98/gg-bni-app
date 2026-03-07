@@ -142,8 +142,8 @@ const HomePage: React.FC = () => {
                 <main className="flex-grow overflow-y-auto p-2">
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                         <FilterControls />
-                        <OrderTimeline isDataVisible={isDataVisible} />
                         <CompletedSalesCard isDataVisible={isDataVisible} />
+                        <OrderTimeline isDataVisible={isDataVisible} />
                         <OrderBarChartReport isDataVisible={isDataVisible} />
                         <TopSoldItemsCard isDataVisible={isDataVisible} />
                         <RestockAlertsCard/>

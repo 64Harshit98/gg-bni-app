@@ -8,12 +8,9 @@ import { CustomTable } from '../../Components/CustomTable';
 import NoGstScheme from '../../Pages/Reports/TaxReportComponents/NoGstScheme';
 import { IconClose, IconDownload } from '../../constants/Icons';
 import { InfoTooltip } from '../../Components/InfoToolTip';
-import {
-  formatDate,
-  formatDateForInput,
-} from '../../Pages/Reports/SalesReportComponents/salesReport.utils';
+import { formatDateForInput } from '../../Pages/Reports/SalesReportComponents/salesReport.utils';
 import FilterSelect from '../../Pages/Reports/SalesReportComponents/FilterSelect';
-import useTaxReport from '../../Pages/Reports/TaxReportComponents/useTaxReport';
+import useTaxReport from '../hooks/useTaxReport';
 import {
   handleDatePresetChange,
   handleApplyFilters,
@@ -42,6 +39,20 @@ const CatalogueTaxReport: React.FC = () => {
     authLoading,
   } = useTaxReport();
 
+  const formatDate = (timestamp: number): string => {
+    if (!timestamp) return 'N/A';
+
+    const date = new Date(Number(timestamp));
+
+    if (isNaN(date.getTime())) return 'N/A';
+
+    return date.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+  };
+
   const { summary, filteredSales, filteredPurchases } = useMemo(() => {
     if (!appliedFilters || gstScheme === 'None')
       return {
@@ -56,12 +67,14 @@ const CatalogueTaxReport: React.FC = () => {
         },
       };
 
-    const fSales = salesData.filter(
-      (d) => d.date >= appliedFilters.start && d.date <= appliedFilters.end,
-    );
-    const fPurchases = purchaseData.filter(
-      (d) => d.date >= appliedFilters.start && d.date <= appliedFilters.end,
-    );
+    const fSales = salesData.filter((d) => {
+      const date = Number(d.date);
+      return date >= appliedFilters.start && date <= appliedFilters.end;
+    });
+    const fPurchases = purchaseData.filter((d) => {
+      const date = Number(d.date);
+      return date >= appliedFilters.start && date <= appliedFilters.end;
+    });
 
     const totalOutputTax = fSales.reduce((sum, row) => sum + row.totalTax, 0);
     const totalSalesVal = fSales.reduce((sum, row) => sum + row.totalAmount, 0);
@@ -137,9 +150,9 @@ const CatalogueTaxReport: React.FC = () => {
   const tableColumns = useMemo(
     () => [
       {
-        accessor: 'date',
         header: 'Date',
-        render: (row: TaxReportRow) => formatDate(row.date),
+        accessor: (row: TaxReportRow) =>
+          new Date(row.date).toLocaleDateString('en-GB'),
       },
       { accessor: 'invoiceNumber', header: 'Inv No' },
       { accessor: 'partyName', header: 'Party' },

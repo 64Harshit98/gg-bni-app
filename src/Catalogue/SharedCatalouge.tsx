@@ -44,8 +44,6 @@ const SharedCataloguePage: React.FC = () => {
                     getItemGroupsByCompany(companyId),
                     getItemsByCompany(companyId)
                 ]);
-                console.log("Fetched Item Groups:", fetchedItemGroups);
-                console.log("Fetched Items:", fetchedItems);
                 setItemGroups(fetchedItemGroups);
                 setAllItems(fetchedItems);
                 // fetch business info (social links)
@@ -236,7 +234,7 @@ const SharedCataloguePage: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
                     {filteredItems.map(group => {
                         const itemCount = allItems.filter(item => item.itemGroupId === group.id).length;
                         const collageImages = getGroupImages(group.id!);

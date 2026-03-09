@@ -79,7 +79,18 @@ const SignUpPage: React.FC = () => {
     }
     return true;
   };
+  const handleClearData = () => {
+    // Remove from local storage
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
 
+    // Reset component state
+    setFullName('');
+    setEmail('');
+    setPhoneNumber('');
+    setPassword('');
+    setConfirmPassword('');
+    setError(null);
+  };
   // --- Navigation & Lead Saving ---
   const handleNext = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -120,7 +131,16 @@ const SignUpPage: React.FC = () => {
 
       {/* Content Area (Scrolls Independently) */}
       <div className="flex-grow px-4 pb-32 overflow-y-auto scrollbar-hide">
-        <h1 className="text-4xl font-bold mb-6 mt-4">Create Account</h1>
+        <div className="flex justify-between items-end mb-6 mt-4">
+          <h1 className="text-4xl font-bold">Create Account</h1>
+          <button
+            type="button"
+            onClick={handleClearData}
+            className="text-sm font-medium text-red-500 hover:text-red-700 transition-colors bg-red-50 px-3 py-1.5 rounded-md border border-red-100 mb-1"
+          >
+            Clear Form
+          </button>
+        </div>
 
         <div className='bg-white p-4 rounded-lg shadow-sm border border-gray-200 space-y-2 pt-8 pb-8'>
           <form onSubmit={handleNext} className="flex flex-col space-y-6">

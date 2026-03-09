@@ -238,11 +238,27 @@ const PartyLedger: React.FC = () => {
                                     </div>
 
                                     <div className="flex items-center justify-between mt-2">
-                                        <div>
+                                        {/* LEFT ALIGNED INFO */}
+                                        <div className="flex-1">
                                             <p className="text-base font-semibold text-slate-800">{txn.invoiceNumber || txn.id.slice(0, 8)}</p>
                                             <p className="text-sm text-slate-500 mt-1">{formatDate(txn.createdAt)}</p>
                                         </div>
-                                        <div className="flex items-center space-x-3">
+
+                                        {/* CENTER SETTLED BADGE */}
+                                        <div className="flex-shrink-0 px-2 sm:px-4 flex items-center justify-center">
+                                            {txn.dueAmount <= 0 ? (
+                                                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded uppercase tracking-widest">
+                                                    Settled
+                                                </span>
+                                            ) : (
+                                                <span className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded uppercase tracking-widest">
+                                                    Due
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        {/* RIGHT ALIGNED AMOUNTS & CHEVRON */}
+                                        <div className="flex items-center justify-end space-x-3 flex-1">
                                             <div className="text-right">
                                                 {txn.dueAmount > 0 ? (
                                                     <>

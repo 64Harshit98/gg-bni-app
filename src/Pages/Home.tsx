@@ -23,7 +23,7 @@ import { SalesCard } from '../Components/SalesCard';
 import { TopSoldItemsCard } from '../Components/TopFiveItemCard';
 import { TopSalespersonCard } from '../Components/TopSalesCard';
 import { PaymentChart } from '../Components/PaymentChart';
-import { RestockAlertsCard } from '../Components/RestockItems';
+// import { RestockAlertsCard } from '../Components/RestockItems';
 import { TopEntitiesList } from '../Components/TopFiveEntities';
 import ShinyText from '../Components/ShinyText';
 
@@ -222,25 +222,44 @@ const DashboardContent = () => {
           currentTotalSales += amount;
           currentOrderCount++;
 
-          let methodFound = false;
           if (d.paymentMethods && typeof d.paymentMethods === 'object') {
-            Object.entries(d.paymentMethods).forEach(([key, val]) => {
-              const amt = parseNum(val);
-              if (amt > 0) {
-                const clean = cleanString(key);
-                if (!paymentMap[clean]) paymentMap[clean] = { amount: 0, count: 0 };
-                paymentMap[clean].amount += amt;
-                paymentMap[clean].count++;
-                methodFound = true;
-              }
-            });
-          }
-          if (!methodFound) {
-            const m = d.paymentMethod || d.paymentMode;
-            const clean = cleanString(m);
-            if (!paymentMap[clean]) paymentMap[clean] = { amount: 0, count: 0 };
-            paymentMap[clean].amount += amount;
-            paymentMap[clean].count++;
+            // 1. Gather all valid payment entries
+            const methods = Object.entries(d.paymentMethods)
+              .map(([key, val]) => ({ key: cleanString(key), amt: parseNum(val) }))
+              .filter(m => m.amt > 0);
+
+            if (methods.length > 0) {
+
+              // 2. Calculate total tendered and any change due
+              const totalTendered = methods.reduce((sum, m) => sum + m.amt, 0);
+              let change = totalTendered > amount ? totalTendered - amount : 0;
+
+              // 3. Process each method and deduct change
+              methods.forEach(m => {
+                let finalAmt = m.amt;
+
+                // First, try to deduct change from 'Cash' 
+                if (change > 0 && m.key.toLowerCase() === 'cash') {
+                  const deduct = Math.min(finalAmt, change);
+                  finalAmt -= deduct;
+                  change -= deduct;
+                }
+
+                // If there's still change left (e.g., they overpaid via another method), deduct it from remaining
+                if (change > 0) {
+                  const deduct = Math.min(finalAmt, change);
+                  finalAmt -= deduct;
+                  change -= deduct;
+                }
+
+                // 4. Only add to the chart if there is an actual contribution to the bill
+                if (finalAmt > 0) {
+                  if (!paymentMap[m.key]) paymentMap[m.key] = { amount: 0, count: 0 };
+                  paymentMap[m.key].amount += finalAmt;
+                  paymentMap[m.key].count++;
+                }
+              });
+            }
           }
 
           let cust = d.partyName || d.customerName || d.customer || 'N/A';
@@ -434,7 +453,7 @@ const DashboardContent = () => {
                 <TopEntitiesList isDataVisible={isDataVisible} titleOverride="Top Customers" items={data?.topCustomers || []} />
               </ShowWrapper>
               <ShowWrapper requiredPermission={Permissions.ViewAttendance}><AttendancePage /></ShowWrapper>
-              <ShowWrapper requiredPermission={Permissions.Viewrestockcard}><RestockAlertsCard /></ShowWrapper>
+              {/* <ShowWrapper requiredPermission={Permissions.Viewrestockcard}><RestockAlertsCard /></ShowWrapper> */}
             </div>
           )}
         </div>

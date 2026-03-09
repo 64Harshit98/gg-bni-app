@@ -134,6 +134,37 @@ const BusinessInfoPage: React.FC = () => {
     saveData();
   }, [businessName, businessType, customBusinessType, businessCategory, customBusinessCategory, gstType, gstin, streetAddress, city, state, postalCode]);
 
+
+  const handleClearData = () => {
+    // 1. Get current data from local storage
+    const currentSaved = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '{}');
+
+    // 2. Keep only Step 1 data
+    const keptData = {
+      fullName: currentSaved.fullName,
+      email: currentSaved.email,
+      phoneNumber: currentSaved.phoneNumber,
+      password: currentSaved.password,
+    };
+
+    // 3. Save the kept data back to local storage
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(keptData));
+
+    // 4. Reset all component state for THIS page
+    setBusinessName('');
+    setBusinessType('');
+    setCustomBusinessType('');
+    setBusinessCategory('');
+    setCustomBusinessCategory('');
+    setGstType('');
+    setGstin('');
+    setStreetAddress('');
+    setCity('');
+    setState('');
+    setPostalCode('');
+    setError(null);
+  };
+
   // --- Validation Logic ---
   const validateForm = (): boolean => {
     const finalBusinessType = businessType === 'Other' ? customBusinessType : businessType;
@@ -244,7 +275,16 @@ const BusinessInfoPage: React.FC = () => {
 
       {/* Scrollable Content */}
       <div className="flex-grow px-4 pb-32 overflow-y-auto scrollbar-hide">
-        <h1 className="text-4xl font-bold mb-4 mt-4">Business Details</h1>
+        <div className="flex justify-between items-end mb-4 mt-4">
+          <h1 className="text-4xl font-bold">Business Details</h1>
+          <button
+            type="button"
+            onClick={handleClearData}
+            className="text-sm font-medium text-red-500 hover:text-red-700 transition-colors bg-red-50 px-3 py-1.5 rounded-md border border-red-100 mb-1"
+          >
+            Clear Form
+          </button>
+        </div>
 
         <div className='bg-white p-4 rounded-lg shadow-sm border border-gray-200 space-y-2 pt-8 pb-8'>
           <div className="flex flex-col space-y-5">

@@ -38,6 +38,8 @@ export interface Item {
   imageUrl?: string | null;
   description?: string;
   firestoreDocId?: string;
+  packetSize?: number;
+  unitMultiplier?: number;
 }
 
 export interface ItemGroup {

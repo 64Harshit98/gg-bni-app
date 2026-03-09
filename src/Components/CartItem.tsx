@@ -254,8 +254,11 @@ export const GenericCartList = <T extends CartItem>({
                 {/* 3. Quantity Control */}
                 <div className="flex items-center border border-slate-300 rounded bg-transparent h-9 w-24 flex-shrink-0 ml-auto md:ml-0">
                   <button
-                    onClick={() => onQuantityChange(item.id, Math.max(1, (item.quantity || 1) - 1))}
-                    disabled={item.quantity <= 1 || !item.isEditable}
+                    onClick={() => {
+                      const step = item.unitMultiplier || 1;
+                      onQuantityChange(item.id, Math.max(step, (item.quantity || step) - step));
+                    }}
+                    disabled={item.quantity <= (item.unitMultiplier || 1) || !item.isEditable}
                     className="px-2 text-gray-600 hover:bg-gray-200 disabled:text-gray-300 text-lg leading-none flex items-center justify-center h-full w-8 border-r"
                   >-</button>
 
@@ -267,8 +270,9 @@ export const GenericCartList = <T extends CartItem>({
                         onQuantityChange(item.id, isNaN(num) ? '' as any : num);
                       }}
                       onBlur={() => {
-                        if (!item.quantity) {
-                          onQuantityChange(item.id, 1);
+                        const step = item.unitMultiplier || 1;
+                        if (!item.quantity || item.quantity < step) {
+                          onQuantityChange(item.id, step); // Reset to minimum preset if left empty
                         }
                       }}
                       locked={!item.isEditable}
@@ -277,7 +281,10 @@ export const GenericCartList = <T extends CartItem>({
                   </div>
 
                   <button
-                    onClick={() => onQuantityChange(item.id, (item.quantity || 1) + 1)}
+                    onClick={() => {
+                      const step = item.unitMultiplier || 1;
+                      onQuantityChange(item.id, (item.quantity || step) + step);
+                    }}
                     disabled={!item.isEditable}
                     className="px-2 text-gray-600 hover:bg-gray-200 disabled:text-gray-300 text-lg leading-none flex items-center justify-center h-full w-8 border-l"
                   >+</button>

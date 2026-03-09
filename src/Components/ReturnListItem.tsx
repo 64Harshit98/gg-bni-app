@@ -6,6 +6,7 @@ export interface ReturnItemData {
     mrp?: number;
     quantity: number;
     unitPrice: number;
+    unitMultiplier?: number;
     [key: string]: any;
 }
 
@@ -54,6 +55,7 @@ export const ReturnListItem: React.FC<ReturnListItemProps> = ({
                         <input
                             type="number"
                             value={item.quantity}
+                            step={item.unitMultiplier || 1} // ADDED: Native browser arrows step by the unit size
                             onFocus={(e) => e.target.select()}
 
                             // 2. Handle the change logic
@@ -67,10 +69,11 @@ export const ReturnListItem: React.FC<ReturnListItemProps> = ({
                                 onQuantityChange(item.id, isNaN(num) ? 0 : num);
                             }}
 
-                            // 3. Reset to 1 if left empty or 0
+                            // 3. Reset to base unit size if left empty or 0
                             onBlur={() => {
+                                const stepSize = item.unitMultiplier || 1;
                                 if (!item.quantity || item.quantity <= 0) {
-                                    onQuantityChange(item.id, 1);
+                                    onQuantityChange(item.id, stepSize); // UPDATED: Fallback to step size instead of 1
                                 }
                             }}
                             className="w-16 p-1 border border-gray-300 rounded text-center text-sm focus:outline-none focus:border-blue-500"

@@ -44,6 +44,9 @@ export interface SalesItem extends OriginalSalesItem {
     barcode: string;
     restockQuantity: number;
     productId: string;
+    unit?: string;               // ADDED
+    unitMultiplier?: number;     // ADDED
+    packetSize?: number | undefined;  // ADDED
 }
 
 export const applyRounding = (amount: number, isRoundingEnabled: boolean, interval: number = 1): number => {
@@ -213,6 +216,9 @@ const Sales: React.FC = () => {
                 amount: item.amount || 0,
                 barcode: item.barcode || '',
                 restockQuantity: item.restockQuantity || 0,
+                unit: item.unit || '',                     // ADDED
+                unitMultiplier: item.unitMultiplier || 1,  // ADDED
+                packetSize: item.packetSize || null,
             }));
             setItems(nonEditableItems);
         }
@@ -370,7 +376,7 @@ const Sales: React.FC = () => {
             ...itemToAdd,
             id: crypto.randomUUID(),
             productId: itemToAdd.id!,
-            quantity: 1,
+            quantity: (itemToAdd as any).unitMultiplier || 1,
             discount: parseFloat(calculatedDiscount.toFixed(2)),
             customPrice: finalNetPrice,
             isEditable: true,
@@ -381,6 +387,9 @@ const Sales: React.FC = () => {
             amount: itemToAdd.amount || 0,
             barcode: itemToAdd.barcode || '',
             restockQuantity: itemToAdd.restockQuantity || 0,
+            unit: (itemToAdd as any).unit || '',                     // ADDED
+            unitMultiplier: (itemToAdd as any).unitMultiplier || 1,  // ADDED
+            packetSize: (itemToAdd as any).packetSize || null,
         };
         setItems(prev => {
             const insertionOrder = salesSettings?.cartInsertionOrder || 'top';
@@ -399,16 +408,24 @@ const Sales: React.FC = () => {
         if (!dbOperations) return;
 
         const cleanBarcode = barcode.trim();
-
         console.log("Searching for barcode:", cleanBarcode);
 
         try {
-            const itemToAdd = await dbOperations.getItemByBarcode(cleanBarcode);
+            // Explicitly type the variable to accept Item, undefined (from .find), or null (from DB)
+            let itemToAdd: Item | null | undefined = availableItems.find(item => item.barcode === cleanBarcode);
+
+            // Fallback to the database if it's not in local state
+            if (!itemToAdd) {
+                itemToAdd = await dbOperations.getItemByBarcode(cleanBarcode);
+            }
+
             if (itemToAdd) {
                 addItemToCart(itemToAdd);
+
+                // Only add to availableItems if it came from the DB fallback
                 setAvailableItems(prev => {
-                    const exists = prev.find(p => p.id === itemToAdd.id);
-                    return exists ? prev : [...prev, itemToAdd];
+                    const exists = prev.find(p => p.id === itemToAdd!.id);
+                    return exists ? prev : [...prev, itemToAdd!];
                 });
             } else {
                 setModal({
@@ -478,7 +495,12 @@ const Sales: React.FC = () => {
         if (salesSettings?.enableSalesmanSelection && !selectedWorker) { setModal({ message: 'Please select a salesman.', type: State.ERROR }); return; }
         if (!(salesSettings as any)?.allowNegativeStock) {
             const stockNeeds = new Map<string, number>();
-            items.filter(i => i.isEditable).forEach(i => { const pid = i.productId; stockNeeds.set(pid, (stockNeeds.get(pid) || 0) + (i.quantity || 1)); });
+            items.filter(i => i.isEditable).forEach(i => {
+                const pid = i.productId;
+                const multiplier = i.unitMultiplier || 1; // ADDED
+                const requiredStock = (i.quantity || 1) * multiplier; // ADDED
+                stockNeeds.set(pid, (stockNeeds.get(pid) || 0) + requiredStock); // UPDATED
+            });
             const invalidItems: string[] = [];
             stockNeeds.forEach((needed, pid) => {
                 const avail = availableItems.find(a => a.id === pid);
@@ -499,16 +521,8 @@ const Sales: React.FC = () => {
         const salesman = salesSettings?.enableSalesmanSelection ? selectedWorker : workers.find(w => w.uid === currentUser.uid);
         const finalSalesman = salesman || { uid: currentUser.uid, name: currentUser.uid || 'Current User' };
 
-        let finalGstScheme = 'none';
-        let finalTaxType = 'none';
-
-        if (activeTaxMode === 'exempt') {
-            finalGstScheme = 'composition';
-            finalTaxType = 'none';
-        } else {
-            finalGstScheme = 'regular';
-            finalTaxType = activeTaxMode;
-        }
+        let finalGstScheme = salesSettings?.gstScheme || 'none';
+        let finalTaxType = activeTaxMode === 'exempt' ? 'none' : activeTaxMode;
 
         const isTaxEnabled = salesSettings?.enableTax ?? true;
         const currentTaxRate = salesSettings?.defaultTaxRate ?? 0;
@@ -554,13 +568,16 @@ const Sales: React.FC = () => {
                     ...item,
                     id: item.productId,
                     quantity: currentQuantity, discount: currentDiscount, effectiveUnitPrice, finalPrice: itemFinalPrice,
+                    unit: item.unit || '',                     // ADDED
+                    unitMultiplier: item.unitMultiplier || 1,  // ADDED
+                    packetSize: item.packetSize || null,
                     taxableAmount: itemTaxableBase, taxAmount: itemTaxAmount, taxRate: isTaxEnabled ? itemSpecificTaxRate : 0,
                     taxType: finalTaxType, discountPercentage: currentDiscount,
                 };
             });
         };
 
-        const finalInvoiceTotal = finalAmount - completionData.discount;
+        const finalInvoiceTotal = finalAmount - completionData.discount + (completionData.extraExpenseAmount || 0);
         const totalInvoiceDiscount = totalDiscount + (completionData.discount || 0);
 
 
@@ -574,23 +591,33 @@ const Sales: React.FC = () => {
                 roundOff: roundOff,
                 taxableAmount,
                 taxAmount,
-
                 gstScheme: finalGstScheme,
                 taxType: finalTaxType,
-
                 totalAmount: finalInvoiceTotal,
                 paymentMethods: completionData.paymentDetails,
-                partyName: completionData.partyName, partyNumber: completionData.partyNumber,
-                salesmanId: finalSalesman.uid, salesmanName: finalSalesman.name,
-                updatedAt: serverTimestamp()
+                partyName: completionData.partyName,
+                partyNumber: completionData.partyNumber,
+                partyAddress: completionData.partyAddress || '',
+                partyGstin: completionData.partyGST || '',
+                salesmanId: finalSalesman.uid,
+                salesmanName: finalSalesman.name,
+                updatedAt: serverTimestamp(),
+
+                // --- EXPLICITLY MAP NEW FIELDS HERE ---
+                shippingName: completionData.shippingName || '',
+                shippingNumber: completionData.shippingNumber || '',
+                shippingAddress: completionData.shippingAddress || '',
+                shippingGST: completionData.shippingGST || '',
+                extraExpenseName: completionData.extraExpenseName || '',
+                extraExpenseAmount: completionData.extraExpenseAmount || 0,
+                narration: completionData.narration || '',
             };
 
+            // 2. Handle New vs Edit behavior
             if (isNew) {
                 saleData.createdAt = serverTimestamp();
                 saleData.invoiceNumber = await generateNextInvoiceNumber(companyId);
                 saleData.userId = currentUser.uid;
-                saleData.partyAddress = completionData.partyAddress || '';
-                saleData.partyGstin = completionData.partyGST || '';
                 saleData.companyId = companyId;
                 saleData.voucherName = salesSettings?.voucherName ?? 'Sales';
 
@@ -609,6 +636,45 @@ const Sales: React.FC = () => {
             if (isEditMode && invoiceToEdit?.id) {
                 await runTransaction(db, async (transaction) => {
                     await saveOperation(transaction, false, invoiceToEdit.id);
+
+                    // 1. Calculate the original quantities from the saved invoice
+                    const oldQuantities = new Map<string, number>();
+                    (invoiceToEdit.items || []).forEach((oldItem: any) => {
+                        const pid = oldItem.productId || oldItem.id;
+                        const oldMultiplier = oldItem.unitMultiplier || 1;
+                        const oldQty = (oldItem.quantity || 1) * oldMultiplier;
+                        oldQuantities.set(pid, (oldQuantities.get(pid) || 0) + oldQty);
+                    });
+
+                    // 2. Calculate the new quantities from the current cart
+                    const newQuantities = new Map<string, number>();
+                    items.forEach(newItem => {
+                        const pid = newItem.productId || newItem.id;
+                        if (pid) {
+                            const newMultiplier = newItem.unitMultiplier || 1;
+                            const newQty = (newItem.quantity || 1) * newMultiplier;
+                            newQuantities.set(pid, (newQuantities.get(pid) || 0) + newQty);
+                        }
+                    });
+
+                    // 3. Compare and apply the difference to Firestore
+                    const allProductIds = new Set([...oldQuantities.keys(), ...newQuantities.keys()]);
+
+                    allProductIds.forEach(pid => {
+                        const oldTotal = oldQuantities.get(pid) || 0;
+                        const newTotal = newQuantities.get(pid) || 0;
+                        const difference = newTotal - oldTotal; // How many MORE we are selling
+
+                        // Only run the update if the quantity actually changed
+                        if (difference !== 0) {
+                            const itemRef = doc(db, "companies", companyId, "items", pid);
+                            // -difference: If we sell 1 more, deduct 1. If we remove 1, add 1 back.
+                            transaction.update(itemRef, {
+                                stock: firebaseIncrement(-difference),
+                                updatedAt: serverTimestamp()
+                            });
+                        }
+                    });
                 });
                 showSuccessModal("Invoice Updated", ROUTES.JOURNAL);
             } else {
@@ -616,20 +682,24 @@ const Sales: React.FC = () => {
                 await runTransaction(db, async (transaction) => {
                     result = await saveOperation(transaction, true);
 
+                    // Existing logic for New Invoices stays exactly the same
                     items.forEach(i => {
                         const pid = i.productId || i.id;
                         if (pid) {
                             const itemRef = doc(db, "companies", companyId, "items", pid);
-                            transaction.update(itemRef, { stock: firebaseIncrement(-(i.quantity || 1)), updatedAt: serverTimestamp() });
+                            transaction.update(itemRef, { stock: firebaseIncrement(-(i.quantity || 1)), updatedAt: serverTimestamp() }); // BACK TO NORMAL
                         }
                     });
+
                     if (settingsDocId) {
                         const settingsRef = doc(db, "companies", companyId, "settings", settingsDocId);
                         transaction.update(settingsRef, { currentVoucherNumber: firebaseIncrement(1) });
                     }
                 });
                 if (result) {
-                    // 1. Capture the invoice data before clearing the cart
+
+                    const finalizedItems = formatItemsForDB(items);
+
                     const invoiceData = {
                         id: result.id,
                         invoiceNumber: result.number,
@@ -641,11 +711,10 @@ const Sales: React.FC = () => {
                         createdAt: new Date(),
                         manualDiscount: completionData.discount || 0,
                         salesmanName: finalSalesman.name,
-                        items: items.map(item => ({ ...item })) // Deep copy the cart items
+                        items: finalizedItems
                     };
 
                     setIsDrawerOpen(false);
-                    // 2. Pass the invoiceData into the modal
                     setSavedBillData({ id: result.id, number: result.number, invoiceData: invoiceData });
                     localStorage.removeItem('sales_cart_draft');
                     setItems([]);
@@ -1034,6 +1103,7 @@ const Sales: React.FC = () => {
                 mode='sale'
                 onClose={() => setIsDrawerOpen(false)}
                 subtotal={subtotal} billTotal={amountToPayNow}
+                totalTax={taxAmount}
                 onPaymentComplete={handleSavePayment}
                 initialDiscount={invoiceToEdit?.manualDiscount}
                 allowDueBilling={salesSettings?.allowDueBilling}
@@ -1044,6 +1114,16 @@ const Sales: React.FC = () => {
                 totalItemDiscount={totalDiscount} totalQuantity={totalQuantity}
                 requireCustomerName={salesSettings?.requireCustomerName}
                 requireCustomerMobile={salesSettings?.requireCustomerMobile}
+                initialShippingName={isEditMode ? invoiceToEdit?.shippingName : ''}
+                initialShippingNumber={isEditMode ? invoiceToEdit?.shippingNumber : ''}
+                initialShippingAddress={isEditMode ? invoiceToEdit?.shippingAddress : ''}
+                initialShippingGST={isEditMode ? invoiceToEdit?.shippingGST : ''}
+                initialExpenseName={isEditMode ? invoiceToEdit?.extraExpenseName : ''}
+                initialExpenseAmount={isEditMode ? invoiceToEdit?.extraExpenseAmount : ''}
+                initialNarration={isEditMode ? invoiceToEdit?.narration : ''}
+                enableShippingDetails={salesSettings?.enableShippingDetails}
+                enableExtraExpense={salesSettings?.enableExtraExpense}
+                enableNarration={salesSettings?.enableNarration}
             />
             <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
 

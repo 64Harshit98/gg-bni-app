@@ -54,6 +54,7 @@ interface TransactionItem {
   unitPrice: number;
   amount: number;
   maxReturnQuantity: number;
+  unitMultiplier?: number;
 }
 
 interface ExchangeItem {
@@ -67,6 +68,7 @@ interface ExchangeItem {
   discount: number;
   salesPrice?: number;
   customPrice?: number | string;
+  unitMultiplier?: number;
 }
 
 interface Customer {
@@ -269,6 +271,7 @@ const SalesReturnPage: React.FC = () => {
           unitPrice: unitPrice,
           amount: finalPrice,
           mrp: itemData.mrp || 0,
+          unitMultiplier: itemData.unitMultiplier || 1
         };
       })
     );
@@ -389,7 +392,8 @@ const SalesReturnPage: React.FC = () => {
       id: crypto.randomUUID(),
       originalItemId: itemToAdd.id!,
       name: itemToAdd.name,
-      quantity: 1,
+      quantity: (itemToAdd as any).unitMultiplier || 1, // UPDATED
+      unitMultiplier: (itemToAdd as any).unitMultiplier || 1,
       unitPrice: finalExchangePrice,
       amount: finalExchangePrice,
       mrp: mrp,
@@ -454,6 +458,7 @@ const SalesReturnPage: React.FC = () => {
       barcode: '',
       restockQuantity: 0,
       customPrice: item.customPrice ?? item.unitPrice,
+      unitMultiplier: item.unitMultiplier || 1,
     } as SalesItem));
   }, [exchangeItems]);
 
@@ -480,7 +485,7 @@ const SalesReturnPage: React.FC = () => {
     const totalReturnValue = totalReturnGross - discountDeducted;
     const finalBalance = totalReturnValue - totalExchangeValue;
 
-    return { totalReturnGross, totalReturnValue, totalExchangeValue, finalBalance, discountDeducted };
+    return { totalReturnGross, totalReturnValue, totalExchangeValue, finalBalance: Math.round(finalBalance), discountDeducted };
   }, [itemsToReturn, exchangeItems, selectedSale]);
 
   const saveReturnTransaction = async (completionData?: Partial<PaymentCompletionData>) => {
@@ -584,7 +589,8 @@ const SalesReturnPage: React.FC = () => {
             barcode: itemMaster?.barcode || '',
             restockQuantity: 0,
             isEditable: false,
-            _effectiveUnitPrice: unitPrice
+            _effectiveUnitPrice: unitPrice,
+            unitMultiplier: exchangeItem.unitMultiplier || 1
           } as any);
         }
 

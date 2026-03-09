@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { Item, ItemGroup } from '../constants/models';
 import { useDatabase } from '../context/auth-context';
-import { FieldValue, Timestamp, doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { db, storage } from '../lib/Firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { FiSave, FiX, FiPackage } from 'react-icons/fi';
@@ -14,11 +14,6 @@ interface ItemEditDrawerProps {
     onClose: () => void;
     onSaveSuccess: (updatedItem: Partial<Item>) => void;
 }
-
-type ItemUpdatePayload = Partial<Omit<Item, 'id' | 'createdAt' | 'companyId'>> & {
-    updatedAt?: FieldValue | Timestamp | number | null;
-    imageUrl?: string | null;
-};
 
 const ImagePreview: React.FC<{ imageUrl: string | null; alt: string }> = ({ imageUrl, alt }) => {
     if (!imageUrl) {
@@ -36,6 +31,15 @@ const ImagePreview: React.FC<{ imageUrl: string | null; alt: string }> = ({ imag
         />
     );
 };
+const UNIT_OPTIONS = [
+    { value: '', label: 'Select Unit' },
+    { value: 'pcs', label: 'Pieces (1)' },
+    { value: 'box', label: 'Box (10)' },
+    { value: 'pkt', label: 'Packet (Custom)' },
+    { value: 'doz', label: 'Dozen (12)' },
+    { value: 'qt', label: 'Quintal (100)' },
+    { value: 'ton', label: 'Ton (1000)' },
+];
 
 export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, onClose, onSaveSuccess }) => {
     const dbOperations = useDatabase();
@@ -103,6 +107,8 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                         isListed: liveData.isListed ?? false,
                         imageUrl: liveData.imageUrl || '',
                         description: liveData.description || '',
+                        unit: liveData.unit || '', // ADDED
+                        packetSize: (liveData as any).packetSize ?? undefined,
                     });
 
                     setImagePreview(liveData.imageUrl || null);
@@ -139,7 +145,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
         const checked = (e.target as HTMLInputElement).checked;
 
         // Added 'salesPrice' to numeric fields
-        const isNumericField = ['mrp', 'purchasePrice', 'stock', 'tax', 'discount', 'salesPrice'].includes(name);
+        const isNumericField = ['mrp', 'purchasePrice', 'stock', 'tax', 'discount', 'salesPrice', 'packetSize'].includes(name);
 
         setFormData(prev => ({
             ...prev,
@@ -186,6 +192,10 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
             setIsSaving(false);
             return;
         }
+        if (formData.unit === 'pkt' && (!formData.packetSize || Number(formData.packetSize) <= 0)) {
+            setError("Please enter a valid quantity for the Packet.");
+            return;
+        }
 
         setIsSaving(true);
         setError(null);
@@ -221,22 +231,34 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 });
             }
 
-            const dataToUpdate: ItemUpdatePayload = {
+            let currentMultiplier = 1;
+            if (formData.unit === 'box') currentMultiplier = 10;
+            if (formData.unit === 'doz') currentMultiplier = 12;
+            if (formData.unit === 'qt') currentMultiplier = 100;
+            if (formData.unit === 'ton') currentMultiplier = 1000;
+            if (formData.unit === 'pkt') currentMultiplier = parseInt(String(formData.packetSize), 10) || 1;
+
+            // Change ItemUpdatePayload to 'any' to bypass the strict TypeScript error
+            const dataToUpdate: any = {
                 name: String(formData.name || ''),
                 mrp: Number(formData.mrp || 0),
-                salesPrice: Number(formData.salesPrice || 0), // <--- Save Sales Price
+                salesPrice: Number(formData.salesPrice || 0),
                 purchasePrice: Number(formData.purchasePrice || 0),
                 purchasediscount: Number(formData.purchasediscount || 0),
                 stock: Number(formData.stock ?? (formData as any).Stock ?? 0),
                 tax: Number(formData.tax || 0),
                 taxRate: Number(formData.tax || 0),
-                hsnSac: String(formData.hsnSac || ''), // <--- Save HSN Code
+                hsnSac: String(formData.hsnSac || ''),
                 discount: Number(formData.discount || 0),
                 itemGroupId: String(formData.itemGroupId || ''),
                 barcode: String(formData.barcode || ''),
                 isListed: formData.isListed ?? false,
                 imageUrl: newImageUrl,
-                description: String(formData.description || '')
+                description: String(formData.description || ''),
+                unit: String(formData.unit || ''),
+                unitMultiplier: currentMultiplier,
+                // Pass null to Firebase if not a packet, it safely clears the field
+                packetSize: formData.unit === 'pkt' ? parseInt(String(formData.packetSize), 10) : null,
             };
 
             await dbOperations.updateItem(item.id, dataToUpdate);
@@ -443,7 +465,44 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                     />
                                 </div>
                             </div>
+                            <div>
+                                <label htmlFor="edit-unit" className="text-sm font-medium leading-none mb-1 block">Unit</label>
+                                <div className="flex gap-2">
+                                    <select
+                                        id="edit-unit"
+                                        name="unit"
+                                        value={formData.unit || ''}
+                                        onChange={(e) => {
+                                            handleChange(e);
+                                            // Clear the packet size if they switch away from 'pkt'
+                                            if (e.target.value !== 'pkt') {
+                                                setFormData(prev => ({ ...prev, packetSize: undefined }));
+                                            }
+                                        }}
+                                        className={`flex h-10 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50 ${formData.unit === 'pkt' ? 'w-1/2' : 'w-full'}`}
+                                        disabled={isSaving}
+                                    >
+                                        {UNIT_OPTIONS.map(u => (
+                                            <option key={u.value} value={u.value} disabled={u.value === ''}>
+                                                {u.label}
+                                            </option>
+                                        ))}
+                                    </select>
 
+                                    {formData.unit === 'pkt' && (
+                                        <input
+                                            type="number"
+                                            name="packetSize"
+                                            value={formData.packetSize ?? ''}
+                                            onChange={handleChange}
+                                            placeholder="Qty per pkt"
+                                            className="flex h-10 w-1/2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
+                                            disabled={isSaving}
+                                            min="1"
+                                        />
+                                    )}
+                                </div>
+                            </div>
                             {/* --- Discount & Barcode Row --- */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>

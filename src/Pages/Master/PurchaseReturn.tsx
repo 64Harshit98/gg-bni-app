@@ -59,6 +59,7 @@ interface TransactionItem {
   unit?: string;
   stock?: number;
   maxReturnQuantity?: number;
+  unitMultiplier?: number;
 }
 
 interface ReturnCartItem extends CartItem {
@@ -285,7 +286,8 @@ const PurchaseReturnPage: React.FC = () => {
         hsnSac: itemData.hsnSac || '',
         barcode: itemData.barcode || '',
         unit: itemData.unit || '',
-        stock: itemData.stock || 0
+        stock: itemData.stock || 0,
+        unitMultiplier: itemData.unitMultiplier || 1
       };
     }));
 
@@ -382,7 +384,8 @@ const PurchaseReturnPage: React.FC = () => {
       id: crypto.randomUUID(),
       originalItemId: item.id!,
       name: item.name,
-      quantity: 1,
+      quantity: (item as any).unitMultiplier || 1,
+      unitMultiplier: (item as any).unitMultiplier || 1,
       unitPrice: finalNetPrice,
       amount: finalNetPrice,
       isEditable: true,
@@ -549,7 +552,7 @@ const PurchaseReturnPage: React.FC = () => {
     const netReturnValue = totalReturnGross - discountDeducted;
     const finalBalance = netReturnValue - totalNewItemsValue;
 
-    return { totalReturnValue: netReturnValue, totalNewItemsValue, finalBalance, discountDeducted };
+    return { totalReturnValue: netReturnValue, totalNewItemsValue, finalBalance: Math.round(finalBalance), discountDeducted };
   }, [itemsToReturn, newItemsReceived, selectedPurchase]);
 
 
@@ -598,7 +601,8 @@ const PurchaseReturnPage: React.FC = () => {
             tax: newItem.tax || 0,
             hsnSac: newItem.hsnSac || '',
             barcode: newItem.barcode || '',
-            unit: newItem.unit || ''
+            unit: newItem.unit || '',
+            unitMultiplier: newItem.unitMultiplier || 1
           } as any);
         }
         const itemDocRef = await getItemDocRef(newItem.barcode, newItem.originalItemId);

@@ -1,25 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
-import {
-    doc,
-    getDoc,
-    setDoc,
-    updateDoc,
-} from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { Spinner } from '../../constants/Spinner';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
 import { useAuth } from '../../context/auth-context';
+
 export interface ItemSettings {
     companyId?: string;
     settingType: 'item';
     requirePurchasePrice: boolean;
     requireDiscount: boolean;
     requireTax: boolean;
-    requireBarcode: boolean;
     requireRestockQuantity: boolean;
+    requireUnit: boolean;
     autoGenerateBarcode: boolean;
+    requireCategory: boolean; // ADDED: Category Requirement
 }
 
 export const getDefaultItemSettings = (companyId: string): ItemSettings => ({
@@ -28,8 +25,9 @@ export const getDefaultItemSettings = (companyId: string): ItemSettings => ({
     requirePurchasePrice: true,
     requireDiscount: false,
     requireTax: false,
-    requireBarcode: false,
     requireRestockQuantity: false,
+    requireCategory: false,
+    requireUnit: false,
     autoGenerateBarcode: true,
 });
 
@@ -51,7 +49,6 @@ const ItemSettingsPage: React.FC = () => {
         const fetchOrCreateSettings = async () => {
             setIsLoading(true);
             const companyId = currentUser.companyId!;
-
             const settingsDocRef = doc(db, 'companies', companyId, 'settings', 'item-settings');
 
             try {
@@ -60,7 +57,6 @@ const ItemSettingsPage: React.FC = () => {
                 if (docSnap.exists()) {
                     setSettings(docSnap.data() as ItemSettings);
                 } else {
-                    console.log("No item settings found. Creating defaults...");
                     const defaultSettings = getDefaultItemSettings(companyId);
                     await setDoc(settingsDocRef, defaultSettings);
                     setSettings(defaultSettings);
@@ -90,7 +86,6 @@ const ItemSettingsPage: React.FC = () => {
             const settingsDocRef = doc(db, 'companies', companyId, 'settings', 'item-settings');
 
             await updateDoc(settingsDocRef, settings as unknown as { [x: string]: any });
-
             setModal({ message: 'Item settings saved successfully!', type: State.SUCCESS });
         } catch (err) {
             console.error('Failed to save settings:', err);
@@ -129,13 +124,21 @@ const ItemSettingsPage: React.FC = () => {
                 <form onSubmit={handleSave} className="bg-white rounded-sm p-4 shadow-md max-w-3xl mx-auto space-y-6">
 
                     <div>
-                        <h2 className="text-base font-semibold text-gray-700 mb-3 border-b pb-2">Required Fields</h2>
+                        <h2 className="text-base font-semibold text-gray-700 mb-3 border-b pb-2">Optional Fields Requirements</h2>
                         <p className="text-sm text-gray-500 mb-3">
-                            Select which fields must be filled when adding a single item.
-                            (Name, MRP, Stock Amount, and Category are always required).
+                            Select which of the optional fields must be filled out when manually adding a single item.
+                            <br /><span className="text-xs text-red-500 font-medium">* Name, MRP/Sale Price, Stock, and Barcode are strictly required by the system and cannot be disabled.</span>
                         </p>
 
-                        <div className="space-y-2">
+                        <div className="space-y-3 mt-4">
+                            {/* ADDED: Require Category Checkbox */}
+                            <div className="flex items-center">
+                                <input type="checkbox" id="req-category"
+                                    checked={settings.requireCategory}
+                                    onChange={(e) => handleCheckboxChange('requireCategory', e.target.checked)}
+                                    className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
+                                <label htmlFor="req-category" className="ml-2 text-sm font-medium text-gray-700">Require Category</label>
+                            </div>
                             <div className="flex items-center">
                                 <input type="checkbox" id="req-purchasePrice"
                                     checked={settings.requirePurchasePrice}
@@ -160,26 +163,26 @@ const ItemSettingsPage: React.FC = () => {
                             </div>
 
                             <div className="flex items-center">
-                                <input type="checkbox" id="req-barcode"
-                                    checked={settings.requireBarcode}
-                                    onChange={(e) => handleCheckboxChange('requireBarcode', e.target.checked)}
-                                    className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
-                                <label htmlFor="req-barcode" className="ml-2 text-sm font-medium text-gray-700">Require Barcode</label>
-                            </div>
-
-                            <div className="flex items-center">
                                 <input type="checkbox" id="req-restock"
                                     checked={settings.requireRestockQuantity}
                                     onChange={(e) => handleCheckboxChange('requireRestockQuantity', e.target.checked)}
                                     className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
                                 <label htmlFor="req-restock" className="ml-2 text-sm font-medium text-gray-700">Require Restock Quantity</label>
                             </div>
+
+                            <div className="flex items-center">
+                                <input type="checkbox" id="req-unit"
+                                    checked={settings.requireUnit}
+                                    onChange={(e) => handleCheckboxChange('requireUnit', e.target.checked)}
+                                    className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
+                                <label htmlFor="req-unit" className="ml-2 text-sm font-medium text-gray-700">Require Unit (e.g., kg, pcs)</label>
+                            </div>
                         </div>
                     </div>
 
                     <div>
-                        <h2 className="text-base font-semibold text-gray-700 mb-3 border-b pb-2 pt-4">Barcode Handling</h2>
-                        <div className="flex items-center">
+                        <h2 className="text-base font-semibold text-gray-700 mb-3 border-b pb-2 pt-4">Barcode Automation</h2>
+                        <div className="flex items-center mt-3">
                             <input type="checkbox" id="auto-barcode"
                                 checked={settings.autoGenerateBarcode}
                                 onChange={(e) => handleCheckboxChange('autoGenerateBarcode', e.target.checked)}

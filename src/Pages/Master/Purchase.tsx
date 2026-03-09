@@ -11,7 +11,7 @@ import { Modal } from '../../constants/Modal';
 import { State, Variant } from '../../enums';
 import SearchableItemInput from '../../UseComponents/SearchIteminput';
 import { CustomButton } from '../../Components';
-import { generateNextInvoiceNumber } from '../../UseComponents/InvoiceCounter';
+import { generateNextPurchaseNumber } from '../../UseComponents/InvoiceCounter';
 import { Spinner } from '../../constants/Spinner';
 import { FiTrash2 } from 'react-icons/fi';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
@@ -33,6 +33,7 @@ interface PurchaseItem extends Omit<SalesItem, 'finalPrice' | 'effectiveUnitPric
   productId?: string;
   customPrice?: number | string;
   isEditable?: boolean;
+  unitMultiplier?: number;
 }
 
 interface PurchaseDocumentData {
@@ -67,8 +68,7 @@ const applyPurchaseRounding = (amount: number, isRoundingEnabled: boolean): numb
   return Math.round(amount);
 };
 
-type TaxOption = 'inclusive' | 'exclusive' | 'exempt';
-
+type TaxOption = 'inclusive' | 'exclusive' | 'none';
 const PurchasePage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -108,7 +108,7 @@ const PurchasePage: React.FC = () => {
 
   const [showPrintQrModal, setShowPrintQrModal] = useState<PurchaseItem[] | null>(null);
   const [editModeData, setEditModeData] = useState<Purchase | null>(null);
-  const [settingsDocId, setSettingsDocId] = useState<string | null>(null);
+  const [_settingsDocId, setSettingsDocId] = useState<string | null>(null);
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -142,10 +142,10 @@ const PurchasePage: React.FC = () => {
     const fetchInvoiceNumber = async () => {
       if (!purchaseIdToEdit) {
         try {
-          const nextNum = await generateNextInvoiceNumber(companyId);
+          const nextNum = await generateNextPurchaseNumber(companyId); // <-- Updated
           setInvoiceNumber(nextNum);
         } catch (e) {
-          console.error("Error generating invoice number", e);
+          console.error("Error generating purchase number", e);
         }
       }
     };
@@ -179,10 +179,7 @@ const PurchasePage: React.FC = () => {
             setInvoiceNumber(purchaseData.invoiceNumber);
 
             if (purchaseData.taxType) {
-              const savedTaxType: TaxOption = purchaseData.taxType === 'none'
-                ? 'exclusive'
-                : purchaseData.taxType as TaxOption;
-              setBillTaxType(savedTaxType);
+              setBillTaxType(purchaseData.taxType as TaxOption);
             }
 
             const validatedItems = (purchaseData.items || []).map((item: any) => {
@@ -210,7 +207,8 @@ const PurchasePage: React.FC = () => {
                 taxableAmount: item.taxableAmount,
                 stock: item.stock ?? item.Stock ?? 0,
                 productId: item.productId || item.id,
-                isEditable: true
+                isEditable: true,
+                unitMultiplier: item.unitMultiplier || 1
               };
             });
 
@@ -222,9 +220,6 @@ const PurchasePage: React.FC = () => {
         } else {
           setEditModeData(null);
           fetchInvoiceNumber();
-          if (purchaseSettings?.taxType) {
-            setBillTaxType(purchaseSettings.taxType as TaxOption);
-          }
         }
         setError(null);
       } catch (err: any) {
@@ -289,25 +284,33 @@ const PurchasePage: React.FC = () => {
       calculatedDiscount = 0;
     }
 
-    setItems((prevItems) => [
-      {
-        id: crypto.randomUUID(),
-        productId: itemToAdd.id!,
-        name: itemToAdd.name || 'Unnamed Item',
-        purchasePrice: finalNetPrice,
-        originalPurchasePrice: masterPurchasePrice,
-        mrp: mrp,
-        barcode: itemToAdd.barcode || '',
-        quantity: 1,
-        // Set both to be safe, but 'purchasediscount' is the semantic one
-        discount: parseFloat(calculatedDiscount.toFixed(2)),
-        purchasediscount: parseFloat(calculatedDiscount.toFixed(2)),
-        taxRate: resolvedTax,
-        stock: itemToAdd.stock || (itemToAdd as any).Stock || 0,
-        isEditable: true
-      },
-      ...prevItems,
-    ]);
+    const newItemToInsert = {
+      id: crypto.randomUUID(),
+      productId: itemToAdd.id!,
+      name: itemToAdd.name || 'Unnamed Item',
+      purchasePrice: finalNetPrice,
+      originalPurchasePrice: masterPurchasePrice,
+      mrp: mrp,
+      barcode: itemToAdd.barcode || '',
+      quantity: (itemToAdd as any).unitMultiplier || 1,
+      unitMultiplier: (itemToAdd as any).unitMultiplier || 1,
+      discount: parseFloat(calculatedDiscount.toFixed(2)),
+      purchasediscount: parseFloat(calculatedDiscount.toFixed(2)),
+      taxRate: resolvedTax,
+      stock: itemToAdd.stock || (itemToAdd as any).Stock || 0,
+      isEditable: true
+    };
+
+    setItems((prevItems) => {
+      // Check the setting, default to 'top' if undefined
+      const order = purchaseSettings?.cartInsertionOrder || 'top';
+
+      if (order === 'bottom') {
+        return [...prevItems, newItemToInsert];
+      } else {
+        return [newItemToInsert, ...prevItems];
+      }
+    });
   };
 
   // --- LOGIC 2: HANDLE PRICE CHANGE (Typing) ---
@@ -407,7 +410,6 @@ const PurchasePage: React.FC = () => {
     totalDiscount,
     totalQuantity
   } = useMemo(() => {
-    const gstScheme = purchaseSettings?.gstScheme ?? 'none';
     const taxType = billTaxType;
     const isRoundingEnabled = purchaseSettings?.roundingOff ?? true;
 
@@ -434,10 +436,10 @@ const PurchasePage: React.FC = () => {
       let itemTax = 0;
       let itemFinalTotal = 0;
 
-      const effectiveScheme = taxType === 'exempt' ? 'none' : gstScheme;
-      if (effectiveScheme === 'regular' || effectiveScheme === 'composition') {
+      const effectiveScheme = taxType === 'none' ? 'none' : 'regular';
+      if (effectiveScheme === 'regular') {
         if (taxType === 'exclusive') {
-          itemTaxableBase = Math.round(itemTotalPurchasePrice);
+          itemTaxableBase = itemTotalPurchasePrice;
           itemTax = itemTaxableBase * (itemTaxRate / 100);
           itemFinalTotal = itemTaxableBase + itemTax;
         } else {
@@ -525,15 +527,10 @@ const PurchasePage: React.FC = () => {
     if (purchaseSettings?.requireSupplierName && !completionData.partyName.trim()) { setModal({ message: 'Supplier name is required.', type: State.ERROR }); setIsDrawerOpen(true); return; }
     if (purchaseSettings?.requireSupplierMobile && !completionData.partyNumber.trim()) { setModal({ message: 'Supplier mobile is required.', type: State.ERROR }); setIsDrawerOpen(true); return; }
 
-    const gstScheme = purchaseSettings?.gstScheme ?? 'none';
     const taxType = billTaxType;
 
-    let finalTaxType: 'inclusive' | 'exclusive' | 'none';
-    if (gstScheme === 'none' || taxType === 'exempt') {
-      finalTaxType = 'none';
-    } else {
-      finalTaxType = taxType;
-    }
+    const finalTaxType = taxType;
+    const gstScheme = taxType === 'none' ? 'none' : 'regular';
 
     const formatItemsForDB = (itemsToFormat: PurchaseItem[]): PurchaseItem[] => {
       return itemsToFormat.map((item) => {
@@ -556,9 +553,9 @@ const PurchasePage: React.FC = () => {
           itemTax = 0;
         }
 
-      const formattedTaxable = parseFloat(itemTaxableBase.toFixed(2));
+        const formattedTaxable = parseFloat(itemTaxableBase.toFixed(2));
         const formattedTax = parseFloat(itemTax.toFixed(2));
-        
+
         // --- NEW: Calculate Item-Wise Total (Taxable + Tax) ---
         const itemLineTotal = parseFloat((formattedTaxable + formattedTax).toFixed(2));
 
@@ -574,10 +571,11 @@ const PurchasePage: React.FC = () => {
           taxRate: itemTaxRate,
           taxType: finalTaxType,
           finalPrice: itemLineTotal,
+          unitMultiplier: item.unitMultiplier || 1,
         };
       });
     };
-    
+
 
     const formattedItemsForDB = formatItemsForDB(items);
 
@@ -643,15 +641,6 @@ const PurchasePage: React.FC = () => {
             updatedAt: serverTimestamp(),
           });
         });
-
-        if (settingsDocId) {
-          const settingsRef = doc(db, "companies", companyId, "settings", settingsDocId);
-          transaction.update(settingsRef, {
-            currentVoucherNumber: firebaseIncrement(1)
-          });
-        } else {
-          throw new Error("Settings document not found for voucher increment.");
-        }
       });
 
       setIsDrawerOpen(false);
@@ -660,7 +649,7 @@ const PurchasePage: React.FC = () => {
 
       if (!purchaseSettings?.copyVoucherAfterSaving) {
         setItems([]);
-        const nextNum = await generateNextInvoiceNumber(companyId);
+        const nextNum = await generateNextPurchaseNumber(companyId);
         setInvoiceNumber(nextNum);
       }
       if (purchaseSettings?.enableBarcodePrinting) {
@@ -804,9 +793,8 @@ const PurchasePage: React.FC = () => {
   if (pageIsLoading) return (<div className="flex items-center justify-center h-screen"><Spinner /> <p className="ml-2">Loading...</p></div>);
   if (error) return (<div className="flex flex-col items-center justify-center h-screen text-red-600"><p>{error}</p><button onClick={() => navigate(-1)} className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Go Back</button></div>);
 
-  const gstSchemeDisplay = purchaseSettings?.gstScheme ?? 'none';
-  const showTaxToggle = gstSchemeDisplay !== 'none';
-  const displayTaxTotal = showTaxToggle && billTaxType !== 'exempt';
+  const showTaxToggle = true; // Always show the manual tax toggle on the UI
+  const displayTaxTotal = showTaxToggle && billTaxType !== 'none';
   const isCardView = purchaseSettings?.purchaseViewType === 'card';
 
   const renderHeader = () => (
@@ -961,7 +949,7 @@ const PurchasePage: React.FC = () => {
                   >
                     <option value="exclusive">Tax Exclusive</option>
                     <option value="inclusive">Tax Inclusive</option>
-                    <option value="exempt">Tax Exempt</option>
+                    <option value="none">Tax Exempt</option>
                   </select>
                 </div>
               )}
@@ -998,7 +986,7 @@ const PurchasePage: React.FC = () => {
                   >
                     <option value="exclusive">Tax Exclusive</option>
                     <option value="inclusive">Tax Inclusive</option>
-                    <option value="exempt">Tax Exempt</option>
+                    <option value="none">Tax Exempt</option>
                   </select>
                 </div>
               )}
@@ -1012,6 +1000,7 @@ const PurchasePage: React.FC = () => {
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
         subtotal={subtotal}
+        totalTax={taxAmount}
         billTotal={finalAmount}
         onPaymentComplete={handleSavePurchase}
         isPartyNameEditable={!editModeData}

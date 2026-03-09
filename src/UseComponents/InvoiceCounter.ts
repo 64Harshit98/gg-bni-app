@@ -6,31 +6,34 @@ import { doc, runTransaction, DocumentReference } from 'firebase/firestore';
  * @param companyId The ID of the company to get the counter for.
  */
 export const generateNextInvoiceNumber = async (companyId: string): Promise<string> => {
-    if (!companyId) {
-        throw new Error("A valid companyId must be provided.");
-    }
+    if (!companyId) throw new Error("A valid companyId must be provided.");
 
-    // --- FIX: Use the multi-tenant path ---
+    const settingsRef: DocumentReference = doc(db, 'companies', companyId, 'settings', 'sales-settings');
     const counterRef: DocumentReference = doc(db, 'companies', companyId, 'counters', 'invoiceCounter');
 
     try {
-        const newNumber = await runTransaction(db, async (transaction) => {
-            const counterDoc = await transaction.get(counterRef);
-            let nextNumber = 1001;
-
-            if (counterDoc.exists()) {
-                const current = counterDoc.data()?.currentNumber || 1000;
-                nextNumber = current + 1;
+        return await runTransaction(db, async (transaction) => {
+            // 1. Get Prefix from Settings
+            const settingsDoc = await transaction.get(settingsRef);
+            let prefix = 'INV';
+            if (settingsDoc.exists() && settingsDoc.data().voucherPrefix !== undefined) {
+                prefix = settingsDoc.data().voucherPrefix;
             }
 
-            // Set the new counter value
-            transaction.set(counterRef, { currentNumber: nextNumber }, { merge: true });
-            return nextNumber;
+            // 2. Get Sequence from Counter DB
+            const counterDoc = await transaction.get(counterRef);
+            let nextNumber = 1;
+            if (counterDoc.exists() && counterDoc.data().currentNumber !== undefined) {
+                nextNumber = counterDoc.data().currentNumber;
+            }
+
+            const finalVoucherNumber = `${prefix}-${nextNumber}`;
+
+            // 3. Update ONLY the Counter DB
+            transaction.set(counterRef, { currentNumber: nextNumber + 1 }, { merge: true });
+
+            return finalVoucherNumber;
         });
-
-        const paddedNumber = String(newNumber).padStart(4, '0');
-        return `INV-${paddedNumber}`;
-
     } catch (error) {
         console.error("Error generating invoice number:", error);
         throw new Error("Could not generate a new invoice number.");
@@ -41,37 +44,39 @@ export const generateNextInvoiceNumber = async (companyId: string): Promise<stri
  * Generates the next purchase invoice number for a specific company.
  * @param companyId The ID of the company to get the counter for.
  */
-export const PurchaseInvoiceNumber = async (companyId: string): Promise<string> => {
-    if (!companyId) {
-        throw new Error("A valid companyId must be provided.");
-    }
+export const generateNextPurchaseNumber = async (companyId: string): Promise<string> => {
+    if (!companyId) throw new Error("A valid companyId must be provided.");
 
-    // --- FIX: Use the multi-tenant path ---
-    // Note: Your original path was 'counter' (singular), I've kept it here.
-    // You may want to standardize on 'counters' (plural).
-    const counterRef: DocumentReference = doc(db, 'companies', companyId, 'counter', 'purchaseInvoice');
+    // Point to the purchase settings and purchase counter
+    const settingsRef: DocumentReference = doc(db, 'companies', companyId, 'settings', 'purchase-settings');
+    const counterRef: DocumentReference = doc(db, 'companies', companyId, 'counters', 'purchaseCounter');
 
     try {
-        const newNumber = await runTransaction(db, async (transaction) => {
-            const counterDoc = await transaction.get(counterRef);
-            let nextNumber = 1001;
-
-            if (counterDoc.exists()) {
-                const current = counterDoc.data()?.currentNumber || 1000;
-                nextNumber = current + 1;
+        return await runTransaction(db, async (transaction) => {
+            // 1. Get Prefix from Settings
+            const settingsDoc = await transaction.get(settingsRef);
+            let prefix = 'INV';
+            if (settingsDoc.exists() && settingsDoc.data().voucherPrefix !== undefined) {
+                prefix = settingsDoc.data().voucherPrefix;
             }
 
-            transaction.set(counterRef, { currentNumber: nextNumber }, { merge: true });
-            return nextNumber;
+            // 2. Get Sequence from Counter DB
+            const counterDoc = await transaction.get(counterRef);
+            let nextNumber = 1;
+            if (counterDoc.exists() && counterDoc.data().currentNumber !== undefined) {
+                nextNumber = counterDoc.data().currentNumber;
+            }
+
+            const finalVoucherNumber = `${prefix}-${nextNumber}`;
+
+            // 3. Increment the Counter DB automatically
+            transaction.set(counterRef, { currentNumber: nextNumber + 1 }, { merge: true });
+
+            return finalVoucherNumber;
         });
-
-        const paddedNumber = String(newNumber).padStart(4, '0');
-        // --- FIX: Recommend changing prefix to distinguish from sales invoices ---
-        return `PUR-${paddedNumber}`; // e.g., PUR-1001
-
     } catch (error) {
-        console.error("Error generating purchase invoice number:", error);
-        throw new Error("Could not generate a new purchase invoice number.");
+        console.error("Error generating purchase number:", error);
+        throw new Error("Could not generate a new purchase number.");
     }
 };
 

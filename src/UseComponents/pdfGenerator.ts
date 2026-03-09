@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable';
 import { ACTION } from '../enums';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
+import QRCode from 'qrcode';
 
 export interface InvoiceData {
   gstScheme?: string;       // 'REGULAR', 'COMPOSITION', 'NONE'
@@ -16,6 +17,7 @@ export interface InvoiceData {
   msmeNumber?: string;
   signatureBase64?: string;
   billDiscount?: number;
+  upiId?: string;
 
   billTo: {
     name: string;
@@ -24,13 +26,22 @@ export interface InvoiceData {
     phone: string;
     gstin?: string;
   };
+  shipTo?: {
+    name: string;
+    address: string;
+    phone: string;
+    gstin?: string;
+  };
+  extraExpenseName?: string;
+  extraExpenseAmount?: number;
+  narration?: string;
   invoice: {
     number: string;
     date: string;
     billedBy: string;
     roNumber?: string;
   };
-  finalAmount?:number;
+  finalAmount?: number;
   items: {
     sno: number;
     name: string;
@@ -70,6 +81,17 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   doc.setTextColor(textColor);
   doc.setLineWidth(0.1);
 
+  let qrBase64: string | null = null;
+  if (data.upiId) {
+    // Standard UPI format: upi://pay?pa=<UPI_ID>&pn=<NAME>&cu=INR
+    const upiString = `upi://pay?pa=${data.upiId}&pn=${encodeURIComponent(data.companyName)}&cu=INR`;
+    try {
+      qrBase64 = await QRCode.toDataURL(upiString, { width: 80, margin: 0 });
+    } catch (err) {
+      console.error("Failed to generate QR code", err);
+    }
+  }
+
   // --- NORMALIZATION ---
   const safeScheme = (data.gstScheme && data.gstScheme.trim() !== '')
     ? data.gstScheme.toUpperCase()
@@ -88,6 +110,13 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   // --- 1. HEADER SECTION ---
   const headerHeight = 25;
   drawBox(cursorY, headerHeight);
+  if (qrBase64) {
+    // Draw image at X: startX + 2, Y: cursorY + 2. Size: 18x18 mm
+    doc.addImage(qrBase64, 'PNG', startX + 2, cursorY + 2, 18, 18);
+    doc.setFontSize(6);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Scan to Pay', startX + 11, cursorY + 22, { align: 'center' });
+  }
 
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
@@ -128,7 +157,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   doc.text(`Invoice No. :  ${data.invoice.number}`, startX + 2, cursorY + 5);
   doc.text(`Date          :  ${data.invoice.date}`, startX + 2, cursorY + 10);
 
-  const posVal = data.billTo.address.split(',').pop()?.trim() || 'Uttar Pradesh';
+  const posVal = data.billTo.address.split(',').pop()?.trim() || '';
   doc.text(`Place of Supply : ${posVal}`, (pageWidth / 2) + 2, cursorY + 5);
 
   if (safeScheme !== 'NONE') {
@@ -152,12 +181,12 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   const billEmail = `E Mail  : ${data.billTo.email || ''}`;
   const billGst = `GST No. : ${data.billTo.gstin || ''}`;
 
-  const shipName = data.billTo.name;
-  const shipAddr = billAddr;
-  const shipPhone = `Phone.No.  :`;
-  const shipEmail = `E Mail  :`;
-  const shipGst = `GST No. :`;
-
+  // --- REPLACE shipAddr LOGIC ---
+  const shipName = data.shipTo?.name || '';
+  const shipAddr = doc.splitTextToSize(data.shipTo?.address || '', (contentWidth / 2) - 5);
+  const shipPhone = `Phone.No.  : ${data.shipTo?.phone || ''}`;
+  const shipEmail = `E Mail  :`; // Usually empty for shipping unless strictly needed
+  const shipGst = `GST No. : ${data.shipTo?.gstin || ''}`;
   const lineHeight = 5;
   const padding = 10;
   const fixedLines = 5;
@@ -293,9 +322,10 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
 
   // --- UPDATED GRAND TOTAL CALCULATION ---
   const billDiscount = Number(data.billDiscount) || 0;
+  const extraExpense = Number(data.extraExpenseAmount) || 0;
 
-  // Subtract bill discount from the sum of item amounts
-  const netPayable = grossTotal - billDiscount;
+  // Subtract bill discount AND add the extra expense
+  const netPayable = grossTotal - billDiscount + extraExpense;
 
   const finalRoundTotal = Math.round(netPayable);
   const roundOffAmt = finalRoundTotal - netPayable;
@@ -340,6 +370,17 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     finalY = margin;
   }
 
+  // --- ADDED: EXTRA EXPENSE ROW ---
+  if (data.extraExpenseAmount && data.extraExpenseAmount > 0) {
+    const expH = 6;
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.rect(startX, finalY, contentWidth, expH);
+    doc.text(`Add : ${data.extraExpenseName || 'Extra Expense'} (+)`, endX - 35, finalY + 4);
+    doc.text(data.extraExpenseAmount.toFixed(2), endX - 2, finalY + 4, { align: 'right' });
+    finalY += expH;
+  }
+
   // --- ADDED: BILL DISCOUNT ROW ---
   if (billDiscount > 0) {
     const discH = 6;
@@ -373,6 +414,33 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   doc.rect(endX - 30, finalY, 30, grandTotalH);
   doc.text(finalRoundTotal.toFixed(2), endX - 2, finalY + 5.5, { align: 'right' });
   finalY += grandTotalH;
+
+  if (data.narration && data.narration.trim() !== '') {
+    doc.setFontSize(8);
+
+    // Calculate how many lines the narration will take (accounting for the label's width)
+    const narrationLines = doc.splitTextToSize(data.narration, contentWidth - 18);
+    const narrationH = (narrationLines.length * 4) + 4;
+
+    // Check if we need a new page
+    if (finalY + narrationH > pageHeight - margin) {
+      doc.addPage();
+      finalY = margin;
+    }
+
+    // Draw the box
+    doc.rect(startX, finalY, contentWidth, narrationH);
+
+    // Print "Remarks:" in BOLD
+    doc.setFont('helvetica', 'bold');
+    doc.text('Remarks:', startX + 2, finalY + 4);
+
+    // Print the actual narration in NORMAL text, perfectly indented next to the label
+    doc.setFont('helvetica', 'normal');
+    doc.text(narrationLines, startX + 16, finalY + 4);
+
+    finalY += narrationH;
+  }
 
   // 3. TAX TABLE
   const taxHeaders = [['Tax Rate', 'Taxable Amt.', 'CGST', 'SGST', 'Total Tax']];
@@ -649,7 +717,8 @@ export const preparePdfData = async (invoiceData: any) => {
     gstScheme: invoiceData.gstScheme || 'regular',
     partyName: invoiceData.partyName || 'Cash Customer',
     invoiceNumber: invoiceData.invoiceNumber || 'INV-000',
-    mode: invoiceData.mode || 'print',              // Some generators check 'mode'
+    mode: invoiceData.mode || 'print',
+    upiId: invoiceData.settings?.upiId || companyData.upiId || '',        // Some generators check 'mode'
 
     // --- OBJECTS ---
     company: companyData,

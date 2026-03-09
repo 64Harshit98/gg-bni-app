@@ -11,15 +11,18 @@ import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
 import { useAuth } from '../../context/auth-context';
 import { FiCheck } from 'react-icons/fi';
+import { InfoTooltip } from '../../Components/InfoToolTip';
+
 export interface SalesSettings {
     settingType: 'sales';
     salesViewType?: 'card' | 'list';
+    enableTax?: boolean;
+    defaultTaxRate?: number;
     enableSalesmanSelection?: boolean;
     gstScheme?: 'regular' | 'composition' | 'none';
     taxType?: 'inclusive' | 'exclusive';
     enableRounding?: boolean;
     roundingInterval?: number;
-    enforceExactMRP?: boolean;
     hideMrp?: boolean;
     enableItemWiseDiscount?: boolean;
     lockDiscountEntry?: boolean;
@@ -36,8 +39,10 @@ export interface SalesSettings {
     cartInsertionOrder?: 'top' | 'bottom';
     companyId?: string;
     lockTaxToggle?: boolean;
+    enableShippingDetails?: boolean;
+    enableExtraExpense?: boolean;
+    enableNarration?: boolean;
 }
-
 
 export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     companyId: companyId,
@@ -50,7 +55,6 @@ export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     enableRounding: true,
     roundingInterval: 1,
     cartInsertionOrder: 'top',
-    enforceExactMRP: false,
     hideMrp: false,
     enableItemWiseDiscount: true,
     lockDiscountEntry: false,
@@ -60,10 +64,13 @@ export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     allowDueBilling: true,
     requireCustomerName: true,
     requireCustomerMobile: false,
-    voucherName: 'Sales',
-    voucherPrefix: 'SLS-',
-    currentVoucherNumber: 1,
+    voucherName: 'Invoice',
+    voucherPrefix: 'INV',
+    currentVoucherNumber: 1000,
     copyVoucherAfterSaving: false,
+    enableShippingDetails: false,
+    enableExtraExpense: false,
+    enableNarration: false,
 });
 
 const SalesSettingsPage: React.FC = () => {
@@ -86,23 +93,31 @@ const SalesSettingsPage: React.FC = () => {
             const companyId = currentUser.companyId!;
 
             const settingsDocRef = doc(db, 'companies', companyId, 'settings', 'sales-settings');
+            const counterDocRef = doc(db, 'companies', companyId, 'counters', 'invoiceCounter');
 
             try {
-                const docSnap = await getDoc(settingsDocRef);
+                const [docSnap, counterSnap] = await Promise.all([
+                    getDoc(settingsDocRef),
+                    getDoc(counterDocRef)
+                ]);
+
                 const defaultSettings = getDefaultSalesSettings(companyId);
+                let mergedSettings = { ...defaultSettings };
 
                 if (docSnap.exists()) {
-                    const savedData = docSnap.data();
-                    const mergedSettings = {
-                        ...defaultSettings,
-                        ...savedData
-                    };
-                    setSettings(mergedSettings as SalesSettings);
+                    mergedSettings = { ...mergedSettings, ...docSnap.data() };
                 } else {
                     console.log(`Creating default sales settings...`);
                     await setDoc(settingsDocRef, defaultSettings);
-                    setSettings(defaultSettings);
                 }
+
+                if (counterSnap.exists() && counterSnap.data().currentNumber !== undefined) {
+                    mergedSettings.currentVoucherNumber = counterSnap.data().currentNumber;
+                } else {
+                    await setDoc(counterDocRef, { currentNumber: defaultSettings.currentVoucherNumber }, { merge: true });
+                }
+
+                setSettings(mergedSettings as SalesSettings);
             } catch (err) {
                 console.error('Failed to fetch/create sales settings:', err);
                 setModal({ message: 'Failed to load settings.', type: State.ERROR });
@@ -126,23 +141,28 @@ const SalesSettingsPage: React.FC = () => {
         e.preventDefault();
 
         if (!currentUser?.companyId || !settings) {
-            setModal({ message: 'Error: Missing data.', type: State.ERROR });
-            return;
+            setModal({ message: 'Error: Missing data.', type: State.ERROR }); return;
         }
 
         setIsSaving(true);
         try {
             const companyId = currentUser.companyId;
-            const docToUpdateRef = doc(db, 'companies', companyId, 'settings', 'sales-settings');
+            const settingsRef = doc(db, 'companies', companyId, 'settings', 'sales-settings');
+            const counterRef = doc(db, 'companies', companyId, 'counters', 'invoiceCounter');
+
+            const { currentVoucherNumber, ...restOfSettings } = settings;
 
             const settingsToSave = {
-                ...settings,
+                ...restOfSettings,
                 companyId: companyId,
                 settingType: 'sales',
                 updatedAt: new Date()
             };
 
-            await setDoc(docToUpdateRef, settingsToSave, { merge: true });
+            await Promise.all([
+                setDoc(settingsRef, settingsToSave, { merge: true }),
+                setDoc(counterRef, { currentNumber: currentVoucherNumber }, { merge: true })
+            ]);
 
             setModal({ message: 'Settings saved successfully!', type: State.SUCCESS });
         } catch (err) {
@@ -150,6 +170,35 @@ const SalesSettingsPage: React.FC = () => {
             setModal({ message: 'Failed to save settings. Please try again.', type: State.ERROR });
         } finally {
             setIsSaving(false);
+        }
+    };
+
+    const handleResetVoucher = async () => {
+        if (!settings || !currentUser?.companyId) return;
+
+        try {
+            const counterDocRef = doc(db, 'companies', currentUser.companyId, 'counters', 'invoiceCounter');
+            const counterSnap = await getDoc(counterDocRef);
+
+            let backendCounter = 1;
+            if (counterSnap.exists() && counterSnap.data().currentNumber) {
+                backendCounter = counterSnap.data().currentNumber;
+            }
+
+            setSettings({
+                ...settings,
+                voucherName: 'Invoice',
+                voucherPrefix: 'INV',
+                currentVoucherNumber: backendCounter
+            });
+
+        } catch (error) {
+            console.error("Failed to fetch backend counter for reset:", error);
+            setSettings({
+                ...settings,
+                voucherName: 'Invoice',
+                voucherPrefix: 'INV'
+            });
         }
     };
 
@@ -208,7 +257,12 @@ const SalesSettingsPage: React.FC = () => {
                         <h2 className="text-lg font-semibold text-gray-800 mb-4">Display Settings</h2>
 
                         <div className="mb-4">
-                            <label className="block text-gray-700 text-sm font-medium mb-3">Sales View Mode</label>
+                            <div className="flex items-center mb-3">
+                                <label className="text-gray-700 text-sm font-medium mr-2">
+                                    Sales View Mode
+                                </label>
+                                <InfoTooltip text="Choose between list or card layout for the sales screen." />
+                            </div>
 
                             <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
                                 {/* List View Option */}
@@ -265,7 +319,10 @@ const SalesSettingsPage: React.FC = () => {
 
                         <div className="flex items-center mb-2">
                             <input type="checkbox" id="salesman-billing" checked={settings.enableSalesmanSelection ?? false} onChange={(e) => handleCheckboxChange('enableSalesmanSelection', e.target.checked)} className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
-                            <label htmlFor="salesman-billing" className="ml-2 text-gray-700 text-sm font-medium">Enable Salesman-wise Billing</label>
+                            <label htmlFor="salesman-billing" className="ml-2 mr-2 text-gray-700 text-sm font-medium">
+                                Enable Salesman-wise Billing
+                            </label>
+                            <InfoTooltip text="Track which salesman handled each specific sale invoice." />
                         </div>
                     </div>
 
@@ -274,7 +331,12 @@ const SalesSettingsPage: React.FC = () => {
                         <h2 className="text-lg font-semibold text-gray-800 mb-4">Pricing & Tax</h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                             <div>
-                                <label htmlFor="gst-scheme" className="block text-gray-700 text-sm font-medium mb-1">GST Scheme</label>
+                                <div className="flex items-center mb-1">
+                                    <label htmlFor="gst-scheme" className="text-gray-700 text-sm font-medium mr-2">
+                                        GST Scheme
+                                    </label>
+                                    <InfoTooltip text="Select the applicable GST tax scheme for your business." />
+                                </div>
                                 <select
                                     id="gst-scheme"
                                     value={settings.gstScheme || 'none'}
@@ -291,7 +353,12 @@ const SalesSettingsPage: React.FC = () => {
                         {settings.gstScheme === 'regular' && (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
                                 <div>
-                                    <label htmlFor="tax-type" className="block text-gray-700 text-sm font-medium mb-1">Tax Calculation (for Regular GST)</label>
+                                    <div className="flex items-center mb-1">
+                                        <label htmlFor="tax-type" className="text-gray-700 text-sm font-medium mr-2">
+                                            Tax Calculation (for Regular GST)
+                                        </label>
+                                        <InfoTooltip text="Choose if your item prices include or exclude GST." />
+                                    </div>
                                     <select
                                         id="tax-type"
                                         value={settings.taxType || 'exclusive'}
@@ -307,24 +374,38 @@ const SalesSettingsPage: React.FC = () => {
                         <div className="flex items-start mt-2">
                             <input
                                 type="checkbox"
+                                id="lock-tax"
                                 checked={settings.lockTaxToggle ?? false}
                                 onChange={(e) => handleCheckboxChange('lockTaxToggle', e.target.checked)}
                                 className="w-5 h-5 text-red-500 rounded focus:ring-red-500 mt-0.5"
                             />
                             <div className="ml-3">
-                                <label className="block text-sm font-bold text-gray-800">Lock Tax Mode</label>
+                                <div className="flex items-center">
+                                    <label htmlFor="lock-tax" className="text-sm font-bold text-gray-800 mr-2">
+                                        Lock Tax Mode
+                                    </label>
+                                    <InfoTooltip text="Prevent cashiers from modifying tax settings during checkout.(Regular Scheme only)" />
+                                </div>
                                 <p className="text-xs text-gray-600">Prevent cashiers from changing the tax mode (view only).</p>
                             </div>
                         </div>
 
-                        <div className="flex items-center mb-2">
+                        <div className="flex items-center mb-2 mt-4">
                             <input type="checkbox" id="enable-rounding" checked={settings.enableRounding ?? false} onChange={(e) => handleCheckboxChange('enableRounding', e.target.checked)} className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
-                            <label htmlFor="enable-rounding" className="ml-2 text-gray-700 text-sm font-medium">Enable Rounding Off</label>
+                            <label htmlFor="enable-rounding" className="ml-2 mr-2 text-gray-700 text-sm font-medium">
+                                Enable Rounding Off
+                            </label>
+                            <InfoTooltip text="Automatically round the individual item net price in the bill to the nearest rupee selected." />
                         </div>
                         {settings.enableRounding && (
                             <div className="ml-6 mt-2 mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-4">
                                 <div>
-                                    <label htmlFor="rounding-interval" className="block text-gray-700 text-xs font-bold mb-1 uppercase">Rounding Interval</label>
+                                    <div className="flex items-center mb-1">
+                                        <label htmlFor="rounding-interval" className="text-gray-700 text-xs font-bold uppercase mr-2">
+                                            Rounding To
+                                        </label>
+                                        <InfoTooltip text="Select the nearest value to round the bill to." />
+                                    </div>
                                     <select
                                         id="rounding-interval"
                                         value={settings.roundingInterval ?? 1}
@@ -343,11 +424,6 @@ const SalesSettingsPage: React.FC = () => {
                                 </div>
                             </div>
                         )}
-
-                        <div className="flex items-center mb-4">
-                            <input type="checkbox" id="enforce-mrp" checked={settings.enforceExactMRP ?? false} onChange={(e) => handleCheckboxChange('enforceExactMRP', e.target.checked)} className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
-                            <label htmlFor="enforce-mrp" className="ml-2 text-gray-700 text-sm font-medium">Enforce Selling Price == MRP</label>
-                        </div>
                         <div className="flex items-center mb-4">
                             <input
                                 type="checkbox"
@@ -356,14 +432,19 @@ const SalesSettingsPage: React.FC = () => {
                                 onChange={(e) => handleCheckboxChange('hideMrp', e.target.checked)}
                                 className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500"
                             />
-                            <label htmlFor="hide-mrp" className="ml-2 text-gray-700 text-sm font-medium">Hide MRP in Sales List</label>
+                            <label htmlFor="hide-mrp" className="ml-2 mr-2 text-gray-700 text-sm font-medium">
+                                Hide MRP in Sales List
+                            </label>
+                            <InfoTooltip text="Hide the Maximum Retail Price column on the sales screen." />
                         </div>
                         <div className="mb-4">
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Cart Item Sorting
-                            </label>
+                            <div className="flex items-center mb-1">
+                                <label className="text-sm font-medium text-gray-700 mr-2">
+                                    Cart Item Sorting
+                                </label>
+                                <InfoTooltip text="Choose where newly scanned items appear in the cart." />
+                            </div>
                             <select
-                                // Bind to the setting
                                 value={settings?.cartInsertionOrder || 'top'}
                                 onChange={(e) => handleChange('cartInsertionOrder', e.target.value as 'top' | 'bottom')}
                                 className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
@@ -382,16 +463,25 @@ const SalesSettingsPage: React.FC = () => {
                         <h2 className="text-lg font-semibold text-gray-800 mb-4">Discounts & Price Control</h2>
                         <div className="flex items-center mb-4">
                             <input type="checkbox" id="item-discount" checked={settings.enableItemWiseDiscount ?? false} onChange={(e) => handleCheckboxChange('enableItemWiseDiscount', e.target.checked)} className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
-                            <label htmlFor="item-discount" className="ml-2 text-gray-700 text-sm font-medium">Enable Item-wise Discount</label>
+                            <label htmlFor="item-discount" className="ml-2 mr-2 text-gray-700 text-sm font-medium">
+                                Enable Item-wise Discount
+                            </label>
+                            <InfoTooltip text="Allow discounts to be applied to individual cart items." />
                         </div>
 
                         <div className="flex items-center mb-4">
                             <input type="checkbox" id="lock-discount" checked={settings.lockDiscountEntry ?? false} onChange={(e) => handleCheckboxChange('lockDiscountEntry', e.target.checked)} className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
-                            <label htmlFor="lock-discount" className="ml-2 text-gray-700 text-sm font-medium">Lock Discount Entry (Prevent editing on sales screen)</label>
+                            <label htmlFor="lock-discount" className="ml-2 mr-2 text-gray-700 text-sm font-medium">
+                                Lock Discount Entry (Prevent editing on sales screen)
+                            </label>
+                            <InfoTooltip text="Stop staff from manually changing discounts during a sale." />
                         </div>
                         <div className="flex items-center mb-4">
                             <input type="checkbox" id="lock-price" checked={settings.lockSalePriceEntry ?? false} onChange={(e) => handleCheckboxChange('lockSalePriceEntry', e.target.checked)} className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
-                            <label htmlFor="lock-price" className="ml-2 text-gray-700 text-sm font-medium">Lock Sale Price (Prevent editing on sales screen)</label>
+                            <label htmlFor="lock-price" className="ml-2 mr-2 text-gray-700 text-sm font-medium">
+                                Lock Sale Price (Prevent editing on sales screen)
+                            </label>
+                            <InfoTooltip text="Stop staff from manually altering an item's selling price." />
                         </div>
                     </div>
 
@@ -400,11 +490,45 @@ const SalesSettingsPage: React.FC = () => {
                         <h2 className="text-lg font-semibold text-gray-800 mb-4">Billing & Inventory Rules</h2>
                         <div className="flex items-center mb-4">
                             <input type="checkbox" id="allow-negative" checked={settings.allowNegativeStock ?? false} onChange={(e) => handleCheckboxChange('allowNegativeStock', e.target.checked)} className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
-                            <label htmlFor="allow-negative" className="ml-2 text-gray-700 text-sm font-medium">Allow Negative Inventory Billing</label>
+                            <label htmlFor="allow-negative" className="ml-2 mr-2 text-gray-700 text-sm font-medium">
+                                Allow Negative Inventory Billing
+                            </label>
+                            <InfoTooltip text="Allow selling items even if recorded stock is zero." />
                         </div>
                         <div className="flex items-center mb-4">
                             <input type="checkbox" id="allow-due" checked={settings.allowDueBilling ?? false} onChange={(e) => handleCheckboxChange('allowDueBilling', e.target.checked)} className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
-                            <label htmlFor="allow-due" className="ml-2 text-gray-700 text-sm font-medium">Allow Due Billing (Credit Sales)</label>
+                            <label htmlFor="allow-due" className="ml-2 mr-2 text-gray-700 text-sm font-medium">
+                                Allow Due Billing (Credit Sales)
+                            </label>
+                            <InfoTooltip text="Allow finalizing sales with partial or no payment (credit)." />
+                        </div>
+                    </div>
+                    <div className="bg-white rounded-lg p-6 shadow-md mb-2">
+                        <h2 className="text-lg font-semibold text-gray-800 mb-4">Additional Checkout Fields</h2>
+                        <p className="text-sm text-gray-500 mb-2">Enable extra fields during the payment checkout drawer.</p>
+
+                        <div className="flex items-center mb-4">
+                            <input type="checkbox" id="enable-shipping" checked={settings.enableShippingDetails ?? false} onChange={(e) => handleCheckboxChange('enableShippingDetails', e.target.checked)} className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
+                            <label htmlFor="enable-shipping" className="ml-2 mr-2 text-gray-700 text-sm font-medium">
+                                Enable Shipping Details
+                            </label>
+                            <InfoTooltip text="Allow capturing separate shipping address and GST for customers." />
+                        </div>
+
+                        <div className="flex items-center mb-4">
+                            <input type="checkbox" id="enable-expense" checked={settings.enableExtraExpense ?? false} onChange={(e) => handleCheckboxChange('enableExtraExpense', e.target.checked)} className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
+                            <label htmlFor="enable-expense" className="ml-2 mr-2 text-gray-700 text-sm font-medium">
+                                Enable Extra Expense
+                            </label>
+                            <InfoTooltip text="Add an extra charge (like Freight or Packing) to the final bill." />
+                        </div>
+
+                        <div className="flex items-center mb-4">
+                            <input type="checkbox" id="enable-narration" checked={settings.enableNarration ?? false} onChange={(e) => handleCheckboxChange('enableNarration', e.target.checked)} className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
+                            <label htmlFor="enable-narration" className="ml-2 mr-2 text-gray-700 text-sm font-medium">
+                                Enable Narration / Remarks
+                            </label>
+                            <InfoTooltip text="Allow adding a custom note or remark to the invoice." />
                         </div>
                     </div>
 
@@ -414,58 +538,80 @@ const SalesSettingsPage: React.FC = () => {
                         <p className="text-sm text-gray-500 mb-2">Select fields that must be filled before saving a sale.</p>
                         <div className="flex items-center mb-4">
                             <input type="checkbox" id="req-customer" checked={settings.requireCustomerName ?? false} onChange={(e) => handleCheckboxChange('requireCustomerName', e.target.checked)} className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
-                            <label htmlFor="req-customer" className="ml-2 text-gray-700 text-sm font-medium">Require Customer Name</label>
+                            <label htmlFor="req-customer" className="ml-2 mr-2 text-gray-700 text-sm font-medium">
+                                Require Customer Name
+                            </label>
+                            <InfoTooltip text="Force entering a customer name before saving the invoice." />
                         </div>
                         <div className="flex items-center mb-4">
                             <input type="checkbox" id="req-mobile" checked={settings.requireCustomerMobile ?? false} onChange={(e) => handleCheckboxChange('requireCustomerMobile', e.target.checked)} className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
-                            <label htmlFor="req-mobile" className="ml-2 text-gray-700 text-sm font-medium">Require Customer Mobile</label>
+                            <label htmlFor="req-mobile" className="ml-2 mr-2 text-gray-700 text-sm font-medium">
+                                Require Customer Mobile
+                            </label>
+                            <InfoTooltip text="Force entering a customer mobile number before saving." />
                         </div>
                     </div>
 
                     {/* --- Card 6: Voucher Numbering & Options --- */}
                     <div className="bg-white rounded-lg p-6 shadow-md mb-2">
-                        <h2 className="text-lg font-semibold text-gray-800 mb-4">Voucher Numbering & Options</h2>
-                        <div className="flex items-center mb-4">
-                            <input
-                                type="checkbox"
-                                id="copy-voucher"
-                                checked={settings.copyVoucherAfterSaving ?? false}
-                                onChange={(e) => handleCheckboxChange('copyVoucherAfterSaving', e.target.checked)}
-                                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-600"
-                            />
-                            <label htmlFor="copy-voucher" className="ml-2 text-gray-700 text-sm font-medium">Keep items in cart after saving (Copy Voucher)</label>
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-lg font-semibold text-gray-800">Voucher Numbering</h2>
+                            <button
+                                type="button"
+                                onClick={handleResetVoucher}
+                                className="text-xs text-red-600 hover:text-red-800 font-bold px-3 py-1.5 rounded-sm bg-red-50 hover:bg-red-100 transition-colors border border-red-100"
+                            >
+                                Reset to Default
+                            </button>
                         </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
-                                <label htmlFor="voucher-name" className="block text-gray-700 text-sm font-medium mb-1">Voucher Name</label>
+                                <div className="flex items-center mb-1">
+                                    <label htmlFor="voucher-name" className="flex items-center text-gray-700 text-sm font-medium mr-2">
+                                        Voucher Name <span className="ml-2 text-[10px] text-red-500 font-bold bg-red-50 px-1.5 py-0.5 rounded">LOCKED</span>
+                                    </label>
+                                    <InfoTooltip text="Internal document name for this transaction type." />
+                                </div>
                                 <input
                                     type="text"
                                     id="voucher-name"
-                                    value={settings.voucherName || ''}
-                                    onChange={(e) => handleChange('voucherName', e.target.value)}
-                                    className="w-full p-3 border border-gray-300 rounded-lg"
-                                    placeholder="e.g., Sales"
+                                    value={settings.voucherName || 'Invoice'}
+                                    disabled
+                                    className="w-full p-3 border border-gray-200 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed select-none"
                                 />
                             </div>
+
                             <div>
-                                <label htmlFor="voucher-prefix" className="block text-gray-700 text-sm font-medium mb-1">Voucher Prefix</label>
+                                <div className="flex items-center mb-1">
+                                    <label htmlFor="voucher-prefix" className="text-gray-700 text-sm font-medium mr-2">
+                                        Voucher Prefix
+                                    </label>
+                                    <InfoTooltip text="Letters added before the invoice number (e.g., INV-1)." />
+                                </div>
                                 <input
                                     type="text"
                                     id="voucher-prefix"
                                     value={settings.voucherPrefix || ''}
                                     onChange={(e) => handleChange('voucherPrefix', e.target.value)}
-                                    className="w-full p-3 border border-gray-300 rounded-lg"
-                                    placeholder="e.g., SLS-"
+                                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                    placeholder="e.g., INV"
                                 />
                             </div>
+
                             <div>
-                                <label htmlFor="current-number" className="block text-gray-700 text-sm font-medium mb-1">Next Voucher Number</label>
+                                <div className="flex items-center mb-1">
+                                    <label htmlFor="current-number" className="text-gray-700 text-sm font-medium mr-2">
+                                        Next Voucher Number
+                                    </label>
+                                    <InfoTooltip text="The sequence number for the next generated invoice." />
+                                </div>
                                 <input
                                     type="number"
                                     id="current-number"
                                     value={settings.currentVoucherNumber ?? 1}
                                     onChange={(e) => handleChange('currentVoucherNumber', e.target.value)}
-                                    className="w-full p-3 border border-gray-300 rounded-lg"
+                                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 outline-none"
                                     placeholder="e.g., 1"
                                     min="1"
                                     step="1"

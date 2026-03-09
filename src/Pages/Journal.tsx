@@ -13,6 +13,7 @@ import {
   type DocumentData,
   runTransaction,
   increment,
+  serverTimestamp
 } from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
 import { CustomToggle, CustomToggleItem } from '../Components/CustomToggle';
@@ -33,8 +34,6 @@ import { botMasterService } from '../Pages/Additional/Whatsapp/WhatsappApi'; // 
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { storage } from '../lib/Firebase'; // Ensure 'storage' is exported from here
 
-// --- INTERFACES ---
-// ... (InvoiceItem and Invoice interfaces remain the same)
 interface InvoiceItem {
   id: string;
   name: string;
@@ -50,6 +49,11 @@ interface InvoiceItem {
   unit?: string;
   discount?: number;
   manualDiscount?: number;
+  purchasePrice?: number;
+  purchasediscount?: number;
+  taxType?: string;
+  taxAmount?: number;
+  taxableAmount?: number;
 }
 
 interface Invoice {
@@ -71,6 +75,21 @@ interface Invoice {
   salesmanId?: string | null;
   salesmanName?: string;
   manualDiscount?: number;
+  taxType?: string;
+  gstScheme?: string;
+  subtotal?: number;
+  taxAmount?: number;
+  taxableAmount?: number;
+  totalDiscount?: number;
+  roundingOff?: number;
+  voucherName?: string;
+  shippingName?: string;
+  shippingNumber?: string;
+  shippingAddress?: string;
+  shippingGST?: string;
+  extraExpenseName?: string;
+  extraExpenseAmount?: number;
+  narration?: string;
 }
 
 // Interface for PDF Data Generation
@@ -86,12 +105,23 @@ interface PdfData {
   msmeNumber: string;
   panNumber: string;
   billDiscount: number;
+  upiId: string;
   billTo: {
     name: string;
     address: string;
     phone: string;
     gstin: string;
   };
+  shipTo?: {
+    name: string;
+    address: string;
+    phone: string;
+    gstin?: string;
+  };
+  extraExpenseName?: string;
+  extraExpenseAmount?: number;
+  narration?: string;
+
   invoice: {
     number: string;
     date: string;
@@ -154,29 +184,40 @@ const useJournalData = (companyId?: string) => {
 
         const items = (data.items || []).map((item: any) => {
           const quantity = Number(item.quantity) || 0;
-          const purchasePrice = Number(item.purchasePrice) || 0;
-          const creditFinalPrice = Number(item.finalPrice) || 0;
+          const mrp = Number(item.mrp) || 0;
+          const effectiveUnit = Number(item.effectiveUnitPrice) || 0;
+          const dbFinalPrice = Number(item.finalPrice) || 0;
 
-          const finalPrice = type === 'Credit'
-            ? creditFinalPrice
-            : (purchasePrice * quantity);
+          // --- BUG FIX: Prevent Debit transactions from calculating MRP erroneously ---
+          let calculatedFinalPrice = dbFinalPrice;
+          if (type === 'Debit') {
+            if (effectiveUnit > 0) {
+              calculatedFinalPrice = effectiveUnit * quantity;
+            } else if (dbFinalPrice === 0) {
+              calculatedFinalPrice = (Number(item.purchasePrice) || mrp) * quantity;
+            }
+          }
 
           return {
             id: item.id || '',
             name: item.name || 'N/A',
             quantity: quantity,
-            finalPrice: finalPrice,
-            mrp: Number(item.mrp) || 0,
+            finalPrice: type === 'Credit' ? dbFinalPrice : calculatedFinalPrice,
+            mrp: mrp,
             discount: item.discount || 0,
-            effectiveUnitPrice: item.effectiveUnitPrice || 0,
+            effectiveUnitPrice: effectiveUnit,
             manualDiscount: item.manualDiscount || 0,
-            purchasePrice: purchasePrice,
+            purchasePrice: Number(item.purchasePrice) || 0,
             barcode: item.barcode || '',
             stock: item.stock ?? item.Stock ?? 0,
             gst: item.gst || 0,
             taxRate: item.taxRate || item.gstPercent || 0,
             hsnSac: item.hsnSac || '',
             unit: item.unit || 'Pcs',
+            purchasediscount: Number(item.purchasediscount) || 0,
+            taxType: item.taxType || '',
+            taxAmount: Number(item.taxAmount) || 0,
+            taxableAmount: Number(item.taxableAmount) || 0,
           };
         });
 
@@ -185,12 +226,16 @@ const useJournalData = (companyId?: string) => {
           0
         );
         const returnHistory = data.returnHistory || [];
+        const savedAmount = Number(data.totalAmount) || 0;
+        const changeReturned = Number(data.revDiscount) || 0;
+        const fallbackAmount = calculatedTotal - changeReturned;
 
+        const correctDisplayAmount = savedAmount > 0 ? savedAmount : fallbackAmount;
 
         return {
           id: doc.id,
           invoiceNumber: data.invoiceNumber || `#${doc.id.slice(0, 6).toUpperCase()}`,
-          amount: data.totalAmount || calculatedTotal || 0,
+          amount: correctDisplayAmount,
           manualDiscount: data.manualDiscount || 0,
           time: formatDate(createdAt),
           status: status,
@@ -206,6 +251,21 @@ const useJournalData = (companyId?: string) => {
           returnHistory: returnHistory,
           items: items,
           paymentMethods: paymentMethods,
+          taxType: data.taxType || '',
+          gstScheme: data.gstScheme || '',
+          subtotal: Number(data.subtotal) || 0,
+          taxAmount: Number(data.taxAmount) || 0,
+          taxableAmount: Number(data.taxableAmount) || 0,
+          totalDiscount: Number(data.totalDiscount) || 0,
+          roundingOff: Number(data.roundingOff) || 0,
+          voucherName: data.voucherName || '',
+          shippingName: data.shippingName || '',
+          shippingNumber: data.shippingNumber || '',
+          shippingAddress: data.shippingAddress || '',
+          shippingGST: data.shippingGST || '',
+          extraExpenseName: data.extraExpenseName || '',
+          extraExpenseAmount: Number(data.extraExpenseAmount) || 0,
+          narration: data.narration || '',
         };
       });
     };
@@ -408,11 +468,11 @@ const Journal: React.FC = () => {
     setExpandedInvoiceId(prevId => (prevId === invoiceId ? null : invoiceId));
   };
 
-  // Helper function to prepare PDF data
   const preparePdfData = async (invoice: Invoice): Promise<PdfData | null> => {
     if (!currentUser?.companyId) return null;
 
     const dbOps = getFirestoreOperations(currentUser.companyId);
+    const isPurchase = invoice.type === 'Debit';
 
     const [businessInfo, fetchedItems, billSettingsSnap] = await Promise.all([
       dbOps.getBusinessInfo(),
@@ -426,26 +486,37 @@ const Journal: React.FC = () => {
       const fullItem = fetchedItems.find((fi: any) => fi.id === item.id);
       const finalTaxRate = item.taxRate || item.tax || item.gstPercent || fullItem?.tax || 0;
 
-      const itemAmount = (item.finalPrice !== undefined && item.finalPrice !== null)
-        ? item.finalPrice
-        : (item.mrp * item.quantity);
+      let itemAmount = 0;
+      if (item.effectiveUnitPrice && item.effectiveUnitPrice > 0) {
+        itemAmount = item.effectiveUnitPrice * item.quantity;
+      } else if (item.finalPrice !== undefined && item.finalPrice !== null && item.finalPrice > 0) {
+        itemAmount = item.finalPrice;
+      } else {
+        itemAmount = item.mrp * item.quantity;
+      }
 
       return {
         sno: index + 1,
         name: item.name,
         quantity: item.quantity,
         unit: fullItem?.unit || item.unit || "Pcs",
-        listPrice: item.mrp,
+        listPrice: isPurchase ? (item.purchasePrice || item.mrp) : item.mrp,
         gstPercent: finalTaxRate,
         hsn: fullItem?.hsnSac || item.hsnSac || "N/A",
-        discountAmount: item.discount || 0,
-        amount: itemAmount
+        discountAmount: isPurchase ? (item.purchasediscount || item.discount || item.manualDiscount || 0) : (item.discount || item.manualDiscount || 0),
+        amount: itemAmount,
+        // Pass the explicit item-level tax data down to the PDF generator
+        taxType: item.taxType,
+        taxAmount: item.taxAmount,
+        taxableAmount: item.taxableAmount
       };
     });
 
     return {
+      // 1. Prioritize the document's saved gstScheme/taxType over the global salesSettings
       gstScheme: salesSettings?.gstScheme || '',
-      taxType: salesSettings?.taxType || '',
+      taxType: invoice.taxType || salesSettings?.taxType || '',
+
       companyName: businessInfo?.name || 'Your Company',
       companyAddress: businessInfo?.address || 'Your Address',
       companyContact: businessInfo?.phoneNumber || 'Your Phone',
@@ -455,6 +526,7 @@ const Journal: React.FC = () => {
       msmeNumber: billSettings.msmeNumber || '',
       panNumber: billSettings.panNumber || '',
       billDiscount: invoice.manualDiscount || 0,
+      upiId: billSettings.upiId || '',
 
       billTo: {
         name: invoice.partyName,
@@ -462,6 +534,15 @@ const Journal: React.FC = () => {
         phone: invoice.partyNumber || '',
         gstin: invoice.partyGstin || '',
       },
+      shipTo: {
+        name: invoice.shippingName || '',
+        address: invoice.shippingAddress || '',
+        phone: invoice.shippingNumber || '',
+        gstin: invoice.shippingGST || '',
+      },
+      extraExpenseName: invoice.extraExpenseName || '',
+      extraExpenseAmount: invoice.extraExpenseAmount || 0,
+      narration: invoice.narration || '',
 
       invoice: {
         number: invoice.invoiceNumber,
@@ -474,7 +555,6 @@ const Journal: React.FC = () => {
       },
 
       items: populatedItems,
-
       terms: billSettings.termsAndConditions || 'Goods once sold will not be taken back.',
       finalAmount: invoice.amount,
 
@@ -486,7 +566,6 @@ const Journal: React.FC = () => {
       }
     };
   };
-
   const handlePdfAction = async (invoice: Invoice, action: ACTION.DOWNLOAD | ACTION.PRINT) => {
     setInvoiceToPrint(null);
     setPdfGenerating(invoice.id);
@@ -632,7 +711,7 @@ const Journal: React.FC = () => {
           if (item.id && item.quantity > 0) {
             const itemDocRef = doc(db, 'companies', companyId, 'items', item.id);
             const stockChange = invoiceToDelete.type === 'Credit' ? item.quantity : -item.quantity;
-            transaction.update(itemDocRef, { stock: increment(stockChange) });
+            transaction.update(itemDocRef, { stock: increment(stockChange), updatedAt: serverTimestamp() });
           }
         }
         transaction.delete(invoiceDocRef);
@@ -673,23 +752,49 @@ const Journal: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleSettlePayment = async (invoice: Invoice, amount: number, method: string) => {
-    // ... (handleSettlePayment implementation remains the same)
-    if (!currentUser?.companyId) { throw new Error("No company ID found. Cannot settle payment."); }
+
+  const handleSettlePayment = async (invoice: any, amount: number, method: string) => {
+    if (!currentUser?.companyId) {
+      throw new Error("No company ID found. Cannot settle payment.");
+    }
+
     const companyId = currentUser.companyId;
     const collectionName = invoice.type === 'Credit' ? 'sales' : 'purchases';
     const docRef = doc(db, 'companies', companyId, collectionName, invoice.id);
+
     await runTransaction(db, async (transaction) => {
       const sfDoc = await transaction.get(docRef);
-      if (!sfDoc.exists()) throw "Document does not exist!";
+      if (!sfDoc.exists()) throw new Error("Document does not exist!");
+
       const data = sfDoc.data() as DocumentData;
       const currentPaymentMethods = data.paymentMethods || {};
       const currentDue = currentPaymentMethods.due || 0;
       const currentMethodTotal = currentPaymentMethods[method] || 0;
+
       const newDue = currentDue - amount;
-      if (newDue < 0) throw 'Payment exceeds due amount.';
-      const newPaymentMethods = { ...currentPaymentMethods, [method]: currentMethodTotal + amount, due: newDue, };
-      transaction.update(docRef, { paymentMethods: newPaymentMethods });
+      if (newDue < 0) throw new Error('Payment exceeds due amount.');
+
+      const newPaymentMethods = {
+        ...currentPaymentMethods,
+        [method]: currentMethodTotal + amount,
+        due: newDue,
+      };
+
+      // NEW: Create an individual payment record
+      const paymentRecord = {
+        amount,
+        method,
+        date: new Date().toISOString(),
+        timestamp: Date.now()
+      };
+
+      // Fetch existing history or initialize an empty array
+      const currentHistory = data.paymentHistory || [];
+
+      transaction.update(docRef, {
+        paymentMethods: newPaymentMethods,
+        paymentHistory: [...currentHistory, paymentRecord] // Append the new record
+      });
     });
   };
 
@@ -735,7 +840,6 @@ const Journal: React.FC = () => {
 
         return (
           <CustomCard key={invoice.id} onClick={() => handleInvoiceClick(invoice.id)} className="cursor-pointer transition-shadow hover:shadow-md">
-            {/* ... (CustomCard content remains the same) */}
             <div className="flex justify-between items-end w-full -mt-5 relative pointer-events-none">
 
               {/* LEFT: Return History Badges */}
@@ -833,6 +937,16 @@ const Journal: React.FC = () => {
                   </div>
                 ) : null}
 
+                {/* --- NEW: EXTRA EXPENSE ROW --- */}
+                {invoice.extraExpenseAmount && invoice.extraExpenseAmount > 0 ? (
+                  <div className="flex justify-between items-center mt-1 pt-1.5 border-t border-slate-200">
+                    <p className="text-xs font-medium text-slate-400">{invoice.extraExpenseName || 'Extra Expense'}</p>
+                    <p className="text-xs font-semibold text-orange-500">
+                      + {invoice.extraExpenseAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+                    </p>
+                  </div>
+                ) : null}
+
                 {activeModes.length > 0 && (
                   <div className="flex justify-between items-start mt-1 pt-2 border-t border-slate-200 text-xs text-slate-500">
                     {salesSettings?.enableSalesmanSelection ? (
@@ -872,7 +986,7 @@ const Journal: React.FC = () => {
                   {invoice.type === 'Debit' && (
                     <>
                       <button onClick={(e) => { e.stopPropagation(); handlePurchaseReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-sky-500 rounded-lg hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-colors">Return</button>
-                      <button onClick={(e) => { e.stopPropagation(); handlePrintQr(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-black rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center gap-2">Print</button>
+                      <button onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-black rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center gap-2">Print</button>
                     </>
                   )}
                 </div>
@@ -902,25 +1016,45 @@ const Journal: React.FC = () => {
             </div>
             <p className="text-gray-600 mb-6">Choose how you want to provide the bill.</p>
             <div className="flex flex-col gap-3">
-              {/* --- NEW: Send on WhatsApp Button --- */}
-              <button
-                onClick={() => handleSendWhatsapp(invoiceToPrint)}
-                disabled={sendingPdf}
-                className="w-full bg-green-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
-              </button>
+              {invoiceToPrint.type === 'Credit' ? (
+                <>
+                  {/* Existing Sales/Credit Options */}
+                  <button
+                    onClick={() => handleSendWhatsapp(invoiceToPrint)}
+                    disabled={sendingPdf}
+                    className="w-full bg-green-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
+                  </button>
 
-              <button onClick={() => handlePdfAction(invoiceToPrint, ACTION.DOWNLOAD)} className="w-full bg-blue-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2">
-                <IconDownload /> Download PDF
-              </button>
-              <button onClick={() => handlePdfAction(invoiceToPrint, ACTION.PRINT)} className="w-full bg-white text-gray-700 border border-gray-300 py-2.5 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
-                <IconPrint /> Print Directly
-              </button>
+                  <button onClick={() => handlePdfAction(invoiceToPrint, ACTION.DOWNLOAD)} className="w-full bg-blue-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2">
+                    <IconDownload /> Download PDF
+                  </button>
+                  <button onClick={() => handlePdfAction(invoiceToPrint, ACTION.PRINT)} className="w-full bg-white text-gray-700 border border-gray-300 py-2.5 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
+                    <IconPrint /> Print Directly
+                  </button>
 
-              <button onClick={() => handleShowQr(invoiceToPrint)} className="w-full bg-gray-900 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2">
-                <IconScanCircle width={20} height={20} /> Generate QR Code
-              </button>
+                  <button onClick={() => handleShowQr(invoiceToPrint)} className="w-full bg-gray-900 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2">
+                    <IconScanCircle width={20} height={20} /> Generate QR Code
+                  </button>
+                </>
+              ) : (
+                <>
+                  {/* New Purchase/Debit Options */}
+                  <button onClick={() => handlePdfAction(invoiceToPrint, ACTION.DOWNLOAD)} className="w-full bg-blue-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 bg-sky-500 text-gray-300" disabled>
+                    <IconDownload /> Download PDF
+                  </button>
+                  <button
+                    onClick={() => {
+                      handlePrintQr(invoiceToPrint);
+                      setInvoiceToPrint(null); // Close the modal after clicking
+                    }}
+                    className="w-full bg-gray-900 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <IconPrint /> Print QR
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

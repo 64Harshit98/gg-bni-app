@@ -8,11 +8,7 @@ import type { User } from '../Role/permission';
 import Loading from '../Pages/Loading/Loading';
 import { getFirestoreOperations } from '../lib/ItemsFirebase';
 import { getPackPermissions } from './Plan';
-
-// --- Existing Import ---
 import { getDefaultPermissions } from '../Pages/Settings/Permissionsetting';
-
-// --- NEW IMPORTS (Ensure these paths match your file structure) ---
 import { getDefaultItemSettings } from '../Pages/Settings/ItemSetting';
 import { getDefaultPurchaseSettings } from '../Pages/Settings/Purchasesetting';
 import { getDefaultSalesSettings } from '../Pages/Settings/SalesSetting';
@@ -22,20 +18,15 @@ interface AuthState {
   user: User | null;
 }
 
-// CONFIGURATION
-const TRIAL_DURATION_DAYS = 28;
+const TRIAL_DURATION_DAYS = 7;
 const TRIAL_PLAN = PLANS.PRO;
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [authState, setAuthState] = useState<AuthState>({ status: 'pending', user: null });
   const [dbOperations, setDbOperations] = useState<any>(null);
 
-  // ==========================================
-  // HELPER: Initialize Defaults (Run once on login)
-  // ==========================================
   const initializeCompanySettings = async (companyId: string) => {
     try {
-      // Define the checks to run in parallel
       const checks = [
         {
           id: 'sales-settings',
@@ -52,8 +43,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           generator: getDefaultItemSettings,
           name: 'Item'
         }
-        // Note: 'permissions' is handled dynamically in your existing logic below, 
-        // but you could add it here if you wanted a static 'permissions-settings' doc.
       ];
 
       // Run all checks in parallel
@@ -118,8 +107,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               console.log("No expiry found. Starting Trial...");
 
               const trialDate = new Date();
+              // 1. Add the 7 days
               trialDate.setDate(trialDate.getDate() + TRIAL_DURATION_DAYS);
-              trialDate.setHours(23, 59, 59);
+
+              trialDate.setHours(23, 59, 59, 999);
 
               await setDoc(companyDocRef, {
                 pack: TRIAL_PLAN,
@@ -131,8 +122,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               currentPack = TRIAL_PLAN;
               isSubscriptionActive = true;
               expiryDate = trialDate;
+            }
 
-            } else {
+            else {
               // === SCENARIO B: EXISTING USER (Check Expiry) ===
               const validityStatus = cData.validity || 'inactive';
 

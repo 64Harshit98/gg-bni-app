@@ -32,6 +32,13 @@ export interface PaymentCompletionData {
     partyGST?: string;
     revDiscount?: number;
     method?: string;
+    shippingName?: string;
+    shippingNumber?: string;
+    shippingAddress?: string;
+    shippingGST?: string;
+    extraExpenseName?: string;
+    extraExpenseAmount?: number;
+    narration?: string;
 }
 
 interface PaymentDrawerProps {
@@ -39,6 +46,7 @@ interface PaymentDrawerProps {
     onClose: () => void;
     mode?: 'sale' | 'purchase'; // Added Mode
     subtotal: number;
+    totalTax?: number;
     billTotal: number;
     totalQuantity?: number;
     totalItemDiscount?: number;
@@ -50,6 +58,17 @@ interface PaymentDrawerProps {
     requireCustomerName?: boolean;
     requireCustomerMobile?: boolean;
     initialDiscount?: number;
+    allowDueBilling?: boolean;
+    initialShippingName?: string;
+    initialShippingNumber?: string;
+    initialShippingAddress?: string;
+    initialShippingGST?: string;
+    initialExpenseName?: string;
+    initialExpenseAmount?: number;
+    initialNarration?: string;
+    enableShippingDetails?: boolean;
+    enableExtraExpense?: boolean;
+    enableNarration?: boolean;
 }
 
 const SESSION_STORAGE_NAME_KEY = 'sessionPartyName';
@@ -62,6 +81,10 @@ interface PartySuggestion {
     gstNumber?: string;
     creditBalance?: number;
     debitBalance?: number;
+    shippingName?: string;
+    shippingNumber?: string;
+    shippingAddress?: string;
+    shippingGST?: string;
 }
 
 const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
@@ -70,6 +93,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     mode = 'sale',
     subtotal,
     billTotal,
+    totalTax = 0,
     totalQuantity = 0,
     totalItemDiscount = 0,
     onPaymentComplete,
@@ -78,7 +102,18 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     initialPaymentMethods,
     requireCustomerName = false,
     requireCustomerMobile = false,
+    allowDueBilling = false,
     initialDiscount = 0,
+    initialShippingName,
+    initialShippingNumber,
+    initialShippingAddress,
+    initialShippingGST,
+    initialExpenseName,
+    initialExpenseAmount,
+    initialNarration,
+    enableShippingDetails = false,
+    enableExtraExpense = false,
+    enableNarration = false,
 }) => {
     const { currentUser } = useAuth();
 
@@ -110,9 +145,22 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const shouldSaveToLocalStorage = useRef(true);
     const longPressTimer = useRef<NodeJS.Timeout | null>(null);
     const [discountInfo, setDiscountInfo] = useState<string | null>(null);
+    const [addressType, setAddressType] = useState<'billing' | 'shipping'>('billing');
+    const [isSameAsBilling, setIsSameAsBilling] = useState(false);
+    const [shippingName, setShippingName] = useState('');
+    const [shippingNumber, setShippingNumber] = useState('');
+    const [shippingAddress, setShippingAddress] = useState('');
+    const [shippingGST, setShippingGST] = useState('');
+
+    const [isExpenseExpanded, setIsExpenseExpanded] = useState(false);
+    const [expenseName, setExpenseName] = useState('');
+    const [expenseAmount, setExpenseAmount] = useState<number | ''>('');
+    const [narration, setNarration] = useState('');
+    const [isNarrationExpanded, setIsNarrationExpanded] = useState(false);
 
     // --- CALCULATIONS ---
-    const netPayable = useMemo(() => Math.max(0, billTotal - discount), [billTotal, discount]);
+    const parsedExpense = parseFloat(expenseAmount.toString()) || 0;
+    const netPayable = useMemo(() => Math.max(0, billTotal - discount + parsedExpense), [billTotal, discount, parsedExpense]);
 
     const appliedCreditAmount = useMemo(() => {
         if (!useCredit || partyCredit <= 0) return 0;
@@ -143,10 +191,19 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         return diff > 0.01 ? parseFloat(diff.toFixed(2)) : 0;
     }, [netPayable, totalPaymentReceived]);
 
-    // --- EFFECTS ---
+    // --- AUTO-SYNC SHIPPING DETAILS ---
+    useEffect(() => {
+        if (isSameAsBilling) {
+            setShippingName(partyName);
+            setShippingNumber(partyNumber);
+            setShippingAddress(partyAddress);
+            setShippingGST(partyGST);
+        }
+    }, [isSameAsBilling, partyName, partyNumber, partyAddress, partyGST]);
+
     useEffect(() => {
         if (!isOpen) return;
-        shouldSaveToLocalStorage.current = true;
+
         setIsSubmitting(false);
         setDiscount(initialDiscount || 0);
         setIsDiscountLocked(true);
@@ -156,16 +213,39 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         setUseDebit(false);
         setSuggestions([]);
         setShowSuggestions(false);
+        setAddressType('billing');
+        setShippingName(initialShippingName || '');
+        setShippingNumber(initialShippingNumber || '');
+        setShippingAddress(initialShippingAddress || '');
+        setShippingGST(initialShippingGST || '');
+        setExpenseName(initialExpenseName || '');
+        setExpenseAmount(initialExpenseAmount || '');
+        setIsExpenseExpanded(false);
+        setNarration(initialNarration || '');
+        setIsNarrationExpanded(!!initialNarration);
 
         let initialName = initialPartyName || '';
         let initialNumber = initialPartyNumber || '';
 
-        if (!initialName && !initialNumber) {
+        // --- THE FIX ---
+        if (initialName || initialNumber) {
+            // EDIT MODE: Turn off auto-save so we don't overwrite the New Bill draft
+            shouldSaveToLocalStorage.current = false;
+
+            // Clear the session storage so the next New Bill starts totally fresh
+            try {
+                sessionStorage.removeItem(SESSION_STORAGE_NAME_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_NUMBER_KEY);
+            } catch (e) { }
+        } else {
+            // NEW BILL MODE: Turn auto-save back on and load any existing draft
+            shouldSaveToLocalStorage.current = true;
             try {
                 initialName = sessionStorage.getItem(SESSION_STORAGE_NAME_KEY) || '';
                 initialNumber = sessionStorage.getItem(SESSION_STORAGE_NUMBER_KEY) || '';
             } catch (e) { }
         }
+        // ---------------
 
         if (initialPaymentMethods && Object.keys(initialPaymentMethods).length > 0) {
             const loadedPayments: PaymentDetails = {};
@@ -189,7 +269,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         if (isSale && initialNumber) searchParty(initialNumber, 'number');
         if (!isSale && initialName) searchParty(initialName, 'name');
 
-    }, [isOpen, mode, initialDiscount]);
+    }, [isOpen, mode, initialDiscount, initialPartyName, initialPartyNumber, initialShippingName, initialShippingNumber, initialShippingAddress, initialShippingGST, initialExpenseName, initialExpenseAmount, initialNarration]);
 
     useEffect(() => {
         if (isOpen && !isSubmitting && shouldSaveToLocalStorage.current) {
@@ -238,7 +318,11 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                             address: data.address,
                             gstNumber: data.gstNumber,
                             creditBalance: data.creditBalance,
-                            debitBalance: data.debitBalance
+                            debitBalance: data.debitBalance,
+                            shippingName: data.shippingName,
+                            shippingNumber: data.shippingNumber,
+                            shippingAddress: data.shippingAddress,
+                            shippingGST: data.shippingGST,
                         });
                     }
                 });
@@ -280,6 +364,10 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         setPartyGST(party.gstNumber || '');
         setPartyCredit(party.creditBalance || 0);
         setPartyDebit(party.debitBalance || 0);
+        setShippingName(party.shippingName || '');
+        setShippingNumber(party.shippingNumber || '');
+        setShippingAddress(party.shippingAddress || '');
+        setShippingGST(party.shippingGST || '');
         setUseCredit(false);
         setUseDebit(false);
         setShowSuggestions(false);
@@ -301,6 +389,20 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             setModal({ message: `Mismatch: ₹${pendingAmount.toFixed(2)} remaining.`, type: State.ERROR });
             return;
         }
+
+        const dueAmount = Object.entries(selectedPayments).reduce((acc, [key, value]) => {
+            return key.toLowerCase().includes('due') ? acc + (value || 0) : acc;
+        }, 0);
+
+        if (mode === 'sale' && dueAmount > 0 && !partyNumber.trim()) {
+            setModal({ message: `${partyLabel} Phone Number is required for Due Billing.`, type: State.ERROR });
+            return;
+        }
+        if (mode === 'purchase' && dueAmount > 0 && (!partyName.trim() || !partyNumber.trim())) {
+            setModal({ message: `${partyLabel} Name and Phone Number are required for Due Billing.`, type: State.ERROR });
+            return;
+        }
+
         let revDiscount = 0;
         if (changeToReturn > 0.01) revDiscount = changeToReturn;
 
@@ -315,6 +417,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         shouldSaveToLocalStorage.current = false;
 
         try {
+            // 1. SEND ALL DATA TO SALES COMPONENT
             await onPaymentComplete({
                 paymentDetails: payloadToSave,
                 partyName, partyNumber, discount,
@@ -322,13 +425,20 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 appliedCredit: appliedCreditAmount,
                 appliedDebit: appliedDebitAmount,
                 partyAddress, partyGST, revDiscount,
+                // --- MUST BE INCLUDED HERE ---
+                shippingName,
+                shippingNumber,
+                shippingAddress,
+                shippingGST,
+                extraExpenseName: expenseName,
+                extraExpenseAmount: parsedExpense,
+                narration: narration.trim(),
             });
 
-            // --- SAVE TO RESPECTIVE DB ---
+            // 2. SAVE TO CUSTOMER/SUPPLIER DATABASE
             const identifier = partyNumber.trim() || partyName.trim();
 
             if (currentUser?.companyId && identifier) {
-                // Use partyNumber as ID if available, otherwise use Name (Suppliers often use Names as IDs)
                 const partyDocRef = doc(db, 'companies', currentUser.companyId, collectionName, identifier);
 
                 const partyData: any = {
@@ -337,21 +447,20 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                     companyId: currentUser.companyId,
                     address: partyAddress.trim(),
                     gstNumber: partyGST.trim(),
-                    updatedAt: serverTimestamp(), // Track last modification
+                    // --- SAVE SHIPPING PROFILE ---
+                    shippingName: shippingName.trim(),
+                    shippingNumber: shippingNumber.trim(),
+                    shippingAddress: shippingAddress.trim(),
+                    shippingGST: shippingGST.trim(),
+                    updatedAt: serverTimestamp(),
                 };
 
-                // Mode-specific timestamps
-                if (isSale) {
-                    partyData.lastSaleAt = serverTimestamp();
-                } else {
-                    partyData.lastPurchaseAt = serverTimestamp();
-                }
+                if (isSale) partyData.lastSaleAt = serverTimestamp();
+                else partyData.lastPurchaseAt = serverTimestamp();
 
-                // Handle balance increments
                 if (appliedCreditAmount > 0) partyData.creditBalance = firebaseIncrement(-appliedCreditAmount);
                 if (appliedDebitAmount > 0) partyData.debitBalance = firebaseIncrement(-appliedDebitAmount);
 
-                // merge: true ensures we don't overwrite existing fields (like old balances)
                 await setDoc(partyDocRef, partyData, { merge: true });
             }
 
@@ -359,7 +468,11 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 sessionStorage.removeItem(SESSION_STORAGE_NAME_KEY);
                 sessionStorage.removeItem(SESSION_STORAGE_NUMBER_KEY);
             } catch (e) { }
+
             setPartyName(''); setPartyNumber(''); setSelectedPayments({});
+            setShippingName(''); setShippingNumber(''); setShippingAddress(''); setShippingGST('');
+            setExpenseName(''); setExpenseAmount('');
+
         } catch (error) {
             setModal({ message: (error as Error).message || 'Failed to save.', type: State.ERROR });
         } finally {
@@ -412,51 +525,165 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 <div className="flex-1 overflow-y-auto overscroll-y-contain bg-white">
                     {/* Party Info */}
                     <div className="p-4 space-y-2">
-                        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">{partyLabel} Info</h3>
-                        <div className="grid grid-cols-2 gap-4 relative">
+                        <div className="flex justify-between items-center mb-2">
+                            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">{partyLabel} Info</h3>
 
-                            {/* NUMBER INPUT (Search trigger if Sale) */}
+                            {/* --- BIGGER ADDRESS TOGGLE --- */}
+                            {isSale && enableShippingDetails && (
+                                <div className="flex bg-gray-200 rounded-md p-1 shadow-inner">
+                                    <button
+                                        onClick={() => setAddressType('billing')}
+                                        className={`text-xs px-4 py-1.5 rounded font-semibold transition-all ${addressType === 'billing' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                    >
+                                        Billing
+                                    </button>
+                                    <button
+                                        onClick={() => setAddressType('shipping')}
+                                        className={`text-xs px-4 py-1.5 rounded font-semibold transition-all ${addressType === 'shipping' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                    >
+                                        Shipping
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* --- SAME AS BILLING CHECKBOX --- */}
+                        {isSale && enableShippingDetails && addressType === 'shipping' && (
+                            <div className="flex items-center justify-end mb-3 animate-in fade-in slide-in-from-top-1">
+                                <label className="flex items-center gap-2 cursor-pointer bg-blue-50 px-3 py-1.5 rounded-md border border-blue-100">
+                                    <input
+                                        type="checkbox"
+                                        checked={isSameAsBilling}
+                                        onChange={(e) => {
+                                            const isChecked = e.target.checked;
+                                            setIsSameAsBilling(isChecked);
+                                            if (!isChecked) {
+                                                setShippingName(''); setShippingNumber('');
+                                                setShippingAddress(''); setShippingGST('');
+                                            }
+                                        }}
+                                        className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                                    />
+                                    <span className="text-xs font-semibold text-blue-800">Same as Billing Details</span>
+                                </label>
+                            </div>
+                        )}
+
+                        <div className="grid grid-cols-2 gap-4 relative">
+                            {/* NUMBER INPUT */}
                             <div className="relative">
                                 <input
                                     type="number"
                                     placeholder={requireCustomerMobile ? "Phone Number *" : "Phone Number"}
-                                    value={partyNumber}
-                                    onChange={(e) => handleInputChange(e.target.value, 'number')}
-                                    onFocus={() => { if (isSale && partyNumber.length >= 3) searchParty(partyNumber, 'number'); }}
-                                    className={`w-full bg-gray-50 p-3 text-sm rounded-xs border ${requireCustomerMobile && !partyNumber ? 'border-red-300 focus:border-red-500' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none`}
+                                    value={addressType === 'billing' ? partyNumber : shippingNumber}
+                                    onChange={(e) => {
+                                        if (addressType === 'billing') {
+                                            handleInputChange(e.target.value, 'number');
+                                        } else {
+                                            setShippingNumber(e.target.value);
+                                            setIsSameAsBilling(false); // Uncheck if manually edited
+                                        }
+                                    }}
+                                    onFocus={() => { if (isSale && addressType === 'billing' && partyNumber.length >= 3) searchParty(partyNumber, 'number'); }}
+                                    className={`w-full bg-gray-50 p-3 text-sm rounded-xs border ${requireCustomerMobile && !partyNumber && addressType === 'billing' ? 'border-red-300 focus:border-red-500' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none`}
                                     autoComplete="off"
                                 />
-                                {requireCustomerMobile && <span className="absolute right-3 top-3 text-red-500 font-bold">*</span>}
-                                {/* Render Dropdown here ONLY if Sale */}
-                                {isSale && renderSuggestions()}
+                                {requireCustomerMobile && addressType === 'billing' && <span className="absolute right-3 top-3 text-red-500 font-bold">*</span>}
+                                {isSale && addressType === 'billing' && renderSuggestions()}
                             </div>
 
-                            {/* NAME INPUT (Search trigger if Purchase) */}
+                            {/* NAME INPUT */}
                             <div className="relative">
                                 <input
                                     type="text"
                                     placeholder={requireCustomerName ? `${partyLabel} Name *` : `${partyLabel} Name`}
-                                    value={partyName}
-                                    onChange={(e) => handleInputChange(e.target.value, 'name')}
-                                    onFocus={() => { if (!isSale && partyName.length >= 3) searchParty(partyName, 'name'); }}
-                                    className={`w-full bg-gray-50 p-3 text-sm rounded-xs border ${requireCustomerName && !partyName ? '' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none`}
+                                    value={addressType === 'billing' ? partyName : shippingName}
+                                    onChange={(e) => {
+                                        if (addressType === 'billing') {
+                                            handleInputChange(e.target.value, 'name');
+                                        } else {
+                                            setShippingName(e.target.value);
+                                            setIsSameAsBilling(false); // Uncheck if manually edited
+                                        }
+                                    }}
+                                    onFocus={() => { if (!isSale && addressType === 'billing' && partyName.length >= 3) searchParty(partyName, 'name'); }}
+                                    className={`w-full bg-gray-50 p-3 text-sm rounded-xs border ${requireCustomerName && !partyName && addressType === 'billing' ? '' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none`}
                                     autoComplete="off"
                                 />
-                                {requireCustomerName && <span className="absolute right-3 top-3 text-red-500 font-bold">*</span>}
-                                {/* Render Dropdown here ONLY if Purchase */}
-                                {!isSale && renderSuggestions()}
+                                {requireCustomerName && addressType === 'billing' && <span className="absolute right-3 top-3 text-red-500 font-bold">*</span>}
+                                {!isSale && addressType === 'billing' && renderSuggestions()}
                             </div>
+                        </div>
 
-                        </div>
-                        <div className="pt-1">
-                            <div onClick={() => setIsDetailsExpanded(!isDetailsExpanded)} className="flex items-center justify-start cursor-pointer text-blue-600 hover:text-blue-700 transition-colors text-xs font-semibold select-none"><span>{isDetailsExpanded ? 'Hide' : '+ Add'} GST & Address</span></div>
-                            {isDetailsExpanded && (
-                                <div className="grid grid-cols-2 gap-3 mt-3 animate-in slide-in-from-top-2 fade-in duration-200">
-                                    <input type="text" placeholder="GST Number" value={partyGST} onChange={(e) => setPartyGST(e.target.value)} className="w-full p-2.5 text-sm rounded-lg border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none" />
-                                    <input type="text" placeholder="Address" value={partyAddress} onChange={(e) => setPartyAddress(e.target.value)} className="w-full p-2.5 text-sm rounded-lg border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none" />
+                        <div className="pt-2 flex flex-col gap-2 w-full">
+                            <div className="flex items-center justify-between w-full">
+                                <div onClick={() => setIsDetailsExpanded(!isDetailsExpanded)} className="flex items-center justify-start cursor-pointer text-blue-600 hover:text-blue-700 transition-colors text-xs font-semibold select-none">
+                                    <span>{isDetailsExpanded ? '- Hide' : '+ Add'} GST & Address</span>
                                 </div>
-                            )}
+                                {isSale && enableNarration && (
+                                    <div onClick={() => setIsNarrationExpanded(!isNarrationExpanded)} className="flex items-center justify-start cursor-pointer text-gray-500 hover:text-gray-700 transition-colors text-xs font-semibold select-none">
+                                        <span>{isNarrationExpanded ? '- Hide' : '+ Add'} Narration</span>
+                                    </div>
+                                )}
+                                {isSale && enableExtraExpense && (
+                                    <div onClick={() => setIsExpenseExpanded(!isExpenseExpanded)} className="flex items-center justify-end cursor-pointer text-orange-600 hover:text-orange-700 transition-colors text-xs font-semibold select-none">
+                                        <span>{isExpenseExpanded ? '- Hide' : '+ Add'} Expense</span>
+                                    </div>
+                                )}
+                            </div>
                         </div>
+
+                        {isDetailsExpanded && (
+                            <div className="grid grid-cols-2 gap-3 mt-3 animate-in slide-in-from-top-2 fade-in duration-200">
+                                <input
+                                    type="text"
+                                    placeholder="GST Number"
+                                    value={addressType === 'billing' ? partyGST : shippingGST}
+                                    onChange={(e) => {
+                                        if (addressType === 'billing') {
+                                            setPartyGST(e.target.value);
+                                        } else {
+                                            setShippingGST(e.target.value);
+                                            setIsSameAsBilling(false); // Uncheck if manually edited
+                                        }
+                                    }}
+                                    className="w-full p-2.5 text-sm rounded-lg border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none"
+                                />
+                                <input
+                                    type="text"
+                                    placeholder="Full Address"
+                                    value={addressType === 'billing' ? partyAddress : shippingAddress}
+                                    onChange={(e) => {
+                                        if (addressType === 'billing') {
+                                            setPartyAddress(e.target.value);
+                                        } else {
+                                            setShippingAddress(e.target.value);
+                                            setIsSameAsBilling(false); // Uncheck if manually edited
+                                        }
+                                    }}
+                                    className="w-full p-2.5 text-sm rounded-lg border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none"
+                                />
+                            </div>
+                        )}
+
+                        {/* --- EXPENSE INPUT FIELDS --- */}
+                        {isExpenseExpanded && (
+                            <div className="grid grid-cols-2 gap-3 mt-3 animate-in slide-in-from-top-2 fade-in duration-200 p-2 bg-orange-50 rounded-lg border border-orange-100">
+                                <input type="text" placeholder="Expense Name (e.g. Freight)" value={expenseName} onChange={(e) => setExpenseName(e.target.value)} className="w-full p-2.5 text-sm rounded-lg border border-orange-200 bg-white focus:border-orange-500 outline-none" />
+                                <input type="number" placeholder="Amount (₹)" value={expenseAmount} onChange={(e) => setExpenseAmount(parseFloat(e.target.value) || '')} className="w-full p-2.5 text-sm rounded-lg border border-orange-200 bg-white focus:border-orange-500 outline-none" />
+                            </div>
+                        )}
+                        {isNarrationExpanded && (
+                            <div className="mt-2 animate-in slide-in-from-top-2 fade-in duration-200">
+                                <textarea
+                                    placeholder="Enter narration or remarks..."
+                                    value={narration}
+                                    onChange={(e) => setNarration(e.target.value)}
+                                    className="w-full p-2.5 text-sm rounded-lg border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none resize-none"
+                                    rows={2}
+                                />
+                            </div>
+                        )}
                     </div>
 
                     {/* Credit/Debit Balances */}
@@ -482,9 +709,38 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                     <div className="p-4 bg-gray-100">
                         <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Transaction Type</h3>
                         <div className="grid grid-cols-2 gap-4">
-                            {transactiontypes.map((mode) => (
-                                <FloatingLabelInput key={mode.id} id={mode.id} label={mode.name} value={selectedPayments[mode.id]?.toString() || ''} onChange={(e) => handleAmountChange(mode.id, e.target.value)} onFill={() => handleFillRemaining(mode.id)} showFillButton={pendingAmount > 0.01} className="bg-white rounded-xs" />
-                            ))}
+                            {transactiontypes.map((mode) => {
+                                // 1. Identify if this is the Due field
+                                const isDueField =
+                                    mode.id.toLowerCase().includes('due') ||
+                                    mode.name.toLowerCase().includes('due');
+
+                                // 2. Determine if it should be locked
+                                // It is locked ONLY if it's a Sale, it IS the due field, and Due Billing is turned OFF.
+                                const isDisabled = isSale && isDueField && !allowDueBilling;
+
+                                return (
+                                    <FloatingLabelInput
+                                        key={mode.id}
+                                        id={mode.id}
+                                        label={isDisabled ? `${mode.name}` : mode.name}
+                                        value={selectedPayments[mode.id]?.toString() || ''}
+                                        // Block the change handlers if disabled
+                                        onChange={(e) => {
+                                            if (!isDisabled) handleAmountChange(mode.id, e.target.value);
+                                        }}
+                                        onFill={() => {
+                                            if (!isDisabled) handleFillRemaining(mode.id);
+                                        }}
+                                        showFillButton={pendingAmount > 0.01 && !isDisabled}
+                                        className={`rounded-xs transition-colors ${isDisabled
+                                            ? 'bg-gray-100 cursor-not-allowed opacity-60 pointer-events-none'
+                                            : 'bg-white'
+                                            }`}
+                                        disabled={isDisabled}
+                                    />
+                                );
+                            })}
                         </div>
                     </div>
                 </div>
@@ -530,9 +786,14 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                             </span>
                         </div>
 
-                        <div className="flex-1 flex justify-end">
+                        <div className="flex-1 flex flex-col items-end justify-center pb-4">
+                            {totalTax > 0 && (
+                                <span className="text-sm text-gray-600 font-medium leading-tight mb-1">
+                                    Tax: ₹{totalTax.toFixed(2)}
+                                </span>
+                            )}
                             {totalItemDiscount > 0 && (
-                                <span className="text-base text-red-600 font-medium">
+                                <span className="text-base text-red-600 font-medium leading-tight">
                                     Disc: -₹{totalItemDiscount.toFixed()}
                                 </span>
                             )}

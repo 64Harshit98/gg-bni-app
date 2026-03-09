@@ -1,82 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
-import {
-    collection,
-    query,
-    where,
-    onSnapshot,
-} from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 import { useAuth } from './auth-context';
-
-export interface SalesSettings {
-    companyId?: string;
-    settingType?: 'sales';
-    enableTax?: boolean;
-    salesViewType?: 'card' | 'list';
-    enableSalesmanSelection?: boolean;
-    gstScheme?: 'regular' | 'composition' | 'none'; // 'none' means tax is disabled
-    taxType?: 'inclusive' | 'exclusive';
-    defaultTaxRate?: number;
-    enableRounding?: boolean;
-    enforceExactMRP?: boolean;
-    enableItemWiseDiscount?: boolean;
-    lockDiscountEntry?: boolean;
-    lockSalePriceEntry?: boolean;
-    defaultDiscount?: number;
-    allowNegativeStock?: boolean;
-    allowDueBilling?: boolean;
-    requireCustomerName?: boolean;
-    requireCustomerMobile?: boolean;
-    voucherName?: string;
-    voucherPrefix?: string;
-    currentVoucherNumber?: number;
-    copyVoucherAfterSaving?: boolean;
-    enforceMRP?: boolean;
-    enableBarcodePrinting?: boolean;
-    cartInsertionOrder?: 'top' | 'bottom';
-    lockTaxToggle?: boolean;
-
-}
-
-export interface PurchaseSettings {
-    companyId?: string;
-    settingType?: 'purchase';
-
-    // Replaced enableTax and defaultTaxRate
-    gstScheme?: 'regular' | 'composition' | 'none';
-    taxType?: 'inclusive' | 'exclusive'; // This applies to regular AND composition
-
-    defaultDiscount?: number;
-    inputMRP?: boolean;
-    zeroValueValidation?: boolean;
-    enableBarcodePrinting?: boolean;
-    copyVoucherAfterSaving?: boolean;
-    roundingOff?: boolean;
-
-    voucherName?: string;
-    voucherPrefix?: string;
-    currentVoucherNumber?: number;
-
-    purchaseViewType?: 'card' | 'list';
-
-    requireSupplierName?: boolean;
-    requireSupplierMobile?: boolean;
-}
-
-export interface ItemSettings {
-    companyId?: string;
-    settingType?: 'item';
-    requirePurchasePrice?: boolean;
-    requireDiscount?: boolean;
-    requireSaleDiscount?: boolean;
-    requirePurchaseDiscount?: boolean;
-    requireTax?: boolean;
-    requireBarcode?: boolean;
-    requireRestockQuantity?: boolean;
-    autoGenerateBarcode?: boolean;
-    requireMOQ?:boolean
-}
-
+import { type SalesSettings, getDefaultSalesSettings } from '../Pages/Settings/SalesSetting';
+import { type PurchaseSettings, getDefaultPurchaseSettings } from '../Pages/Settings/Purchasesetting';
+import { type ItemSettings, getDefaultItemSettings } from '../Pages/Settings/ItemSetting';
 
 interface SettingsContextType {
     salesSettings: SalesSettings | null;
@@ -90,172 +18,104 @@ interface SettingsContextType {
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
 
-const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
-    companyId: companyId,
-    settingType: 'sales',
-    salesViewType: 'list',
-    enableSalesmanSelection: true,
-    enableTax: true,
-    taxType: 'exclusive',
-    defaultTaxRate: 0,
-    enableRounding: true,
-    enforceExactMRP: false,
-    enableItemWiseDiscount: true,
-    lockDiscountEntry: false,
-    lockSalePriceEntry: false,
-    allowNegativeStock: false,
-    allowDueBilling: true,
-    requireCustomerName: true,
-    requireCustomerMobile: false,
-    voucherName: 'Sales',
-    voucherPrefix: 'SLS-',
-    currentVoucherNumber: 1,
-    cartInsertionOrder: 'top',
-    lockTaxToggle: false,
-    defaultDiscount: 0,
-    copyVoucherAfterSaving: false,
-    enforceMRP: false,
-    enableBarcodePrinting: false,
-});
-
-const getDefaultPurchaseSettings = (companyId: string): PurchaseSettings => ({
-    companyId: companyId,
-    settingType: 'purchase',
-    taxType: 'exclusive',
-    gstScheme: 'regular',
-    defaultDiscount: 0,
-    inputMRP: true,
-    zeroValueValidation: true,
-    enableBarcodePrinting: false,
-    copyVoucherAfterSaving: false,
-    roundingOff: false,
-    voucherName: 'Purchase',
-    voucherPrefix: 'PUR-',
-    currentVoucherNumber: 1,
-    purchaseViewType: 'list',
-    requireSupplierName: true,
-    requireSupplierMobile: false,
-});
-
-const getDefaultItemSettings = (companyId: string): ItemSettings => ({
-    companyId: companyId,
-    settingType: 'item',
-    requirePurchasePrice: false,
-    requireDiscount: false,
-    requireTax: false,
-    requireBarcode: false,
-    requireRestockQuantity: false,
-    autoGenerateBarcode: true,
-});
-
-
 export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const { currentUser } = useAuth();
 
     const [salesSettings, setSalesSettings] = useState<SalesSettings | null>(null);
     const [purchaseSettings, setPurchaseSettings] = useState<PurchaseSettings | null>(null);
-    const [itemSettings, setItemSettings] = useState<ItemSettings | null>(null); // Added Item state
+    const [itemSettings, setItemSettings] = useState<ItemSettings | null>(null);
 
     const [loadingSalesSettings, setLoadingSalesSettings] = useState(true);
     const [loadingPurchaseSettings, setLoadingPurchaseSettings] = useState(true);
-    const [loadingItemSettings, setLoadingItemSettings] = useState(true); // Added Item loading state
+    const [loadingItemSettings, setLoadingItemSettings] = useState(true);
 
+    // --- FETCH SALES SETTINGS ---
     useEffect(() => {
         if (!currentUser?.companyId) {
             setLoadingSalesSettings(false);
             setSalesSettings(null);
             return;
         }
+
         setLoadingSalesSettings(true);
         const companyId = currentUser.companyId;
 
-        // --- FIX: Use the correct multi-tenant path ---
-        const settingsCollectionRef = collection(db, 'companies', companyId, 'settings');
-        // --- FIX: No longer need to query by companyId, as it's in the path ---
-        const qSales = query(settingsCollectionRef, where('settingType', '==', 'sales'));
+        // FIX: Target the exact document ID your page saves to
+        const docRef = doc(db, 'companies', companyId, 'settings', 'sales-settings');
 
-        const unsubscribeSales = onSnapshot(qSales, (snapshot) => {
-            if (!snapshot.empty) {
-                const docData = snapshot.docs[0].data() as SalesSettings;
-                setSalesSettings(docData);
+        const unsubscribeSales = onSnapshot(docRef, (docSnap) => {
+            if (docSnap.exists()) {
+                setSalesSettings(docSnap.data() as SalesSettings);
             } else {
-                console.warn(`SettingsProvider: No 'sales' settings found for company ${companyId}. Using defaults.`);
+                console.warn(`SettingsProvider: No 'sales' settings found. Using defaults.`);
                 setSalesSettings(getDefaultSalesSettings(companyId));
             }
             setLoadingSalesSettings(false);
         }, (error) => {
             console.error('Error fetching Sales Settings:', error);
-            setSalesSettings(getDefaultSalesSettings(companyId)); // Fallback on error
-            setLoadingSalesSettings(false); // Also set loading to false on error
+            setSalesSettings(getDefaultSalesSettings(companyId));
+            setLoadingSalesSettings(false);
         });
 
         return () => unsubscribeSales();
     }, [currentUser?.companyId]);
 
+    // --- FETCH PURCHASE SETTINGS ---
     useEffect(() => {
         if (!currentUser?.companyId) {
             setLoadingPurchaseSettings(false);
             setPurchaseSettings(null);
             return;
         }
+
         setLoadingPurchaseSettings(true);
         const companyId = currentUser.companyId;
 
-        // --- FIX: Use the correct multi-tenant path ---
-        const settingsCollectionRef = collection(db, 'companies', companyId, 'settings');
-        // --- FIX: No longer need to query by companyId, as it's in the path ---
-        const qPurchase = query(settingsCollectionRef, where('settingType', '==', 'purchase'));
+        // FIX: Target the exact document ID your page saves to
+        const docRef = doc(db, 'companies', companyId, 'settings', 'purchase-settings');
 
-        const unsubscribePurchase = onSnapshot(qPurchase, (snapshot) => {
-            if (!snapshot.empty) {
-                const docData = snapshot.docs[0].data() as PurchaseSettings;
-                setPurchaseSettings(docData);
+        const unsubscribePurchase = onSnapshot(docRef, (docSnap) => {
+            if (docSnap.exists()) {
+                setPurchaseSettings(docSnap.data() as PurchaseSettings);
             } else {
-                console.warn(`SettingsProvider: No 'purchase' settings found for company ${companyId}. Using defaults.`);
+                console.warn(`SettingsProvider: No 'purchase' settings found. Using defaults.`);
                 setPurchaseSettings(getDefaultPurchaseSettings(companyId));
             }
             setLoadingPurchaseSettings(false);
         }, (error) => {
             console.error('Error fetching Purchase Settings:', error);
-            setPurchaseSettings(getDefaultPurchaseSettings(companyId)); // Fallback on error
+            setPurchaseSettings(getDefaultPurchaseSettings(companyId));
             setLoadingPurchaseSettings(false);
         });
 
         return () => unsubscribePurchase();
     }, [currentUser?.companyId]);
 
+    // --- FETCH ITEM SETTINGS ---
     useEffect(() => {
         if (!currentUser?.companyId) {
             setLoadingItemSettings(false);
             setItemSettings(null);
             return;
         }
+
         setLoadingItemSettings(true);
         const companyId = currentUser.companyId;
 
-        // --- FIX: Use the correct multi-tenant path ---
-        const settingsCollectionRef = collection(db, 'companies', companyId, 'settings');
-        // --- FIX: No longer need to query by companyId, as it's in the path ---
-        const qItem = query(settingsCollectionRef, where('settingType', '==', 'item'));
+        // FIX: Target the exact document ID your page saves to
+        const docRef = doc(db, 'companies', companyId, 'settings', 'item-settings');
 
-        const unsubscribeItem = onSnapshot(qItem, (snapshot) => {
-            if (!snapshot.empty) {
-                const docData = snapshot.docs[0].data() as ItemSettings;
-
-                const normalized: ItemSettings = {
-                    ...getDefaultItemSettings(companyId),
-                    ...docData,
-                };
-
-                setItemSettings(normalized);
+        const unsubscribeItem = onSnapshot(docRef, (docSnap) => {
+            if (docSnap.exists()) {
+                setItemSettings(docSnap.data() as ItemSettings);
             } else {
-                console.warn(`SettingsProvider: No 'item' settings found for company ${companyId}. Using defaults.`);
+                console.warn(`SettingsProvider: No 'item' settings found. Using defaults.`);
                 setItemSettings(getDefaultItemSettings(companyId));
             }
             setLoadingItemSettings(false);
         }, (error) => {
             console.error('Error fetching Item Settings:', error);
-            setItemSettings(getDefaultItemSettings(companyId)); // Fallback on error
+            setItemSettings(getDefaultItemSettings(companyId));
             setLoadingItemSettings(false);
         });
 

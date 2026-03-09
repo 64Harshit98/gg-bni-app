@@ -14,6 +14,7 @@ export interface BillSettingsData {
     bankName: string;
     accountName: string;
     accountNumber: string;
+    upiId?: string;
     ifscCode: string;
     termsAndConditions: string;
     signatureBase64?: string;
@@ -45,6 +46,7 @@ const BillSettings: React.FC = () => {
         bankName: '',
         accountName: '',
         accountNumber: '',
+        upiId: '',
         ifscCode: '',
         termsAndConditions: '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
         signatureBase64: ''
@@ -97,7 +99,8 @@ const BillSettings: React.FC = () => {
                     accountNumber: sData.accountNumber || bData.accountNumber || '',
                     ifscCode: sData.ifscCode || bData.ifscCode || '',
                     termsAndConditions: sData.termsAndConditions || '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
-                    signatureBase64: sData.signatureBase64 || ''
+                    signatureBase64: sData.signatureBase64 || '',
+                    upiId: sData.upiId || bData.upiId || '',
                 };
 
                 setSettings(loadedSettings);
@@ -141,7 +144,7 @@ const BillSettings: React.FC = () => {
             setIsSaving(true);
 
             let currentSignature = settings.signatureBase64; // Keep old one if pad is empty?
-            
+
             // If the user drew something new, get the data URL
             if (sigPadRef.current && !sigPadRef.current.isEmpty()) {
                 currentSignature = sigPadRef.current.getCanvas().toDataURL('image/png');
@@ -313,6 +316,17 @@ const BillSettings: React.FC = () => {
                                 value={settings.ifscCode}
                                 onChange={handleChange}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none uppercase font-mono"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">UPI ID</label>
+                            <input
+                                type="text"
+                                name="upiId"
+                                value={settings.upiId || ''}
+                                onChange={handleChange}
+                                placeholder="e.g. yourname@upi"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none"
                             />
                         </div>
                     </div>

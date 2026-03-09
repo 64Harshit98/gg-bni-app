@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
@@ -9,7 +9,6 @@ import { IconChevronDown } from '../../constants/Icons';
 import { ROUTES } from '../../constants/routes.constants';
 import { IconClose } from '../../constants/Icons';
 
-// 1. Added isLocked to the interface
 interface ServiceItem {
     id: string;
     title: string;
@@ -19,7 +18,6 @@ interface ServiceItem {
     isLocked?: boolean;
 }
 
-// 2. Added a locked service as an example (or apply to existing ones)
 const SERVICES: ServiceItem[] = [
     {
         id: 'Whatsapp',
@@ -41,7 +39,20 @@ const AdditionalServices: React.FC = () => {
     const { currentUser } = useAuth();
     const [isChecking, setIsChecking] = useState(false);
 
-    // --- ON-CLICK REDIRECTION LOGIC ---
+    // 1. State to track if the user is on a mobile/tablet device
+    const [isMobileDevice, setIsMobileDevice] = useState(false);
+
+    // 2. Effect to detect device on component mount
+    useEffect(() => {
+        const checkDevice = () => {
+            const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
+            // Regex checks for standard mobile/tablet user agents
+            const isMobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent.toLowerCase());
+            setIsMobileDevice(isMobile);
+        };
+        checkDevice();
+    }, []);
+
     const handleWhatsappClick = async (route: string) => {
         if (!currentUser) {
             navigate(route);
@@ -82,9 +93,6 @@ const AdditionalServices: React.FC = () => {
     };
 
     const handleNavigate = (service: ServiceItem) => {
-        // 3. Prevent navigation if the service is locked
-        if (service.isLocked) return;
-
         if (service.id === 'Whatsapp') {
             handleWhatsappClick(service.route);
         } else {
@@ -105,7 +113,6 @@ const AdditionalServices: React.FC = () => {
                         <IconClose />
                     </button>
 
-                    {/* Title & Subtitle Group */}
                     <div className="flex flex-col">
                         <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
                             Services
@@ -119,56 +126,63 @@ const AdditionalServices: React.FC = () => {
 
             {/* List */}
             <div className="flex-1 overflow-y-auto bg-slate-100 space-y-3 pt-4 pb-24 px-2">
-                {SERVICES.map((service) => (
-                    <CustomCard
-                        key={service.id}
-                        onClick={() => handleNavigate(service)}
-                        // 4. Dynamic styling based on locked state
-                        className={`transition-all ${service.isLocked
-                            ? 'cursor-not-allowed opacity-60 bg-slate-50'
-                            : 'cursor-pointer hover:shadow-md active:scale-[0.99]'
-                            }`}
-                    >
-                        <div className="flex items-center justify-between py-2">
-                            <div className="flex-1 pr-4">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <h3 className="text-lg font-semibold text-slate-800">{service.title}</h3>
+                {SERVICES.map((service) => {
+                    // 3. Dynamically determine if the item is locked
+                    const isDeviceLocked = service.id === 'Whatsapp' && isMobileDevice;
+                    const effectivelyLocked = service.isLocked || isDeviceLocked;
 
-                                    {/* Existing Badge Logic */}
-                                    {service.badge && !service.isLocked && (
-                                        <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">
-                                            {service.badge}
-                                        </span>
-                                    )}
+                    return (
+                        <CustomCard
+                            key={service.id}
+                            // 4. Use effectivelyLocked to prevent clicks
+                            onClick={() => {
+                                if (!effectivelyLocked) handleNavigate(service);
+                            }}
+                            className={`transition-all ${effectivelyLocked
+                                ? 'cursor-not-allowed opacity-60 bg-slate-50'
+                                : 'cursor-pointer hover:shadow-md active:scale-[0.99]'
+                                }`}
+                        >
+                            <div className="flex items-center justify-between py-2">
+                                <div className="flex-1 pr-4">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <h3 className="text-lg font-semibold text-slate-800">{service.title}</h3>
 
-                                    {/* 5. Coming Soon Badge */}
-                                    {service.isLocked && (
-                                        <span className="bg-sky-200 text-gray-600 text-[10px] font-bold px-2 py-0.5 rounded-xs uppercase tracking-wide border border-gray-300">
-                                            Coming Soon
-                                        </span>
-                                    )}
+                                        {/* Standard Badge */}
+                                        {service.badge && !effectivelyLocked && (
+                                            <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">
+                                                {service.badge}
+                                            </span>
+                                        )}
+
+                                        {/* 5. Dynamic Locked Badges */}
+                                        {effectivelyLocked && (
+                                            <span className="bg-sky-200 text-gray-600 text-[10px] font-bold px-2 py-0.5 rounded-xs uppercase tracking-wide border border-gray-300">
+                                                {isDeviceLocked ? 'PLEASE SETUP ON DESKTOP' : 'Coming Soon'}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-sm text-slate-500">
+                                        {isChecking && service.id === 'Whatsapp' ? 'Checking connection status...' : service.description}
+                                    </p>
                                 </div>
-                                <p className="text-sm text-slate-500">
-                                    {isChecking && service.id === 'Whatsapp' ? 'Checking connection status...' : service.description}
-                                </p>
-                            </div>
 
-                            <div className="flex items-center">
-                                <button
-                                    className={`w-10 h-10 flex items-center justify-center rounded-full bg-slate-50 ${service.isLocked ? 'text-gray-300' : 'text-slate-400'}`}
-                                    disabled={service.isLocked}
-                                >
-                                    {isChecking && service.id === 'Whatsapp' ? (
-                                        <div className="h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                                    ) : (
-                                        // Hide the chevron (or replace with a lock icon) if it's locked
-                                        !service.isLocked && <IconChevronDown className="w-5 h-5 -rotate-90" />
-                                    )}
-                                </button>
+                                <div className="flex items-center">
+                                    <button
+                                        className={`w-10 h-10 flex items-center justify-center rounded-full bg-slate-50 ${effectivelyLocked ? 'text-gray-300' : 'text-slate-400'}`}
+                                        disabled={effectivelyLocked}
+                                    >
+                                        {isChecking && service.id === 'Whatsapp' ? (
+                                            <div className="h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                                        ) : (
+                                            !effectivelyLocked && <IconChevronDown className="w-5 h-5 -rotate-90" />
+                                        )}
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-                    </CustomCard>
-                ))}
+                        </CustomCard>
+                    );
+                })}
             </div>
         </div>
     );

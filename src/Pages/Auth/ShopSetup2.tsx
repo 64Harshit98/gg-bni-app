@@ -54,19 +54,22 @@ const FinalSetupPage: React.FC = () => {
   const handleDownloadSample = () => {
     const sampleData = [
       {
-        name: 'Apple',
+        name: 'Sample Item',
         mrp: 100,
+        salesPrice: 95,
         purchasePrice: 80,
-        discount: 0,
+        'Sale Discount': 0,
+        purchasediscount: 0,
         tax: 0,
-        itemGroupId: 'Fruits',
+        hsnCode: '080810',
+        itemGroupId: 'Sample Category',
         stock: 50,
         barcode: '1001',
-        restockQuantity: 10
+        restockQuantity: 10,
       },
     ];
     const ws = XLSX.utils.json_to_sheet(sampleData);
-    const mandatoryCols = [1, 5, 6, 7];
+    const mandatoryCols = [0, 9, 10];
     mandatoryCols.forEach((colIndex) => {
       const cellAddress = XLSX.utils.encode_col(colIndex) + "1";
       if (ws[cellAddress]) {

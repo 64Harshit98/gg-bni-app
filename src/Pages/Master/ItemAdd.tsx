@@ -13,6 +13,16 @@ import { useItemSettings } from '../../context/SettingsContext';
 import { IconScanCircle } from '../../constants/Icons';
 import { collection, query, where, getDocs, limit, doc, runTransaction, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
+import { InfoTooltip } from '../../Components/InfoToolTip'; // <-- IMPORTED TOOLTIP
+
+const UNIT_OPTIONS = [
+  { value: 'pcs', label: 'Pieces (1 pcs)' },
+  { value: 'box', label: 'Box(10 pcs)' },
+  { value: 'pkt', label: 'Packet (Custom)' },
+  { value: 'doz', label: 'Dozen (12 pcs)' },
+  { value: 'qt', label: 'Quintal(100 pcs)' },
+  { value: 'ton', label: 'Ton(1000 pcs)' },
+];
 
 const ItemAdd: React.FC = () => {
   const navigate = useNavigate();
@@ -34,7 +44,8 @@ const ItemAdd: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [itemBarcode, setItemBarcode] = useState<string>('');
   const [hsnCode, setHsnCode] = useState<string>('');
-
+  const [itemUnit, setItemUnit] = useState<string>('');
+  const [packetSize, setPacketSize] = useState<string>('');
   const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
 
   const [loading, setLoading] = useState<boolean>(true);
@@ -66,9 +77,7 @@ const ItemAdd: React.FC = () => {
       const groups = await dbOperations.getItemGroups();
       setItemGroups(groups);
 
-      if (groups.length > 0 && !selectedCategory) {
-        setSelectedCategory(groups[0].id!);
-      } else if (groups.length === 0) {
+      if (groups.length === 0) {
         setSelectedCategory('');
       }
     } catch (err) {
@@ -81,11 +90,14 @@ const ItemAdd: React.FC = () => {
 
   // --- 2. Fetch Suggested Barcode (Peek Logic) ---
   const fetchNextBarcode = async () => {
-    if (!currentUser?.companyId) return;
+    if (!currentUser?.companyId || !itemSettings?.autoGenerateBarcode) {
+      setItemBarcode('');
+      return;
+    }
     try {
       const counterRef = doc(db, 'companies', currentUser.companyId, 'counters', 'items');
       const snap = await getDoc(counterRef);
-      let nextSeq = 1001; // Default start
+      let nextSeq = 1001;
       if (snap.exists()) {
         nextSeq = (snap.data().currentSequence || 1000) + 1;
       }
@@ -96,11 +108,11 @@ const ItemAdd: React.FC = () => {
   };
 
   useEffect(() => {
-    if (dbOperations && currentUser) {
+    if (dbOperations && currentUser && itemSettings) {
       fetchGroups();
       fetchNextBarcode();
     }
-  }, [dbOperations, currentUser]);
+  }, [dbOperations, currentUser, itemSettings]);
 
   const resetForm = () => {
     setItemName('');
@@ -114,6 +126,8 @@ const ItemAdd: React.FC = () => {
     fetchNextBarcode();
     setRestockQuantity('');
     setHsnCode('');
+    setItemUnit('');
+    setPacketSize('');
     setSelectedCategory(itemGroups.length > 0 ? itemGroups[0].id! : '');
   };
 
@@ -130,7 +144,7 @@ const ItemAdd: React.FC = () => {
         }
         const nextSeq = lastSeq + count;
         transaction.set(counterRef, { currentSequence: nextSeq }, { merge: true });
-        return lastSeq + 1; // Return the first usable number
+        return lastSeq + 1;
       });
     } catch (e) {
       return Date.now();
@@ -143,22 +157,40 @@ const ItemAdd: React.FC = () => {
     }
     setError(null); setSuccess(null); setModal(null);
 
-    // --- 1. Basic Field Validation ---
-    if (!itemName.trim() || !selectedCategory || !itemAmount.trim()) {
-      setModal({ message: 'Item Name, Stock Amount, and Category are required.', type: State.ERROR }); return;
+    // --- 1. Strictly Required Field Validation ---
+    if (!itemName.trim() || !itemAmount.trim() || !itemBarcode.trim()) {
+      setModal({ message: 'Item Name, Stock, and Barcode are strictly required.', type: State.ERROR }); return;
     }
 
-    if (!itemBarcode.trim()) {
-      setModal({ message: 'Barcode is required.', type: State.ERROR }); return;
-    }
-
-    // --- 2. Price Logic Validation ---
     const mrpValue = parseFloat(itemMRP) || 0;
     const saleValue = parseFloat(itemSalesPrice) || 0;
     const purchaseValue = parseFloat(itemPurchasePrice) || 0;
 
     if (mrpValue === 0 && saleValue === 0) {
       setModal({ message: 'Please enter either MRP or Sales Price.', type: State.ERROR }); return;
+    }
+
+    // --- 2. Dynamic Optional Settings Validation ---
+    if (itemSettings.requirePurchasePrice && !itemPurchasePrice.trim()) {
+      setModal({ message: 'Purchase Price is required as per your settings.', type: State.ERROR }); return;
+    }
+    if (itemSettings.requireDiscount && !itemDiscount.trim() && !PurchaseDiscount.trim()) {
+      setModal({ message: 'Discount is required as per your settings.', type: State.ERROR }); return;
+    }
+    if (itemSettings.requireTax && !itemTax.trim()) {
+      setModal({ message: 'Tax is required as per your settings.', type: State.ERROR }); return;
+    }
+    if (itemSettings.requireRestockQuantity && !restockQuantity.trim()) {
+      setModal({ message: 'Restock Level is required as per your settings.', type: State.ERROR }); return;
+    }
+    if (itemUnit === 'pkt' && (!packetSize.trim() || parseInt(packetSize, 10) <= 0)) {
+      setModal({ message: 'Please enter a valid quantity for the Packet.', type: State.ERROR }); return;
+    }
+    if ((itemSettings as any).requireUnit && !itemUnit.trim()) {
+      setModal({ message: 'Unit is required as per your settings.', type: State.ERROR }); return;
+    }
+    if ((itemSettings as any).requireCategory && !selectedCategory) {
+      setModal({ message: 'Category is required as per your settings.', type: State.ERROR }); return;
     }
 
     // --- 3. Discount Logic ---
@@ -186,6 +218,12 @@ const ItemAdd: React.FC = () => {
         setIsSaving(false);
         return;
       }
+      let currentMultiplier = 1;
+      if (itemUnit === 'box') currentMultiplier = 10;
+      if (itemUnit === 'doz') currentMultiplier = 12;
+      if (itemUnit === 'qt') currentMultiplier = 100;
+      if (itemUnit === 'ton') currentMultiplier = 1000;
+      if (itemUnit === 'pkt') currentMultiplier = parseInt(packetSize, 10) || 1;
 
       const customDocId = finalBarcode;
       const newItemData: any = {
@@ -202,6 +240,9 @@ const ItemAdd: React.FC = () => {
         amount: parseInt(itemAmount, 10) || 0,
         barcode: finalBarcode,
         restockQuantity: parseInt(restockQuantity, 10) || 0,
+        unit: itemUnit.trim(),
+        unitMultiplier: currentMultiplier,
+        packetSize: itemUnit === 'pkt' ? parseInt(packetSize, 10) : null,
       };
 
       await dbOperations.createItem(newItemData, customDocId);
@@ -253,7 +294,7 @@ const ItemAdd: React.FC = () => {
         let processedCount = 0;
         let createdCount = 0;
         let updatedCount = 0;
-        let failedCount = 0; // Simple counter for errors
+        let failedCount = 0;
 
         const totalItems = rawJson.length;
         setUploadProgress({ current: 0, total: totalItems });
@@ -283,35 +324,33 @@ const ItemAdd: React.FC = () => {
             row[cleanKey] = rawRow[k];
           });
 
-          const csvCategoryValue = String(
-            row.itemgroupid || row.itemgroup || row.category || row.group || row.categoryname || "General"
-          ).trim();
-
-          const categoryLower = csvCategoryValue.toLowerCase();
+          const rawCat = row.itemgroupid || row.itemgroup || row.category || row.group || row.categoryname;
           let targetGroupId = "";
 
-          if (groupMap.has(categoryLower)) {
-            targetGroupId = groupMap.get(categoryLower)!;
-          } else {
-            try {
-              const newGroupData: any = {
-                name: csvCategoryValue,
-                description: 'Auto-created via Bulk Import'
-              };
-              const newGroupId = await dbOperations.createItemGroup(newGroupData);
-              if (newGroupId && typeof newGroupId === 'string') {
-                groupMap.set(categoryLower, newGroupId);
-                targetGroupId = newGroupId;
-              } else {
-                throw new Error("Created group did not return a valid ID");
+          if (rawCat) {
+            const csvCategoryValue = String(rawCat).trim();
+            const categoryLower = csvCategoryValue.toLowerCase();
+
+            if (groupMap.has(categoryLower)) {
+              targetGroupId = groupMap.get(categoryLower)!;
+            } else {
+              try {
+                const newGroupData: any = {
+                  name: csvCategoryValue,
+                  description: 'Auto-created via Bulk Import'
+                };
+                const newGroupId = await dbOperations.createItemGroup(newGroupData);
+                if (newGroupId && typeof newGroupId === 'string') {
+                  groupMap.set(categoryLower, newGroupId);
+                  targetGroupId = newGroupId;
+                }
+              } catch (grpErr) {
+                console.warn("Failed to create group via bulk import.");
               }
-            } catch (grpErr) {
-              if (selectedCategory) targetGroupId = selectedCategory;
             }
           }
 
           // --- BULK VALIDATION LOGIC ---
-          // 1. Check Name
           if (!row.name) {
             failedCount++;
             continue;
@@ -321,19 +360,16 @@ const ItemAdd: React.FC = () => {
           const rowSale = parseFloat(String(row.salesprice ?? row.sellingprice ?? 0));
           const rowPurchase = parseFloat(String(row.purchaseprice ?? row.purchasePrice ?? row.PurchasePrice ?? 0));
 
-          // 2. Check Price (Either MRP or Sale Price required)
           if (rowMRP === 0 && rowSale === 0) {
             failedCount++;
             continue;
           }
 
-          // 3. Sale Discount Logic
           let rowSaleDiscount = parseFloat(String(row.discount ?? row.salediscount ?? row.salesdiscount ?? row.saledisc ?? 0));
           if (rowMRP > 0 && rowSale > 0) {
             rowSaleDiscount = 0;
           }
 
-          // 4. Purchase Discount Logic
           let rowPurchaseDiscount = parseFloat(String(row.purchasediscount ?? 0));
           if (rowMRP > 0 && rowPurchase > 0) {
             rowPurchaseDiscount = 0;
@@ -344,6 +380,7 @@ const ItemAdd: React.FC = () => {
 
             let rowBarcode = String(row.barcode || '').trim();
             const rowHsn = String(row.hsn || row.hsncode || row.sac || row.hsnsac || '').trim();
+            const rowUnitStr = String(row.unit || row.uom || '').trim();
 
             if (!rowBarcode) {
               rowBarcode = String(nextSeqNumber);
@@ -365,6 +402,7 @@ const ItemAdd: React.FC = () => {
               barcode: rowBarcode,
               restockQuantity: parseInt(String(row.restockquantity ?? 0), 10),
               taxRate: parseFloat(String(row.tax ?? 0)),
+              unit: rowUnitStr,
             };
 
             let isUpdate = false;
@@ -417,7 +455,7 @@ const ItemAdd: React.FC = () => {
   const handleDownloadSample = () => {
     const sampleData = [
       {
-        name: 'Apple',
+        name: 'Sample Item',
         mrp: 100,
         salesPrice: 95,
         purchasePrice: 80,
@@ -425,14 +463,14 @@ const ItemAdd: React.FC = () => {
         purchasediscount: 0,
         tax: 0,
         hsnCode: '080810',
-        itemGroupId: 'Fruits',
+        itemGroupId: 'Sample Category',
         stock: 50,
         barcode: '1001',
-        restockQuantity: 10
+        restockQuantity: 10,
       },
     ];
     const ws = XLSX.utils.json_to_sheet(sampleData);
-    const mandatoryCols = [0, 9, 10]; // Name, Stock, Barcode
+    const mandatoryCols = [0, 9, 10];
     mandatoryCols.forEach((colIndex) => {
       const cellAddress = XLSX.utils.encode_col(colIndex) + "1";
       if (ws[cellAddress]) {
@@ -448,6 +486,7 @@ const ItemAdd: React.FC = () => {
     XLSX.writeFile(wb, 'Sellar_Items_Sample.xlsx');
   };
 
+  const reqClasses = " after:content-['*'] after:ml-0.5 after:text-red-500";
   if (pageIsLoading) return <Spinner />;
 
   const renderHeader = () => (
@@ -511,17 +550,25 @@ const ItemAdd: React.FC = () => {
           </div>
 
           {/* SINGLE ITEM FORM */}
-          <div className="bg-white p-6 rounded-lg shadow-md md:mb-0 md:rounded-sm md:shadow-sm md:border md:border-gray-200 mb-10">
+          <div className="bg-white p-4 rounded-lg shadow-md md:mb-0 md:rounded-sm md:shadow-sm md:border md:border-gray-200 mb-10">
             <h2 className="text-lg font-bold text-gray-800 mb-4 md:mb-6 md:border-b md:pb-2">Add a Single Item</h2>
             <div className="space-y-4">
 
               <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:ml-0.5 after:text-red-500">Item Name</label>
+                <div className="flex items-center mb-1">
+                  <label className="text-sm font-medium text-gray-600 after:content-['*'] after:ml-0.5 after:text-red-500 mr-2">Item Name</label>
+                  <InfoTooltip text="The name of the product being added." />
+                </div>
                 <input type="text" value={itemName} onChange={(e) => setItemName(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500 outline-none" placeholder="e.g. Apple" />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:ml-0.5 after:text-red-500">Barcode</label>
+                <div className="flex items-center mb-1">
+                  <label className="text-sm font-medium text-gray-600 after:content-['*'] after:ml-0.5 after:text-red-500 mr-2">
+                    Barcode
+                  </label>
+                  <InfoTooltip text="Unique identifier for scanning the product." />
+                </div>
                 <div className="flex gap-2">
                   <input type="text" value={itemBarcode} onChange={(e) => setItemBarcode(e.target.value)} className="flex-grow p-3 border border-gray-300 rounded-sm focus:ring-sky-500 outline-none" placeholder="Scan or Type" />
                   <button type="button" onClick={() => setIsScannerOpen(true)} className="bg-gray-700 text-white p-3 rounded-sm"><IconScanCircle width={20} height={20} /></button>
@@ -529,56 +576,149 @@ const ItemAdd: React.FC = () => {
                 <p className="text-xs text-gray-400 mt-1">This is the next available number. You can change it if needed.</p>
               </div>
 
-              <div className='grid grid-cols-2 gap-4'>
+              <div className='grid grid-cols-2 gap-2'>
                 <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">MRP</label>
+                  <div className="flex items-center mb-1">
+                    <label className="text-sm font-medium text-gray-600 after:content-['*'] after:text-red-500 mr-2">MRP</label>
+                    <InfoTooltip text="Maximum Retail Price printed on the product." />
+                  </div>
                   <input type="number" value={itemMRP} onChange={(e) => setItemMRP(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0.00" />
                   <p className="text-[10px] text-gray-400">Required if Sale Price is empty</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">Category</label>
-                  <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm bg-white focus:ring-sky-500">
-                    <option value="" disabled>Select Category</option>
+                  <div className="flex items-center mb-1">
+                    <label className={`text-sm font-medium text-gray-600 ${(itemSettings as any)?.requireCategory ? reqClasses : ''} mr-2`}>
+                      Category
+                    </label>
+                    <InfoTooltip text="Group this item belongs to (e.g., Electronics)." />
+                  </div>
+                  <select
+                    value={selectedCategory}
+                    onChange={(e) => {
+                      if (e.target.value === 'ADD_NEW_GROUP') {
+                        navigate(ROUTES.ITEM_GROUP);
+                      } else {
+                        setSelectedCategory(e.target.value);
+                      }
+                    }}
+                    className="w-full p-3 border border-gray-300 rounded-sm bg-white focus:ring-sky-500"
+                  >
+                    <option value="">Uncategorized</option>
+
+                    {/* MOVED TO TOP */}
+                    <option value="ADD_NEW_GROUP" className="font-semibold border border-grey-300 bg-gray-100 hover:bg-gray-200">
+                      + Add New Group
+                    </option>
+
                     {itemGroups.map(g => <option key={g.id} value={g.id!}>{g.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">Sales Price</label>
+                  <div className="flex items-center mb-1">
+                    <label className="text-sm font-medium text-gray-600 after:content-['*'] after:text-red-500 mr-2">Sales Price</label>
+                    <InfoTooltip text="The price you are selling this item for." />
+                  </div>
                   <input type="number" value={itemSalesPrice} onChange={(e) => setItemSalesPrice(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0.00" />
                   <p className="text-[10px] text-gray-400">Required if MRP is empty</p>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1">Purchase Price</label>
+                  <div className="flex items-center mb-1">
+                    <label className={`text-sm font-medium text-gray-600 ${itemSettings?.requirePurchasePrice ? reqClasses : ''} mr-2`}>
+                      Purchase Price
+                    </label>
+                    <InfoTooltip text="The price you paid to acquire this item." />
+                  </div>
                   <input type="number" value={itemPurchasePrice} onChange={(e) => setItemPurchasePrice(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0.00" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1">Sale Disc (%)</label>
+                  <div className="flex items-center mb-1">
+                    <label className={`text-sm font-medium text-gray-600 ${itemSettings?.requireDiscount ? reqClasses : ''} mr-2`}>
+                      Sale Disc (%)
+                    </label>
+                    <InfoTooltip text="Default discount percentage given to customers." />
+                  </div>
                   <input type="number" value={itemDiscount} onChange={(e) => setItemDiscount(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1">Purchase Disc (%)</label>
+                  <div className="flex items-center mb-1">
+                    <label className="text-sm font-medium text-gray-600 mr-2">Purchase Disc (%)</label>
+                    <InfoTooltip text="Discount percentage received from the supplier." />
+                  </div>
                   <input type="number" value={PurchaseDiscount} onChange={(e) => setPurchaseDiscount(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1">Tax (%)</label>
+                  <div className="flex items-center mb-1">
+                    <label className={`text-sm font-medium text-gray-600 ${itemSettings?.requireTax ? reqClasses : ''} mr-2`}>
+                      Tax (%)
+                    </label>
+                    <InfoTooltip text="Applicable tax percentage for this item." />
+                  </div>
                   <input type="number" value={itemTax} onChange={(e) => setItemTax(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1">HSN Code</label>
+                  <div className="flex items-center mb-1">
+                    <label className="text-sm font-medium text-gray-600 mr-2">HSN Code</label>
+                    <InfoTooltip text="Harmonized System Nomenclature code for taxation." />
+                  </div>
                   <input type="text" value={hsnCode} onChange={(e) => setHsnCode(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="e.g. 123456" />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">Stock</label>
+                  <div className="flex items-center mb-1">
+                    <label className="text-sm font-medium text-gray-600 after:content-['*'] after:text-red-500 mr-2">Stock</label>
+                    <InfoTooltip text="Current available quantity in your inventory." />
+                  </div>
                   <input type="number" value={itemAmount} onChange={(e) => setItemAmount(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1">Restock Level</label>
+                  <div className="flex items-center mb-1">
+                    <label className={`text-sm font-medium text-gray-600 ${itemSettings?.requireRestockQuantity ? reqClasses : ''} mr-2`}>
+                      Restock Level
+                    </label>
+                    <InfoTooltip text="Minimum stock level to trigger a reorder alert." />
+                  </div>
                   <input type="number" value={restockQuantity} onChange={(e) => setRestockQuantity(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />
+                </div>
+              </div>
+              <div>
+                <div className="mb-1">
+                  <div className="flex items-center">
+                    <label className={`text-sm font-medium text-gray-600 ${(itemSettings as any)?.requireUnit ? reqClasses : ''} mr-2`}>
+                      Unit
+                    </label>
+                    <InfoTooltip text="Measurement unit (e.g., pieces, box, kg)." />
+                  </div>
+                  <p className='text-[10px] text-gray-500 mt-0.5'>(Number of items to be added per single stock unit. E.g. 1 for pcs, 10 for box, etc.)</p>
+                </div>
+                <div className="flex gap-2">
+                  <select
+                    value={itemUnit}
+                    onChange={(e) => {
+                      setItemUnit(e.target.value);
+                      if (e.target.value !== 'pkt') setPacketSize('');
+                    }}
+                    className={`p-3 border border-gray-300 rounded-sm bg-white focus:ring-sky-500 ${itemUnit === 'pkt' ? 'w-1/2' : 'w-full'}`}
+                  >
+                    {UNIT_OPTIONS.map(unit => (
+                      <option key={unit.value} value={unit.value} disabled={unit.value === ''}>
+                        {unit.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  {itemUnit === 'pkt' && (
+                    <input
+                      type="number"
+                      value={packetSize}
+                      onChange={(e) => setPacketSize(e.target.value)}
+                      className="w-1/2 p-3 border border-gray-300 rounded-sm focus:ring-sky-500"
+                      placeholder="Qty per pkt"
+                      min="1"
+                    />
+                  )}
                 </div>
               </div>
 

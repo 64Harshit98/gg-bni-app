@@ -9,6 +9,8 @@ import { Permissions, ROLES, State, Variant } from '../../enums'; // Import ROLE
 import { CustomButton } from '../../Components';
 import { Modal } from '../../constants/Modal';
 import { IconClose } from '../../constants/Icons';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+
 
 interface AppUser {
     uid: string;
@@ -100,6 +102,43 @@ const ManageUsersPage: React.FC = () => {
 
     const handleAddUser = () => {
         navigate(ROUTES.USER_ADD);
+    };
+    const handleDeleteUser = async (userToDelete: AppUser) => {
+        // 1. Prevent deleting the currently logged-in owner
+        if (userToDelete.uid === currentUser?.uid) {
+            setModal({ message: "You cannot delete your own account from this screen.", type: State.ERROR });
+            return;
+        }
+
+        // 2. Ask for confirmation
+        const isConfirmed = window.confirm(`Are you absolutely sure you want to delete ${userToDelete.name}? This removes their login access permanently.`);
+        if (!isConfirmed) return;
+
+        if (!currentUser?.companyId) return;
+
+        setIsSaving(true); // You can reuse isSaving, or create a specific isDeleting state
+        setModal(null);
+
+        try {
+            // 3. Call your secure backend to delete the Auth record AND Firestore doc
+            const functions = getFunctions();
+            const deleteUserFunction = httpsCallable(functions, 'deleteUserAccount');
+
+            await deleteUserFunction({
+                targetUid: userToDelete.uid,
+                companyId: currentUser.companyId
+            });
+
+            // 4. Update local state to remove the user from the UI immediately
+            setUsers(prevUsers => prevUsers.filter(u => u.uid !== userToDelete.uid));
+
+            setModal({ message: 'User deleted successfully.', type: State.SUCCESS });
+        } catch (err) {
+            console.error("Error deleting user:", err);
+            setModal({ message: 'Failed to delete user. Ensure you have the right permissions.', type: State.ERROR });
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const handleEditClick = (user: AppUser) => {
@@ -268,9 +307,23 @@ const ManageUsersPage: React.FC = () => {
                                             <p className="text-sm text-gray-600">Phone: {user.phoneNumber || 'Not Provided'}</p>
                                             <p className="text-xs text-gray-500 mt-1">Role: {user.role || 'Not Assigned'}</p>
                                         </div>
-                                        <button onClick={() => handleEditClick(user)} className='flex p-2 justify-right bg-white text-black border border-gray-300 hover:bg-gray-100 rounded-sm '>
-                                            Edit
-                                        </button>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => handleEditClick(user)}
+                                                className='flex p-2 justify-right bg-white text-black border border-gray-300 hover:bg-gray-100 border-2 rounded-sm '
+                                            >
+                                                Edit
+                                            </button>
+                                            {user.role !== ROLES.OWNER && (
+                                                <button
+                                                    onClick={() => handleDeleteUser(user)}
+                                                    className='flex p-2 justify-right bg-white text-red-600 border border-red-300 hover:bg-red-50 hover:text-red-700 border-2 rounded-sm'
+                                                    disabled={isSaving}
+                                                >
+                                                    Delete
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
                             </div>

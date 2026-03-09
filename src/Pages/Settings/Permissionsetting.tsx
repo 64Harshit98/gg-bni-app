@@ -23,6 +23,8 @@ const DEFAULT_PERMISSIONS_MAP = {
     [ROLES.MANAGER]: [
         Permissions.ViewDashboard,
         Permissions.ViewAttendance,
+        Permissions.ViewAccount,
+        Permissions.ManageEditProfile,
         Permissions.Viewrestockcard,
         Permissions.ViewTransactions,
         Permissions.PrintQR,

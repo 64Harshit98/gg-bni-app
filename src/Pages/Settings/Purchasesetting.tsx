@@ -4,7 +4,6 @@ import { db } from '../../lib/Firebase';
 import {
     doc,
     getDoc,
-    updateDoc,
     setDoc,
 } from 'firebase/firestore';
 import { Spinner } from '../../constants/Spinner';
@@ -12,7 +11,7 @@ import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
 import { useAuth } from '../../context/auth-context';
 import { FiCheck } from 'react-icons/fi';
-
+import { InfoTooltip } from '../../Components/InfoToolTip'; // <-- IMPORTED TOOLTIP
 
 export interface PurchaseSettings {
     companyId?: string;
@@ -29,6 +28,7 @@ export interface PurchaseSettings {
     purchaseViewType: 'card' | 'list';
     requireSupplierName: boolean;
     requireSupplierMobile: boolean;
+    cartInsertionOrder?: 'top' | 'bottom';
 }
 
 export const getDefaultPurchaseSettings = (companyId: string): PurchaseSettings => ({
@@ -41,11 +41,12 @@ export const getDefaultPurchaseSettings = (companyId: string): PurchaseSettings 
     copyVoucherAfterSaving: false,
     roundingOff: true,
     voucherName: 'Purchase',
-    voucherPrefix: 'PRC-',
-    currentVoucherNumber: 1,
+    voucherPrefix: 'INV',
+    currentVoucherNumber: 1000,
     purchaseViewType: 'list',
     requireSupplierName: true,
     requireSupplierMobile: false,
+    cartInsertionOrder: 'top',
 });
 
 const PurchaseSettingsPage: React.FC = () => {
@@ -68,20 +69,31 @@ const PurchaseSettingsPage: React.FC = () => {
             const companyId = currentUser.companyId!;
 
             const settingsDocRef = doc(db, 'companies', companyId, 'settings', 'purchase-settings');
+            const counterDocRef = doc(db, 'companies', companyId, 'counters', 'purchaseCounter');
 
             try {
-                const docSnap = await getDoc(settingsDocRef);
+                const [docSnap, counterSnap] = await Promise.all([
+                    getDoc(settingsDocRef),
+                    getDoc(counterDocRef)
+                ]);
+
+                const defaultSettings = getDefaultPurchaseSettings(companyId);
+                let mergedSettings = { ...defaultSettings };
 
                 if (docSnap.exists()) {
-                    setSettings(docSnap.data() as PurchaseSettings);
+                    mergedSettings = { ...mergedSettings, ...docSnap.data() };
                 } else {
                     console.log(`No purchase settings found. Creating defaults...`);
-                    const defaultSettings = getDefaultPurchaseSettings(companyId);
-
                     await setDoc(settingsDocRef, defaultSettings);
-
-                    setSettings(defaultSettings);
                 }
+
+                if (counterSnap.exists() && counterSnap.data().currentNumber !== undefined) {
+                    mergedSettings.currentVoucherNumber = counterSnap.data().currentNumber;
+                } else {
+                    await setDoc(counterDocRef, { currentNumber: defaultSettings.currentVoucherNumber }, { merge: true });
+                }
+
+                setSettings(mergedSettings as PurchaseSettings);
             } catch (err) {
                 console.error('Failed to fetch/create purchase settings:', err);
                 setModal({ message: 'Failed to load settings.', type: State.ERROR });
@@ -104,21 +116,57 @@ const PurchaseSettingsPage: React.FC = () => {
         setIsSaving(true);
         try {
             const companyId = currentUser.companyId;
-            const docToUpdateRef = doc(db, 'companies', companyId, 'settings', 'purchase-settings');
+            const settingsRef = doc(db, 'companies', companyId, 'settings', 'purchase-settings');
+            const counterRef = doc(db, 'companies', companyId, 'counters', 'purchaseCounter');
+
+            const { currentVoucherNumber, ...restOfSettings } = settings;
 
             const settingsToSave = {
-                ...settings,
+                ...restOfSettings,
                 companyId: companyId,
                 settingType: 'purchase'
             };
 
-            await updateDoc(docToUpdateRef, settingsToSave as { [key: string]: any });
+            await Promise.all([
+                setDoc(settingsRef, settingsToSave, { merge: true }),
+                setDoc(counterRef, { currentNumber: currentVoucherNumber }, { merge: true })
+            ]);
+
             setModal({ message: 'Settings saved successfully!', type: State.SUCCESS });
         } catch (err) {
             console.error('Failed to save settings:', err);
             setModal({ message: 'Failed to save settings. Please try again.', type: State.ERROR });
         } finally {
             setIsSaving(false);
+        }
+    };
+
+    const handleResetVoucher = async () => {
+        if (!settings || !currentUser?.companyId) return;
+
+        try {
+            const counterDocRef = doc(db, 'companies', currentUser.companyId, 'counters', 'purchaseCounter');
+            const counterSnap = await getDoc(counterDocRef);
+
+            let backendCounter = 1;
+            if (counterSnap.exists() && counterSnap.data().currentNumber) {
+                backendCounter = counterSnap.data().currentNumber;
+            }
+
+            setSettings({
+                ...settings,
+                voucherName: 'Purchase',
+                voucherPrefix: 'INV',
+                currentVoucherNumber: backendCounter
+            });
+
+        } catch (error) {
+            console.error("Failed to fetch backend counter for reset:", error);
+            setSettings({
+                ...settings,
+                voucherName: 'Purchase',
+                voucherPrefix: 'INV'
+            });
         }
     };
 
@@ -171,7 +219,10 @@ const PurchaseSettingsPage: React.FC = () => {
                         <h2 className="text-lg font-semibold text-gray-800 mb-4">Display Settings</h2>
 
                         <div className="mb-2">
-                            <label className="block text-gray-700 text-sm font-medium mb-3">Purchase View Mode</label>
+                            <div className="flex items-center mb-3">
+                                <label className="text-gray-700 text-sm font-medium mr-2">Purchase View Mode</label>
+                                <InfoTooltip text="Choose between list or card layout for the purchase screen." />
+                            </div>
 
                             <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
                                 {/* List View Option */}
@@ -225,19 +276,24 @@ const PurchaseSettingsPage: React.FC = () => {
                                 </div>
                             </div>
                         </div>
-                    </div>
-
-                    {/* --- Card 2: Pricing & Tax --- */}
-                    <div className="bg-white rounded-sm p-4 shadow-md mb-2">
-                        <h2 className="text-lg font-semibold text-gray-800 mb-2">Pricing</h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
-                        </div>
-                        <div className="flex items-center mb-4">
-                            <input type="checkbox" id="rounding-off"
-                                checked={settings.roundingOff}
-                                onChange={(e) => handleCheckboxChange('roundingOff', e.target.checked)}
-                                className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
-                            <label htmlFor="rounding-off" className="ml-2 text-gray-700 text-sm font-medium">Enable Rounding Off (Nearest Rupee)</label>
+                        <div className="mt-4 border-t pt-4">
+                            <div className="flex items-center mb-1">
+                                <label className="text-sm font-medium text-gray-700 mr-2">
+                                    Cart Item Sorting
+                                </label>
+                                <InfoTooltip text="Choose where newly scanned items appear in the cart." />
+                            </div>
+                            <select
+                                value={settings.cartInsertionOrder || 'top'}
+                                onChange={(e) => handleChange('cartInsertionOrder', e.target.value as 'top' | 'bottom')}
+                                className="w-full p-2 border border-gray-300 rounded-md bg-gray-50 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                            >
+                                <option value="top">Newest First (Add New to Top)</option>
+                                <option value="bottom">Oldest First (Add New to Bottom)</option>
+                            </select>
+                            <p className="text-xs text-gray-500 mt-1">
+                                Controls where new items appear in the cart list.
+                            </p>
                         </div>
                     </div>
 
@@ -245,18 +301,12 @@ const PurchaseSettingsPage: React.FC = () => {
                     <div className="bg-white rounded-sm p-4 shadow-md mb-2">
                         <h2 className="text-lg font-semibold text-gray-800 mb-4">Defaults & Behavior</h2>
                         <div className="flex items-center mb-4">
-                            <input type="checkbox" id="zero-value"
-                                checked={settings.zeroValueValidation}
-                                onChange={(e) => handleCheckboxChange('zeroValueValidation', e.target.checked)}
-                                className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
-                            <label htmlFor="zero-value" className="ml-2 text-gray-700 text-sm font-medium">Prevent Zero Value Purchase Price</label>
-                        </div>
-                        <div className="flex items-center mb-4">
                             <input type="checkbox" id="print-barcode"
                                 checked={settings.enableBarcodePrinting}
                                 onChange={(e) => handleCheckboxChange('enableBarcodePrinting', e.target.checked)}
                                 className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
-                            <label htmlFor="print-barcode" className="ml-2 text-gray-700 text-sm font-medium">Enable Barcode Printing Option</label>
+                            <label htmlFor="print-barcode" className="ml-2 mr-2 text-gray-700 text-sm font-medium">Enable Barcode Printing Option</label>
+                            <InfoTooltip text="Show an option to print barcodes after saving a purchase." />
                         </div>
                     </div>
 
@@ -269,44 +319,79 @@ const PurchaseSettingsPage: React.FC = () => {
                                 checked={settings.requireSupplierName}
                                 onChange={(e) => handleCheckboxChange('requireSupplierName', e.target.checked)}
                                 className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
-                            <label htmlFor="req-supplier-name" className="ml-2 text-gray-700 text-sm font-medium">Require Supplier Name</label>
+                            <label htmlFor="req-supplier-name" className="ml-2 mr-2 text-gray-700 text-sm font-medium">Require Supplier Name</label>
+                            <InfoTooltip text="Force entering a supplier name before saving the purchase." />
                         </div>
                         <div className="flex items-center mb-4">
                             <input type="checkbox" id="req-supplier-mobile"
                                 checked={settings.requireSupplierMobile}
                                 onChange={(e) => handleCheckboxChange('requireSupplierMobile', e.target.checked)}
                                 className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
-                            <label htmlFor="req-supplier-mobile" className="ml-2 text-gray-700 text-sm font-medium">Require Supplier Mobile</label>
+                            <label htmlFor="req-supplier-mobile" className="ml-2 mr-2 text-gray-700 text-sm font-medium">Require Supplier Mobile</label>
+                            <InfoTooltip text="Force entering a supplier mobile number before saving." />
                         </div>
                     </div>
 
                     {/* --- Card 5: Voucher Numbering --- */}
                     <div className="bg-white rounded-sm p-4 shadow-md mb-2">
-                        <h2 className="text-lg font-semibold text-gray-800 mb-4">Voucher Numbering</h2>
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-lg font-semibold text-gray-800">Voucher Numbering</h2>
+                            {/* Reset Button */}
+                            <button
+                                type="button"
+                                onClick={handleResetVoucher}
+                                className="text-xs text-red-600 hover:text-red-800 font-bold px-3 py-1.5 rounded-sm bg-red-50 hover:bg-red-100 transition-colors border border-red-100"
+                            >
+                                Reset to Default
+                            </button>
+                        </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                            {/* Locked Voucher Name */}
                             <div>
-                                <label htmlFor="voucher-name" className="block text-gray-700 text-sm font-medium mb-1">Voucher Name</label>
+                                <div className="flex items-center mb-1">
+                                    <label htmlFor="voucher-name" className="flex items-center text-gray-700 text-sm font-medium mr-2">
+                                        Voucher Name <span className="ml-2 text-[10px] text-red-500 font-bold bg-red-50 px-1.5 py-0.5 rounded">LOCKED</span>
+                                    </label>
+                                    <InfoTooltip text="Internal document name for this transaction type." />
+                                </div>
                                 <input type="text" id="voucher-name"
-                                    value={settings.voucherName}
-                                    onChange={(e) => handleChange('voucherName', e.target.value)}
-                                    className="w-full p-3 border border-gray-300 rounded-lg"
-                                    placeholder="e.g., Main Purchase" />
+                                    value={settings.voucherName || 'Purchase'}
+                                    disabled
+                                    className="w-full p-3 border border-gray-200 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed select-none"
+                                />
                             </div>
+
+                            {/* Editable Voucher Prefix */}
                             <div>
-                                <label htmlFor="voucher-prefix" className="block text-gray-700 text-sm font-medium mb-1">Voucher Prefix</label>
+                                <div className="flex items-center mb-1">
+                                    <label htmlFor="voucher-prefix" className="text-gray-700 text-sm font-medium mr-2">
+                                        Voucher Prefix
+                                    </label>
+                                    <InfoTooltip text="Letters added before the purchase invoice number (e.g., PRC-)." />
+                                </div>
                                 <input type="text" id="voucher-prefix"
-                                    value={settings.voucherPrefix}
+                                    value={settings.voucherPrefix || ''}
                                     onChange={(e) => handleChange('voucherPrefix', e.target.value)}
-                                    className="w-full p-3 border border-gray-300 rounded-lg"
-                                    placeholder="e.g., PRC-" />
+                                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                    placeholder="e.g., PRC-"
+                                />
                             </div>
+
+                            {/* Editable Next Voucher Number */}
                             <div>
-                                <label htmlFor="current-number" className="block text-gray-700 text-sm font-medium mb-1">Next Voucher Number</label>
+                                <div className="flex items-center mb-1">
+                                    <label htmlFor="current-number" className="text-gray-700 text-sm font-medium mr-2">
+                                        Next Voucher Number
+                                    </label>
+                                    <InfoTooltip text="The sequence number for the next recorded purchase." />
+                                </div>
                                 <input type="number" id="current-number"
-                                    value={settings.currentVoucherNumber}
+                                    value={settings.currentVoucherNumber ?? 1000}
                                     onChange={(e) => handleChange('currentVoucherNumber', e.target.value)}
-                                    className="w-full p-3 border border-gray-300 rounded-lg"
-                                    placeholder="e.g., 1" min="1" />
+                                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                    placeholder="e.g., 1" min="1" step="1"
+                                />
                             </div>
                         </div>
                     </div>

@@ -3,6 +3,34 @@ const admin = require("firebase-admin");
 const axios = require("axios");
 const cors = require("cors")({ origin: true }); // Allows your frontend to talk to this function
 
+exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
+    // 1. Verify the requester is authenticated
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Must be logged in.');
+    }
+
+    const { targetUid, companyId } = data;
+
+    // 2. IMPORTANT: Verify the requester has permission to delete users!
+    // (Check their custom claims, or query their role in Firestore to ensure they are an OWNER)
+
+    try {
+        // 3. Delete from Firebase Auth
+        await admin.auth().deleteUser(targetUid);
+
+        // 4. Delete from Firestore
+        await admin.firestore()
+            .collection('companies').doc(companyId)
+            .collection('users').doc(targetUid)
+            .delete();
+
+        return { success: true, message: 'User completely deleted.' };
+    } catch (error) {
+        console.error("Error deleting user:", error);
+        throw new functions.https.HttpsError('internal', 'Failed to delete user.');
+    }
+});
+
 exports.botmasterProxy = functions.https.onRequest((req, res) => {
     cors(req, res, async () => {
         try {
@@ -100,6 +128,12 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
 
         // 7. Prepare Data Payloads
 
+        const trialDate = new Date();
+        trialDate.setDate(trialDate.getDate() + 7);
+
+        // Set to exactly 18:29:59 UTC (which perfectly equals 23:59:59 IST)
+        trialDate.setUTCHours(18, 29, 59, 999);
+
         // A. Root Data (Plan & Validity)
         const companyRootData = {
             name: businessData.businessName || name,
@@ -107,15 +141,12 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
             ownerUID: userRecord.uid,
             ownerPhoneNumber: phoneNumber || '',
 
-            // Plan Info
-            pack: planDetails?.pack || "pro",
-            validity: planDetails?.validity || "active",
-            expiryDate: planDetails?.expiryDate
-                ? admin.firestore.Timestamp.fromDate(new Date(planDetails.expiryDate))
-                : null,
-            isTrial: !!planDetails?.isTrial
+            // Plan Info (Forced to 7-Day Trial)
+            pack: "pro",
+            validity: "active",
+            expiryDate: admin.firestore.Timestamp.fromDate(trialDate),
+            isTrial: true
         };
-
         // B. Sales Settings Data (Clean & Defaulted)
         const finalSalesSettings = {
             ...salesSettings,

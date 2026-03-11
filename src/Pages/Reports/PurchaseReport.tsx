@@ -108,6 +108,7 @@ const PurchaseReport: React.FC = () => {
       };
     }
 
+
     const newFilteredPurchases = [...purchases];
 
     newFilteredPurchases.sort((a, b) => {
@@ -159,6 +160,7 @@ const PurchaseReport: React.FC = () => {
         totalItemsPurchased,
         averagePurchaseValue,
       },
+      
     };
   }, [appliedFilters, purchases, sortConfig]);
 

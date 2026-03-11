@@ -11,6 +11,7 @@ interface SearchableItemInputProps {
     placeholder?: string;
     isLoading?: boolean;
     error?: string | null;
+    onAddItem?: (searchQuery: String) => void;
 }
 
 const THROTTLE_DELAY = 500;
@@ -20,7 +21,8 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
     onItemSelected,
     placeholder = "Scan or search item...",
     isLoading = false,
-    error = null
+    error = null,
+    onAddItem,
 }) => {
     const [searchQuery, setSearchQuery] = useState<string>('');
     const [throttledQuery, setThrottledQuery] = useState<string>('');
@@ -226,9 +228,23 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
                     ) : (
                         <>
                             {filteredItems.length === 0 ? (
-                                <div className="p-6 text-center text-gray-500 flex flex-col items-center">
-                                    <FiBox size={24} className="mb-2 text-gray-300" />
-                                    <span>No items found for "{searchQuery}"</span>
+                                <div className='flex flex-col'>
+                                    <div className="p-6 text-center text-gray-500 flex flex-col items-center">
+                                        <FiBox size={24} className="mb-2 text-gray-300" />
+                                        <span>No items found for "{searchQuery}"</span>
+                                    </div>
+                                    {onAddItem && (
+                                        <button
+                                            onMouseDown={(e) => {
+                                                e.preventDefault(); // prevents input blur closing dropdown before click fires
+                                                onAddItem(searchQuery);
+                                            }}
+                                            className="flex items-center gap-2 px-4 py-3 text-sm font-medium text-blue-600 hover:bg-blue-50 border-t border-gray-100 transition-colors w-full"
+                                        >
+                                            <span className="text-lg leading-none">+</span>
+                                            Add new item "{searchQuery}"
+                                        </button>
+                                    )}
                                 </div>
                             ) : (
                                 filteredItems.map((item, index) => {

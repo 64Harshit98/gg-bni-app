@@ -194,14 +194,14 @@ const SalesReport: React.FC = () => {
         formatDate(sale.createdAt),
         sale.partyName,
         sale.items.reduce((sum, i) => sum + i.quantity, 0),
-        `₹ ${sale.totalAmount.toLocaleString('en-IN')}`,
+        `Rs ${sale.totalAmount.toLocaleString('en-IN')}`,
       ]),
       foot: [
         [
           'Total',
           '',
           `${summary.totalItemsSold}`,
-          `₹ ${summary.totalSales.toLocaleString('en-IN')}`,
+          `Rs ${summary.totalSales.toLocaleString('en-IN')}`,
         ],
       ],
       footStyles: { fontStyle: 'bold' },

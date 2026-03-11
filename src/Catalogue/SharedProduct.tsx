@@ -68,9 +68,6 @@ const SharedProduct: React.FC = () => {
         updatedCart: { item: Item; quantity: number }[]
     ) => {
         if (!companyId || updatedCart.length === 0) return;
-        const leadData = JSON.parse(
-            sessionStorage.getItem("leadData") || "{}"
-        );
         try {
             const leadData = JSON.parse(
                 localStorage.getItem("leadData") || "{}"
@@ -103,6 +100,11 @@ const SharedProduct: React.FC = () => {
                     (c.item as any).salesPrice ||
                     (c.item as any).effectivePrice ||
                     mrp;
+                console.log("ITEM BEFORE SAVE", {
+                    name: c.item.name,
+                    mrp: mrp,
+                    salesPrice: salePrice
+                });
 
                 return {
                     id: String(c.item.id),
@@ -236,6 +238,8 @@ const SharedProduct: React.FC = () => {
 
             const itemWithPrice = {
                 ...item,
+                mrp: item.mrp,
+                salesPrice: item.salesPrice || item.mrp
             };
 
             const newCart = existing

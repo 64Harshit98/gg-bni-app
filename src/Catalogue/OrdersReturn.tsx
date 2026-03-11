@@ -62,7 +62,7 @@ const OrdersReturnPage: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { state } = useLocation();
-  const location = useLocation();
+  // const location = useLocation();
   const { salesSettings } = useSalesSettings();
 
   const [returnDate, setReturnDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -94,7 +94,7 @@ const OrdersReturnPage: React.FC = () => {
   const [scannerPurpose, setScannerPurpose] = useState<'sale' | 'item' | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
-  const isActive = (path: string) => location.pathname === path;
+  // const isActive = (path: string) => location.pathname === path;
 
   const [isDiscountLocked, setIsDiscountLocked] = useState(true);
   const [discountInfo, setDiscountInfo] = useState<string | null>(null);

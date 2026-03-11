@@ -55,14 +55,8 @@ function BusinessCard() {
     const handleUploadCard = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-
         const fileURL = URL.createObjectURL(file);
-
-        if (file.type === "application/pdf") {
-            setUploadedCard(fileURL + "#pdf");
-        } else {
-            setUploadedCard(fileURL);
-        }
+        setUploadedCard(fileURL)
     };
 
     useEffect(() => {
@@ -211,7 +205,7 @@ function BusinessCard() {
 
                                 <input
                                     type="file"
-                                    accept="image/*,application/pdf"
+                                    accept="image/png, image/jpeg, image/jpg, image/webp"
                                     className="hidden"
                                     onChange={handleUploadCard}
                                 />
@@ -220,19 +214,11 @@ function BusinessCard() {
                     ) : (
                         <>
                             {/* Preview */}
-                            {uploadedCard?.includes("#pdf") ? (
-                                <iframe
-                                    src={uploadedCard.replace("#pdf", "")}
-                                    className="w-full h-full border-0 rounded"
-                                />
-                            ) : (
                                 <img
                                     src={uploadedCard}
                                     alt="Uploaded card"
-                                    className="w-full h-full object-cover rounded"
+                                    className="w-full h-full object-contain rounded"
                                 />
-                            )}
-
                             {/* Buttons */}
                             <div className="absolute top-1.5 right-1.5 flex gap-1 z-20 no-export">
                                 <a

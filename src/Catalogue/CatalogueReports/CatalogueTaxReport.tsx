@@ -280,11 +280,13 @@ const CatalogueTaxReport: React.FC = () => {
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium">Rate (%):</span>
             <input
+              min={1}
               type="number"
               value={compositionRate}
               onChange={(e) => setCompositionRate(Number(e.target.value))}
               className="w-16 p-1 border rounded text-center text-sm"
             />
+            {/* <p>1</p> */}
             <InfoTooltip text="Traders/Manufacturers: 1%, Restaurants: 5%" />
           </div>
         )}

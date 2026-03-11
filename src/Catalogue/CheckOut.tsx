@@ -15,14 +15,15 @@ import { ACTION } from '../enums';
 
 
 interface CartItem {
-    id: string | number;
-    name: string;
-    category: string;
-    price: number;
-    quantity: number;
-    image: string;
-    note: string;
-    imageUrl?: string;
+    id: string | number
+    name: string
+    category: string
+    mrp: number
+    salesPrice: number
+    quantity: number
+    image: string
+    note: string
+    imageUrl?: string
     moq?: number
 }
 
@@ -107,7 +108,8 @@ const CartPage: React.FC = () => {
             id: String(item.id),
             name: item.name,
             quantity: item.quantity,
-            mrp: item.price,
+            mrp: item.mrp,
+            salesPrice: item.salesPrice,
             note: item.note || ''
         }));
 
@@ -142,13 +144,12 @@ const CartPage: React.FC = () => {
                     id: entry.item.id,
                     name: entry.item.name,
                     category: entry.item.category || 'Product',
-                    price:
-                        entry.item.effectivePrice ||
-                        entry.item.salesPrice ||
-                        entry.item.mrp ||
-                        0,
+
+                    mrp: entry.item.mrp || 0,
+                    salesPrice: entry.item.salesPrice || entry.item.mrp || 0,
+
                     quantity: entry.quantity,
-                    imageUrl: entry.item.imageUrl || 'https://via.placeholder.com/150',
+                    imageUrl: entry.item.imageUrl || '',
                     moq: entry.item.moq || 1,
                     note: ''
                 }));
@@ -189,7 +190,8 @@ const CartPage: React.FC = () => {
                     item: {
                         id: i.id,
                         name: i.name,
-                        mrp: i.price,
+                        mrp: i.mrp,
+                        salesPrice: i.salesPrice,
                         imageUrl: i.imageUrl || '',
                         moq: i.moq || 1
                     },
@@ -266,7 +268,10 @@ const CartPage: React.FC = () => {
         setCartItems(prev => prev.map(item => item.id === id ? { ...item, note } : item));
     };
 
-    const subtotal = cartItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+    const subtotal = cartItems.reduce(
+        (acc, item) => acc + item.salesPrice * item.quantity,
+        0
+    );
     const totalPay = subtotal;
 
     const isMovValid = () => {
@@ -393,14 +398,25 @@ const CartPage: React.FC = () => {
                 paidAmount: 0,
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
-                items: cartItems.map(i => ({
-                    id: String(i.id),
-                    name: i.name,
-                    quantity: i.quantity,
-                    mrp: i.price,
-                    note: i.note || '',
-                    imageUrl: i.imageUrl || "" 
-                })),
+                items: cartItems.map(i => {
+
+                    const mrp = i.mrp;
+                    const salePrice = i.salesPrice;
+
+                    return {
+                        id: String(i.id),
+                        name: i.name,
+                        quantity: i.quantity,
+
+                        mrp: mrp,
+                        salesPrice: salePrice,
+
+                        finalPrice: salePrice * i.quantity,
+
+                        note: i.note || '',
+                        imageUrl: i.imageUrl || ""
+                    };
+                }),
                 billingDetails: billing,
                 shippingDetails: isSameAsShipping ? billing : shipping,
                 userLoginPhone: billing.phone,
@@ -483,10 +499,11 @@ const CartPage: React.FC = () => {
                         hsn: "",
                         quantity: item.quantity,
                         unit: "PCS",
-                        listPrice: item.price,
                         gstPercent: 0,
                         discountAmount: 0,
-                        amount: item.price * item.quantity,
+                        mrp: item.mrp,
+                        price: item.salesPrice,
+                        total: item.salesPrice * item.quantity,
                     })),
 
                     terms: "",
@@ -496,7 +513,7 @@ const CartPage: React.FC = () => {
                 const preparedData = await prepareCatalogueBillData(rawBillData);
 
                 console.log("Catalogue company final:", preparedData.companyName);
-                console.log("FINAL PDF DATA", preparedData);2
+                console.log("FINAL PDF DATA", preparedData); 2
                 //  generate pdf
                 await CatalogueBill(preparedData, ACTION.BLOB);
             } catch (e) {
@@ -525,7 +542,7 @@ const CartPage: React.FC = () => {
             'temp_cart',
             JSON.stringify(
                 updatedCart.map(i => ({
-                    item: { id: i.id, name: i.name, mrp: i.price },
+                    item: { id: i.id, name: i.name, mrp: i.mrp },
                     quantity: i.quantity
                 }))
             )
@@ -718,7 +735,7 @@ const CartPage: React.FC = () => {
 
                                                         <div className="flex flex-wrap items-center justify-between mt-2 gap-2">
                                                             <span className="font-black text-[#1A3B5D] text-sm shrink-0">
-                                                                {shouldShowPrice ? `₹${item.price}` : "---"}
+                                                                {shouldShowPrice ? `₹${item.salesPrice}` : "---"}
                                                             </span>
                                                             <input
                                                                 type="text"

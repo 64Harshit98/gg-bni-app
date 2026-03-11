@@ -182,17 +182,22 @@ export const useOrdersData = (
                         createdAt,
                         time: formatDate(createdAt),
                         items: Array.isArray(data.items)
-                            ? data.items.map((i: any) => ({
-                                id: i.id,
-                                name: i.name,
-                                quantity: Number(i.quantity || 0),
-                                mrp: Number(i.mrp || 0),
-                                salesPrice: Number(i.salesPrice || 0),
-                                finalPrice: Number(i.finalPrice ?? i.amount ?? (i.mrp * i.quantity)),
-                                note: i.note || '',
-                                imageUrl: i.imageUrl || "",
-                                imageBase64: ""
-                            }))
+                            ? data.items.map((i: any) => {
+
+                                console.log("ORDER ITEM FROM FIRESTORE:", i);
+
+                                return {
+                                    id: i.id,
+                                    name: i.name,
+                                    quantity: Number(i.quantity || 0),
+                                    mrp: Number(i.mrp || 0),
+                                    salesPrice: Number(i.salesPrice || 0),
+                                    finalPrice: Number(i.finalPrice ?? i.amount ?? (i.mrp * i.quantity)),
+                                    note: i.note || '',
+                                    imageUrl: i.imageUrl || "",
+                                    imageBase64: ""
+                                };
+                            })
                             : [],
                     };
                 });
@@ -285,7 +290,8 @@ const OrdersPage: React.FC = () => {
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
     const [isUpdatingStatus, setIsUpdatingStatus] = useState<string | null>(null);
     const [selectedOrderForAction, setSelectedOrderForAction] = useState<Order | null>(null);
-    const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+    const [_isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+    const [pdfLoadingOrderId, setPdfLoadingOrderId] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'billing' | 'shipping'>('billing');
     const [paymentFilter, setPaymentFilter] = useState<'paid' | 'unpaid'>('unpaid');
     const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -465,7 +471,9 @@ const OrdersPage: React.FC = () => {
 
     // PDF & Sharing Functions (Same as provided)
     const handlePdfAction = async (Order: Order, action: ACTION) => {
-        console.log("ORDER ITEMS:", Order.items)
+
+        setPdfLoadingOrderId(Order.id);
+
         try {
             const rawBillData = {
                 companyId: currentUser?.companyId,
@@ -475,9 +483,16 @@ const OrdersPage: React.FC = () => {
                 companyPhone: companyInfo?.ownerPhoneNumber || "",
 
                 customer: {
-                    name: Order.userName || "Customer",
-                    phone: Order.billingDetails?.phone || "",
-                    address: Order.billingDetails?.address || "",
+                    billing: {
+                        name: Order.billingDetails?.name || Order.userName || "Customer",
+                        phone: Order.billingDetails?.phone || "",
+                        address: Order.billingDetails?.address || "",
+                    },
+                    shipping: {
+                        name: Order.shippingDetails?.name || Order.billingDetails?.name || "",
+                        phone: Order.shippingDetails?.phone || "",
+                        address: Order.shippingDetails?.address || "",
+                    }
                 },
 
                 order: {
@@ -487,7 +502,7 @@ const OrdersPage: React.FC = () => {
 
                 items: await Promise.all(
                     (Order.items || []).map(async (item, index) => {
-
+                        console.log("PDF ITEM", item);
                         let base64 = item.imageBase64;
 
                         if (!base64 && item.imageUrl) {
@@ -498,8 +513,6 @@ const OrdersPage: React.FC = () => {
 
                             base64 = await getCompressedBase64(proxyUrl);
                         }
-                        console.log("IMAGE URL:", item.imageUrl);
-                        console.log("BASE64:", base64?.slice(0, 50));
                         const mrp = item.mrp || 0;
                         const salePrice = item.salesPrice || item.mrp || 0;
 
@@ -517,6 +530,7 @@ const OrdersPage: React.FC = () => {
 
                 grandTotal: Order.totalAmount,
             };
+
             const preparedData = await prepareCatalogueBillData(rawBillData);
 
             if (action === ACTION.PRINT) {
@@ -533,9 +547,12 @@ const OrdersPage: React.FC = () => {
                 message: "Bill generation failed",
                 type: State.ERROR,
             });
+        } finally {
+
+            //  spinner stop
+            setPdfLoadingOrderId(null);
         }
     };
-
     const handleSaveSuccess = (updatedItemData: Partial<Item>) => {
         if (!selectedItemForEdit) return;
 
@@ -665,11 +682,7 @@ const OrdersPage: React.FC = () => {
     const statusCounts = useMemo(() => {
         return OrderStatuses.reduce((acc, status) => {
 
-<<<<<<< HEAD
             //  Completed = Completed + Paid
-=======
-            // 🔥 Completed = Completed + Paid
->>>>>>> 5da296b (feat(components): \"Cards will be shown in UpComing stage when someone fill the popup of catalogue\")
             if (status === "Completed") {
                 acc[status] = Orders.filter(
                     o => o.status === "Completed" || o.status === "Paid"
@@ -807,6 +820,19 @@ const OrdersPage: React.FC = () => {
             setIsUpdatingStatus(null);
         }
     };
+
+    // {
+    //     isGeneratingPdf && (
+    //         <div className="fixed inset-0 z-[5000] bg-black/40 flex items-center justify-center">
+    //             <div className="bg-white px-6 py-4 rounded-sm shadow-lg flex items-center gap-3">
+    //                 <Spinner />
+    //                 <span className="text-sm font-bold text-slate-700">
+    //                     Generating PDF...
+    //                 </span>
+    //             </div>
+    //         </div>
+    //     )
+    // }
 
     return (
         <div className="flex min-h-screen w-full flex-col bg-gray-100 mb-10">
@@ -979,7 +1005,7 @@ const OrdersPage: React.FC = () => {
                         const isExpanded = expandedorderId === Order.id;
                         const isUpcomingStatus = Order.status === 'Upcoming';
                         const total = (Order.items || []).reduce((sum, item) => {
-                            const price = Number(item.mrp || 0) * Number(item.quantity || 0);
+                            const price = Number(item.mrp || item.salesPrice || 0) * Number(item.quantity || 0);
                             return sum + price;
                         }, 0);
                         const paid = Number(Order.paidAmount || 0);
@@ -987,7 +1013,7 @@ const OrdersPage: React.FC = () => {
                         const isPaid = Order.status === 'Paid';
                         const isFinalStage = Order.status === 'Completed' || Order.status === 'Paid';
                         return (
-                            <CustomCard key={Order.id} onClick={() => handleOrderClick(Order.id)} className="p-5 mb-3 bg-white shadow-sm border border-gray-100 rounded-sm cursor-pointer relative">
+                            <CustomCard key={Order.id} onClick={() => handleOrderClick(Order.id)} className="p-3.5 mb-3 bg-white shadow-sm border border-gray-100 rounded-sm cursor-pointer relative">
                                 {/* 🔁 RETURN METHOD BADGE - TOP LEFT */}
                                 {returnMethods.length > 0 && (
                                     <div className="absolute -top-0.5 left-0 flex flex-wrap gap-1 p-1">
@@ -1069,106 +1095,23 @@ const OrdersPage: React.FC = () => {
                                         })()}
 
                                 </div>
-<<<<<<< HEAD
-                                <div className={`flex justify-between items-start mt-1 w-full ${isUpcomingStatus ? 'pl-2 pr-1' : 'pl-6'}`}>
-                                    <div className='flex-1 min-w-0'>
-=======
                                 <div className="flex justify-between items-start pl-6 mt-1">
                                     <div>
->>>>>>> 5da296b (feat(components): \"Cards will be shown in UpComing stage when someone fill the popup of catalogue\")
                                         {!isUpcomingStatus && (
                                             <h3 className="text-sm font-bold text-slate-800">
                                                 {Order.orderId}
                                             </h3>
                                         )}
-                                        <p className="text-gray-600 text-xs font-medium">{Order.userName}</p>
+                                        <p className="text-black text-xs font-medium">
+                                            {Order.userName}
+                                            {Order.status === "Upcoming" && Order.userLoginPhone && (
+                                                <span className="ml-2 text-[10px] text-black font-semibold border p-1 bg-gray-100">
+                                                    {Order.userLoginPhone}
+                                                </span>
+                                            )}
+                                        </p>
+
                                         <p className="text-[10px] text-gray-400 mt-1">{Order.time}</p>
-                                        {isUpcomingStatus && (
-<<<<<<< HEAD
-                                            <div className="mt-2 p-2 bg-slate-50/50 border border-slate-200 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-2 w-full">
-                                                {/* Left Side: Info */}
-                                                <div className="flex items-center gap-3 min-w-0 flex-1 w-full">
-                                                    <div className="hidden sm:block">
-                                                        <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                                                    </div>
-                                                    <div className="flex flex-col min-w-0 flex-1 overflow-hidden">
-                                                        <span className="text-[11px] font-bold text-slate-900 truncate whitespace-nowrap tracking-tight block w-full">
-=======
-                                            <div className="mt-2 p-2 bg-slate-50/50 border border-slate-200 rounded-lg flex items-center justify-between gap-3">
-                                                {/* Left Side: Info */}
-                                                <div className="flex items-center gap-3 min-w-0 flex-1">
-                                                    <div className="hidden sm:block">
-                                                        <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                                                    </div>
-                                                    <div className="flex flex-col min-w-0">
-                                                        <span className="text-[11px] font-bold text-slate-900 truncate tracking-tight">
->>>>>>> 5da296b (feat(components): \"Cards will be shown in UpComing stage when someone fill the popup of catalogue\")
-                                                            {Order.userLoginPhone}
-                                                        </span>
-                                                        <span className="text-[9px] text-slate-500 truncate leading-none">
-                                                            {Order.userEmail}
-                                                        </span>
-                                                    </div>
-                                                </div>
-
-                                                {/* Right Side: Buttons */}
-                                                {Order.userLoginPhone && (
-<<<<<<< HEAD
-                                                    <div className="flex justify-center gap-1.5 px-2.5">
-                                                        {Order.userLoginPhone && (
-                                                            <>
-                                                                <a
-                                                                    href={`tel:${Order.userLoginPhone.replace(/\D/g, '')}`}
-                                                                    onClick={(e) => e.stopPropagation()}
-                                                                    className="h-8 px-3 flex items-center justify-center text-[10px] font-bold text-emerald-600 bg-white border border-emerald-200 rounded-md hover:bg-emerald-50 active:scale-95 transition-all shadow-sm"
-                                                                >
-                                                                    Call
-                                                                </a>
-
-                                                                <a
-                                                                    href={`https://wa.me/${Order.userLoginPhone.replace(/\D/g, '')}`}
-                                                                    target="_blank"
-                                                                    rel="noopener noreferrer"
-                                                                    onClick={(e) => e.stopPropagation()}
-                                                                    className="h-8 px-3 flex items-center justify-center text-[10px] font-bold text-white bg-[#25D366] rounded-md hover:bg-[#1ebe5d] active:scale-95 transition-all shadow-sm"
-                                                                >
-                                                                    WhatsApp
-                                                                </a>
-
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        handleDeleteOrder(Order.id);
-                                                                    }}
-                                                                    className="h-8 px-3 flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-md hover:bg-red-600 active:scale-95 transition-all shadow-sm"
-                                                                >
-                                                                    Delete
-                                                                </button>
-                                                            </>
-                                                        )}
-=======
-                                                    <div className="flex gap-1.5 shrink-0">
-                                                        <a
-                                                            href={`tel:${Order.userLoginPhone.replace(/\D/g, '')}`}
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            className="h-8 px-3 flex items-center justify-center text-[10px] font-bold text-emerald-600 bg-white border border-emerald-200 rounded-md hover:bg-emerald-50 active:scale-95 transition-all shadow-sm"
-                                                        >
-                                                            Call
-                                                        </a>
-                                                        <a
-                                                            href={`https://wa.me/${Order.userLoginPhone.replace(/\D/g, '')}`}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            className="h-8 px-3 flex items-center justify-center text-[10px] font-bold text-white bg-[#25D366] rounded-md hover:bg-[#1ebe5d] active:scale-95 transition-all shadow-sm"
-                                                        >
-                                                            WhatsApp
-                                                        </a>
->>>>>>> 5da296b (feat(components): \"Cards will be shown in UpComing stage when someone fill the popup of catalogue\")
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
                                     </div>
                                     <div className="text-right flex flex-col items-end">
                                         <div className="flex items-center gap-2">
@@ -1212,10 +1155,10 @@ const OrdersPage: React.FC = () => {
                                                                     <span className="font-xs italic text-slate-600">{item.note}</span>
                                                                 </p>
                                                             )}
-                                                            <p className="text-[10px] text-gray-400">₹{formatAmount(item.mrp)}per unit</p>
+                                                            <p className="text-[10px] text-gray-400">₹{formatAmount(item.mrp ?? item.salesPrice)}per unit</p>
                                                         </div>
                                                         <div className="text-right ml-4">
-                                                            <p className="text-[13px] font-black text-slate-900">₹{formatAmount(item.mrp * item.quantity)}
+                                                            <p className="text-[13px] font-black text-slate-900">₹{formatAmount((item.salesPrice || item.mrp) * item.quantity)}
                                                             </p>
                                                             <p className="text-[9px] font-bold text-slate-500 bg-white">Qty: {item.quantity}</p>
                                                         </div>
@@ -1242,11 +1185,7 @@ const OrdersPage: React.FC = () => {
                                                                                 {method}
                                                                             </span>
                                                                             <span className="text-[9px] font-black text-green-600">
-<<<<<<< HEAD
-                                                                                ₹{formatAmount(Number(amount))}
-=======
                                                                                 ₹{Number(amount).toFixed(2)}
->>>>>>> 5da296b (feat(components): \"Cards will be shown in UpComing stage when someone fill the popup of catalogue\")
                                                                             </span>
                                                                         </div>
                                                                     ))
@@ -1256,11 +1195,7 @@ const OrdersPage: React.FC = () => {
                                                                         {Order.paymentMethod}
                                                                     </span>
                                                                     <span className="text-[9px] font-black text-green-600">
-<<<<<<< HEAD
-                                                                        ₹{formatAmount(paid)}
-=======
                                                                         ₹{paid.toFixed(2)}
->>>>>>> 5da296b (feat(components): \"Cards will be shown in UpComing stage when someone fill the popup of catalogue\")
                                                                     </span>
                                                                 </div>
                                                             ) : null
@@ -1274,11 +1209,7 @@ const OrdersPage: React.FC = () => {
                                                         </div>
                                                         <div className="text-right">
                                                             <p className="text-[7px] font-bold text-red-600 uppercase tracking-tighter leading-none mb-0.5">Due</p>
-<<<<<<< HEAD
-                                                            <p className="text-[11px] font-black text-red-700 leading-none">₹{formatAmount(due)}</p>
-=======
                                                             <p className="text-[11px] font-black text-red-700 leading-none">₹{due.toFixed(2)}</p>
->>>>>>> 5da296b (feat(components): \"Cards will be shown in UpComing stage when someone fill the popup of catalogue\")
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1374,7 +1305,8 @@ const OrdersPage: React.FC = () => {
                                                                 e.stopPropagation();
                                                                 setSelectedOrderForAction(Order);
                                                             }}
-                                                            className="py-2.5 bg-black text-white text-xs font-bold rounded-sm"
+                                                            disabled={pdfLoadingOrderId === Order.id}
+                                                            className="py-2.5 bg-black text-white text-xs font-bold rounded-sm flex items-center justify-center"
                                                         >
                                                             Print
                                                         </button>
@@ -1411,7 +1343,14 @@ const OrdersPage: React.FC = () => {
                                                             }}
                                                             className="py-2.5 bg-black text-white text-xs font-bold rounded-sm"
                                                         >
-                                                            Print
+                                                            {pdfLoadingOrderId === Order.id ? (
+                                                                <div className="flex items-center gap-2">
+                                                                    <Spinner />
+                                                                    <span>...Printing</span>
+                                                                </div>
+                                                            ) : (
+                                                                "Print"
+                                                            )}
                                                         </button>
 
                                                         {/* NEXT */}
@@ -1461,19 +1400,25 @@ const OrdersPage: React.FC = () => {
                             <button
                                 onClick={() => {
                                     const order = selectedOrderForAction;
-                                    setSelectedOrderForAction(null);   // modal close immediately
+
+                                    setPdfLoadingOrderId(order.id);   // spinner start
+
+                                    setSelectedOrderForAction(null);
 
                                     setTimeout(() => {
                                         handlePdfAction(order, ACTION.DOWNLOAD);
                                     }, 50);
                                 }}
-                                className="w-full bg-blue-600 text-white py-2.5 rounded-sm font-bold"
+                                className="w-full bg-blue-600 text-white py-2.5 rounded-sm font-bold flex items-center justify-center"
                             >
-                                {isGeneratingPdf ? <Spinner /> : 'Download PDF'}
+                                Download PDF
                             </button>
                             <button
                                 onClick={() => {
                                     const order = selectedOrderForAction;
+
+                                    setPdfLoadingOrderId(order.id);   // spinner start
+
                                     setSelectedOrderForAction(null);
 
                                     setTimeout(() => {
@@ -1781,11 +1726,14 @@ const OrdersPage: React.FC = () => {
 
                                                 const newItem: OrderItem = {
                                                     id: selectedItem.id,
-                                                    name: selectedItem.name,
+                                                    name: selectedItem.name,    
                                                     mrp: Number(selectedItem.mrp),
+                                                    salesPrice: Number(selectedItem.salesPrice ?? selectedItem.mrp),
                                                     quantity: 1,
                                                     note: "",
-                                                    tax: Number(selectedItem.tax)
+                                                    tax: Number(selectedItem.tax),
+                                                    imageUrl: selectedItem.imageUrl || "",
+                                                    imageBase64: ""
                                                 };
                                                 const updatedItems = [newItem, ...(editingOrder.items || [])];
                                                 const newTotal = updatedItems.reduce((sum, i) => sum + (i.mrp * i.quantity), 0);

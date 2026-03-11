@@ -64,70 +64,38 @@ function RequestPage() {
         }
     };
 
-    const getNotifyCardStyle = (req: RequestType) => {
-        const messageSent = !!req.messageSent;
-
+    const getNotifyBadge = (req: RequestType) => {
         const items = req.items || [];
 
-        // check if ANY item is in stock
         const anyInStock = items.some(i => i.inStock === true);
 
-        // check if ALL items out of stock
         const allOutOfStock =
             items.length > 0 &&
             items.every(i => i.inStock === false || i.inStock === undefined);
 
-        // ALL OOS
         if (allOutOfStock) {
-            return `
-            bg-gradient-to-br from-red-50 to-red-100
-            border-red-200
-            shadow-[0_1px_0_rgba(0,0,0,0.03)]
-            hover:shadow-sm
-        `;
+            return {
+                text: "Out of Stock",
+                class: "bg-red-50 text-red-600 border-red-200"
+            };
         }
 
-        // ANY available but message not sent
-        if (anyInStock && !messageSent) {
-            return `
-            bg-gradient-to-br from-amber-50 to-yellow-100
-            border-yellow-200
-            shadow-[0_1px_0_rgba(0,0,0,0.03)]
-            hover:shadow-sm
-        `;
+        if (anyInStock && !req.messageSent) {
+            return {
+                text: "In Stock",
+                class: "bg-yellow-50 text-yellow-600 border-yellow-200"
+            };
         }
 
-        // message sent + available
-        if (anyInStock && messageSent) {
-            return `
-            bg-gradient-to-br from-emerald-50 to-emerald-100
-            border-emerald-200
-            shadow-[0_1px_0_rgba(0,0,0,0.03)]
-            hover:shadow-sm
-        `;
+        if (anyInStock && req.messageSent) {
+            return {
+                text: "In Stock + Message Sent",
+                class: "bg-emerald-50 text-emerald-600 border-emerald-200"
+            };
         }
 
-        return "bg-white border-gray-100";
+        return null;
     };
-
-    const NotifyLegend = () => (
-        <div className="flex items-center gap-3 text-[10px] font-bold flex-wrap">
-            <div className="flex items-center gap-1">
-                <span className="w-3 h-3 rounded-sm bg-red-400 border border-red-500"></span>
-                <span className="text-gray-600">Out of Stock</span>
-            </div>
-
-            <div className="flex items-center gap-1">
-                <span className="w-3 h-3 rounded-sm bg-yellow-300 border border-yellow-400"></span>
-                <span className="text-gray-600">Back in Stock</span>
-            </div>
-
-            <div className="flex items-center gap-1">
-                <span className="w-3 h-3 rounded-sm bg-emerald-400 border border-emerald-500"></span>
-                <span className="text-gray-600">Message Sent</span>
-            </div>
-        </div>
-    );
 
     const updateRequestStatus = async (
         requestId: string,
@@ -390,11 +358,11 @@ function RequestPage() {
             <main className="p-4 flex-1 max-w-7xl mx-auto w-full">
 
                 {/* Main Toggle: Pending / Completed */}
-                <div className="sticky top-[56px] z-[90] bg-[#E9F0F7] py-2">
-                    <div className="flex bg-white p-1 rounded-sm shadow-sm mb-4 border border-gray-200">
+                <div className="sticky top-[56px] z-[90] bg-[#E9F0F7] py-1">
+                    <div className="flex bg-white p-1 rounded-sm shadow-sm mb-2 border border-gray-200">
                         <button
                             onClick={() => setRequestType('notify')}
-                            className={`flex-1 py-2 text-sm font-bold rounded-sm transition-all ${requestType === 'notify'
+                            className={`flex-1 py-1 text-sm font-bold rounded-sm transition-all ${requestType === 'notify'
                                 ? 'bg-[#1A3B5D] text-white'
                                 : 'text-gray-500'
                                 }`}
@@ -404,7 +372,7 @@ function RequestPage() {
 
                         <button
                             onClick={() => setRequestType('approval')}
-                            className={`flex-1 py-2 text-sm font-bold rounded-sm transition-all ${requestType === 'approval'
+                            className={`flex-1 py-1 text-sm font-bold rounded-sm transition-all ${requestType === 'approval'
                                 ? 'bg-[#1A3B5D] text-white'
                                 : 'text-gray-500'
                                 }`}
@@ -413,12 +381,7 @@ function RequestPage() {
                         </button>
                     </div>
                 </div>
-                {/* Notify Legend */}
-                {requestType === "notify" && (
-                    <div className="flex justify-start mb-3 px-1">
-                        <NotifyLegend />
-                    </div>
-                )}
+                
                 {/* Sub Toggle: Only visible when "Completed" is selected */}
                 {requestType === 'approval' && (
                     <div className="flex gap-2 mb-4 items-center">
@@ -492,13 +455,13 @@ function RequestPage() {
                                 onClick={() =>
                                     setExpandedId(isExpanded ? null : req.id)
                                 }
-                                className={`p-3 shadow-sm border rounded-sm cursor-pointer transition-all duration-300 ${req.type === "notify" ? getNotifyCardStyle(req) : "bg-white border-gray-100"} ${animatingId === req.id ? "opacity-0 scale-95 -translate-x-3" : "opacity-100 scale-100 translate-x-0"}`}>
+                                className={`p-3 shadow-sm border rounded-sm cursor-pointer transition-all duration-300 bg-white border-gray-100 ${animatingId === req.id ? "opacity-0 scale-95 -translate-x-3" : "opacity-100 scale-100 translate-x-0"}`}>
                                 {/* ===== COLLAPSED HEADER ===== */}
                                 <div className="flex justify-between items-start">
                                     {/* LEFT SIDE */}
                                     <div>
-                                        <div className='flex gap-2 items-center'>
-                                            <h3 className="text-sm font-bold text-slate-800">
+                                        <div className='items-center'>
+                                            <h3 className="text-xs font-bold text-slate-800">
                                                 {req.customerName || "No Name"}
                                             </h3>
 
@@ -519,6 +482,18 @@ function RequestPage() {
                                     {/* RIGHT SIDE */}
                                     <div className="flex flex-col items-end gap-1">
                                         <div className="flex items-center gap-2">
+                                            {req.type === "notify" && (() => {
+                                                const badge = getNotifyBadge(req);
+                                                if (!badge) return null;
+
+                                                return (
+                                                    <span
+                                                        className={`text-[10px] font-bold px-2 py-0.5 rounded border ${badge.class}`}
+                                                    >
+                                                        {badge.text}
+                                                    </span>
+                                                );
+                                            })()}
                                             {req.type === "approval" && (<span
                                                 className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded border ${getStatusStyle(req.status)}`}
                                             >

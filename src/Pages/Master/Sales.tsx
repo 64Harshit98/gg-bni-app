@@ -1001,7 +1001,7 @@ const Sales: React.FC = () => {
                     <div className="flex-shrink-0 p-2 bg-white border-b pb-3 mb-2 rounded-sm md:mb-0 md:border-r border-gray-200">
                         <div className="flex gap-4 items-end w-full">
                             <div className="flex-grow">
-                                <SearchableItemInput label="Search Item" placeholder="Search by name or barcode..." items={availableItems} onItemSelected={handleItemSelected} isLoading={pageIsLoading} error={error} />
+                                <SearchableItemInput label="Search Item" placeholder="Search by name or barcode..." items={availableItems} onItemSelected={handleItemSelected} isLoading={pageIsLoading} error={error} onAddItem={(query) => navigate(ROUTES.ITEM_ADD,{state: { prefillName: query } })}/>
                             </div>
                             <button onClick={() => setIsScannerOpen(true)} className='bg-transparent text-gray-700 p-3 border border-gray-700 rounded-md font-semibold transition hover:bg-gray-800' title="Scan Barcode">
                                 <IconScanCircle width={20} height={20} />

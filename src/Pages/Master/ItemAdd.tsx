@@ -32,6 +32,7 @@ const ItemAdd: React.FC = () => {
   const { itemSettings, loadingSettings: loadingItemSettings } = useItemSettings();
 
   // --- STATE ---
+  const prefillName = (location.state as any)?.prefillName ?? '';
   const [itemName, setItemName] = useState<string>('');
   const [itemMRP, setItemMRP] = useState<string>('');
   const [itemSalesPrice, setItemSalesPrice] = useState<string>('');

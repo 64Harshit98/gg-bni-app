@@ -26,9 +26,16 @@ export interface CatalogueInvoiceData {
   signatureBase64?: string;
 
   customer: {
-    name: string;
-    phone: string;
-    address?: string;
+    billing: {
+      name: string;
+      phone: string;
+      address?: string;
+    };
+    shipping: {
+      name: string;
+      phone: string;
+      address?: string;
+    };
   };
 
   order: {
@@ -56,11 +63,30 @@ export const CatalogueBill = async (
   const doc = new jsPDF("p", "mm", "a4");
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 15;
+  const margin = 8;
 
   // ================= FORMATTERS =================
   const formatAmount = (num: number) =>
-    `Rs. ${num.toLocaleString("en-IN")}`;
+    `Rs.${num.toLocaleString("en-IN")}`;
+
+  const formatDateTime = (dateStr: string) => {
+    if (!dateStr) return "";
+
+    const currentYear = new Date().getFullYear().toString().slice(-2);
+
+    // agar already year hai to same return karo
+    if (/\d{2}\/\d{2}\/\d{2}/.test(dateStr)) {
+      return dateStr;
+    }
+
+    // format: 10/03, 05:02 pm -> 10/03/26 05:02 pm
+    const parts = dateStr.split(",");
+
+    const datePart = parts[0].trim();
+    const timePart = parts[1]?.trim() || "";
+
+    return `${datePart}/${currentYear} ${timePart}`;
+  };
 
   // ================= HEADER =================
   const drawHeader = () => {
@@ -146,9 +172,7 @@ export const CatalogueBill = async (
   const col3X = margin + (colWidth * 2);
 
   // place of supply
-  const posVal =
-    data.customer.address?.split(",").pop()?.trim() ||
-    "Uttar Pradesh";
+  const posVal = data.customer.shipping?.address?.split(",").pop()?.trim()
 
   // draw text
   doc.text(
@@ -158,7 +182,7 @@ export const CatalogueBill = async (
   );
 
   doc.text(
-    `Date : ${data.order.date || ""}`,
+    `Date : ${formatDateTime(data.order.date)}`,
     col2X,
     metaY
   );
@@ -193,8 +217,11 @@ export const CatalogueBill = async (
 
   const totalBoxWidth = 35;
 
+  // FULL WIDTH SAME AS PRODUCT TABLE
+  const fullWidth = pageWidth - (margin * 2);
+
   // left table width
-  const tableWidth = pageWidth - margin - totalBoxWidth - margin;
+  const tableWidth = fullWidth - totalBoxWidth;
 
   // outer border
   doc.rect(margin, sectionStartY, tableWidth, sectionHeight);
@@ -228,31 +255,38 @@ export const CatalogueBill = async (
   const shipX = margin + tableWidth / 2 + 3;
 
   // name
-  doc.text(data.customer.name || "", billX, textY);
-  doc.text(data.customer.name || "", shipX, textY);
+  doc.text(data.customer.billing?.name || "", billX, textY);
+  doc.text(data.customer.shipping?.name || "", shipX, textY);
 
   textY += 5;
 
   // address
-  const addrLines = doc.splitTextToSize(
-    data.customer.address || "",
+  const billingAddrLines = doc.splitTextToSize(
+    data.customer.billing?.address || "",
     tableWidth / 2 - 6
   );
 
-  doc.text(addrLines, billX, textY);
-  doc.text(addrLines, shipX, textY);
+  const shippingAddrLines = doc.splitTextToSize(
+    data.customer.shipping?.address || "",
+    tableWidth / 2 - 6
+  );
 
-  textY += addrLines.length * 5;
+  doc.text(billingAddrLines, billX, textY);
+  doc.text(shippingAddrLines, shipX, textY);
+
+  textY += Math.max(
+    billingAddrLines.length,
+    shippingAddrLines.length
+  ) * 5;
 
   // phone
-  doc.text(`Phone : ${data.customer.phone || ""}`, billX, textY);
-  doc.text(`Phone : ${data.customer.phone || ""}`, shipX, textY);
+  doc.text(`Phone : ${data.customer.billing?.phone || ""}`, billX, textY);
+  doc.text(`Phone : ${data.customer.shipping?.phone || ""}`, shipX, textY);
 
 
   // ================= TOTAL BOX =================
 
-  const gap = 4;
-  const totalBoxX = margin + tableWidth + gap;
+  const totalBoxX = margin + tableWidth;
   const totalBoxY = sectionStartY;
 
   doc.setDrawColor(0, 0, 0);
@@ -298,6 +332,72 @@ export const CatalogueBill = async (
     formatAmount(item.gstAmount || 0),
     formatAmount(item.total),
   ]);
+
+  const drawBrandingFooter = () => {
+
+    const brandingHeight = 15;
+    const brandingY = pageHeight - brandingHeight;
+
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "bold");
+
+    const pbText = "Powered by ";
+    const linkText = "SELLAR.IN";
+
+    const pbWidth = doc.getTextWidth(pbText);
+    const linkWidth = doc.getTextWidth(linkText);
+
+    let brandingX = (pageWidth / 2) - ((pbWidth + linkWidth) / 2);
+
+    // Powered by
+    doc.setTextColor(0, 0, 0);
+    doc.text(pbText, brandingX, brandingY + 5);
+    brandingX += pbWidth;
+
+    // SELLAR.IN
+    const linkColor: [number, number, number] = [0, 102, 204];
+
+    doc.setTextColor(...linkColor);
+    doc.text(linkText, brandingX, brandingY + 5);
+
+    doc.setDrawColor(...linkColor);
+    doc.setLineWidth(0.1);
+    doc.line(brandingX, brandingY + 5.5, brandingX + linkWidth, brandingY + 5.5);
+
+    doc.link(brandingX, brandingY + 2, linkWidth, 4, {
+      url: "https://www.sellar.in",
+    });
+
+    doc.setTextColor(0, 0, 0);
+
+    // Made with Love
+    doc.setFont("helvetica", "normal");
+
+    const part1 = "Made with ";
+    const part2 = "Love";
+    const part3 = " in India";
+
+    const w1 = doc.getTextWidth(part1);
+    const w2 = doc.getTextWidth(part2);
+    const w3 = doc.getTextWidth(part3);
+
+    const total = w1 + w2 + w3;
+
+    let x = (pageWidth / 2) - (total / 2);
+    const y = brandingY + 10;
+
+    doc.text(part1, x, y);
+    x += w1;
+
+    doc.setTextColor(255, 0, 0);
+    doc.text(part2, x, y);
+    x += w2;
+
+    doc.setTextColor(0, 0, 139);
+    doc.text(part3, x, y);
+
+    doc.setTextColor(0, 0, 0);
+  };
 
   // ================= TABLE =================
   autoTable(doc, {
@@ -386,6 +486,8 @@ export const CatalogueBill = async (
       if (data.pageNumber === 1) {
         drawHeader();
       }
+
+      drawBrandingFooter()
     },
   });
 
@@ -411,7 +513,7 @@ export const CatalogueBill = async (
   doc.setFontSize(9);
 
   doc.text(
-    `Amount in Words : Rs. ${convertNumberToWords(Math.round(data.grandTotal))}`,
+    `Amount in Words : ${convertNumberToWords(Math.round(data.grandTotal))}`,
     margin + 4,
     finalY + 5.5
   );

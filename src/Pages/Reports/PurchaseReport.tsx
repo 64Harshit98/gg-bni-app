@@ -71,20 +71,6 @@ const PurchaseReport: React.FC = () => {
         break;
       case 'custom':
         return;
-      case 'today':
-        break;
-      case 'yesterday':
-        start.setDate(start.getDate() - 1);
-        end.setDate(end.getDate() - 1);
-        break;
-      case 'last7':
-        start.setDate(start.getDate() - 6);
-        break;
-      case 'last30':
-        start.setDate(start.getDate() - 29);
-        break;
-      case 'custom':
-        return;
     }
 
     setCustomStartDate(formatDateForInput(start));
@@ -122,16 +108,8 @@ const PurchaseReport: React.FC = () => {
           averagePurchaseValue: 0,
         },
       };
-      return {
-        filteredPurchases: [],
-        summary: {
-          totalPurchases: 0,
-          totalOrders: 0,
-          totalItemsPurchased: 0,
-          averagePurchaseValue: 0,
-        },
-      };
     }
+
 
     const newFilteredPurchases = [...purchases];
 
@@ -175,7 +153,7 @@ const PurchaseReport: React.FC = () => {
     const totalOrders = newFilteredPurchases.length;
     const averagePurchaseValue =
       totalOrders > 0 ? totalPurchases / totalOrders : 0;
-
+   
 
     return {
       filteredPurchases: newFilteredPurchases,
@@ -185,6 +163,7 @@ const PurchaseReport: React.FC = () => {
         totalItemsPurchased,
         averagePurchaseValue,
       },
+      
     };
   }, [appliedFilters, purchases, sortConfig]);
 
@@ -213,7 +192,7 @@ const PurchaseReport: React.FC = () => {
         formatDate(purchase.createdAt),
         purchase.partyName,
         purchase.items.reduce((sum, i) => sum + i.quantity, 0),
-        `₹ ${purchase.totalAmount.toLocaleString('en-IN')}`,
+        `Rs ${purchase.totalAmount.toLocaleString('en-IN')}`,
         Object.keys(purchase.paymentMethods).join(', ') || 'N/A',
       ]),
       foot: [
@@ -221,7 +200,7 @@ const PurchaseReport: React.FC = () => {
           'Total',
           '',
           `${summary.totalItemsPurchased}`,
-          `₹ ${summary.totalPurchases.toLocaleString('en-IN')}`,
+          `Rs ${summary.totalPurchases.toLocaleString('en-IN')}`,
           '',
         ],
       ],
@@ -305,6 +284,7 @@ const PurchaseReport: React.FC = () => {
       {/* FILTERS */}
       <div className="bg-white p-4 rounded-lg shadow-md mb-2">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+         
           <FilterSelect
             value={datePreset}
             onChange={(e) => handleDatePresetChange(e.target.value)}

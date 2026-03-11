@@ -168,13 +168,13 @@ const PnlReportPage: React.FC = () => {
       body: [
         [
           'Total Sales:',
-          `₹${totalRevenue.toLocaleString('en-IN')}`,
+          `Rs${totalRevenue.toLocaleString('en-IN')}`,
           'Gross Profit / Loss:',
-          `₹${grossProfit.toLocaleString('en-IN')}`,
+          `Rs${grossProfit.toLocaleString('en-IN')}`,
         ],
         [
           'Total Cost:',
-          `₹${totalCost.toLocaleString('en-IN')}`,
+          `Rs${totalCost.toLocaleString('en-IN')}`,
           'Gross Profit %:',
           `${grossProfitPercentage.toFixed(2)}%`,
         ],
@@ -193,9 +193,9 @@ const PnlReportPage: React.FC = () => {
       body: filteredTransactions.map((t) => [
         formatDate(t.createdAt),
         t.invoiceNumber,
-        `₹${t.totalAmount.toLocaleString('en-IN')}`,
-        `₹${(t.costOfGoodsSold || 0).toLocaleString('en-IN')}`,
-        `₹${(t.profit || 0).toLocaleString('en-IN')}`,
+        `Rs${t.totalAmount.toLocaleString('en-IN')}`,
+        `Rs${(t.costOfGoodsSold || 0).toLocaleString('en-IN')}`,
+        `Rs${(t.profit || 0).toLocaleString('en-IN')}`,
       ]),
       theme: 'striped',
       headStyles: { fillColor: [41, 128, 185] },

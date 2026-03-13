@@ -94,7 +94,7 @@ export const getPurchaseColumns = (): TableColumn<any>[] => [
       header: 'Amount',
       accessor: (row) => `₹${row.totalAmount.toLocaleString('en-IN')}`,
       sortKey: 'totalAmount',
-      className: 'text-right text-slate-600'
+      className: 'text-slate-600'
     }
 ];
 

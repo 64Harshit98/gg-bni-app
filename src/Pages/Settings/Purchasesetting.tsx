@@ -253,25 +253,30 @@ const PurchaseSettingsPage: React.FC = () => {
 
                                 {/* Card View Option */}
                                 <div
-                                    className="relative rounded-xl border-2 border-gray-100 p-4 flex flex-col items-center gap-3 bg-gray-50 cursor-not-allowed opacity-100"
+                                    onClick={() => handleChange('purchaseViewType', 'card')}
+                                    className={`cursor-pointer relative rounded-xl border-2 p-2 flex flex-col items-center gap-3 transition-all duration-200 ${
+                                        settings.purchaseViewType === 'card'
+                                        ? 'border-blue-600 bg-blue-50 shadow-md'
+                                        : 'border-gray-200 hover:border-blue-300 bg-white'
+                                    }`}
                                 >
-                                    {/* Coming Soon Badge */}
-                                    <div className="absolute top-3 right-3 bg-orange-300 text-black text-[10px] font-bold px-2 py-1 rounded-sm border border-orange-200 shadow-sm">
-                                        COMING SOON
-                                    </div>
-
+                                    {settings.purchaseViewType === 'card' && (
+                                        <div className="absolute top-2 right-2 bg-blue-600 text-white rounded-full p-0.5 shadow-sm">
+                                            <FiCheck size={12} />
+                                        </div>
+                                    )}
                                     {/* Visual Representation (Grayed Out) */}
                                     <div className="w-full max-w-[12rem] h-24 bg-gray-100 border border-gray-200 rounded p-3 grid grid-cols-3 gap-2 shadow-none mx-auto opacity-50">
-                                        <div className="bg-gray-300 rounded aspect-square w-full"></div>
-                                        <div className="bg-gray-300 rounded aspect-square w-full"></div>
-                                        <div className="bg-gray-300 rounded aspect-square w-full"></div>
-                                        <div className="bg-gray-300 rounded aspect-square w-full"></div>
-                                        <div className="bg-gray-300 rounded aspect-square w-full"></div>
-                                        <div className="bg-gray-300 rounded aspect-square w-full"></div>
+                                        <div className="h-11 bg-gray-300 rounded aspect-square w-full"></div>
+                                        <div className="h-11 bg-gray-300 rounded aspect-square w-full"></div>
+                                        <div className="h-11 bg-gray-300 rounded aspect-square w-full"></div>
+                                        <div className="h-11 bg-gray-300 rounded aspect-square w-full"></div>
+                                        <div className="h-11 bg-gray-300 rounded aspect-square w-full"></div>
+                                        <div className="h-11 bg-gray-300 rounded aspect-square w-full"></div>
                                     </div>
-                                    <div className="text-center opacity-60">
-                                        <p className="font-bold text-gray-500">Card View</p>
-                                        <p className="text-xs text-gray-400 mt-1">Best for Touchscreens & Tablets</p>
+                                    <div className="text-center">
+                                        <p className="font-bold text-gray-800">Card View</p>
+                                        <p className="text-xs text-gray-500 mt-1">Best for Touchscreens & Tablets</p>
                                     </div>
                                 </div>
                             </div>

@@ -51,10 +51,10 @@ const PnlReportPage: React.FC = () => {
 
   /* ---------- FILTER + SUMMARY ---------- */
   const { pnlSummary, filteredTransactions } = useMemo(() => {
-    const startTimestamp = appliedFilters.start
+    const startTimestamp = appliedFilters?.start
       ? new Date(appliedFilters.start).getTime()
       : 0;
-    const endTimestamp = appliedFilters.end
+    const endTimestamp = appliedFilters?.end
       ? new Date(appliedFilters.end).getTime()
       : Infinity;
 
@@ -161,20 +161,26 @@ const PnlReportPage: React.FC = () => {
     doc.text('Profit & Loss Report', 14, 22);
     doc.setFontSize(11);
     doc.setTextColor(100);
-    doc.text(selectedPeriodText, 14, 30);
+    const start = appliedFilters?.start
+      ? formatDate(new Date(appliedFilters.start))
+      : 'All Time';
+    const end = appliedFilters?.end
+      ? formatDate(new Date(appliedFilters.end))
+      : 'All Time';
+    doc.text(`Date Range: ${start} to ${end}`, 14, 29);  
 
     autoTable(doc, {
-      startY: 45,
+      startY: 35,
       body: [
         [
           'Total Sales:',
-          `Rs${totalRevenue.toLocaleString('en-IN')}`,
+          `Rs. ${totalRevenue.toLocaleString('en-IN')}`,
           'Gross Profit / Loss:',
-          `Rs${grossProfit.toLocaleString('en-IN')}`,
+          `Rs. ${grossProfit.toLocaleString('en-IN')}`,
         ],
         [
           'Total Cost:',
-          `Rs${totalCost.toLocaleString('en-IN')}`,
+          `Rs. ${totalCost.toLocaleString('en-IN')}`,
           'Gross Profit %:',
           `${grossProfitPercentage.toFixed(2)}%`,
         ],
@@ -188,16 +194,24 @@ const PnlReportPage: React.FC = () => {
     });
 
     autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 10,
+      startY: (doc as any).lastAutoTable.finalY + 5,
       head: [['Date', 'Invoice', 'Sales', 'Cost', 'Profit']],
       body: filteredTransactions.map((t) => [
         formatDate(t.createdAt),
         t.invoiceNumber,
-        `Rs${t.totalAmount.toLocaleString('en-IN')}`,
-        `Rs${(t.costOfGoodsSold || 0).toLocaleString('en-IN')}`,
-        `Rs${(t.profit || 0).toLocaleString('en-IN')}`,
+        `Rs. ${t.totalAmount.toLocaleString('en-IN')}`,
+        `Rs. ${(t.costOfGoodsSold || 0).toLocaleString('en-IN')}`,
+        `Rs. ${(t.profit || 0).toLocaleString('en-IN')}`,
       ]),
-      theme: 'striped',
+      foot: [[
+          'Total',           
+          '',                 
+          `Rs. ${totalRevenue.toLocaleString('en-IN')}`,    
+          `Rs. ${totalCost.toLocaleString('en-IN')}`,        
+          `Rs. ${grossProfit.toLocaleString('en-IN')}`,      
+        ]],
+      theme: 'grid' ,
+      footStyles: { fontStyle: 'bold', fillColor: [41, 128, 185] },
       headStyles: { fillColor: [41, 128, 185] },
     });
 
@@ -248,7 +262,7 @@ const PnlReportPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 p-2">
+    <div className="min-h-screen bg-gray-100 p-2 pb-16">
       {feedbackModal.isOpen && (
         <Modal
           type={feedbackModal.type}
@@ -277,25 +291,26 @@ const PnlReportPage: React.FC = () => {
 
       {/* FILTERS */}
       <div className="bg-white p-4 rounded-lg shadow-md mb-2">
-        <FilterSelect
-          value={datePreset}
-          onChange={(e) =>
-            handleDatePresetChange(
-              e.target.value,
-              setDatePreset,
-              setStartDate,
-              setEndDate,
-            )
-          }
-        >
-          <option value="today">Today</option>
-          <option value="yesterday">Yesterday</option>
-          <option value="last7">Last 7 Days</option>
-          <option value="last30">Last 30 Days</option>
-          <option value="custom">Custom</option>
-        </FilterSelect>
+        <div className="grid grid-cols-1 gap-1">
+          <FilterSelect
+            value={datePreset}
+            onChange={(e) =>
+              handleDatePresetChange(
+                e.target.value,
+                setDatePreset,
+                setStartDate,
+                setEndDate,
+              )
+            }
+          >
+            <option value="today">Today</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="last7">Last 7 Days</option>
+            <option value="last30">Last 30 Days</option>
+            <option value="custom">Custom</option>
+          </FilterSelect>
 
-        <div className="grid grid-cols-2 gap-2 mt-2">
+        <div className="grid grid-cols-2 gap-4 mt-2">
           <input
             type="date"
             value={startDate}
@@ -310,42 +325,46 @@ const PnlReportPage: React.FC = () => {
             value={endDate}
             onChange={(e) => {
               setEndDate(e.target.value);
-              setDatePreset('custom');
+              setDatePreset('');
             }}
             className="w-full p-2 text-sm bg-gray-50 border rounded-md"
           />
         </div>
+        </div>
 
-        <button
-          onClick={handleApplyFilters}
-          className="w-full mt-2 px-3 py-1 bg-blue-600 text-white text-lg font-semibold rounded-lg hover:bg-blue-700"
-        >
-          Apply
-        </button>
+        <div className="flex justify-center mt-2">
+          <button onClick={handleApplyFilters}
+            className="w-full md:w-fit mt-2 px-10 py-2 bg-blue-600 text-white text-lg font-semibold rounded-lg hover:bg-blue-700" >
+            Apply
+          </button>
+        </div>
       </div>
 
       {/* SUMMARY */}
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-2">
         <CustomCard
+          className="py-10"
           variant={CardVariant.Summary}
           title="Total Sales"
           value={`₹${pnlSummary.totalRevenue.toLocaleString('en-IN')}`}
-          valueClassName="text-blue-600 text-3xl"
+          valueClassName="text-blue-600"
         />
         <CustomCard
+          className="py-10"
           variant={CardVariant.Summary}
           title="Total Cost"
           value={`₹${pnlSummary.totalCost.toLocaleString('en-IN')}`}
-          valueClassName="text-red-600 text-3xl"
+          valueClassName="text-red-600"
         />
         <CustomCard
+          className="py-10"
           variant={CardVariant.Summary}
           title="Profit / Loss"
           value={`₹${pnlSummary.grossProfit.toLocaleString('en-IN')}`}
           valueClassName={
             pnlSummary.grossProfit >= 0
-              ? 'text-green-600 text-3xl'
-              : 'text-red-600 text-3xl'
+              ? 'text-green-600'
+              : 'text-red-600'
           }
         />
         <CustomCard
@@ -354,19 +373,19 @@ const PnlReportPage: React.FC = () => {
           value={`${Math.round(pnlSummary.grossProfitPercentage)}%`}
           valueClassName={
             pnlSummary.grossProfit >= 0
-              ? 'text-green-600 text-3xl'
-              : 'text-red-600 text-3xl'
+              ? 'text-green-600'
+              : 'text-red-600'
           }
         />
       </div>
 
       {/* DETAILS */}
-      <div className="bg-white p-4 rounded-lg shadow-md flex justify-between items-center mt-2">
-        <h2 className="text-lg font-semibold text-gray-700">P&L Details</h2>
-        <div className="flex gap-2">
+      <div className="bg-white p-4 rounded-lg shadow-md flex flex-col md:flex-row md:justify-between md:items-center gap-3">
+        <h2 className="text-lg font-semibold text-gray-700 text-center md:text-left w-full md:w-auto">Report Details</h2>
+        <div className="flex justify-between w-full md:w-auto md:justify-end md:space-x-3 ">          
           <button
             onClick={() => setIsListVisible(!isListVisible)}
-            className="px-4 py-2 bg-slate-200 font-semibold rounded-md"
+            className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition"
           >
             {isListVisible ? 'Hide List' : 'Show List'}
           </button>

@@ -7,7 +7,7 @@ import { AuthProvider } from '../context/AuthContext';
 import PermissionWrapper from '../context/PermissionWrapper';
 import { Permissions } from '../enums';
 import { RequireSubscription } from '../UseComponents/RequiredSubscription';
-
+import LeadsPage from '../Pages/Reports/LeadPage';
 import Loading from '../Pages/Loading/Loading';
 import GlobalError from '../Components/GlobalError';
 import OrdersReturnPage from '../Catalogue/OrdersReturn';
@@ -291,6 +291,11 @@ const router = createBrowserRouter([
               {
                 path: ROUTES.CUSTOMER_REPORT,
                 element: <CustomerReport />,
+                handle: { requiredPermission: Permissions.ViewItemReport },
+              },
+              {
+                path: "/leads",
+                element: <LeadsPage />,
                 handle: { requiredPermission: Permissions.ViewItemReport },
               },
               {

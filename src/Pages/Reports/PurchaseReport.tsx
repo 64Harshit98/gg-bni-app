@@ -69,8 +69,6 @@ const PurchaseReport: React.FC = () => {
       case 'last30':
         start.setDate(start.getDate() - 29);
         break;
-      case 'custom':
-        return;
     }
 
     setCustomStartDate(formatDateForInput(start));
@@ -109,7 +107,6 @@ const PurchaseReport: React.FC = () => {
         },
       };
     }
-
 
     const newFilteredPurchases = [...purchases];
 
@@ -153,7 +150,6 @@ const PurchaseReport: React.FC = () => {
     const totalOrders = newFilteredPurchases.length;
     const averagePurchaseValue =
       totalOrders > 0 ? totalPurchases / totalOrders : 0;
-   
 
     return {
       filteredPurchases: newFilteredPurchases,
@@ -163,7 +159,6 @@ const PurchaseReport: React.FC = () => {
         totalItemsPurchased,
         averagePurchaseValue,
       },
-      
     };
   }, [appliedFilters, purchases, sortConfig]);
 
@@ -192,19 +187,24 @@ const PurchaseReport: React.FC = () => {
         formatDate(purchase.createdAt),
         purchase.partyName,
         purchase.items.reduce((sum, i) => sum + i.quantity, 0),
-        `Rs ${purchase.totalAmount.toLocaleString('en-IN')}`,
-        Object.keys(purchase.paymentMethods).join(', ') || 'N/A',
+        `Rs. ${purchase.totalAmount.toLocaleString('en-IN')}`,
+        Object.entries(purchase.paymentMethods || {})
+          .filter(([_, value]) => value > 0)
+          .map(([key]) => key.charAt(0).toUpperCase() + key.slice(1))
+          .join(', ') || 'N/A',
       ]),
       foot: [
         [
           'Total',
           '',
           `${summary.totalItemsPurchased}`,
-          `Rs ${summary.totalPurchases.toLocaleString('en-IN')}`,
+          `Rs. ${summary.totalPurchases.toLocaleString('en-IN')}`,
           '',
         ],
       ],
-      footStyles: { fontStyle: 'bold' },
+      theme:'grid',
+      headStyles: { fillColor: [41, 128, 185] },
+      footStyles: { fontStyle: 'bold' , fillColor: [41, 128, 185]},
     });
 
     doc.save(`purchase_report_${formatDateForInput(new Date())}.pdf`);
@@ -218,8 +218,10 @@ const PurchaseReport: React.FC = () => {
         'Supplier Name': purchase.partyName,
         Items: purchase.items.reduce((sum, i) => sum + i.quantity, 0),
         Amount: purchase.totalAmount,
-        'Payment Method':
-          Object.keys(purchase.paymentMethods).join(', ') || 'N/A',
+        'Payment Method': Object.entries(purchase.paymentMethods || {})
+          .filter(([_, value]) => value > 0)
+          .map(([key]) => key)
+          .join(', ') || 'N/A',
       }));
 
       const worksheet = XLSX.utils.json_to_sheet(excelData);
@@ -237,7 +239,8 @@ const PurchaseReport: React.FC = () => {
         type: State.SUCCESS,
         message: 'Excel downloaded successfully!',
       });
-    } catch {
+    } catch (error) {
+      console.error(error);
       setFeedbackModal({
         isOpen: true,
         type: State.ERROR,
@@ -283,8 +286,7 @@ const PurchaseReport: React.FC = () => {
 
       {/* FILTERS */}
       <div className="bg-white p-4 rounded-lg shadow-md mb-2">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-         
+        <div className="grid grid-cols-1 gap-3">
           <FilterSelect
             value={datePreset}
             onChange={(e) => handleDatePresetChange(e.target.value)}
@@ -317,32 +319,37 @@ const PurchaseReport: React.FC = () => {
             />
           </div>
         </div>
-        <button
-          onClick={handleApplyFilters}
-          className="w-full mt-2 px-3 py-1 bg-blue-600 text-white text-lg font-semibold rounded-lg hover:bg-blue-700"
-        >
-          Apply
-        </button>
+
+        <div className="flex justify-center mt-2">
+          <button onClick={handleApplyFilters}
+            className="w-full md:w-fit mt-2 px-10 py-2 bg-blue-600 text-white text-lg font-semibold rounded-lg hover:bg-blue-700" >
+            Apply
+          </button>
+        </div>
       </div>
 
       {/* SUMMARY */}
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-2">
         <CustomCard
+          className="py-10"
           variant={CardVariant.Summary}
           title="Total Cost"
           value={`₹${Math.round(summary.totalPurchases || 0)}`}
         />
         <CustomCard
+          className="py-10"
           variant={CardVariant.Summary}
           title="Total Orders"
           value={summary.totalOrders.toString()}
         />
         <CustomCard
+          className="py-10"
           variant={CardVariant.Summary}
           title="Total Items"
           value={summary.totalItemsPurchased.toString()}
         />
         <CustomCard
+          className="py-10"
           variant={CardVariant.Summary}
           title="Avg Purchase"
           value={`₹${Math.round(summary.averagePurchaseValue || 0)}`}
@@ -350,9 +357,9 @@ const PurchaseReport: React.FC = () => {
       </div>
 
       {/* REPORT DETAILS */}
-      <div className="bg-white p-4 rounded-lg shadow-md flex justify-between items-center">
-        <h2 className="text-lg font-semibold text-gray-700">Report Details</h2>
-        <div className="flex items-center space-x-3">
+      <div className="bg-white p-4 rounded-lg shadow-md flex flex-col md:flex-row md:justify-between md:items-center gap-3">
+        <h2 className="text-lg font-semibold text-gray-700 text-center md:text-left w-full md:w-auto">Report Details</h2>
+        <div className="flex justify-between w-full md:w-auto md:justify-end md:space-x-3 ">          
           <button
             onClick={() => setIsListVisible(!isListVisible)}
             className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition"
@@ -388,6 +395,7 @@ const PurchaseReport: React.FC = () => {
           emptyMessage="No purchases found for the selected period."
         />
       )}
+
     </div>
   );
 };

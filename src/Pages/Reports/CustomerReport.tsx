@@ -41,18 +41,48 @@ const CustomerReport: React.FC = () => {
     setEndDate,
   } = useCustomerReport();
 
-  /* ---------- FILTER + AGGREGATION + SORT ---------- */
-  const { customerRows, metrics } = useMemo(() => {
-    const start = appliedFilters.start ? new Date(appliedFilters.start).getTime() : 0;
-    const end = appliedFilters.end ? new Date(appliedFilters.end).getTime() : Infinity;
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
 
-    const filtered = sales.filter(
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = String(date.getFullYear()).slice(-2); // only last 2 digits
+
+    return `${day}/${month}/${year}`;
+  };
+
+  const { filteredSales, customerRows, summary } = useMemo(() => {
+    if (!appliedFilters) {
+      return {
+        filteredSales: [],
+        customerRows: [],
+        summary: {
+          totalCustomers: 0,
+          totalBills: 0,
+          totalSales: 0,
+          totalDue: 0,
+          averageSalePerCustomer: 0,
+        },
+      };
+    }
+
+    const start = appliedFilters.start
+      ? new Date(appliedFilters.start).getTime()
+      : 0;
+    const end = appliedFilters.end
+      ? new Date(appliedFilters.end).getTime()
+      : Infinity;
+
+    const newFilteredSales = sales.filter(
       (s) => s.createdAt.getTime() >= start && s.createdAt.getTime() <= end,
     );
 
+    /* ---------- CUSTOMER AGGREGATION ---------- */
     const map = new Map<string, CustomerRow>();
-    filtered.forEach((sale) => {
+
+    newFilteredSales.forEach((sale) => {
       const key = sale.partyName;
+
       if (!map.has(key)) {
         map.set(key, {
           customerName: key,
@@ -63,60 +93,39 @@ const CustomerReport: React.FC = () => {
           sortKey: 'customerName', // FIX: Added required sortKey property
         });
       }
+
       const row = map.get(key)!;
       row.totalBills += 1;
       row.totalSales += sale.totalAmount;
       row.totalDue += sale.dueAmount || 0;
     });
 
-    const aggregatedRows = Array.from(map.values());
+    const customerRows = Array.from(map.values());
 
-    // Sorting Logic
-    aggregatedRows.sort((a, b) => {
-      const direction = sortConfig.direction === 'asc' ? 1 : -1;
+    /* ---------- SUMMARY METRICS ---------- */
+    const totalCustomers = customerRows.length;
+    const totalBills = newFilteredSales.length;
+    const totalSales = newFilteredSales.reduce(
+      (sum, s) => sum + s.totalAmount,
+      0,
+    );
+    const totalDue = customerRows.reduce((sum, c) => sum + c.totalDue, 0);
 
-      // FIX: Key mapping to ensure the string key matches CustomerRow keys
-      const keyMap: Record<string, keyof CustomerRow> = {
-        partyName: 'customerName',
-        totalAmount: 'totalSales',
-        dueAmount: 'totalDue',
-        totalBills: 'totalBills',
-        customerName: 'customerName',
-        totalSales: 'totalSales',
-        totalDue: 'totalDue'
-      };
-
-      const mappedKey = keyMap[sortConfig.key] || 'customerName';
-
-      const valA = a[mappedKey] ?? '';
-      const valB = b[mappedKey] ?? '';
-
-      if (typeof valA === 'string' && typeof valB === 'string') {
-        return valA.localeCompare(valB) * direction;
-      }
-
-      if (typeof valA === 'number' && typeof valB === 'number') {
-        return (valA - valB) * direction;
-      }
-
-      return 0;
-    });
-
-    const totalCustomers = aggregatedRows.length;
-    const totalBills = filtered.length;
-    const totalSales = aggregatedRows.reduce((sum, r) => sum + r.totalSales, 0);
-    const totalDue = aggregatedRows.reduce((sum, r) => sum + r.totalDue, 0);
+    const averageSalePerCustomer =
+      totalCustomers > 0 ? totalSales / totalCustomers : 0;
 
     return {
-      customerRows: aggregatedRows,
-      metrics: {
+      filteredSales: newFilteredSales,
+      customerRows,
+      summary: {
         totalCustomers,
         totalBills,
+        totalSales,
         totalDue,
-        averageSalePerCustomer: totalCustomers > 0 ? totalSales / totalCustomers : 0,
+        averageSalePerCustomer,
       },
     };
-  }, [sales, appliedFilters, sortConfig]);
+  }, [sales, appliedFilters]);
 
   const handleApplyFilters = () => {
     const start = new Date(startDate);
@@ -154,19 +163,34 @@ const CustomerReport: React.FC = () => {
   const downloadAsPdf = () => {
     try {
       const doc = new jsPDF();
-      doc.setFontSize(16);
-      doc.text('Customer Report', 14, 15);
+      doc.setFontSize(18);
+      doc.text('Customer Report', 14, 22);
+
+      doc.setFontSize(11);
+      doc.setTextColor(100);
+
+      const start = appliedFilters?.start ? formatDate(appliedFilters.start) : 'All Time';
+      const end = appliedFilters?.end ? formatDate(appliedFilters.end) : 'All Time';
+      doc.text(`Date Range: ${start} to ${end}`, 14, 29);  
+
       autoTable(doc, {
-        startY: 22,
+        startY: 35,
         head: [['Customer', 'Bills', 'Sales', 'Due']],
         body: customerRows.map((c) => [
           c.customerName,
           c.totalBills,
-          c.totalSales.toLocaleString('en-IN'),
-          c.totalDue.toLocaleString('en-IN'),
+          `Rs. ${c.totalSales.toLocaleString('en-IN')}`,
+          `Rs. ${c.totalDue.toLocaleString('en-IN')}`,
         ]),
+        foot: [[
+          'Total',
+          '',
+          `Rs. ${summary.totalSales.toLocaleString('en-IN')}`,
+          `Rs. ${summary.totalDue.toLocaleString('en-IN')}`,
+        ]],
         theme: 'grid',
         headStyles: { fillColor: [41, 128, 185] },
+        footStyles: { fontStyle: 'bold', fillColor: [41, 128, 185] },
       });
       doc.save('customer_report.pdf');
       setIsDownloadModalOpen(false);
@@ -182,29 +206,24 @@ const CustomerReport: React.FC = () => {
     {
       header: 'Customer',
       accessor: 'customerName',
-      sortKey: 'customerName'
-    },
-    {
-      header: 'Customer Number',
-      accessor: 'customerNumber'
+      className: 'py-3 text-center w-1/4 ',
     },
     {
       header: 'Bills',
       accessor: 'totalBills',
-      className: 'text-right',
-      sortKey: 'totalBills'
+      className: 'py-3 text-center w-1/5',
     },
     {
       header: 'Total Sales',
       accessor: (row) => `₹${row.totalSales.toLocaleString('en-IN')}`,
       sortKey: 'totalSales',
-      className: 'text-right'
+      className: 'py-3 text-center w-1/5',
     },
     {
       header: 'Total Due',
       accessor: (row) => `₹${row.totalDue.toLocaleString('en-IN')}`,
       sortKey: 'totalDue',
-      className: 'text-right'
+      className: 'py-3 text-center w-1/4',
     },
   ];
 
@@ -213,7 +232,7 @@ const CustomerReport: React.FC = () => {
   if (!currentUser) { navigate('/login'); return null; }
 
   return (
-    <div className="min-h-screen bg-gray-100 p-2">
+    <div className="min-h-screen bg-gray-100 p-2 pb-16">
       {feedbackModal.isOpen && (
         <Modal
           type={feedbackModal.type}
@@ -238,52 +257,96 @@ const CustomerReport: React.FC = () => {
       </div>
 
       <div className="bg-white p-4 rounded-lg shadow-md mb-2">
-        <FilterSelect
-          value={datePreset}
-          onChange={(e) => handleDatePresetChange(e.target.value, setDatePreset, setStartDate, setEndDate)}
-        >
-          <option value="today">Today</option>
-          <option value="yesterday">Yesterday</option>
-          <option value="last7">Last 7 Days</option>
-          <option value="last30">Last 30 Days</option>
-          <option value="custom">Custom</option>
-        </FilterSelect>
+        <div className="grid grid-cols-1 gap-3">
+          <FilterSelect
+            value={datePreset}
+            onChange={(e) =>
+              handleDatePresetChange(
+                e.target.value,
+                setDatePreset,
+                setStartDate,
+                setEndDate,
+              )
+            }
+          >
+            <option value="today">Today</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="last7">Last 7 Days</option>
+            <option value="last30">Last 30 Days</option>
+            <option value="custom">Custom</option>
+          </FilterSelect>
 
-        <div className="grid grid-cols-2 gap-2 mt-2">
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => { setStartDate(e.target.value); setDatePreset('custom'); }}
-            className="w-full p-2 text-sm bg-gray-50 border rounded-md"
-          />
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => { setEndDate(e.target.value); setDatePreset('custom'); }}
-            className="w-full p-2 text-sm bg-gray-50 border rounded-md"
-          />
+          <div className="grid grid-cols-2 gap-4">
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => {
+                setStartDate(e.target.value);
+                setDatePreset('custom');
+              }}
+              className="w-full p-2 text-sm bg-gray-50 border rounded-md"
+            />
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => {
+                setEndDate(e.target.value);
+                setDatePreset('custom');
+              }}
+              className="w-full p-2 text-sm bg-gray-50 border rounded-md"
+            />
+          </div>
         </div>
-        <button
-          onClick={handleApplyFilters}
-          className="w-full mt-2 px-3 py-1 bg-blue-600 text-white text-lg font-semibold rounded-lg hover:bg-blue-700"
-        >
-          Apply
-        </button>
+
+        <div className="flex justify-center mt-2">
+          <button onClick={handleApplyFilters}
+            className="w-full md:w-fit mt-2 px-10 py-2 bg-blue-600 text-white text-lg font-semibold rounded-lg hover:bg-blue-700" >
+            Apply
+          </button>
+        </div>
+        
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        <CustomCard variant={CardVariant.Summary} title="Total Customers" value={metrics.totalCustomers.toString()} valueClassName="text-blue-600 text-3xl" />
-        <CustomCard variant={CardVariant.Summary} title="Total Bills" value={metrics.totalBills.toString()} valueClassName="text-indigo-600 text-3xl" />
-        <CustomCard variant={CardVariant.Summary} title="Total Due" value={`₹${metrics.totalDue.toLocaleString('en-IN')}`} valueClassName="text-red-600 text-3xl" />
-        <CustomCard variant={CardVariant.Summary} title="Avg Sale / Customer" value={`₹${Math.round(metrics.averageSalePerCustomer).toLocaleString('en-IN')}`} valueClassName="text-green-600 text-3xl" />
+      {/* SUMMARY CARDS */}
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-2">
+        <CustomCard
+          className="py-10"
+          variant={CardVariant.Summary}
+          title="Total Customers"
+          value={summary.totalCustomers.toString()}
+        />
+        <CustomCard
+          className="py-10"
+          variant={CardVariant.Summary}
+          title="Total Bills"
+          value={summary.totalBills.toString()}
+          valueClassName="text-indigo-600"
+        />
+        <CustomCard
+          className="py-10"
+          variant={CardVariant.Summary}
+          title="Total Due"
+          value={`₹${summary.totalDue.toLocaleString('en-IN')}`}
+          valueClassName="text-red-600"
+        />
+        <CustomCard
+          className="py-10"
+          variant={CardVariant.Summary}
+          title="Avg Sale / Customer"
+          value={`₹${Math.round(summary.averageSalePerCustomer).toLocaleString(
+            'en-IN',
+          )}`}
+          valueClassName="text-green-600"
+        />
       </div>
 
-      <div className="bg-white p-4 rounded-lg flex justify-between items-center mt-2">
-        <h2 className="text-lg font-semibold text-gray-700">Report Details</h2>
-        <div className="flex gap-2">
+      {/* REPORT DETAILS */}
+      <div className="bg-white p-4 rounded-lg shadow-md flex flex-col md:flex-row md:justify-between md:items-center gap-3">
+        <h2 className="text-lg font-semibold text-gray-700 text-center md:text-left w-full md:w-auto">Report Details</h2>
+        <div className="flex justify-between w-full md:w-auto md:justify-end md:space-x-3">  
           <button
             onClick={() => setIsListVisible(!isListVisible)}
-            className="px-4 py-2 bg-slate-200 rounded-md font-semibold"
+            className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition"
           >
             {isListVisible ? 'Hide List' : 'Show List'}
           </button>

@@ -825,41 +825,248 @@ const PurchasePage: React.FC = () => {
         {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
         <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
         {renderHeader()}
-        <div className="flex-shrink-0 bg-gray-50 border-b border-gray-300">
-          <div className="p-2 bg-white border-b flex gap-2 items-center">
-            <input type="text" placeholder="Search items..." className="w-full p-2 pr-8 border rounded bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500" value={gridSearchQuery} onChange={(e) => setGridSearchQuery(e.target.value)} />
-            {gridSearchQuery && (<button onClick={() => setGridSearchQuery('')} className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"><IconScan width={20} height={20} /></button>)}
-            <button onClick={() => setIsScannerOpen(true)} className='bg-white text-gray-700 p-2 border rounded hover:bg-gray-100'><IconScanCircle width={20} height={20} /></button>
+        <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+          <div className="flex flex-col w-full md:w-3/4 h-full relative min-w-0 border-r border-gray-200 overflow-hidden">
+            <div className="flex-shrink-0 bg-gray-50 border-b border-gray-200">
+              <div className="p-3 bg-white  flex gap-2 items-center">
+                <div className="flex-grow relative">
+                  <input 
+                    type="text" 
+                    placeholder="🔍 Search items by name or barcode..." 
+                    className="w-full p-2 pr-8 border rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm md:text-base" 
+                    value={gridSearchQuery} 
+                    onChange={(e) => setGridSearchQuery(e.target.value)} 
+                    autoFocus
+                  />
+                  {gridSearchQuery && (
+                    <button 
+                      onClick={() => setGridSearchQuery('')} 
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 bg-white rounded-full p-1"
+                    >
+                      <IconScan width={18} height={18} />
+                    </button>
+                  )}
+                </div>
+                <button 
+                  onClick={() => setIsScannerOpen(true)} 
+                  className='bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition-colors'
+                  title="Scan Barcode"
+                >
+                  <IconScanCircle width={22} height={22} />
+                </button>
+              </div>
+              
+              <div className="flex gap-2 overflow-x-auto px-3 pb-3 bg-white border-b border-gray-300">
+                {categories.map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`px-3 py-1 rounded-full text-xs whitespace-nowrap border transition
+                      ${selectedCategory === cat
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'
+                      }`}
+                  >
+                    {cat === 'All' ? 'All' : itemGroupMap[cat] || 'Others'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center pt-2 pb-1 bg-gray-100 border-b border-gray-200 px-2 mb-2">
+              <h3 className="text-gray-700 text-lg font-medium">Cart</h3>
+              {items.length > 0 && (
+                <button onClick={handleClearCart} className="flex items-center gap-1 text-sm text-red-500 hover:text-red-700 font-medium transition-colors">
+                  <FiTrash2 size={16} />
+                  <span>Clear Cart</span>
+                </button>
+              )}
+            </div>
+            
+            <div className="flex-1 p-3 overflow-y-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 content-start bg-gray-100">
+              {sortedGridItems.length === 0 ? (
+                <div className="col-span-full text-center text-gray-500 mt-10 py-10 bg-white rounded-lg">
+                  {gridSearchQuery ? (
+                    <>
+                      <p className="text-lg">No items found for "<span className="font-semibold">{gridSearchQuery}</span>"</p>
+                      <p className="text-sm mt-2">Try searching with different keywords or scan barcode</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-lg">🔍 Start typing to search items</p>
+                      <p className="text-sm mt-2">Search by name or scan barcode to add items</p>
+                    </>
+                  )}
+                </div>
+              ) : (
+                sortedGridItems.map(item => {
+                  const matchingCartItems = items.filter(i => i.productId === item.id);
+                  const lastAddedCartItem = matchingCartItems[matchingCartItems.length - 1];
+                  const isSelected = matchingCartItems.length > 0;
+                  const quantity = lastAddedCartItem?.quantity || 0;
+                  
+                  return (
+                    <div 
+                      key={item.id} 
+                      onClick={() => addItemToCart(item)} 
+                      className={`p-3 rounded-lg shadow-sm border transition-all flex flex-col justify-between text-center relative select-none cursor-pointer ${
+                        isSelected 
+                          ? 'bg-blue-50 border-blue-500 ring-2 ring-blue-300' 
+                          : 'bg-white border-gray-200 hover:shadow-md hover:border-blue-400'
+                      }`}
+                    > 
+                      <div className="w-full flex flex-col items-center pt-1 px-1 pointer-events-none">
+
+                        {/* Item Name */}
+                        <span className={`font-bold text-gray-800 text-center line-clamp-2 break-words min-h-[40px] ${ item.name.length > 20 ? "text-xs" : "text-sm"}`}title={item.name}>
+                          {item.name}
+                        </span>
+                        
+                        {/* Price */}
+                        <div className="w-full mt-1 flex justify-center gap-2 text-xs font-semibold">
+                          <span className="text-gray-500 line-through">MRP: ₹{item.mrp || 0}</span>
+                          <span className="text-gray-900 font-bold">SP: ₹{lastAddedCartItem?.purchasePrice ?? item.purchasePrice ?? item.mrp ?? 0}</span>
+                        </div>
+                      </div> 
+                      
+                      {/* Add/Quantity Button */}
+                      <div className="w-full flex items-center justify-center pb-1 mt-3"> 
+                        {!isSelected ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              addItemToCart(item);
+                            }}
+                            className="bg-blue-600 text-white text-sm font-semibold px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors w-full"
+                          >
+                            Add
+                          </button>
+                        ) : (
+                          <div className="flex items-center bg-white border rounded-lg overflow-hidden shadow-sm w-full">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (quantity > 1) handleQuantityChange(lastAddedCartItem.id, quantity - 1);
+                                else handleDeleteItem(lastAddedCartItem.id);
+                              }}
+                              className="flex-1 py-2 bg-gray-100 hover:bg-red-100 text-gray-700 font-bold text-lg"
+                            >
+                              −
+                            </button>
+
+                            <span className="px-4 py-2 text-sm font-bold bg-white">{quantity}</span>
+
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleQuantityChange(lastAddedCartItem.id, quantity + 1);
+                              }}
+                              className="flex-1 py-2 bg-gray-100 hover:bg-blue-100 text-gray-700 font-bold text-lg"
+                            >
+                              +
+                            </button>
+                          </div>
+                        )} 
+                      </div> 
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
-          <div className="flex overflow-x-auto whitespace-nowrap p-2 gap-2 bg-white border-b border-gray-200 scrollbar-hide"> {categories.map(catId => (<CustomButton key={catId} onClick={() => setSelectedCategory(catId)} variant={selectedCategory === catId ? Variant.Filled : Variant.Outline} className={`text-sm flex-shrink-0 ${selectedCategory === catId ? 'bg-blue-600 border-blue-600 text-white' : 'border-gray-300 text-gray-700'}`} >{itemGroupMap[catId] || catId}</CustomButton>))} </div>
-        </div>
-        <div className="flex-1 p-3 overflow-y-auto grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 content-start bg-gray-100 pb-20">
-          {sortedGridItems.length === 0 ? <div className="col-span-full text-center text-gray-500 mt-10">No items found</div> : (sortedGridItems.map(item => {
-            const matchingCartItems = items.filter(i => i.productId === item.id);
-            const lastAddedCartItem = matchingCartItems[matchingCartItems.length - 1];
-            const isSelected = matchingCartItems.length > 0;
-            const quantity = lastAddedCartItem?.quantity || 0;
-            return (<div key={item.id} onClick={() => addItemToCart(item)} className={`p-2 rounded shadow-sm border transition-all flex flex-col justify-between text-center relative select-none cursor-pointer ${isSelected ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500' : 'bg-white border-gray-200 hover:shadow-md hover:border-blue-400'}`}> <div className="w-full flex flex-col items-center pt-1 px-1 pointer-events-none"> <span className="text-sm font-bold text-gray-800 leading-tight text-center line-clamp-2" title={item.name}>{item.name}</span> <span className="text-sm font-medium text-gray-600 mt-1">₹{item.purchasePrice || 0}</span> <span className="text-xs text-gray-400">MRP: ₹{item.mrp || 0}</span> </div> <div className="w-full flex items-center justify-center pb-1 mt-auto"> {!isSelected ? (<span className="text-blue-600 font-bold text-sm px-4 py-1 bg-blue-50 rounded-lg">Add</span>) : (<div className="flex items-center gap-1 bg-white shadow-sm px-1 py-0.5 border border-gray-200 rounded-full text-lg"> <button onClick={(e) => { e.stopPropagation(); if (quantity > 1) handleQuantityChange(lastAddedCartItem.id, quantity - 1); else handleDeleteItem(lastAddedCartItem.id); }} className="w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 hover:bg-red-100 text-gray-700 hover:text-red-600 font-bold transition-colors text-sm">-</button> <span className="text-sm font-bold w-4 text-center">{quantity}</span> <button onClick={(e) => { e.stopPropagation(); addItemToCart(item); }} className="w-6 h-6 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-700 font-bold transition-colors text-sm">+</button> </div>)} </div> </div>);
-          }))}
+
+          {/* Right Section - Purchase Summary (Same as before) */}
+          <div className="hidden md:flex w-1/4 flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
+            <div className="flex-1 p-6 flex flex-col justify-end">
+              <h2 className="text-xl font-bold text-gray-800 mb-6 border-b pb-2">Purchase Summary</h2>
+
+              <GenericBillFooter
+                isExpanded={true}
+                onToggleExpand={() => {}}
+                totalQuantity={totalQuantity}
+                subtotal={subtotal}
+                taxAmount={taxAmount}
+                finalAmount={finalAmount}
+                roundingOffAmount={roundingOffAmount}
+                showTaxRow={displayTaxTotal}
+                taxLabel="Total Tax"
+                actionLabel={isEditMode ? 'Update' : 'Pay Now'}
+                onActionClick={handleProceedToPayment}
+                disableAction={items.length === 0}
+              >
+                {showTaxToggle && (
+                  <div className="flex justify-between items-center py-2 bg-transparent border-b border-gray-100 mb-4">
+                    <p className="text-sm font-semibold text-gray-600">Tax Calculation</p>
+                    <select
+                      value={billTaxType}
+                      onChange={(e) => setBillTaxType(e.target.value as TaxOption)}
+                      className="border border-gray-300 rounded-md p-1 text-sm bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium"
+                    >
+                      <option value="exclusive">Tax Exclusive</option>
+                      <option value="inclusive">Tax Inclusive</option>
+                      <option value="exempt">Tax Exempt</option>
+                    </select>
+                  </div>
+                )}
+              </GenericBillFooter>
+            </div>
+          </div>
+
+          {/* Mobile Footer */}
+          <div className="md:hidden w-full">
+            <GenericBillFooter
+              isExpanded={isFooterExpanded}
+              onToggleExpand={() => setIsFooterExpanded(!isFooterExpanded)}
+              totalQuantity={totalQuantity}
+              subtotal={subtotal}
+              taxAmount={taxAmount}
+              finalAmount={finalAmount}
+              roundingOffAmount={roundingOffAmount}
+              showTaxRow={displayTaxTotal}
+              taxLabel="Total Tax"
+              actionLabel={isEditMode ? 'Update' : 'Pay Now'}
+              onActionClick={handleProceedToPayment}
+              disableAction={items.length === 0}
+            >
+              {showTaxToggle && (
+                <div className="flex justify-between items-center p-2 bg-white border-b border-gray-200 px-5">
+                  <p className="text-sm font-semibold text-gray-600">Tax Calculation</p>
+                  <select
+                    value={billTaxType}
+                    onChange={(e) => setBillTaxType(e.target.value as TaxOption)}
+                    className="border border-gray-300 rounded-md p-1 text-sm bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium">
+                    <option value="exclusive">Tax Exclusive</option>
+                    <option value="inclusive">Tax Inclusive</option>
+                    <option value="exempt">Tax Exempt</option>
+                  </select>
+                </div>
+              )}
+            </GenericBillFooter>
+          </div>
         </div>
 
-        <GenericBillFooter
-          isExpanded={isFooterExpanded}
-          onToggleExpand={() => setIsFooterExpanded(!isFooterExpanded)}
-          totalQuantity={totalQuantity}
-          subtotal={subtotal}
-          taxAmount={taxAmount}
-          finalAmount={finalAmount}
-          roundingOffAmount={roundingOffAmount}
-          showTaxRow={displayTaxTotal}
-          taxLabel="Total Tax"
-          actionLabel={isEditMode ? 'Update' : 'Pay Now'}
-          onActionClick={handleProceedToPayment}
-          disableAction={items.length === 0}
+        <PaymentDrawer 
+          mode='purchase' 
+          isOpen={isDrawerOpen} 
+          onClose={() => setIsDrawerOpen(false)} 
+          subtotal={subtotal} 
+          billTotal={finalAmount} 
+          initialDiscount={editModeData?.manualDiscount}
+          onPaymentComplete={handleSavePurchase} 
+          isPartyNameEditable={!editModeData} 
+          initialPartyName={editModeData ? editModeData.partyName : ''} 
+          initialPartyNumber={editModeData ? editModeData.partyNumber : ''} 
+          totalQuantity={totalQuantity} 
+          requireCustomerName={purchaseSettings?.requireSupplierName} 
+          requireCustomerMobile={purchaseSettings?.requireSupplierMobile} 
         />
-        <PaymentDrawer mode='purchase' isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} subtotal={subtotal} billTotal={finalAmount} initialDiscount={editModeData?.manualDiscount}
-          onPaymentComplete={handleSavePurchase} isPartyNameEditable={!editModeData} initialPartyName={editModeData ? editModeData.partyName : ''} initialPartyNumber={editModeData ? editModeData.partyNumber : ''} totalQuantity={totalQuantity} requireCustomerName={purchaseSettings?.requireSupplierName} requireCustomerMobile={purchaseSettings?.requireSupplierMobile} />
-        <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
+        
+        <ItemEditDrawer 
+          item={selectedItemForEdit} 
+          isOpen={isItemDrawerOpen} 
+          onClose={handleCloseEditDrawer} 
+          onSaveSuccess={handleSaveSuccess} 
+        />
       </div>
     );
   }

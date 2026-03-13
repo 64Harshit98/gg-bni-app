@@ -56,13 +56,13 @@ export const CustomTable = <T,>({
     <div className={cn('bg-white p-2 rounded-lg shadow-md mt-2', className)}>
       <div className="max-h-96 overflow-y-auto">
         <table className="w-full text-sm text-center border-collapse">
-          <thead className="text-xs text-slate-500 bg-slate-100 sticky top-0 z-10 shadow-sm">
+          <thead className="text-xs text-slate-600 bg-slate-100 sticky top-0 z-10 shadow-sm ">
             <tr>
               {columns.map((col, index) => (
                 <th
                   key={index}
                   className={cn(
-                    'py-2 px-2 font-semibold uppercase tracking-wider',
+                    'py-2 px-2 font-semibold tracking-wider',
                     col.className,
                   )}
                 >

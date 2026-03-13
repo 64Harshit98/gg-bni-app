@@ -25,7 +25,7 @@ const Reports = () => {
         </h1>
       </div>
 
-      <div className="flex grid grid-cols-2 p-4 gap-2 bg-gray-100 box-border">
+      <div className="grid grid-cols-2 p-4 gap-2 bg-gray-100 box-border">
         {isDefaultReportsView ? (
           <>
             <ShowWrapper requiredPermission={Permissions.ViewSalesReport}>

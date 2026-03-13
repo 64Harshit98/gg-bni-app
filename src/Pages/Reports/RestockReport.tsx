@@ -48,7 +48,7 @@ const RestockReportPage: React.FC = () => {
     if (stock <= 0) {
       return (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 border border-red-200">
-          <PackageX size={12} className="mr-1" /> Out of Stock
+          <AlertTriangle size={12} className="mr-1" /> Critical
         </span>
       );
     }
@@ -56,7 +56,7 @@ const RestockReportPage: React.FC = () => {
     if (stock <= 5) {
       return (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 border border-orange-200">
-          <AlertTriangle size={12} className="mr-1" /> Low Stock
+          <PackageX size={12} className="mr-1" /> Low Stock
         </span>
       );
     }
@@ -84,31 +84,34 @@ const RestockReportPage: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm relative">
           <div>
             <p className="text-sm font-medium text-gray-500">
               Items to Restock
             </p>
-            <h3 className="text-2xl font-bold text-gray-900 mt-1">
+            <h3 className="absolute bottom-2 left-4 p-3 text-2xl font-bold text-gray-900 ">
               {loading ? '-' : totalItemsToRestock}
             </h3>
           </div>
-          <div className="p-3 bg-blue-50 rounded-full text-blue-600">
-            <ShoppingCart size={24} />
+          <div className="absolute bottom-4 right-4 p-3 bg-blue-50 rounded-full text-blue-600">
+            <ShoppingCart size={22} />
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm relative">
           <div>
             <p className="text-sm font-medium text-gray-500">
-              Critical (Out of Stock)
+              Critical
             </p>
-            <h3 className="text-2xl font-bold text-red-600 mt-1">
+            <p className="text-sm font-medium text-gray-500">
+              (Out of Stock)
+            </p>
+            <h3 className="text-2xl font-bold text-red-600 mt-5">
               {loading ? '-' : outOfStockCount}
             </h3>
           </div>
-          <div className="p-3 bg-red-50 rounded-full text-red-600">
-            <AlertTriangle size={24} />
+          <div className="absolute bottom-4 right-4 p-3 bg-red-50 rounded-full text-red-600">
+            <AlertTriangle size={22} />
           </div>
         </div>
       </div>
@@ -117,11 +120,11 @@ const RestockReportPage: React.FC = () => {
         <div>
           <p className="text-sm font-medium text-gray-500">Est. Restock Cost</p>
           <h3 className="text-2xl font-bold text-gray-900 mt-1">
-            {loading ? '-' : `$${estimatedCostToRestock.toLocaleString()}`}
+            {loading ? '-' : `₹ ${estimatedCostToRestock.toLocaleString()}`}
           </h3>
         </div>
         <div className="p-3 bg-green-50 rounded-full text-green-600">
-          <span className="text-xl font-bold">$</span>
+          <span className="text-xl font-bold">₹</span>
         </div>
       </div>
 

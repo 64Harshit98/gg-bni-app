@@ -71,5 +71,6 @@ export const ROUTES = {
   CATA_REQUEST: 'requests',
   PARTY_LEDGER: '/party-ledger',
   CATA_REGISTER: 'catalogue-register',
-  CATA_COMINGSOON: 'coming-soon'
+  CATA_COMINGSOON: 'coming-soon',
+  WEBSITE_LEADS: '/website-leads',
 };

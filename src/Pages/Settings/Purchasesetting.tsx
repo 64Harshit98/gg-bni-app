@@ -12,6 +12,7 @@ import { State } from '../../enums';
 import { useAuth } from '../../context/auth-context';
 import { FiCheck } from 'react-icons/fi';
 import { InfoTooltip } from '../../Components/InfoToolTip'; // <-- IMPORTED TOOLTIP
+import { ResetSettingsButton } from '../../Components/ResetSettingsButton';
 
 export interface PurchaseSettings {
     companyId?: string;
@@ -215,8 +216,14 @@ const PurchaseSettingsPage: React.FC = () => {
 
                     {/* --- Card 1: Display Settings --- */}
 
-                    <div className="bg-white rounded-sm p-4 shadow-md mb-2">
-                        <h2 className="text-lg font-semibold text-gray-800 mb-4">Display Settings</h2>
+                    <div className="bg-white rounded-lg p-6 shadow-md mb-2">
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-lg font-semibold text-gray-800 ">Display Settings</h2>
+                            <ResetSettingsButton<PurchaseSettings>
+                                defaults={getDefaultPurchaseSettings(currentUser?.companyId ?? '')}
+                                onReset={setSettings}
+                            />
+                        </div>
 
                         <div className="mb-2">
                             <div className="flex items-center mb-3">
@@ -403,7 +410,7 @@ const PurchaseSettingsPage: React.FC = () => {
                 </form>
             </main>
             <div className="fixed bottom-15 left-0 right-0 p-4 bg-transparent shadow-md">
-                <div className="max-w-3xl mx-auto flex justify-center">
+                <div className="max-w-3xl mx-auto flex justify-center gap-4">
                     <button
                         onClick={handleSave}
                         disabled={isSaving || isLoading}
@@ -411,6 +418,7 @@ const PurchaseSettingsPage: React.FC = () => {
                     >
                         {isSaving ? <Spinner /> : 'Save Settings'}
                     </button>
+                    
                 </div>
             </div>
         </div>

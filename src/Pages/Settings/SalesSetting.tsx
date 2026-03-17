@@ -12,6 +12,7 @@ import { State } from '../../enums';
 import { useAuth } from '../../context/auth-context';
 import { FiCheck } from 'react-icons/fi';
 import { InfoTooltip } from '../../Components/InfoToolTip';
+import { ResetSettingsButton } from '../../Components/ResetSettingsButton';
 
 export interface SalesSettings {
     settingType: 'sales';
@@ -254,8 +255,13 @@ const SalesSettingsPage: React.FC = () => {
 
                     {/* --- Card 1: General Settings --- */}
                     <div className="bg-white rounded-lg p-6 shadow-md mb-2">
-                        <h2 className="text-lg font-semibold text-gray-800 mb-4">Display Settings</h2>
-
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-lg font-semibold text-gray-800">Display Settings</h2>
+                            <ResetSettingsButton<SalesSettings>
+                                defaults={getDefaultSalesSettings(currentUser?.companyId ?? '')}
+                                onReset={setSettings}
+                            />
+                        </div>
                         <div className="mb-4">
                             <div className="flex items-center mb-3">
                                 <label className="text-gray-700 text-sm font-medium mr-2">
@@ -623,7 +629,8 @@ const SalesSettingsPage: React.FC = () => {
             </main>
 
             <div className="fixed bottom-15 left-0 right-0 p-4 bg-transparent shadow-md">
-                <div className="max-w-3xl mx-auto flex justify-center">
+                <div className="max-w-3xl mx-auto flex justify-center gap-4">
+
                     <button
                         onClick={handleSave}
                         disabled={isSaving || isLoading}

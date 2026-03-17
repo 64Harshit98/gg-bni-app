@@ -1001,7 +1001,7 @@ const Sales: React.FC = () => {
                     <div className="flex-shrink-0 p-2 bg-white border-b pb-3 mb-2 rounded-sm md:mb-0 md:border-r border-gray-200">
                         <div className="flex gap-4 items-end w-full">
                             <div className="flex-grow">
-                                <SearchableItemInput label="Search Item" placeholder="Search by name or barcode..." items={availableItems} onItemSelected={handleItemSelected} isLoading={pageIsLoading} error={error} onAddItem={(query) => navigate(ROUTES.ITEM_ADD,{state: { prefillName: query } })}/>
+                                <SearchableItemInput label="Search Item" placeholder="Search by name or barcode..." items={availableItems} onItemSelected={handleItemSelected} isLoading={pageIsLoading} error={error} onAddItem={(query) => navigate(ROUTES.ITEM_ADD, { state: { prefillName: query } })} />
                             </div>
                             <button onClick={() => setIsScannerOpen(true)} className='bg-transparent text-gray-700 p-3 border border-gray-700 rounded-md font-semibold transition hover:bg-gray-800' title="Scan Barcode">
                                 <IconScanCircle width={20} height={20} />
@@ -1013,7 +1013,24 @@ const Sales: React.FC = () => {
                     <div className="flex-1 flex flex-col bg-gray-100 overflow-y-hidden md:border-r border-gray-200">
                         <div className="pt-2 flex-shrink-0 grid grid-cols-3 items-center border-b pb-2 px-2">
                             <div className="justify-self-start"><h3 className="text-gray-700 font-medium">Cart</h3></div>
-                            <div className="justify-self-center w-full flex justify-center">{salesSettings?.enableSalesmanSelection && <select value={selectedWorker?.uid} onChange={e => setSelectedWorker(workers.find(w => w.uid === e.target.value) || null)} className="p-1 border rounded text-sm" disabled={!hasPermission(Permissions.ViewTransactions) || (isEditMode && !isManager)}><option value="">Salesman</option>{workers.map(w => <option key={w.uid} value={w.uid}>{w.name}</option>)}</select>}</div>
+                            <div className="justify-self-center w-full flex justify-center">{salesSettings?.enableSalesmanSelection && <select
+                                value={selectedWorker?.uid || ''}
+                                onChange={(e) => {
+                                    if (e.target.value === 'ADD_NEW_SALESMAN') {
+                                        navigate(ROUTES.USER_ADD);
+                                    } else {
+                                        setSelectedWorker(workers.find(w => w.uid === e.target.value) || null);
+                                    }
+                                }}
+                                className="p-1 border rounded text-sm"
+                                disabled={!hasPermission(Permissions.ViewTransactions) || (isEditMode && !isManager)}
+                            >
+                                <option value="">Salesman</option>
+                                {workers.map(w => <option key={w.uid} value={w.uid}>{w.name}</option>)}
+                                <option value="ADD_NEW_SALESMAN" className="font-semibold border border-grey-300 bg-gray-100 hover:bg-gray-200">
+                                    + Add New Salesman
+                                </option>
+                            </select>}</div>
                             <div className="justify-self-end">{items.length > 0 && <button onClick={handleClearCart} className="text-xs text-red-600 bg-red-50 px-2 py-1 rounded border border-red-200 flex items-center gap-1"><FiTrash2 /> Clear</button>}</div>
                         </div>
                         <div className="flex-shrink-0 grid grid-cols-2 px-2 py-1">

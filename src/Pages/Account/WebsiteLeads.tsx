@@ -1,0 +1,219 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { db } from '../../lib/Firebase';
+import { collection, query, where, orderBy, onSnapshot, Timestamp, doc, updateDoc } from 'firebase/firestore';
+
+// Shared Components (matching Sales Report)
+import { CustomCard } from '../../Components/CustomCard';
+import { CardVariant } from '../../enums';
+import { IconClose } from '../../constants/Icons';
+import FilterSelect from '../Reports/SalesReportComponents/FilterSelect';
+
+interface Lead {
+  id: string;
+  fullName: string;
+  email: string;
+  status: 'pending' | 'issue' | 'converted' | 'not_interested';
+  submittedAt?: any;
+}
+
+const WebsiteLeadsDashboard: React.FC = () => {
+  const navigate = useNavigate();
+
+  // States
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [activeStatus, setActiveStatus] = useState<string>('all');
+  const [datePreset, setDatePreset] = useState('today');
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
+  const [appliedFilters, setAppliedFilters] = useState<{ start: Date; end: Date } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // 1. Handle Date Presets
+  const handleDatePresetChange = (preset: string) => {
+    setDatePreset(preset);
+    const start = new Date();
+    const end = new Date();
+
+    if (preset === 'yesterday') {
+      start.setDate(start.getDate() - 1);
+      end.setDate(end.getDate() - 1);
+    } else if (preset === 'last7') {
+      start.setDate(start.getDate() - 7);
+    } else if (preset === 'last30') {
+      start.setDate(start.getDate() - 30);
+    }
+
+    setStartDate(start.toISOString().split('T')[0]);
+    setEndDate(end.toISOString().split('T')[0]);
+  };
+
+  const handleApplyFilters = () => {
+    const s = startDate ? new Date(startDate) : new Date(0);
+    const e = endDate ? new Date(endDate) : new Date();
+    s.setHours(0, 0, 0, 0);
+    e.setHours(23, 59, 59, 999);
+    setAppliedFilters({ start: s, end: e });
+  };
+
+  // 2. Firebase Listener
+  useEffect(() => {
+    setLoading(true);
+    let q = query(collection(db, "contacts"), orderBy("submittedAt", "desc"));
+
+    if (appliedFilters) {
+      q = query(
+        collection(db, "contacts"),
+        where("submittedAt", ">=", Timestamp.fromDate(appliedFilters.start)),
+        where("submittedAt", "<=", Timestamp.fromDate(appliedFilters.end)),
+        orderBy("submittedAt", "desc")
+      );
+    }
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setLeads(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Lead[]);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, [appliedFilters]);
+
+  // 3. Status Update Logic
+  const updateStatus = async (id: string, newStatus: string) => {
+    try {
+      await updateDoc(doc(db, "contacts", id), { status: newStatus as any });
+    } catch (err) {
+      console.error("Update failed", err);
+    }
+  };
+
+  // 4. Stats & Filtering
+  const stats = useMemo(() => ({
+    pending: leads.filter(l => !l.status || l.status === 'pending').length,
+    issue: leads.filter(l => l.status === 'issue').length,
+    converted: leads.filter(l => l.status === 'converted').length,
+    not_interested: leads.filter(l => l.status === 'not_interested').length,
+  }), [leads]);
+
+  const filteredLeads = activeStatus === 'all'
+    ? leads
+    : leads.filter(l => (l.status || 'pending') === activeStatus);
+
+  return (
+    <div className="min-h-screen bg-gray-100 p-2 pb-16 md:p-6 md:pb-16 font-sans">
+
+      {/* HEADER */}
+      <div className="flex items-center justify-between pb-3 border-b mb-2 md:mb-4">
+        <h1 className="flex-1 text-xl text-center font-bold text-gray-800 md:text-2xl">
+          Website Query
+        </h1>
+        <button onClick={() => navigate(-1)} className="p-2">
+          <IconClose width={20} height={20} />
+        </button>
+      </div>
+
+      {/* FILTERS */}
+      <div className="bg-white p-2 rounded-lg shadow-md mb-2 md:p-5 md:mb-4 md:rounded-xl">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 md:grid-cols-1 md:gap-3">
+          <div className="sm:col-span-1 md:col-span-1">
+            <FilterSelect value={datePreset} onChange={(e) => handleDatePresetChange(e.target.value)}>
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="last7">Last 7 Days</option>
+              <option value="last30">Last 30 Days</option>
+              <option value="custom">Custom</option>
+            </FilterSelect>
+          </div>
+          <div className="grid grid-cols-2 gap-4 sm:col-span-2 md:col-span-1 md:grid-cols-2 md:gap-4">
+            <input type="date" value={startDate} onChange={(e) => { setStartDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border rounded-md md:p-2.5" />
+            <input type="date" value={endDate} onChange={(e) => { setEndDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border rounded-md md:p-2.5" />
+          </div>
+        </div>
+        <div className="mt-2 md:mt-3 md:flex md:justify-center">
+          <button onClick={handleApplyFilters} className="w-full px-3 py-1 bg-blue-600 text-white text-lg font-semibold rounded-lg hover:bg-blue-700 md:w-auto md:px-10 md:py-2">
+            Apply
+          </button>
+        </div>
+      </div>
+
+      {/* SUMMARY CARDS */}
+      <div className="grid grid-cols-2 gap-2 mb-4 md:grid-cols-4 md:gap-4">
+        <div
+          onClick={() => setActiveStatus('pending')}
+          className={`cursor-pointer rounded-xl transition-all border-2 ${activeStatus === 'pending' ? 'border-blue-600 bg-blue-50 shadow-md scale-105' : 'border-transparent'}`}
+        >
+          <CustomCard variant={CardVariant.Summary} title="Pending" value={stats.pending.toString()} />
+        </div>
+
+        <div
+          onClick={() => setActiveStatus('issue')}
+          className={`cursor-pointer rounded-xl transition-all border-2 ${activeStatus === 'issue' ? 'border-red-600 bg-red-50 shadow-md scale-105' : 'border-transparent'}`}
+        >
+          <CustomCard variant={CardVariant.Summary} title="Issue" value={stats.issue.toString()} />
+        </div>
+
+        <div
+          onClick={() => setActiveStatus('converted')}
+          className={`cursor-pointer rounded-xl transition-all border-2 ${activeStatus === 'converted' ? 'border-green-600 bg-green-50 shadow-md scale-105' : 'border-transparent'}`}
+        >
+          <CustomCard variant={CardVariant.Summary} title="Converted" value={stats.converted.toString()} />
+        </div>
+
+        <div
+          onClick={() => setActiveStatus('not_interested')}
+          className={`cursor-pointer rounded-xl transition-all border-2 ${activeStatus === 'not_interested' ? 'border-gray-600 bg-gray-100 shadow-md scale-105' : 'border-transparent'}`}
+        >
+          <CustomCard variant={CardVariant.Summary} title="Not Interested" value={stats.not_interested.toString()} />
+        </div>
+      </div>
+
+      {/* RECTANGLE ROW LIST */}
+      <div className="flex flex-col gap-3">
+        {filteredLeads.map((lead) => (
+          <div key={lead.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row md:items-center justify-between transition-all hover:shadow-md">
+
+            {/* Left side: Name and Email */}
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="text-base font-bold text-gray-800">{lead.fullName}</h3>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${lead.status === 'converted' ? 'bg-green-100 text-green-600' :
+                    lead.status === 'issue' ? 'bg-red-100 text-red-600' :
+                      lead.status === 'not_interested' ? 'bg-gray-100 text-gray-500' : 'bg-orange-100 text-orange-600'
+                  }`}>
+                  {lead.status || 'pending'}
+                </span>
+              </div>
+              <p className="text-sm text-gray-500 font-medium">{lead.email}</p>
+            </div>
+
+            {/* Right side: Dropdown only (Icons removed) */}
+            <div className="mt-3 md:mt-0 relative w-full md:w-auto">
+              <select
+                value={lead.status || 'pending'}
+                onChange={(e) => updateStatus(lead.id, e.target.value)}
+                className="w-full md:w-56 text-xs font-bold bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
+              >
+                <option value="pending">PENDING</option>
+                <option value="issue">PENDING ISSUE</option>
+                <option value="converted">CONVERTED</option>
+                <option value="not_interested">NOT INTERESTED</option>
+              </select>
+              {/* Dropdown arrow icon */}
+              <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-400">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+              </div>
+            </div>
+
+          </div>
+        ))}
+      </div>
+
+      {leads.length === 0 && !loading && (
+        <div className="text-center p-10 text-gray-400">No queries found for this period.</div>
+      )}
+    </div>
+  );
+};
+
+export default WebsiteLeadsDashboard;

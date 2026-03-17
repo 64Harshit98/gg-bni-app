@@ -25,8 +25,10 @@ import CatalogueUserReport from '../Catalogue/CatalogueReports/CatalogueUserRepo
 import CatalogueTaxReport from '../Catalogue/CatalogueReports/CatalogueTaxReport';
 import CatalogueRegistration3 from '../Catalogue/Registration/CatalogueRegistration3';
 import CatalogueRegistration2 from '../Catalogue/Registration/CatalogueRegistration2';
+import WebsiteLeads from '../Pages/Account/WebsiteLeads';
 // import SharedProduct from '../Catalogue/SharedProduct';
 
+const WebsiteLeadsDashboard = lazy(() => import('../Pages/Account/WebsiteLeads'));
 const Home = lazy(() => import('../Pages/Home'));
 const Account = lazy(() => import('../Pages/Account'));
 const Journal = lazy(() => import('../Pages/Journal'));
@@ -252,6 +254,11 @@ const router = createBrowserRouter([
                 path: ROUTES.WHATSAPP_PLAN,
                 element: <WAPlan />,
                 handle: { requiredPermission: Permissions.ViewItemReport },
+              },
+              {
+                path: 'website-leads', // Access this via yourdomain.com/website-leads
+                element: <WebsiteLeads />,
+                handle: { requiredPermission: Permissions.ViewDashboard }, // Keeping it accessible to those who see the dashboard
               },
               {
                 path: ROUTES.ADDITIONAL_FEATURES,

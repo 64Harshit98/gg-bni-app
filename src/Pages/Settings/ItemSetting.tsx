@@ -6,6 +6,7 @@ import { Spinner } from '../../constants/Spinner';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
 import { useAuth } from '../../context/auth-context';
+import { ResetSettingsButton } from '../../Components/ResetSettingsButton';
 
 export interface ItemSettings {
     companyId?: string;
@@ -124,7 +125,13 @@ const ItemSettingsPage: React.FC = () => {
                 <form onSubmit={handleSave} className="bg-white rounded-sm p-4 shadow-md max-w-3xl mx-auto space-y-6">
 
                     <div>
-                        <h2 className="text-base font-semibold text-gray-700 mb-3 border-b pb-2">Optional Fields Requirements</h2>
+                        <div className="flex items-center justify-between mb-4">
+                                                    <h2 className="text-lg font-semibold text-gray-800">Optional Item Fields</h2>
+                                                    <ResetSettingsButton<ItemSettings>
+                                                        defaults={getDefaultItemSettings(currentUser?.companyId ?? '')}
+                                                        onReset={setSettings}
+                                                    />
+                                                </div>
                         <p className="text-sm text-gray-500 mb-3">
                             Select which of the optional fields must be filled out when manually adding a single item.
                             <br /><span className="text-xs text-red-500 font-medium">* Name, MRP/Sale Price, Stock, and Barcode are strictly required by the system and cannot be disabled.</span>
@@ -191,14 +198,16 @@ const ItemSettingsPage: React.FC = () => {
                         </div>
                         <p className="text-xs text-gray-500 mt-1 pl-6">If checked, a unique barcode will be generated when adding an item if the barcode field is left blank.</p>
                     </div>
-
-                    <button
-                        type="submit"
-                        disabled={isSaving || isLoading}
-                        className="w-full mt-6 flex items-center justify-center bg-sky-500 text-white font-bold py-3 px-4 rounded-sm hover:bg-sky-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
-                    >
-                        {isSaving ? <Spinner /> : 'Save Item Settings'}
-                    </button>
+                    <div className="flex gap-4 mt-6">
+                        <button
+                            type="submit"
+                            disabled={isSaving || isLoading}
+                            className="flex-1 flex items-center justify-center bg-sky-500 text-white font-bold py-3 px-4 rounded-sm hover:bg-sky-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                        >
+                            {isSaving ? <Spinner /> : 'Save Item Settings'}
+                        </button>
+                        
+                    </div>
                 </form>
             </main>
         </div>

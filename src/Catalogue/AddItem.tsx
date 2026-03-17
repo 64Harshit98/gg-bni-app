@@ -15,6 +15,16 @@ import { collection, query, where, getDocs, limit, doc, runTransaction, getDoc }
 import { db } from '../lib/Firebase';
 
 const ItemAdd: React.FC = () => {
+
+    const UNIT_OPTIONS = [
+        { value: 'pcs', label: 'Pieces (1 pcs)' },
+        { value: 'box', label: 'Box (10 pcs)' },
+        { value: 'pkt', label: 'Packet (Custom)' },
+        { value: 'doz', label: 'Dozen (12 pcs)' },
+        { value: 'qt', label: 'Quintal (100 pcs)' },
+        { value: 'ton', label: 'Ton (1000 pcs)' },
+    ];
+
     const navigate = useNavigate();
     const location = useLocation();
     const dbOperations = useDatabase();
@@ -48,6 +58,8 @@ const ItemAdd: React.FC = () => {
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const [isSaving, setIsSaving] = useState<boolean>(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [itemUnit, setItemUnit] = useState<string>('pcs');
+    const [packetSize, setPacketSize] = useState<string>('');
 
     useEffect(() => {
         setPageIsLoading(authLoading || loadingItemSettings || !dbOperations);
@@ -63,11 +75,10 @@ const ItemAdd: React.FC = () => {
             const groups = await dbOperations.getItemGroups();
             setItemGroups(groups);
 
-            if (groups.length > 0 && !selectedCategory) {
-                setSelectedCategory(groups[0].id!);
-            } else if (groups.length === 0) {
+            if (groups.length === 0) {
                 setSelectedCategory('');
             }
+
         } catch (err) {
             console.error('Failed to fetch item groups:', err);
             setError('Failed to load item categories.');
@@ -111,8 +122,10 @@ const ItemAdd: React.FC = () => {
         fetchNextBarcode();
         setRestockQuantity('');
         setHsnCode('');
-        setSelectedCategory(itemGroups.length > 0 ? itemGroups[0].id! : '');
+        setSelectedCategory('');
         setMoq('1');
+        setItemUnit('pcs');
+        setPacketSize('');
     };
 
     // --- HELPER: Transactional Sequence for Bulk Uploads ---
@@ -150,6 +163,22 @@ const ItemAdd: React.FC = () => {
             return;
         }
 
+        if (itemSettings.requireBarcode && !itemBarcode.trim()) {
+            setModal({
+                message: 'Barcode is required.',
+                type: State.ERROR
+            });
+            return;
+        }
+
+        if (itemSettings.requireSaleDiscount && !itemDiscount.trim()) {
+            setModal({
+                message: 'Sale Discount is required.',
+                type: State.ERROR
+            });
+            return;
+        }
+
         let finalBarcode = itemBarcode.trim();
 
         // auto generate if allowed
@@ -158,11 +187,7 @@ const ItemAdd: React.FC = () => {
             finalBarcode = itemBarcode.trim();
         }
 
-        // if still empty and required
-        if (!finalBarcode && itemSettings.requireBarcode) {
-            setModal({ message: 'Barcode required.', type: State.ERROR });
-            return;
-        }
+
 
         // fallback safety
         if (!finalBarcode) {
@@ -171,11 +196,6 @@ const ItemAdd: React.FC = () => {
 
         if (itemSettings.requirePurchasePrice && !itemPurchasePrice.trim()) {
             setModal({ message: 'Purchase Price required.', type: State.ERROR });
-            return;
-        }
-
-        if (itemSettings.requireSaleDiscount && !itemDiscount.trim()) {
-            setModal({ message: 'Sale Discount required.', type: State.ERROR });
             return;
         }
 
@@ -223,6 +243,12 @@ const ItemAdd: React.FC = () => {
             }
 
             const customDocId = finalBarcode;
+            let currentMultiplier = 1;
+            if (itemUnit === 'box') currentMultiplier = 10;
+            if (itemUnit === 'doz') currentMultiplier = 12;
+            if (itemUnit === 'qt') currentMultiplier = 100;
+            if (itemUnit === 'ton') currentMultiplier = 1000;
+            if (itemUnit === 'pkt') currentMultiplier = parseInt(packetSize, 10) || 1;
             const newItemData: any = {
                 name: itemName.trim(),
                 mrp: mrpValue,
@@ -238,6 +264,9 @@ const ItemAdd: React.FC = () => {
                 barcode: finalBarcode,
                 restockQuantity: parseInt(restockQuantity, 10) || 0,
                 moq: parseInt(moq, 10) || 1,
+                unit: itemUnit,
+                unitMultiplier: currentMultiplier,
+                packetSize: itemUnit === 'pkt' ? parseInt(packetSize, 10) : null,
             };
 
             await dbOperations.createItem(newItemData, customDocId);
@@ -465,8 +494,8 @@ const ItemAdd: React.FC = () => {
                 stock: 50,
                 barcode: '1001',
                 restockQuantity: 10,
-                moq:10,
-                imageUrl:"https/unsplash.com",
+                moq: 10,
+                imageUrl: "https/unsplash.com",
             },
         ];
         const ws = XLSX.utils.json_to_sheet(sampleData);
@@ -560,7 +589,12 @@ const ItemAdd: React.FC = () => {
 
                             <div className='w-full'>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:ml-0.5 after:text-red-500">Barcode</label>
+                                    <label className="block text-sm font-medium text-gray-600 mb-1">
+                                        Barcode
+                                        {itemSettings?.requireBarcode && (
+                                            <span className="text-red-500 ml-0.5">*</span>
+                                        )}
+                                    </label>
                                     <div className="flex gap-2">
                                         <input type="text" value={itemBarcode} onChange={(e) => setItemBarcode(e.target.value)} className="flex-grow p-3 border border-gray-300 rounded-sm focus:ring-sky-500 outline-none" placeholder="Scan or Type" />
                                         <button type="button" onClick={() => setIsScannerOpen(true)} className="bg-gray-700 text-white p-3 rounded-sm"><IconScanCircle width={20} height={20} /></button>
@@ -572,7 +606,25 @@ const ItemAdd: React.FC = () => {
                             <div className='grid grid-cols-2 gap-4'>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">MRP</label>
-                                    <input type="number" value={itemMRP} onChange={(e) => setItemMRP(e.target.value)} className="w-full p-3 border border-gray-300 rounded-md focus:ring-sky-500" placeholder="0.00" />
+                                    <input
+                                        type="number"
+                                        value={itemMRP}
+                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                        onChange={(e) => {
+                                            const newMRP = parseFloat(e.target.value) || 0;
+                                            const discount = parseFloat(itemDiscount) || 0;
+
+                                            setItemMRP(e.target.value);
+
+                                            if (discount > 0) {
+                                                const salePrice = newMRP - (newMRP * discount / 100);
+                                                setItemSalesPrice(String(Math.round(salePrice * 100) / 100));
+                                            }
+                                        }}
+                                        className="w-full p-3 border border-gray-300 rounded-md focus:ring-sky-500"
+                                        placeholder="0"
+                                    />
+                                    <p className="text-[10px] text-gray-400">Required if Sale Price is empty</p>
                                 </div>
 
                                 <div>
@@ -582,6 +634,7 @@ const ItemAdd: React.FC = () => {
                                     <input
                                         type="number"
                                         value={moq}
+                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
                                         onChange={(e) => setMoq(e.target.value)}
                                         className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500"
                                         placeholder="1"
@@ -591,7 +644,26 @@ const ItemAdd: React.FC = () => {
 
                                 <div>
                                     <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">Sales Price</label>
-                                    <input type="number" value={itemSalesPrice} onChange={(e) => setItemSalesPrice(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0.00" />
+                                    <input
+                                        type="number"
+                                        value={itemSalesPrice}
+                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                        onChange={(e) => {
+                                            let value = e.target.value;
+
+                                            const mrp = parseFloat(itemMRP) || 0;
+                                            const num = parseFloat(value) || 0;
+
+                                            // HARD BLOCK
+                                            if (mrp > 0 && num > mrp) {
+                                                value = String(mrp);
+                                            }
+
+                                            setItemSalesPrice(value);
+                                        }}
+                                        className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500"
+                                        placeholder="0"
+                                    />
                                     <p className="text-[10px] text-gray-400">Required if MRP is empty</p>
                                 </div>
 
@@ -601,7 +673,7 @@ const ItemAdd: React.FC = () => {
                                             <span className="text-red-500 ml-0.5">*</span>
                                         )}
                                     </label>
-                                    <input type="number" value={itemPurchasePrice} onChange={(e) => setItemPurchasePrice(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0.00" />
+                                    <input type="number" value={itemPurchasePrice} onChange={(e) => setItemPurchasePrice(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-600 mb-1">
@@ -613,16 +685,30 @@ const ItemAdd: React.FC = () => {
                                     <input
                                         type="number"
                                         value={itemDiscount}
-                                        onChange={(e) => setItemDiscount(e.target.value)}
+                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                        onChange={(e) => {
+                                            const discount = parseFloat(e.target.value) || 0;
+                                            const mrp = parseFloat(itemMRP) || 0;
+
+                                            setItemDiscount(e.target.value);
+
+                                            if (mrp > 0 && discount > 0) {
+                                                const salePrice = mrp - (mrp * discount / 100);
+                                                setItemSalesPrice(String(Math.round(salePrice * 100) / 100));
+                                            }
+                                        }}
                                         className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500"
                                         placeholder="Enter discount"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-600 mb-1">Purchase Disc (%){itemSettings?.requirePurchaseDiscount && (
-                                        <span className="text-red-500 ml-0.5">*</span>
-                                    )}</label>
-                                    <input type="number" value={PurchaseDiscount} onChange={(e) => setPurchaseDiscount(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />
+                                    <label className="block text-sm font-medium text-gray-600 mb-1">
+                                        Purchase Disc (%)
+                                        {itemSettings?.requirePurchaseDiscount && (
+                                            <span className="text-red-500 ml-0.5">*</span>
+                                        )}
+                                    </label>
+                                    <input type="number" value={PurchaseDiscount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setPurchaseDiscount(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />
                                 </div>
 
                                 <div>
@@ -639,22 +725,87 @@ const ItemAdd: React.FC = () => {
 
                                 <div>
                                     <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">Stock</label>
-                                    <input type="number" value={itemAmount} onChange={(e) => setItemAmount(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />
+                                    <input type="number" value={itemAmount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemAmount(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />
                                 </div>
 
                                 <div>
                                     <label className="block text-sm font-medium text-gray-600 mb-1">Restock Level{itemSettings?.requireRestockQuantity && (
                                         <span className="text-red-500 ml-0.5">*</span>
                                     )}</label>
-                                    <input type="number" value={restockQuantity} onChange={(e) => setRestockQuantity(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />
+                                    <input type="number" onWheel={(e) => (e.target as HTMLInputElement).blur()} value={restockQuantity} onChange={(e) => setRestockQuantity(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />
                                 </div>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">Category</label>
-                                <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm bg-white focus:ring-sky-500">
-                                    <option value="" disabled>Select Category</option>
-                                    {itemGroups.map(g => <option key={g.id} value={g.id!}>{g.name}</option>)}
+                                <label className="block text-sm font-medium text-gray-600 mb-1">
+                                    Category
+                                </label>
+
+                                <select
+                                    value={selectedCategory}
+                                    onChange={(e) => {
+                                        if (e.target.value === 'ADD_NEW_GROUP') {
+                                            navigate(`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`);
+                                        } else {
+                                            setSelectedCategory(e.target.value);
+                                        }
+                                    }}
+                                    className="w-full p-3 border border-gray-300 rounded-sm bg-white focus:ring-sky-500"
+                                >
+
+                                    {/* Default */}
+                                    <option value="">Uncategorized</option>
+
+                                    {/* Add Group */}
+                                    <option
+                                        value="ADD_NEW_GROUP"
+                                        className="font-semibold bg-gray-100"
+                                    >
+                                        + Add New Group
+                                    </option>
+
+                                    {/* Existing Groups */}
+                                    {itemGroups.map(g => (
+                                        <option key={g.id} value={g.id!}>
+                                            {g.name}
+                                        </option>
+                                    ))}
+
                                 </select>
+                            </div>
+
+                            {/* UNIT */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-600 mb-1">
+                                    Unit
+                                </label>
+                                <div className="flex gap-2">
+                                    <select
+                                        value={itemUnit}
+                                        onChange={(e) => {
+                                            setItemUnit(e.target.value);
+                                            if (e.target.value !== 'pkt') setPacketSize('');
+                                        }}
+                                        className={`p-3 border border-gray-300 rounded-sm bg-white focus:ring-sky-500 ${itemUnit === 'pkt' ? 'w-1/2' : 'w-full'
+                                            }`}
+                                    >
+                                        {UNIT_OPTIONS.map(unit => (
+                                            <option key={unit.value} value={unit.value}>
+                                                {unit.label}
+                                            </option>
+                                        ))}
+                                    </select>
+
+                                    {itemUnit === 'pkt' && (
+                                        <input
+                                            type="number"
+                                            value={packetSize}
+                                            onChange={(e) => setPacketSize(e.target.value)}
+                                            className="w-1/2 p-3 border border-gray-300 rounded-sm focus:ring-sky-500"
+                                            placeholder="Qty per pkt"
+                                            min="1"
+                                        />
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>

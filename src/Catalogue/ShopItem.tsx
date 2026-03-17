@@ -20,7 +20,7 @@ const StockIndicator: React.FC<{ stock: number }> = ({ stock }) => {
     if (stock <= 10 && stock > 0) colorClass = 'text-yellow-600 bg-yellow-100';
     if (stock <= 0) colorClass = 'text-red-500 bg-red-100';
     return (
-        <span className={`px-2 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-tight ${colorClass}`}>
+        <span className={`px-2 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-tight whitespace-nowrap ${colorClass}`}>
             {stock} IN STOCK
         </span>
     );
@@ -55,7 +55,7 @@ const QuickListedToggle: React.FC<QuickListedToggleProps> = ({ itemId, isListed,
                 }`}
         >
             {isLoading ? <FiLoader className="animate-spin" size={10} /> : isListed ? <FiCheckSquare size={10} /> : <FiStar size={10} />}
-            {isListed ? 'Listed' : 'List'}
+            {isListed ? 'Live' : 'Live'}
         </button>
     );
 };
@@ -129,7 +129,21 @@ const MyShop: React.FC = () => {
         }).filter(i => i.quantity > 0));
     };
 
-    const cartTotal = useMemo(() => cart.reduce((acc, curr) => acc + (curr.item.mrp || 0) * curr.quantity, 0), [cart]);
+    const cartTotal = useMemo(() =>
+        cart.reduce((acc, curr) => {
+
+            const basePrice = curr.item.salesPrice || curr.item.mrp || 0;
+            const multiplier = (curr.item as any).unitMultiplier || 1;
+
+            const price =
+                multiplier > 1
+                    ? basePrice * multiplier
+                    : basePrice;
+
+            return acc + price * curr.quantity;
+
+        }, 0),
+        [cart]);
     const cartCount = useMemo(() => cart.reduce((acc, curr) => acc + curr.quantity, 0), [cart]);
 
     const currentCategoryName = useMemo(() => {
@@ -191,7 +205,7 @@ const MyShop: React.FC = () => {
                 setAllItemGroups(fetchedItemGroups);
                 setAllItems(fetchedItems);
 
-                // 🔥 SAFE FIRESTORE CALL
+                //  SAFE FIRESTORE CALL
                 const businessRef = doc(
                     db,
                     "companies",
@@ -241,15 +255,6 @@ const MyShop: React.FC = () => {
 
             //  hide unlisted items in LIVE view
             if (isViewMode && !item.isListed) {
-                return false;
-            }
-
-            //  hide out of stock (existing)
-            if (
-                isViewMode &&
-                !catalogueSettings?.showOutOfStockItems &&
-                (item.stock || 0) <= 0
-            ) {
                 return false;
             }
 
@@ -440,25 +445,23 @@ const MyShop: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1">
                     {itemsToDisplay.map((item) => {
                         const cartItem = cart.find(i => i.item.id === item.id);
                         const isOutOfStock = (item.stock || 0) <= 0;
                         const showNotifyButton = catalogueSettings?.enableOutOfStockNotification && isOutOfStock;
                         const disableAddToCart = !catalogueSettings?.enableOutOfStockNotification && isOutOfStock;
-                        const salePrice = item.salesPrice || item.mrp;
-                        const mrp = item.mrp || 0;
+                        const basePrice = item.salesPrice || item.mrp;
+                        const multiplier = (item as any).unitMultiplier || 1;
+                        const salePrice = basePrice * multiplier;
+                        const mrp = (item.mrp || 0) * multiplier;
                         const hasBothPrices =
                             item.salesPrice &&
                             item.mrp &&
                             item.salesPrice < item.mrp;
                         //  discount logic
-                        const hasDiscount = salePrice < (item.mrp || 0);
-                        const discountPercent =
-                            item.mrp && hasDiscount
-                                ? Math.round(((item.mrp - salePrice) / item.mrp) * 100)
-                                : 0;
-
+                        const hasDiscount = salePrice < mrp;
+                        const discountPercent = mrp && hasDiscount ? Math.round(((mrp - salePrice) / mrp) * 100) : 0;
                         const showDiscountBadge =
                             catalogueSettings?.showDiscountBadge &&
                             hasDiscount;
@@ -469,12 +472,15 @@ const MyShop: React.FC = () => {
                                 onClick={() => isViewMode ? handleOpenDetailDrawer(item) : handleOpenEditDrawer(item)}
                                 className={`bg-white rounded-sm overflow-hidden shadow-sm border transition-all duration-300 relative group hover:shadow-md cursor-pointer ${highlightedId === item.id ? 'ring-2 ring-[#00A3E1] shadow-lg scale-[1.02]' : 'border-gray-100'} ${!isViewMode ? 'ring-1 ring-[#00A3E1]/10' : ''}`}
                             >
-                                <div className="aspect-square bg-[#F8FAFC] flex items-center justify-center relative overflow-hidden">
+                                <div className="aspect-square flex items-center justify-center relative overflow-hidden">
                                     {showDiscountBadge && (
                                         <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-tight shadow-md">
                                             {discountPercent}% OFF
                                         </div>
                                     )}
+                                    <div className="absolute top-2 left-2 text-white rounded-sm text-[10px] font-black uppercase tracking-tight shadow-md">
+                                        <StockIndicator stock={item.stock || 0} />
+                                    </div>
                                     {item.imageUrl ? (
                                         <img src={item.imageUrl} alt={item.name} className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" />
                                     ) : (
@@ -489,8 +495,8 @@ const MyShop: React.FC = () => {
 
                                 <div className="p-3 flex flex-col flex-1">
                                     <h3 className="text-[10px] font-black text-[#1A3B5D] mb-1 truncate uppercase leading-tight">{item.name}</h3>
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center justify-between w-full">
+                                    <div className="flex items-center justify-between w-full">
+                                        <div className="flex items-center gap-2 w-full">
                                             {hasBothPrices ? (
                                                 <>
                                                     <p className="text-[11px] font-bold text-gray-400 line-through">
@@ -499,14 +505,19 @@ const MyShop: React.FC = () => {
 
                                                     <p className="text-xs font-black text-[#00A3E1]">
                                                         ₹{salePrice}
+                                                        <span className="text-[10px] text-gray-600 font-semibold ml-1">
+                                                            ({multiplier} pcs)
+                                                        </span>
                                                     </p>
                                                 </>
                                             ) : (
                                                 <p className="text-xs font-black text-[#00A3E1]">
                                                     ₹{salePrice}
+                                                    <span className="text-[10px] text-gray-600 font-semibold ml-1">
+                                                        ({multiplier} pcs)
+                                                    </span>
                                                 </p>
                                             )}
-                                            <StockIndicator stock={item.stock || 0} />
                                         </div>
                                     </div>
 
@@ -546,10 +557,8 @@ const MyShop: React.FC = () => {
                                                         if (disableAddToCart) return;
                                                         addToCart(item, catalogueSettings?.defaultCartQuantity || 1);
                                                     }}
-                                                    className={`w-full py-2 rounded-sm text-[9px] font-black uppercase tracking-widest shadow-sm transition-all flex items-center justify-center gap-2 ${disableAddToCart
-                                                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                                        : 'bg-[#00A3E1] text-white active:scale-95'
-                                                        }`}
+                                                    className={`w-full py-2 rounded-sm text-[9px] font-black uppercase tracking-widest shadow-sm transition-all flex items-center justify-center gap-2 bg-[#00A3E1] text-white active:scale-95
+                                                        `}
                                                 >
                                                     <Plus size={12} />
                                                     Add to Cart
@@ -670,7 +679,8 @@ const MyShop: React.FC = () => {
                 isOpen={isDetailDrawerOpen}
                 onClose={() => { setIsDetailDrawerOpen(false); setSelectedItemForDetails(null); }}
                 onAddToCart={addToCart}
-                initialQuantity={cart.find(i => i.item.id === selectedItemForDetails?.id)?.quantity || 1}
+                initialQuantity={cart.find(i => i.item.id === selectedItemForDetails?.id)?.quantity || 0}
+                onUpdateQuantity={updateQuantity}
             />
             <Footer
                 companyName={companyName}

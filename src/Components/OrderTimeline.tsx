@@ -47,9 +47,14 @@ const useGroupedOrders = () => {
         orderStatuses.forEach(status => map.set(status, []));
 
         for (const order of Orders) {
-            const status = order.status || 'Upcoming';
 
-            // ✅ NO paid/unpaid logic here
+            let status: OrderStatus | 'Upcoming' = order.status || 'Upcoming';
+
+            // Completed me Paid bhi add karo
+            if (order.status === 'Paid') {
+                status = 'Completed';
+            }
+
             if (map.has(status)) {
                 map.get(status)?.push(order);
             }
@@ -96,7 +101,13 @@ export const OrderTimeline: React.FC<OrderTimelineProps> = ({ isDataVisible }) =
 
 
     const handleViewStatus = (status: OrderStatus | 'Upcoming') => {
-        navigate(ROUTES.ORDERDETAILS, { state: { defaultStatus: status } });
+        navigate(ROUTES.ORDERDETAILS, {
+            state: {
+                defaultStatus: status,
+                startDate: filters.startDate,
+                endDate: filters.endDate
+            }
+        });
     };
 
     if (loading) return <div className="flex justify-center p-8 bg-white rounded-lg shadow-md"><Spinner /></div>;
@@ -115,25 +126,35 @@ export const OrderTimeline: React.FC<OrderTimelineProps> = ({ isDataVisible }) =
                 {orderStatuses.map((status, index) => {
                     const ordersInStatus = groupedOrders.get(status) || [];
                     const isLast = index === orderStatuses.length - 1;
-                    const labelContent = status.replace(' & ', ' &\n');
+                    const labelContent = status === "Upcoming" ? "Upcoming" : status.replace(' & ', ' &\n');
                     const isTopLabel = index % 2 === 0;
 
                     return (
                         <React.Fragment key={status}>
                             <div className="flex flex-col items-center flex-1 min-w-0">
                                 <button
-                                    className="relative flex flex-col items-center cursor-pointer w-full group"
-                                    onClick={() => handleViewStatus(status as any)}
+                                    className={`relative flex flex-col items-center w-full group ${status === "Upcoming" ? "cursor-not-allowed" : "cursor-pointer"}`}
+                                    onClick={() => {
+                                        if (status !== "Upcoming") {
+                                            handleViewStatus(status as any);
+                                        }
+                                    }}
                                 >
                                     {isTopLabel && (
                                         <span className="absolute bottom-full mb-2 text-center text-[10px] sm:text-xs md:text-sm text-gray-600 font-bold whitespace-pre-line leading-tight w-max">
                                             {labelContent}
                                         </span>
                                     )}
-                                    <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full bg-orange-400 flex items-center justify-center transition-all duration-300 z-10 border-2 md:border-4 border-yellow-500 shadow-sm group-hover:scale-110">
-                                        <span className="text-xs sm:text-sm md:text-xl font-bold text-white">
-                                            {isDataVisible ? ordersInStatus.length : '∗'}
-                                        </span>
+                                    <div className="relative w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full bg-orange-400 flex items-center justify-center transition-all duration-300 z-10 border-2 md:border-4 border-yellow-500 shadow-sm group-hover:scale-110">
+                                        {status === "Upcoming" ? (
+                                            <span className="absolute px-1 py-[2px] text-[6px] font-black uppercase rounded-full bg-orange-100 text-orange-700 border border-orange-300 whitespace-nowrap">
+                                                Coming Soon
+                                            </span>
+                                        ) : (
+                                            <span className="text-xs sm:text-sm md:text-xl font-bold text-white">
+                                                {isDataVisible ? ordersInStatus.length : '∗'}
+                                            </span>
+                                        )}
                                     </div>
                                     {!isTopLabel && (
                                         <span className="absolute top-full mt-2 text-center text-[10px] sm:text-xs md:text-sm text-gray-600 font-bold whitespace-pre-line leading-tight w-max">

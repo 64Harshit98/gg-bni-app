@@ -9,7 +9,7 @@ import { Permissions } from '../enums';
 import { SiteItems } from '../routes/SiteRoutes';
 import { OrderTimeline } from '../Components/OrderTimeline';
 import { CompletedSalesCard } from '../Components/CatalougeSales'; // Assuming this is the correct path
-import { RestockAlertsCard } from '../Components/RestockItems';
+// import { RestockAlertsCard } from '../Components/RestockItems';
 import { TopSoldItemsCard } from '../Components/TopFiveOrder';
 import { OrderBarChartReport } from '../Components/OrderSalesGraph';
 
@@ -146,8 +146,19 @@ const HomePage: React.FC = () => {
                         <OrderTimeline isDataVisible={isDataVisible} />
                         <OrderBarChartReport isDataVisible={isDataVisible} />
                         <TopSoldItemsCard isDataVisible={isDataVisible} />
-                        <RestockAlertsCard/>
+                        {/* <RestockAlertsCard/>     */}
+                        <div className="relative rounded-xl border border-gray-200 bg-white p-4 shadow-sm opacity-70 cursor-not-allowed flex items-center justify-center min-h-[160px]">
 
+                            <span className="absolute top-2 right-2 text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">
+                                Coming Soon
+                            </span>
+
+                            <div className="text-center">
+                                <h3 className="text-lg font-semibold text-gray-500">Restock Alerts</h3>
+                                <p className="text-sm text-gray-400">Feature under development</p>
+                            </div>
+
+                        </div>
                     </div>
                 </main>
             </div>

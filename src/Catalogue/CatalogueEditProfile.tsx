@@ -260,7 +260,7 @@ const EditProfilePage: React.FC = () => {
   useEffect(() => {
     setFormData(catalogue);
 
-    // 🔥 dropdown pre-select fix
+    //  dropdown pre-select fix
     setBusinessType(catalogue.businessType || "");
     setBusinessCategory(catalogue.businessCategory || "");
 
@@ -374,17 +374,13 @@ const EditProfilePage: React.FC = () => {
               <div className="md:col-span-2">
                 <FloatingLabelInput type="text" name="businessName" value={formData.businessName || ''} onChange={handleInputChange} label="Business Name" />
               </div>
-              <FloatingLabelSelect
-                id="businessType"
-                label="Business Type"
-                value={businessType}
-                onChange={(e) => {
-                  setBusinessType(e.target.value);
-                  setFormData(prev => ({
-                    ...prev,
-                    businessType: e.target.value
-                  }));
-                }}
+              <FloatingLabelSelect id="businessType" label="Business Type" value={businessType} onChange={(e) => {
+                setBusinessType(e.target.value);
+                setFormData(prev => ({
+                  ...prev,
+                  businessType: e.target.value
+                }));
+              }}
                 options={businessTypeOptions}
                 required
                 icon={<FiHome size={20} />}
@@ -404,6 +400,7 @@ const EditProfilePage: React.FC = () => {
                 required
                 icon={<FiTag size={20} />}
               />
+              <FloatingLabelInput type="text" name="gstin" value={formData.gstin || ''} onChange={handleInputChange} label="GSTIN" />
             </div>
           </fieldset>
 

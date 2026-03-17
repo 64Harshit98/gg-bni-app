@@ -31,6 +31,8 @@ interface CatalogueSalesSettings {
     minimumOrderValue: number;
     voucherPrefix?: string;
     currentVoucherNumber?: number;
+    hidePrice?: boolean;
+    requireApproval?: boolean;
 }
 
 interface Address {
@@ -114,7 +116,7 @@ const CartPage: React.FC = () => {
         }));
 
         const totalAmount = itemsForFirebase.reduce(
-            (sum, i) => sum + i.mrp * i.quantity,
+            (sum, i) => sum + i.salesPrice * i.quantity,
             0
         );
 
@@ -333,29 +335,9 @@ const CartPage: React.FC = () => {
     };
 
     const isUserApproved = leadStatus === "approved";
-    const shouldShowPrice = isUserApproved;
-
-    // const prepareInvoiceItems = async () => {
-    //     return await Promise.all(
-    //         cartItems.map(async (item, index) => {
-    //             const base64 = item.imageUrl
-    //                 ? await getCompressedBase64(item.imageUrl)
-    //                 : undefined;
-
-    //             // DEBUG LOG — YAHI DEKHNA HAI
-    //             console.log("BASE64:", base64?.slice(0, 50));
-
-    //             return {
-    //                 sno: index + 1,
-    //                 name: item.name,
-    //                 qty: item.quantity,
-    //                 price: item.price,
-    //                 total: item.price * item.quantity,
-    //                 imageBase64: base64,
-    //             };
-    //         })
-    //     );
-    // };
+    const hidePriceEnabled = salesSettings?.hidePrice === true;
+    const approvalEnabled = salesSettings?.requireApproval === true;
+    const shouldShowPrice = !hidePriceEnabled && (!approvalEnabled || isUserApproved);
 
     const placeOrder = async () => {
         if (!companyId || !currentUser?.uid) return;
@@ -542,7 +524,14 @@ const CartPage: React.FC = () => {
             'temp_cart',
             JSON.stringify(
                 updatedCart.map(i => ({
-                    item: { id: i.id, name: i.name, mrp: i.mrp },
+                    item: {
+                        id: i.id,
+                        name: i.name,
+                        mrp: i.mrp,
+                        salesPrice: i.salesPrice,
+                        imageUrl: i.imageUrl || '',
+                        moq: i.moq || 1
+                    },
                     quantity: i.quantity
                 }))
             )
@@ -578,7 +567,9 @@ const CartPage: React.FC = () => {
     return (
         <>
             <div className="bg-gray-50 min-h-screen font-sans text-[#1A3B5D] flex flex-col">
-                <LeadPopUp companyId={companyId} companyName={companyName} />
+                {salesSettings?.requireApproval && (
+                    <LeadPopUp companyId={companyId} companyName={companyName} />
+                )}
                 {orderSuccess && (
                     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                         <div className="bg-white rounded-sm shadow-2xl max-w-md w-full p-8 text-center animate-in zoom-in duration-300">
@@ -601,7 +592,7 @@ const CartPage: React.FC = () => {
                             {/* order id */}
                             {placedOrderId && (
                                 <div className="mt-4 bg-gray-50 border border-gray-200 rounded-sm p-3">
-                                    <p className="text-[10px] text-gray-400 font-bold uppercase">
+                                    <p className="text-[12px] text-gray-400 font-bold uppercase">
                                         Order ID
                                     </p>
                                     <p className="text-sm font-black text-[#1A3B5D]">
@@ -692,15 +683,15 @@ const CartPage: React.FC = () => {
                     )}
                     <div className="mb-6 flex items-center justify-center lg:justify-start gap-4">
                         <button onClick={() => setStep(1)} className="flex items-center gap-2">
-                            <span className={`w-6 h-6 rounded-sm flex items-center justify-center text-[10px] font-black transition-all ${step === 1 ? 'bg-[#00A3E1] text-white' : 'bg-green-500 text-white'}`}>
+                            <span className={`w-6 h-6 rounded-sm flex items-center justify-center text-[12px] font-black transition-all ${step === 1 ? 'bg-[#00A3E1] text-white' : 'bg-green-500 text-white'}`}>
                                 {step > 1 ? <Check size={12} strokeWidth={4} /> : "1"}
                             </span>
-                            <span className={`text-[10px] font-black uppercase tracking-widest ${step === 1 ? 'text-[#1A3B5D]' : 'text-gray-400'}`}>Cart</span>
+                            <span className={`text-[12px] font-black uppercase tracking-widest ${step === 1 ? 'text-[#1A3B5D]' : 'text-gray-400'}`}>Cart</span>
                         </button>
                         <div className="w-10 h-[2px] bg-gray-200" />
                         <button onClick={() => setStep(2)} className="flex items-center gap-2">
-                            <span className={`w-6 h-6 rounded-sm flex items-center justify-center text-[10px] font-black transition-all ${step === 2 ? 'bg-[#00A3E1] text-white' : 'bg-gray-200 text-gray-400'}`}>2</span>
-                            <span className={`text-[10px] font-black uppercase tracking-widest ${step === 2 ? 'text-[#1A3B5D]' : 'text-gray-400'}`}>Shipping</span>
+                            <span className={`w-6 h-6 rounded-sm flex items-center justify-center text-[12px] font-black transition-all ${step === 2 ? 'bg-[#00A3E1] text-white' : 'bg-gray-200 text-gray-400'}`}>2</span>
+                            <span className={`text-[12px] font-black uppercase tracking-widest ${step === 2 ? 'text-[#1A3B5D]' : 'text-gray-400'}`}>Shipping</span>
                         </button>
                     </div>
 
@@ -727,7 +718,7 @@ const CartPage: React.FC = () => {
 
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex justify-between items-start gap-2">
-                                                            <h3 className="text-[10px] font-black text-[#1A3B5D] uppercase truncate">{item.name}</h3>
+                                                            <h3 className="text-[12px] font-black text-[#1A3B5D] uppercase truncate">{item.name}</h3>
                                                             <button onClick={() => removeFromCart(item.id)} className="text-red-500 p-1 hover:bg-red-50 rounded-sm shrink-0">
                                                                 <Trash2 size={14} />
                                                             </button>
@@ -746,7 +737,7 @@ const CartPage: React.FC = () => {
                                                             />
                                                             <div className="flex items-center bg-gray-50 rounded-sm p-0.5 border border-gray-100 shrink-0">
                                                                 <button onClick={() => updateQuantity(item.id, -1)} className="w-5 h-5 flex items-center justify-center text-xs font-bold">-</button>
-                                                                <span className="px-2 text-[10px] font-black">{item.quantity}</span>
+                                                                <span className="px-2 text-[12px] font-black">{item.quantity}</span>
                                                                 <button onClick={() => updateQuantity(item.id, 1)} className="w-5 h-5 flex items-center justify-center text-[#00A3E1] text-xs font-bold">+</button>
                                                             </div>
                                                         </div>
@@ -755,13 +746,13 @@ const CartPage: React.FC = () => {
                                             </div>
                                         )) : (
                                             <div className="bg-white rounded-sm p-10 text-center shadow-sm border border-gray-100">
-                                                <p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest">Your cart is empty</p>
+                                                <p className="text-gray-400 font-bold uppercase text-[12px] tracking-widest">Your cart is empty</p>
                                             </div>
                                         )}
                                     </div>
                                     <div className="bg-white rounded-sm p-4 shadow-sm border border-gray-50">
                                         <label className="text-[8px] font-black text-gray-400 uppercase mb-2 block tracking-widest">Special Instructions</label>
-                                        <textarea placeholder="Anything else we should know?" className="w-full bg-gray-50 rounded-sm p-3 text-[10px] font-bold outline-none min-h-[60px] resize-none" />
+                                        <textarea placeholder="Anything else we should know?" className="w-full bg-gray-50 rounded-sm p-3 text-[12px] font-bold outline-none min-h-[60px] resize-none" />
                                     </div>
                                 </>
                             ) : (
@@ -773,11 +764,11 @@ const CartPage: React.FC = () => {
                                             </h3>
                                             <div className="grid grid-cols-2 gap-2.5">
                                                 <div className="space-y-1">
-                                                    <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest ml-1">Full Name</label>
-                                                    <input value={billing.name} onChange={(e) => setBilling({ ...billing, name: e.target.value })} type="text" className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[10px] font-bold outline-none" placeholder="Payer's Name" />
+                                                    <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">Full Name</label>
+                                                    <input value={billing.name} onChange={(e) => setBilling({ ...billing, name: e.target.value })} type="text" className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold outline-none" placeholder="Payer's Name" />
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest ml-1">Phone</label>
+                                                    <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">Phone</label>
                                                     <input
                                                         value={billing.phone}
                                                         onChange={(e) => {
@@ -788,22 +779,22 @@ const CartPage: React.FC = () => {
                                                             }
                                                         }}
                                                         type="tel"
-                                                        className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[10px] font-bold outline-none"
+                                                        className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold outline-none"
                                                         placeholder="10 Digits Only"
                                                     />
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest ml-1">City</label>
-                                                    <input value={billing.city} onChange={(e) => setBilling({ ...billing, city: e.target.value })} type="text" className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[10px] font-bold outline-none" placeholder="City" />
+                                                    <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">City</label>
+                                                    <input value={billing.city} onChange={(e) => setBilling({ ...billing, city: e.target.value })} type="text" className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold outline-none" placeholder="City" />
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest ml-1">State</label>
-                                                    <input value={billing.state} onChange={(e) => setBilling({ ...billing, state: e.target.value })} type="text" className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[10px] font-bold outline-none" placeholder="State" />
+                                                    <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">State</label>
+                                                    <input value={billing.state} onChange={(e) => setBilling({ ...billing, state: e.target.value })} type="text" className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold outline-none" placeholder="State" />
                                                 </div>
                                             </div>
                                             <div className="mt-3 space-y-1">
-                                                <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest ml-1">Complete Address</label>
-                                                <textarea value={billing.address} onChange={(e) => setBilling({ ...billing, address: e.target.value })} className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[10px] font-bold h-12 resize-none outline-none" placeholder="Details..."></textarea>
+                                                <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">Complete Address</label>
+                                                <textarea value={billing.address} onChange={(e) => setBilling({ ...billing, address: e.target.value })} className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold h-12 resize-none outline-none overflow-hidden" placeholder="Details..."></textarea>
                                             </div>
                                         </div>
 
@@ -830,11 +821,11 @@ const CartPage: React.FC = () => {
                                             </h3>
                                             <div className="grid grid-cols-2 gap-2.5">
                                                 <div className="space-y-1">
-                                                    <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest ml-1">Full Name</label>
-                                                    <input value={shipping.name} onChange={(e) => setShipping({ ...shipping, name: e.target.value })} type="text" className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[10px] font-bold outline-none" placeholder="Receiver's Name" />
+                                                    <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">Full Name</label>
+                                                    <input value={shipping.name} onChange={(e) => setShipping({ ...shipping, name: e.target.value })} type="text" className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold outline-none" placeholder="Receiver's Name" />
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest ml-1">Phone</label>
+                                                    <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">Phone</label>
                                                     <input
                                                         value={shipping.phone}
                                                         onChange={(e) => {
@@ -842,23 +833,23 @@ const CartPage: React.FC = () => {
                                                             setShipping({ ...shipping, phone: val });
                                                         }}
                                                         type="tel"
-                                                        className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[10px] font-bold outline-none"
+                                                        className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold outline-none"
                                                         placeholder="10 Digits Only"
                                                         disabled={isSameAsShipping}
                                                     />
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest ml-1">City</label>
-                                                    <input value={shipping.city} onChange={(e) => setShipping({ ...shipping, city: e.target.value })} type="text" className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[10px] font-bold outline-none" placeholder="City" />
+                                                    <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">City</label>
+                                                    <input value={shipping.city} onChange={(e) => setShipping({ ...shipping, city: e.target.value })} type="text" className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold outline-none" placeholder="City" />
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest ml-1">State</label>
-                                                    <input value={shipping.state} onChange={(e) => setShipping({ ...shipping, state: e.target.value })} type="text" className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[10px] font-bold outline-none" placeholder="State" />
+                                                    <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">State</label>
+                                                    <input value={shipping.state} onChange={(e) => setShipping({ ...shipping, state: e.target.value })} type="text" className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold outline-none" placeholder="State" />
                                                 </div>
                                             </div>
                                             <div className="mt-3 space-y-1">
-                                                <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest ml-1">Complete Address</label>
-                                                <textarea value={shipping.address} onChange={(e) => setShipping({ ...shipping, address: e.target.value })} className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[10px] font-bold h-12 resize-none outline-none" placeholder="Details..."></textarea>
+                                                <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">Complete Address</label>
+                                                <textarea value={shipping.address} onChange={(e) => setShipping({ ...shipping, address: e.target.value })} className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold h-12 resize-none outline-none overflow-hidden" placeholder="Details..."></textarea>
                                             </div>
                                         </div>
                                     </div>
@@ -876,10 +867,10 @@ const CartPage: React.FC = () => {
                             <div className="bg-white rounded-sm p-6 shadow-sm border border-gray-100 sticky top-24">
                                 <h3 className="text-[#1A3B5D] font-black text-xs uppercase tracking-wider mb-4 pb-2 border-b border-gray-50">Order Summary</h3>
                                 <div className="space-y-3 mb-6">
-                                    <div className="flex justify-between items-center text-[10px] font-bold text-gray-400 uppercase">
+                                    <div className="flex justify-between items-center text-[12px] font-bold text-gray-400 uppercase">
                                         <span>Subtotal</span> <span className="text-[#1A3B5D]"> {shouldShowPrice ? `₹${subtotal.toLocaleString()}` : "—"}</span>
                                     </div>
-                                    <div className="flex justify-between items-center text-[10px] font-bold text-gray-400 uppercase">
+                                    <div className="flex justify-between items-center text-[12px] font-bold text-gray-400 uppercase">
                                         <span>Delivery</span> <span className="text-green-500">Free</span>
                                     </div>
                                     <div className="pt-3 border-t border-gray-50 flex justify-between items-center">
@@ -910,7 +901,7 @@ const CartPage: React.FC = () => {
                                             placeOrder();
                                         }
                                     }}
-                                    className={`w-full bg-[#00A3E1] text-white py-4 rounded-sm font-black text-[10px] uppercase tracking-widest shadow-lg hover:brightness-110 transition-all active:scale-95 flex items-center justify-center 
+                                    className={`w-full bg-[#00A3E1] text-white py-4 rounded-sm font-black text-[12px] uppercase tracking-widest shadow-lg hover:brightness-110 transition-all active:scale-95 flex items-center justify-center 
                                       ${(isPlacing || cartItems.length === 0) ? 'opacity-70 cursor-not-allowed' : ''}`}
                                 >
                                     {isPlacing ? "Placing Order..." : step === 1 ? "Proceed to Shipping" : "Complete Purchase"}
@@ -992,7 +983,7 @@ const CartPage: React.FC = () => {
                             }
                         }}
                         disabled={cartItems.length === 0}
-                        className={`bg-[#00A3E1] text-white px-10 py-3.5 rounded-sm font-black text-[10px] uppercase tracking-widest active:scale-95 transition-transform${cartItems.length === 0 ? 'opacity-60 cursor-not-allowed' : ''} `}>
+                        className={`bg-[#00A3E1] text-white px-10 py-3.5 rounded-sm font-black text-[12px] uppercase tracking-widest active:scale-95 transition-transform${cartItems.length === 0 ? 'opacity-60 cursor-not-allowed' : ''} `}>
                         {step === 1 ? "Checkout" : "View Summary"}
                     </button>
                 </div>

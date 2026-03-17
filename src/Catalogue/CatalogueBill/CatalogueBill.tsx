@@ -171,8 +171,6 @@ export const CatalogueBill = async (
   const col2X = margin + colWidth;
   const col3X = margin + (colWidth * 2);
 
-  // place of supply
-  const posVal = data.customer.shipping?.address?.split(",").pop()?.trim()
 
   // draw text
   doc.text(
@@ -186,9 +184,21 @@ export const CatalogueBill = async (
     col2X,
     metaY
   );
+  // place of supply
+  const posVal = data.customer.shipping?.address || "";
 
-  doc.text(
+  // max width of third column
+  const posMaxWidth = colWidth - 4;
+
+  // wrap text
+  const posLines = doc.splitTextToSize(
     `Place of Supply : ${posVal}`,
+    posMaxWidth
+  );
+
+  // draw wrapped text
+  doc.text(
+    posLines,
     col3X,
     metaY
   );
@@ -197,9 +207,9 @@ export const CatalogueBill = async (
   doc.setLineWidth(0.4);
   doc.line(
     margin,
-    metaY + 4,
+    metaY + 6,
     pageWidth - margin,
-    metaY + 4
+    metaY + 6
   );
 
   cursorY = metaY + 8;
@@ -333,6 +343,11 @@ export const CatalogueBill = async (
     formatAmount(item.total),
   ]);
 
+  // ===== GRAND TOTAL ROW =====
+  const foot = [
+    ["", "", "", "", "", "", "", "Grand Total", formatAmount(data.grandTotal)]
+  ];
+
   const drawBrandingFooter = () => {
 
     const brandingHeight = 15;
@@ -404,11 +419,20 @@ export const CatalogueBill = async (
     startY: cursorY,
     head: [["No.", "Product", "Item", "Qty", "GST%", "MRP", "Price", "GSTAmt", "Total"]],
     body,
+    foot,
+    showFoot: "lastPage",
     theme: "grid",
 
     headStyles: {
       fillColor: false,
       textColor: [0, 0, 0],
+    },
+
+    footStyles: {
+      fontStyle: "bold",
+      halign: "center",
+      fillColor: false,
+      textColor: [0, 0, 0]
     },
 
     styles: {
@@ -424,12 +448,12 @@ export const CatalogueBill = async (
       0: { cellWidth: 12, halign: "center" },  // No
       1: { cellWidth: 22 },                    // Product image
       2: { cellWidth: "auto" },                // Item name
-      3: { cellWidth: 18, halign: "center" },  // Qty
-      4: { cellWidth: 18, halign: "center" },  // GST %
-      5: { cellWidth: 20, halign: "right" },   // MRP
-      6: { cellWidth: 20, halign: "right" },   // Price
-      7: { cellWidth: 22, halign: "right" },   // GST Amt
-      8: { cellWidth: 24, halign: "right", fontStyle: "bold" }, // Total
+      3: { cellWidth: 14, halign: "center" },  // Qty
+      4: { cellWidth: 16, halign: "center" },  // GST %
+      5: { cellWidth: 24, halign: "center" },   // MRP
+      6: { cellWidth: 24, halign: "center" },   // Price
+      7: { cellWidth: 22, halign: "center" },   // GST Amt
+      8: { cellWidth: 24, halign: "center", fontStyle: "bold" }, // Total
     },
 
     didDrawCell: (hookData) => {
@@ -521,6 +545,7 @@ export const CatalogueBill = async (
   finalY += wordsH;
 
   doc.rect(margin, finalY, pageWidth - margin * 2, bankH);
+
   doc.setFont("helvetica", "bold");
   doc.text("BANK DETAIL :", margin + 3, finalY + 4);
 
@@ -535,16 +560,38 @@ export const CatalogueBill = async (
 
   doc.setFont("helvetica", "normal");
 
+  // ===== 2 COLUMN LAYOUT =====
+  const contentStartX = margin + 35;
+  const contentWidth = pageWidth - margin * 2 - 40;
+
+  // split into 2 columns
+  const leftColWidth = contentWidth * 0.6;
+  const rightColWidth = contentWidth * 0.4;
+
+  // LEFT → Bank + A/C No
+  const leftText = [
+    `Bank : ${data.bankName || ""}`,
+    `A/C No : ${data.accountNumber || ""}`,
+  ].join("\n");
+
+  const leftLines = doc.splitTextToSize(leftText, leftColWidth);
+
+  // RIGHT → IFSC
+  const rightText = `IFSC : ${data.ifscCode || ""}`;
+  const rightLines = doc.splitTextToSize(rightText, rightColWidth);
+
+  // draw LEFT
   doc.text(
-    `Bank : ${data.bankName || ""} , A/C : ${data.accountNumber || ""}`,
-    margin + 35,
+    leftLines,
+    contentStartX,
     finalY + 4
   );
 
+  // draw RIGHT
   doc.text(
-    `IFSC : ${data.ifscCode || ""}`,
-    margin + 35,
-    finalY + 8
+    rightLines,
+    contentStartX + leftColWidth + 5,
+    finalY + 4
   );
 
   finalY += bankH;

@@ -4,7 +4,7 @@ import { useDatabase } from '../context/auth-context';
 import { doc, getDoc } from 'firebase/firestore';
 import { db, storage } from '../lib/Firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { FiSave, FiX, FiPackage } from 'react-icons/fi';
+import { FiSave, FiX, FiPackage, FiCamera } from 'react-icons/fi';
 import { Spinner } from '../constants/Spinner';
 import imageCompression from 'browser-image-compression';
 
@@ -42,6 +42,7 @@ const UNIT_OPTIONS = [
 ];
 
 export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, onClose, onSaveSuccess }) => {
+    const cameraInputRef = useRef<HTMLInputElement>(null);
     const dbOperations = useDatabase();
     const [formData, setFormData] = useState<Partial<Item>>({});
     const [isSaving, setIsSaving] = useState(false);
@@ -163,7 +164,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
         setUploadProgress(null);
 
         const options = {
-            maxSizeMB: 5,
+            maxSizeMB: 0.05,
             maxWidthOrHeight: 1920,
             useWebWorker: true,
         };
@@ -289,11 +290,11 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
 
     return (
         <div
-            className={`fixed inset-0 z-40 flex justify-center items-end transition-opacity duration-300 ease-in-out ${overlayClasses}`}
+            className={`fixed inset-0 z-1000 flex justify-center items-end transition-opacity duration-300 ease-in-out ${overlayClasses}`}
             onClick={onClose}
         >
             <div
-                className={`bg-white rounded-t-lg shadow-xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden transform transition-all duration-300 ease-in-out ${drawerClasses}`}
+                className={`bg-white rounded-t-lg shadow-xl w-full max-w-md h-[80vh] flex flex-col transform transition-all duration-300 ease-in-out ${drawerClasses}`}
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="p-4 text-center relative border-b">
@@ -327,23 +328,37 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
 
                             <div>
                                 <label className="text-sm font-medium leading-none mb-1 block">Item Image</label>
+
                                 <ImagePreview imageUrl={imagePreview} alt={formData.name || "Item Preview"} />
+
+                                {/* CAMERA INPUT (HIDDEN) */}
                                 <input
                                     type="file"
-                                    accept="image/png, image/jpeg"
+                                    accept="image/*"
+                                    capture="environment"
                                     onChange={handleFileChange}
-                                    className="mt-2 text-sm w-full file:mr-4 file:py-2 file:px-4 file:rounded-sm file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                                    disabled={isSaving}
+                                    ref={cameraInputRef}
+                                    className="hidden"
                                 />
-                                {uploadProgress !== null && (
-                                    <div className="w-full bg-gray-200 rounded-md h-2.5 mt-2 overflow-hidden">
-                                        <div
-                                            className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
-                                            style={{ width: `${uploadProgress}%` }}
-                                        ></div>
-                                    </div>
-                                )}
-                                {isSaving && uploadProgress !== null && <p className="text-sm text-gray-600 mt-1">Uploading image...</p>}
+
+                                <div className='flex'>
+                                    <input
+                                        type="file"
+                                        accept="image/png, image/jpeg"
+                                        onChange={handleFileChange}
+                                        className="mt-2 text-sm w-full file:mr-4 file:py-2 file:px-4 file:rounded-sm file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                                        disabled={isSaving}
+                                    />
+
+                                    <button
+                                        type="button"
+                                        onClick={() => cameraInputRef.current?.click()}
+                                        className="p-2 rounded bg-green-100 hover:bg-green-200 mt-2 cursor-pointer"
+                                    >
+                                        <FiCamera size={20} />
+                                    </button>
+
+                                </div>
                             </div>
 
                             <div>
@@ -367,6 +382,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         type="number" id="edit-mrp" name="mrp" step="0.01"
                                         value={formData.mrp ?? ''}
                                         onChange={handleChange}
+                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
                                         className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         disabled={isSaving}
                                     />
@@ -399,6 +415,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         type="number" id="edit-salesPrice" name="salesPrice" step="0.01"
                                         value={formData.salesPrice ?? ''}
                                         onChange={handleChange}
+                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
                                         className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         disabled={isSaving}
                                         placeholder="Optional"
@@ -410,6 +427,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         type="number" id="edit-purchasePrice" name="purchasePrice" step="0.01"
                                         value={formData.purchasePrice ?? ''}
                                         onChange={handleChange}
+                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
                                         className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         disabled={isSaving}
                                     />
@@ -425,6 +443,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         type="number" id="edit-discount" name="discount" step="0.01"
                                         value={formData.discount ?? ''}
                                         onChange={handleChange}
+                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
                                         className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         disabled={isSaving}
                                     />
@@ -435,6 +454,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         type="number" id="edit-purchasediscount" name="purchasediscount" step="0.01"
                                         value={formData.purchasediscount ?? ''}
                                         onChange={handleChange}
+                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
                                         className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         disabled={isSaving}
                                     />
@@ -449,6 +469,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         type="number" id="edit-tax" name="tax" step="0.01"
                                         value={formData.tax ?? ''}
                                         onChange={handleChange}
+                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
                                         className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         disabled={isSaving}
                                     />
@@ -459,6 +480,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         type="text" id="edit-hsnSac" name="hsnSac"
                                         value={formData.hsnSac || ''}
                                         onChange={handleChange}
+                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
                                         className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         disabled={isSaving}
                                         placeholder="e.g. 123456"
@@ -523,6 +545,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         step="1"
                                         value={formData.stock ?? ''}
                                         onChange={handleChange}
+                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}  
                                         className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         disabled={isSaving}
                                     />
@@ -557,25 +580,25 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                             </div>
                         </>
                     )}
+                    <div className="border-t p-4 flex gap-3 bg-white md:sticky md:bottom-0">
+                        <button
+                            onClick={handleSave}
+                            disabled={isSaving || isFetching}
+                            className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-sky-500 text-white hover:bg-gray-800 h-10 px-4 py-2 flex-1 gap-2 disabled:bg-gray-400"
+                        >
+                            {isSaving ? <Spinner /> : <FiSave size={16} />}
+                            {isSaving ? (uploadProgress !== null ? 'Uploading...' : 'Saving...') : 'Save Changes'}
+                        </button>
+                        <button
+                            onClick={onClose}
+                            disabled={isSaving}
+                            className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-gray-300 bg-white hover:bg-gray-100 hover:text-gray-900 h-10 px-4 py-2 flex-1"
+                        >
+                            Cancel
+                        </button>
+                    </div>
                 </div>
 
-                <div className="mt-auto border-t p-4 flex gap-3">
-                    <button
-                        onClick={handleSave}
-                        disabled={isSaving || isFetching}
-                        className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-sky-500 text-white hover:bg-gray-800 h-10 px-4 py-2 flex-1 gap-2 disabled:bg-gray-400"
-                    >
-                        {isSaving ? <Spinner /> : <FiSave size={16} />}
-                        {isSaving ? (uploadProgress !== null ? 'Uploading...' : 'Saving...') : 'Save Changes'}
-                    </button>
-                    <button
-                        onClick={onClose}
-                        disabled={isSaving}
-                        className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-gray-300 bg-white hover:bg-gray-100 hover:text-gray-900 h-10 px-4 py-2 flex-1"
-                    >
-                        Cancel
-                    </button>
-                </div>
             </div>
         </div>
     );

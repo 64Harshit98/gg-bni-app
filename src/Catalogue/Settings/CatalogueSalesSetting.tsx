@@ -14,7 +14,7 @@ import { useAuth } from '../../context/auth-context';
 export interface CatalogueSalesSettings {
   companyId: string
   settingType: 'catalogueSales'
-  showOutOfStockItems: boolean
+  allowNegativeInventory: boolean
   enableOutOfStockNotification: boolean
   priceDisplayMode: 'mrp' | 'salePrice' | 'both'
   showDiscountBadge: boolean
@@ -31,14 +31,15 @@ export interface CatalogueSalesSettings {
   enableRounding?: boolean;
   roundingInterval?: number;
   enforceExactMRP?: boolean;
-  hideMrp?: boolean;
+  hidePrice?: boolean;
   cartInsertionOrder?: 'top' | 'bottom';
+  requireApproval: boolean;
 }
 
 export const getDefaultCatalogueSalesSettings = (companyId: string): CatalogueSalesSettings => ({
   companyId,
   settingType: 'catalogueSales',
-  showOutOfStockItems: true,
+  allowNegativeInventory: true,
   enableOutOfStockNotification: true,
   priceDisplayMode: 'both',
   showDiscountBadge: true,
@@ -46,7 +47,7 @@ export const getDefaultCatalogueSalesSettings = (companyId: string): CatalogueSa
   allowQuantityDecreaseToZero: false,
   enableLeadPopup: false,
   minimumOrderValue: 0,
-  voucherPrefix: 'SLS-',
+  voucherPrefix: 'CAT-',
   currentVoucherNumber: 1,
   copyVoucherAfterSaving: false,
   gstScheme: 'none',
@@ -55,8 +56,9 @@ export const getDefaultCatalogueSalesSettings = (companyId: string): CatalogueSa
   enableRounding: true,
   roundingInterval: 1,
   enforceExactMRP: false,
-  hideMrp: false,
-  cartInsertionOrder:'top'
+  hidePrice: false,
+  cartInsertionOrder: 'top',
+  requireApproval: false
 });
 
 const CatalogueSalesSettings: React.FC = () => {
@@ -202,20 +204,20 @@ const CatalogueSalesSettings: React.FC = () => {
             <div className="flex items-center mb-4">
               <input
                 type="checkbox"
-                checked={settings.showOutOfStockItems}
+                checked={settings.allowNegativeInventory}
                 onChange={(e) =>
                   handleCheckboxChange(
-                    'showOutOfStockItems',
+                    'allowNegativeInventory',
                     e.target.checked
                   )
                 }
                 className="w-4 h-4"
               />
               <label className="ml-2 text-sm">
-                Show Out of Stock Items
+                Allow Negative Inventory
               </label>
             </div>
-            <div className="flex items-center">
+            {/* <div className="flex items-center">
               <input
                 type="checkbox"
                 checked={settings.enableOutOfStockNotification}
@@ -229,6 +231,40 @@ const CatalogueSalesSettings: React.FC = () => {
               />
               <label className="ml-2 text-sm">
                 Enable Notify me button when item is out of stock
+              </label>
+            </div> */}
+
+            {/* <div className="flex items-center mt-4">
+              <input
+                type="checkbox"
+                checked={settings.requireApproval}
+                onChange={(e) =>
+                  handleCheckboxChange(
+                    'requireApproval',
+                    e.target.checked
+                  )
+                }
+                className="w-4 h-4"
+              />
+              <label className="ml-2 text-sm">
+                Require Customer Approval Before Ordering
+              </label>
+            </div> */}
+
+            <div className="flex items-center mt-4">
+              <input
+                type="checkbox"
+                checked={settings.hidePrice}
+                onChange={(e) =>
+                  handleCheckboxChange(
+                    'hidePrice',
+                    e.target.checked
+                  )
+                }
+                className="w-4 h-4"
+              />
+              <label className="ml-2 text-sm">
+                Hide Price from Customers
               </label>
             </div>
           </div>

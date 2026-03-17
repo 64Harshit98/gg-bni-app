@@ -18,18 +18,24 @@ export interface ItemSettings {
     requireUnit: boolean;
     autoGenerateBarcode: boolean;
     requireCategory: boolean; // ADDED: Category Requirement
+    requireBarcode:boolean;
+    requireSaleDiscount: boolean;
+    requirePurchaseDiscount:boolean
 }
 
 export const getDefaultItemSettings = (companyId: string): ItemSettings => ({
     companyId: companyId,
     settingType: 'item',
-    requirePurchasePrice: true,
+    requirePurchasePrice: false,
     requireDiscount: false,
     requireTax: false,
     requireRestockQuantity: false,
     requireCategory: false,
     requireUnit: false,
     autoGenerateBarcode: true,
+    requireBarcode: false,
+    requireSaleDiscount: false,
+    requirePurchaseDiscount: false
 });
 
 const ItemSettingsPage: React.FC = () => {

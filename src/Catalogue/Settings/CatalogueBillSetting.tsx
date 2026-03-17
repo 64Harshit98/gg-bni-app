@@ -80,35 +80,50 @@ const CatalogueBillSettings: React.FC = () => {
                 setIsLoading(true);
                 const companyId = currentUser.companyId;
 
-                // A. Fetch Business Info
                 const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
-                const businessSnap = await getDoc(businessDocRef);
-
-                if (businessSnap.exists()) {
-                    const data = businessSnap.data();
-                    setBusinessInfo({
-                        companyName: data.businessName || data.name || '',
-                        address: formatAddress(data.streetAddress || data.city || data.state || data.postalCode ? data : null),
-                        phone: data.phoneNumber || data.mobile || '',
-                        email: data.email || ''
-                    });
-                }
-
-                // B. Fetch Bill Settings
                 const settingsDocRef = doc(db, 'companies', companyId, 'settings', 'bill');
-                const settingsSnap = await getDoc(settingsDocRef);
 
-                if (settingsSnap.exists()) {
-                    const data = settingsSnap.data() as BillSettingsData;
-                    setSettings(prev => ({ ...prev, ...data }));
+                const [businessSnap, settingsSnap] = await Promise.all([
+                    getDoc(businessDocRef),
+                    getDoc(settingsDocRef)
+                ]);
 
-                    // <--- 4. Load existing signature into canvas if it exists
-                    if (data.signatureBase64 && sigPadRef.current) {
-                        sigPadRef.current.fromDataURL(data.signatureBase64);
-                    }
+                const bData = businessSnap.exists() ? businessSnap.data() : {};
+                const sData = settingsSnap.exists() ? settingsSnap.data() : {};
+
+                setBusinessInfo({
+                    companyName: bData.businessName || bData.name || 'Not Set',
+                    address: formatAddress(bData),
+                    phone: bData.phoneNumber || bData.phone || 'Not Set',
+                    email: bData.email || 'Not Set'
+                });
+
+                const loadedSettings = {
+                    companyGstin: sData.companyGstin || bData.gstin || '',
+                    msmeNumber: sData.msmeNumber || bData.registrationNumber || '',
+                    panNumber: sData.panNumber || bData.panNumber || '',
+                    bankName: sData.bankName || bData.bankName || '',
+                    accountName: sData.accountName || bData.accountHolderName || '',
+                    accountNumber: sData.accountNumber || bData.accountNumber || '',
+                    ifscCode: sData.ifscCode || bData.ifscCode || '',
+                    termsAndConditions: sData.termsAndConditions || '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
+                    signatureBase64: sData.signatureBase64 || '',
+                    upiId: sData.upiId || bData.upiId || '',
+                };
+
+                setSettings(loadedSettings);
+
+                // FIX: Load signature after component has mounted and canvas is ready
+                if (loadedSettings.signatureBase64) {
+                    setTimeout(() => {
+                        if (sigPadRef.current) {
+                            sigPadRef.current.fromDataURL(loadedSettings.signatureBase64);
+                        }
+                    }, 200); // Tiny delay to ensure canvas DOM is ready
                 }
+
             } catch (error) {
-                console.error("Error fetching data:", error);
+                console.error("Error fetching bill settings:", error);
                 setModal({ message: "Failed to load settings.", type: State.ERROR });
             } finally {
                 setIsLoading(false);

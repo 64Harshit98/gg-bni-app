@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { motion, AnimatePresence } from "framer-motion";
 import { ACTION } from '../enums/action.enum'
 import { useLocation } from 'react-router-dom';
 import { db } from '../lib/Firebase';
@@ -297,16 +298,30 @@ const OrdersPage: React.FC = () => {
     const [editingOrder, setEditingOrder] = useState<Order | null>(null);
     const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
     const [showQrModal, setShowQrModal] = useState<Order | null>(null);
-    const [dateRange, setDateRange] = useState<{ start: Date | null, end: Date | null }>({
-        start: new Date(new Date().setHours(0, 0, 0, 0)),
-        end: new Date(new Date().setHours(23, 59, 59, 999))
+    const [dateRange, setDateRange] = useState<{ start: Date | null, end: Date | null }>(() => {
+
+        if (location.state?.startDate && location.state?.endDate) {
+
+            const start = new Date(location.state.startDate);
+            start.setHours(0, 0, 0, 0);
+
+            const end = new Date(location.state.endDate);
+            end.setHours(23, 59, 59, 999);
+
+            return { start, end };
+        }
+
+        return {
+            start: new Date(new Date().setHours(0, 0, 0, 0)),
+            end: new Date(new Date().setHours(23, 59, 59, 999))
+        };
     });
     const [_itemGroupMap, setItemGroupMap] = useState<Record<string, string>>({});
     const [_pageIsLoading, setPageIsLoading] = useState(false);
     const dbOperations = useDatabase();
     const [_error, setError] = useState<string | null>(null);
     const [availableItems, setAvailableItems] = useState<Item[]>([]);
-    const [pendingRequestCount, setPendingRequestCount] = useState(0);
+    // const [pendingRequestCount, setPendingRequestCount] = useState(0);
 
     const { currentUser } = useAuth();
     const { Orders, loading: dataLoading, error } = useOrdersData(
@@ -344,32 +359,19 @@ const OrdersPage: React.FC = () => {
 
 
     const getDateDisplay = useMemo(() => {
-        if (activeDateFilter === 'custom') {
-            return `${customDateRange.start || '...'} to ${customDateRange.end || '...'}`;
+
+        if (!dateRange.start || !dateRange.end) return '';
+
+        const format = (d: Date) =>
+            d.toLocaleDateString('en-GB');
+
+        if (dateRange.start.toDateString() === dateRange.end.toDateString()) {
+            return format(dateRange.start);
         }
 
-        const today = new Date();
-        let start = new Date();
-        let end = new Date();
+        return `${format(dateRange.start)} to ${format(dateRange.end)}`;
 
-        if (activeDateFilter === 'today') {
-            return today.toLocaleDateString('en-GB'); // Format: DD/MM/YYYY
-        }
-
-        if (activeDateFilter === 'yesterday') {
-            start.setDate(today.getDate() - 1);
-            return start.toLocaleDateString('en-GB');
-        }
-
-        if (activeDateFilter === 'last7') {
-            start.setDate(today.getDate() - 6);
-        } else if (activeDateFilter === 'last30') {
-            start.setDate(today.getDate() - 29);
-        }
-
-        // Format: "DD/MM/YYYY to DD/MM/YYYY"
-        return `${start.toLocaleDateString('en-GB')} to ${end.toLocaleDateString('en-GB')}`;
-    }, [activeDateFilter, customDateRange]);
+    }, [dateRange]);
 
     useEffect(() => {
         if (location.state?.defaultStatus) {
@@ -447,29 +449,28 @@ const OrdersPage: React.FC = () => {
         fetchData();
     }, [dbOperations, currentUser?.companyId]);
 
-    useEffect(() => {
-        if (!currentUser?.companyId) return;
+    // useEffect(() => {
+    //     if (!currentUser?.companyId) return;
 
-        const fetchPendingRequests = async () => {
-            try {
-                const snap = await getDocs(
-                    collection(db, "companies", currentUser.companyId, "AuthorizedUser")
-                );
+    //     const fetchPendingRequests = async () => {
+    //         try {
+    //             const snap = await getDocs(
+    //                 collection(db, "companies", currentUser.companyId, "AuthorizedUser")
+    //             );
 
-                const pending = snap.docs.filter(
-                    (d: any) => d.data()?.status === "pending"
-                ).length;
+    //             // const pending = snap.docs.filter(
+    //             //     (d: any) => d.data()?.status === "pending"
+    //             // ).length;
 
-                setPendingRequestCount(pending);
-            } catch (err) {
-                console.error("Pending request fetch error:", err);
-            }
-        };
+    //             // setPendingRequestCount(pending);
+    //         } catch (err) {
+    //             console.error("Pending request fetch error:", err);
+    //         }
+    //     };
 
-        fetchPendingRequests();
-    }, [currentUser?.companyId]);
+    //     fetchPendingRequests();
+    // }, [currentUser?.companyId]);
 
-    // PDF & Sharing Functions (Same as provided)
     const handlePdfAction = async (Order: Order, action: ACTION) => {
 
         setPdfLoadingOrderId(Order.id);
@@ -583,8 +584,7 @@ const OrdersPage: React.FC = () => {
             });
 
             // 3. Recalculate Total Amount (MRP * Quantity)
-            const newTotal = updatedItems.reduce((sum, i) => sum + (Number(i.mrp || 0) * Number(i.quantity || 0)), 0);
-
+            const newTotal = updatedItems.reduce((sum, i) => sum + ((Number(i.salesPrice ?? i.mrp) || 0) * Number(i.quantity || 0)), 0);
             return {
                 ...prevOrder,
                 items: updatedItems,
@@ -821,6 +821,37 @@ const OrdersPage: React.FC = () => {
         }
     };
 
+    const handlePreviousStatus = async (
+        orderId: string,
+        currentStatus: OrderStatus
+    ) => {
+
+        const prevStatusMap: Record<OrderStatus, OrderStatus> = {
+            Upcoming: "Upcoming",
+            Confirmed: "Confirmed",
+            Packed: "Confirmed",
+            Completed: "Packed",
+            Paid: "Completed"
+        };
+
+        const prevStatus = prevStatusMap[currentStatus];
+
+        if (!currentUser?.companyId) return;
+
+        const OrderRef = doc(
+            db,
+            "companies",
+            currentUser.companyId,
+            "Orders",
+            orderId
+        );
+
+        await updateDoc(OrderRef, {
+            status: prevStatus,
+            updatedAt: serverTimestamp()
+        });
+    };
+
     // {
     //     isGeneratingPdf && (
     //         <div className="fixed inset-0 z-[5000] bg-black/40 flex items-center justify-center">
@@ -903,16 +934,12 @@ const OrdersPage: React.FC = () => {
             </div>
 
             {/* --- 6. UPDATED STEPPER SECTION --- */}
-            <div className={`bg-white shadow-sm sticky z-[50] bOrder-b top-[72px]`}>
+            <div className={`bg-white shadow-sm sticky z-[50] border-b top-[72px]`}>
 
-                {/* REQUEST STRIP (30% height feel) */}
-                <div
+                {/* Request Page */}
+                {/* <div
                     onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`)}
-                    className="mx-3 mt-2 mb-2 rounded-sm cursor-pointer
-               bg-white border border-slate-200
-               px-3 py-2 flex items-center justify-between
-               shadow-sm hover:bg-slate-50 active:scale-[0.99] transition-all"
-                >
+                    className="mx-3 mt-2 mb-2 rounded-sm cursor-pointer bg-white border border-slate-200 px-3 py-2 flex items-center justify-between shadow-sm hover:bg-slate-50 active:scale-[0.99] transition-all">
                     <div className="flex flex-col">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
                             Customer Requests
@@ -922,16 +949,16 @@ const OrdersPage: React.FC = () => {
                         </span>
                     </div>
 
-                    {/*  Pending Count Badge */}
+                   
                     <div className="min-w-[26px] h-[22px] px-2 flex items-center justify-center
                     text-[11px] font-black rounded-sm
                     bg-red-500 text-white">
                         {pendingRequestCount}
                     </div>
-                </div>
+                </div> */}
 
                 {/* ORDER TIMELINE */}
-                <div className="flex items-center w-full px-2 md:px-10 pt-8 pb-9 bg-white">
+                <div className="flex items-center w-full px-2 md:px-10 pt-9 pb-9 bg-white">
                     {OrderStatuses.map((status, index) => {
                         const activeIndex = OrderStatuses.indexOf(activeStatusTab);
                         const isCompleted = index < activeIndex;
@@ -941,8 +968,12 @@ const OrdersPage: React.FC = () => {
                         return (
                             <React.Fragment key={status}>
                                 <div
-                                    className="relative flex flex-col items-center flex-1 min-w-0 cursor-pointer"
-                                    onClick={() => setActiveStatusTab(status)}
+                                    className={`relative flex flex-col items-center flex-1 min-w-0 ${status === "Upcoming" ? "cursor-not-allowed" : "cursor-pointer"}`}
+                                    onClick={() => {
+                                        if (status !== "Upcoming") {
+                                            setActiveStatusTab(status);
+                                        }
+                                    }}
                                 >
                                     <span
                                         className={`absolute ${index % 2 === 0 ? 'bottom-full mb-2' : 'top-full mt-2'
@@ -951,12 +982,24 @@ const OrdersPage: React.FC = () => {
                                         {status}
                                     </span>
                                     <div
-                                        className={`w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center transition-all duration-300 z-10 ${isCompleted || isActive
-                                            ? 'bg-orange-500 border-orange-200 text-white'
-                                            : 'bg-gray-200 border-gray-300 text-gray-500'} ${isActive ? 'scale-110 shadow-md ring-2 ring-orange-100' : ''}`}>
-                                        <span className="text-[10px] md:text-xs font-black">
-                                            {count}
-                                        </span>
+                                        className={`relative w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center transition-all duration-300 z-10 ${status === "Upcoming"
+                                            ? "bg-orange-500 text-white"
+                                            : isCompleted || isActive
+                                                ? "bg-orange-500 text-white"
+                                                : "bg-gray-200 text-gray-500"
+                                            } ${isActive ? "scale-110 shadow-md ring-2 ring-orange-100" : ""}`}
+                                    >
+
+                                        {status === "Upcoming" ? (
+                                            <span className="absolute px-1 py-[2px] text-[5px] font-black uppercase rounded-full bg-orange-100 text-orange-700 border border-orange-300 whitespace-nowrap">
+                                                Coming Soon
+                                            </span>
+                                        ) : (
+                                            <span className="text-[10px] md:text-xs font-black">
+                                                {count}
+                                            </span>
+                                        )}
+
                                     </div>
                                 </div>
 
@@ -995,384 +1038,412 @@ const OrdersPage: React.FC = () => {
                 ) : error ? (
                     <p className="p-8 text-center text-red-500">{error}</p>
                 ) : filteredOrders.length > 0 ? (
-                    filteredOrders.map((Order) => {
-                        const returnMethods =
-                            Order.returnHistory && Order.returnHistory.length > 0
-                                ? Array.from(
-                                    new Set(
-                                        Order.returnHistory.map(r => r.modeOfReturn)
-                                    )) : [];
-                        const isExpanded = expandedorderId === Order.id;
-                        const isUpcomingStatus = Order.status === 'Upcoming';
-                        const total = (Order.items || []).reduce((sum, item) => {
-                            const price = Number(item.mrp || item.salesPrice || 0) * Number(item.quantity || 0);
-                            return sum + price;
-                        }, 0);
-                        const paid = Number(Order.paidAmount || 0);
-                        const due = Math.max(0, total - paid);
-                        const isPaid = Order.status === 'Paid';
-                        const isFinalStage = Order.status === 'Completed' || Order.status === 'Paid';
-                        return (
-                            <CustomCard key={Order.id} onClick={() => handleOrderClick(Order.id)} className="p-3.5 mb-3 bg-white shadow-sm border border-gray-100 rounded-sm cursor-pointer relative">
-                                {/* 🔁 RETURN METHOD BADGE - TOP LEFT */}
-                                {returnMethods.length > 0 && (
-                                    <div className="absolute -top-0.5 left-0 flex flex-wrap gap-1 p-1">
-                                        {returnMethods.map((method, index) => (
-                                            <span
-                                                key={`${method}-${index}`}
-                                                className={`text-[8px] uppercase font-bold px-2 py-0.5 rounded border ${method === 'EXCHANGE'
-                                                    ? 'bg-purple-50 text-purple-700 border-purple-200'
-                                                    : method === 'CASH REFUND'
-                                                        ? 'bg-green-50 text-green-700 border-green-200'
-                                                        : 'bg-orange-50 text-orange-700 border-orange-200'
-                                                    }`}
-                                            >
-                                                {method}
-                                            </span>
-                                        ))}
-                                    </div>
-                                )}
-                                {!isUpcomingStatus && (
-                                    <button
-                                        onClick={(e) => { e.stopPropagation(); setEditingOrder(Order); }}
-                                        className="absolute top-5 left-2 p-2 bg-white/90 backdrop-blur-sm text-slate-500 rounded-sm transition-all duration-300 z-20 group"
-                                    >
-                                        <div className="flex items-center cursor-pointer">
-                                            <IconEdit className='h-3 w-3' />
-                                        </div>
-                                    </button>
-                                )}
-                                <div className="absolute right-5 top-0 flex gap-1">
-                                    {/* PAYMENT METHOD BADGES (DUE EXCLUDED) */}
-                                    {Order.paymentMethods &&
-                                        Object.entries(Order.paymentMethods)
-                                            .filter(([method, amount]) => {
-                                                if (method.toLowerCase() === 'due') return false;
-
-                                                const latestReturn =
-                                                    Order.returnHistory?.[Order.returnHistory.length - 1];
-
-                                                const usedInExchange =
-                                                    latestReturn?.paymentDetails &&
-                                                    Number(latestReturn.paymentDetails[method]) > 0;
-
-                                                // agar exchange me use hua hai to blue me mat dikha
-                                                if (usedInExchange) return false;
-
-                                                return Number(amount) > 0;
-                                            })
-                                            .map(([method]) => (
-                                                <span
-                                                    key={`original-${method}`}
-                                                    className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100"
-                                                >
-                                                    {method}
-                                                </span>
-                                            ))}
-
-                                    {Order.returnHistory &&
-                                        Order.returnHistory.length > 0 &&
-                                        (() => {
-                                            const latestReturn =
-                                                Order.returnHistory[Order.returnHistory.length - 1];
-
-                                            if (!latestReturn.paymentDetails) return null;
-
-                                            return Object.entries(latestReturn.paymentDetails)
-                                                .filter(
-                                                    ([method, amount]) =>
-                                                        method.toLowerCase() !== 'due' &&
-                                                        Number(amount) > 0
-                                                )
-                                                .map(([method]) => (
+                    <AnimatePresence>
+                        {filteredOrders.map((Order) => {
+                            const returnMethods =
+                                Order.returnHistory && Order.returnHistory.length > 0
+                                    ? Array.from(
+                                        new Set(
+                                            Order.returnHistory.map(r => r.modeOfReturn)
+                                        )) : [];
+                            const isExpanded = expandedorderId === Order.id;
+                            const isUpcomingStatus = Order.status === 'Upcoming';
+                            const total = (Order.items || []).reduce((sum, item) => {
+                                const price = Number(item.salesPrice ?? item.mrp ?? 0) * Number(item.quantity || 0);
+                                return sum + price;
+                            }, 0);
+                            const paid = Number(Order.paidAmount || 0);
+                            const due = Math.max(0, total - paid);
+                            const isPaid = Order.status === 'Paid';
+                            const isFinalStage = Order.status === 'Completed' || Order.status === 'Paid';
+                            return (
+                                <motion.div
+                                    key={Order.id}
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -20 }}
+                                    transition={{ duration: 0.25 }}
+                                >
+                                    <CustomCard key={Order.id} onClick={() => handleOrderClick(Order.id)} className="p-3.5 mb-3 bg-white shadow-sm border border-gray-100 rounded-sm cursor-pointer relative">
+                                        {/* 🔁 RETURN METHOD BADGE - TOP LEFT */}
+                                        {returnMethods.length > 0 && (
+                                            <div className="absolute -top-0.5 left-0 flex flex-wrap gap-1 p-1">
+                                                {returnMethods.map((method, index) => (
                                                     <span
-                                                        key={`exchange-${method}`}
-                                                        className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-red-50 text-red-600 border border-red-200"
+                                                        key={`${method}-${index}`}
+                                                        className={`text-[8px] uppercase font-bold px-2 py-0.5 rounded border ${method === 'EXCHANGE'
+                                                            ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                                            : method === 'CASH REFUND'
+                                                                ? 'bg-green-50 text-green-700 border-green-200'
+                                                                : 'bg-orange-50 text-orange-700 border-orange-200'
+                                                            }`}
                                                     >
                                                         {method}
                                                     </span>
-                                                ));
-                                        })()}
-
-                                </div>
-                                <div className="flex justify-between items-start pl-6 mt-1">
-                                    <div>
-                                        {!isUpcomingStatus && (
-                                            <h3 className="text-sm font-bold text-slate-800">
-                                                {Order.orderId}
-                                            </h3>
-                                        )}
-                                        <p className="text-black text-xs font-medium">
-                                            {Order.userName}
-                                            {Order.status === "Upcoming" && Order.userLoginPhone && (
-                                                <span className="ml-2 text-[10px] text-black font-semibold border p-1 bg-gray-100">
-                                                    {Order.userLoginPhone}
-                                                </span>
-                                            )}
-                                        </p>
-
-                                        <p className="text-[10px] text-gray-400 mt-1">{Order.time}</p>
-                                    </div>
-                                    <div className="text-right flex flex-col items-end">
-                                        <div className="flex items-center gap-2">
-                                            <p className="text-[18px] font-bold text-black">₹{formatAmount(total)}
-                                            </p>
-                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}><path d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
-                                        </div>
-                                        <p className="text-[10px] font-boldpx-2 py-0.5 mt-1">Items: {Order.items?.length || 0}</p>
-                                    </div>
-                                </div>
-
-                                {isExpanded && (
-                                    <div className={`mt-1 border-t pt-4 ${isUpcomingStatus ? "pb-2" : ""}`}>
-                                        {/* Addresses Section */}
-                                        {!isUpcomingStatus && (
-                                            <div className="grid grid-cols-2 gap-4 mb-1 pb-4 border-b">
-                                                <div className="space-y-1">
-                                                    <p className="text-[8px] font-black text-orange-500 uppercase">Billing Address</p>
-                                                    <p className="text-[11px] font-bold text-slate-800">{Order.billingDetails?.name}</p>
-                                                    <p className="text-[10px] text-gray-500 leading-tight">{Order.billingDetails?.address}</p>
-                                                    <p className="text-[10px] text-gray-500">{Order.billingDetails?.phone}</p>
-                                                </div>
-                                                <div className="space-y-1 border-l pl-4">
-                                                    <p className="text-[8px] font-black text-blue-500 uppercase">Shipping Address</p>
-                                                    <p className="text-[11px] font-bold text-slate-800">{Order.shippingDetails?.name || Order.billingDetails?.name}</p>
-                                                    <p className="text-[10px] text-gray-500 leading-tight">{Order.shippingDetails?.address || Order.billingDetails?.address}</p>
-                                                    <p className="text-[10px] text-gray-500">{Order.shippingDetails?.phone}</p>
-                                                </div>
-                                            </div>
-                                        )}
-                                        {/* Items Section */}
-                                        <div>
-                                            {Order.items?.map((item, idx) => (
-                                                <div key={idx} className="p-2">
-                                                    <div className="flex justify-between items-start -mb-1">
-                                                        <div className="flex-1">
-                                                            <p className="text-[11px] font-extrabold text-slate-800 leading-tight mb-1">{item.name}</p>
-                                                            {item.note && (
-                                                                <p className="text-[9px] leading-tight flex items-baseline gap-1.5 mt-1 opacity-80">
-                                                                    <span className="font-black uppercase tracking-widest font-xs">Note:</span>
-                                                                    <span className="font-xs italic text-slate-600">{item.note}</span>
-                                                                </p>
-                                                            )}
-                                                            <p className="text-[10px] text-gray-400">₹{formatAmount(item.mrp ?? item.salesPrice)}per unit</p>
-                                                        </div>
-                                                        <div className="text-right ml-4">
-                                                            <p className="text-[13px] font-black text-slate-900">₹{formatAmount((item.salesPrice || item.mrp) * item.quantity)}
-                                                            </p>
-                                                            <p className="text-[9px] font-bold text-slate-500 bg-white">Qty: {item.quantity}</p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
-
-                                            {/* Totals Section */}
-                                            {!isUpcomingStatus && (
-                                                <div className="border-t mt-1 p-2 flex items-center justify-between">
-                                                    <div className="flex flex-wrap gap-1 items-center">
-                                                        {paid > 0 && (
-                                                            Order.paymentMethods && Object.keys(Order.paymentMethods).length > 0 ? (
-                                                                Object.entries(Order.paymentMethods)
-                                                                    .filter(([method, amount]) =>
-                                                                        method.toLowerCase() !== 'due' && Number(amount) > 0
-                                                                    )
-                                                                    .map(([method, amount]) => (
-                                                                        <div
-                                                                            key={method}
-                                                                            className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-green-100"
-                                                                        >
-                                                                            <span className="text-[8px] font-bold text-green-800 uppercase">
-                                                                                {method}
-                                                                            </span>
-                                                                            <span className="text-[9px] font-black text-green-600">
-                                                                                ₹{Number(amount).toFixed(2)}
-                                                                            </span>
-                                                                        </div>
-                                                                    ))
-                                                            ) : Order.paymentMethod && paid > 0 ? (
-                                                                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-green-100">
-                                                                    <span className="text-[8px] font-bold text-green-800 uppercase">
-                                                                        {Order.paymentMethod}
-                                                                    </span>
-                                                                    <span className="text-[9px] font-black text-green-600">
-                                                                        ₹{paid.toFixed(2)}
-                                                                    </span>
-                                                                </div>
-                                                            ) : null
-                                                        )}
-                                                    </div>
-
-                                                    <div className='flex gap-3 items-center'>
-                                                        <div className="text-right border-r border-slate-200 pr-3">
-                                                            <p className="text-[7px] font-bold text-green-600 uppercase tracking-tighter leading-none mb-0.5">Paid</p>
-                                                            <p className="text-[11px] font-black text-green-700 leading-none">₹{paid.toFixed(2)}</p>
-                                                        </div>
-                                                        <div className="text-right">
-                                                            <p className="text-[7px] font-bold text-red-600 uppercase tracking-tighter leading-none mb-0.5">Due</p>
-                                                            <p className="text-[11px] font-black text-red-700 leading-none">₹{due.toFixed(2)}</p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                        {/* Buttons Section - Updated Grid & Logic */}
-                                        {(
-                                            <div
-                                                className={`grid ${isUpcomingStatus
-                                                    ? 'grid-cols-3'
-                                                    : isFinalStage
-                                                        ? (isPaid ? 'grid-cols-3' : 'grid-cols-4')
-                                                        : 'grid-cols-4'
-                                                    } gap-3 pt-6 border-t`}
-                                            >
-
-                                                {/* UPCOMING STAGE BUTTONS */}
-                                                {isUpcomingStatus && Order.userLoginPhone && (
-                                                    <>
-                                                        <a
-                                                            href={`tel:${Order.userLoginPhone.replace(/\D/g, '')}`}
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            className="py-2.5 bg-white border border-emerald-200 text-emerald-600 text-xs font-bold rounded-sm text-center"
-                                                        >
-                                                            Call
-                                                        </a>
-
-                                                        <a
-                                                            href={`https://wa.me/${Order.userLoginPhone.replace(/\D/g, '')}`}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            className="py-2.5 bg-[#25D366] text-white text-xs font-bold rounded-sm text-center"
-                                                        >
-                                                            WhatsApp
-                                                        </a>
-
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleDeleteOrder(Order.id);
-                                                            }}
-                                                            className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm cursor-pointer"
-                                                        >
-                                                            Delete
-                                                        </button>
-                                                    </>
-                                                )}
-
-                                                {!isUpcomingStatus && (isFinalStage ? (
-                                                    <>
-                                                        {/* DELETE */}
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleDeleteOrder(Order.id);
-                                                            }}
-                                                            className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm cursor-pointer"
-                                                        >
-                                                            Delete
-                                                        </button>
-
-                                                        {/* SETTLE – only UNPAID */}
-                                                        {!isPaid && (
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    setShowPaymentModal(Order);
-                                                                }}
-                                                                className="py-2.5 bg-emerald-500 text-white text-xs font-bold rounded-sm"
-                                                            >
-                                                                Settle
-                                                            </button>
-                                                        )}
-
-                                                        {/* RETURN – PAID + UNPAID dono me */}
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                navigate(
-                                                                    `${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`,
-                                                                    { state: { selectedOrder: Order.orderId } }
-                                                                );
-                                                            }}
-                                                            className="py-2.5 bg-sky-500 text-white text-xs font-bold rounded-sm"
-                                                        >
-                                                            Return
-                                                        </button>
-
-                                                        {/* PRINT */}
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setSelectedOrderForAction(Order);
-                                                            }}
-                                                            disabled={pdfLoadingOrderId === Order.id}
-                                                            className="py-2.5 bg-black text-white text-xs font-bold rounded-sm flex items-center justify-center"
-                                                        >
-                                                            Print
-                                                        </button>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        {/* DELETE */}
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleDeleteOrder(Order.id);
-                                                            }}
-                                                            className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm"
-                                                        >
-                                                            Delete
-                                                        </button>
-
-                                                        {/* ADVANCE */}
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setShowPaymentModal(Order);
-                                                            }}
-                                                            className="py-2.5 bg-emerald-500 text-white text-xs font-bold rounded-sm"
-                                                        >
-                                                            Advance
-                                                        </button>
-
-                                                        {/* PRINT */}
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setSelectedOrderForAction(Order);
-                                                            }}
-                                                            className="py-2.5 bg-black text-white text-xs font-bold rounded-sm"
-                                                        >
-                                                            {pdfLoadingOrderId === Order.id ? (
-                                                                <div className="flex items-center gap-2">
-                                                                    <Spinner />
-                                                                    <span>...Printing</span>
-                                                                </div>
-                                                            ) : (
-                                                                "Print"
-                                                            )}
-                                                        </button>
-
-                                                        {/* NEXT */}
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleUpdateStatus(Order.id, Order.status);
-                                                            }}
-                                                            disabled={isUpdatingStatus === Order.id}
-                                                            className="py-2.5 bg-[#00A2FF] text-white text-xs font-bold rounded-sm"
-                                                        >
-                                                            {isUpdatingStatus === Order.id ? '...' : 'Next'}
-                                                        </button>
-                                                    </>
                                                 ))}
                                             </div>
                                         )}
-                                    </div>
-                                )}
-                            </CustomCard>
-                        );
-                    })
+                                        {!isUpcomingStatus && (
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); setEditingOrder(Order); }}
+                                                className="absolute top-5 left-2 p-2 bg-white/90 backdrop-blur-sm text-slate-500 rounded-sm transition-all duration-300 z-20 group"
+                                            >
+                                                <div className="flex items-center cursor-pointer">
+                                                    <IconEdit className='h-3 w-3' />
+                                                </div>
+                                            </button>
+                                        )}
+                                        <div className="absolute right-5 top-0 flex gap-1">
+                                            {/* PAYMENT METHOD BADGES (DUE EXCLUDED) */}
+                                            {Order.paymentMethods &&
+                                                Object.entries(Order.paymentMethods)
+                                                    .filter(([method, amount]) => {
+                                                        if (method.toLowerCase() === 'due') return false;
+
+                                                        const latestReturn =
+                                                            Order.returnHistory?.[Order.returnHistory.length - 1];
+
+                                                        const usedInExchange =
+                                                            latestReturn?.paymentDetails &&
+                                                            Number(latestReturn.paymentDetails[method]) > 0;
+
+                                                        // agar exchange me use hua hai to blue me mat dikha
+                                                        if (usedInExchange) return false;
+
+                                                        return Number(amount) > 0;
+                                                    })
+                                                    .map(([method]) => (
+                                                        <span
+                                                            key={`original-${method}`}
+                                                            className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100"
+                                                        >
+                                                            {method}
+                                                        </span>
+                                                    ))}
+
+                                            {Order.returnHistory &&
+                                                Order.returnHistory.length > 0 &&
+                                                (() => {
+                                                    const latestReturn =
+                                                        Order.returnHistory[Order.returnHistory.length - 1];
+
+                                                    if (!latestReturn.paymentDetails) return null;
+
+                                                    return Object.entries(latestReturn.paymentDetails)
+                                                        .filter(
+                                                            ([method, amount]) =>
+                                                                method.toLowerCase() !== 'due' &&
+                                                                Number(amount) > 0
+                                                        )
+                                                        .map(([method]) => (
+                                                            <span
+                                                                key={`exchange-${method}`}
+                                                                className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-red-50 text-red-600 border border-red-200"
+                                                            >
+                                                                {method}
+                                                            </span>
+                                                        ));
+                                                })()}
+
+                                        </div>
+                                        <div className="flex justify-between items-start pl-6 mt-1">
+                                            <div>
+                                                {!isUpcomingStatus && (
+                                                    <h3 className="text-sm font-bold text-slate-800">
+                                                        {Order.orderId}
+                                                    </h3>
+                                                )}
+                                                <p className="text-black text-xs font-medium">
+                                                    {Order.userName}
+                                                    {Order.status === "Upcoming" && Order.userLoginPhone && (
+                                                        <span className="ml-2 text-[10px] text-black font-semibold border p-1 bg-gray-100">
+                                                            {Order.userLoginPhone}
+                                                        </span>
+                                                    )}
+                                                </p>
+
+                                                <p className="text-[10px] text-gray-400 mt-1">{Order.time}</p>
+                                            </div>
+                                            <div className="text-right flex flex-col items-end">
+                                                <div className="flex items-center gap-2">
+                                                    <p className="text-[18px] font-bold text-black">₹{formatAmount(total)}
+                                                    </p>
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}><path d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
+                                                </div>
+                                                <p className="text-[10px] font-boldpx-2 py-0.5 mt-1">Items: {Order.items?.length || 0}</p>
+                                            </div>
+                                        </div>
+
+                                        {isExpanded && (
+                                            <div className={`mt-1 border-t pt-4 ${isUpcomingStatus ? "pb-2" : ""}`}>
+                                                {/* Addresses Section */}
+                                                {!isUpcomingStatus && (
+                                                    <div className="grid grid-cols-2 gap-4 mb-1 pb-4 border-b">
+                                                        <div className="space-y-1">
+                                                            <p className="text-[8px] font-black text-orange-500 uppercase">Billing Address</p>
+                                                            <p className="text-[11px] font-bold text-slate-800">{Order.billingDetails?.name}</p>
+                                                            <p className="text-[10px] text-gray-500 leading-tight">{Order.billingDetails?.address}</p>
+                                                            <p className="text-[10px] text-gray-500">{Order.billingDetails?.phone}</p>
+                                                        </div>
+                                                        <div className="space-y-1 border-l pl-4">
+                                                            <p className="text-[8px] font-black text-blue-500 uppercase">Shipping Address</p>
+                                                            <p className="text-[11px] font-bold text-slate-800">{Order.shippingDetails?.name || Order.billingDetails?.name}</p>
+                                                            <p className="text-[10px] text-gray-500 leading-tight">{Order.shippingDetails?.address || Order.billingDetails?.address}</p>
+                                                            <p className="text-[10px] text-gray-500">{Order.shippingDetails?.phone}</p>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {/* Items Section */}
+                                                <div>
+                                                    {Order.items?.map((item, idx) => (
+                                                        <div key={idx} className="p-2">
+                                                            <div className="flex justify-between items-start -mb-1">
+                                                                <div className="flex-1">
+                                                                    <p className="text-[11px] font-extrabold text-slate-800 leading-tight mb-1">{item.name}</p>
+                                                                    {item.note && (
+                                                                        <p className="text-[9px] leading-tight flex items-baseline gap-1.5 mt-1 opacity-80">
+                                                                            <span className="font-black uppercase tracking-widest font-xs">Note:</span>
+                                                                            <span className="font-xs italic text-slate-600">{item.note}</span>
+                                                                        </p>
+                                                                    )}
+                                                                    <p className="text-[10px] text-gray-400">₹{formatAmount(item.salesPrice ?? item.mrp)} per unit</p>
+                                                                </div>
+                                                                <div className="text-right ml-4">
+                                                                    <p className="text-[13px] font-black text-slate-900">₹{formatAmount((item.salesPrice || item.mrp) * item.quantity)}
+                                                                    </p>
+                                                                    <p className="text-[9px] font-bold text-slate-500 bg-white">Qty: {item.quantity}</p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+
+                                                    {/* Totals Section */}
+                                                    {!isUpcomingStatus && (
+                                                        <div className="border-t mt-1 p-2 flex items-center justify-between">
+                                                            <div className="flex flex-wrap gap-1 items-center">
+                                                                {paid > 0 && (
+                                                                    Order.paymentMethods && Object.keys(Order.paymentMethods).length > 0 ? (
+                                                                        Object.entries(Order.paymentMethods)
+                                                                            .filter(([method, amount]) =>
+                                                                                method.toLowerCase() !== 'due' && Number(amount) > 0
+                                                                            )
+                                                                            .map(([method, amount]) => (
+                                                                                <div
+                                                                                    key={method}
+                                                                                    className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-green-100"
+                                                                                >
+                                                                                    <span className="text-[8px] font-bold text-green-800 uppercase">
+                                                                                        {method}
+                                                                                    </span>
+                                                                                    <span className="text-[9px] font-black text-green-600">
+                                                                                        ₹{Number(amount).toFixed(2)}
+                                                                                    </span>
+                                                                                </div>
+                                                                            ))
+                                                                    ) : Order.paymentMethod && paid > 0 ? (
+                                                                        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-green-100">
+                                                                            <span className="text-[8px] font-bold text-green-800 uppercase">
+                                                                                {Order.paymentMethod}
+                                                                            </span>
+                                                                            <span className="text-[9px] font-black text-green-600">
+                                                                                ₹{paid.toFixed(2)}
+                                                                            </span>
+                                                                        </div>
+                                                                    ) : null
+                                                                )}
+                                                            </div>
+
+                                                            <div className='flex gap-3 items-center'>
+                                                                <div className="text-right border-r border-slate-200 pr-3">
+                                                                    <p className="text-[7px] font-bold text-green-600 uppercase tracking-tighter leading-none mb-0.5">Paid</p>
+                                                                    <p className="text-[11px] font-black text-green-700 leading-none">₹{paid.toFixed(2)}</p>
+                                                                </div>
+                                                                <div className="text-right">
+                                                                    <p className="text-[7px] font-bold text-red-600 uppercase tracking-tighter leading-none mb-0.5">Due</p>
+                                                                    <p className="text-[11px] font-black text-red-700 leading-none">₹{due.toFixed(2)}</p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                {/* Buttons Section - Updated Grid & Logic */}
+                                                {(
+                                                    <div
+                                                        className={`grid ${isUpcomingStatus
+                                                            ? 'grid-cols-3'
+                                                            : Order.status === "Packed"
+                                                                ? 'grid-cols-[40px_1fr_1fr_1fr_40px]'
+                                                                : Order.status === "Paid"
+                                                                    ? 'grid-cols-3'
+                                                                    : Order.status === "Completed"
+                                                                        ? 'grid-cols-4'
+                                                                        : 'grid-cols-4'
+                                                            } gap-3 pt-6 border-t`}
+                                                    >
+                                                        {/* UPCOMING STAGE BUTTONS */}
+                                                        {isUpcomingStatus && Order.userLoginPhone && (
+                                                            <>
+                                                                <a
+                                                                    href={`tel:${Order.userLoginPhone.replace(/\D/g, '')}`}
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                    className="py-2.5 bg-white border border-emerald-200 text-emerald-600 text-xs font-bold rounded-sm text-center"
+                                                                >
+                                                                    Call
+                                                                </a>
+
+                                                                <a
+                                                                    href={`https://wa.me/${Order.userLoginPhone.replace(/\D/g, '')}`}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                    className="py-2.5 bg-[#25D366] text-white text-xs font-bold rounded-sm text-center"
+                                                                >
+                                                                    WhatsApp
+                                                                </a>
+
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleDeleteOrder(Order.id);
+                                                                    }}
+                                                                    className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm cursor-pointer"
+                                                                >
+                                                                    Delete
+                                                                </button>
+                                                            </>
+                                                        )}
+
+                                                        {!isUpcomingStatus && (isFinalStage ? (
+                                                            <>
+
+                                                                {/* DELETE */}
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleDeleteOrder(Order.id);
+                                                                    }}
+                                                                    className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm cursor-pointer"
+                                                                >
+                                                                    Delete
+                                                                </button>
+
+                                                                {/* SETTLE – only UNPAID */}
+                                                                {!isPaid && (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setShowPaymentModal(Order);
+                                                                        }}
+                                                                        className="py-2.5 bg-emerald-500 text-white text-xs font-bold rounded-sm"
+                                                                    >
+                                                                        Settle
+                                                                    </button>
+                                                                )}
+
+                                                                {/* RETURN – PAID + UNPAID dono me */}
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        navigate(
+                                                                            `${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`,
+                                                                            { state: { selectedOrder: Order.orderId } }
+                                                                        );
+                                                                    }}
+                                                                    className="py-2.5 bg-sky-500 text-white text-xs font-bold rounded-sm"
+                                                                >
+                                                                    Return
+                                                                </button>
+
+                                                                {/* PRINT */}
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setSelectedOrderForAction(Order);
+                                                                    }}
+                                                                    disabled={pdfLoadingOrderId === Order.id}
+                                                                    className="py-2.5 bg-black text-white text-xs font-bold rounded-sm flex items-center justify-center"
+                                                                >
+                                                                    Print
+                                                                </button>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                {Order.status === "Packed" && (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            handlePreviousStatus(Order.id, Order.status);
+                                                                        }}
+                                                                        className="py-2.5 bg-gray-200 text-black text-sm font-bold rounded-sm flex items-center justify-center flex-col">
+                                                                        ←
+                                                                        <span className='text-[10px]'>back</span>
+                                                                    </button>
+                                                                )}
+                                                                {/* DELETE */}
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleDeleteOrder(Order.id);
+                                                                    }}
+                                                                    className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm"
+                                                                >
+                                                                    Delete
+                                                                </button>
+
+                                                                {/* ADVANCE */}
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setShowPaymentModal(Order);
+                                                                    }}
+                                                                    className="py-2.5 bg-emerald-500 text-white text-xs font-bold rounded-sm"
+                                                                >
+                                                                    Advance
+                                                                </button>
+
+                                                                {/* PRINT */}
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setSelectedOrderForAction(Order);
+                                                                    }}
+                                                                    className="py-2.5 bg-black text-white text-xs font-bold rounded-sm"
+                                                                >
+                                                                    {pdfLoadingOrderId === Order.id ? (
+                                                                        <div className="flex items-center gap-2">
+                                                                            <Spinner />
+                                                                            <span>...Printing</span>
+                                                                        </div>
+                                                                    ) : (
+                                                                        "Print"
+                                                                    )}
+                                                                </button>
+
+                                                                {/* PREVIOUS ARROW (only Packed stage) */}
+                                                                {(Order.status === "Confirmed" || Order.status === "Packed") && (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            handleUpdateStatus(Order.id, Order.status);
+                                                                        }}
+                                                                        disabled={isUpdatingStatus === Order.id}
+                                                                        className="py-2.5 bg-[#00A2FF] text-white text-xs font-bold rounded-sm flex items-center justify-center flex-col"
+                                                                    >
+                                                                        →
+                                                                        <span className='text-[10px]'>Next</span>
+                                                                    </button>
+                                                                )}
+                                                            </>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </CustomCard>
+                                </motion.div>
+                            );
+                        })}
+                    </AnimatePresence>
                 ) : (
                     <p className="p-8 text-center text-slate-500">No Orders found.</p>
                 )}
@@ -1726,7 +1797,7 @@ const OrdersPage: React.FC = () => {
 
                                                 const newItem: OrderItem = {
                                                     id: selectedItem.id,
-                                                    name: selectedItem.name,    
+                                                    name: selectedItem.name,
                                                     mrp: Number(selectedItem.mrp),
                                                     salesPrice: Number(selectedItem.salesPrice ?? selectedItem.mrp),
                                                     quantity: 1,
@@ -1736,7 +1807,7 @@ const OrdersPage: React.FC = () => {
                                                     imageBase64: ""
                                                 };
                                                 const updatedItems = [newItem, ...(editingOrder.items || [])];
-                                                const newTotal = updatedItems.reduce((sum, i) => sum + (i.mrp * i.quantity), 0);
+                                                const newTotal = updatedItems.reduce((sum, i) => sum + ((i.salesPrice ?? i.mrp) * i.quantity), 0);
                                                 setEditingOrder({ ...editingOrder, items: updatedItems, totalAmount: newTotal });
                                             }}
                                             placeholder="Search item to add..."

@@ -124,6 +124,13 @@ const OrderingPage: React.FC = () => {
         }
     };
 
+    useEffect(() => {
+        if (activeTab === 'My Shop') {
+            setEditingId(null);
+            setTempName('');
+        }
+    }, [activeTab]);
+
     // --- Memos ---
     const cartValue = useMemo(() => cart.reduce((acc, item) => acc + (item.mrp * item.quantity), 0), [cart]);
 
@@ -359,10 +366,10 @@ const OrderingPage: React.FC = () => {
                                                 type="text"
                                                 value={tempName}
                                                 onChange={(e) => setTempName(e.target.value)}
-                                                className="w-full bg-gray-50 border border-gray-100 rounded-sm py-1 px-2 text-[10px] font-bold outline-none"
+                                                className="w-full bg-gray-50 border border-gray-100 rounded-sm py-1 px-2 text-[12px] font-bold outline-none"
                                             />
                                             <div className="flex gap-1">
-                                                <button onClick={(e) => { e.stopPropagation(); handleSaveEdit(group.id!); }} className="flex-1 bg-[#00A3E1] text-white py-1.5 rounded-sm text-[8px] font-black uppercase">Save</button>
+                                                <button onClick={(e) => { e.stopPropagation(); handleSaveEdit(group.id!); }} className="flex-1 bg-[#00A3E1] text-white py-1.5 rounded-sm text-[9px] font-black uppercase">Save</button>
                                                 <button
                                                     onClick={async (e) => {
                                                         e.stopPropagation();

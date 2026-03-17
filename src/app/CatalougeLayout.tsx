@@ -47,13 +47,13 @@ const CatalogueLayout = () => {
                 </Button>
             )}
 
-            <Button
+            {/* <Button
                 variant="outline"
                 className="w-full mb-2 rounded bg-white"
                 onClick={() => navigate(ROUTES.CATA_REQUEST)}
             >
                 Requests
-            </Button>
+            </Button> */}
 
         </ShowWrapper>
     );
@@ -120,14 +120,14 @@ const CatalogueLayout = () => {
                             </NavLink>
                         )}
 
-                        <NavLink
+                        {/* <NavLink
                             to={`${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`}
                             end
                             className={({ isActive }) => sidebarLinkClass(isActive)}
                         >
                             <span className="text-lg">+</span>
                             <span>Requests</span>
-                        </NavLink>
+                        </NavLink> */}
                         <NavLink
                             to={`${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`}
                             end

@@ -62,7 +62,12 @@ const SharedProduct: React.FC = () => {
         }
         return key;
     };
-
+    const isUserApproved = leadStatus === "approved";
+    const isUserDeclined = leadStatus === "declined";
+    const isUserPending = leadStatus === "pending";
+    const approvalEnabled = catalogueSettings?.requireApproval === true;
+    const hidePriceEnabled = catalogueSettings?.hidePrice === true;
+    const cartCount = useMemo(() => cart.reduce((acc, curr) => acc + curr.quantity, 0), [cart]);
     // --- New Firebase Sync Function ---
     const syncToUpcoming = async (
         updatedCart: { item: Item; quantity: number }[]
@@ -96,16 +101,8 @@ const SharedProduct: React.FC = () => {
             const itemsForFirebase = updatedCart.map(c => {
 
                 const mrp = c.item.mrp || 0;
-                const salePrice =
-                    (c.item as any).salesPrice ||
-                    (c.item as any).effectivePrice ||
-                    mrp;
-                console.log("ITEM BEFORE SAVE", {
-                    name: c.item.name,
-                    mrp: mrp,
-                    salesPrice: salePrice
-                });
-
+                const multiplier = (c.item as any).unitMultiplier || 1;
+                const salePrice = ((c.item.salesPrice ?? c.item.mrp) || 0) * multiplier;
                 return {
                     id: String(c.item.id),
                     docId: c.item.firestoreDocId || c.item.id,
@@ -168,7 +165,7 @@ const SharedProduct: React.FC = () => {
 
                     items: itemsForFirebase,
                     totalAmount: itemsForFirebase.reduce(
-                        (acc, curr) => acc + curr.mrp * curr.quantity,
+                        (acc, curr) => acc + curr.finalPrice,
                         0
                     ),
                     paidAmount: 0,
@@ -220,9 +217,7 @@ const SharedProduct: React.FC = () => {
 
     const addToCart = useCallback((item: Item) => {
         //  SINGLE SOURCE OF TRUTH
-        const alreadyFilled =
-            localStorage.getItem("leadSubmitted") === "true";
-
+        const alreadyFilled = !approvalEnabled || localStorage.getItem("leadSubmitted") === "true";
         // lead not filled → popup dikhao
         if (!alreadyFilled) {
             setForceLeadOpen(false);
@@ -236,12 +231,13 @@ const SharedProduct: React.FC = () => {
 
             const moqQty = (item as any).moq || 1;
 
+            const multiplier = (item as any).unitMultiplier || 1;
+
             const itemWithPrice = {
                 ...item,
-                mrp: item.mrp,
-                salesPrice: item.salesPrice || item.mrp
+                mrp: (item.mrp || 0) * multiplier,
+                salesPrice: ((item.salesPrice ?? item.mrp) || 0) * multiplier
             };
-
             const newCart = existing
                 ? prev.map(i =>
                     i.item.id === item.id
@@ -253,15 +249,14 @@ const SharedProduct: React.FC = () => {
             localStorage.setItem('temp_cart', JSON.stringify(newCart));
             return newCart;
         });
-    }, []);
+    }, [approvalEnabled]);
 
     const handleNotifyRequest = async (item: Item) => {
         try {
             if (!companyId) return;
 
             // SAME CHECK as Add to Cart
-            const alreadyFilled =
-                localStorage.getItem("leadSubmitted") === "true";
+            const alreadyFilled = !approvalEnabled || localStorage.getItem("leadSubmitted") === "true";
 
             // lead not filled → popup dikhao
             if (!alreadyFilled) {
@@ -483,10 +478,6 @@ const SharedProduct: React.FC = () => {
             return newCart;
         });
     };
-    const isUserApproved = leadStatus === "approved";
-    const isUserDeclined = leadStatus === "declined";
-    const isUserPending = leadStatus === "pending";
-    const cartCount = useMemo(() => cart.reduce((acc, curr) => acc + curr.quantity, 0), [cart]);
 
     useEffect(() => {
         if (authLoading || !currentUser || !dbOperations || !companyId) return;
@@ -599,17 +590,7 @@ const SharedProduct: React.FC = () => {
         const result = allItems.filter(item => {
             //  hide unlisted items (LIVE RULE)
             if (!item.isListed) return false;
-
             const matchesGroup = item.itemGroupId === groupId;
-
-            //  hide out of stock (existing logic)
-            if (
-                !catalogueSettings?.showOutOfStockItems &&
-                (item.stock || 0) <= 0
-            ) {
-                return false;
-            }
-
             return (
                 matchesGroup &&
                 item.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -670,10 +651,10 @@ const SharedProduct: React.FC = () => {
 
     return (
         <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative overflow-x-hidden">
-            <LeadPopUp
+            {approvalEnabled && <LeadPopUp
                 companyId={companyId}
                 companyName={companyName}
-                forceOpen={forceLeadOpen && !leadStatus}
+                forceOpen={approvalEnabled && forceLeadOpen && !leadStatus}
                 onLeadSubmit={() => {
                     setIsLeadFilled(true);
                     setForceLeadOpen(false);
@@ -691,7 +672,7 @@ const SharedProduct: React.FC = () => {
                         fetchUserNotifyStatus();
                     }, 300);
                 }}
-            />
+            />}
             <header className="sticky top-0 bg-white border-b border-gray-100 shadow-sm z-[60]">
                 <div className="max-w-7xl mx-auto px-1 md:px-4 py-2 flex flex-col gap-2">
                     <div className="flex items-center justify-between">
@@ -738,7 +719,7 @@ const SharedProduct: React.FC = () => {
             </header>
 
             <main className="p-3 md:p-6 space-y-4 flex-1 max-w-7xl mx-auto w-full pb-24">
-                {isUserDeclined && (
+                {approvalEnabled && isUserDeclined && (
                     <div className="max-w-7xl mx-auto mb-3 p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-bold rounded-sm text-center">
                         Your request has been declined. Please contact the business.
                     </div>
@@ -756,7 +737,7 @@ const SharedProduct: React.FC = () => {
                     </div>
                 )}
 
-                {isUserPending && (
+                {approvalEnabled && isUserPending && (
                     <div className="max-w-7xl mx-auto mb-3 p-3 bg-yellow-50 border border-yellow-200 text-yellow-700 text-xs font-bold rounded-sm text-center">
                         Your request is under review. Prices will be visible after approval.
                     </div>
@@ -799,21 +780,38 @@ const SharedProduct: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1">
                     {itemsToDisplay.map((item) => {
                         const cartItem = cart.find(i => i.item.id === item.id);
-                        const isOutOfStock = (item.stock || 0) <= 0;
+                        const isOutOfStock =
+                            !catalogueSettings?.allowNegativeInventory &&
+                            (item.stock || 0) <= 0;
                         const showNotifyButton = catalogueSettings?.enableOutOfStockNotification && isOutOfStock;
-                        const disableAddToCart = !catalogueSettings?.enableOutOfStockNotification && isOutOfStock;
-                        const salePrice = item.salesPrice || item.mrp;
-                        const mrp = item.mrp || 0;
+                        const disableAddToCart = isOutOfStock;
+                        const basePrice = item.salesPrice || item.mrp;
+                        const multiplier = (item as any).unitMultiplier || 1;
+                        const salePrice = basePrice * multiplier
+                        const mrp = (item.mrp || 0) * multiplier;
                         const hasBothPrices =
                             item.salesPrice &&
                             item.mrp &&
                             item.salesPrice < item.mrp;
-                        const hasDiscount = salePrice < (item.mrp || 0);
-                        const discountPercent = item.mrp && hasDiscount ? Math.round(((item.mrp - salePrice) / item.mrp) * 100) : 0;
-                        const showDiscountBadge = catalogueSettings?.showDiscountBadge && hasDiscount;
+                        const hasDiscount = salePrice < mrp;
+                        const discountPercent = mrp && hasDiscount ? Math.round(((mrp - salePrice) / mrp) * 100) : 0;
+                        const showDiscountBadge = !hidePriceEnabled && catalogueSettings?.showDiscountBadge && hasDiscount;
+                        // const unitMultiplier = (item as any).unitMultiplier || 1;
+                        // const unit = (item as any).unit || "pcs";
+
+                        // let unitLabel = "";
+                        // if (unit === "pcs") unitLabel = `(1 pcs)`;
+                        // else if (unit === "box") unitLabel = `(10 pcs)`;
+                        // else if (unit === "doz") unitLabel = `(12 pcs)`;
+                        // else if (unit === "qt") unitLabel = `(100 pcs)`;
+                        // else if (unit === "ton") unitLabel = `(1000 pcs)`;
+                        // else if (unit === "pkt") {
+                        //     const packetSize = (item as any).packetSize || unitMultiplier;
+                        //     unitLabel = `(${packetSize} pcs)`;
+                        // }
                         return (
                             <div
                                 id={item.id}
@@ -835,6 +833,11 @@ const SharedProduct: React.FC = () => {
                                     ) : (
                                         <FiPackage className="w-10 h-10 text-gray-200" />
                                     )}
+                                    {isOutOfStock && (
+                                        <div className="absolute top-2 left-2 bg-orange-500 text-white px-1 py-0.5 rounded-sm text-[9px] font-black uppercase">
+                                            Out of Stock
+                                        </div>
+                                    )}
 
                                     {/*  DISCOUNT BADGE */}
                                     {showDiscountBadge && (
@@ -851,33 +854,37 @@ const SharedProduct: React.FC = () => {
                                     </h3>
 
                                     {/* PRICE */}
-                                    {isUserApproved ? (<div className="flex items-center justify-between w-full">
-                                        <div className="flex items-center justify-between w-full">
-                                            {hasBothPrices ? (
-                                                <>
-                                                    {/* struck MRP */}
-                                                    <p className="text-[11px] font-bold text-gray-400 line-through">
-                                                        ₹{mrp}
-                                                    </p>
+                                    <div className="flex items-center justify-between w-full">
+                                        <div className="flex items-center gap-2 w-full">
 
-                                                    {/* sale */}
-                                                    <p className="text-xs font-black text-[#00A3E1]">
-                                                        ₹{salePrice}
-                                                    </p>
+                                            {/* PRICE (only when allowed) */}
+                                            {!hidePriceEnabled && (!approvalEnabled || isUserApproved) && (
+                                                <>
+                                                    {hasBothPrices ? (
+                                                        <>
+                                                            <p className="text-[12px] font-bold text-gray-500 line-through">
+                                                                ₹{mrp}
+                                                            </p>
+
+                                                            <p className="text-xs font-black text-[#00A3E1]">
+                                                                ₹{salePrice}
+                                                            </p>
+                                                        </>
+                                                    ) : (
+                                                        <p className="text-sm font-black text-[#00A3E1]">
+                                                            ₹{salePrice}
+                                                        </p>
+                                                    )}
                                                 </>
-                                            ) : (
-                                                <p className="text-xs font-black text-[#00A3E1]">
-                                                    ₹{salePrice}
-                                                </p>
                                             )}
-                                        </div>
-                                    </div>) : (
-                                        <div className="mt-2 w-full text-center">
-                                            <span className="inline-block text-[9px] font-semibold text-gray-500 bg-gray-50 border border-gray-200 px-2 py-1 rounded-sm leading-tight">
-                                                Price will be visible after approval
+
+                                            {/* UNIT (ALWAYS visible) */}
+                                            <span className="text-[10px] text-gray-600 font-semibold">
+                                                ({item.unitMultiplier || 1} pcs)
                                             </span>
+
                                         </div>
-                                    )}
+                                    </div>
 
                                     {/* CART AREA */}
                                     <div className="mt-auto flex gap-1">
@@ -925,10 +932,10 @@ const SharedProduct: React.FC = () => {
                                         ) : (
                                             // CASE 2: normal add to cart (may be disabled)
                                             <button
-                                                disabled={disableAddToCart}
+                                                // disabled={disableAddToCart}
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    if (disableAddToCart) return;
+                                                    // if (disableAddToCart) return;
                                                     const card = e.currentTarget.closest(".group");
                                                     const img = card?.querySelector("img") as HTMLImageElement;
                                                     if (img) animateToCart(img);
@@ -972,11 +979,12 @@ const SharedProduct: React.FC = () => {
                 isOpen={isDetailDrawerOpen}
                 onClose={() => { setIsDetailDrawerOpen(false); setSelectedItemForDetails(null); }}
                 onAddToCart={addToCart}
-                initialQuantity={cart.find(i => i.item.id === selectedItemForDetails?.id)?.quantity || 1}
+                initialQuantity={cart.find(i => i.item.id === selectedItemForDetails?.id)?.quantity || 0}
                 isCustomerApproved={isUserApproved}
                 onRequireLead={() => {
                     setForceLeadOpen(true);
                 }}
+                onUpdateQuantity={updateQuantity}
             />
         </div>
     );

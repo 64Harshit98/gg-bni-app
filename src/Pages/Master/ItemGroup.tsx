@@ -262,87 +262,75 @@ const ItemGroupPage: React.FC = () => {
       setConfirmingDeleteId(null);
     }
   };
+  const renderHeader = () => (
+    <div className="flex flex-col md:flex-row md:justify-between md:items-center bg-gray-100 md:bg-white border-b border-gray-300 shadow-sm flex-shrink-0 p-2 md:px-4 md:py-3 mb-2 md:mb-0">
+      <h1 className="text-2xl font-bold text-gray-800 text-center md:text-left mb-2 md:mb-0">Item Groups</h1>
+      <div className="flex items-center justify-center gap-6">
+        <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.ITEM_ADD)} active={isActive(ROUTES.ITEM_ADD)}>Item Add</CustomButton>
+        <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.ITEM_GROUP)} active={isActive(ROUTES.ITEM_GROUP)}>Item Group</CustomButton>
+      </div>
+    </div>
+  );
+
 
   return (
-    <div className="flex flex-col mb-10 bg-gray-100 w-full pt-24 sm:pt-24">
 
-      <div className="fixed top-0 left-0 right-0 z-10 p-4 bg-gray-100 border-b border-gray-300 flex flex-col">
-        <h1 className="text-2xl font-bold text-gray-800 text-center mb-4">Item Groups</h1>
-        <div className="flex items-center justify-center gap-6">
-          <CustomButton
-            variant={Variant.Transparent}
-            onClick={() => navigate(ROUTES.ITEM_ADD)}
-            active={isActive(ROUTES.ITEM_ADD)}
-          >
-            Item Add
-          </CustomButton>
-          <CustomButton
-            variant={Variant.Transparent}
-            onClick={() => navigate(ROUTES.ITEM_GROUP)}
-            active={isActive(ROUTES.ITEM_GROUP)}
-          >
-            Item Groups
-          </CustomButton>
+    <main className="flex-grow p-4 bg-gray-100 w-full overflow-y-auto">
+      {error && <div className="mb-4 p-3 bg-red-100 text-red-800 rounded-sm text-sm font-semibold"><p>{error}</p></div>}
+      {successMessage && <div className="mb-4 p-3 bg-green-100 text-green-800 rounded-sm text-sm font-semibold"><p>{successMessage}</p></div>}
+      {renderHeader()}
+      <div className="p-4 sm:p-6 bg-white rounded-sm shadow-md">
+        <div className="flex flex-col gap-2 mb-6">
+          <input type="text" placeholder="Create a New Group" value={newItemGroupName} onChange={(e) => setNewItemGroupName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleAddItemGroup()}
+            className="w-full p-3 border border-gray-300 rounded-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <button onClick={handleAddItemGroup} disabled={loading} className="self-center bg-sky-500 text-white py-3 px-6 rounded-sm font-semibold shadow-sm transition hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed">Add New Group</button>
         </div>
-      </div>
 
-      <main className="flex-grow p-4 bg-gray-100 w-full overflow-y-auto">
-        {error && <div className="mb-4 p-3 bg-red-100 text-red-800 rounded-sm text-sm font-semibold"><p>{error}</p></div>}
-        {successMessage && <div className="mb-4 p-3 bg-green-100 text-green-800 rounded-sm text-sm font-semibold"><p>{successMessage}</p></div>}
-
-        <div className="p-4 sm:p-6 bg-white rounded-sm shadow-md">
-          <div className="flex flex-col gap-2 mb-6">
-            <input type="text" placeholder="Create a New Group" value={newItemGroupName} onChange={(e) => setNewItemGroupName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleAddItemGroup()}
-              className="w-full p-3 border border-gray-300 rounded-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <button onClick={handleAddItemGroup} disabled={loading} className="bg-sky-500 text-white py-3 px-6 rounded-sm font-semibold shadow-sm transition hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed">Add New Group</button>
+        <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">Official Item Groups</h2>
+        {loading ? (
+          <div className="flex justify-center items-center py-8">
+            <Spinner />
+            <p className="text-gray-500 ml-2">Syncing and Loading Groups...</p>
           </div>
-
-          <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">Official Item Groups</h2>
-          {loading ? (
-            <div className="flex justify-center items-center py-8">
-              <Spinner />
-              <p className="text-gray-500 ml-2">Syncing and Loading Groups...</p>
-            </div>
-          ) : itemGroups.length === 0 ? (
-            <p className="text-gray-500 text-center py-8">No item groups found.</p>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {itemGroups.map((group) => {
-                const count = group.id ? (groupCounts[group.id] || 0) : 0;
-                return (
-                  <div key={group.id} className="flex items-center justify-between p-3 bg-white rounded-sm shadow-sm border" onMouseLeave={() => setConfirmingDeleteId(null)}>
-                    {editingGroupId === group.id ? (
-                      <div className="flex flex-col w-full gap-2">
-                        <input type="text" value={editingGroupName} onChange={(e) => setEditingGroupName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSaveEdit(group)} autoFocus className="w-full p-2 border border-blue-500 rounded-md" />
-                        <div className="flex justify-end gap-2">
-                          <button onClick={() => handleSaveEdit(group)} className="bg-green-600 text-white py-1 px-3 rounded-md text-sm font-semibold">Save</button>
-                          <button onClick={handleCancelEdit} className="bg-gray-500 text-white py-1 px-3 rounded-md text-sm font-semibold">Cancel</button>
-                        </div>
+        ) : itemGroups.length === 0 ? (
+          <p className="text-gray-500 text-center py-8">No item groups found.</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {itemGroups.map((group) => {
+              const count = group.id ? (groupCounts[group.id] || 0) : 0;
+              return (
+                <div key={group.id} className="flex items-center justify-between p-3 bg-white rounded-sm shadow-sm border" onMouseLeave={() => setConfirmingDeleteId(null)}>
+                  {editingGroupId === group.id ? (
+                    <div className="flex flex-col w-full gap-2">
+                      <input type="text" value={editingGroupName} onChange={(e) => setEditingGroupName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSaveEdit(group)} autoFocus className="w-full p-2 border border-blue-500 rounded-md" />
+                      <div className="flex justify-end gap-2">
+                        <button onClick={() => handleSaveEdit(group)} className="bg-green-600 text-white py-1 px-3 rounded-md text-sm font-semibold">Save</button>
+                        <button onClick={handleCancelEdit} className="bg-gray-500 text-white py-1 px-3 rounded-md text-sm font-semibold">Cancel</button>
                       </div>
-                    ) : (
-                      <>
-                        <div className="flex items-center gap-2 overflow-hidden">
-                          <span className="text-gray-800 font-medium truncate">{group.name}</span>
-                          <span className={`text-sm px-2 py-0.5 rounded-sm font-medium ${count > 0 ? 'text-blue-900' : 'text-gray-500'}`}>
-                            {count} {count === 1 ? 'item' : 'items'}
-                          </span>
-                        </div>
-                        <div className="flex gap-2 flex-shrink-0">
-                          <button onClick={() => handleEditClick(group)} className="text-gray-500 hover:text-blue-600" aria-label={`Edit ${group.name}`}><EditIcon /></button>
-                          <button onClick={() => handleDeleteItemGroup(group)} className={`transition-colors p-1 rounded ${confirmingDeleteId === group.id ? 'bg-red-500 text-white' : 'text-gray-500 hover:text-red-600'}`} aria-label={`Delete ${group.name}`}>
-                            {confirmingDeleteId === group.id ? <span className="text-xs font-bold px-1">Confirm?</span> : <DeleteIcon />}
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      </main>
-    </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        <span className="text-gray-800 font-medium truncate">{group.name}</span>
+                        <span className={`text-sm px-2 py-0.5 rounded-sm font-medium ${count > 0 ? 'text-blue-900' : 'text-gray-500'}`}>
+                          {count} {count === 1 ? 'item' : 'items'}
+                        </span>
+                      </div>
+                      <div className="flex gap-2 flex-shrink-0">
+                        <button onClick={() => handleEditClick(group)} className="text-gray-500 hover:text-blue-600" aria-label={`Edit ${group.name}`}><EditIcon /></button>
+                        <button onClick={() => handleDeleteItemGroup(group)} className={`transition-colors p-1 rounded ${confirmingDeleteId === group.id ? 'bg-red-500 text-white' : 'text-gray-500 hover:text-red-600'}`} aria-label={`Delete ${group.name}`}>
+                          {confirmingDeleteId === group.id ? <span className="text-xs font-bold px-1">Confirm?</span> : <DeleteIcon />}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </main>
   );
 };
 

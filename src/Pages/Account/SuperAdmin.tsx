@@ -7,7 +7,7 @@ import Loading from '../Loading/Loading';
 import { useAuth } from '../../context/auth-context';
 
 // --- CONFIGURATION ---
-const SUPER_ADMIN_UID = "1AKioGfop8PmHhry6uXOz8Rw6qT2";
+const SUPER_ADMIN_UID = "C6ffAAFyrfQ4dQ2UOEV5pJpcb683";
 const DEFAULT_DURATION_DAYS = 28; 
 
 // --- HELPER ---

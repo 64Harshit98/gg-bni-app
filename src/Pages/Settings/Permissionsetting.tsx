@@ -5,6 +5,8 @@ import { Permissions, ROLES } from '../../enums';
 import Loading from '../Loading/Loading';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../context/auth-context';
+import { Modal } from '../../constants/Modal';
+import { State } from '../../enums';
 
 type RolePermissionsMap = Record<string, Permissions[]>;
 
@@ -145,6 +147,17 @@ const ManagePermissionsPage: React.FC = () => {
     const navigate = useNavigate();
     const { currentUser } = useAuth();
 
+    const [isResetOpen, setIsResetOpen] = useState(false);
+
+    const handleResetPermissions = () => {
+        const defaults = getDefaultPermissions(selectedRole);
+        setRolePermissions(prev => ({
+            ...prev,
+            [selectedRole]: defaults,
+        }));
+        setIsResetOpen(false);
+    };
+
     const ALL_ROLES = useMemo(() => Object.values(ROLES), []);
 
     const VISIBLE_ROLES = useMemo(() => ALL_ROLES.filter(r => r !== ROLES.OWNER), [ALL_ROLES]);
@@ -280,11 +293,33 @@ const ManagePermissionsPage: React.FC = () => {
             <div className="px-4">
                 <div className="bg-white p-4 rounded-lg shadow-md border border-gray-100">
                     <div className="flex justify-between items-center border-b pb-4 mb-6">
-                        <h2 className="text-2xl font-semibold capitalize text-gray-800">{selectedRole} Permissions</h2>
-                        <span className="px-3 py-1 text-xs font-semibold tracking-wide text-blue-800 bg-blue-100 rounded-sm">
-                            {rolePermissions[selectedRole]?.length || 0} Active
-                        </span>
+                        <h2 className="text-2xl font-semibold capitalize text-gray-800">
+                            {selectedRole} Permissions
+                        </h2>
+                        <div className="flex items-center gap-3">
+                            <span className="px-3 py-2 text-xs font-semibold tracking-wide text-blue-800 bg-blue-100 rounded-sm">
+                                {rolePermissions[selectedRole]?.length || 0} Active
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setIsResetOpen(true)}
+                                className="text-xs text-red-600 hover:text-red-800 font-bold px-3.5 py-1 rounded-sm bg-red-50 hover:bg-red-100 transition-colors border border-red-100"
+                            >
+                                Reset to Default
+                            </button>
+                        </div>
                     </div>
+
+                    {isResetOpen && (
+                        <Modal
+                            message={`Are you sure you want to reset ${selectedRole} permissions to default? This cannot be undone.`}
+                            type={State.ERROR}
+                            showConfirmButton={true}
+                            onConfirm={handleResetPermissions}
+                            onClose={() => setIsResetOpen(false)}
+                        />
+                    )}
+
 
                     <div className="space-y-6">
                         {Object.values(permissionGroups).map((group, index) => (

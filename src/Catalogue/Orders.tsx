@@ -321,6 +321,7 @@ const OrdersPage: React.FC = () => {
     const dbOperations = useDatabase();
     const [_error, setError] = useState<string | null>(null);
     const [availableItems, setAvailableItems] = useState<Item[]>([]);
+    const [billType, setBillType] = useState<'estimate' | 'bill'>('estimate');
     // const [pendingRequestCount, setPendingRequestCount] = useState(0);
 
     const { currentUser } = useAuth();
@@ -532,7 +533,19 @@ const OrdersPage: React.FC = () => {
                 grandTotal: Order.totalAmount,
             };
 
-            const preparedData = await prepareCatalogueBillData(rawBillData);
+            let preparedData;
+
+            if (billType === 'estimate') {
+                preparedData = await prepareCatalogueBillData({
+                    ...rawBillData,
+                    isEstimate: true
+                });
+            } else {
+                preparedData = await prepareCatalogueBillData({
+                    ...rawBillData,
+                    isEstimate: false
+                });
+            }
 
             if (action === ACTION.PRINT) {
                 await CatalogueBill(preparedData, "print");
@@ -554,6 +567,7 @@ const OrdersPage: React.FC = () => {
             setPdfLoadingOrderId(null);
         }
     };
+
     const handleSaveSuccess = (updatedItemData: Partial<Item>) => {
         if (!selectedItemForEdit) return;
 
@@ -1220,7 +1234,7 @@ const OrdersPage: React.FC = () => {
                                                     {/* Totals Section */}
                                                     {!isUpcomingStatus && (
                                                         <div className="border-t mt-1 p-2 flex items-center justify-between">
-                                                            <div className="flex flex-wrap gap-1 items-center">
+                                                            <div className="flex flex-wrap gap-1.5 items-center">
                                                                 {paid > 0 && (
                                                                     Order.paymentMethods && Object.keys(Order.paymentMethods).length > 0 ? (
                                                                         Object.entries(Order.paymentMethods)
@@ -1232,10 +1246,10 @@ const OrdersPage: React.FC = () => {
                                                                                     key={method}
                                                                                     className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-green-100"
                                                                                 >
-                                                                                    <span className="text-[8px] font-bold text-green-800 uppercase">
+                                                                                    <span className="text-[10px] font-bold text-green-800 uppercase">
                                                                                         {method}
                                                                                     </span>
-                                                                                    <span className="text-[9px] font-black text-green-600">
+                                                                                    <span className="text-[10px] font-black text-green-600">
                                                                                         ₹{Number(amount).toFixed(2)}
                                                                                     </span>
                                                                                 </div>
@@ -1453,7 +1467,20 @@ const OrdersPage: React.FC = () => {
             {selectedOrderForAction && (
                 <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4" onClick={() => setSelectedOrderForAction(null)}>
                     <div className="bg-white rounded-sm p-6 w-full max-w-sm shadow-xl" onClick={e => e.stopPropagation()}>
-                        <h3 className="text-sm font-bold mb-4">Select Action</h3>
+                        <div className="flex mb-4 bg-slate-100 rounded-sm p-1">
+                            {['estimate', 'bill'].map((type) => (
+                                <button
+                                    key={type}
+                                    onClick={() => setBillType(type as any)}
+                                    className={`flex-1 py-2 text-xs font-bold uppercase rounded-sm transition-all ${billType === type
+                                        ? 'bg-white text-orange-600 shadow-sm'
+                                        : 'text-slate-500'
+                                        }`}
+                                >
+                                    {type}
+                                </button>
+                            ))}
+                        </div>
                         <div className="flex flex-col gap-3">
                             <button
                                 onClick={() => {
@@ -1507,10 +1534,10 @@ const OrdersPage: React.FC = () => {
             )}
 
             {showQrModal && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+                <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
                     <div className="bg-white rounded-sm p-6 w-full max-w-sm flex flex-col items-center relative">
                         <button onClick={() => setShowQrModal(null)} className="absolute top-4 right-4 text-gray-400"><FiX size={24} /></button>
-                        <div className="bg-white p-2 bOrder rounded-sm mb-4"><QRCode value={`${window.location.origin}/download-bill/${currentUser?.companyId}/${showQrModal.id}`} size={200} /></div>
+                        <div className="bg-white p-2 border rounded-sm mb-4"><QRCode value={`${window.location.origin}/download-bill/${currentUser?.companyId}/${showQrModal.id}`} size={200} /></div>
                         <button onClick={() => setShowQrModal(null)} className="w-full bg-blue-600 text-white py-3 rounded-sm font-semibold">Close</button>
                     </div>
                 </div>

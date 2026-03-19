@@ -26,6 +26,7 @@ import CatalogueTaxReport from '../Catalogue/CatalogueReports/CatalogueTaxReport
 import CatalogueRegistration3 from '../Catalogue/Registration/CatalogueRegistration3';
 import CatalogueRegistration2 from '../Catalogue/Registration/CatalogueRegistration2';
 import WebsiteLeads from '../Pages/Account/WebsiteLeads';
+import CatalogueSupport from '../Catalogue/CatalogueSupport/CatalogueSupport';
 // import SharedProduct from '../Catalogue/SharedProduct';
 
 const WebsiteLeadsDashboard = lazy(() => import('../Pages/Account/WebsiteLeads'));
@@ -359,7 +360,7 @@ const router = createBrowserRouter([
                 path: ROUTES.SUPPORT_PAGE,
                 element: <SupportPage />,
                 handle: { requiredPermission: null },
-              },
+              }
             ],
           },
         ],
@@ -493,6 +494,11 @@ const router = createBrowserRouter([
             element: <CataloguePermissionSetting />,
             handle: { requiredPermission: null },
           },
+          {
+            path: ROUTES.CATA_SUPPORT,
+            element: <CatalogueSupport />,
+            handle: { requiredPermission: null },
+          }
         ],
       },
       {

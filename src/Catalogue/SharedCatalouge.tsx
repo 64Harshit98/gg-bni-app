@@ -8,7 +8,7 @@ import { Spinner } from '../constants/Spinner';
 import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName.tsx';
 import SearchBar from './SearchBar.tsx';
-import LeadPopUp from './PopUp.tsx';
+// import LeadPopUp from './PopUp.tsx';
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../lib/Firebase";
 
@@ -145,7 +145,7 @@ const SharedCataloguePage: React.FC = () => {
     return (
         <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative overflow-x-hidden">
 
-            <LeadPopUp companyId={companyId} companyName={companyName} />
+            {/* <LeadPopUp companyId={companyId} companyName={companyName} /> */}
 
             {/* --- HEADER --- */}
             <header className="sticky top-0 z-[60] bg-white border-b border-gray-100 shadow-sm">
@@ -234,7 +234,7 @@ const SharedCataloguePage: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-0.5">
                     {filteredItems.map(group => {
                         const itemCount = allItems.filter(item => item.itemGroupId === group.id).length;
                         const collageImages = getGroupImages(group.id!);

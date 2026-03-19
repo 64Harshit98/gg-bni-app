@@ -168,7 +168,7 @@ const Account: React.FC = () => {
                         Share your Business Card
                     </h2>
                     <BusinessCard />
-                    <div className="w-full grid-cols-2 gap-4 justify-center mt-2 space-y-2 flex-col">
+                    <div className="w-full grid grid-cols-2 gap-4 justify-center mt-2 space-y-2 flex-col">
 
                         <ShowWrapper
                             requiredPermission={Permissions.ViewPNLReport}
@@ -182,7 +182,19 @@ const Account: React.FC = () => {
                             <Link
                                 to={`${ROUTES.CHOME}/${ROUTES.CATA_MASTERS}`}
                                 className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-border border-gray-200 text-gray-800 hover:shadow-lg">
-                                <span className="text-lg font-medium">Setting</span>
+                                <span className="text-lg font-medium">Settings</span>
+                                <span className="text-xl text-gray-600">→</span>
+                            </Link>
+                            <Link
+                                to={ROUTES.SUBSCRIPTION_PAGE}
+                                className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-border border-gray-200 text-gray-800 hover:shadow-lg">
+                                <span className="text-lg font-medium">Plans</span>
+                                <span className="text-xl text-gray-600">→</span>
+                            </Link>
+                            <Link
+                                to={`${ROUTES.CHOME}/${ROUTES.CATA_SUPPORT}`}
+                                className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-border border-gray-200 text-gray-800 hover:shadow-lg">
+                                <span className="text-lg font-medium">Supports</span>
                                 <span className="text-xl text-gray-600">→</span>
                             </Link>
                         </ShowWrapper>

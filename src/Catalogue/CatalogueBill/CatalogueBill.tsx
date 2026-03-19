@@ -11,6 +11,7 @@ export interface CatalogueInvoiceData {
   companyAddress: string;
   companyPhone: string;
   logoBase64?: string;
+  isEstimate?: boolean;
 
   // NEW SETTINGS
   companyGstin?: string;
@@ -21,7 +22,6 @@ export interface CatalogueInvoiceData {
   accountName?: string;
   accountNumber?: string;
   ifscCode?: string;
-
   termsAndConditions?: string;
   signatureBase64?: string;
 
@@ -60,6 +60,7 @@ export const CatalogueBill = async (
   action: "download" | "print" | "blob" = "download"
 ): Promise<Blob | void> => {
 
+  const isEstimate = data.isEstimate === true;
   const doc = new jsPDF("p", "mm", "a4");
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -85,70 +86,54 @@ export const CatalogueBill = async (
     const datePart = parts[0].trim();
     const timePart = parts[1]?.trim() || "";
 
-    return `${datePart}/${currentYear} ${timePart}`;
+    return `${datePart}/${currentYear}, ${timePart}`;
   };
 
   // ================= HEADER =================
   const drawHeader = () => {
     const y = margin;
 
-    // company name
     doc.setFont("helvetica", "bold");
     doc.setFontSize(20);
+
     doc.text(
-      (data.companyName || "COMPANY NAME").toUpperCase(),
+      isEstimate
+        ? "ESTIMATE"
+        : (data.companyName || "COMPANY NAME").toUpperCase(),
       pageWidth / 2,
       y + 5,
       { align: "center" }
     );
 
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
+    let dividerY = y + 10; // default for estimate
 
-    const addressLines = doc.splitTextToSize(
-      data.companyAddress || "",
-      pageWidth - 40
-    );
+    if (!isEstimate) {
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
 
-    doc.text(
-      addressLines,
-      pageWidth / 2,
-      y + 11,
-      { align: "center" }
-    );
-
-    // phone
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    const phoneY = y + 11 + (addressLines.length * 4);
-
-    doc.text(
-      data.companyPhone || "",
-      pageWidth / 2,
-      phoneY,
-      { align: "center" }
-    );
-
-    // GST TYPE
-    if (data.companyGstType) {
-      doc.text(
-        `GST Type: ${data.companyGstType}`,
-        pageWidth / 2,
-        phoneY + 4,
-        { align: "center" }
+      const addressLines = doc.splitTextToSize(
+        data.companyAddress || "",
+        pageWidth - 40
       );
+
+      doc.text(addressLines, pageWidth / 2, y + 11, { align: "center" });
+
+      const phoneY = y + 11 + (addressLines.length * 4);
+
+      doc.text(data.companyPhone || "", pageWidth / 2, phoneY, { align: "center" });
+
+      if (data.companyGstType && data.companyGstType.trim() !== "") {
+        doc.text(`GST Type: ${data.companyGstType}`, pageWidth / 2, phoneY + 4, { align: "center" });
+        dividerY = phoneY + 8;
+      } else {
+        dividerY = phoneY + 4;
+      }
     }
 
-    // divider
     doc.setDrawColor(0);
     doc.setLineWidth(0.6);
-    const dividerY = phoneY + (data.companyGstType ? 8 : 4);
-    doc.line(
-      margin,
-      dividerY,
-      pageWidth - margin,
-      dividerY
-    );
+    doc.line(margin, dividerY, pageWidth - margin, dividerY);
+
     return dividerY + 7;
   };
 
@@ -248,12 +233,19 @@ export const CatalogueBill = async (
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
 
-  doc.text("Billed To :", margin + 3, sectionStartY + 6);
   doc.text(
-    "Shipped To :",
-    margin + tableWidth / 2 + 3,
+    isEstimate ? "Estimate For :" : "Billed To :",
+    margin + 3,
     sectionStartY + 6
   );
+
+  if (!isEstimate) {
+    doc.text(
+      "Shipped To :",
+      margin + tableWidth / 2 + 3,
+      sectionStartY + 6
+    );
+  }
 
   // values
   doc.setFont("helvetica", "normal");
@@ -265,34 +257,51 @@ export const CatalogueBill = async (
   const shipX = margin + tableWidth / 2 + 3;
 
   // name
-  doc.text(data.customer.billing?.name || "", billX, textY);
-  doc.text(data.customer.shipping?.name || "", shipX, textY);
+  if (isEstimate) {
+    doc.text(data.customer.shipping?.name || "", billX, textY);
+  } else {
+    doc.text(data.customer.billing?.name || "", billX, textY);
+    doc.text(data.customer.shipping?.name || "", shipX, textY);
+  }
 
   textY += 5;
 
   // address
-  const billingAddrLines = doc.splitTextToSize(
-    data.customer.billing?.address || "",
-    tableWidth / 2 - 6
-  );
+  if (isEstimate) {
+    const shippingAddrLines = doc.splitTextToSize(
+      data.customer.shipping?.address || "",
+      tableWidth - 6
+    );
 
-  const shippingAddrLines = doc.splitTextToSize(
-    data.customer.shipping?.address || "",
-    tableWidth / 2 - 6
-  );
+    doc.text(shippingAddrLines, billX, textY);
+    textY += shippingAddrLines.length * 5;
+  } else {
+    const billingAddrLines = doc.splitTextToSize(
+      data.customer.billing?.address || "",
+      tableWidth / 2 - 6
+    );
 
-  doc.text(billingAddrLines, billX, textY);
-  doc.text(shippingAddrLines, shipX, textY);
+    const shippingAddrLines = doc.splitTextToSize(
+      data.customer.shipping?.address || "",
+      tableWidth / 2 - 6
+    );
 
-  textY += Math.max(
-    billingAddrLines.length,
-    shippingAddrLines.length
-  ) * 5;
+    doc.text(billingAddrLines, billX, textY);
+    doc.text(shippingAddrLines, shipX, textY);
+
+    textY += Math.max(
+      billingAddrLines.length,
+      shippingAddrLines.length
+    ) * 5;
+  }
 
   // phone
-  doc.text(`Phone : ${data.customer.billing?.phone || ""}`, billX, textY);
-  doc.text(`Phone : ${data.customer.shipping?.phone || ""}`, shipX, textY);
-
+  if (isEstimate) {
+    doc.text(`Phone : ${data.customer.shipping?.phone || ""}`, billX, textY);
+  } else {
+    doc.text(`Phone : ${data.customer.billing?.phone || ""}`, billX, textY);
+    doc.text(`Phone : ${data.customer.shipping?.phone || ""}`, shipX, textY);
+  }
 
   // ================= TOTAL BOX =================
 
@@ -331,22 +340,34 @@ export const CatalogueBill = async (
   cursorY = sectionStartY + sectionHeight + 6;
 
   // ================= TABLE DATA =================
-  const body = data.items.map((item: any) => [
-    item.sno,
-    "",
-    item.name,
-    item.qty,
-    item.gst || 0,
-    formatAmount(item.mrp || 0),
-    formatAmount(item.price || 0),
-    formatAmount(item.gstAmount || 0),
-    formatAmount(item.total),
-  ]);
+  const body = data.items.map((item: any) =>
+    isEstimate
+      ? [
+        item.sno,
+        "",
+        item.name,
+        item.qty,
+        formatAmount(item.mrp || 0),
+        formatAmount(item.price || 0),
+        formatAmount(item.total),
+      ]
+      : [
+        item.sno,
+        "",
+        item.name,
+        item.qty,
+        item.gst || 0,
+        formatAmount(item.mrp || 0),
+        formatAmount(item.price || 0),
+        formatAmount(item.gstAmount || 0),
+        formatAmount(item.total),
+      ]
+  );
 
   // ===== GRAND TOTAL ROW =====
-  const foot = [
-    ["", "", "", "", "", "", "", "Grand Total", formatAmount(data.grandTotal)]
-  ];
+  const foot = isEstimate
+    ? [["", "", "", "", "", "Grand Total", formatAmount(data.grandTotal)]]
+    : [["", "", "", "", "", "", "", "Grand Total", formatAmount(data.grandTotal)]];
 
   const drawBrandingFooter = () => {
 
@@ -385,11 +406,11 @@ export const CatalogueBill = async (
 
     doc.setTextColor(0, 0, 0);
 
-    // Made with Love
+    // Made with pride
     doc.setFont("helvetica", "normal");
 
     const part1 = "Made with ";
-    const part2 = "Love";
+    const part2 = "pride";
     const part3 = " in India";
 
     const w1 = doc.getTextWidth(part1);
@@ -404,11 +425,11 @@ export const CatalogueBill = async (
     doc.text(part1, x, y);
     x += w1;
 
-    doc.setTextColor(255, 0, 0);
+    doc.setTextColor(0, 0, 0);
     doc.text(part2, x, y);
     x += w2;
 
-    doc.setTextColor(0, 0, 139);
+    doc.setTextColor(0, 0, 0);
     doc.text(part3, x, y);
 
     doc.setTextColor(0, 0, 0);
@@ -417,7 +438,9 @@ export const CatalogueBill = async (
   // ================= TABLE =================
   autoTable(doc, {
     startY: cursorY,
-    head: [["No.", "Product", "Item", "Qty", "GST%", "MRP", "Price", "GSTAmt", "Total"]],
+    head: isEstimate
+      ? [["No", "Product", "Item", "Qty", "MRP", "Price", "Total"]]
+      : [["No", "Product", "Item", "Qty", "GST%", "MRP", "Price", "GSTAmt", "Total"]],
     body,
     foot,
     showFoot: "lastPage",
@@ -444,17 +467,27 @@ export const CatalogueBill = async (
       lineWidth: 0.2
     },
 
-    columnStyles: {
-      0: { cellWidth: 12, halign: "center" },  // No
-      1: { cellWidth: 22 },                    // Product image
-      2: { cellWidth: "auto" },                // Item name
-      3: { cellWidth: 14, halign: "center" },  // Qty
-      4: { cellWidth: 16, halign: "center" },  // GST %
-      5: { cellWidth: 24, halign: "center" },   // MRP
-      6: { cellWidth: 24, halign: "center" },   // Price
-      7: { cellWidth: 22, halign: "center" },   // GST Amt
-      8: { cellWidth: 24, halign: "center", fontStyle: "bold" }, // Total
-    },
+    columnStyles: isEstimate
+      ? {
+        0: { cellWidth: 12, halign: "center" },
+        1: { cellWidth: 22 },
+        2: { cellWidth: "auto" },
+        3: { cellWidth: 14, halign: "center" },
+        4: { cellWidth: 24, halign: "center" },
+        5: { cellWidth: 24, halign: "center" },
+        6: { cellWidth: 24, halign: "center", fontStyle: "bold" },
+      }
+      : {
+        0: { cellWidth: 12, halign: "center" },
+        1: { cellWidth: 22 },
+        2: { cellWidth: "auto" },
+        3: { cellWidth: 14, halign: "center" },
+        4: { cellWidth: 16, halign: "center" },
+        5: { cellWidth: 24, halign: "center" },
+        6: { cellWidth: 24, halign: "center" },
+        7: { cellWidth: 22, halign: "center" },
+        8: { cellWidth: 24, halign: "center", fontStyle: "bold" },
+      },
 
     didDrawCell: (hookData) => {
       const colIndex = hookData.column.index;
@@ -510,228 +543,231 @@ export const CatalogueBill = async (
       if (data.pageNumber === 1) {
         drawHeader();
       }
-
-      drawBrandingFooter()
+      drawBrandingFooter();
     },
   });
 
   // table end position
   // @ts-ignore
-  let finalY = doc.lastAutoTable.finalY + 4;
+  if (!isEstimate) {
+    let finalY = (doc as any).lastAutoTable.finalY + 4;
 
-  const wordsH = 8;
-  const bankH = 12;
-  const footerH = 32;
+    const wordsH = 8;
+    const bankH = 12;
+    const footerH = 32;
 
-  // check if enough space for footer
-  const footerHeight = wordsH + bankH + footerH + 20;
+    // check if enough space for footer
+    const footerHeight = wordsH + bankH + footerH + 20;
 
-  if (finalY + footerHeight > pageHeight - 15) {
-    doc.addPage();
-    finalY = margin;
-  }
-
-  doc.rect(margin, finalY, pageWidth - margin * 2, wordsH);
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
-
-  doc.text(
-    `Amount in Words : ${convertNumberToWords(Math.round(data.grandTotal))}`,
-    margin + 4,
-    finalY + 5.5
-  );
-
-  finalY += wordsH;
-
-  doc.rect(margin, finalY, pageWidth - margin * 2, bankH);
-
-  doc.setFont("helvetica", "bold");
-  doc.text("BANK DETAIL :", margin + 3, finalY + 4);
-
-  const bdWidth = doc.getTextWidth("BANK DETAIL :");
-
-  doc.line(
-    margin + 3,
-    finalY + 4.5,
-    margin + 3 + bdWidth,
-    finalY + 4.5
-  );
-
-  doc.setFont("helvetica", "normal");
-
-  // ===== 2 COLUMN LAYOUT =====
-  const contentStartX = margin + 35;
-  const contentWidth = pageWidth - margin * 2 - 40;
-
-  // split into 2 columns
-  const leftColWidth = contentWidth * 0.6;
-  const rightColWidth = contentWidth * 0.4;
-
-  // LEFT → Bank + A/C No
-  const leftText = [
-    `Bank : ${data.bankName || ""}`,
-    `A/C No : ${data.accountNumber || ""}`,
-  ].join("\n");
-
-  const leftLines = doc.splitTextToSize(leftText, leftColWidth);
-
-  // RIGHT → IFSC
-  const rightText = `IFSC : ${data.ifscCode || ""}`;
-  const rightLines = doc.splitTextToSize(rightText, rightColWidth);
-
-  // draw LEFT
-  doc.text(
-    leftLines,
-    contentStartX,
-    finalY + 4
-  );
-
-  // draw RIGHT
-  doc.text(
-    rightLines,
-    contentStartX + leftColWidth + 5,
-    finalY + 4
-  );
-
-  finalY += bankH;
-
-  const termsWidth = (pageWidth - margin * 2) * 0.5;
-  const receiverWidth = (pageWidth - margin * 2) * 0.25;
-  const authWidth = (pageWidth - margin * 2) * 0.25;
-  const termsX = margin;
-  const receiverX = margin + termsWidth;
-  const authX = margin + termsWidth + receiverWidth;
-  doc.rect(termsX, finalY, termsWidth, footerH);
-  doc.rect(receiverX, finalY, receiverWidth, footerH);
-  doc.rect(authX, finalY, authWidth, footerH);
-
-  let termY = finalY + 4;
-
-  doc.setFont("helvetica", "bold");
-
-  doc.text(
-    "Terms & Conditions",
-    termsX + 3,
-    termY
-  );
-
-  termY += 6;
-
-  doc.setFont("helvetica", "normal");
-
-  const terms = doc.splitTextToSize(
-    data.termsAndConditions || "",
-    termsWidth - 6
-  );
-
-  doc.text(
-    terms,
-    termsX + 3,
-    termY
-  );
-
-  // line height adjust automatically
-  termY += terms.length * 4;
-
-  doc.setFont("helvetica", "bold");
-
-  doc.text(
-    "Receiver's Signature :",
-    receiverX + 3,
-    finalY + 5
-  );
-
-  doc.text(
-    `For ${data.companyName}`,
-    authX + 5,
-    finalY + 6
-  );
-
-  if (data.signatureBase64) {
-    try {
-      doc.addImage(
-        data.signatureBase64,
-        "PNG",
-        authX + 5,
-        finalY + 10,
-        35,
-        12
-      );
-    } catch (e) {
-      console.error("Signature error", e);
+    if (finalY + footerHeight > pageHeight - 15) {
+      doc.addPage();
+      finalY = margin;
     }
-  }
 
-  doc.text(
-    "Authorised Signatory",
-    authX + 5,
-    finalY + footerH - 4
-  );
+    doc.rect(margin, finalY, pageWidth - margin * 2, wordsH);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+
+    doc.text(
+      `Amount in Words : ${convertNumberToWords(Math.round(data.grandTotal))}`,
+      margin + 4,
+      finalY + 5.5
+    );
+
+    finalY += wordsH;
+
+    doc.rect(margin, finalY, pageWidth - margin * 2, bankH);
+
+    doc.setFont("helvetica", "bold");
+    doc.text("BANK DETAIL :", margin + 3, finalY + 4);
+
+    const bdWidth = doc.getTextWidth("BANK DETAIL :");
+
+    doc.line(
+      margin + 3,
+      finalY + 4.5,
+      margin + 3 + bdWidth,
+      finalY + 4.5
+    );
+
+    doc.setFont("helvetica", "normal");
+
+    // ===== 2 COLUMN LAYOUT =====
+    const contentStartX = margin + 35;
+    const contentWidth = pageWidth - margin * 2 - 40;
+
+    // split into 2 columns
+    const leftColWidth = contentWidth * 0.6;
+    const rightColWidth = contentWidth * 0.4;
+
+    // LEFT → Bank + A/C No
+    const leftText = [
+      `Bank : ${data.bankName || ""}`,
+      `A/C No : ${data.accountNumber || ""}`,
+    ].join("\n");
+
+    const leftLines = doc.splitTextToSize(leftText, leftColWidth);
+
+    // RIGHT → IFSC
+    const rightText = `IFSC : ${data.ifscCode || ""}`;
+    const rightLines = doc.splitTextToSize(rightText, rightColWidth);
+
+    // draw LEFT
+    doc.text(
+      leftLines,
+      contentStartX,
+      finalY + 4
+    );
+
+    // draw RIGHT
+    doc.text(
+      rightLines,
+      contentStartX + leftColWidth + 5,
+      finalY + 4
+    );
+
+    finalY += bankH;
+
+    const termsWidth = (pageWidth - margin * 2) * 0.5;
+    const receiverWidth = (pageWidth - margin * 2) * 0.25;
+    const authWidth = (pageWidth - margin * 2) * 0.25;
+    const termsX = margin;
+    const receiverX = margin + termsWidth;
+    const authX = margin + termsWidth + receiverWidth;
+    doc.rect(termsX, finalY, termsWidth, footerH);
+    doc.rect(receiverX, finalY, receiverWidth, footerH);
+    doc.rect(authX, finalY, authWidth, footerH);
+
+    let termY = finalY + 4;
+
+    doc.setFont("helvetica", "bold");
+
+    doc.text(
+      "Terms & Conditions",
+      termsX + 3,
+      termY
+    );
+
+    termY += 6;
+
+    doc.setFont("helvetica", "normal");
+
+    const terms = doc.splitTextToSize(
+      data.termsAndConditions || "",
+      termsWidth - 6
+    );
+
+    doc.text(
+      terms,
+      termsX + 3,
+      termY
+    );
+
+    // line height adjust automatically
+    termY += terms.length * 4;
+
+    doc.setFont("helvetica", "bold");
+
+    doc.text(
+      "Receiver's Signature :",
+      receiverX + 3,
+      finalY + 5
+    );
+
+    doc.text(
+      `For ${data.companyName}`,
+      authX + 5,
+      finalY + 6
+    );
+
+    if (data.signatureBase64) {
+      try {
+        doc.addImage(
+          data.signatureBase64,
+          "PNG",
+          authX + 5,
+          finalY + 10,
+          35,
+          12
+        );
+      } catch (e) {
+        console.error("Signature error", e);
+      }
+    }
+
+    doc.text(
+      "Authorised Signatory",
+      authX + 5,
+      finalY + footerH - 4
+    );
+  }
 
   //  BRANDING FOOTER
-  const brandingHeight = 15;
-  const brandingY = pageHeight - brandingHeight;
+  if (!isEstimate) {
+    const brandingHeight = 15;
+    const brandingY = pageHeight - brandingHeight;
 
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
 
-  // --- Split text to link and underline "SELLAR.IN" ---
-  const pbText = 'Powered by ';
-  const linkText = 'SELLAR.IN';
+    // --- Split text to link and underline "SELLAR.IN" ---
+    const pbText = 'Powered by ';
+    const linkText = 'SELLAR.IN';
 
-  const pbWidth = doc.getTextWidth(pbText);
-  const linkWidth = doc.getTextWidth(linkText);
+    const pbWidth = doc.getTextWidth(pbText);
+    const linkWidth = doc.getTextWidth(linkText);
 
-  // Calculate Start X to center the combined text
-  let brandingX = (pageWidth / 2) - ((pbWidth + linkWidth) / 2);
+    // Calculate Start X to center the combined text
+    let brandingX = (pageWidth / 2) - ((pbWidth + linkWidth) / 2);
 
-  // 1. Print "Powered by " (Black)
-  doc.text(pbText, brandingX, brandingY + 5);
-  brandingX += pbWidth;
+    // 1. Print "Powered by " (Black)
+    doc.text(pbText, brandingX, brandingY + 5);
+    brandingX += pbWidth;
 
-  // 2. Print "SELLAR.IN" (Blue)
-  const linkColorR = 0;
-  const linkColorG = 102;
-  const linkColorB = 204;
+    // 2. Print "SELLAR.IN" (Blue)
+    const linkColorR = 0;
+    const linkColorG = 102;
+    const linkColorB = 204;
 
-  doc.setTextColor(linkColorR, linkColorG, linkColorB);
-  doc.text(linkText, brandingX, brandingY + 5);
+    doc.setTextColor(linkColorR, linkColorG, linkColorB);
+    doc.text(linkText, brandingX, brandingY + 5);
 
-  // 3. Draw Underline (Same Blue Color)
-  doc.setDrawColor(linkColorR, linkColorG, linkColorB);
-  doc.setLineWidth(0.1);
-  // Line from start of text to end of text, slightly below baseline (+ 5.5)
-  doc.line(brandingX, brandingY + 5.5, brandingX + linkWidth, brandingY + 5.5);
+    // 3. Draw Underline (Same Blue Color)
+    doc.setDrawColor(linkColorR, linkColorG, linkColorB);
+    doc.setLineWidth(0.1);
+    // Line from start of text to end of text, slightly below baseline (+ 5.5)
+    doc.line(brandingX, brandingY + 5.5, brandingX + linkWidth, brandingY + 5.5);
 
-  // 4. Create Clickable Link
-  doc.link(brandingX, brandingY + 2, linkWidth, 4, { url: 'https://www.sellar.in' });
+    // 4. Create Clickable Link
+    doc.link(brandingX, brandingY + 2, linkWidth, 4, { url: 'https://www.sellar.in' });
 
-  // Reset Colors for next section
-  doc.setTextColor(0, 0, 0);
-  doc.setDrawColor(0, 0, 0);
+    // Reset Colors for next section
+    doc.setTextColor(0, 0, 0);
+    doc.setDrawColor(0, 0, 0);
 
-  // "Made with Love in India" logic (Unchanged)
-  doc.setFont('helvetica', 'normal');
-  const part1 = "Made with ";
-  const part2 = "Love";
-  const part3 = " in India";
+    // "Made with pride in India" logic (Unchanged)
+    doc.setFont('helvetica', 'normal');
+    const part1 = "Made with ";
+    const part2 = "pride";
+    const part3 = " in India";
 
-  const part1Width = doc.getTextWidth(part1);
-  const part2Width = doc.getTextWidth(part2);
-  const part3Width = doc.getTextWidth(part3);
+    const part1Width = doc.getTextWidth(part1);
+    const part2Width = doc.getTextWidth(part2);
+    const part3Width = doc.getTextWidth(part3);
 
-  const totalWidth = part1Width + part2Width + part3Width;
-  let currentX = (pageWidth / 2) - (totalWidth / 2);
-  const textZ = brandingY + 10;
+    const totalWidth = part1Width + part2Width + part3Width;
+    let currentX = (pageWidth / 2) - (totalWidth / 2);
+    const textZ = brandingY + 10;
 
-  doc.text(part1, currentX, textZ);
-  currentX += part1Width;
-  doc.setTextColor(255, 0, 0);
-  doc.text(part2, currentX, textZ);
-  currentX += part2Width;
-  doc.setTextColor(0, 0, 139);
-  doc.text(part3, currentX, textZ);
+    doc.text(part1, currentX, textZ);
+    currentX += part1Width;
+    doc.setTextColor(255, 0, 0);
+    doc.text(part2, currentX, textZ);
+    currentX += part2Width;
+    doc.setTextColor(0, 0, 139);
+    doc.text(part3, currentX, textZ);
+  }
   doc.setTextColor(0, 0, 0);
 
   // ================= OUTPUT =================
@@ -739,7 +775,7 @@ export const CatalogueBill = async (
     doc.autoPrint();
     window.open(doc.output("bloburl"), "_blank");
   } else if (action === "download") {
-    doc.save(`Estimate_${data.order.orderId}.pdf`);
+    doc.save(`${isEstimate ? "Estimate" : "Invoice"}_${data.order.orderId}.pdf`);
   } else {
     return doc.output("blob");
   }
@@ -899,7 +935,9 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
     companyName: companyData.name || "",
     companyAddress: companyData.address || "",
     companyPhone: companyData.phone || "",
-    companyGstType: gstTypeFromSales || companyData.gstType || "",
+    companyGstType: salesSettings?.gstScheme === "none"
+      ? ""
+      : (gstTypeFromSales || companyData.gstType || ""),
 
     // BILL SETTINGS
     companyGstin: billSettings.companyGstin || "",

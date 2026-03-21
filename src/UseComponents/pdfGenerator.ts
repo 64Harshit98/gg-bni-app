@@ -491,7 +491,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   const amountWords = convertNumberToWords(finalRoundTotal);
   doc.text(`Rs. ${amountWords}`, startX + 2, finalY + 5.5);
   finalY += wordsH;
-
+ 
   // 5. BANK DETAILS
   const bankH = 10;
   doc.rect(startX, finalY, contentWidth, bankH);

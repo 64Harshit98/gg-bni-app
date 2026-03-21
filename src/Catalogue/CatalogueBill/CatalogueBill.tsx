@@ -24,17 +24,20 @@ export interface CatalogueInvoiceData {
   ifscCode?: string;
   termsAndConditions?: string;
   signatureBase64?: string;
+  taxType?: 'inclusive' | 'exclusive';
 
   customer: {
     billing: {
       name: string;
       phone: string;
       address?: string;
+      gstin?: string;
     };
     shipping: {
       name: string;
       phone: string;
       address?: string;
+      gstin?: string;
     };
   };
 
@@ -68,7 +71,7 @@ export const CatalogueBill = async (
 
   // ================= FORMATTERS =================
   const formatAmount = (num: number) =>
-    `Rs.${num.toLocaleString("en-IN")}`;
+    `${num.toLocaleString("en-IN")}`;
 
   const formatDateTime = (dateStr: string) => {
     if (!dateStr) return "";
@@ -122,12 +125,32 @@ export const CatalogueBill = async (
 
       doc.text(data.companyPhone || "", pageWidth / 2, phoneY, { align: "center" });
 
+      let nextY = phoneY + 4;
+
+      // GST TYPE
       if (data.companyGstType && data.companyGstType.trim() !== "") {
-        doc.text(`GST Type: ${data.companyGstType}`, pageWidth / 2, phoneY + 4, { align: "center" });
-        dividerY = phoneY + 8;
-      } else {
-        dividerY = phoneY + 4;
+
+        let gstText = data.companyGstType;
+
+        // sirf tab add karna jab Regular ho
+        if (data.companyGstType === "Regular" && data.taxType) {
+          const taxLabel =
+            data.taxType === "inclusive" ? "Inclusive" : "Exclusive";
+
+          gstText += ` (${taxLabel})`;
+        }
+
+        doc.text(`GST Type: ${gstText}`, pageWidth / 2, nextY, { align: "center" });
+        nextY += 4;
       }
+
+      // GSTIN ONLY FOR INVOICE (NOT ESTIMATE)
+      if (!isEstimate && data.companyGstin) {
+        doc.text(`GSTIN: ${data.companyGstin}`, pageWidth / 2, nextY, { align: "center" });
+        nextY += 4;
+      }
+
+      dividerY = nextY;
     }
 
     doc.setDrawColor(0);
@@ -301,6 +324,15 @@ export const CatalogueBill = async (
   } else {
     doc.text(`Phone : ${data.customer.billing?.phone || ""}`, billX, textY);
     doc.text(`Phone : ${data.customer.shipping?.phone || ""}`, shipX, textY);
+
+    // GSTIN only for real bill
+    if (data.customer.billing?.gstin) {
+      doc.text(`GSTIN : ${data.customer.billing.gstin}`, billX, textY + 5);
+    }
+
+    if (data.customer.shipping?.gstin) {
+      doc.text(`GSTIN : ${data.customer.shipping.gstin}`, shipX, textY + 5);
+    }
   }
 
   // ================= TOTAL BOX =================
@@ -340,34 +372,63 @@ export const CatalogueBill = async (
   cursorY = sectionStartY + sectionHeight + 6;
 
   // ================= TABLE DATA =================
-  const body = data.items.map((item: any) =>
-    isEstimate
+  const isTaxEnabled = data.companyGstType === 'Regular';
+  const body = data.items.map((item: any) => {
+    const totalPcs = item.qty * (item.unitMultiplier ?? 1);
+
+    const taxPercent = item.tax ?? item.gst ?? item.taxRate ?? 0;
+
+    const price = item.price || item.salesPrice || item.mrp || 0;
+
+    let gstAmount = 0;
+    let subtotal = 0;
+
+    // APPLY SETTINGS LOGIC
+    const qty = item.qty || 0;
+
+    if (!isTaxEnabled || !taxPercent) {
+      subtotal = price * qty;
+      gstAmount = 0;
+    }
+    else if (data.taxType === 'inclusive') {
+      const base = price / (1 + taxPercent / 100);
+
+      subtotal = base * qty;              // taxable value
+      gstAmount = (price - base) * qty;   // gst
+    }
+    else {
+      subtotal = price * qty;             // taxable
+      gstAmount = (price * taxPercent / 100) * qty;
+    }
+
+    return isEstimate
       ? [
         item.sno,
         "",
-        item.name,
+        `${item.name}\n(${totalPcs} pcs)`,
         item.qty,
         formatAmount(item.mrp || 0),
-        formatAmount(item.price || 0),
+        formatAmount(price),
         formatAmount(item.total),
       ]
       : [
         item.sno,
         "",
-        item.name,
+        `${item.name}\n(${totalPcs} pcs)`,
         item.qty,
-        item.gst || 0,
+        taxPercent,
         formatAmount(item.mrp || 0),
-        formatAmount(item.price || 0),
-        formatAmount(item.gstAmount || 0),
-        formatAmount(item.total),
-      ]
-  );
+        formatAmount(price),
+        formatAmount(subtotal),
+        formatAmount(gstAmount),
+        formatAmount(subtotal + gstAmount),
+      ];
+  });
 
   // ===== GRAND TOTAL ROW =====
   const foot = isEstimate
     ? [["", "", "", "", "", "Grand Total", formatAmount(data.grandTotal)]]
-    : [["", "", "", "", "", "", "", "Grand Total", formatAmount(data.grandTotal)]];
+    : [["", "", "", "", "", "", "", "", "Grand Total", formatAmount(data.grandTotal)]];
 
   const drawBrandingFooter = () => {
 
@@ -439,11 +500,12 @@ export const CatalogueBill = async (
   autoTable(doc, {
     startY: cursorY,
     head: isEstimate
-      ? [["No", "Product", "Item", "Qty", "MRP", "Price", "Total"]]
-      : [["No", "Product", "Item", "Qty", "GST%", "MRP", "Price", "GSTAmt", "Total"]],
+      ? [["No", "Product", "Item", "Qty", "MRP", "SalePrice", "Total"]]
+      : [["No", "Product", "Item", "Qty", "GST%", "MRP", "SalePrice", "SubTotal", "GSTAmt", "Total"]],
     body,
     foot,
     showFoot: "lastPage",
+    margin: { left: 7, right: 7 },
     theme: "grid",
 
     headStyles: {
@@ -478,15 +540,16 @@ export const CatalogueBill = async (
         6: { cellWidth: 24, halign: "center", fontStyle: "bold" },
       }
       : {
-        0: { cellWidth: 12, halign: "center" },
-        1: { cellWidth: 22 },
-        2: { cellWidth: "auto" },
-        3: { cellWidth: 14, halign: "center" },
-        4: { cellWidth: 16, halign: "center" },
-        5: { cellWidth: 24, halign: "center" },
-        6: { cellWidth: 24, halign: "center" },
-        7: { cellWidth: 22, halign: "center" },
-        8: { cellWidth: 24, halign: "center", fontStyle: "bold" },
+        0: { cellWidth: 12, halign: "center" },   // No
+        1: { cellWidth: 20 },                     // Image
+        2: { cellWidth: "auto" },                 // Item (MOST IMPORTANT)
+        3: { cellWidth: 16, halign: "center" },   // Qty
+        4: { cellWidth: 16, halign: "center" },   // GST%
+        5: { cellWidth: 18, halign: "center" },   // MRP
+        6: { cellWidth: 22, halign: "center" },   // SalePrice
+        7: { cellWidth: 22, halign: "center" },   // Subtotal
+        8: { cellWidth: 20, halign: "center" },   // GST
+        9: { cellWidth: 22, halign: "center", fontStyle: "bold" }, // Total
       },
 
     didDrawCell: (hookData) => {
@@ -907,7 +970,8 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
           name: d.businessName || d.name || "",
           address: fullAddress,
           phone: d.phoneNumber || d.ownerPhoneNumber || "",
-          gstType: d.gstType || ""
+          gstType: d.gstType || "",
+          gstin: d.gstin || ""
         };
       } else {
         //  fallback to company root (safe)
@@ -938,9 +1002,9 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
     companyGstType: salesSettings?.gstScheme === "none"
       ? ""
       : (gstTypeFromSales || companyData.gstType || ""),
-
+    taxType: salesSettings?.taxType || 'exclusive',
     // BILL SETTINGS
-    companyGstin: billSettings.companyGstin || "",
+    companyGstin: companyData.gstin || billSettings.companyGstin || "",
     msmeNumber: billSettings.msmeNumber || "",
     panNumber: billSettings.panNumber || "",
 

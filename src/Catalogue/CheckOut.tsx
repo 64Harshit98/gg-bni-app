@@ -25,6 +25,9 @@ interface CartItem {
     note: string
     imageUrl?: string
     moq?: number
+    unit?: string
+    unitMultiplier?: number
+    tax?: number
 }
 
 interface CatalogueSalesSettings {
@@ -41,6 +44,7 @@ interface Address {
     city: string;
     state: string;
     address: string;
+    gstin?: string
 }
 
 const useBusinessName = (companyId?: string) => {
@@ -77,8 +81,8 @@ const CartPage: React.FC = () => {
     const { companyId } = useParams<{ companyId: string }>();
     const { businessName: companyName } = useBusinessName(companyId);
     const [salesSettings, setSalesSettings] = useState<CatalogueSalesSettings | null>(null);
-    const [shipping, setShipping] = useState<Address>({ name: '', phone: '', city: '', state: '', address: '' });
-    const [billing, setBilling] = useState<Address>({ name: '', phone: '', city: '', state: '', address: '' });
+    const [shipping, setShipping] = useState<Address>({ name: '', phone: '', city: '', state: '', address: '', gstin: '' });
+    const [billing, setBilling] = useState<Address>({ name: '', phone: '', city: '', state: '', address: '', gstin: '' });
     const [isSameAsShipping, setIsSameAsShipping] = useState<boolean>(false);
     const [cartItems, setCartItems] = useState<CartItem[]>([]);
     const [movError, setMovError] = useState<string | null>(null);
@@ -112,6 +116,8 @@ const CartPage: React.FC = () => {
             quantity: item.quantity,
             mrp: item.mrp,
             salesPrice: item.salesPrice,
+            unit: item.unit ?? "pcs",
+            unitMultiplier: item.unitMultiplier ?? 1,
             note: item.note || ''
         }));
 
@@ -146,14 +152,15 @@ const CartPage: React.FC = () => {
                     id: entry.item.id,
                     name: entry.item.name,
                     category: entry.item.category || 'Product',
-
                     mrp: entry.item.mrp || 0,
                     salesPrice: entry.item.salesPrice || entry.item.mrp || 0,
-
                     quantity: entry.quantity,
                     imageUrl: entry.item.imageUrl || '',
                     moq: entry.item.moq || 1,
-                    note: ''
+                    tax: entry.item.tax || 0,
+                    note: '',
+                    unit: entry.item.unit ?? "pcs",
+                    unitMultiplier: entry.item.unitMultiplier ?? entry.item.multiplier ?? 1,
                 }));
                 setCartItems(formattedItems);
             } catch (error) {
@@ -194,8 +201,11 @@ const CartPage: React.FC = () => {
                         name: i.name,
                         mrp: i.mrp,
                         salesPrice: i.salesPrice,
+                        tax: i.tax || 0,
                         imageUrl: i.imageUrl || '',
-                        moq: i.moq || 1
+                        moq: i.moq || 1,
+                        unit: i.unit,
+                        unitMultiplier: i.unitMultiplier
                     },
                     quantity: i.quantity
                 }))
@@ -363,7 +373,7 @@ const CartPage: React.FC = () => {
 
 
         setIsPlacing(true);
-
+        console.log("FINAL BILL ITEMS:", cartItems)
         try {
             // 1️⃣ Create CONFIRMED order
             const orderDocRef = doc(
@@ -389,12 +399,12 @@ const CartPage: React.FC = () => {
                         id: String(i.id),
                         name: i.name,
                         quantity: i.quantity,
-
                         mrp: mrp,
                         salesPrice: salePrice,
-
+                        tax: Number(i.tax ?? 0),
+                        unit: i.unit ?? "pcs",
+                        unitMultiplier: i.unitMultiplier ?? 1,
                         finalPrice: salePrice * i.quantity,
-
                         note: i.note || '',
                         imageUrl: i.imageUrl || ""
                     };
@@ -409,7 +419,7 @@ const CartPage: React.FC = () => {
             for (const item of cartItems) {
                 const docId =
                     (item as any).firestoreDocId || item.id;
-
+                console.log("CART ITEM:", cartItems);
                 if (!docId) continue;
 
                 const itemRef = doc(
@@ -460,12 +470,19 @@ const CartPage: React.FC = () => {
                     companyAddress: "",
                     companyContact: "",
 
-                    billTo: {
-                        name: billing.name,
-                        phone: billing.phone,
-                        address: billing.address,
-                        email: "",
-                        gstin: "",
+                    customer: {
+                        billing: {
+                            name: billing.name,
+                            phone: billing.phone,
+                            address: billing.address,
+                            gstin: billing.gstin || "",
+                        },
+                        shipping: {
+                            name: (isSameAsShipping ? billing.name : shipping.name),
+                            phone: (isSameAsShipping ? billing.phone : shipping.phone),
+                            address: (isSameAsShipping ? billing.address : shipping.address),
+                            gstin: (isSameAsShipping ? billing.gstin : shipping.gstin) || "",
+                        }
                     },
 
                     invoice: {
@@ -474,14 +491,13 @@ const CartPage: React.FC = () => {
                         billedBy: "",
                         roNumber: "",
                     },
-
                     items: cartItems.map((item, index) => ({
                         sno: index + 1,
                         name: item.name,
                         hsn: "",
                         quantity: item.quantity,
                         unit: "PCS",
-                        gstPercent: 0,
+                        gstPercent: item.tax || 0,
                         discountAmount: 0,
                         mrp: item.mrp,
                         price: item.salesPrice,
@@ -493,9 +509,6 @@ const CartPage: React.FC = () => {
 
                 // DB se company inject
                 const preparedData = await prepareCatalogueBillData(rawBillData);
-
-                console.log("Catalogue company final:", preparedData.companyName);
-                console.log("FINAL PDF DATA", preparedData); 2
                 //  generate pdf
                 await CatalogueBill(preparedData, ACTION.BLOB);
             } catch (e) {
@@ -529,8 +542,11 @@ const CartPage: React.FC = () => {
                         name: i.name,
                         mrp: i.mrp,
                         salesPrice: i.salesPrice,
+                        tax: i.tax || 0,
                         imageUrl: i.imageUrl || '',
-                        moq: i.moq || 1
+                        moq: i.moq || 1,
+                        unit: i.unit,
+                        unitMultiplier: i.unitMultiplier
                     },
                     quantity: i.quantity
                 }))
@@ -718,8 +734,21 @@ const CartPage: React.FC = () => {
 
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex justify-between items-start gap-2">
-                                                            <h3 className="text-[12px] font-black text-[#1A3B5D] uppercase truncate">{item.name}</h3>
-                                                            <button onClick={() => removeFromCart(item.id)} className="text-red-500 p-1 hover:bg-red-50 rounded-sm shrink-0">
+
+                                                            <div className="flex gap-2 leading-tight">
+                                                                <h3 className="text-[12px] font-black text-[#1A3B5D] uppercase truncate">
+                                                                    {item.name}
+                                                                </h3>
+
+                                                                <span className="text-[10px] font-semibold text-gray-500">
+                                                                    ({item.unitMultiplier ?? 1} pcs)
+                                                                </span>
+                                                            </div>
+
+                                                            <button
+                                                                onClick={() => removeFromCart(item.id)}
+                                                                className="text-red-500 p-1 hover:bg-red-50 rounded-sm shrink-0"
+                                                            >
                                                                 <Trash2 size={14} />
                                                             </button>
                                                         </div>
@@ -796,6 +825,18 @@ const CartPage: React.FC = () => {
                                                 <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">Complete Address</label>
                                                 <textarea value={billing.address} onChange={(e) => setBilling({ ...billing, address: e.target.value })} className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold h-12 resize-none outline-none overflow-hidden" placeholder="Details..."></textarea>
                                             </div>
+                                            <div className="space-y-1 col-span-2">
+                                                <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">
+                                                    GSTIN (Optional)
+                                                </label>
+                                                <input
+                                                    value={billing.gstin || ''}
+                                                    onChange={(e) => setBilling({ ...billing, gstin: e.target.value })}
+                                                    type="text"
+                                                    className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold outline-none"
+                                                    placeholder="Enter GSTIN"
+                                                />
+                                            </div>
                                         </div>
 
                                         {/* MOBILE ONLY — Same as Shipping (between cards) */}
@@ -850,6 +891,19 @@ const CartPage: React.FC = () => {
                                             <div className="mt-3 space-y-1">
                                                 <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">Complete Address</label>
                                                 <textarea value={shipping.address} onChange={(e) => setShipping({ ...shipping, address: e.target.value })} className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold h-12 resize-none outline-none overflow-hidden" placeholder="Details..."></textarea>
+                                            </div>
+                                            <div className="space-y-1 col-span-2">
+                                                <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">
+                                                    GSTIN (Optional)
+                                                </label>
+                                                <input
+                                                    value={shipping.gstin || ''}
+                                                    onChange={(e) => setShipping({ ...shipping, gstin: e.target.value })}
+                                                    type="text"
+                                                    className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold outline-none"
+                                                    placeholder="Enter GSTIN"
+                                                    disabled={isSameAsShipping}
+                                                />
                                             </div>
                                         </div>
                                     </div>

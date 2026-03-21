@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getItemGroupsByCompany, getItemsByCompany } from '../lib/ItemsFirebase';
 import type { ItemGroup, Item } from '../constants/models';
 import { FiPackage, FiPlus } from 'react-icons/fi';
-import { ShoppingCart} from 'lucide-react';
+import { ShoppingCart } from 'lucide-react';
 import { Spinner } from '../constants/Spinner';
 import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName.tsx';
@@ -28,6 +28,9 @@ const SharedCataloguePage: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [sortOrder, setSortOrder] = useState<'A-Z' | 'Z-A'>('A-Z');
     const [isSortOpen, setIsSortOpen] = useState(false);
+    const liveItems = useMemo(() => {
+        return allItems.filter(item => item.isListed);
+    }, [allItems]);
 
     useEffect(() => {
         if (!companyId) {
@@ -185,7 +188,7 @@ const SharedCataloguePage: React.FC = () => {
                 {/* Rest of the code remains exactly same */}
                 <div className="relative group max-w-md mx-auto w-full">
                     <SearchBar
-                        items={allItems}
+                        items={liveItems}
                         onItemSelected={(item: any) => {
                             setSearchQuery(item.name); // agar query update karni hai
                             navigate(

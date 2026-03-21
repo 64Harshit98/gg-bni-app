@@ -66,6 +66,7 @@ const MyShop: React.FC = () => {
     const navigate = useNavigate()
     const location = useLocation();
     const highlightItemId = location.state?.highlightItemId;
+    const isUnlisted = location.state?.isUnlisted;
     const { groupId } = useParams<{ groupId: string }>();
     const { currentUser, loading: authLoading } = useAuth();
     const companyId = currentUser?.companyId;
@@ -93,6 +94,9 @@ const MyShop: React.FC = () => {
     const [cart, setCart] = useState<{ item: Item; quantity: number }[]>([]);
     const [isCartOpen, setIsCartOpen] = useState(false);
     const [allItemGroups, setAllItemGroups] = useState<ItemGroup[]>([]);
+    // const liveItems = useMemo(() => {
+    //     return allItems.filter(item => item.isListed);
+    // }, [allItems]);
 
     // Sync selectedCategory when groupId changes from URL
     useEffect(() => {
@@ -163,7 +167,7 @@ const MyShop: React.FC = () => {
                     block: "center"
                 });
             }
-        }, 200);
+        }, 400);
 
         const removeTimer = setTimeout(() => {
             setHighlightedId(null);
@@ -177,12 +181,15 @@ const MyShop: React.FC = () => {
     }, [highlightedId, itemsToRenderCount]);
 
     useEffect(() => {
+        if (isUnlisted) {
+            setIsViewMode(false); 
+        }
+    }, [isUnlisted]);
+
+    useEffect(() => {
         if (!highlightItemId) return;
-
         setHighlightedId(highlightItemId);
-
     }, [highlightItemId]);
-
 
     useEffect(() => {
         if (authLoading || !currentUser || !dbOperations || !companyId) {
@@ -254,7 +261,9 @@ const MyShop: React.FC = () => {
             if (!item) return false;
 
             //  hide unlisted items in LIVE view
-            if (isViewMode && !item.isListed) {
+            const isSearching = searchQuery.trim().length > 0;
+
+            if (isViewMode && !item.isListed && !isSearching) {
                 return false;
             }
 
@@ -398,6 +407,7 @@ const MyShop: React.FC = () => {
 
 
                 <div className="relative group md:max-w-md md:mx-auto w-full">
+
                     <SearchBar
                         items={allItems}
                         placeholder="Search products..."
@@ -470,7 +480,7 @@ const MyShop: React.FC = () => {
                                 id={item.id}
                                 key={item.id}
                                 onClick={() => isViewMode ? handleOpenDetailDrawer(item) : handleOpenEditDrawer(item)}
-                                className={`bg-white rounded-sm overflow-hidden shadow-sm border transition-all duration-300 relative group hover:shadow-md cursor-pointer ${highlightedId === item.id ? 'ring-2 ring-[#00A3E1] shadow-lg scale-[1.02]' : 'border-gray-100'} ${!isViewMode ? 'ring-1 ring-[#00A3E1]/10' : ''}`}
+                                className={`bg-white rounded-sm overflow-hidden shadow-sm border transition-all duration-300 relative group hover:shadow-md cursor-pointer ${highlightedId === item.id ? 'ring-3 ring-blue-500 shadow-lg scale-[1.02] z-100' : 'border-gray-100'} ${!isViewMode ? 'ring-1 ring-[#00A3E1]/10' : ''}`}
                             >
                                 <div className="aspect-square flex items-center justify-center relative overflow-hidden">
                                     {showDiscountBadge && (

@@ -99,18 +99,26 @@ const SharedProduct: React.FC = () => {
             const loginName = currentUser?.name || "Guest User";
 
             const itemsForFirebase = updatedCart.map(c => {
+                console.log(" SAVE CHECK:", {
+                    name: c.item.name,
+                    unit: c.item.unit,
+                    unitMultiplier: c.item.unitMultiplier
+                });
+                const multiplier = c.item.unitMultiplier ?? 1;
+                const basePrice = (c.item.salesPrice ?? c.item.mrp) || 0;
+                const salePrice = basePrice * multiplier;
 
-                const mrp = c.item.mrp || 0;
-                const multiplier = (c.item as any).unitMultiplier || 1;
-                const salePrice = ((c.item.salesPrice ?? c.item.mrp) || 0) * multiplier;
                 return {
                     id: String(c.item.id),
                     docId: c.item.firestoreDocId || c.item.id,
                     name: c.item.name,
                     quantity: c.quantity,
 
-                    mrp: mrp,
+                    mrp: c.item.mrp || 0,
                     salesPrice: salePrice,
+
+                    unit: c.item.unit,
+                    unitMultiplier: multiplier,
 
                     finalPrice: salePrice * c.quantity
                 };
@@ -232,9 +240,12 @@ const SharedProduct: React.FC = () => {
             const moqQty = (item as any).moq || 1;
 
             const multiplier = (item as any).unitMultiplier || 1;
-
+            console.log("ORIGINAL ITEM:", item);
             const itemWithPrice = {
                 ...item,
+                tax: Number(item.tax ?? 0), 
+                unit: item.unit,
+                unitMultiplier: item.unitMultiplier || 1,
                 mrp: (item.mrp || 0) * multiplier,
                 salesPrice: ((item.salesPrice ?? item.mrp) || 0) * multiplier
             };
@@ -818,7 +829,7 @@ const SharedProduct: React.FC = () => {
                                 key={item.id}
                                 onClick={() => handleOpenDetailDrawer(item)}
                                 className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col transition-all duration-300 relative group hover:shadow-md cursor-pointer ${activeHighlight === item.id
-                                    ? 'ring-2 ring-[#00A3E1] scale-105 bg-blue-50 border-[#00A3E1]'
+                                    ? 'ring-2 ring-[#00A3E1] scale-105 bg-blue-50 border-[#00A3E1] z-100'
                                     : 'border-gray-100'
                                     }`}
                             >

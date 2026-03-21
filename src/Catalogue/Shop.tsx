@@ -23,7 +23,7 @@ const OrderingPage: React.FC = () => {
     const dbOperations = useDatabase();
     const [_items, setItems] = useState<Item[]>([]);
     const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
-    const [searchQuery, setSearchQuery] = useState('');
+    const [searchQuery, _setSearchQuery] = useState('');
     const [pageIsLoading, setPageIsLoading] = useState(true);
     const [cart, setCart] = useState<any[]>([]);
     const [isPlacingOrder, setIsPlacingOrder] = useState(false);
@@ -60,7 +60,7 @@ const OrderingPage: React.FC = () => {
                     dbOperations.getItemGroups()
                 ]);
 
-                setItems(fetchedItems.filter(item => item.isListed));
+                setItems(fetchedItems);
 
                 const groupMap = new Map<string, ItemGroup>();
                 fetchedItemGroups.forEach(group => {
@@ -133,7 +133,7 @@ const OrderingPage: React.FC = () => {
 
     // --- Memos ---
     const cartValue = useMemo(() => cart.reduce((acc, item) => acc + (item.mrp * item.quantity), 0), [cart]);
-
+    const visibleItems = _items.filter(item => item.isListed);
     const filteredItems = useMemo(() => {
         const query = searchQuery.toLowerCase();
 
@@ -157,7 +157,7 @@ const OrderingPage: React.FC = () => {
     }, [itemGroups, _items, searchQuery, sortOrder]);
 
     const getGroupImages = (groupId: string): string[] => {
-        const imgs = _items
+        const imgs = visibleItems
             .filter(item => item.itemGroupId === groupId)
             .map(item => item.imageUrl)
             .filter(Boolean) as string[];
@@ -256,14 +256,12 @@ const OrderingPage: React.FC = () => {
                     placeholder="Search products..."
                     onItemSelected={(item) => {
                         if (!item.id) return;
-
-                        setSearchQuery(item.name); // optional (agar query update karni hai)
-
                         navigate(
                             `/catalogue-home/my-shop/${item.itemGroupId}`,
                             {
                                 state: {
-                                    highlightItemId: item.id
+                                    highlightItemId: item.id,
+                                    isUnlisted: !item.isListed
                                 }
                             }
                         );
@@ -312,7 +310,7 @@ const OrderingPage: React.FC = () => {
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1">
                     {filteredItems.map(group => {
                         // Count calculation based on existing _items state
-                        const itemCount = _items.filter(item => item.itemGroupId === group.id).length;
+                        const itemCount = visibleItems.filter(item => item.itemGroupId === group.id).length;
                         const collageImages = getGroupImages(group.id!);
                         return (
                             <div

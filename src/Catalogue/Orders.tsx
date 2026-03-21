@@ -52,6 +52,8 @@ export interface OrderItem {
     imageBase64?: string;
     imageUrl?: string
     salesPrice?: number
+    unit?: string;
+    unitMultiplier?: number;
 }
 
 // 1. Updated Status Types
@@ -71,6 +73,7 @@ export interface Order {
         address: string;
         phone: string;
         name: string;
+        gstin: string;
     };
     shippingDetails?: any;
     userEmail?: string;
@@ -184,15 +187,20 @@ export const useOrdersData = (
                         time: formatDate(createdAt),
                         items: Array.isArray(data.items)
                             ? data.items.map((i: any) => {
-
-                                console.log("ORDER ITEM FROM FIRESTORE:", i);
-
+                                console.log("FIREBASE ITEM:", {
+                                    name: i.name,
+                                    unit: i.unit,
+                                    unitMultiplier: i.unitMultiplier
+                                });
                                 return {
                                     id: i.id,
                                     name: i.name,
                                     quantity: Number(i.quantity || 0),
                                     mrp: Number(i.mrp || 0),
                                     salesPrice: Number(i.salesPrice || 0),
+                                    tax: Number(i.tax ?? 0),
+                                    unitMultiplier: Number(i.unitMultiplier ?? i.multiplier ?? 1),
+                                    unit: i.unit ?? "pcs",
                                     finalPrice: Number(i.finalPrice ?? i.amount ?? (i.mrp * i.quantity)),
                                     note: i.note || '',
                                     imageUrl: i.imageUrl || "",
@@ -475,7 +483,8 @@ const OrdersPage: React.FC = () => {
     const handlePdfAction = async (Order: Order, action: ACTION) => {
 
         setPdfLoadingOrderId(Order.id);
-
+        console.log("ORDER BILLING:", Order.billingDetails);
+        console.log("ORDER SHIPPING:", Order.shippingDetails);
         try {
             const rawBillData = {
                 companyId: currentUser?.companyId,
@@ -489,11 +498,13 @@ const OrdersPage: React.FC = () => {
                         name: Order.billingDetails?.name || Order.userName || "Customer",
                         phone: Order.billingDetails?.phone || "",
                         address: Order.billingDetails?.address || "",
+                        gstin: Order.billingDetails?.gstin || "",
                     },
                     shipping: {
                         name: Order.shippingDetails?.name || Order.billingDetails?.name || "",
                         phone: Order.shippingDetails?.phone || "",
                         address: Order.shippingDetails?.address || "",
+                        gstin: Order.shippingDetails?.gstin || ""
                     }
                 },
 
@@ -522,6 +533,8 @@ const OrdersPage: React.FC = () => {
                             sno: index + 1,
                             name: item.name,
                             qty: item.quantity,
+                            unitMultiplier: item.unitMultiplier ?? 1,
+                            tax: item.tax ?? 0,
                             mrp: mrp,
                             price: salePrice,
                             total: salePrice * item.quantity,
@@ -639,6 +652,7 @@ const OrdersPage: React.FC = () => {
                         sno: index + 1,
                         name: item.name,
                         qty: item.quantity,
+                        unitMultiplier: item.unitMultiplier ?? 1,
                         mrp: mrp,
                         price: salePrice,
                         total: salePrice * item.quantity,
@@ -1213,14 +1227,18 @@ const OrdersPage: React.FC = () => {
                                                         <div key={idx} className="p-2">
                                                             <div className="flex justify-between items-start -mb-1">
                                                                 <div className="flex-1">
-                                                                    <p className="text-[11px] font-extrabold text-slate-800 leading-tight mb-1">{item.name}</p>
+                                                                    <p className="text-[11px] font-extrabold text-slate-800 leading-tight mb-1">{item.name}
+                                                                        <span className="ml-1 text-[9px] font-semibold text-gray-500">
+                                                                            ({item.unitMultiplier || 1} {"pcs"})
+                                                                        </span>
+                                                                    </p>
                                                                     {item.note && (
                                                                         <p className="text-[9px] leading-tight flex items-baseline gap-1.5 mt-1 opacity-80">
                                                                             <span className="font-black uppercase tracking-widest font-xs">Note:</span>
                                                                             <span className="font-xs italic text-slate-600">{item.note}</span>
                                                                         </p>
                                                                     )}
-                                                                    <p className="text-[10px] text-gray-400">₹{formatAmount(item.salesPrice ?? item.mrp)} per unit</p>
+                                                                    <p className="text-[10px] text-gray-400">₹{formatAmount((item.salesPrice || item.mrp) / (item.unitMultiplier || 1))} per unit</p>
                                                                 </div>
                                                                 <div className="text-right ml-4">
                                                                     <p className="text-[13px] font-black text-slate-900">₹{formatAmount((item.salesPrice || item.mrp) * item.quantity)}
@@ -1549,7 +1567,7 @@ const OrdersPage: React.FC = () => {
                 const updatedTotal =
                     (showPaymentModal.items || []).reduce(
                         (sum, item) =>
-                            sum + (Number(item.mrp || 0) * Number(item.quantity || 0)),
+                            sum + (Number(item.salesPrice || item.mrp || 0) * Number(item.quantity || 0)),
                         0
                     );
 

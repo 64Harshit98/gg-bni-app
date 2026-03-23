@@ -178,14 +178,10 @@ const SharedCataloguePage: React.FC = () => {
                 </div>
             </header>
 
-            <main className="p-4 md:p-6 space-y-6 flex-1 max-w-7xl mx-auto w-full pb-10">
+            <main className="p-4 md:p-6 space-y-4 flex-1 max-w-7xl mx-auto w-full pb-10">
                 <div className='flex items-center justify-center'>
-                    <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">
-                        {companyName}
-                    </h1>
+                    <h1 className="text-sm md:text-xl font-extrabold text-[#00A3E1] uppercase tracking-tighter">Categories</h1>
                 </div>
-
-                {/* Rest of the code remains exactly same */}
                 <div className="relative group max-w-md mx-auto w-full">
                     <SearchBar
                         items={liveItems}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { ShoppingCart, Edit3, X, Minus, Plus, Trash2, ChevronLeft } from 'lucide-react';
+import { ShoppingCart, X, Minus, Plus, Trash2, ChevronLeft } from 'lucide-react';
 import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting'
 import { useAuth, useDatabase } from '../context/auth-context';
 import type { Item, ItemGroup } from '../constants/models';
@@ -51,7 +51,7 @@ const QuickListedToggle: React.FC<QuickListedToggleProps> = ({ itemId, isListed,
         <button
             onClick={handleClick}
             disabled={disabled || isLoading}
-            className={`flex-1 py-1.5 rounded-sm text-[9px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1 ${isListed ? 'bg-green-500 text-white shadow-sm' : 'bg-gray-100 text-gray-400'
+            className={`flex-1 py-1.5 rounded-sm text-[9px] font-black uppercase cursor-pointer tracking-wider transition-all flex items-center justify-center gap-1 ${isListed ? 'bg-green-500 text-white shadow-sm' : 'bg-gray-100 text-gray-400 cursor-pointer'
                 }`}
         >
             {isLoading ? <FiLoader className="animate-spin" size={10} /> : isListed ? <FiCheckSquare size={10} /> : <FiStar size={10} />}
@@ -66,14 +66,13 @@ const MyShop: React.FC = () => {
     const navigate = useNavigate()
     const location = useLocation();
     const highlightItemId = location.state?.highlightItemId;
-    const isUnlisted = location.state?.isUnlisted;
+    // const isUnlisted = location.state?.isUnlisted;
     const { groupId } = useParams<{ groupId: string }>();
     const { currentUser, loading: authLoading } = useAuth();
     const companyId = currentUser?.companyId;
     const { businessName: companyName, loading: _nameLoading } = useBusinessName(companyId);
     const dbOperations = useDatabase();
     const [highlightedId, setHighlightedId] = useState<string | null>(null);
-    const [isViewMode, setIsViewMode] = useState(true);
     const [allItems, setAllItems] = useState<Item[]>([]);
     const [selectedCategory, setSelectedCategory] = useState(groupId || 'All');
     const [searchQuery, setSearchQuery] = useState('');
@@ -90,10 +89,11 @@ const MyShop: React.FC = () => {
     const loadMoreRef = useRef<HTMLDivElement | null>(null);
     const [sortOrder, setSortOrder] = useState<'A-Z' | 'Z-A' | 'Price: Low-High' | 'Price: High-Low'>('A-Z');
     const [isSortOpen, setIsSortOpen] = useState(false);
-
+    const isViewMode = false;
     const [cart, setCart] = useState<{ item: Item; quantity: number }[]>([]);
     const [isCartOpen, setIsCartOpen] = useState(false);
     const [allItemGroups, setAllItemGroups] = useState<ItemGroup[]>([]);
+
     // const liveItems = useMemo(() => {
     //     return allItems.filter(item => item.isListed);
     // }, [allItems]);
@@ -179,12 +179,6 @@ const MyShop: React.FC = () => {
         };
 
     }, [highlightedId, itemsToRenderCount]);
-
-    useEffect(() => {
-        if (isUnlisted) {
-            setIsViewMode(false); 
-        }
-    }, [isUnlisted]);
 
     useEffect(() => {
         if (!highlightItemId) return;
@@ -362,52 +356,19 @@ const MyShop: React.FC = () => {
                                     {companyName}
                                 </h1>
 
-                                {/* MOBILE ONLY: Slash and Category Name attached to Company Name */}
-                                {currentCategoryName && (
-                                    <div className="md:hidden flex items-center gap-1">
-                                        <span className="text-gray-400 font-light">-</span>
-                                        <span className="text-[12px] font-bold text-gray-600 truncate max-w-[100px] uppercase tracking-tighter">
-                                            {currentCategoryName}
-                                        </span>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
 
-                        {/* DESKTOP ONLY: Tabs (Keep as is) */}
-                        <div className="hidden md:flex bg-gray-50 p-1 rounded-sm border border-gray-100 scale-90 absolute left-1/2 -translate-x-1/2">
-                            <button onClick={() => setIsViewMode(true)} className={`px-8 py-2 rounded-sm text-[12px] font-black uppercase transition-all ${isViewMode ? 'bg-[#00A3E1] text-white shadow-sm' : 'text-gray-400'}`}>My Items</button>
-                            <button onClick={() => setIsViewMode(false)} className={`px-8 py-2 rounded-sm text-[12px] font-black uppercase transition-all ${!isViewMode ? 'bg-[#00A3E1] text-white shadow-sm' : 'text-gray-400'}`}>Edit Items</button>
+                            </div>
+
                         </div>
                     </div>
                 </div>
             </header>
 
             <main className="p-3 md:p-6 space-y-4 flex-1 max-w-7xl mx-auto w-full pb-24">
-                <div className='hidden md:flex items-center justify-center'>
-                    <h1 className="text-xs md:text-sm font-black text-[#00A3E1] uppercase tracking-tighter">{currentCategoryName}</h1>
+                <div className='flex items-center justify-center'>
+                    <h1 className="text-sm md:text-xl font-extrabold text-[#00A3E1] uppercase tracking-tighter">{currentCategoryName}</h1>
                 </div>
-
-                <div className="md:hidden sticky top-[58px] z-[10] flex justify-center w-full px-4 py-2 bg-[#E9F0F7]/80 backdrop-blur-sm">
-                    <div className="bg-white/80 backdrop-blur-md p-1 rounded-sm flex shadow-md border border-gray-100 w-full max-w-md">
-                        <button
-                            onClick={() => setIsViewMode(true)}
-                            className={`flex-1 py-2 rounded-sm text-[12px] font-black uppercase transition-all text-center ${isViewMode ? 'bg-[#00A3E1] text-white shadow-sm' : 'text-gray-400'}`}
-                        >
-                            My Items
-                        </button>
-                        <button
-                            onClick={() => setIsViewMode(false)}
-                            className={`flex-1 py-2 rounded-sm text-[12px] font-black uppercase transition-all text-center ${!isViewMode ? 'bg-[#00A3E1] text-white shadow-sm' : 'text-gray-400'}`}
-                        >
-                            Edit Items
-                        </button>
-                    </div>
-                </div>
-
-
                 <div className="relative group md:max-w-md md:mx-auto w-full">
-
                     <SearchBar
                         items={allItems}
                         placeholder="Search products..."
@@ -457,10 +418,9 @@ const MyShop: React.FC = () => {
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1">
                     {itemsToDisplay.map((item) => {
-                        const cartItem = cart.find(i => i.item.id === item.id);
-                        const isOutOfStock = (item.stock || 0) <= 0;
-                        const showNotifyButton = catalogueSettings?.enableOutOfStockNotification && isOutOfStock;
-                        const disableAddToCart = !catalogueSettings?.enableOutOfStockNotification && isOutOfStock;
+                        // const isOutOfStock = (item.stock || 0) <= 0;
+                        // const showNotifyButton = catalogueSettings?.enableOutOfStockNotification && isOutOfStock;
+                        // const disableAddToCart = !catalogueSettings?.enableOutOfStockNotification && isOutOfStock;
                         const basePrice = item.salesPrice || item.mrp;
                         const multiplier = (item as any).unitMultiplier || 1;
                         const salePrice = basePrice * multiplier;
@@ -479,7 +439,7 @@ const MyShop: React.FC = () => {
                             <div
                                 id={item.id}
                                 key={item.id}
-                                onClick={() => isViewMode ? handleOpenDetailDrawer(item) : handleOpenEditDrawer(item)}
+                                onClick={() => handleOpenDetailDrawer(item)}
                                 className={`bg-white rounded-sm overflow-hidden shadow-sm border transition-all duration-300 relative group hover:shadow-md cursor-pointer ${highlightedId === item.id ? 'ring-3 ring-blue-500 shadow-lg scale-[1.02] z-100' : 'border-gray-100'} ${!isViewMode ? 'ring-1 ring-[#00A3E1]/10' : ''}`}
                             >
                                 <div className="aspect-square flex items-center justify-center relative overflow-hidden">
@@ -495,11 +455,6 @@ const MyShop: React.FC = () => {
                                         <img src={item.imageUrl} alt={item.name} className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" />
                                     ) : (
                                         <FiPackage className="w-10 h-10 text-gray-200" />
-                                    )}
-                                    {!isViewMode && (
-                                        <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm p-1.5 rounded-sm shadow-sm">
-                                            <Edit3 size={10} className="text-[#00A3E1]" />
-                                        </div>
                                     )}
                                 </div>
 
@@ -532,62 +487,23 @@ const MyShop: React.FC = () => {
                                     </div>
 
                                     <div className="mt-1 flex gap-1">
-                                        {isViewMode ? (
-                                            cartItem ? (
-                                                <div className="w-full flex items-center justify-between bg-gray-50 rounded-sm px-1 py-1 border border-gray-100">
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); updateQuantity(item.id!, -1); }}
-                                                        className="p-1.5 bg-white shadow-sm text-[#00A3E1] hover:bg-[#00A3E1] hover:text-white rounded-sm transition-all"
-                                                    >
-                                                        <Minus size={12} strokeWidth={3} />
-                                                    </button>
-                                                    <span className="text-xs font-black text-[#1A3B5D]">{cartItem.quantity}</span>
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); updateQuantity(item.id!, 1); }}
-                                                        className="p-1.5 bg-white shadow-sm text-[#00A3E1] hover:bg-[#00A3E1] hover:text-white rounded-sm transition-all"
-                                                    >
-                                                        <Plus size={12} strokeWidth={3} />
-                                                    </button>
-                                                </div>
-                                            ) : showNotifyButton ? (
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        alert("We will notify you when item is back in stock");
-                                                    }}
-                                                    className="w-full py-2 rounded-sm text-[9px] font-black uppercase tracking-widest shadow-sm transition-all flex items-center justify-center gap-2 bg-orange-500 text-white active:scale-95"
-                                                >
-                                                    🔔 Notify Me
-                                                </button>
-                                            ) : (
-                                                <button
-                                                    disabled={disableAddToCart}
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        if (disableAddToCart) return;
-                                                        addToCart(item, catalogueSettings?.defaultCartQuantity || 1);
-                                                    }}
-                                                    className={`w-full py-2 rounded-sm text-[9px] font-black uppercase tracking-widest shadow-sm transition-all flex items-center justify-center gap-2 bg-[#00A3E1] text-white active:scale-95
-                                                        `}
-                                                >
-                                                    <Plus size={12} />
-                                                    Add to Cart
-                                                </button>
-                                            )
-                                        ) : (
-                                            <>
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleOpenEditDrawer(item);
-                                                    }}
-                                                    className="flex-1 bg-gray-50 text-[#1A3B5D] py-1.5 rounded-sm text-[9px] font-black uppercase border border-gray-100"
-                                                >
-                                                    Edit
-                                                </button>
-                                                <QuickListedToggle itemId={item.id!} isListed={item.isListed ?? false} onToggle={handleToggleListed} />
-                                            </>
-                                        )}
+                                        <>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleOpenEditDrawer(item);
+                                                }}
+                                                className="flex-1 bg-gray-200 text-[#1A3B5D] py-1.5 rounded-sm text-[9px] font-black uppercase border border-gray-100 cursor-pointer"
+                                            >
+                                                Edit
+                                            </button>
+
+                                            <QuickListedToggle
+                                                itemId={item.id!}
+                                                isListed={item.isListed ?? false}
+                                                onToggle={handleToggleListed}
+                                            />
+                                        </>
                                     </div>
                                 </div>
                             </div>

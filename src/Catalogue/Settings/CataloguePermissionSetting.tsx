@@ -143,13 +143,9 @@ const CataloguePermissionSetting: React.FC = () => {
     const ALL_ROLES = useMemo(() => Object.values(ROLES), []);
 
     // ONLY SALESMAN visible
-    const VISIBLE_ROLES = useMemo(
-        () => ALL_ROLES.filter((r) => r === ROLES.SALESMAN),
-        [ALL_ROLES]
-    );
+    const VISIBLE_ROLES = useMemo(() => ALL_ROLES.filter(r => r !== ROLES.OWNER), [ALL_ROLES]);
 
-    const [selectedRole, setSelectedRole] =
-        useState<string>(ROLES.SALESMAN);
+    const [selectedRole, setSelectedRole] = useState<string>(ROLES.SALESMAN || ROLES.MANAGER);
 
     //  FIRESTORE FETCH COMPLETELY DISABLED
     /*

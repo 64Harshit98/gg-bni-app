@@ -924,9 +924,7 @@ const CartPage: React.FC = () => {
                                     <div className="flex justify-between items-center text-[12px] font-bold text-gray-400 uppercase">
                                         <span>Subtotal</span> <span className="text-[#1A3B5D]"> {shouldShowPrice ? `₹${subtotal.toLocaleString()}` : "—"}</span>
                                     </div>
-                                    <div className="flex justify-between items-center text-[12px] font-bold text-gray-400 uppercase">
-                                        <span>Delivery</span> <span className="text-green-500">Free</span>
-                                    </div>
+                                    
                                     <div className="pt-3 border-t border-gray-50 flex justify-between items-center">
                                         <span className="text-[#00A3E1] font-black text-xs uppercase">Total Pay</span>
                                         <span className="text-xl font-black text-[#00A3E1]">
@@ -987,9 +985,7 @@ const CartPage: React.FC = () => {
                                     {shouldShowPrice ? `₹${subtotal.toLocaleString()}` : "—"}
                                 </span>
                             </div>
-                            <div className="flex justify-between text-[11px] font-bold uppercase tracking-widest text-gray-400">
-                                <span>Shipping</span> <span className="text-green-500">Free</span>
-                            </div>
+                            
                             <div className="pt-4 border-t border-gray-100 flex justify-between items-center">
                                 <span className="text-[#1A3B5D] font-black text-sm uppercase">Amount Payable</span>
                                 <span className="text-2xl font-black text-[#00A3E1]">

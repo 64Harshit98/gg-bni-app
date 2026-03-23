@@ -26,7 +26,7 @@ const CatalogueLayout = () => {
                 className="w-full mb-2 rounded bg-white"
                 onClick={() => navigate(ROUTES.ORDER)}
             >
-                Shop
+                Edit Shop
             </Button>
 
             <Button
@@ -95,7 +95,7 @@ const CatalogueLayout = () => {
                             className={({ isActive }) => sidebarLinkClass(isActive)}
                         >
                             <span className="text-lg">+</span>
-                            <span>Shop</span>
+                            <span>Edit Shop</span>
                         </NavLink>
 
                         <NavLink

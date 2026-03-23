@@ -13,7 +13,6 @@ import { useNavigate } from 'react-router';
 import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName';
 import SearchBar from './SearchBar';
-
 const OrderingPage: React.FC = () => {
     // --- States ---
     const navigate = useNavigate()
@@ -33,7 +32,6 @@ const OrderingPage: React.FC = () => {
     const [customerName, setCustomerName] = useState('');
     const [customerPhone, setCustomerPhone] = useState('');
     const [highlightedId, _setHighlightedId] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<'My Shop' | 'Edit Shop'>('My Shop');
     const [sortOrder, setSortOrder] = useState<'A-Z' | 'Z-A'>('A-Z');
     const [isSortOpen, setIsSortOpen] = useState(false);
     const [socialLinks, setSocialLinks] = useState<any>({});
@@ -123,13 +121,6 @@ const OrderingPage: React.FC = () => {
             setModal({ message: 'Failed to update name', type: State.ERROR });
         }
     };
-
-    useEffect(() => {
-        if (activeTab === 'My Shop') {
-            setEditingId(null);
-            setTempName('');
-        }
-    }, [activeTab]);
 
     // --- Memos ---
     const cartValue = useMemo(() => cart.reduce((acc, item) => acc + (item.mrp * item.quantity), 0), [cart]);
@@ -221,34 +212,12 @@ const OrderingPage: React.FC = () => {
                             {companyName}
                         </h1>
                     </div>
-
-                    <div className="hidden md:flex bg-gray-50 p-1 rounded-sm border border-gray-100 ml-70">
-                        <button onClick={() => setActiveTab('My Shop')} className={`px-8 py-2 rounded-sm text-[12px] font-black uppercase transition-all ${activeTab === 'My Shop' ? 'bg-[#00A3E1] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>My Shop</button>
-                        <button onClick={() => setActiveTab('Edit Shop')} className={`px-8 py-2 rounded-sm text-[12px] font-black uppercase transition-all ${activeTab === 'Edit Shop' ? 'bg-[#00A3E1] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>Edit Shop</button>
-                    </div>
                 </div>
             </header>
 
-            <main className="p-4 space-y-6 flex-1 max-w-7xl mx-auto w-full pb-20">
-
-                {/* --- STICKY MOBILE TABS --- */}
-                <div className="md:hidden sticky top-[58px] z-[90] flex justify-center w-full px-4 py-2 bg-[#E9F0F7]/80 backdrop-blur-sm">
-                    <div className="bg-white/80 backdrop-blur-md p-1 rounded-sm flex shadow-md border border-gray-100 w-full max-w-md">
-                        <button
-                            onClick={() => setActiveTab('My Shop')}
-                            className={`flex-1 py-2.5 rounded-sm text-[10px] font-black uppercase transition-all ${activeTab === 'My Shop' ? 'bg-[#00A3E1] text-white shadow-md' : 'text-gray-400'
-                                }`}
-                        >
-                            My Shop
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('Edit Shop')}
-                            className={`flex-1 py-2.5 rounded-sm text-[10px] font-black uppercase transition-all ${activeTab === 'Edit Shop' ? 'bg-[#00A3E1] text-white shadow-md' : 'text-gray-400'
-                                }`}
-                        >
-                            Edit Shop
-                        </button>
-                    </div>
+            <main className="p-4 space-y-4 flex-1 max-w-7xl mx-auto w-full pb-20">
+                <div className='flex items-center justify-center'>
+                    <h1 className="text-sm md:text-xl font-extrabold text-[#00A3E1] uppercase tracking-tighter">Categories</h1>
                 </div>
                 {/* --- SEARCH BAR --- */}
                 <SearchBar
@@ -317,11 +286,7 @@ const OrderingPage: React.FC = () => {
                                 id={group.id}
                                 key={group.id}
                                 onClick={() => {
-                                    if (activeTab === 'Edit Shop') {
-                                        handleEdit(group);
-                                    } else {
-                                        navigate(`/catalogue-home/my-shop/${group.id}`)
-                                    }
+                                    navigate(`/catalogue-home/my-shop/${group.id}`)
                                 }}
                                 className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col transition-all group cursor-pointer active:scale-95 ${highlightedId === group.id ? 'ring-2 ring-[#00A3E1] shadow-lg scale-[1.02]' : 'border-gray-100'}`}>
                                 {/* --- IMAGE SECTION WITH TOP BADGE --- */}
@@ -406,8 +371,13 @@ const OrderingPage: React.FC = () => {
                                                 </span>
                                             </div>
 
-                                            <div className="mt-auto w-full py-1.5 rounded-sm text-[9px] font-black uppercase text-center tracking-wider transition-all bg-[#00A3E1] text-white">
-                                                {activeTab === 'Edit Shop' ? 'Edit Group' : 'View Products'}
+                                            <div className="mt-auto w-full py-1.5 rounded-sm text-[9px] font-black uppercase text-center tracking-wider transition-all bg-[#00A3E1] text-white"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleEdit(group)
+                                                }}
+                                            >
+                                                Edit Group
                                             </div>
                                         </>
                                     )}

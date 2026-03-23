@@ -700,15 +700,6 @@ const SharedProduct: React.FC = () => {
                             <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">
                                 {companyName}
                             </h1>
-
-                            {currentCategoryName && (
-                                <div className="md:hidden flex items-center justify-center gap-2">
-                                    <span className="text-gray-300 font-light text-sm">|</span>
-                                    <span className="text-[11px] font-bold text-slate-500 truncate max-w-[120px] uppercase tracking-[0.25em]">
-                                        {currentCategoryName}
-                                    </span>
-                                </div>
-                            )}
                         </div>
 
                         {/* Right Side Cart Button (Already optimized) */}
@@ -753,8 +744,8 @@ const SharedProduct: React.FC = () => {
                         Your request is under review. Prices will be visible after approval.
                     </div>
                 )}
-                <div className='hidden md:flex items-center justify-center'>
-                    <h1 className="text-xs md:text-sm font-black text-[#00A3E1] uppercase tracking-tighter">{currentCategoryName}</h1>
+                <div className='flex items-center justify-center'>
+                    <h1 className="text-sm md:text-xl font-extrabold text-[#00A3E1] uppercase tracking-tighter">{currentCategoryName}</h1>
                 </div>
                 <div className="relative group md:max-w-md md:mx-auto w-full">
                     <SearchBar

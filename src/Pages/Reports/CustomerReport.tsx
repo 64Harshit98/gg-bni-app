@@ -51,7 +51,7 @@ const CustomerReport: React.FC = () => {
     return `${day}/${month}/${year}`;
   };
 
-  const { filteredSales, customerRows, summary } = useMemo(() => {
+  const { customerRows, summary } = useMemo(() => {
     if (!appliedFilters) {
       return {
         filteredSales: [],
@@ -171,7 +171,7 @@ const CustomerReport: React.FC = () => {
 
       const start = appliedFilters?.start ? formatDate(appliedFilters.start) : 'All Time';
       const end = appliedFilters?.end ? formatDate(appliedFilters.end) : 'All Time';
-      doc.text(`Date Range: ${start} to ${end}`, 14, 29);  
+      doc.text(`Date Range: ${start} to ${end}`, 14, 29);
 
       autoTable(doc, {
         startY: 35,
@@ -304,7 +304,7 @@ const CustomerReport: React.FC = () => {
             Apply
           </button>
         </div>
-        
+
       </div>
 
       {/* SUMMARY CARDS */}
@@ -343,7 +343,7 @@ const CustomerReport: React.FC = () => {
       {/* REPORT DETAILS */}
       <div className="bg-white p-4 rounded-lg shadow-md flex flex-col md:flex-row md:justify-between md:items-center gap-3">
         <h2 className="text-lg font-semibold text-gray-700 text-center md:text-left w-full md:w-auto">Report Details</h2>
-        <div className="flex justify-between w-full md:w-auto md:justify-end md:space-x-3">  
+        <div className="flex justify-between w-full md:w-auto md:justify-end md:space-x-3">
           <button
             onClick={() => setIsListVisible(!isListVisible)}
             className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition"

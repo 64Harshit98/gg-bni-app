@@ -5,15 +5,14 @@ export interface Sale {
   totalAmount: number;
   dueAmount?: number;
   createdAt: Date;
-  partyNumber: string;
 }
 
 export interface CustomerRow {
-  id: string;
+  id?: string;
   customerName: string;
   customerNumber: string;
   totalBills: number;
   totalSales: number;
   totalDue: number;
-  sortKey: string;
+  sortKey?: string;
 }

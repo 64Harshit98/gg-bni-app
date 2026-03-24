@@ -134,23 +134,6 @@ const PnlReportPage: React.FC = () => {
     });
   };
 
-  /* ---------- PERIOD TEXT ---------- */
-  const selectedPeriodText = useMemo(() => {
-    if (!appliedFilters.start || !appliedFilters.end)
-      return 'Loading period...';
-
-    const format = (d: string) =>
-      new Date(d).toLocaleDateString('en-IN', {
-        day: 'numeric',
-        month: 'short',
-      });
-
-    const start = format(appliedFilters.start);
-    const end = format(appliedFilters.end);
-
-    return start === end ? `For ${start}` : `From ${start} to ${end}`;
-  }, [appliedFilters]);
-
   /* ---------- PDF DOWNLOAD (UNCHANGED) ---------- */
   const downloadAsPdf = () => {
     const doc = new jsPDF();
@@ -167,7 +150,7 @@ const PnlReportPage: React.FC = () => {
     const end = appliedFilters?.end
       ? formatDate(new Date(appliedFilters.end))
       : 'All Time';
-    doc.text(`Date Range: ${start} to ${end}`, 14, 29);  
+    doc.text(`Date Range: ${start} to ${end}`, 14, 29);
 
     autoTable(doc, {
       startY: 35,
@@ -204,13 +187,13 @@ const PnlReportPage: React.FC = () => {
         `Rs. ${(t.profit || 0).toLocaleString('en-IN')}`,
       ]),
       foot: [[
-          'Total',           
-          '',                 
-          `Rs. ${totalRevenue.toLocaleString('en-IN')}`,    
-          `Rs. ${totalCost.toLocaleString('en-IN')}`,        
-          `Rs. ${grossProfit.toLocaleString('en-IN')}`,      
-        ]],
-      theme: 'grid' ,
+        'Total',
+        '',
+        `Rs. ${totalRevenue.toLocaleString('en-IN')}`,
+        `Rs. ${totalCost.toLocaleString('en-IN')}`,
+        `Rs. ${grossProfit.toLocaleString('en-IN')}`,
+      ]],
+      theme: 'grid',
       footStyles: { fontStyle: 'bold', fillColor: [41, 128, 185] },
       headStyles: { fillColor: [41, 128, 185] },
     });
@@ -310,26 +293,26 @@ const PnlReportPage: React.FC = () => {
             <option value="custom">Custom</option>
           </FilterSelect>
 
-        <div className="grid grid-cols-2 gap-4 mt-2">
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => {
-              setStartDate(e.target.value);
-              setDatePreset('custom');
-            }}
-            className="w-full p-2 text-sm bg-gray-50 border rounded-md"
-          />
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => {
-              setEndDate(e.target.value);
-              setDatePreset('');
-            }}
-            className="w-full p-2 text-sm bg-gray-50 border rounded-md"
-          />
-        </div>
+          <div className="grid grid-cols-2 gap-4 mt-2">
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => {
+                setStartDate(e.target.value);
+                setDatePreset('custom');
+              }}
+              className="w-full p-2 text-sm bg-gray-50 border rounded-md"
+            />
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => {
+                setEndDate(e.target.value);
+                setDatePreset('');
+              }}
+              className="w-full p-2 text-sm bg-gray-50 border rounded-md"
+            />
+          </div>
         </div>
 
         <div className="flex justify-center mt-2">
@@ -382,7 +365,7 @@ const PnlReportPage: React.FC = () => {
       {/* DETAILS */}
       <div className="bg-white p-4 rounded-lg shadow-md flex flex-col md:flex-row md:justify-between md:items-center gap-3">
         <h2 className="text-lg font-semibold text-gray-700 text-center md:text-left w-full md:w-auto">Report Details</h2>
-        <div className="flex justify-between w-full md:w-auto md:justify-end md:space-x-3 ">          
+        <div className="flex justify-between w-full md:w-auto md:justify-end md:space-x-3 ">
           <button
             onClick={() => setIsListVisible(!isListVisible)}
             className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition"

@@ -111,17 +111,19 @@ const PRO_FEATURES = [
 
 const POS_TIERS = [
     {
-        id: PLANS.BASIC,
+        id: PLANS.POS_BASIC,
         name: 'POS Basic',
         price: { monthly: '₹99', yearly: '₹999' },
+        originalPrice: { monthly: '₹199', yearly: '₹1,999' },
         description: 'Essential tools for small businesses.',
         features: BASIC_FEATURES,
         recommended: false,
     },
     {
-        id: PLANS.PRO || 'pro',
+        id: PLANS.POS_PRO || 'pro',
         name: 'POS Pro',
         price: { monthly: '₹299', yearly: '₹2,999' },
+        originalPrice: { monthly: '₹499', yearly: '₹3,999' },
         description: 'Complete solution for growing businesses.',
         features: PRO_FEATURES,
         recommended: true,
@@ -133,6 +135,7 @@ const CATALOGUE_TIERS = [
         id: 'cat_starter',
         name: 'Starter',
         price: { monthly: '₹149', yearly: '₹1,499' },
+        originalPrice: { monthly: '₹299', yearly: '₹2,999' },
         description: 'Digital menu.',
         features: ['Online Catalogue', 'Share on WhatsApp', 'Receive Orders'],
         recommended: false,
@@ -141,8 +144,20 @@ const CATALOGUE_TIERS = [
         id: 'cat_premium',
         name: 'Premium',
         price: { monthly: '₹499', yearly: '₹4,999' },
+        originalPrice: { monthly: '₹799', yearly: '₹7,999' },
         description: 'Store + Payments.',
         features: ['Online Catalogue', 'Share on WhatsApp', 'Receive Orders', 'Online Payments', 'Custom Domain', 'Order Analytics'],
+        recommended: true,
+    }
+];
+const BOTH_TIERS = [
+    {
+        id: 'enterprise',
+        name: 'Enterprise',
+        price: { monthly: '₹799', yearly: '₹7,999' },
+        originalPrice: { monthly: '₹1,299', yearly: '₹12,999' },
+        description: 'Store + Payments + Catalogue.',
+        features: PRO_FEATURES.concat(['Online Catalogue', 'Share on WhatsApp', 'Receive Orders', 'Online Payments', 'Custom Domain', 'Order Analytics']),
         recommended: true,
     }
 ];
@@ -151,18 +166,23 @@ const SubscriptionPage: React.FC = () => {
     const { currentUser } = useAuth();
     const navigate = useNavigate();
 
-    const [activeTab, setActiveTab] = useState<'pos' | 'catalogue'>('pos');
+    const [activeTab, setActiveTab] = useState<'pos' | 'catalogue' | 'both'>('pos');
     const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
     const [isDetailsOpen] = useState(true);
     const [selectedTooltip, setSelectedTooltip] = useState<string | null>(null);
 
     const subData = (currentUser as any)?.subscription || (currentUser as any)?.Subscription;
-    const currentPack = subData?.pack || PLANS.BASIC;
+    const currentPack = subData?.pack || PLANS.POS_BASIC;
     const isPlanActive = subData?.isActive || false;
     const expiryDate = subData?.expiryDate;
 
-    const showActiveView = currentPack !== 'free' && currentPack !== PLANS.BASIC && isPlanActive;
-    const currentTiers = activeTab === 'pos' ? POS_TIERS : CATALOGUE_TIERS;
+    const showActiveView = isPlanActive && (
+        currentPack === PLANS.ENTERPRISE ||
+        currentPack === PLANS.POS_PRO ||
+        currentPack === 'pro' ||
+        currentPack === 'enterprise'
+    );
+    const currentTiers = activeTab === 'pos' ? POS_TIERS : activeTab === 'catalogue' ? CATALOGUE_TIERS : BOTH_TIERS;
 
     const allFeatures = useMemo(() => {
         if (activeTab === 'pos') return PRO_FEATURES;
@@ -191,7 +211,7 @@ const SubscriptionPage: React.FC = () => {
                         </div>
                         <div>
                             <h2 className="text-white font-bold text-lg leading-tight">
-                                Current Plan: {currentPack.toUpperCase()}
+                                Current Plan: {currentPack.replace('pos_', '').toUpperCase()}
                             </h2>
                             <p className="text-green-100 text-xs">
                                 {isPlanActive ? 'Active Subscription' : 'Expired'}
@@ -251,13 +271,19 @@ const SubscriptionPage: React.FC = () => {
                             onClick={() => setActiveTab('pos')}
                             className={`px-6 py-2 rounded-sm text-sm font-bold transition-all duration-200 ${activeTab === 'pos' ? 'bg-gray-900 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
                         >
-                            POS Plans
+                            POS
                         </button>
                         <button
                             onClick={() => setActiveTab('catalogue')}
                             className={`px-6 py-2 rounded-sm text-sm font-bold transition-all duration-200 ${activeTab === 'catalogue' ? 'bg-sky-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
                         >
-                            Catalogue Plans
+                            Catalogue
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('both')}
+                            className={`px-6 py-2 rounded-sm text-sm font-bold transition-all duration-200 ${activeTab === 'both' ? 'bg-yellow-400 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+                        >
+                            Both
                         </button>
                     </div>
                 </div>
@@ -299,6 +325,11 @@ const SubscriptionPage: React.FC = () => {
                                             )}
                                             <h3 className="text-sm sm:text-lg font-bold text-gray-900 truncate">{tier.name}</h3>
                                             <div className="mt-1 sm:mt-2">
+                                                {tier.originalPrice && (
+                                                    <span className="text-sm sm:text-base text-gray-400 line-through mr-2 font-medium">
+                                                        {tier.originalPrice[billingCycle]}
+                                                    </span>
+                                                )}
                                                 <span className="text-xl sm:text-3xl font-extrabold text-gray-900">
                                                     {tier.price[billingCycle]}
                                                 </span>
@@ -309,7 +340,7 @@ const SubscriptionPage: React.FC = () => {
                                             <button
                                                 onClick={() => alert(`Contact Admin for ${tier.name} (${billingCycle})`)}
                                                 className={`mt-3 w-full py-1.5 rounded-sm text-xs sm:text-sm font-bold transition-colors ${tier.recommended
-                                                    ? activeTab === 'pos' ? 'bg-gray-900 text-white hover:bg-gray-800' : 'bg-sky-600 text-white hover:bg-sky-700'
+                                                    ? activeTab === 'pos' ? 'bg-gray-900 text-white hover:bg-gray-800' : activeTab === 'catalogue' ? 'bg-sky-600 text-white hover:bg-sky-700' : 'bg-yellow-400 text-black hover:bg-yellow-500'
                                                     : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
                                                     }`}
                                             >

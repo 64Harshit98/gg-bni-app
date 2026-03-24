@@ -11,7 +11,7 @@ export interface TableColumn<T> {
 interface CustomTableProps<T> {
   data: T[];
   columns: TableColumn<T>[];
-  keyExtractor: (item: T) => string | number; // Unique ID for key prop
+  keyExtractor: (item: T) => string | number | undefined; // Unique ID for key prop
   sortConfig?: { key: keyof T; direction: 'asc' | 'desc' };
   onSort?: (key: keyof T) => void;
   className?: string;

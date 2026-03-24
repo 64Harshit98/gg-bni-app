@@ -1,10 +1,8 @@
-import { Suspense } from 'react';
+import { Suspense, useEffect, useRef } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { Button } from '../Components/ui/button';
 import { FloatingButton } from '../Components/FloatingButton';
 import { ROUTES } from '../constants/routes.constants';
-import { Permissions } from '../enums';
-import ShowWrapper from '../context/ShowWrapper';
 import { CatItems } from '../routes/CatalougeRoutes';
 import { useAuth } from '../context/auth-context';
 import sellarLogo from '../assets/sellar-logo-heading.png';
@@ -12,6 +10,14 @@ import sellarLogo from '../assets/sellar-logo-heading.png';
 const CatalogueLayout = () => {
     const navigate = useNavigate();
     const { currentUser } = useAuth();
+    const scrollRef = useRef<HTMLDivElement>(null);
+
+    // 2. Scroll to top whenever the URL changes
+    useEffect(() => {
+        if (scrollRef.current) {
+            scrollRef.current.scrollTo(0, 0);
+        }
+    }, [location.pathname]);
 
     const sidebarLinkClass = (isActive: boolean) =>
         `flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium transition-all ${isActive
@@ -20,11 +26,11 @@ const CatalogueLayout = () => {
         }`;
 
     const MobileActions = () => (
-        <ShowWrapper requiredPermission={Permissions.ViewItemReport}>
+        <>
             <Button
                 variant="outline"
                 className="w-full mb-2 rounded bg-white"
-                onClick={() => navigate(ROUTES.ORDER)}
+                onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ORDER}`)} // <-- Fixed
             >
                 Edit Shop
             </Button>
@@ -32,7 +38,7 @@ const CatalogueLayout = () => {
             <Button
                 variant="outline"
                 className="w-full mb-2 rounded bg-white"
-                onClick={() => navigate(ROUTES.ADD_PRODUCT)}
+                onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`)} // <-- Fixed
             >
                 Add Item
             </Button>
@@ -50,12 +56,11 @@ const CatalogueLayout = () => {
             {/* <Button
                 variant="outline"
                 className="w-full mb-2 rounded bg-white"
-                onClick={() => navigate(ROUTES.CATA_REQUEST)}
+                onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`)} // <-- Fixed
             >
                 Requests
             </Button> */}
-
-        </ShowWrapper>
+        </>
     );
 
     return (
@@ -81,46 +86,45 @@ const CatalogueLayout = () => {
                     ))}
 
                     {/* QUICK ACTIONS */}
-                    <ShowWrapper requiredPermission={Permissions.ViewItemReport}>
-                        <div className="pt-4 pb-2">
-                            <div className="border-t border-dashed border-slate-200" />
-                            <p className="px-4 pt-4 pb-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                                Quick Actions
-                            </p>
-                        </div>
+                    <div className="pt-4 pb-2">
+                        <div className="border-t border-dashed border-slate-200" />
+                        <p className="px-4 pt-4 pb-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                            Quick Actions
+                        </p>
+                    </div>
 
+                    <NavLink
+                        to={`${ROUTES.CHOME}/${ROUTES.ORDER}`}
+                        end
+                        className={({ isActive }) => sidebarLinkClass(isActive)}
+                    >
+                        <span className="text-lg">+</span>
+                        <span>Shop</span>
+                    </NavLink>
+
+                    <NavLink
+                        to={`${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`}
+                        end
+                        className={({ isActive }) => sidebarLinkClass(isActive)}
+                    >
+                        <span className="text-lg">+</span>
+                        <span>Add Item</span>
+                    </NavLink>
+
+                    {currentUser && (
                         <NavLink
-                            to={`${ROUTES.CHOME}/${ROUTES.ORDER}`}
+                            to={`/catalogue/${currentUser.companyId}`}
                             end
-                            className={({ isActive }) => sidebarLinkClass(isActive)}
+                            className={({ isActive }) =>
+                                `w-full text-left ${sidebarLinkClass(isActive)}`
+                            }
                         >
                             <span className="text-lg">+</span>
-                            <span>Edit Shop</span>
+                            <span>Catalogue</span>
                         </NavLink>
+                    )}
 
-                        <NavLink
-                            to={`${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`}
-                            end
-                            className={({ isActive }) => sidebarLinkClass(isActive)}
-                        >
-                            <span className="text-lg">+</span>
-                            <span>Add Item</span>
-                        </NavLink>
-
-                        {currentUser && (
-                            <NavLink
-                                to={`/catalogue/${currentUser.companyId}`}
-                                end
-                                className={({ isActive }) =>
-                                    `w-full text-left ${sidebarLinkClass(isActive)}`
-                                }
-                            >
-                                <span className="text-lg">+</span>
-                                <span>Catalogue</span>
-                            </NavLink>
-                        )}
-
-                        {/* <NavLink
+                    {/* <NavLink
                             to={`${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`}
                             end
                             className={({ isActive }) => sidebarLinkClass(isActive)}
@@ -128,22 +132,21 @@ const CatalogueLayout = () => {
                             <span className="text-lg">+</span>
                             <span>Requests</span>
                         </NavLink> */}
-                        <NavLink
-                            to={`${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`}
-                            end
-                            className={({ isActive }) => sidebarLinkClass(isActive)}
-                        >
-                            <span className="text-lg">+</span>
-                            <span>Orders Return</span>
-                        </NavLink>
+                    <NavLink
+                        to={`${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`}
+                        end
+                        className={({ isActive }) => sidebarLinkClass(isActive)}
+                    >
+                        <span className="text-lg">+</span>
+                        <span>Orders Return</span>
+                    </NavLink>
 
-                    </ShowWrapper>
                 </nav>
             </aside>
 
             {/* --- MAIN CONTENT --- */}
             <main className="flex-1 relative flex flex-col min-w-0 overflow-hidden">
-                <div className="flex-1 overflow-y-auto p-4 pb-20 md:pb-4 scroll-smooth">
+                <div ref={scrollRef} className="flex-1 overflow-y-auto pb-20 md:pb-4 scroll-smooth">
                     <Suspense fallback={<div>Loading...</div>}>
                         <Outlet />
                     </Suspense>

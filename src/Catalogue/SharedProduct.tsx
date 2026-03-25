@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting'
 import { ShoppingCart, Minus, Plus, ChevronLeft } from 'lucide-react';
-import { useAuth, useDatabase } from '../context/auth-context';
+import { useAuth } from '../context/auth-context';
 import type { Item, ItemGroup } from '../constants/models';
 import { FiPackage, FiPlus } from 'react-icons/fi';
 import { ItemEditDrawer } from '../Components/ItemDrawer';
@@ -13,20 +13,35 @@ import { useBusinessName } from './hooks/BusinessName';
 import SearchBar from './SearchBar';
 import { serverTimestamp, doc, setDoc, getDoc, getDocs, updateDoc, collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
-import { OrderInvoiceNumber } from '../UseComponents/InvoiceCounter';
 import { useLocation } from 'react-router-dom';
 import LeadPopUp from './PopUp';
+import { getItemGroupsByCompany, getItemsByCompany } from '../lib/ItemsFirebase';
+import { runTransaction } from 'firebase/firestore';
 
 const ITEMS_PER_BATCH_RENDER = 24;
 
 const SharedProduct: React.FC = () => {
     const navigate = useNavigate();
-    const { companyId, groupId } = useParams<{ companyId: string, groupId: string }>();
-    const { businessName: companyName } = useBusinessName(companyId);
+    const { companyId: pathId, groupId } = useParams<{ companyId: string, groupId: string }>();
+
+    const hostname = window.location.hostname;
+    const parts = hostname.split('.');
+
+    const subdomain = (
+        parts.length >= 3 &&
+        !['www', 'app'].includes(parts[0].toLowerCase()) &&
+        !hostname.includes('localhost')
+    ) ? parts[0] : null;
+
+    const effectiveCompanyId = subdomain || pathId;
+
+    if (!effectiveCompanyId) {
+        return <div>Invalid catalogue link.</div>;
+    }
+    const { businessName: companyName } = useBusinessName(effectiveCompanyId);
     const location = useLocation();
     const highlightItemId = location.state?.highlightItemId;
     const { currentUser, loading: authLoading } = useAuth();
-    const dbOperations = useDatabase();
     const [activeHighlight, setActiveHighlight] = useState<string | null>(null);
     const [allItems, setAllItems] = useState<Item[]>([]);
     const [allItemGroups, setAllItemGroups] = useState<ItemGroup[]>([]);
@@ -69,10 +84,47 @@ const SharedProduct: React.FC = () => {
     const hidePriceEnabled = catalogueSettings?.hidePrice === true;
     const cartCount = useMemo(() => cart.reduce((acc, curr) => acc + curr.quantity, 0), [cart]);
     // --- New Firebase Sync Function ---
+    const generateCatalogueInvoiceNumber = async (companyId: string): Promise<string> => {
+        if (!companyId) throw new Error("Missing companyId");
+
+        const settingsRef = doc(
+            db,
+            "companies",
+            companyId,
+            "settings",
+            "catalogue-sales-settings"
+        );
+
+        return await runTransaction(db, async (transaction) => {
+            const snap = await transaction.get(settingsRef);
+
+            let prefix = "ORD-";
+            let currentNumber = 1001;
+
+            if (snap.exists()) {
+                const data = snap.data() as CatalogueSalesSettings;
+                prefix = data.voucherPrefix || "ORD-";
+                currentNumber = data.currentVoucherNumber || 1001;
+            }
+
+            const invoice = `${prefix}${currentNumber}`;
+
+            transaction.set(
+                settingsRef,
+                {
+                    currentVoucherNumber: currentNumber + 1,
+                    updatedAt: serverTimestamp(),
+                },
+                { merge: true }
+            );
+
+            return invoice;
+        });
+    };
     const syncToUpcoming = async (
         updatedCart: { item: Item; quantity: number }[]
     ) => {
-        if (!companyId || updatedCart.length === 0) return;
+        if (!effectiveCompanyId || updatedCart.length === 0) return;
         try {
             const leadData = JSON.parse(
                 localStorage.getItem("leadData") || "{}"
@@ -127,7 +179,7 @@ const SharedProduct: React.FC = () => {
             const orderRef = doc(
                 db,
                 "companies",
-                companyId,
+                effectiveCompanyId,
                 "Orders",
                 `upcoming_${userKey}`
             );
@@ -146,7 +198,7 @@ const SharedProduct: React.FC = () => {
             }
             const invoiceNumber = snap.exists()
                 ? snap.data().invoiceNumber
-                : await OrderInvoiceNumber(companyId);
+                : await generateCatalogueInvoiceNumber(effectiveCompanyId);
 
             const existingData = snap.exists() ? snap.data() : {};
 
@@ -173,7 +225,7 @@ const SharedProduct: React.FC = () => {
 
                     items: itemsForFirebase,
                     totalAmount: itemsForFirebase.reduce(
-                        (acc, curr) => acc + curr.finalPrice,
+                        (acc: number, curr) => acc + curr.finalPrice,
                         0
                     ),
                     paidAmount: 0,
@@ -264,7 +316,7 @@ const SharedProduct: React.FC = () => {
 
     const handleNotifyRequest = async (item: Item) => {
         try {
-            if (!companyId) return;
+            if (!effectiveCompanyId) return;
 
             // SAME CHECK as Add to Cart
             const alreadyFilled = !approvalEnabled || localStorage.getItem("leadSubmitted") === "true";
@@ -294,7 +346,7 @@ const SharedProduct: React.FC = () => {
             const ref = doc(
                 db,
                 "companies",
-                companyId,
+                effectiveCompanyId,
                 "NotifyRequests",
                 number
             );
@@ -347,7 +399,7 @@ const SharedProduct: React.FC = () => {
 
     const fetchUserNotifyStatus = async () => {
         try {
-            if (!companyId) return;
+            if (!effectiveCompanyId) return;
 
             const leadData = JSON.parse(
                 localStorage.getItem("leadData") || "{}"
@@ -362,7 +414,7 @@ const SharedProduct: React.FC = () => {
             const ref = doc(
                 db,
                 "companies",
-                companyId,
+                effectiveCompanyId,
                 "NotifyRequests",
                 number
             );
@@ -388,11 +440,11 @@ const SharedProduct: React.FC = () => {
     };
 
     const syncNotifyStockStatus = async (items: Item[]) => {
-        if (!companyId) return;
+        if (!effectiveCompanyId) return;
 
         try {
             const notifySnap = await getDocs(
-                collection(db, "companies", companyId, "NotifyRequests")
+                collection(db, "companies", effectiveCompanyId, "NotifyRequests")
             );
 
             const updates: Promise<any>[] = [];
@@ -491,54 +543,70 @@ const SharedProduct: React.FC = () => {
     };
 
     useEffect(() => {
-        if (authLoading || !currentUser || !dbOperations || !companyId) return;
+        // 1. Remove !currentUser from the guard so public users can pass
+        if (authLoading || !effectiveCompanyId || !groupId) return;
+
         const fetchData = async () => {
             try {
                 setPageIsLoading(true);
+                setError(null);
+
+                // 2. Use direct library calls or manual Firestore queries 
+                // instead of dbOperations which requires a login
                 const [fetchedItemGroups, fetchedItems] = await Promise.all([
-                    dbOperations.getItemGroups(),
-                    dbOperations.syncItems()
+                    getItemGroupsByCompany(effectiveCompanyId),
+                    getItemsByCompany(effectiveCompanyId)
                 ]);
+
+                // 3. Fetch Catalogue Sales Settings
                 const settingsRef = doc(
                     db,
                     'companies',
-                    companyId,
+                    effectiveCompanyId,
                     'settings',
                     'catalogue-sales-settings'
                 );
-
                 const settingsSnap = await getDoc(settingsRef);
-
                 if (settingsSnap.exists()) {
                     setCatalogueSettings(settingsSnap.data() as CatalogueSalesSettings);
                 }
+
+                // 4. Update state with fetched data
                 setAllItemGroups(fetchedItemGroups);
                 setAllItems(fetchedItems);
+
+                // 5. Trigger side effects like stock sync
                 syncNotifyStockStatus(fetchedItems);
+
+                // 6. Fetch Business/Social Info
                 const businessRef = doc(
                     db,
                     "companies",
-                    companyId,
+                    effectiveCompanyId,
                     "business_info",
-                    companyId
+                    effectiveCompanyId
                 );
-
                 const businessSnap = await getDoc(businessRef);
-
                 if (businessSnap.exists()) {
                     setSocialLinks(businessSnap.data());
                 }
+
             } catch (err: any) {
+                console.error("Fetch Public Data Error:", err);
                 setError(err instanceof Error ? err.message : 'Failed to load data.');
             } finally {
                 setPageIsLoading(false);
             }
         };
+
         fetchData();
-    }, [authLoading, currentUser, dbOperations, companyId]);
+
+        // 7. Dependency array: Remove currentUser and dbOperations 
+        // to prevent re-triggering when auth state changes
+    }, [authLoading, effectiveCompanyId, groupId]);
 
     useEffect(() => {
-        if (!companyId) return;
+        if (!effectiveCompanyId) return;
 
         const leadData = JSON.parse(
             localStorage.getItem("leadData") || "{}"
@@ -558,7 +626,7 @@ const SharedProduct: React.FC = () => {
 
         // DIRECT QUERY (REALTIME)
         const q = query(
-            collection(db, "companies", companyId, "AuthorizedUser"),
+            collection(db, "companies", effectiveCompanyId, "AuthorizedUser"),
             where("customerNumber", "==", phone)
         );
 
@@ -583,7 +651,7 @@ const SharedProduct: React.FC = () => {
         );
 
         return () => unsubscribe();
-    }, [companyId, leadPhone]);
+    }, [effectiveCompanyId, leadPhone]);
 
     useEffect(() => {
         const leadData = JSON.parse(localStorage.getItem("leadData") || "{}");
@@ -595,7 +663,7 @@ const SharedProduct: React.FC = () => {
 
     useEffect(() => {
         fetchUserNotifyStatus();
-    }, [companyId]);
+    }, [effectiveCompanyId]);
 
     const filteredItems = useMemo(() => {
         const result = allItems.filter(item => {
@@ -663,7 +731,7 @@ const SharedProduct: React.FC = () => {
     return (
         <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative overflow-x-hidden">
             {approvalEnabled && <LeadPopUp
-                companyId={companyId}
+                companyId={effectiveCompanyId}
                 companyName={companyName}
                 forceOpen={approvalEnabled && forceLeadOpen && !leadStatus}
                 onLeadSubmit={() => {
@@ -705,7 +773,7 @@ const SharedProduct: React.FC = () => {
                         {/* Right Side Cart Button (Already optimized) */}
                         <button
                             ref={cartIconRef}
-                            onClick={() => navigate(`/checkout/${companyId}`)}
+                            onClick={() => navigate(`/checkout/${effectiveCompanyId}`)}
                             className="flex items-center justify-center gap-2 bg-[#00A3E1] text-white py-2 px-3 md:px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative mr-1 md:mr-0"
                         >
                             <ShoppingCart size={16} />
@@ -753,7 +821,7 @@ const SharedProduct: React.FC = () => {
                         onItemSelected={(item: any) => {
                             setSearchQuery(item.name); // agar query update karni hai
                             navigate(
-                                `/product/${companyId}/${item.itemGroupId}`,
+                                `/product/${effectiveCompanyId}/${item.itemGroupId}`,
                                 { state: { highlightItemId: item.id } }
                             );
                         }}

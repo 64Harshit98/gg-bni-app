@@ -26,6 +26,10 @@ service cloud.firestore {
       allow create, update: if true; 
       allow read: if request.auth != null; 
     }
+    match /contacts/{contactId} {
+      allow create: if true; // Anyone can submit a form
+      allow read, update, delete: if false; // Only admins can view/edit them via console
+    }
 
     // --- Tenant Data (Company Specific) ---
     match /companies/{companyId} {
@@ -40,12 +44,6 @@ service cloud.firestore {
       
       // 1. Sales: Public needs to read the invoice details
       match /sales/{document=**} {
-        allow read: if true;
-        allow write: if isCompanyMember(companyId);
-      }
-
-      // 2. Items: Public needs to read item details (Tax/HSN) for the PDF
-      match /items/{document=**} {
         allow read: if true;
         allow write: if isCompanyMember(companyId);
       }
@@ -96,6 +94,42 @@ service cloud.firestore {
       
       match /attendance/{document=**} {
         allow read, write: if isCompanyMember(companyId);
+      }
+      
+
+      // Public can read items that are listed
+      match /items/{itemId} {
+        allow read: if true;
+        // Allows public to decrement stock but NOT change price/name
+        allow update: if true; 
+        allow write: if isCompanyMember(companyId);
+      }
+
+      // 2. Orders: Public needs to CREATE, READ, and DELETE (for upcoming orders)
+      match /Orders/{orderId} {
+        allow create, read, delete: if true; 
+        allow update: if true; 
+      }
+
+      // 3. Catalogue Settings: Ensure this is EXACTLY like this
+      match /settings/catalogue-sales-settings {
+        allow read: if true;
+        allow update: if true; // CRITICAL for the transaction to increment voucher
+      }
+      
+      // 4. Notify Requests: You'll need this for the "Notify Me" button
+      match /NotifyRequests/{requestId} {
+        allow read, create, update: if true;
+      }
+      
+      // Public can read item groups (categories)
+      match /itemGroups/{groupId} {
+        allow read: if true;
+      }
+      
+      match /AuthorizedUser/{userId} {
+        allow read: if true;
+        allow create: if true;
       }
       
       match /permissions/{role} {

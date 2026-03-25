@@ -1,5 +1,5 @@
 import { db } from '../lib/Firebase';
-import { doc, runTransaction, DocumentReference } from 'firebase/firestore';
+import { doc, runTransaction, DocumentReference, getDoc } from 'firebase/firestore';
 
 /**
  * Generates the next invoice number for a specific company.
@@ -44,42 +44,31 @@ export const generateNextInvoiceNumber = async (companyId: string): Promise<stri
  * Generates the next purchase invoice number for a specific company.
  * @param companyId The ID of the company to get the counter for.
  */
-export const generateNextPurchaseNumber = async (companyId: string): Promise<string> => {
-    if (!companyId) throw new Error("A valid companyId must be provided.");
+// 1. READ ONLY: Use this for the useEffect/Frontend display
+export const peekNextPurchaseNumber = async (companyId: string): Promise<string> => {
+    const settingsRef = doc(db, 'companies', companyId, 'settings', 'purchase-settings');
+    const counterRef = doc(db, 'companies', companyId, 'counters', 'purchaseCounter');
 
-    // Point to the purchase settings and purchase counter
-    const settingsRef: DocumentReference = doc(db, 'companies', companyId, 'settings', 'purchase-settings');
-    const counterRef: DocumentReference = doc(db, 'companies', companyId, 'counters', 'purchaseCounter');
+    const [settingsSnap, counterSnap] = await Promise.all([
+        getDoc(settingsRef),
+        getDoc(counterRef)
+    ]);
 
-    try {
-        return await runTransaction(db, async (transaction) => {
-            // 1. Get Prefix from Settings
-            const settingsDoc = await transaction.get(settingsRef);
-            let prefix = 'INV';
-            if (settingsDoc.exists() && settingsDoc.data().voucherPrefix !== undefined) {
-                prefix = settingsDoc.data().voucherPrefix;
-            }
+    const prefix = settingsSnap.exists() ? (settingsSnap.data().voucherPrefix || 'INV') : 'INV';
+    const nextNumber = counterSnap.exists() ? (counterSnap.data().currentNumber || 1) : 1;
 
-            // 2. Get Sequence from Counter DB
-            const counterDoc = await transaction.get(counterRef);
-            let nextNumber = 1;
-            if (counterDoc.exists() && counterDoc.data().currentNumber !== undefined) {
-                nextNumber = counterDoc.data().currentNumber;
-            }
-
-            const finalVoucherNumber = `${prefix}-${nextNumber}`;
-
-            // 3. Increment the Counter DB automatically
-            transaction.set(counterRef, { currentNumber: nextNumber + 1 }, { merge: true });
-
-            return finalVoucherNumber;
-        });
-    } catch (error) {
-        console.error("Error generating purchase number:", error);
-        throw new Error("Could not generate a new purchase number.");
-    }
+    return `${prefix}-${nextNumber}`;
 };
 
+// 2. WRITE: Call this ONLY inside createNewPurchase when saving
+export const incrementPurchaseCounter = async (companyId: string) => {
+    const counterRef = doc(db, 'companies', companyId, 'counters', 'purchaseCounter');
+    await runTransaction(db, async (transaction) => {
+        const counterDoc = await transaction.get(counterRef);
+        const nextNumber = counterDoc.exists() ? (counterDoc.data().currentNumber || 1) : 1;
+        transaction.set(counterRef, { currentNumber: nextNumber + 1 }, { merge: true });
+    });
+};
 export const OrderInvoiceNumber = async (companyId: string): Promise<string> => {
     if (!companyId) {
         throw new Error("A valid companyId must be provided.");

@@ -1,7 +1,8 @@
 {
   "projects": {
     "production": "sellar-88ced",
-    "staging": "dev-sellar"
+    "staging": "dev-sellar",
+    "default": "sellar-88ced"
   },
   "targets": {
     "sellar-88ced": {

@@ -786,7 +786,7 @@ const OrdersReturnPage: React.FC = () => {
         {/* Left: Back Button */}
         <div className="w-14 flex justify-start">
           <button
-            onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ORDERDETAILS}`, { replace: true })}
+            onClick={() => navigate(-1)}
             className="p-2 rounded-sm border border-slate-400 hover:bg-slate-200 transition-colors text-slate-700"
             title="Back"
           >

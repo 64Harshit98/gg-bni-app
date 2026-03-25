@@ -1,40 +1,48 @@
-// src/config/subscriptionPlans.ts
 import { Permissions, PLANS } from '../enums';
 
-// 1. Define what is NOT allowed in Pro (The Excluded List)
 const PRO_EXCLUDED_PERMISSIONS: Permissions[] = [
-    Permissions.ViewCatalogue      // Example: Only Enterprise can delete company
-    // Example: Only Enterprise can manage other admins
-    // Add any other permissions you want to restrict from Pro here
+    Permissions.ViewCatalogue
 ];
 
-// 2. The Limits
-export const PACK_LIMITS: Record<PLANS, Permissions[]> = {
+export const normalizePlan = (rawPlan: string | undefined | null): PLANS => {
+    if (!rawPlan) return PLANS.POS_BASIC;
 
-    // BASIC: Keep using the "Whitelist" approach (Define exactly what they CAN do)
-    [PLANS.BASIC]: [
+    const normalized = rawPlan.toLowerCase().trim();
+
+    // 1. DIRECT MAPPING FOR LEGACY STRINGS
+    if (normalized === 'basic') return PLANS.POS_BASIC;
+    if (normalized === 'pro') return PLANS.POS_PRO;
+
+    // Fix for your Enterprise issue:
+    // If DB says "enterprise" but Enum says "pos_enterprise" or similar
+    if (normalized === 'enterprise') return PLANS.ENTERPRISE;
+
+    // 2. CHECK AGAINST ENUM VALUES
+    const planValues = Object.values(PLANS) as string[];
+    if (planValues.includes(normalized)) {
+        return normalized as PLANS;
+    }
+
+    return PLANS.POS_BASIC;
+};
+
+export const PACK_LIMITS: Record<PLANS, Permissions[]> = {
+    [PLANS.POS_BASIC]: [
         Permissions.ViewDashboard,
         Permissions.ViewSalescard,
         Permissions.ManageEditProfile,
         Permissions.ManageItems,
         Permissions.CreateSales,
     ],
-
-    // PRO: Use "Blacklist" approach (All Permissions MINUS the excluded ones)
-    [PLANS.PRO]: Object.values(Permissions).filter(
-        (permission) => !PRO_EXCLUDED_PERMISSIONS.includes(permission)
+    [PLANS.POS_PRO]: Object.values(Permissions).filter(
+        (p) => !PRO_EXCLUDED_PERMISSIONS.includes(p)
     ),
-
-    // ENTERPRISE: All Permissions
+    [PLANS.CATALOGUE_BASIC]: [],
+    [PLANS.CATALOGUE_PRO]: [],
     [PLANS.ENTERPRISE]: Object.values(Permissions)
 };
 
-// 3. Helper to get allowed permissions based on pack
 export const getPackPermissions = (packName: string): Permissions[] => {
-    // Default to PRO if pack is unknown (as per your previous logic)
-    const pack = Object.values(PLANS).includes(packName as PLANS)
-        ? (packName as PLANS)
-        : PLANS.PRO;
-
-    return PACK_LIMITS[pack];
+    const validPlan = normalizePlan(packName);
+    return PACK_LIMITS[validPlan];
 };

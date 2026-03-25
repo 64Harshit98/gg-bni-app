@@ -13,11 +13,33 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "../lib/Firebase";
 
 const SharedCataloguePage: React.FC = () => {
-    const { companyId } = useParams<{ companyId: string }>();
+    const { companyId: pathId, } = useParams<{ companyId: string }>();
+
+    // 2. Get the subdomain
+    const hostname = window.location.hostname;
+    const parts = hostname.split('.');
+
+    // Explicitly ignore 'app' and 'www'
+    const subdomain = (
+        parts.length >= 3 &&
+        !['www', 'app'].includes(parts[0].toLowerCase()) &&
+        !hostname.includes('localhost')
+    ) ? parts[0] : null;
+
+    // 3. Use whichever one exists
+    // If subdomain is null (because we are on app.sellar.in), it falls back to pathId
+    const effectiveCompanyId = subdomain || pathId;
+
+    // 4. IMPORTANT: Replace your check
+    // If your code has something like: if (!companyId) return <div>Invalid link</div>;
+    // Change it to:
+    if (!effectiveCompanyId) {
+        return <div>Invalid catalogue link.</div>;
+    }
     const navigate = useNavigate();
 
     // Hooks
-    const { businessName: companyName, loading: nameLoading } = useBusinessName(companyId);
+    const { businessName: companyName, loading: nameLoading } = useBusinessName(effectiveCompanyId);
 
     // States
     const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
@@ -33,7 +55,7 @@ const SharedCataloguePage: React.FC = () => {
     }, [allItems]);
 
     useEffect(() => {
-        if (!companyId) {
+        if (!effectiveCompanyId) {
             setError("Invalid catalogue link.");
             setIsLoading(false);
             return;
@@ -44,8 +66,8 @@ const SharedCataloguePage: React.FC = () => {
                 setIsLoading(true);
                 setError(null);
                 const [fetchedItemGroups, fetchedItems] = await Promise.all([
-                    getItemGroupsByCompany(companyId),
-                    getItemsByCompany(companyId)
+                    getItemGroupsByCompany(effectiveCompanyId),
+                    getItemsByCompany(effectiveCompanyId)
                 ]);
                 setItemGroups(fetchedItemGroups);
                 setAllItems(fetchedItems);
@@ -53,9 +75,9 @@ const SharedCataloguePage: React.FC = () => {
                 const businessRef = doc(
                     db,
                     "companies",
-                    companyId,
+                    effectiveCompanyId,
                     "business_info",
-                    companyId
+                    effectiveCompanyId
                 );
 
                 const businessSnap = await getDoc(businessRef);
@@ -71,7 +93,7 @@ const SharedCataloguePage: React.FC = () => {
             }
         };
         fetchData();
-    }, [companyId]);
+    }, [effectiveCompanyId]);
 
     const fuzzyMatch = (text: string, query: string) => {
         const normalize = (str: string) =>
@@ -148,7 +170,7 @@ const SharedCataloguePage: React.FC = () => {
     return (
         <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative overflow-x-hidden">
 
-            {/* <LeadPopUp companyId={companyId} companyName={companyName} /> */}
+            {/* <LeadPopUp effectiveCompanyId={effectiveCompanyId} companyName={companyName} /> */}
 
             {/* --- HEADER --- */}
             <header className="sticky top-0 z-[60] bg-white border-b border-gray-100 shadow-sm">
@@ -164,8 +186,8 @@ const SharedCataloguePage: React.FC = () => {
 
                     <button
                         onClick={() => {
-                            if (companyId) {
-                                navigate(`/checkout/${companyId}`);
+                            if (effectiveCompanyId) {
+                                navigate(`/checkout/${effectiveCompanyId}`);
                             } else {
                                 console.error("Company ID missing!");
                             }
@@ -188,7 +210,7 @@ const SharedCataloguePage: React.FC = () => {
                         onItemSelected={(item: any) => {
                             setSearchQuery(item.name); // agar query update karni hai
                             navigate(
-                                `/product/${companyId}/${item.itemGroupId}`,
+                                `/product/${effectiveCompanyId}/${item.itemGroupId}`,
                                 { state: { highlightItemId: item.id } }
                             );
                         }}
@@ -240,7 +262,7 @@ const SharedCataloguePage: React.FC = () => {
                         return (
                             <div
                                 key={group.id}
-                                onClick={() => navigate(`/product/${companyId}/${group.id}`)}
+                                onClick={() => navigate(`/product/${effectiveCompanyId}/${group.id}`)}
                                 className="bg-white rounded-sm overflow-hidden shadow-sm border border-gray-100 flex flex-col transition-all group cursor-pointer active:scale-95"
                             >
                                 <div className="aspect-square bg-[#F8FAFC] relative overflow-hidden">

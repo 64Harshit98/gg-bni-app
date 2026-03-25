@@ -40,7 +40,7 @@ export const getDefaultCatalogueSalesSettings = (companyId: string): CatalogueSa
   companyId,
   settingType: 'catalogueSales',
   allowNegativeInventory: true,
-  enableOutOfStockNotification: true,
+  enableOutOfStockNotification: false,
   priceDisplayMode: 'both',
   showDiscountBadge: true,
   defaultCartQuantity: 1,

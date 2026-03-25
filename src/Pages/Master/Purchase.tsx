@@ -11,7 +11,7 @@ import { Modal } from '../../constants/Modal';
 import { State, Variant } from '../../enums';
 import SearchableItemInput from '../../UseComponents/SearchIteminput';
 import { CustomButton } from '../../Components';
-import { generateNextPurchaseNumber } from '../../UseComponents/InvoiceCounter';
+import { incrementPurchaseCounter, peekNextPurchaseNumber } from '../../UseComponents/InvoiceCounter';
 import { Spinner } from '../../constants/Spinner';
 import { FiTrash2 } from 'react-icons/fi';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
@@ -142,10 +142,11 @@ const PurchasePage: React.FC = () => {
     const fetchInvoiceNumber = async () => {
       if (!purchaseIdToEdit) {
         try {
-          const nextNum = await generateNextPurchaseNumber(companyId); // <-- Updated
+          // FIX: Only PEEK, don't increment yet
+          const nextNum = await peekNextPurchaseNumber(companyId);
           setInvoiceNumber(nextNum);
         } catch (e) {
-          console.error("Error generating purchase number", e);
+          console.error("Error fetching preview number", e);
         }
       }
     };
@@ -594,9 +595,16 @@ const PurchasePage: React.FC = () => {
   ) => {
     if (!currentUser?.companyId) return;
     const companyId = currentUser.companyId;
+    const currentAutoNum = await peekNextPurchaseNumber(companyId);
+
+    if (invoiceNumber.trim() === currentAutoNum) {
+      // Only increment if they actually used the suggested number!
+      await incrementPurchaseCounter(companyId);
+    }
 
     try {
       const finalInvoiceNumber = invoiceNumber.trim();
+
 
       const manualDiscount = completionData.discount || 0;
       const finalTotalAmount = Math.max(0, finalAmount - manualDiscount);
@@ -649,7 +657,7 @@ const PurchasePage: React.FC = () => {
 
       if (!purchaseSettings?.copyVoucherAfterSaving) {
         setItems([]);
-        const nextNum = await generateNextPurchaseNumber(companyId);
+        const nextNum = await peekNextPurchaseNumber(companyId);
         setInvoiceNumber(nextNum);
       }
       if (purchaseSettings?.enableBarcodePrinting) {
@@ -830,32 +838,32 @@ const PurchasePage: React.FC = () => {
             <div className="flex-shrink-0 bg-gray-50 border-b border-gray-200">
               <div className="p-3 bg-white  flex gap-2 items-center">
                 <div className="flex-grow relative">
-                  <input 
-                    type="text" 
-                    placeholder="🔍 Search items by name or barcode..." 
-                    className="w-full p-2 pr-8 border rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm md:text-base" 
-                    value={gridSearchQuery} 
-                    onChange={(e) => setGridSearchQuery(e.target.value)} 
+                  <input
+                    type="text"
+                    placeholder="🔍 Search items by name or barcode..."
+                    className="w-full p-2 pr-8 border rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm md:text-base"
+                    value={gridSearchQuery}
+                    onChange={(e) => setGridSearchQuery(e.target.value)}
                     autoFocus
                   />
                   {gridSearchQuery && (
-                    <button 
-                      onClick={() => setGridSearchQuery('')} 
+                    <button
+                      onClick={() => setGridSearchQuery('')}
                       className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 bg-white rounded-full p-1"
                     >
                       <IconScan width={18} height={18} />
                     </button>
                   )}
                 </div>
-                <button 
-                  onClick={() => setIsScannerOpen(true)} 
+                <button
+                  onClick={() => setIsScannerOpen(true)}
                   className='bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition-colors'
                   title="Scan Barcode"
                 >
                   <IconScanCircle width={22} height={22} />
                 </button>
               </div>
-              
+
               <div className="flex gap-2 overflow-x-auto px-3 pb-3 bg-white border-b border-gray-300">
                 {categories.map((cat) => (
                   <button
@@ -882,7 +890,7 @@ const PurchasePage: React.FC = () => {
                 </button>
               )}
             </div>
-            
+
             <div className="flex-1 p-3 overflow-y-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 content-start bg-gray-100">
               {sortedGridItems.length === 0 ? (
                 <div className="col-span-full text-center text-gray-500 mt-10 py-10 bg-white rounded-lg">
@@ -904,33 +912,32 @@ const PurchasePage: React.FC = () => {
                   const lastAddedCartItem = matchingCartItems[matchingCartItems.length - 1];
                   const isSelected = matchingCartItems.length > 0;
                   const quantity = lastAddedCartItem?.quantity || 0;
-                  
+
                   return (
-                    <div 
-                      key={item.id} 
-                      onClick={() => addItemToCart(item)} 
-                      className={`p-3 rounded-lg shadow-sm border transition-all flex flex-col justify-between text-center relative select-none cursor-pointer ${
-                        isSelected 
-                          ? 'bg-blue-50 border-blue-500 ring-2 ring-blue-300' 
-                          : 'bg-white border-gray-200 hover:shadow-md hover:border-blue-400'
-                      }`}
-                    > 
+                    <div
+                      key={item.id}
+                      onClick={() => addItemToCart(item)}
+                      className={`p-3 rounded-lg shadow-sm border transition-all flex flex-col justify-between text-center relative select-none cursor-pointer ${isSelected
+                        ? 'bg-blue-50 border-blue-500 ring-2 ring-blue-300'
+                        : 'bg-white border-gray-200 hover:shadow-md hover:border-blue-400'
+                        }`}
+                    >
                       <div className="w-full flex flex-col items-center pt-1 px-1 pointer-events-none">
 
                         {/* Item Name */}
-                        <span className={`font-bold text-gray-800 text-center line-clamp-2 break-words min-h-[40px] ${ item.name.length > 20 ? "text-xs" : "text-sm"}`}title={item.name}>
+                        <span className={`font-bold text-gray-800 text-center line-clamp-2 break-words min-h-[40px] ${item.name.length > 20 ? "text-xs" : "text-sm"}`} title={item.name}>
                           {item.name}
                         </span>
-                        
+
                         {/* Price */}
                         <div className="w-full mt-1 flex justify-center gap-2 text-xs font-semibold">
                           <span className="text-gray-500 line-through">MRP: ₹{item.mrp || 0}</span>
                           <span className="text-gray-900 font-bold">SP: ₹{lastAddedCartItem?.purchasePrice ?? item.purchasePrice ?? item.mrp ?? 0}</span>
                         </div>
-                      </div> 
-                      
+                      </div>
+
                       {/* Add/Quantity Button */}
-                      <div className="w-full flex items-center justify-center pb-1 mt-3"> 
+                      <div className="w-full flex items-center justify-center pb-1 mt-3">
                         {!isSelected ? (
                           <button
                             onClick={(e) => {
@@ -966,8 +973,8 @@ const PurchasePage: React.FC = () => {
                               +
                             </button>
                           </div>
-                        )} 
-                      </div> 
+                        )}
+                      </div>
                     </div>
                   );
                 })
@@ -982,7 +989,7 @@ const PurchasePage: React.FC = () => {
 
               <GenericBillFooter
                 isExpanded={true}
-                onToggleExpand={() => {}}
+                onToggleExpand={() => { }}
                 totalQuantity={totalQuantity}
                 subtotal={subtotal}
                 taxAmount={taxAmount}
@@ -1045,27 +1052,27 @@ const PurchasePage: React.FC = () => {
           </div>
         </div>
 
-        <PaymentDrawer 
-          mode='purchase' 
-          isOpen={isDrawerOpen} 
-          onClose={() => setIsDrawerOpen(false)} 
-          subtotal={subtotal} 
-          billTotal={finalAmount} 
+        <PaymentDrawer
+          mode='purchase'
+          isOpen={isDrawerOpen}
+          onClose={() => setIsDrawerOpen(false)}
+          subtotal={subtotal}
+          billTotal={finalAmount}
           initialDiscount={editModeData?.manualDiscount}
-          onPaymentComplete={handleSavePurchase} 
-          isPartyNameEditable={!editModeData} 
-          initialPartyName={editModeData ? editModeData.partyName : ''} 
-          initialPartyNumber={editModeData ? editModeData.partyNumber : ''} 
-          totalQuantity={totalQuantity} 
-          requireCustomerName={purchaseSettings?.requireSupplierName} 
-          requireCustomerMobile={purchaseSettings?.requireSupplierMobile} 
+          onPaymentComplete={handleSavePurchase}
+          isPartyNameEditable={!editModeData}
+          initialPartyName={editModeData ? editModeData.partyName : ''}
+          initialPartyNumber={editModeData ? editModeData.partyNumber : ''}
+          totalQuantity={totalQuantity}
+          requireCustomerName={purchaseSettings?.requireSupplierName}
+          requireCustomerMobile={purchaseSettings?.requireSupplierMobile}
         />
-        
-        <ItemEditDrawer 
-          item={selectedItemForEdit} 
-          isOpen={isItemDrawerOpen} 
-          onClose={handleCloseEditDrawer} 
-          onSaveSuccess={handleSaveSuccess} 
+
+        <ItemEditDrawer
+          item={selectedItemForEdit}
+          isOpen={isItemDrawerOpen}
+          onClose={handleCloseEditDrawer}
+          onSaveSuccess={handleSaveSuccess}
         />
       </div>
     );

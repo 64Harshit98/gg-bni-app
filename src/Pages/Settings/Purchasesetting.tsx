@@ -36,18 +36,18 @@ export const getDefaultPurchaseSettings = (companyId: string): PurchaseSettings 
     companyId: companyId,
     settingType: 'purchase',
     defaultDiscount: 0,
-    inputMRP: true,
+    inputMRP: false,
     zeroValueValidation: true,
     enableBarcodePrinting: true,
     copyVoucherAfterSaving: false,
-    roundingOff: true,
+    roundingOff: false,
     voucherName: 'Purchase',
-    voucherPrefix: 'INV',
+    voucherPrefix: 'PRC',
     currentVoucherNumber: 1000,
     purchaseViewType: 'list',
     requireSupplierName: true,
-    requireSupplierMobile: false,
-    cartInsertionOrder: 'top',
+    requireSupplierMobile: true,
+    cartInsertionOrder: 'bottom',
 });
 
 const PurchaseSettingsPage: React.FC = () => {
@@ -261,11 +261,10 @@ const PurchaseSettingsPage: React.FC = () => {
                                 {/* Card View Option */}
                                 <div
                                     onClick={() => handleChange('purchaseViewType', 'card')}
-                                    className={`cursor-pointer relative rounded-xl border-2 p-2 flex flex-col items-center gap-3 transition-all duration-200 ${
-                                        settings.purchaseViewType === 'card'
-                                        ? 'border-blue-600 bg-blue-50 shadow-md'
-                                        : 'border-gray-200 hover:border-blue-300 bg-white'
-                                    }`}
+                                    className={`cursor-pointer relative rounded-xl border-2 p-2 flex flex-col items-center gap-3 transition-all duration-200 ${settings.purchaseViewType === 'card'
+                                            ? 'border-blue-600 bg-blue-50 shadow-md'
+                                            : 'border-gray-200 hover:border-blue-300 bg-white'
+                                        }`}
                                 >
                                     {settings.purchaseViewType === 'card' && (
                                         <div className="absolute top-2 right-2 bg-blue-600 text-white rounded-full p-0.5 shadow-sm">
@@ -418,7 +417,7 @@ const PurchaseSettingsPage: React.FC = () => {
                     >
                         {isSaving ? <Spinner /> : 'Save Settings'}
                     </button>
-                    
+
                 </div>
             </div>
         </div>

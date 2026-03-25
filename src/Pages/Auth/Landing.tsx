@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState } from 'react'; // Added useEffect
 import { Link, useNavigate, Navigate } from 'react-router-dom';
 import { ROUTES } from '../../constants/routes.constants';
 import { CustomButton } from '../../Components';
 import sellarLogo from '../../assets/sellar-logo-heading.png';
 import bgMain from '../../assets/bg-main.png';
-import { Variant } from '../../enums';
+import { Variant, PLANS } from '../../enums'; // Added PLANS enum
 import { FloatingLabelInput } from '../../Components/ui/FloatingLabelInput';
 import { Spinner } from '../../constants/Spinner';
 import { loginUser } from '../../lib/AuthOperations';
@@ -27,19 +27,26 @@ const LoginPage: React.FC = () => {
             setError('Please enter both email and password.');
             return;
         }
+
         setLoading(true);
+
         try {
             await loginUser(email, password);
+
+            // 🚨 CRITICAL: DO NOT PUT ANY navigate('/') OR navigate(ROUTES.HOME) HERE! 🚨
+            // The Firebase login will trigger the AuthProvider, 
+            // which will update the currentUser, 
+            // which will trigger "The Smart Door" above automatically!
+
         } catch (err: any) {
             setError(err.message || 'Failed to log in.');
-        } finally {
-            setLoading(false);
+            setLoading(false); // Only turn off the spinner if it FAILS.
         }
     };
+
     const handleSignup = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
-
         try {
             navigate(ROUTES.SIGNUP);
         } catch (error) {
@@ -49,6 +56,7 @@ const LoginPage: React.FC = () => {
         }
     };
 
+    // If AuthProvider is figuring out who is logged in, show spinner
     if (authLoading) {
         return (
             <div className="flex h-screen w-screen items-center justify-center">
@@ -57,9 +65,19 @@ const LoginPage: React.FC = () => {
         );
     }
 
+    // 2. THE SMART DOOR: As soon as we have a user, route them immediately
     if (currentUser) {
-        return <Navigate to={ROUTES.HOME} replace />;
+        const isCatalogueOnly =
+            currentUser.plan === PLANS.CATALOGUE_BASIC ||
+            currentUser.plan === PLANS.CATALOGUE_PRO;
+
+        if (isCatalogueOnly) {
+            return <Navigate to={ROUTES.CHOME} replace />;
+        } else {
+            return <Navigate to={ROUTES.HOME} replace />;
+        }
     }
+
 
     return (
         <div className="relative h-screen w-screen flex flex-col">

@@ -47,17 +47,17 @@ interface Address {
     gstin?: string
 }
 
-const useBusinessName = (companyId?: string) => {
+const useBusinessName = (effectiveCompanyId?: string) => {
     const [businessName, setBusinessName] = useState<string>('');
     const [loading, setLoading] = useState(true);
     useEffect(() => {
-        if (!companyId) {
+        if (!effectiveCompanyId) {
             setLoading(false);
             return;
         }
         const fetchBusinessInfo = async () => {
             try {
-                const docRef = doc(db, 'companies', companyId, 'business_info', companyId);
+                const docRef = doc(db, 'companies', effectiveCompanyId, 'business_info', effectiveCompanyId);
                 const docSnap = await getDoc(docRef);
                 setBusinessName(docSnap.exists() ? docSnap.data().businessName || 'Catalogue' : 'Catalogue');
             } catch (err) {
@@ -67,7 +67,7 @@ const useBusinessName = (companyId?: string) => {
             }
         };
         fetchBusinessInfo();
-    }, [companyId]);
+    }, [effectiveCompanyId]);
 
     return { businessName, loading };
 };
@@ -78,8 +78,22 @@ const CartPage: React.FC = () => {
     const [step, setStep] = useState<number>(1);
     const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
     const [isPlacing, setIsPlacing] = useState(false);
-    const { companyId } = useParams<{ companyId: string }>();
-    const { businessName: companyName } = useBusinessName(companyId);
+    const { companyId: pathId } = useParams<{ companyId: string }>();
+    // 2. Get the subdomain
+    const hostname = window.location.hostname;
+    const parts = hostname.split('.');
+
+    // Explicitly ignore 'app' and 'www'
+    const subdomain = (
+        parts.length >= 3 &&
+        !['www', 'app'].includes(parts[0].toLowerCase()) &&
+        !hostname.includes('localhost')
+    ) ? parts[0] : null;
+
+    // 3. Use whichever one exists
+    // If subdomain is null (because we are on app.sellar.in), it falls back to pathId
+    const effectiveCompanyId = subdomain || pathId;
+    const { businessName: companyName } = useBusinessName(effectiveCompanyId);
     const [salesSettings, setSalesSettings] = useState<CatalogueSalesSettings | null>(null);
     const [shipping, setShipping] = useState<Address>({ name: '', phone: '', city: '', state: '', address: '', gstin: '' });
     const [billing, setBilling] = useState<Address>({ name: '', phone: '', city: '', state: '', address: '', gstin: '' });
@@ -100,11 +114,11 @@ const CartPage: React.FC = () => {
     };
 
     const syncToUpcoming = async (updatedCart: CartItem[]) => {
-        if (!companyId) return;
+        if (!effectiveCompanyId) return;
 
         const docId = getUpcomingDocId();
         if (!docId) return;
-        const orderRef = doc(db, 'companies', companyId, 'Orders', docId);
+        const orderRef = doc(db, 'companies', effectiveCompanyId, 'Orders', docId);
         if (updatedCart.length === 0) {
             await deleteDoc(orderRef);
             return;
@@ -216,14 +230,14 @@ const CartPage: React.FC = () => {
     };
 
     useEffect(() => {
-        if (!companyId) return;
+        if (!effectiveCompanyId) return;
 
         const fetchSalesSettings = async () => {
             try {
                 const ref = doc(
                     db,
                     "companies",
-                    companyId,
+                    effectiveCompanyId,
                     "settings",
                     "catalogue-sales-settings"
                 );
@@ -242,10 +256,10 @@ const CartPage: React.FC = () => {
         };
 
         fetchSalesSettings();
-    }, [companyId]);
+    }, [effectiveCompanyId]);
 
     useEffect(() => {
-        if (!companyId) return;
+        if (!effectiveCompanyId) return;
 
         const leadData = JSON.parse(
             localStorage.getItem("leadData") || "{}"
@@ -261,7 +275,7 @@ const CartPage: React.FC = () => {
         }
 
         const q = query(
-            collection(db, "companies", companyId, "AuthorizedUser"),
+            collection(db, "companies", effectiveCompanyId, "AuthorizedUser"),
             where("customerNumber", "==", phone)
         );
 
@@ -274,7 +288,7 @@ const CartPage: React.FC = () => {
         });
 
         return () => unsubscribe();
-    }, [companyId]);
+    }, [effectiveCompanyId]);
 
     const updateItemNote = (id: string | number, note: string) => {
         setCartItems(prev => prev.map(item => item.id === id ? { ...item, note } : item));
@@ -303,12 +317,12 @@ const CartPage: React.FC = () => {
     };
 
     const generateCatalogueInvoiceNumber = async (): Promise<string> => {
-        if (!companyId) throw new Error("Missing companyId");
+        if (!effectiveCompanyId) throw new Error("Missing effectiveCompanyId");
 
         const settingsRef = doc(
             db,
             "companies",
-            companyId,
+            effectiveCompanyId,
             "settings",
             "catalogue-sales-settings"
         );
@@ -350,37 +364,44 @@ const CartPage: React.FC = () => {
     const shouldShowPrice = !hidePriceEnabled && (!approvalEnabled || isUserApproved);
 
     const placeOrder = async () => {
-        if (!companyId || !currentUser?.uid) return;
+        // 1. Get existing guest ID or generate a new one on the fly
+        let guestId = localStorage.getItem("upcoming_user_key");
+
+        if (!currentUser?.uid && !guestId) {
+            guestId = crypto.randomUUID();
+            localStorage.setItem("upcoming_user_key", guestId);
+        }
+
+        // 2. MODIFIED GUARD: Now only fails if the company ID is genuinely missing
+        if (!effectiveCompanyId) {
+            alert("Invalid checkout link. Please go back to the catalogue.");
+            return;
+        }
+        // 2. MOV CHECK
         if (!isMovValid()) {
             const required = salesSettings?.minimumOrderValue || 0;
             const short = required - totalPay;
-
-            setMovError(
-                `Minimum order value is ₹${required}. Please add ₹${short} more to place order.`
-            );
+            setMovError(`Minimum order value is ₹${required}. Please add ₹${short} more.`);
             return;
         }
-        //  ADDRESS VALIDATION GUARD
+
+        // 3. ADDRESS VALIDATION
         const billingValid = isAddressValid(billing);
-        const shippingValid = isSameAsShipping
-            ? billingValid
-            : isAddressValid(shipping);
+        const shippingValid = isSameAsShipping ? billingValid : isAddressValid(shipping);
 
         if (!billingValid || !shippingValid) {
-            alert("Please fill complete billing and shipping details");
+            alert("Please fill complete billing and shipping details (10-digit phone required)");
             return;
         }
-
 
         setIsPlacing(true);
         console.log("FINAL BILL ITEMS:", cartItems)
         try {
-            // 1️⃣ Create CONFIRMED order
-            const orderDocRef = doc(
-                collection(db, 'companies', companyId, 'Orders')
-            );
-
+            // 4. GENERATE INVOICE (Atomic Transaction)
             const orderInvoiceNumber = await generateCatalogueInvoiceNumber();
+
+            // 5. CREATE CONFIRMED ORDER
+            const orderDocRef = doc(collection(db, 'companies', effectiveCompanyId, 'Orders'));
 
             await setDoc(orderDocRef, {
                 orderId: orderInvoiceNumber,
@@ -412,89 +433,51 @@ const CartPage: React.FC = () => {
                 billingDetails: billing,
                 shippingDetails: isSameAsShipping ? billing : shipping,
                 userLoginPhone: billing.phone,
-                userName: billing.name
+                userName: billing.name,
+                // Track who placed it (User or Guest)
+                orderedBy: currentUser?.uid || guestId,
+                isGuestOrder: !currentUser?.uid
             });
 
-            // STOCK UPDATE START
+            // 6. UPDATE STOCK
             for (const item of cartItems) {
-                const docId =
-                    (item as any).firestoreDocId || item.id;
-                console.log("CART ITEM:", cartItems);
+                const docId = (item as any).firestoreDocId || item.id;
                 if (!docId) continue;
 
-                const itemRef = doc(
-                    db,
-                    "companies",
-                    companyId,
-                    "items",
-                    String(docId)
-                );
-
+                const itemRef = doc(db, "companies", effectiveCompanyId, "items", String(docId));
                 await updateDoc(itemRef, {
                     stock: increment(-item.quantity),
                     updatedAt: serverTimestamp()
                 });
             }
 
-            // 2️⃣ DELETE UPCOMING (STEP 5 — YAHI HAI)
+            // 7. CLEANUP UPCOMING & LOCAL STORAGE
             const upcomingDocId = getUpcomingDocId();
-
             if (upcomingDocId) {
-                const upcomingRef = doc(
-                    db,
-                    "companies",
-                    companyId,
-                    "Orders",
-                    upcomingDocId
-                );
-
-                await deleteDoc(upcomingRef);
+                await deleteDoc(doc(db, "companies", effectiveCompanyId, "Orders", upcomingDocId));
             }
 
-            // 3️⃣ Cleanup local state
             localStorage.removeItem('temp_cart');
             setCartItems([]);
             setPlacedOrderId(orderInvoiceNumber);
             setOrderSuccess(true);
 
-            // ===== GENERATE CATALOGUE BILL (FIXED) =====
+            // 8. GENERATE PDF BILL
             try {
-                // const invoiceItems = await prepareInvoiceItems();
-
-                //  raw data
                 const rawBillData = {
-                    companyId,
-
-                    // company ka data Firestore se aayega
-                    companyName: "",          // leave empty
-                    companyAddress: "",
-                    companyContact: "",
-
-                    customer: {
-                        billing: {
-                            name: billing.name,
-                            phone: billing.phone,
-                            address: billing.address,
-                            gstin: billing.gstin || "",
-                        },
-                        shipping: {
-                            name: (isSameAsShipping ? billing.name : shipping.name),
-                            phone: (isSameAsShipping ? billing.phone : shipping.phone),
-                            address: (isSameAsShipping ? billing.address : shipping.address),
-                            gstin: (isSameAsShipping ? billing.gstin : shipping.gstin) || "",
-                        }
+                    effectiveCompanyId,
+                    billTo: {
+                        name: billing.name,
+                        phone: billing.phone,
+                        address: billing.address,
                     },
-
                     invoice: {
                         number: orderInvoiceNumber,
                         date: new Date().toLocaleDateString(),
-                        billedBy: "",
-                        roNumber: "",
                     },
                     items: cartItems.map((item, index) => ({
                         sno: index + 1,
                         name: item.name,
-                        hsn: "",
                         quantity: item.quantity,
                         unit: "PCS",
                         gstPercent: item.tax || 0,
@@ -503,20 +486,16 @@ const CartPage: React.FC = () => {
                         price: item.salesPrice,
                         total: item.salesPrice * item.quantity,
                     })),
-
-                    terms: "",
                 };
-
-                // DB se company inject
-                const preparedData = await prepareCatalogueBillData(rawBillData);
-                //  generate pdf
+                const preparedData = await prepareCatalogueBillData(rawBillData as any);
                 await CatalogueBill(preparedData, ACTION.BLOB);
             } catch (e) {
                 console.error("PDF generation failed", e);
             }
 
         } catch (e) {
-            console.error(e);
+            console.error("Order Placement Error:", e);
+            alert("Failed to place order. Please check your internet connection.");
         } finally {
             setIsPlacing(false);
         }
@@ -584,7 +563,7 @@ const CartPage: React.FC = () => {
         <>
             <div className="bg-gray-50 min-h-screen font-sans text-[#1A3B5D] flex flex-col">
                 {salesSettings?.requireApproval && (
-                    <LeadPopUp companyId={companyId} companyName={companyName} />
+                    <LeadPopUp companyId={effectiveCompanyId} companyName={companyName} />
                 )}
                 {orderSuccess && (
                     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -620,7 +599,7 @@ const CartPage: React.FC = () => {
                             {/* buttons */}
                             <div className="flex gap-3 mt-6">
                                 <button
-                                    onClick={() => navigate(`/catalogue/${companyId}`)}
+                                    onClick={() => navigate(`/catalogue/${effectiveCompanyId}`)}
                                     className="flex-1 py-3 bg-gray-100 text-[#1A3B5D] text-xs font-black rounded-sm"
                                 >
                                     Continue Shopping
@@ -924,7 +903,7 @@ const CartPage: React.FC = () => {
                                     <div className="flex justify-between items-center text-[12px] font-bold text-gray-400 uppercase">
                                         <span>Subtotal</span> <span className="text-[#1A3B5D]"> {shouldShowPrice ? `₹${subtotal.toLocaleString()}` : "—"}</span>
                                     </div>
-                                    
+
                                     <div className="pt-3 border-t border-gray-50 flex justify-between items-center">
                                         <span className="text-[#00A3E1] font-black text-xs uppercase">Total Pay</span>
                                         <span className="text-xl font-black text-[#00A3E1]">
@@ -985,7 +964,7 @@ const CartPage: React.FC = () => {
                                     {shouldShowPrice ? `₹${subtotal.toLocaleString()}` : "—"}
                                 </span>
                             </div>
-                            
+
                             <div className="pt-4 border-t border-gray-100 flex justify-between items-center">
                                 <span className="text-[#1A3B5D] font-black text-sm uppercase">Amount Payable</span>
                                 <span className="text-2xl font-black text-[#00A3E1]">

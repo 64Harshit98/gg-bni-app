@@ -1,14 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import {
-  collection,
-  query,
-  where,
-  orderBy,
-  getDocs,
-  doc,
-  getDoc
-} from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 import { useAuth } from '../context/auth-context';
 import ShowWrapper from '../context/ShowWrapper';
@@ -23,16 +15,10 @@ import { SalesCard } from '../Components/SalesCard';
 import { TopSoldItemsCard } from '../Components/TopFiveItemCard';
 import { TopSalespersonCard } from '../Components/TopSalesCard';
 import { PaymentChart } from '../Components/PaymentChart';
-// import { RestockAlertsCard } from '../Components/RestockItems';
 import { TopEntitiesList } from '../Components/TopFiveEntities';
 import ShinyText from '../Components/ShinyText';
 
-
-export interface SmartMetric {
-  name: string;
-  amount: number;
-  quantity: number;
-}
+export interface SmartMetric { name: string; amount: number; quantity: number; }
 
 interface DashboardData {
   totalSales: number;
@@ -52,10 +38,7 @@ const CACHE_DURATION = 60 * 60 * 1000;
 
 const cleanString = (str: string) => {
   if (!str) return 'N/A';
-  return str
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, c => c.toUpperCase());
+  return str.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 };
 
 const parseNum = (val: any): number => {
@@ -72,7 +55,6 @@ const getSafeDate = (val: any): Date | null => {
   if (typeof val === 'string' || typeof val === 'number') return new Date(val);
   return null;
 };
-
 
 const useBusinessName = () => {
   const [businessName, setBusinessName] = useState<string>('');
@@ -103,32 +85,19 @@ const DashboardContent = () => {
   const [isDataVisible, setIsDataVisible] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
+
   const daysRemaining = useMemo(() => {
-    // 1. Get subData exactly like SubscriptionPage
     const subData = (currentUser as any)?.subscription || (currentUser as any)?.Subscription;
-
-    // 2. Get the raw expiry date
     const rawDate = subData?.expiryDate;
-
     if (!rawDate) return null;
-
-    // 3. Convert to JS Date using the EXACT logic from SubscriptionPage
-    const expiryDate = new Date(
-      (rawDate as any).toDate ? (rawDate as any).toDate() : rawDate
-    );
-
-    // 4. Calculate difference
+    const expiryDate = new Date((rawDate as any).toDate ? (rawDate as any).toDate() : rawDate);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     expiryDate.setHours(0, 0, 0, 0);
-
     const diffTime = expiryDate.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    return diffDays;
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   }, [currentUser]);
 
-  // Badge Visibility Logic
   const showBadge = daysRemaining !== null && daysRemaining <= 5 && daysRemaining >= 0;
   const isUrgent = daysRemaining !== null && daysRemaining <= 2;
   const hasCataloguePermission = currentUser?.permissions?.includes(Permissions.ViewCatalogue);
@@ -149,20 +118,15 @@ const DashboardContent = () => {
       const cached = localStorage.getItem(CACHE_KEY);
       if (!forceRefresh && cached) {
         const parsed = JSON.parse(cached);
-
         const isTimeValid = (Date.now() - parsed.lastUpdated < CACHE_DURATION);
-
         const isDateValid = parsed.cacheStart === filters.startDate && parsed.cacheEnd === filters.endDate;
 
         if (isTimeValid && isDateValid) {
-          console.log(`Using Cached Data for ${currentUser.companyId}`);
           setData(parsed);
           setLoading(false);
           return;
         }
       }
-
-      console.log(`Fetching Fresh Data for ${currentUser.companyId}...`);
 
       const start = new Date(filters.startDate); start.setHours(0, 0, 0, 0);
       const end = new Date(filters.endDate); end.setHours(23, 59, 59, 999);
@@ -210,7 +174,6 @@ const DashboardContent = () => {
         if (!saleDate) return;
 
         const amount = parseNum(d.totalAmount || d.total || d.amount || d.grandTotal || 0);
-
         const offset = saleDate.getTimezoneOffset() * 60000;
         const dateKey = new Date(saleDate.getTime() - offset).toISOString().split('T')[0];
 
@@ -223,36 +186,26 @@ const DashboardContent = () => {
           currentOrderCount++;
 
           if (d.paymentMethods && typeof d.paymentMethods === 'object') {
-            // 1. Gather all valid payment entries
             const methods = Object.entries(d.paymentMethods)
               .map(([key, val]) => ({ key: cleanString(key), amt: parseNum(val) }))
               .filter(m => m.amt > 0);
 
             if (methods.length > 0) {
-
-              // 2. Calculate total tendered and any change due
               const totalTendered = methods.reduce((sum, m) => sum + m.amt, 0);
               let change = totalTendered > amount ? totalTendered - amount : 0;
 
-              // 3. Process each method and deduct change
               methods.forEach(m => {
                 let finalAmt = m.amt;
-
-                // First, try to deduct change from 'Cash' 
                 if (change > 0 && m.key.toLowerCase() === 'cash') {
                   const deduct = Math.min(finalAmt, change);
                   finalAmt -= deduct;
                   change -= deduct;
                 }
-
-                // If there's still change left (e.g., they overpaid via another method), deduct it from remaining
                 if (change > 0) {
                   const deduct = Math.min(finalAmt, change);
                   finalAmt -= deduct;
                   change -= deduct;
                 }
-
-                // 4. Only add to the chart if there is an actual contribution to the bill
                 if (finalAmt > 0) {
                   if (!paymentMap[m.key]) paymentMap[m.key] = { amount: 0, count: 0 };
                   paymentMap[m.key].amount += finalAmt;
@@ -279,14 +232,11 @@ const DashboardContent = () => {
               const name = item.name || item.itemName;
               if (name) {
                 const qty = parseNum(item.quantity || item.qty || 1);
-
                 let val = parseNum(item.finalPrice || item.totalAmount || item.total || item.amount);
-
                 if (val === 0) {
                   const price = parseNum(item.mrp || item.price || item.rate || item.sellingPrice || 0);
                   val = price * qty;
                 }
-
                 if (!itemMap[name]) itemMap[name] = { amount: 0, count: 0 };
                 itemMap[name].amount += val;
                 itemMap[name].count += qty;
@@ -367,6 +317,8 @@ const DashboardContent = () => {
     return new Date(data.lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }, [data]);
 
+  // ONBOARDING TRIGGER
+
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-100">
       {showBadge && (
@@ -416,8 +368,7 @@ const DashboardContent = () => {
         </div>
       </header>
 
-
-      <main className="flex-grow overflow-y-auto p-2 sm:p-2">
+      <main className="flex-grow overflow-y-auto p-2 sm:p-2 relative">
         <ShowWrapper requiredPermission={Permissions.ViewHidebutton}>
           <div className="flex justify-center gap-2">
             <p className="text-sm text-slate-500 flex items-center">Last Updated: {formattedLastUpdated}</p>
@@ -427,13 +378,14 @@ const DashboardContent = () => {
           </div>
         </ShowWrapper>
 
-        <div className="mx-auto max-w-7xl">
+        <div className="mx-auto max-w-7xl relative">
+
           <ShowWrapper requiredPermission={Permissions.ViewFilter}><div className="mb-2"><FilterControls /></div></ShowWrapper>
 
           {loading && !data ? (
             <div className="flex h-64 items-center justify-center text-slate-500"><FiLoader className="animate-spin mr-2" /> Loading Dashboard...</div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 pb-30">
+            <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 pb-30 `}>
               <ShowWrapper requiredPermission={Permissions.ViewSalescard}>
                 <SalesCard isDataVisible={isDataVisible} totalSales={Math.ceil(data?.totalSales || 0)} percentageChange={data?.percentageChange || 0} />
               </ShowWrapper>
@@ -453,7 +405,6 @@ const DashboardContent = () => {
                 <TopEntitiesList isDataVisible={isDataVisible} titleOverride="Top Customers" items={data?.topCustomers || []} />
               </ShowWrapper>
               <ShowWrapper requiredPermission={Permissions.ViewAttendance}><AttendancePage /></ShowWrapper>
-              {/* <ShowWrapper requiredPermission={Permissions.Viewrestockcard}><RestockAlertsCard /></ShowWrapper> */}
             </div>
           )}
         </div>

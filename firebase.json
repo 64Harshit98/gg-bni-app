@@ -8,6 +8,10 @@
     ],
     "rewrites": [
       {
+        "source": "/api/getPublicCatalogue",
+        "function": "getPublicCatalogue"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }
@@ -21,15 +25,6 @@
             "value": "public, max-age=31536000, immutable"
           }
         ]
-      },
-      {
-        "source": "**/*.@(html)",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "no-cache, no-store, must-revalidate"
-          }
-        ]
       }
     ]
   },
@@ -37,13 +32,6 @@
     {
       "source": "functions",
       "codebase": "default",
-      "ignore": [
-        "node_modules",
-        ".git",
-        "firebase-debug.log",
-        "firebase-debug.*.log",
-        "*.local"
-      ],
       "predeploy": [
         "npm --prefix \"$RESOURCE_DIR\" run lint",
         "npm --prefix \"$RESOURCE_DIR\" run build"

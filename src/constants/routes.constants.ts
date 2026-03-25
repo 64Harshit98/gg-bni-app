@@ -38,7 +38,7 @@ export const ROUTES = {
   CHOME: '/catalogue-home',
   MYSHOP: 'my-shop',
   ORDER: 'orders',
-  ORDERDETAILS: 'order-details',
+  ORDERDETAILS: '/order-details',
   CATALOGUE: 'catalogue',
   CATALOGUE_ACCOUNTS: 'accounts',
   CATALOGUE_REPORTS: 'reports',

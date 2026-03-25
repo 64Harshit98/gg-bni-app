@@ -6,25 +6,22 @@ import { FloatingLabelInput } from '../../Components/ui/FloatingLabelInput';
 import { Stepper } from '../../Components/Stepper';
 import { Variant } from '../../enums';
 import { FiMail, FiLock, FiEye, FiEyeOff, FiPhone, FiUser } from 'react-icons/fi';
-import { saveLeadProgress } from '../../lib/Lead'; // Ensure this path is correct
+import { saveLeadProgress } from '../../lib/Lead';
 
 const LOCAL_STORAGE_KEY = 'sellar_onboarding_data';
 
 const SignUpPage: React.FC = () => {
   const navigate = useNavigate();
 
-  // --- State ---
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // --- 1. Load Data on Mount ---
   useEffect(() => {
     const savedDataString = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (savedDataString) {
@@ -32,31 +29,24 @@ const SignUpPage: React.FC = () => {
       if (savedData.fullName) setFullName(savedData.fullName);
       if (savedData.email) setEmail(savedData.email);
       if (savedData.phoneNumber) setPhoneNumber(savedData.phoneNumber);
-      if (savedData.password) setPassword(savedData.password);
-      if (savedData.password) setConfirmPassword(savedData.password);
+      if (savedData.password) {
+        setPassword(savedData.password);
+        setConfirmPassword(savedData.password);
+      }
     }
   }, []);
 
-  // --- 2. Save Data on Change ---
   useEffect(() => {
     const saveData = () => {
       const currentSaved = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '{}');
-      const updatedData = {
-        ...currentSaved,
-        fullName,
-        email,
-        phoneNumber,
-        password
-      };
+      const updatedData = { ...currentSaved, fullName, email, phoneNumber, password };
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updatedData));
     };
     saveData();
   }, [fullName, email, phoneNumber, password]);
 
-  // --- Validation Helper ---
   const validateForm = (): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
     if (!fullName.trim() || !email.trim() || !phoneNumber.trim() || !password.trim() || !confirmPassword.trim()) {
       setError('Please fill out all fields.');
       return false;
@@ -79,11 +69,9 @@ const SignUpPage: React.FC = () => {
     }
     return true;
   };
-  const handleClearData = () => {
-    // Remove from local storage
-    localStorage.removeItem(LOCAL_STORAGE_KEY);
 
-    // Reset component state
+  const handleClearData = () => {
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
     setFullName('');
     setEmail('');
     setPhoneNumber('');
@@ -91,13 +79,12 @@ const SignUpPage: React.FC = () => {
     setConfirmPassword('');
     setError(null);
   };
-  // --- Navigation & Lead Saving ---
+
   const handleNext = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setError(null);
 
     if (validateForm()) {
-      // 1. SAVE LEAD (Status: Onboarding)
       await saveLeadProgress(email, {
         fullName,
         phoneNumber,
@@ -105,31 +92,20 @@ const SignUpPage: React.FC = () => {
         currentStep: 'Step 2: Business Info',
       });
 
-      // 2. Navigate
       navigate(ROUTES.BUSINESS_INFO, {
         state: { fullName, email, phoneNumber, password },
       });
     }
   };
 
-  const handleStepClick = (targetStep: number) => {
-    if (targetStep === 1) return;
-    if (targetStep > 1) {
-      handleNext();
-    }
-  };
-
   return (
-    // FIX: Changed 'min-h-screen' to 'h-screen overflow-hidden'
-    // This locks the viewport height so the page body doesn't scroll.
-    <div className="flex flex-col h-screen overflow-hidden bg-gray-100">
-
-      {/* Header (Stays Fixed at Top) */}
-      <div className="flex-shrink-0 bg-gray-100 pt-4 pb-2 px-4 shadow-sm z-40">
-        <Stepper totalSteps={4} currentStep={1} onStepClick={handleStepClick} />
+    <div className="flex flex-col h-screen overflow-hidden bg-gray-200">
+      <div className="flex-shrink-0 bg-gray-200 pt-4 pb-2 px-4 shadow-sm z-40 flex justify-center">
+        <div className="w-full max-w-xs">
+          <Stepper totalSteps={2} currentStep={1} onStepClick={() => { }} />
+        </div>
       </div>
 
-      {/* Content Area (Scrolls Independently) */}
       <div className="flex-grow px-4 pb-32 overflow-y-auto scrollbar-hide">
         <div className="flex justify-between items-end mb-6 mt-4">
           <h1 className="text-4xl font-bold">Create Account</h1>
@@ -142,7 +118,7 @@ const SignUpPage: React.FC = () => {
           </button>
         </div>
 
-        <div className='bg-white p-4 rounded-lg shadow-sm border border-gray-200 space-y-2 pt-8 pb-8'>
+        <div className='bg-gray-100 p-4 rounded-lg shadow-sm border border-gray-200 space-y-2 pt-8 pb-8'>
           <form onSubmit={handleNext} className="flex flex-col space-y-6">
             <div className="relative">
               <FiUser className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
@@ -180,7 +156,6 @@ const SignUpPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Footer (Fixed at Bottom) */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 z-50 shadow-lg">
         <div className="max-w-md mx-auto space-y-3">
           <CustomButton type="submit" variant={Variant.Filled} onClick={handleNext} className="w-full">

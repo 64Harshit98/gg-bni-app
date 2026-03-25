@@ -9,6 +9,7 @@ import { Permissions } from '../enums';
 import ShowWrapper from '../context/ShowWrapper';
 import ShinyText from '../Components/ShinyText';
 import { useMemo } from 'react';
+import BusinessCard from '../Catalogue/BusinessCards/BusinessCard';
 
 interface UserProfile {
   name: string;
@@ -200,17 +201,7 @@ const Account: React.FC = () => {
           <h2 className="text-xl font-semibold text-slate-800 mb-4">
             Share your Business Card
           </h2>
-          <div className="flex space-x-4 overflow-x-auto pb-4 mb-4">
-            <div className="flex-shrink-0 w-40 bg-white rounded-sm shadow p-4 h-32 flex flex-col justify-between">
-              <p className="font-semibold text-gray-800">Business Card 1</p>
-            </div>
-            <div className="flex-shrink-0 w-40 bg-white rounded-sm shadow p-4 h-32 flex flex-col justify-between">
-              <p className="font-semibold text-gray-800">Business Card 2</p>
-            </div>
-            <div className="flex-shrink-0 w-40 bg-white rounded-sm shadow p-4 h-32 flex flex-col justify-between">
-              <p className="font-semibold text-gray-800">Business Card 3</p>
-            </div>
-          </div>
+          <BusinessCard />
           <div className="w-full grid grid-cols-2 gap-4 justify-center mt-2 space-y-2 flex-col">
 
             <ShowWrapper

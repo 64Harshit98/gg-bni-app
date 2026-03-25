@@ -2,6 +2,8 @@ const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const axios = require("axios");
 const cors = require("cors")({ origin: true }); // Allows your frontend to talk to this function
+admin.initializeApp();
+const db = admin.firestore();
 
 exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
     // 1. Verify the requester is authenticated
@@ -60,18 +62,40 @@ exports.botmasterProxy = functions.https.onRequest((req, res) => {
         }
     });
 });
-admin.initializeApp();
-const db = admin.firestore();
+exports.getPublicCatalogue = functions.https.onRequest(async (req, res) => {
+    // 1. Extract the subdomain (e.g., 'mahesh-kirana' from 'mahesh-kirana.sellar.in')
+    const host = req.hostname;
+    const slug = host.split('.')[0];
 
-/**
- * -----------------------------------------------------------------
- * FUNCTION: REGISTER COMPANY AND USER
- * Saves: 
- * 1. Plan -> Root (companies/{id})
- * 2. Settings -> Subcollection (companies/{id}/settings/sales-settings)
- * 3. Info -> Subcollection (companies/{id}/business_info/{id})
- * -----------------------------------------------------------------
- */
+    // 2. Safety Check: Don't process main app or reserved words
+    if (['app', 'www', 'api', 'admin'].includes(slug)) {
+        res.status(404).send("Not a merchant subdomain");
+        return;
+    }
+
+    try {
+        // 3. Fetch the 'Bundle' document (One read for the whole store)
+        const storeDoc = await admin.firestore().collection("public_catalogues").doc(slug).get();
+
+        if (!storeDoc.exists) {
+            res.status(404).send("Store not found");
+            return;
+        }
+
+        /** * 4. THE MONEY SAVER: CDN Caching
+         * public: Allow caching by Google's CDN
+         * max-age: Browser caches for 60 seconds
+         * s-maxage: Google CDN caches for 3600 seconds (1 hour)
+         * stale-while-revalidate: Serve old data for 10 mins while fetching fresh in background
+         */
+        res.set('Cache-Control', 'public, max-age=60, s-maxage=3600, stale-while-revalidate=600');
+
+        res.status(200).json(storeDoc.data());
+    } catch (error) {
+        console.error("Error fetching catalogue:", error);
+        res.status(500).send("Internal Server Error");
+    }
+});
 exports.registerCompanyAndUser = functions.https.onCall(async (data, context) => {
     // 1. Destructure all incoming data
     const {
@@ -142,7 +166,7 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
             ownerPhoneNumber: phoneNumber || '',
 
             // Plan Info (Forced to 7-Day Trial)
-            pack: "pro",
+            pack: "enterprise",
             validity: "active",
             expiryDate: admin.firestore.Timestamp.fromDate(trialDate),
             isTrial: true

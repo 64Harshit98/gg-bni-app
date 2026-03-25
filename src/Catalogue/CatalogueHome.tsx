@@ -12,6 +12,7 @@ import { CompletedSalesCard } from '../Components/CatalougeSales'; // Assuming t
 // import { RestockAlertsCard } from '../Components/RestockItems';
 import { TopSoldItemsCard } from '../Components/TopFiveOrder';
 import { OrderBarChartReport } from '../Components/OrderSalesGraph';
+import { IconChevronDown } from '../constants/Icons';
 
 // --- Custom Hook for Business Name ---
 const useBusinessName = (userId?: string, companyId?: string) => { // <-- FIX: Added companyId
@@ -50,7 +51,7 @@ const HomePage: React.FC = () => {
 
     // --- FIX: Pass companyId to the hook ---
     const { businessName, loading: nameLoading } = useBusinessName(currentUser?.uid, currentUser?.companyId);
-
+    const hasCataloguePermission = currentUser?.permissions?.includes(Permissions.ViewCatalogue);
     const [isDataVisible, setIsDataVisible] = useState<boolean>(false); // Default to visible
     const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
     const isLoading = authLoading || nameLoading;
@@ -70,44 +71,15 @@ const HomePage: React.FC = () => {
 
                     {/* Left Path Dropdown */}
                     <div className="relative w-14 flex justify-start">
-                        <button
-                            onClick={() => setIsMenuOpen(!isMenuOpen)}
-                            className="flex min-w-22 items-center justify-between gap-2 rounded-sm border border-slate-400 p-2 text-sm font-medium text-slate-700 hover:bg-slate-200 transition-colors"
-                            title="Change Page"
-                        >
+                        <button disabled={!hasCataloguePermission} onClick={() => setIsMenuOpen(!isMenuOpen)} className={`flex min-w-20 items-center justify-between gap-2 rounded-sm border border-slate-400 p-2 text-sm font-medium text-slate-700 transition-colors ${!hasCataloguePermission ? 'opacity-50 cursor-not-allowed bg-gray-100' : 'hover:bg-slate-200 cursor-pointer'}`}>
                             <span className="font-medium">{currentLabel}</span>
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="16"
-                                height="16"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                className={`transition-transform ${isMenuOpen ? 'rotate-180' : 'rotate-0'}`}
-                            >
-                                <polyline points="6 9 12 15 18 9"></polyline>
-                            </svg>
+                            <IconChevronDown width={16} height={16} className={`transition-transform ${isMenuOpen ? 'rotate-180' : 'rotate-0'}`} />
                         </button>
-
-                        {isMenuOpen && (
+                        {isMenuOpen && hasCataloguePermission && (
                             <div className="absolute top-full left-0 mt-2 w-56 bg-white border border-slate-300 rounded-md shadow-lg z-10">
                                 <ul className="py-1">
                                     {SiteItems.map(({ to, label }) => (
-                                        <li key={to}>
-                                            <Link
-                                                to={to}
-                                                onClick={() => setIsMenuOpen(false)}
-                                                className={`flex w-full items-center gap-3 px-4 py-2 text-sm font-medium ${location.pathname === to
-                                                    ? 'bg-gray-600 text-white'
-                                                    : 'text-slate-700 hover:bg-gray-100'
-                                                    }`}
-                                            >
-                                                {label}
-                                            </Link>
-                                        </li>
+                                        <li key={to}><Link to={to} onClick={() => setIsMenuOpen(false)} className={`flex w-full items-center gap-3 px-4 py-2 text-sm font-medium ${location.pathname === to ? 'bg-gray-500 text-white' : 'text-slate-700 hover:bg-gray-100'}`}>{label}</Link></li>
                                     ))}
                                 </ul>
                             </div>

@@ -1,4 +1,4 @@
-import { Permissions } from '../enums';
+import { Permissions, PLANS } from '../enums';
 
 /**
  * Checks if a user's permission list includes a specific permission.
@@ -39,4 +39,9 @@ export interface User {
         isActive: boolean;
         expiryDate?: Date
     };
+
+    // --- NEW FIELDS FOR ARCHITECTURE ---
+    // We lift these up so AppGuard can read them instantly
+    plan: PLANS;
+    isFirstLogin?: boolean;
 }

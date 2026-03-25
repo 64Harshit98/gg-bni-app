@@ -5,14 +5,14 @@ import { logoutUser } from '../lib/AuthOperations';
 import { db } from '../lib/Firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { ROUTES } from '../constants/routes.constants';
-import { Permissions } from '../enums';
-import ShowWrapper from '../context/ShowWrapper';
 import BusinessCard from './BusinessCards/BusinessCard';
+import { Permissions } from '../enums/permissions.enum';
+import ShowWrapper from '../context/ShowWrapper';
 
 interface UserProfile {
     name: string;
     email: string;
-    profilePicture:string;
+    profilePicture: string;
 }
 
 const Account: React.FC = () => {
@@ -185,19 +185,19 @@ const Account: React.FC = () => {
                                 <span className="text-lg font-medium">Settings</span>
                                 <span className="text-xl text-gray-600">→</span>
                             </Link>
-                            <Link
-                                to={ROUTES.SUBSCRIPTION_PAGE}
-                                className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-border border-gray-200 text-gray-800 hover:shadow-lg">
-                                <span className="text-lg font-medium">Plans</span>
-                                <span className="text-xl text-gray-600">→</span>
-                            </Link>
-                            <Link
-                                to={`${ROUTES.CHOME}/${ROUTES.CATA_SUPPORT}`}
-                                className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-border border-gray-200 text-gray-800 hover:shadow-lg">
-                                <span className="text-lg font-medium">Supports</span>
-                                <span className="text-xl text-gray-600">→</span>
-                            </Link>
                         </ShowWrapper>
+                        <Link
+                            to={ROUTES.SUBSCRIPTION_PAGE}
+                            className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-border border-gray-200 text-gray-800 hover:shadow-lg">
+                            <span className="text-lg font-medium">Plans</span>
+                            <span className="text-xl text-gray-600">→</span>
+                        </Link>
+                        <Link
+                            to={`${ROUTES.CHOME}/${ROUTES.CATA_SUPPORT}`}
+                            className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-border border-gray-200 text-gray-800 hover:shadow-lg">
+                            <span className="text-lg font-medium">Supports</span>
+                            <span className="text-xl text-gray-600">→</span>
+                        </Link>
                     </div>
                     <div className="mt-2 flex justify-center">
                         <button

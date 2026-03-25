@@ -18,9 +18,9 @@ export interface ItemSettings {
     requireUnit: boolean;
     autoGenerateBarcode: boolean;
     requireCategory: boolean; // ADDED: Category Requirement
-    requireBarcode:boolean;
+    requireBarcode: boolean;
     requireSaleDiscount: boolean;
-    requirePurchaseDiscount:boolean
+    requirePurchaseDiscount: boolean
 }
 
 export const getDefaultItemSettings = (companyId: string): ItemSettings => ({
@@ -132,12 +132,12 @@ const ItemSettingsPage: React.FC = () => {
 
                     <div>
                         <div className="flex items-center justify-between mb-4">
-                                                    <h2 className="text-lg font-semibold text-gray-800">Optional Item Fields</h2>
-                                                    <ResetSettingsButton<ItemSettings>
-                                                        defaults={getDefaultItemSettings(currentUser?.companyId ?? '')}
-                                                        onReset={setSettings}
-                                                    />
-                                                </div>
+                            <h2 className="text-lg font-semibold text-gray-800">Optional Item Fields</h2>
+                            <ResetSettingsButton<ItemSettings>
+                                defaults={getDefaultItemSettings(currentUser?.companyId ?? '')}
+                                onReset={setSettings}
+                            />
+                        </div>
                         <p className="text-sm text-gray-500 mb-3">
                             Select which of the optional fields must be filled out when manually adding a single item.
                             <br /><span className="text-xs text-red-500 font-medium">* Name, MRP/Sale Price, Stock, and Barcode are strictly required by the system and cannot be disabled.</span>
@@ -212,7 +212,7 @@ const ItemSettingsPage: React.FC = () => {
                         >
                             {isSaving ? <Spinner /> : 'Save Item Settings'}
                         </button>
-                        
+
                     </div>
                 </form>
             </main>

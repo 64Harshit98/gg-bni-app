@@ -3,7 +3,6 @@ import { collection, query, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
 import {
   type Transaction,
-  type Item,
   type TransactionDetail,
 } from './pnlReport.utils';
 import { useNavigate } from 'react-router-dom';
@@ -12,7 +11,6 @@ import { formatDateForInput } from '../SalesReportComponents/salesReport.utils';
 
 export const usePnlReport = (companyId: string | undefined) => {
   const [sales, setSales] = useState<Transaction[]>([]);
-  const [itemsMap, setItemsMap] = useState<Map<string, Item>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,72 +20,45 @@ export const usePnlReport = (companyId: string | undefined) => {
       return;
     }
 
-    const itemsCollectionRef = collection(db, 'companies', companyId, 'items');
-    const qItems = query(itemsCollectionRef);
+    const salesRef = collection(db, 'companies', companyId, 'sales');
+    const qSales = query(salesRef);
 
-    const unsubscribeItems = onSnapshot(
-      qItems,
-      (snapshot) => {
-        const newItemsMap = new Map<string, Item>();
-        snapshot.docs.forEach((doc) => {
-          newItemsMap.set(doc.id, {
-            id: doc.id,
-            purchasePrice: doc.data().purchasePrice || 0,
-          });
-        });
-        setItemsMap(newItemsMap);
-      },
-      (_err) => setError('Failed to fetch item data.'),
-    );
+    const unsubscribe = onSnapshot(qSales, (snapshot) => {
+      const processedSales: Transaction[] = snapshot.docs.map((doc) => {
+        const data = doc.data();
 
-    const salesCollectionRef = collection(db, 'companies', companyId, 'sales');
-    const qSales = query(salesCollectionRef);
-
-    const unsubscribeSales = onSnapshot(
-      qSales,
-      (snapshot) => {
-        if (itemsMap.size === 0 && snapshot.size > 0) return;
-
-        setSales(
-          snapshot.docs.map((doc) => {
-            const saleData = doc.data();
-            const costOfGoodsSold = (saleData.items || []).reduce(
-              (sum: number, item: { id: string; quantity: number }) => {
-                const itemDetails = itemsMap.get(item.id);
-                const itemCost = itemDetails ? itemDetails.purchasePrice : 0;
-                return sum + itemCost * (item.quantity || 0);
-              },
-              0,
-            );
-
-            return {
-              id: doc.id,
-              totalAmount: saleData.totalAmount || 0,
-              createdAt:
-                saleData.createdAt instanceof Timestamp
-                  ? saleData.createdAt.toDate()
-                  : new Date(),
-              invoiceNumber: saleData.invoiceNumber || 'N/A',
-              partyName: saleData.partyName || 'N/A',
-              costOfGoodsSold: costOfGoodsSold,
-              items: saleData.items || [],
-            };
-          }),
+        // Calculate directly from the bill's own item data
+        const costOfGoodsSold = (data.items || []).reduce(
+          (sum: number, billItem: any) => {
+            const unitCost = Number(billItem.purchasePrice) || 0;
+            return sum + (unitCost * (billItem.quantity || 0));
+          },
+          0
         );
-        setLoading(false);
-      },
-      (_err) => setError('Failed to fetch sales data.'),
-    );
 
-    return () => {
-      unsubscribeItems();
-      unsubscribeSales();
-    };
-  }, [companyId, itemsMap]);
+        return {
+          id: doc.id,
+          totalAmount: data.totalAmount || 0,
+          createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(),
+          invoiceNumber: data.invoiceNumber || 'N/A',
+          partyName: data.partyName || 'Cash Sale',
+          costOfGoodsSold: costOfGoodsSold,
+          items: data.items || [],
+        };
+      });
+
+      setSales(processedSales);
+      setLoading(false);
+    }, (err) => {
+      console.error(err);
+      setError("Failed to load sales.");
+    });
+
+    return () => unsubscribe();
+  }, [companyId]);
 
   return { sales, loading, error };
 };
-
 export function usePnlStates() {
   const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();

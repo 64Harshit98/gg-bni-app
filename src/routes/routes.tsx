@@ -23,6 +23,10 @@ const SharedProduct = lazy(() => import('../Catalogue/SharedProduct'));
 const Catalogue = lazy(() => import('../Catalogue/SharedCatalouge'));
 const CartPage = lazy(() => import('../Catalogue/CheckOut'));
 const UnauthorizedPage = lazy(() => import('../Pages/Unauthorized'));
+//const SuperAdminHub = lazy(() => import('../Pages/Account/SuperAdminHub'))//
+const WebsiteLeads = lazy(()=> import('../Pages/Account/WebsiteLeads'))
+//const SuperAdminSupportTicket = lazy(()=> import('../Pages/Account/SuperAdminSupportTicket'))//
+const LeadPage =lazy(() => import('../Pages/Reports/LeadPage'))
 
 const getSubdomain = () => {
   const hostname = window.location.hostname;
@@ -84,8 +88,13 @@ const router = createBrowserRouter([
           { path: ROUTES.BUSINESS_INFO, element: <BusInfo />, handle: { isPublic: true } },
           { path: ROUTES.FORGOT_PASSWORD, element: <ForgotPasswordPage />, handle: { isPublic: true } },
           { path: ROUTES.RESET_PASSWORD, element: <ResetPasswordPage />, handle: { isPublic: true } },
-          { path: '/super-admin', element: <SuperAdminCompanies /> },
+          { path: ROUTES.SUPER_ADMIN, element: <SuperAdminCompanies /> },
           { path: ROUTES.SUBSCRIPTION_PAGE, element: <SubscriptionPage />, handle: { isPublic: false } },
+         // { path: ROUTES.SUPER_ADMINHUB, element: <SuperAdminHub/>},//
+          //{ path: ROUTES.SUPPORT_TICKET, element: <SuperAdminSupportTicket/>},//
+          { path: ROUTES.WEBSITE_QUERY, element: <WebsiteLeads/>},
+          { path: ROUTES.APP_LEADS,element: <LeadPage/>}
+
 
         ],
       },

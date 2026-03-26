@@ -13,12 +13,15 @@ import SearchableItemInput from '../../UseComponents/SearchIteminput';
 import { CustomButton } from '../../Components';
 import { incrementPurchaseCounter, peekNextPurchaseNumber } from '../../UseComponents/InvoiceCounter';
 import { Spinner } from '../../constants/Spinner';
-import { FiTrash2 } from 'react-icons/fi';
+import { FiTrash2, FiEdit, FiCamera } from 'react-icons/fi';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
 import { usePurchaseSettings } from '../../context/SettingsContext';
 import { GenericCartList } from '../../Components/CartItem';
 import { GenericBillFooter } from '../../Components/Footer';
-import { IconScanCircle, IconScan } from '../../constants/Icons';
+import { IconScanCircle } from '../../constants/Icons';
+
+
+
 
 interface PurchaseItem extends Omit<SalesItem, 'finalPrice' | 'effectiveUnitPrice' | 'discountPercentage'> {
   purchasePrice: number | string;
@@ -99,6 +102,13 @@ const PurchasePage: React.FC = () => {
   const [isScannerOpen, setIsScannerOpen] = useState(false);
 
   const [invoiceNumber, setInvoiceNumber] = useState<string>('');
+  const [invoiceDate, setInvoiceDate] = useState<string>(() => {
+    const today = new Date();
+    const dd = String(today.getDate()).padStart(2, '0');
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const yy = String(today.getFullYear()).slice(2);
+    return `${dd}-${mm}-${yy}`;
+  });
 
   const [billTaxType, setBillTaxType] = useState<TaxOption>('exclusive');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -804,21 +814,68 @@ const PurchasePage: React.FC = () => {
   const showTaxToggle = true; // Always show the manual tax toggle on the UI
   const displayTaxTotal = showTaxToggle && billTaxType !== 'none';
   const isCardView = purchaseSettings?.purchaseViewType === 'card';
+  const isCardImageView = isCardView && (purchaseSettings?.cardViewWithPhoto !== false);
+
 
   const renderHeader = () => (
     <div className="flex flex-col md:flex-row md:justify-between md:items-center bg-gray-100 md:bg-white border-b border-gray-200 shadow-sm flex-shrink-0 p-2 md:px-4 md:py-3 mb-2 md:mb-0">
-      <div className="flex justify-between items-center w-full md:w-auto mb-2 md:mb-0">
-        <h1 className="text-2xl font-bold text-gray-800 text-center md:text-left">
+
+      {/* MOBILE: date left, title center, inv no right */}
+      <div className="flex md:hidden items-center justify-between w-full mb-2">
+        <div className="flex flex-col items-center">
+          <input
+            type="text"
+            value={invoiceDate}
+            onChange={(e) => setInvoiceDate(e.target.value)}
+            className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-20 text-sm outline-none transition-colors"
+          />
+          <span className="text-[9px] text-gray-400 uppercase tracking-wide mt-0.5">DATE</span>
+
+        </div>
+        <h1 className="text-2xl font-bold text-gray-800 text-center flex-1">
           {editModeData ? 'Edit Purchase' : (purchaseSettings?.voucherName ?? 'Purchase')}
         </h1>
-        <div className="flex items-center gap-2 md:ml-6">
-          <span className="text-xs text-gray-500 font-medium uppercase tracking-wide">Inv No:</span>
-          <input type="text" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-24 text-sm outline-none transition-colors" />
+        <div className="flex flex-col items-center">
+          <input
+            type="text"
+            value={invoiceNumber}
+            onChange={(e) => setInvoiceNumber(e.target.value)}
+            className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-24 text-sm outline-none transition-colors"
+          />
+          <span className="text-[9px] text-gray-400 uppercase tracking-wide mt-0.5">Inv No</span>
         </div>
       </div>
 
+      {/* DESKTOP */}
+      <div className="hidden md:flex md:flex-row md:items-center w-full md:w-auto gap-1 md:gap-4 md:mb-0">
+        <h1 className="text-2xl font-bold text-gray-800">
+          {editModeData ? 'Edit Purchase' : (purchaseSettings?.voucherName ?? 'Purchase')}
+        </h1>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500 font-medium uppercase tracking-wide">INV NO:</span>
+            <input
+              type="text"
+              value={invoiceNumber}
+              onChange={(e) => setInvoiceNumber(e.target.value)}
+              className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-24 text-sm outline-none transition-colors"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500 font-medium uppercase tracking-wide">DATE:</span>
+            <input
+              type="text"
+              value={invoiceDate}
+              onChange={(e) => setInvoiceDate(e.target.value)}
+              className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-20 text-sm outline-none transition-colors"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Purchase / Purchase Return buttons*/}
       {!editModeData && (
-        <div className="flex items-center justify-center gap-6">
+        <div className="flex items-center justify-center md:justify-end gap-3">
           <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.PURCHASE)} active={isActive(ROUTES.PURCHASE)}>Purchase</CustomButton>
           <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.PURCHASE_RETURN)} active={isActive(ROUTES.PURCHASE_RETURN)}>Purchase Return</CustomButton>
         </div>
@@ -829,7 +886,7 @@ const PurchasePage: React.FC = () => {
   // --- CARD VIEW RENDER (GRID) ---
   if (isCardView) {
     return (
-      <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden pb-2">
+      <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden pb-0">
         {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
         <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
         {renderHeader()}
@@ -837,23 +894,21 @@ const PurchasePage: React.FC = () => {
           <div className="flex flex-col w-full md:w-3/4 h-full relative min-w-0 border-r border-gray-200 overflow-hidden">
             <div className="flex-shrink-0 bg-gray-50 border-b border-gray-200">
               <div className="p-3 bg-white  flex gap-2 items-center">
-                <div className="flex-grow relative">
-                  <input
-                    type="text"
-                    placeholder="🔍 Search items by name or barcode..."
-                    className="w-full p-2 pr-8 border rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm md:text-base"
-                    value={gridSearchQuery}
-                    onChange={(e) => setGridSearchQuery(e.target.value)}
-                    autoFocus
+                <div className="flex-grow">
+                  <SearchableItemInput
+                    label=""
+                    placeholder="Search items by name or barcode..."
+                    items={availableItems}
+                    onItemSelected={(item) => {
+                      if (item) {
+                        addItemToCart(item);
+                        setGridSearchQuery('');
+                      }
+                    }}
+                    isLoading={pageIsLoading}
+                    error={error}
+                    onAddItem={(query) => navigate(ROUTES.ITEM_ADD, { state: { prefillName: query } })}
                   />
-                  {gridSearchQuery && (
-                    <button
-                      onClick={() => setGridSearchQuery('')}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 bg-white rounded-full p-1"
-                    >
-                      <IconScan width={18} height={18} />
-                    </button>
-                  )}
                 </div>
                 <button
                   onClick={() => setIsScannerOpen(true)}
@@ -869,7 +924,7 @@ const PurchasePage: React.FC = () => {
                   <button
                     key={cat}
                     onClick={() => setSelectedCategory(cat)}
-                    className={`px-3 py-1 rounded-full text-xs whitespace-nowrap border transition
+                    className={`px-3 py-1 rounded-sm text-xs whitespace-nowrap border transition
                       ${selectedCategory === cat
                         ? 'bg-blue-600 text-white border-blue-600'
                         : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'
@@ -881,17 +936,17 @@ const PurchasePage: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex justify-between items-center pt-2 pb-1 bg-gray-100 border-b border-gray-200 px-2 mb-2">
-              <h3 className="text-gray-700 text-lg font-medium">Cart</h3>
+            <div className="flex justify-between items-center pt-0 pb-0 bg-gray-100 border-b border-gray-200 px-2 mb-1">
+              <h3 className="text-gray-700 text-base font-medium">Cart</h3>
               {items.length > 0 && (
-                <button onClick={handleClearCart} className="flex items-center gap-1 text-sm text-red-500 hover:text-red-700 font-medium transition-colors">
+                <button onClick={handleClearCart} className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-medium transition-colors">
                   <FiTrash2 size={16} />
                   <span>Clear Cart</span>
                 </button>
               )}
             </div>
 
-            <div className="flex-1 p-3 overflow-y-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 content-start bg-gray-100">
+            <div className="flex-1 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-5  bg-gray-100" style={{ gridAutoRows: 'auto', alignContent: 'start', gap: '14px', padding: '8px 14px' }}>
               {sortedGridItems.length === 0 ? (
                 <div className="col-span-full text-center text-gray-500 mt-10 py-10 bg-white rounded-lg">
                   {gridSearchQuery ? (
@@ -912,68 +967,294 @@ const PurchasePage: React.FC = () => {
                   const lastAddedCartItem = matchingCartItems[matchingCartItems.length - 1];
                   const isSelected = matchingCartItems.length > 0;
                   const quantity = lastAddedCartItem?.quantity || 0;
+                  const cp = lastAddedCartItem?.purchasePrice ?? item.purchasePrice ?? item.mrp ?? 0;
+                  const mrp = item.mrp || 0;
+                  const lineSubtotal = Math.round((Number(cp) * quantity) * 100) / 100;
+                  const discPct = mrp > 0 && Number(cp) < mrp ? Math.round(((mrp - Number(cp)) / mrp) * 100) : 0;
 
+
+                  // ── CARD WITH IMAGE ────────────────────────────────────────────────────
+                  if (isCardImageView) {
+                    const imageUrl: string | undefined =
+                      (item as any).image ||
+                      (item as any).imageUrl ||
+                      (item as any).thumbnail ||
+                      (item as any).imageURL;
+
+                    return (
+                      <div
+                        key={item.id}
+                        className={`bg-white rounded-sm flex flex-col w-full overflow-visible transition-all duration-200 relative group
+        ${isSelected
+                            ? 'border-2 border-blue-400 shadow-md ring-1 ring-blue-100'
+                            : 'border border-gray-100 hover:shadow-md hover:border-gray-200'}`}
+                        style={{ margin: '0 2px' }}
+                      >
+                        {/* ── Image Block ── */}
+                        <div className="relative w-full bg-gray-100 rounded-t-sm overflow-hidden" style={{ height: '140px' }}>
+
+                          {/* Centered image container */}
+                          <div className="w-full h-full flex items-center justify-center p-1.5">
+                            {imageUrl ? (
+                              <img
+                                src={imageUrl}
+                                alt={item.name}
+                                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                loading="lazy"
+                                onError={(e) => {
+                                  (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                  const placeholder = (e.currentTarget as HTMLImageElement)
+                                    .parentElement
+                                    ?.querySelector<HTMLElement>('[data-no-image]');
+                                  if (placeholder) placeholder.style.display = 'flex';
+                                }}
+                              />
+                            ) : null}
+
+                            {/* Camera placeholder – shown when no image */}
+                            <div
+                              data-no-image
+                              className="absolute inset-0 flex flex-col items-center justify-center bg-gray-50"
+                              style={{ display: imageUrl ? 'none' : 'flex' }}
+                            >
+                              <FiCamera className="text-gray-300" size={22} strokeWidth={1.4} />
+                              <span className="text-[9px] text-gray-300 mt-1 uppercase tracking-wide font-medium">No Image</span>
+                            </div>
+                          </div>
+
+                          {/* ── Discount badge – Blinkit style, top-left ── */}
+                          {discPct > 0 && (
+                            <div
+                              className="absolute top-1.5 left-1.5 z-10 bg-blue-600 text-white font-bold text-[9px] leading-tight px-1.5 py-[3px] rounded-md shadow-sm"
+                            >
+                              {discPct}% OFF
+                            </div>
+                          )}
+
+                          {/* ✕ remove – shown only when in cart */}
+                          {isSelected && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleDeleteItem(lastAddedCartItem.id); }}
+                              className="absolute top-1 right-1.5 z-20 w-5 h-5 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors text-[10px] font-bold shadow-sm border border-gray-100"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Content block */}
+                        <div className="p-1.5 sm:p-2 flex flex-col flex-1 gap-0.5">
+                          {/* Item name — always 2 lines, fixed height */}
+                          <div className="flex items-start justify-between gap-1" style={{ minHeight: '28px' }}>
+                            <p
+                              className="text-[11px]  font-bold text-gray-900 leading-snug flex-1 overflow-hidden"
+                              style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}
+                              title={item.name}
+                            >
+                              {item.name.length > 45 ? item.name.slice(0, 45) : item.name}
+                            </p>
+                            <button onClick={(e) => { e.stopPropagation(); const orig = availableItems.find(a => a.id === item.id); if (orig) handleOpenEditDrawer(orig); }}
+                              className="text-gray-400 hover:text-blue-600 flex-shrink-0 mt-0.5">
+                              <FiEdit size={11} />
+                            </button>
+                          </div>
+
+                          {/* Fixed bottom section — always same height regardless of name */}
+                          <div className="mt-auto flex flex-col gap-1 pt-1 border-t border-gray-50" onClick={(e) => e.stopPropagation()}>
+
+                            {/* Row 1: Price + MRP */}
+                            <div className="flex items-baseline gap-1">
+                              <span className="text-xs font-semibold text-gray-900">
+                                ₹{Number(cp).toLocaleString('en-IN')}
+                              </span>
+                              {discPct > 0 && mrp > 0 && Number(cp) < mrp && (
+                                <span className="text-[10px] text-gray-400 line-through">
+                                  ₹{mrp.toLocaleString('en-IN')}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Row 2: Subtotal (left) + Edit icon (right) — only when selected */}
+                            {isSelected ? (
+                              <div className="flex items-center gap-1 border-t border-gray-50 pt-1">
+                                <span className="text-[9px] uppercase text-gray-400 tracking-wide">Subtotal</span>
+                                <span className="text-[11px] font-semibold text-blue-600">₹{lineSubtotal.toLocaleString('en-IN')}</span>
+                              </div>
+                            ) : (
+                              /* When not selected: edit icon inline with price row — move it here */
+                              <div className="flex justify-end">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const orig = availableItems.find(a => a.id === item.id);
+                                    if (orig) handleOpenEditDrawer(orig);
+                                  }}
+                                  className="text-gray-400 hover:text-blue-600 transition-colors"
+                                >
+                                  <FiEdit size={12} />
+                                </button>
+                              </div>
+                            )}
+
+                            {/* Row 3: Add button OR Quantity selector — always pinned last */}
+                            {!isSelected ? (
+                              <>
+                                <div className="h-[18px] border-t border-gray-50" />
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    addItemToCart(item);
+                                  }}
+                                  className="w-full h-[26px] rounded-md text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 transition-colors"
+                                >
+                                  + Add
+                                </button>
+                              </>
+                            ) : (
+                              <div
+                                className="flex items-center border border-gray-200 rounded-md overflow-hidden bg-white w-full"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (quantity > 1) handleQuantityChange(lastAddedCartItem.id, quantity - 1);
+                                    else handleDeleteItem(lastAddedCartItem.id);
+                                  }}
+                                  className="h-7 flex-1 flex items-center justify-center bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-colors"
+                                >−</button>
+                                <span className="w-8 text-center text-[11px] font-semibold text-gray-800">{quantity}</span>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleQuantityChange(lastAddedCartItem.id, quantity + 1);
+                                  }}
+                                  className="h-7 flex-1 flex items-center justify-center bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-colors"
+                                >+</button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+                  // ── CARD WITHOUT IMAGE (existing card — unchanged below) ───────────────
                   return (
                     <div
                       key={item.id}
-                      onClick={() => addItemToCart(item)}
-                      className={`p-3 rounded-lg shadow-sm border transition-all flex flex-col justify-between text-center relative select-none cursor-pointer ${isSelected
-                        ? 'bg-blue-50 border-blue-500 ring-2 ring-blue-300'
-                        : 'bg-white border-gray-200 hover:shadow-md hover:border-blue-400'
-                        }`}
+                      className={`bg-white rounded-sm border flex flex-col overflow-visible transition-all relative
+      ${isSelected ? 'border-blue-400 ring-1 ring-blue-100' : 'border-gray-100 hover:shadow-sm'}`}
+                      style={{ minHeight: 130 }}
                     >
-                      <div className="w-full flex flex-col items-center pt-1 px-1 pointer-events-none">
-
-                        {/* Item Name */}
-                        <span className={`font-bold text-gray-800 text-center line-clamp-2 break-words min-h-[40px] ${item.name.length > 20 ? "text-xs" : "text-sm"}`} title={item.name}>
-                          {item.name}
-                        </span>
-
-                        {/* Price */}
-                        <div className="w-full mt-1 flex justify-center gap-2 text-xs font-semibold">
-                          <span className="text-gray-500 line-through">MRP: ₹{item.mrp || 0}</span>
-                          <span className="text-gray-900 font-bold">SP: ₹{lastAddedCartItem?.purchasePrice ?? item.purchasePrice ?? item.mrp ?? 0}</span>
+                      {/* Discount badge - corner stamp */}
+                      {discPct > 0 && (
+                        <div
+                          className="absolute -top-px -left-px bg-blue-600 text-white text-[8px] font-medium leading-tight text-center z-10"
+                          style={{ borderRadius: '10px 0 8px 0', padding: '3px 6px', minWidth: 28 }}
+                        >
+                          {discPct}% OFF
                         </div>
-                      </div>
+                      )}
 
-                      {/* Add/Quantity Button */}
-                      <div className="w-full flex items-center justify-center pb-1 mt-3">
-                        {!isSelected ? (
+                      {/* X button - only when selected */}
+                      {isSelected && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDeleteItem(lastAddedCartItem.id); }}
+                          className="absolute top-1 right-2 text-gray-400 hover:text-red-500 transition-colors z-10 bg-transparent border-none cursor-pointer text-xs leading-none"
+                        >
+                          ✕
+                        </button>
+                      )}
+
+                      <div className="p-2.5 flex flex-col gap-1.5 flex-1">
+
+                        {/* Item name - 2 line clamp then ellipsis */}
+                        <p
+                          className="text-[12px] font-medium text-gray-900 leading-snug pr-4 min-h-[32px] flex items-start"
+                          style={{
+                            marginTop: discPct > 0 ? 14 : 2,
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical' as any,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
+                          title={item.name}
+                        >
+                          {item.name}
+                        </p>
+
+                        {/* Price + edit icon in same row */}
+                        <div className="flex items-center justify-between gap-1">
+                          <div className="flex items-baseline gap-1.5">
+                            <span className="text-xs font-semibold text-gray-900">
+                              ₹{Number(cp).toLocaleString('en-IN')}
+                            </span>
+                            {discPct > 0 && mrp > 0 && Number(cp) < mrp && (
+                              <span className="text-[10px] text-gray-400 line-through">
+                                ₹{mrp.toLocaleString('en-IN')}
+                              </span>
+                            )}
+                          </div>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              addItemToCart(item);
+                              const orig = availableItems.find(a => a.id === item.id);
+                              if (orig) handleOpenEditDrawer(orig);
                             }}
-                            className="bg-blue-600 text-white text-sm font-semibold px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors w-full"
+                            className="text-gray-400 hover:text-blue-600 transition-colors flex-shrink-0"
                           >
-                            Add
+                            <FiEdit size={10} />
                           </button>
-                        ) : (
-                          <div className="flex items-center bg-white border rounded-lg overflow-hidden shadow-sm w-full">
+                        </div>
+
+                        {/* Bottom - pinned, same height for all cards */}
+                        <div className="mt-auto pt-2 flex items-center justify-between gap-2" onClick={(e) => e.stopPropagation()}>
+
+                          {/* If NOT selected, show Add Button */}
+                          {!isSelected ? (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (quantity > 1) handleQuantityChange(lastAddedCartItem.id, quantity - 1);
-                                else handleDeleteItem(lastAddedCartItem.id);
+                                addItemToCart(item);
                               }}
-                              className="flex-1 py-2 bg-gray-100 hover:bg-red-100 text-gray-700 font-bold text-lg"
+                              className="w-full py-1.5 rounded-md text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 transition-colors"
                             >
-                              −
+                              + Add
                             </button>
+                          ) : (
+                            /* If SELECTED, show Subtotal and Quantity */
+                            <div className="flex items-center justify-between gap-6">
+                              {/* Subtotal LEFT */}
+                              <div className="text-left">
+                                <p className="text-[9px] uppercase text-gray-400 tracking-wide leading-none">Subtotal</p>
+                                <p className="text-[11px] font-semibold text-blue-600">
+                                  ₹{lineSubtotal.toLocaleString('en-IN')}
+                                </p>
+                              </div>
 
-                            <span className="px-4 py-2 text-sm font-bold bg-white">{quantity}</span>
-
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleQuantityChange(lastAddedCartItem.id, quantity + 1);
-                              }}
-                              className="flex-1 py-2 bg-gray-100 hover:bg-blue-100 text-gray-700 font-bold text-lg"
-                            >
-                              +
-                            </button>
-                          </div>
-                        )}
+                              {/* Quantity RIGHT */}
+                              <div className="flex items-center border border-gray-200 rounded-md overflow-hidden bg-white">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (quantity > 1) handleQuantityChange(lastAddedCartItem.id, quantity - 1);
+                                    else handleDeleteItem(lastAddedCartItem.id);
+                                  }}
+                                  className="w-8 h-8 flex items-center justify-center bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-colors"
+                                >−</button>
+                                <span className="w-6 text-center text-xs font-semibold text-gray-800">{quantity}</span>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleQuantityChange(lastAddedCartItem.id, quantity + 1);
+                                  }}
+                                  className="w-8 h-8 flex items-center justify-center bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-colors"
+                                >+</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
@@ -1020,7 +1301,7 @@ const PurchasePage: React.FC = () => {
           </div>
 
           {/* Mobile Footer */}
-          <div className="md:hidden w-full">
+          <div className="md:hidden w-full flex-shrink-0">
             <GenericBillFooter
               isExpanded={isFooterExpanded}
               onToggleExpand={() => setIsFooterExpanded(!isFooterExpanded)}
@@ -1074,7 +1355,7 @@ const PurchasePage: React.FC = () => {
           onClose={handleCloseEditDrawer}
           onSaveSuccess={handleSaveSuccess}
         />
-      </div>
+      </div >
     );
   }
 
@@ -1093,7 +1374,7 @@ const PurchasePage: React.FC = () => {
           <div className="flex-shrink-0 p-2 bg-white border-b mt-2 rounded-sm md:mt-0">
             <div className="flex gap-2 items-end">
               <div className="flex-grow">
-                <SearchableItemInput label="Search & Add Item" placeholder="Search by name or barcode..." items={availableItems} onItemSelected={handleItemSelected} isLoading={pageIsLoading} error={error} />
+                <SearchableItemInput label="Search & Add Item" placeholder="Search by name or barcode..." items={availableItems} onItemSelected={handleItemSelected} isLoading={pageIsLoading} error={error} onAddItem={(query) => navigate(ROUTES.ITEM_ADD, { state: { prefillName: query } })} />
               </div>
               <button onClick={() => setIsScannerOpen(true)} className="p-3 bg-gray-700 text-white rounded-md font-semibold transition hover:bg-gray-800" title="Scan Barcode">
                 <IconScanCircle width={20} height={20} />

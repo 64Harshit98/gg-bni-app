@@ -43,6 +43,7 @@ export interface SalesSettings {
     enableShippingDetails?: boolean;
     enableExtraExpense?: boolean;
     enableNarration?: boolean;
+    cardViewWithPhoto?: boolean;
 }
 
 export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
@@ -72,6 +73,7 @@ export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     enableShippingDetails: false,
     enableExtraExpense: false,
     enableNarration: false,
+    cardViewWithPhoto: true,
 });
 
 const SalesSettingsPage: React.FC = () => {
@@ -270,7 +272,7 @@ const SalesSettingsPage: React.FC = () => {
                                 <InfoTooltip text="Choose between list or card layout for the sales screen." />
                             </div>
 
-                            <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-2 gap-4">
                                 {/* List View Option */}
                                 <div
                                     onClick={() => handleChange('salesViewType', 'list')}
@@ -280,7 +282,7 @@ const SalesSettingsPage: React.FC = () => {
                                         }`}
                                 >
                                     {settings.salesViewType === 'list' && (
-                                        <div className="absolute top-2 right-2 bg-blue-600 text-white rounded-full p-0.5 shadow-sm">
+                                        <div className="absolute top-2 right-2 bg-blue-600 text-white rounded-full p-0.5 shadow-sm z-10">
                                             <FiCheck size={12} />
                                         </div>
                                     )}
@@ -299,30 +301,103 @@ const SalesSettingsPage: React.FC = () => {
 
                                 {/* Card View Option */}
                                 <div
-                                    className="relative rounded-xl border-2 border-gray-100 p-4 flex flex-col items-center gap-3 bg-gray-50 cursor-not-allowed opacity-100"
+                                    onClick={() => handleChange('salesViewType', 'card')}
+                                    className={`cursor-pointer relative rounded-xl border-2 p-4 flex flex-col items-center gap-3 transition-all duration-200 ${settings.salesViewType === 'card'
+                                        ? 'border-blue-600 bg-blue-50 shadow-md'
+                                        : 'border-gray-200 hover:border-blue-300 bg-white'
+                                        }`}
                                 >
-                                    {/* Coming Soon Badge */}
-                                    <div className="absolute top-3 right-3 bg-orange-300 text-black text-[10px] font-bold px-2 py-1 rounded-sm border border-orange-200 shadow-sm">
-                                        COMING SOON
+                                    {settings.salesViewType === 'card' && (
+                                        <div className="absolute top-2 right-2 bg-blue-600 text-white rounded-full p-0.5 shadow-sm z-10">
+                                            <FiCheck size={12} />
+                                        </div>
+                                    )}
+                                    <div className="w-full max-w-[12rem] h-24 bg-white border border-gray-200 rounded p-3 grid grid-cols-3 gap-1.5 shadow-inner mx-auto">
+                                        {[...Array(6)].map((_, i) => (
+                                            <div key={i} className="bg-gray-200 rounded-sm"></div>
+                                        ))}
                                     </div>
-
-                                    {/* Visual Representation (Grayed Out) */}
-                                    <div className="w-full max-w-[12rem] h-24 bg-gray-100 border border-gray-200 rounded p-3 grid grid-cols-3 gap-2 shadow-none mx-auto opacity-50">
-                                        <div className="bg-gray-300 rounded aspect-square w-full"></div>
-                                        <div className="bg-gray-300 rounded aspect-square w-full"></div>
-                                        <div className="bg-gray-300 rounded aspect-square w-full"></div>
-                                        <div className="bg-gray-300 rounded aspect-square w-full"></div>
-                                        <div className="bg-gray-300 rounded aspect-square w-full"></div>
-                                        <div className="bg-gray-300 rounded aspect-square w-full"></div>
-                                    </div>
-                                    <div className="text-center opacity-60">
-                                        <p className="font-bold text-gray-500">Card View</p>
-                                        <p className="text-xs text-gray-400 mt-1">Best for Touchscreens & Tablets</p>
+                                    <div className="text-center">
+                                        <p className="font-bold text-gray-800">Card View</p>
+                                        <p className="text-xs text-gray-500 mt-1">Best for Touchscreens & Tablets</p>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
+                        {/* --- Card Image Display Sub Options --- */}
+                        {settings.salesViewType === 'card' && (
+                            <div className="mt-4 ml-4 mr-4 pl-[18px] pr-[18px] py-1 border-l-2 border-r-2 border-gray-200 transition-all duration-200">
+                                <div className="flex items-center mb-3 mt-3">
+                                    <label className="text-gray-600 text-sm font-medium mr-2">Card Image Display</label>
+                                    <InfoTooltip text="Choose whether product images are shown on each card." />
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 pb-1">
+
+                                    {/* With Photo */}
+                                    <div
+                                        onClick={() => handleCheckboxChange('cardViewWithPhoto', true)}
+                                        className={`cursor-pointer relative rounded-lg border p-2 sm:p-3 flex flex-col sm:flex-row items-center gap-2 sm:gap-3 transition-all duration-200 
+                                    ${settings.cardViewWithPhoto
+                                                ? 'border-blue-500 bg-white shadow-sm'
+                                                : 'border-gray-200 bg-gray-50 hover:border-gray-300'
+                                            }`}
+                                    >
+                                        {settings.cardViewWithPhoto && (
+                                            <div className="absolute top-2 right-2 bg-blue-600 text-white rounded-full p-0.5 shadow-sm z-10">
+                                                <FiCheck size={10} />
+                                            </div>
+                                        )}
+
+                                        <div className=" w-full sm:w-[6.5rem] sm:shrink-0 h-12 sm:h-12 bg-gray-100 border border-gray-200 rounded p-1 grid grid-cols-3 gap-1">
+                                            {[...Array(3)].map((_, i) => (
+                                                <div key={i} className="flex flex-col items-center gap-0.5">
+                                                    <div className="w-full aspect-square bg-blue-200 rounded-sm"></div>
+                                                    <div className="h-1 w-full bg-gray-300 rounded"></div>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <div className="text-left">
+                                            <p className="text-xs sm:text-sm font-semibold text-gray-700">With Photo</p>
+                                            <p className="text-xs text-gray-500 hidden sm:block">Shows product image on card</p>
+                                        </div>
+                                    </div>
+
+
+                                    {/* Without Photo */}
+                                    <div
+                                        onClick={() => handleCheckboxChange('cardViewWithPhoto', false)}
+                                        className={`cursor-pointer relative rounded-lg border p-2 sm:p-3 flex flex-col sm:flex-row items-center gap-2 sm:gap-3 transition-all duration-200
+                                    ${!settings.cardViewWithPhoto
+                                                ? 'border-blue-500 bg-white shadow-sm'
+                                                : 'border-gray-200 bg-gray-50 hover:border-gray-300'
+                                            }`}
+                                    >
+                                        {!settings.cardViewWithPhoto && (
+                                            <div className="absolute top-2 right-2 bg-blue-600 text-white rounded-full p-0.5 shadow-sm z-10">
+                                                <FiCheck size={10} />
+                                            </div>
+                                        )}
+
+                                        <div className=" w-full sm:w-[6.5rem] sm:shrink-0 h-12 sm:h-12 bg-gray-100 border border-gray-200 rounded p-1 grid grid-cols-3 gap-1">
+                                            {[...Array(3)].map((_, i) => (
+                                                <div key={i} className="flex flex-col items-center justify-center gap-0.5 bg-white rounded-sm border border-gray-200 p-1">
+                                                    <div className="h-1 w-3/4 bg-gray-300 rounded"></div>
+                                                    <div className="h-1 w-full bg-gray-200 rounded"></div>
+                                                    <div className="h-1 w-1/2 bg-gray-200 rounded"></div>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <div className="text-left">
+                                            <p className="text-xs sm-text-sm font-semibold text-gray-700">Without Photo</p>
+                                            <p className="text-xs text-gray-500 hidden sm:block">Text-only compact cards</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                         <div className="flex items-center mb-2">
                             <input type="checkbox" id="salesman-billing" checked={settings.enableSalesmanSelection ?? false} onChange={(e) => handleCheckboxChange('enableSalesmanSelection', e.target.checked)} className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
                             <label htmlFor="salesman-billing" className="ml-2 mr-2 text-gray-700 text-sm font-medium">

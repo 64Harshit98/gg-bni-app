@@ -77,11 +77,19 @@ const PnlReportPage: React.FC = () => {
     const grossProfitPercentage =
       totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
 
-    const salesTransactions: TransactionDetail[] = filteredSales.map((s) => ({
-      ...s,
-      type: 'Revenue' as const,
-      profit: s.totalAmount - (s.costOfGoodsSold || 0),
-    }));
+    const salesTransactions: TransactionDetail[] = filteredSales.map((s) => {
+      const cogs = s.costOfGoodsSold ?? 0;
+      // If cogs is 0 but totalAmount > 0, we know there's a data entry error
+      const isMissingCost = cogs === 0 && s.totalAmount > 0;
+
+      return {
+        ...s,
+        type: 'Revenue' as const,
+        costOfGoodsSold: cogs,
+        profit: s.totalAmount - cogs,
+        isWarning: isMissingCost // Use this to style your table row later
+      };
+    });
 
     salesTransactions.sort((a, b) => {
       const key = sortConfig.key;

@@ -62,7 +62,7 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
       </div>
 
 
-      <div className={`${isExpanded ? 'block' : 'hidden'} md:block px-5 pb-2 pt-1 md:px-0 md:pb-4 space-y-2 text-sm animate-in slide-in-from-bottom-2 duration-200 md:animate-none`}>
+      <div className={`${isExpanded ? 'block' : 'hidden'} md:block px-5 pb-1 pt-1 md:px-0 md:pb-4 space-y-1.5 text-sm animate-in slide-in-from-bottom-2 duration-200 md:animate-none`}>
 
         <div className="flex justify-between text-gray-600 pt-1">
           <span>Subtotal</span>
@@ -85,23 +85,25 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
       </div>
 
       {/* Main Total & Action */}
-      <div className="px-5 pb-5 md:px-0 md:pb-0 md:pt-4 md:border-t md:border-gray-100">
-        <div className="flex justify-between items-end mb-2">
+      <div className="px-5 pb-1 md:px-0 md:pb-0 md:pt-4 md:border-t md:border-gray-100">
+        <div className="flex justify-between items-end mb-1">
           <span className="text-gray-500 text-sm font-medium pb-1">Grand Total</span>
           <span className="text-2xl font-extrabold text-gray-900 tracking-tight">
             ₹{finalAmount.toFixed(2)}
           </span>
         </div>
 
-        <div className="w-full">
-          <CustomButton
-            onClick={onActionClick}
-            variant={Variant.Payment}
-            className="w-full py-3.5 text-base font-bold shadow-lg shadow-blue-200 rounded-sm flex justify-center items-center active:scale-[0.98] transition-transform"
-            disabled={disableAction}
-          >
-            {actionLabel}
-          </CustomButton>
+        <div className="w-full flex justify-center">
+          <div className="w-36">
+            <CustomButton
+              onClick={onActionClick}
+              variant={Variant.Payment}
+              className="w-full py-3.5 text-base font-bold shadow-lg shadow-blue-200 rounded-sm flex justify-center items-center active:scale-[0.98] transition-transform"
+              disabled={disableAction}
+            >
+              {actionLabel}
+            </CustomButton>
+          </div>
         </div>
       </div>
     </div>

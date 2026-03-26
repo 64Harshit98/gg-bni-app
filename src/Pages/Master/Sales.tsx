@@ -17,7 +17,7 @@ import { useSalesSettings } from '../../context/SettingsContext';
 import { Spinner } from '../../constants/Spinner';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
 import { GenericCartList } from '../../Components/CartItem';
-import { FiTrash2, FiX, FiChevronDown } from 'react-icons/fi';
+import { FiTrash2, FiX, FiChevronDown, FiEdit, FiCamera } from 'react-icons/fi';
 import { GenericBillFooter } from '../../Components/Footer';
 import { IconScanCircle } from '../../constants/Icons';
 import QRCode from 'react-qr-code';
@@ -27,6 +27,7 @@ import { storage } from '../../lib/Firebase';
 import { generatePdfBlob } from '../../UseComponents/pdfGenerator';
 import { getFirestoreOperations } from '../../lib/ItemsFirebase';
 import { botMasterService } from '../Additional/Whatsapp/WhatsappApi';
+
 
 export interface SalesItem extends OriginalSalesItem {
     isEditable: boolean;
@@ -74,6 +75,15 @@ const Sales: React.FC = () => {
     const [savedBillData, setSavedBillData] = useState<{ id: string, number: string, invoiceData?: any } | null>(null);
     const [sendingPdf, setSendingPdf] = useState(false);
 
+    const [invoiceNumber, setInvoiceNumber] = useState<string>('');
+    const [invoiceDate, setInvoiceDate] = useState<string>(() => {
+        const today = new Date();
+        const dd = String(today.getDate()).padStart(2, '0');
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const yy = String(today.getFullYear()).slice(2);
+        return `${dd}-${mm}-${yy}`;
+    });
+
     const [items, setItems] = useState<SalesItem[]>(() => {
         if (isEditMode) return [];
         try {
@@ -116,6 +126,7 @@ const Sales: React.FC = () => {
 
     // View variables
     const isCardView = salesSettings?.salesViewType === 'card';
+    const isCardImageView = isCardView && (salesSettings?.cardViewWithPhoto !== false);
     const showTaxRow = (activeTaxMode !== 'exempt');
 
     // --- Initialize Tax Mode ---
@@ -160,6 +171,12 @@ const Sales: React.FC = () => {
                 setError(null);
                 const fetchedItems = await dbOperations.syncItems();
                 setAvailableItems(fetchedItems);
+                if (!isEditMode) {
+                    const nextNum = await generateNextInvoiceNumber(currentUser.companyId);
+                    setInvoiceNumber(nextNum);
+                } else if (invoiceToEdit?.invoiceNumber) {
+                    setInvoiceNumber(invoiceToEdit.invoiceNumber);
+                }
                 const fetchedWorkers = await dbOperations.getWorkers();
                 setWorkers(fetchedWorkers);
                 let groupMap: Record<string, string> = {};
@@ -616,7 +633,7 @@ const Sales: React.FC = () => {
             // 2. Handle New vs Edit behavior
             if (isNew) {
                 saleData.createdAt = serverTimestamp();
-                saleData.invoiceNumber = await generateNextInvoiceNumber(companyId);
+                saleData.invoiceNumber = invoiceNumber || await generateNextInvoiceNumber(companyId);
                 saleData.userId = currentUser.uid;
                 saleData.companyId = companyId;
                 saleData.voucherName = salesSettings?.voucherName ?? 'Sales';
@@ -885,12 +902,63 @@ const Sales: React.FC = () => {
     };
 
     const renderHeader = () => (
-        <div className="flex flex-col md:flex-row md:justify-between md:items-center bg-gray-100 md:bg-white border-b border-gray-200 shadow-sm flex-shrink-0 mb-2 md:mb-0 p-2 md:px-4 md:py-3">
-            <h1 className="text-2xl font-bold text-gray-800 text-center md:text-left mb-2 md:mb-0">
-                {isEditMode ? `Editing #${invoiceToEdit.invoiceNumber}` : (salesSettings?.voucherName ?? 'Sales')}
-            </h1>
+        <div className="flex flex-col md:flex-row md:justify-between md:items-center bg-gray-100 md:bg-white border-b border-gray-200 shadow-sm flex-shrink-0 p-2 md:px-4 md:py-3 mb-2 md:mb-0">
+
+            {/* MOBILE: date left, title center, inv no right */}
+            <div className="flex md:hidden items-center justify-between w-full mb-2">
+                <div className="flex flex-col items-center">
+                    <input
+                        type="text"
+                        value={invoiceDate}
+                        onChange={(e) => setInvoiceDate(e.target.value)}
+                        className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-20 text-sm outline-none transition-colors"
+                    />
+                    <span className="text-[9px] text-gray-400 uppercase tracking-wide mt-0.5">DATE</span>
+                </div>
+                <h1 className="text-2xl font-bold text-gray-800 text-center flex-1">
+                    Sales
+                </h1>
+                <div className="flex flex-col items-center">
+                    <input
+                        type="text"
+                        value={invoiceNumber}
+                        onChange={(e) => setInvoiceNumber(e.target.value)}
+                        className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-24 text-sm outline-none transition-colors"
+                    />
+                    <span className="text-[9px] text-gray-400 uppercase tracking-wide mt-0.5">INV NO</span>
+                </div>
+            </div>
+
+            {/* DESKTOP */}
+            <div className="hidden md:flex md:flex-row md:items-center w-full md:w-auto gap-1 md:gap-4 md:mb-0">
+                <h1 className="text-2xl font-bold text-gray-800">
+                    Sales
+                </h1>
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500 font-medium uppercase tracking-wide">INV NO:</span>
+                        <input
+                            type="text"
+                            value={invoiceNumber}
+                            onChange={(e) => setInvoiceNumber(e.target.value)}
+                            className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-24 text-sm outline-none transition-colors"
+                        />
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500 font-medium uppercase tracking-wide">DATE:</span>
+                        <input
+                            type="text"
+                            value={invoiceDate}
+                            onChange={(e) => setInvoiceDate(e.target.value)}
+                            className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-20 text-sm outline-none transition-colors"
+                        />
+                    </div>
+                </div>
+            </div>
+
+            {/* Sales / Sales Return buttons */}
             {!isEditMode && (
-                <div className="flex items-center justify-center gap-6 mb-2 md:mb-0">
+                <div className="flex items-center justify-center md:justify-end gap-3">
                     <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.SALES)} active={isActive(ROUTES.SALES)}>Sales</CustomButton>
                     <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.SALES_RETURN)} active={isActive(ROUTES.SALES_RETURN)}>Sales Return</CustomButton>
                 </div>
@@ -900,55 +968,386 @@ const Sales: React.FC = () => {
 
     if (isCardView) {
         return (
-            <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden pb-2">
+            <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden pb-0">
                 {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
                 <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
                 {renderHeader()}
-                <div className="flex-shrink-0 bg-gray-50 border-b border-gray-300">
-                    <div className="p-2 bg-white border-b flex gap-2 items-center">
-                        <div className="flex-grow relative">
-                            <input type="text" placeholder="Search..." className="w-full p-2 pr-8 border rounded" value={gridSearchQuery} onChange={e => setGridSearchQuery(e.target.value)} />
-                            {gridSearchQuery && <button onClick={() => setGridSearchQuery('')} className="absolute right-2 top-2 text-gray-400">X</button>}
-                        </div>
-                        <button onClick={() => setIsScannerOpen(true)} className="p-2 border rounded bg-white">Scan</button>
-                        {salesSettings?.enableSalesmanSelection && (<div className="w-1/3 min-w-[120px]"> <select value={selectedWorker?.uid || ''} onChange={(e) => setSelectedWorker(workers.find(s => s.uid === e.target.value) || null)} className="w-full p-2 border border-gray-300 rounded bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"> <option value="">Select Salesman</option> {workers.map(w => <option key={w.uid} value={w.uid}>{w.name || 'Unnamed'}</option>)} </select> </div>)}
-                    </div>
-                    <div className="flex overflow-x-auto p-2 gap-2 bg-white border-b">
-                        {categories.map(cat => <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-4 py-1 rounded-full border ${selectedCategory === cat ? 'bg-green-600 text-white' : 'bg-white'}`}>{itemGroupMap[cat] || cat}</button>)}
-                    </div>
-                </div>
-                <div className="flex-1 p-3 overflow-y-auto grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 content-start bg-gray-100 pb-20">
-                    {sortedGridItems.map(item => {
-                        const countInCart = items.filter(i => i.productId === item.id).length;
-                        const isSelected = countInCart > 0;
-                        const quantity = items.filter(i => i.productId === item.id).reduce((sum, i) => sum + i.quantity, 0);
-
-                        return (
-                            <div key={item.id} onClick={() => addItemToCart(item)} className={`p-2 rounded border bg-white text-center cursor-pointer ${isSelected ? 'border-blue-500 bg-blue-50' : ''}`}>
-                                <div className="text-sm font-bold truncate">{item.name}</div>
-                                {!hideMrp && <div className="text-xs text-gray-600">₹{item.mrp}</div>}
-                                {isSelected && <div className="text-xs text-blue-600 font-bold mt-1">Added ({quantity})</div>}
+                <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+                    <div className="flex flex-col w-full md:w-3/4 h-full relative min-w-0 border-r border-gray-200 overflow-hidden">
+                        <div className="flex-shrink-0 bg-gray-50 border-b border-gray-200">
+                            {/* Salesman Row — above search */}
+                            {/* Salesman Row — above search */}
+                            {salesSettings?.enableSalesmanSelection && (
+                                <div className="px-3 pt-2 pb-1 bg-white border-b border-gray-100 flex justify-center">
+                                    <select
+                                        value={selectedWorker?.uid || ''}
+                                        onChange={(e) => {
+                                            if (e.target.value === 'ADD_NEW_SALESMAN') {
+                                                navigate(ROUTES.USER_ADD);
+                                            } else {
+                                                setSelectedWorker(workers.find(w => w.uid === e.target.value) || null);
+                                            }
+                                        }}
+                                        className="p-1 border rounded text-sm"
+                                        disabled={!hasPermission(Permissions.ViewTransactions) || (isEditMode && !isManager)}
+                                    >
+                                        <option value="">Salesman</option>
+                                        {workers.map(w => (
+                                            <option key={w.uid} value={w.uid}>{w.name}</option>
+                                        ))}
+                                        <option value="ADD_NEW_SALESMAN" className="font-semibold bg-gray-100">
+                                            + Add New Salesman
+                                        </option>
+                                    </select>
+                                </div>
+                            )}
+                            {/* Search + Scan Row */}
+                            <div className="p-3 bg-white flex gap-2 items-center">
+                                <div className="flex-grow">
+                                    <SearchableItemInput
+                                        label=""
+                                        placeholder="Search items by name or barcode..."
+                                        items={availableItems}
+                                        onItemSelected={handleItemSelected}
+                                        isLoading={pageIsLoading}
+                                        error={error}
+                                        onAddItem={(query) => navigate(ROUTES.ITEM_ADD, { state: { prefillName: query } })}
+                                    />
+                                </div>
+                                <button
+                                    onClick={() => setIsScannerOpen(true)}
+                                    className="bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition-colors"
+                                    title="Scan Barcode"
+                                >
+                                    <IconScanCircle width={22} height={22} />
+                                </button>
                             </div>
-                        );
-                    })}
-                </div>
-                <div className="md:hidden p-2">
-                    {renderTaxToggle()}
-                </div>
-                <GenericBillFooter
-                    isExpanded={isFooterExpanded}
-                    onToggleExpand={() => setIsFooterExpanded(!isFooterExpanded)}
-                    totalQuantity={totalQuantity}
-                    subtotal={subtotal}
-                    totalDiscount={totalDiscount}
-                    taxAmount={taxAmount}
-                    finalAmount={finalAmount}
-                    showTaxRow={showTaxRow}
-                    taxLabel={`Tax (${activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})`}
-                    actionLabel={isEditMode ? 'Update Invoice' : 'Proceed to Pay'}
-                    onActionClick={handleProceedToPayment}
-                    disableAction={items.length === 0}
-                />
+                            <div className="flex gap-2 overflow-x-auto px-3 pb-3 bg-white border-b border-gray-300">
+                                {categories.map(cat => (
+                                    <button
+                                        key={cat}
+                                        onClick={() => setSelectedCategory(cat)}
+                                        className={`px-3 py-1 rounded-full text-xs whitespace-nowrap border transition
+                                    ${selectedCategory === cat
+                                                ? 'bg-blue-600 text-white border-blue-600'
+                                                : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'
+                                            }`}
+                                    >
+                                        {cat === 'All' ? 'All' : itemGroupMap[cat] || cat}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="flex-1 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-5 bg-gray-100 pb-20" style={{ gridAutoRows: 'auto', alignContent: 'start', gap: '14px', padding: '8px 14px' }}>
+                            {sortedGridItems.map(item => {
+                                const matchingCartItems = items.filter(i => i.productId === item.id);
+                                const lastAddedCartItem = matchingCartItems[matchingCartItems.length - 1];
+                                const isSelected = matchingCartItems.length > 0;
+                                const quantity = matchingCartItems.reduce((sum, i) => sum + i.quantity, 0);
+                                const sp = lastAddedCartItem?.customPrice ?? item.salesPrice ?? item.mrp ?? 0;
+                                const mrp = item.mrp || 0;
+                                const lineSubtotal = Math.round((Number(sp) * quantity) * 100) / 100;
+                                const discPct = !hideMrp && mrp > 0 && Number(sp) < mrp
+                                    ? Math.round(((mrp - Number(sp)) / mrp) * 100)
+                                    : 0;
+                                
+                                
+
+                                // ── CARD WITH IMAGE ──────────────────────────────────────────────────────
+                                if (isCardImageView) {
+                                    const imageUrl: string | undefined =
+                                        (item as any).image ||
+                                        (item as any).imageUrl ||
+                                        (item as any).thumbnail ||
+                                        (item as any).imageURL;
+
+                                    return (
+                                        <div
+                                            key={item.id}
+                                            className={`bg-white rounded-sm flex flex-col w-full overflow-visible transition-all duration-200 relative group
+                    ${isSelected
+                                                    ? 'border-2 border-blue-400 shadow-md ring-1 ring-blue-100'
+                                                    : 'border border-gray-100 hover:shadow-md hover:border-gray-200'}`}
+                                            style={{ margin: '0 2px' }}
+                                        >
+                                            {/* ── Image Block ── */}
+                                            <div className="relative w-full bg-gray-100 rounded-t-sm overflow-hidden" style={{ height: '140px' }}>
+                                                <div className="w-full h-full flex items-center justify-center p-1.5">
+                                                    {imageUrl ? (
+                                                        <img
+                                                            src={imageUrl}
+                                                            alt={item.name}
+                                                            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                                            loading="lazy"
+                                                            onError={(e) => {
+                                                                (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                                                const placeholder = (e.currentTarget as HTMLImageElement)
+                                                                    .parentElement
+                                                                    ?.querySelector<HTMLElement>('[data-no-image]');
+                                                                if (placeholder) placeholder.style.display = 'flex';
+                                                            }}
+                                                        />
+                                                    ) : null}
+                                                    {/* Camera placeholder – shown when no image */}
+                                                    <div
+                                                        data-no-image
+                                                        className="absolute inset-0 flex flex-col items-center justify-center bg-gray-50"
+                                                        style={{ display: imageUrl ? 'none' : 'flex' }}
+                                                    >
+                                                        <FiCamera className="text-gray-300" size={22} strokeWidth={1.4} />
+                                                        <span className="text-[9px] text-gray-300 mt-1 uppercase tracking-wide font-medium">No Image</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Discount badge – top-left */}
+                                                {discPct > 0 && (
+                                                    <div className="absolute top-1.5 left-1.5 z-10 bg-blue-600 text-white font-bold text-[9px] leading-tight px-1.5 py-[3px] rounded-md shadow-sm">
+                                                        {discPct}% OFF
+                                                    </div>
+                                                )}
+
+                                                
+
+                                                {/* ✕ remove – shown only when in cart */}
+                                                {isSelected && (
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); handleDeleteItem(lastAddedCartItem.id); }}
+                                                        className="absolute bottom-1.5 right-1.5 z-20 w-5 h-5 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors text-[10px] font-bold shadow-sm border border-gray-100"
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                )}
+                                            </div>
+
+                                            {/* Content block */}
+                                            <div className="p-1.5 sm:p-2 flex flex-col flex-1 gap-0.5">
+                                                {/* Item name */}
+                                                <div className="flex items-start justify-between gap-1" style={{ minHeight: '28px' }}>
+                                                    <p
+                                                        className="text-[11px] font-bold text-gray-900 leading-snug flex-1 overflow-hidden"
+                                                        style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}
+                                                        title={item.name}
+                                                    >
+                                                        {item.name.length > 45 ? item.name.slice(0, 45) : item.name}
+                                                    </p>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            const orig = availableItems.find(a => a.id === item.id);
+                                                            if (orig) handleOpenEditDrawer(orig);
+                                                        }}
+                                                        className="text-gray-400 hover:text-blue-600 flex-shrink-0 mt-0.5"
+                                                    >
+                                                        <FiEdit size={11} />
+                                                    </button>
+                                                </div>
+
+                                                {/* Fixed bottom section */}
+                                                <div className="mt-auto flex flex-col gap-1 pt-1 border-t border-gray-50" onClick={(e) => e.stopPropagation()}>
+
+                                                    {/* Price + MRP */}
+                                                    <div className="flex items-baseline gap-1">
+                                                        <span className="text-xs font-semibold text-gray-900">
+                                                            ₹{Number(sp).toLocaleString('en-IN')}
+                                                        </span>
+                                                        {discPct > 0 && mrp > 0 && Number(sp) < mrp && (
+                                                            <span className="text-[10px] text-gray-400 line-through">
+                                                                ₹{mrp.toLocaleString('en-IN')}
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Subtotal row – only when selected */}
+                                                    {isSelected && (
+                                                        <div className="flex items-center gap-1 border-t border-gray-50 pt-1">
+                                                            <span className="text-[9px] uppercase text-gray-400 tracking-wide">Subtotal</span>
+                                                            <span className="text-[11px] font-semibold text-blue-600">₹{lineSubtotal.toLocaleString('en-IN')}</span>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Add button OR Quantity selector */}
+                                                    {!isSelected ? (
+                                                        <>
+                                                            <div className="h-[18px] border-t border-gray-50" />
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    addItemToCart(item);
+                                                                }}
+                                                                className="w-full h-[26px] rounded-md text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 transition-colors"
+                                                            >
+                                                                + Add
+                                                            </button>
+                                                        </>
+                                                    ) : (
+                                                        <div
+                                                            className="flex items-center border border-gray-200 rounded-md overflow-hidden bg-white w-full"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    if (quantity > 1) handleQuantityChange(lastAddedCartItem.id, quantity - 1);
+                                                                    else handleDeleteItem(lastAddedCartItem.id);
+                                                                }}
+                                                                className="h-7 flex-1 flex items-center justify-center bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-colors"
+                                                            >−</button>
+                                                            <span className="w-8 text-center text-[11px] font-semibold text-gray-800">{quantity}</span>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleQuantityChange(lastAddedCartItem.id, quantity + 1);
+                                                                }}
+                                                                className="h-7 flex-1 flex items-center justify-center bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-colors"
+                                                            >+</button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+
+                                // ── CARD WITHOUT IMAGE (existing card — unchanged) ────────────────────────
+                                return (
+                                    <div
+                                        key={item.id}
+                                        className={`bg-white rounded-2xl shadow-sm border flex flex-col overflow-visible transition-all
+                ${isSelected ? 'border-blue-200 shadow-md ring-1 ring-blue-100' : 'border-gray-100 hover:shadow-md'}`}
+                                    >
+                                        <div className="p-4 flex flex-col gap-2">
+                                            {/* Top row: name + discount badge */}
+                                            <div className="flex items-start justify-between gap-2">
+                                                <p className="text-sm font-black text-gray-900 uppercase tracking-wide leading-tight flex-1" title={item.name}>
+                                                    {item.name}
+                                                </p>
+                                                {discPct > 0 && (
+                                                    <div className="flex items-center gap-1 bg-red-50 rounded-full px-2 py-0.5 flex-shrink-0">
+                                                        <span className="text-[8px] font-bold text-red-600 uppercase">{discPct}% OFF</span>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Price row */}
+                                            <div className="flex items-baseline gap-2">
+                                                <span className="text-xl font-black text-gray-900">
+                                                    ₹{Number(sp).toLocaleString('en-IN')}
+                                                </span>
+                                                {discPct > 0 && mrp > 0 && Number(sp) < mrp && (
+                                                    <span className="text-xs text-gray-400 line-through">
+                                                        ₹{mrp.toLocaleString('en-IN')}
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            {/* Edit / Delete row */}
+                                            <div className="flex items-center gap-3 pt-1 border-t border-gray-100">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        const orig = availableItems.find(a => a.id === item.id);
+                                                        if (orig) handleOpenEditDrawer(orig);
+                                                    }}
+                                                    className="flex items-center gap-1 text-gray-500 hover:text-blue-600 transition-colors text-[11px] font-semibold"
+                                                >
+                                                    <FiEdit size={11} />
+                                                </button>
+                                                {isSelected && (
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); handleDeleteItem(lastAddedCartItem.id); }}
+                                                        className="flex items-center gap-1 text-gray-500 hover:text-red-500 transition-colors text-[11px] font-semibold"
+                                                    >
+                                                        <FiTrash2 size={11} />
+                                                    </button>
+                                                )}
+                                                
+                                            </div>
+
+                                            {/* Quantity + Subtotal row */}
+                                            <div className="flex items-center justify-between gap-2 pt-1" onClick={e => e.stopPropagation()}>
+                                                {!isSelected ? (
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); addItemToCart(item); }}
+                                                        className="flex-1 py-1.5 rounded-xl text-[11px] font-bold uppercase tracking-wide bg-gray-900 text-white hover:bg-gray-700 active:scale-95 transition-all"
+                                                    >
+                                                        + Add
+                                                    </button>
+                                                ) : (
+                                                    <>
+                                                        <div className="flex items-center bg-gray-100 rounded-xl overflow-hidden border border-gray-200">
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    if (quantity > 1) handleQuantityChange(lastAddedCartItem.id, quantity - 1);
+                                                                    else handleDeleteItem(lastAddedCartItem.id);
+                                                                }}
+                                                                className="w-8 h-8 flex items-center justify-center text-gray-600 hover:bg-gray-200 font-bold text-lg transition-colors"
+                                                            >−</button>
+                                                            <span className="w-8 text-center text-sm font-black text-gray-800">{quantity}</span>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleQuantityChange(lastAddedCartItem.id, quantity + 1);
+                                                                }}
+                                                                className="w-8 h-8 flex items-center justify-center text-gray-600 hover:bg-gray-200 font-bold text-lg transition-colors"
+                                                            >+</button>
+                                                        </div>
+
+                                                        <div className="text-right">
+                                                            <p className="text-[8px] uppercase text-gray-400 font-semibold tracking-wide">Subtotal</p>
+                                                            <p className="text-xs font-black text-blue-600">₹{lineSubtotal.toLocaleString('en-IN')}</p>
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        <div className="md:hidden">
+                            <GenericBillFooter
+                                isExpanded={isFooterExpanded}
+                                onToggleExpand={() => setIsFooterExpanded(!isFooterExpanded)}
+                                totalQuantity={totalQuantity}
+                                subtotal={subtotal}
+                                totalDiscount={totalDiscount}
+                                taxAmount={taxAmount}
+                                finalAmount={finalAmount}
+                                showTaxRow={showTaxRow}
+                                taxLabel={`Tax (${activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})`}
+                                actionLabel={isEditMode ? 'Update Invoice' : 'Proceed to Pay'}
+                                onActionClick={handleProceedToPayment}
+                                disableAction={items.length === 0}
+                            >
+                                {renderTaxToggle()}
+                            </GenericBillFooter>
+                        </div>
+                    </div>{/* END LEFT PANEL */}
+
+                    {/* RIGHT PANEL */}
+                    <div className="hidden md:flex w-1/4 flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
+                        <div className="flex-1 p-6 flex flex-col justify-end">
+                            <h2 className="text-xl font-bold text-gray-800 mb-6 border-b pb-2">Bill Summary</h2>
+                            {renderTaxToggle()}
+                            <GenericBillFooter
+                                isExpanded={true}
+                                onToggleExpand={() => { }}
+                                totalQuantity={totalQuantity}
+                                subtotal={subtotal}
+                                totalDiscount={totalDiscount}
+                                taxAmount={taxAmount}
+                                finalAmount={finalAmount}
+                                showTaxRow={showTaxRow}
+                                taxLabel={`Tax (${activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})`}
+                                actionLabel={isEditMode ? 'Update Invoice' : 'Proceed to Pay'}
+                                onActionClick={handleProceedToPayment}
+                                disableAction={items.length === 0}
+                            />
+                        </div>
+                    </div>
+                </div>{/* END FLEX ROW */}
+
                 <PaymentDrawer
                     mode='sale' isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} subtotal={subtotal} billTotal={amountToPayNow} onPaymentComplete={handleSavePayment} isPartyNameEditable={!isEditMode} initialPartyName={isEditMode ? invoiceToEdit?.partyName : ''} initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : ''} initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined} totalItemDiscount={totalDiscount} totalQuantity={totalQuantity}
                     initialDiscount={invoiceToEdit?.manualDiscount}

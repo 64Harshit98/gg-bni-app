@@ -73,5 +73,10 @@ export const ROUTES = {
   CATA_REGISTER: 'catalogue-register',
   CATA_COMINGSOON: 'coming-soon',
   WEBSITE_LEADS: '/website-leads',
-  CATA_SUPPORT:'support'
+  CATA_SUPPORT:'support',
+  SUPER_ADMINHUB:'/super-admin',
+  SUPER_ADMIN:'/super-admin/companies',
+  SUPPORT_TICKET:'/super-admin/support',
+  APP_LEADS:'/leads',
+  WEBSITE_QUERY:'/super-admin/website-leads'
 };

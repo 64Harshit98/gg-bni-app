@@ -1074,25 +1074,11 @@ const PurchasePage: React.FC = () => {
                               )}
                             </div>
 
-                            {/* Row 2: Subtotal (left) + Edit icon (right) — only when selected */}
-                            {isSelected ? (
-                              <div className="flex items-center gap-1 border-t border-gray-50 pt-1">
-                                <span className="text-[9px] uppercase text-gray-400 tracking-wide">Subtotal</span>
-                                <span className="text-[11px] font-semibold text-blue-600">₹{lineSubtotal.toLocaleString('en-IN')}</span>
-                              </div>
-                            ) : (
-                              /* When not selected: edit icon inline with price row — move it here */
-                              <div className="flex justify-end">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    const orig = availableItems.find(a => a.id === item.id);
-                                    if (orig) handleOpenEditDrawer(orig);
-                                  }}
-                                  className="text-gray-400 hover:text-blue-600 transition-colors"
-                                >
-                                  <FiEdit size={12} />
-                                </button>
+                            {/* Subtotal row — only when selected */}
+                            {isSelected && (
+                              <div className="flex items-center gap-1 border-t border-gray-50 pt-1 min-w-0">
+                                <span className="text-[9px] uppercase text-gray-400 tracking-wide flex-shrink-0">Subtotal</span>
+                                <span className="text-[10px] font-semibold text-blue-600 truncate">₹{lineSubtotal.toLocaleString('en-IN')}</span>
                               </div>
                             )}
 
@@ -1209,47 +1195,36 @@ const PurchasePage: React.FC = () => {
                         </div>
 
                         {/* Bottom - pinned, same height for all cards */}
-                        <div className="mt-auto pt-2 flex items-center justify-between gap-2" onClick={(e) => e.stopPropagation()}>
+                        {/* Bottom - pinned, same height for all cards */}
+                        <div className="mt-auto pt-2 flex items-center justify-between gap-2 min-w-0 overflow-hidden" onClick={(e) => e.stopPropagation()}>
 
-                          {/* If NOT selected, show Add Button */}
                           {!isSelected ? (
                             <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                addItemToCart(item);
-                              }}
+                              onClick={(e) => { e.stopPropagation(); addItemToCart(item); }}
                               className="w-full py-1.5 rounded-md text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 transition-colors"
                             >
                               + Add
                             </button>
                           ) : (
-                            /* If SELECTED, show Subtotal and Quantity */
-                            <div className="flex items-center justify-between gap-6">
+                            <div className="flex items-center justify-between gap-1 w-full min-w-0 overflow-hidden">
                               {/* Subtotal LEFT */}
-                              <div className="text-left">
+                              <div className="text-left min-w-0 flex-shrink overflow-hidden">
                                 <p className="text-[9px] uppercase text-gray-400 tracking-wide leading-none">Subtotal</p>
-                                <p className="text-[11px] font-semibold text-blue-600">
+                                <p className="text-[11px] font-semibold text-blue-600 truncate">
                                   ₹{lineSubtotal.toLocaleString('en-IN')}
                                 </p>
                               </div>
 
                               {/* Quantity RIGHT */}
-                              <div className="flex items-center border border-gray-200 rounded-md overflow-hidden bg-white">
+                              <div className="flex items-center border border-gray-200 rounded-md overflow-hidden bg-white flex-shrink-0">
                                 <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (quantity > 1) handleQuantityChange(lastAddedCartItem.id, quantity - 1);
-                                    else handleDeleteItem(lastAddedCartItem.id);
-                                  }}
-                                  className="w-8 h-8 flex items-center justify-center bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-colors"
+                                  onClick={(e) => { e.stopPropagation(); if (quantity > 1) handleQuantityChange(lastAddedCartItem.id, quantity - 1); else handleDeleteItem(lastAddedCartItem.id); }}
+                                  className="w-6 h-7 flex items-center justify-center bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-colors"
                                 >−</button>
-                                <span className="w-6 text-center text-xs font-semibold text-gray-800">{quantity}</span>
+                                <span className="w-5 text-center text-xs font-semibold text-gray-800">{quantity}</span>
                                 <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleQuantityChange(lastAddedCartItem.id, quantity + 1);
-                                  }}
-                                  className="w-8 h-8 flex items-center justify-center bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-colors"
+                                  onClick={(e) => { e.stopPropagation(); handleQuantityChange(lastAddedCartItem.id, quantity + 1); }}
+                                  className="w-6 h-7 flex items-center justify-center bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-colors"
                                 >+</button>
                               </div>
                             </div>

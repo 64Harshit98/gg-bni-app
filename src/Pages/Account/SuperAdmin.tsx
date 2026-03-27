@@ -1,289 +1,423 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
-// collectionGroup is the secret to finding phantom companies
-import { collection, getDocs, doc, setDoc, Timestamp, collectionGroup } from 'firebase/firestore';
+import {
+  collection, getDocs, doc, setDoc, Timestamp, collectionGroup
+} from 'firebase/firestore';
 import { PLANS } from '../../enums';
 import Loading from '../Loading/Loading';
 import { useAuth } from '../../context/auth-context';
+import { CustomCard } from '../../Components/CustomCard';
+import { CardVariant } from '../../enums';
 
-// --- CONFIGURATION ---
-const SUPER_ADMIN_UID = "1AKioGfop8PmHhry6uXOz8Rw6qT2";
+// ─── Config ───────────────────────────────────────────────
+const SUPER_ADMIN_UID = "C6ffAAFyrfQ4dQ2UOEV5pJpcb683";
 const DEFAULT_DURATION_DAYS = 28;
 
-// --- HELPER ---
 const addDays = (date: Date, days: number) => {
-    const result = new Date(date);
-    result.setDate(result.getDate() + days);
-    return result;
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
 };
 
+// ─── Types ────────────────────────────────────────────────
 interface CompanyData {
-    id: string;
-    name: string;
-    ownerName?: string;
-    pack: string;
-    validity: 'active' | 'inactive';
-    expiryDate?: any; // Timestamp or null
+  id: string;
+  name: string;
+  ownerName?: string;
+  pack: string;
+  validity: 'active' | 'inactive';
+  expiryDate?: any;
 }
 
+type FilterType = 'all' | 'active' | 'expired' | 'trial' | 'near_expiry';
+
+// ─── Component ────────────────────────────────────────────
 const SuperAdminCompanies: React.FC = () => {
-    const { currentUser } = useAuth();
-    const [companies, setCompanies] = useState<CompanyData[]>([]);
-    const [loading, setLoading] = useState(true);
+  const { currentUser } = useAuth();
+  const navigate = useNavigate();
 
-    // Editing State
-    const [editingId, setEditingId] = useState<string | null>(null);
-    const [editForm, setEditForm] = useState({
-        pack: 'free',
-        validity: 'active',
-        expiryDate: '' // YYYY-MM-DD string
-    });
+  const [companies, setCompanies] = useState<CompanyData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({
+    pack: 'free',
+    validity: 'active' as 'active' | 'inactive',
+    expiryDate: '',
+  });
 
-    // 1. Security Check
-    if (currentUser?.uid !== SUPER_ADMIN_UID) {
-        return <div className="p-10 text-center text-red-500 font-bold text-xl">⛔ ACCESS DENIED</div>;
-    }
-
-    // 2. Fetch All Companies (Phantom + Real)
-    useEffect(() => {
-        const fetchCompanies = async () => {
-            try {
-                // A. TRICK: Search for ALL users to find hidden phantom companies
-                const usersQuery = await getDocs(collectionGroup(db, 'users'));
-                const companyMap = new Map<string, CompanyData>();
-
-                // B. Loop users -> Extract Company ID
-                usersQuery.forEach((userDoc) => {
-                    const parentCompany = userDoc.ref.parent.parent;
-
-                    if (parentCompany && !companyMap.has(parentCompany.id)) {
-                        // Found a company! Set defaults in case it's phantom.
-                        companyMap.set(parentCompany.id, {
-                            id: parentCompany.id,
-                            name: 'Unknown (Phantom)',
-                            ownerName: 'Unknown',
-                            pack: 'free',
-                            validity: 'inactive',
-                            expiryDate: null
-                        });
-                    }
-                });
-
-                // C. Fetch REAL data (for non-italic companies) and merge it
-                const realCompaniesSnap = await getDocs(collection(db, 'companies'));
-                realCompaniesSnap.forEach(doc => {
-                    const data = doc.data();
-                    companyMap.set(doc.id, {
-                        id: doc.id,
-                        name: data.name || 'Unknown Company',
-                        ownerName: data.ownerName || 'Unknown',
-                        pack: data.pack || 'free',
-                        validity: data.validity || 'inactive',
-                        expiryDate: data.expiryDate
-                    });
-                });
-
-                setCompanies(Array.from(companyMap.values()));
-
-            } catch (error) {
-                console.error("Error fetching companies:", error);
-                alert("Error fetching data. Check Console.");
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchCompanies();
-    }, []);
-
-    // 3. Start Editing
-    const startEdit = (company: CompanyData) => {
-        setEditingId(company.id);
-
-        let dateStr = '';
-        if (company.expiryDate) {
-            const date = company.expiryDate.toDate ? company.expiryDate.toDate() : new Date(company.expiryDate);
-            if (!isNaN(date.getTime())) {
-                dateStr = date.toISOString().split('T')[0];
-            }
-        }
-
-        setEditForm({
-            pack: company.pack,
-            validity: company.validity as 'active' | 'inactive',
-            expiryDate: dateStr
-        });
-    };
-
-    // 4. Save Changes (Fixed Crash Issue)
-    const handleSave = async () => {
-        if (!editingId) return;
-
-        try {
-            const companyRef = doc(db, "companies", editingId);
-
-            let finalExpiryDate: Date;
-
-            // SMART DURATION LOGIC
-            if (editForm.expiryDate) {
-                // User entered a date -> Use it
-                finalExpiryDate = new Date(editForm.expiryDate);
-            } else {
-                // User left it EMPTY -> Default to 28 days from now
-                finalExpiryDate = addDays(new Date(), DEFAULT_DURATION_DAYS);
-            }
-
-            // Always set to end of the day
-            finalExpiryDate.setHours(23, 59, 59);
-
-            // [FIX] Prepare payload to avoid sending 'undefined'
-            const payload: any = {
-                pack: editForm.pack,
-                validity: editForm.validity,
-                expiryDate: Timestamp.fromDate(finalExpiryDate),
-            };
-
-            // Only overwrite name if it is currently 'Unknown (Phantom)'
-            const currentCompany = companies.find(c => c.id === editingId);
-            if (currentCompany?.name === 'Unknown (Phantom)') {
-                payload.name = `Company ${editingId}`;
-            }
-
-            // Save to Firebase
-            await setDoc(companyRef, payload, { merge: true });
-
-            // Update UI State
-            setCompanies(prev => prev.map(c =>
-                c.id === editingId
-                    ? {
-                        ...c,
-                        ...payload,
-                        // Ensure UI updates the name if we changed it, else keep existing
-                        name: payload.name || c.name
-                    }
-                    : c
-            ));
-
-            setEditingId(null);
-            alert(`Saved! Valid until: ${finalExpiryDate.toLocaleDateString()}`);
-        } catch (error) {
-            console.error("Error updating:", error);
-            alert("Failed to update.");
-        }
-    };
-
-    if (loading) return <Loading />;
-
+  // Access guard
+  if (currentUser?.uid !== SUPER_ADMIN_UID) {
     return (
-        <div className="p-6 bg-gray-50 min-h-screen">
-            <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold text-gray-800">Super Admin: Subscriptions</h1>
-                <span className="text-xs text-gray-400">UID: {SUPER_ADMIN_UID.slice(0, 8)}...</span>
-            </div>
-
-            <div className="overflow-x-auto bg-white shadow-md rounded-lg">
-                <table className="min-w-full leading-normal">
-                    <thead>
-                        <tr>
-                            <th className="px-5 py-3 border-b-2 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase">Company</th>
-                            <th className="px-5 py-3 border-b-2 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase">Pack</th>
-                            <th className="px-5 py-3 border-b-2 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
-                            <th className="px-5 py-3 border-b-2 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase">Expires On</th>
-                            <th className="px-5 py-3 border-b-2 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {companies.map((company) => (
-                            <tr key={company.id}>
-                                <td className="px-5 py-5 border-b border-gray-200 bg-white text-sm">
-                                    <p className={`whitespace-no-wrap font-bold ${company.name === 'Unknown (Phantom)' ? 'text-red-500 italic' : 'text-gray-900'}`}>
-                                        {company.name}
-                                    </p>
-                                    <p className="text-gray-500 text-xs font-mono">{company.id}</p>
-                                </td>
-
-                                {editingId === company.id ? (
-                                    /* --- EDIT MODE --- */
-                                    <>
-                                        <td className="px-5 py-5 border-b bg-blue-50">
-                                            <select
-                                                className="bg-white border p-1 rounded w-full"
-                                                value={editForm.pack}
-                                                onChange={e => setEditForm({ ...editForm, pack: e.target.value })}
-                                            >
-                                                {Object.values(PLANS).map(p => <option key={p} value={p}>{p.toUpperCase()}</option>)}
-                                            </select>
-                                        </td>
-                                        <td className="px-5 py-5 border-b bg-blue-50">
-                                            <select
-                                                className="bg-white border p-1 rounded w-full"
-                                                value={editForm.validity}
-                                                onChange={e => setEditForm({ ...editForm, validity: e.target.value as any })}
-                                            >
-                                                <option value="active">Active</option>
-                                                <option value="inactive">Inactive</option>
-                                            </select>
-                                        </td>
-                                        <td className="px-5 py-5 border-b bg-blue-50">
-                                            <input
-                                                type="date"
-                                                className="border p-1 rounded w-full"
-                                                value={editForm.expiryDate}
-                                                onChange={e => setEditForm({ ...editForm, expiryDate: e.target.value })}
-                                            />
-                                            <div className="text-[10px] text-gray-500 mt-1 leading-tight">
-                                                {editForm.expiryDate ? "Custom Date" : "Empty = +28 days"}
-                                            </div>
-                                        </td>
-                                        <td className="px-5 py-5 border-b bg-blue-50">
-                                            <button onClick={handleSave} className="bg-green-500 text-white px-3 py-1 rounded text-xs font-bold mr-2 hover:bg-green-600">
-                                                Save
-                                            </button>
-                                            <button onClick={() => setEditingId(null)} className="text-gray-500 text-xs hover:text-gray-700 underline">
-                                                Cancel
-                                            </button>
-                                        </td>
-                                    </>
-                                ) : (
-                                    /* --- VIEW MODE --- */
-                                    <>
-                                        <td className="px-5 py-5 border-b bg-white text-sm">
-                                            <span className={`px-2 py-1 rounded-full text-xs font-bold text-white ${company.pack === 'platinum' ? 'bg-purple-500' :
-                                                company.pack === 'gold' ? 'bg-yellow-500' :
-                                                    company.pack === 'basic' ? 'bg-blue-500' : 'bg-gray-400'
-                                                }`}>
-                                                {company.pack.toUpperCase()}
-                                            </span>
-                                        </td>
-                                        <td className="px-5 py-5 border-b bg-white text-sm">
-                                            <span className={`px-2 py-1 rounded-full text-xs font-bold ${company.validity === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                                                }`}>
-                                                {company.validity.toUpperCase()}
-                                            </span>
-                                        </td>
-                                        <td className="px-5 py-5 border-b bg-white text-sm">
-                                            {company.expiryDate
-                                                ? new Date(company.expiryDate.toDate ? company.expiryDate.toDate() : company.expiryDate).toLocaleDateString()
-                                                : <span className="text-gray-400 italic">No Expiry</span>
-                                            }
-                                        </td>
-                                        <td className="px-5 py-5 border-b bg-white text-sm">
-                                            <button
-                                                onClick={() => startEdit(company)}
-                                                className="text-blue-600 hover:text-blue-900 font-medium"
-                                            >
-                                                Edit
-                                            </button>
-                                        </td>
-                                    </>
-                                )}
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="text-center">
+          <div className="text-5xl mb-3">⛔</div>
+          <p className="text-red-500 font-bold text-xl">ACCESS DENIED</p>
         </div>
+      </div>
     );
+  }
+
+  // ── Fetch ──────────────────────────────────────────────
+  useEffect(() => {
+    const fetchCompanies = async () => {
+      try {
+        const usersQuery = await getDocs(collectionGroup(db, 'users'));
+        const companyMap = new Map<string, CompanyData>();
+
+        usersQuery.forEach((userDoc) => {
+          const parentCompany = userDoc.ref.parent.parent;
+          if (parentCompany && !companyMap.has(parentCompany.id)) {
+            companyMap.set(parentCompany.id, {
+              id: parentCompany.id,
+              name: 'Unknown (Phantom)',
+              ownerName: 'Unknown',
+              pack: 'free',
+              validity: 'inactive',
+              expiryDate: null,
+            });
+          }
+        });
+
+        const realSnap = await getDocs(collection(db, 'companies'));
+        realSnap.forEach(d => {
+          const data = d.data();
+          companyMap.set(d.id, {
+            id: d.id,
+            name: data.name || 'Unknown Company',
+            ownerName: data.ownerName || 'Unknown',
+            pack: data.pack || 'free',
+            validity: data.validity || 'inactive',
+            expiryDate: data.expiryDate,
+          });
+        });
+
+        setCompanies(Array.from(companyMap.values()));
+      } catch (err) {
+        console.error(err);
+        alert('Error fetching companies.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchCompanies();
+  }, []);
+
+  // ── Stats ──────────────────────────────────────────────
+  const stats = useMemo(() => {
+    const now = new Date();
+    const soonMs = 7 * 24 * 60 * 60 * 1000;
+    return {
+      active: companies.filter(c => c.validity === 'active').length,
+      expired: companies.filter(c => c.validity === 'inactive').length,
+      trial: companies.filter(c => c.pack === 'free').length,
+      near_expiry: companies.filter(c => {
+        if (!c.expiryDate) return false;
+        const exp = c.expiryDate.toDate ? c.expiryDate.toDate() : new Date(c.expiryDate);
+        const diff = exp.getTime() - now.getTime();
+        return diff > 0 && diff <= soonMs;
+      }).length,
+    };
+  }, [companies]);
+
+  // ── Filtered list ─────────────────────────────────────
+  const filteredCompanies = useMemo(() => {
+    const now = new Date();
+    const soonMs = 7 * 24 * 60 * 60 * 1000;
+    switch (activeFilter) {
+      case 'active':      return companies.filter(c => c.validity === 'active');
+      case 'expired':     return companies.filter(c => c.validity === 'inactive');
+      case 'trial':       return companies.filter(c => c.pack === 'free');
+      case 'near_expiry': return companies.filter(c => {
+        if (!c.expiryDate) return false;
+        const exp = c.expiryDate.toDate ? c.expiryDate.toDate() : new Date(c.expiryDate);
+        const diff = exp.getTime() - now.getTime();
+        return diff > 0 && diff <= soonMs;
+      });
+      default: return companies;
+    }
+  }, [companies, activeFilter]);
+
+  // ── Edit helpers ───────────────────────────────────────
+  const startEdit = (company: CompanyData) => {
+    setEditingId(company.id);
+    let dateStr = '';
+    if (company.expiryDate) {
+      const d = company.expiryDate.toDate ? company.expiryDate.toDate() : new Date(company.expiryDate);
+      if (!isNaN(d.getTime())) dateStr = d.toISOString().split('T')[0];
+    }
+    setEditForm({ pack: company.pack, validity: company.validity, expiryDate: dateStr });
+  };
+
+  const handleSave = async () => {
+    if (!editingId) return;
+    try {
+      const companyRef = doc(db, 'companies', editingId);
+      let finalExpiry = editForm.expiryDate
+        ? new Date(editForm.expiryDate)
+        : addDays(new Date(), DEFAULT_DURATION_DAYS);
+      finalExpiry.setHours(23, 59, 59);
+
+      const payload: any = {
+        pack: editForm.pack,
+        validity: editForm.validity,
+        expiryDate: Timestamp.fromDate(finalExpiry),
+      };
+
+      const current = companies.find(c => c.id === editingId);
+      if (current?.name === 'Unknown (Phantom)') payload.name = `Company ${editingId}`;
+
+      await setDoc(companyRef, payload, { merge: true });
+      setCompanies(prev => prev.map(c =>
+        c.id === editingId ? { ...c, ...payload, name: payload.name || c.name } : c
+      ));
+      setEditingId(null);
+      alert(`Saved! Valid until: ${finalExpiry.toLocaleDateString()}`);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to update.');
+    }
+  };
+
+  // ── Helpers ────────────────────────────────────────────
+  const formatExpiry = (expiryDate: any) => {
+    if (!expiryDate) return null;
+    const d = expiryDate.toDate ? expiryDate.toDate() : new Date(expiryDate);
+    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  const isExpiringSoon = (expiryDate: any) => {
+    if (!expiryDate) return false;
+    const d = expiryDate.toDate ? expiryDate.toDate() : new Date(expiryDate);
+    const diff = d.getTime() - new Date().getTime();
+    return diff > 0 && diff <= 7 * 24 * 60 * 60 * 1000;
+  };
+
+  const packBadge = (pack: string) => {
+    switch (pack) {
+      case 'platinum': return 'bg-purple-100 text-purple-700';
+      case 'gold':     return 'bg-yellow-100 text-yellow-700';
+      case 'basic':    return 'bg-blue-100 text-blue-700';
+      default:         return 'bg-gray-100 text-gray-500';
+    }
+  };
+
+  const toggleFilter = (f: FilterType) =>
+    setActiveFilter(prev => (prev === f ? 'all' : f));
+
+  if (loading) return <Loading />;
+
+  return (
+    <div className="min-h-screen bg-gray-100 p-2 pb-16 md:p-6 md:pb-16 font-sans">
+
+      {/* ── HEADER ── */}
+      <div className="flex items-center justify-between pb-3 border-b mb-4">
+        <div className="w-8" />
+        <h1 className="flex-1 text-xl text-center font-bold text-gray-800 md:text-2xl">
+          Super Admin
+        </h1>
+        <button onClick={() => navigate(-1)} className="p-2 rounded-full hover:bg-gray-200 transition-colors">
+          <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+     
+
+      {/* ── FILTER CARDS ── */}
+      <div className="grid grid-cols-2 gap-2 mb-4 md:grid-cols-4 md:gap-4">
+
+        <div
+          onClick={() => toggleFilter('active')}
+          className={`cursor-pointer rounded-xl transition-all border-2
+            ${activeFilter === 'active'
+              ? 'border-green-600 bg-green-50 shadow-md scale-105'
+              : 'border-transparent'}`}
+        >
+          <CustomCard variant={CardVariant.Summary} title="Active Plans" value={stats.active.toString()} />
+        </div>
+
+        <div
+          onClick={() => toggleFilter('expired')}
+          className={`cursor-pointer rounded-xl transition-all border-2
+            ${activeFilter === 'expired'
+              ? 'border-red-600 bg-red-50 shadow-md scale-105'
+              : 'border-transparent'}`}
+        >
+          <CustomCard variant={CardVariant.Summary} title="Expired Plans" value={stats.expired.toString()} />
+        </div>
+
+        <div
+          onClick={() => toggleFilter('trial')}
+          className={`cursor-pointer rounded-xl transition-all border-2
+            ${activeFilter === 'trial'
+              ? 'border-blue-600 bg-blue-50 shadow-md scale-105'
+              : 'border-transparent'}`}
+        >
+          <CustomCard variant={CardVariant.Summary} title="Trial Plans" value={stats.trial.toString()} />
+        </div>
+
+        <div
+          onClick={() => toggleFilter('near_expiry')}
+          className={`cursor-pointer rounded-xl transition-all border-2
+            ${activeFilter === 'near_expiry'
+              ? 'border-orange-500 bg-orange-50 shadow-md scale-105'
+              : 'border-transparent'}`}
+        >
+          <CustomCard variant={CardVariant.Summary} title="Near Expiry" value={stats.near_expiry.toString()} />
+        </div>
+
+      </div>
+
+      {/* ── COMPANY LIST ── */}
+      {filteredCompanies.length === 0 ? (
+        <div className="text-center p-10 text-gray-400">No companies found.</div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {filteredCompanies.map((company) => {
+            const soon = isExpiringSoon(company.expiryDate);
+            const isEditing = editingId === company.id;
+            const expiryStr = formatExpiry(company.expiryDate);
+
+            return (
+              <div
+                key={company.id}
+                className="bg-white rounded-xl shadow-sm border border-gray-100 transition-all hover:shadow-md overflow-hidden"
+              >
+                {/* ── Card row ── */}
+                <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+
+                  {/* Left: info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <h3 className={`text-base font-bold ${company.name === 'Unknown (Phantom)' ? 'text-red-400 italic' : 'text-gray-800'}`}>
+                        {company.name}
+                      </h3>
+                      {/* Pack badge */}
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${packBadge(company.pack)}`}>
+                        {company.pack}
+                      </span>
+                      {/* Status badge */}
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase
+                        ${company.validity === 'active'
+                          ? 'bg-green-100 text-green-600'
+                          : 'bg-red-100 text-red-500'}`}>
+                        {company.validity}
+                      </span>
+                      {/* Near expiry warning */}
+                      {soon && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-orange-100 text-orange-500">
+                          ⚠ Expiring Soon
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="text-sm text-gray-500">
+                      Expires:{' '}
+                      <span className={`font-semibold ${soon ? 'text-orange-500' : 'text-gray-700'}`}>
+                        {expiryStr ?? <span className="italic text-gray-400">No Expiry</span>}
+                      </span>
+                    </p>
+                    <p className="text-xs text-gray-400 font-mono mt-0.5 truncate">{company.id}</p>
+                  </div>
+
+                  {/* Right: chevron toggle */}
+                  <button
+                    onClick={() => isEditing ? setEditingId(null) : startEdit(company)}
+                    className="p-2 rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors shrink-0"
+                  >
+                    <svg
+                      className={`w-5 h-5 transition-transform duration-200 ${isEditing ? 'rotate-180' : ''}`}
+                      fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* ── Inline edit panel ── */}
+                {isEditing && (
+                  <div className="border-t border-gray-100 bg-gray-50 p-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+
+                      {/* Plan */}
+                      <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">
+                          Plan
+                        </label>
+                        <div className="relative">
+                          <select
+                            value={editForm.pack}
+                            onChange={e => setEditForm({ ...editForm, pack: e.target.value })}
+                            className="w-full text-sm font-semibold bg-white border border-gray-200 rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
+                          >
+                            {Object.values(PLANS).map(p => (
+                              <option key={p} value={p}>{p.toUpperCase()}</option>
+                            ))}
+                          </select>
+                          <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-400">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Status */}
+                      <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">
+                          Status
+                        </label>
+                        <div className="relative">
+                          <select
+                            value={editForm.validity}
+                            onChange={e => setEditForm({ ...editForm, validity: e.target.value as 'active' | 'inactive' })}
+                            className="w-full text-sm font-semibold bg-white border border-gray-200 rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
+                          >
+                            <option value="active">ACTIVE</option>
+                            <option value="inactive">INACTIVE</option>
+                          </select>
+                          <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-400">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Expiry date */}
+                      <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">
+                          Expiry Date
+                        </label>
+                        <input
+                          type="date"
+                          value={editForm.expiryDate}
+                          onChange={e => setEditForm({ ...editForm, expiryDate: e.target.value })}
+                          className="w-full text-sm bg-white border border-gray-200 rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <p className="text-[10px] text-gray-400 mt-1">
+                          {editForm.expiryDate ? 'Custom date selected' : 'Empty = +28 days from today'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={handleSave}
+                      className="w-full sm:w-auto px-10 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      Save Changes
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default SuperAdminCompanies;

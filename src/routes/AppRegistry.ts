@@ -65,6 +65,9 @@ const Order = lazy(() => import('../Catalogue/Shop'));
 const OrdersReturnPage = lazy(() => import('../Catalogue/OrdersReturn'));
 const MyShop = lazy(() => import('../Catalogue/ShopItem'));
 const Catasupport = lazy(() => import('../Catalogue/CatalogueSupport/CatalogueSupport'));
+const CatlogueItems = lazy(() => import('../Catalogue/CatalogueReports/CatalogueItems')); // catalogue items
+const CatlogueManageItems = lazy(() => import('../Catalogue/CatalogueReports/CatalogueManageItems')); 
+const CatlogueSoldReport = lazy(() => import('../Catalogue/CatalogueReports/CatalogueSoldReport'));
 
 export interface AppRoute {
     path?: string;
@@ -141,6 +144,9 @@ export const AppRegistry: AppModule[] = [
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`, component: RequestPage, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`, component: CatItemGroup, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_REPORTS}`, component: CatalogueReports, permission: null },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_ITEMS}`, component: CatlogueItems, permission: null }, 
+            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_MANAGE_ITEMS}`, component: CatlogueManageItems, permission: null }, 
+            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_SOLD_REPORT}`, component: CatlogueSoldReport, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_SALES}`, component: CatalogueSales, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_PNL_REPORT}`, component: CatalogueProfitLoss, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_ITEM_REPORT}`, component: CatalogueItemReport, permission: null },

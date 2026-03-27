@@ -1,5 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { db } from '../../lib/Firebase';
+import { collection, addDoc, serverTimestamp, doc, getDoc, getDocs, updateDoc } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 
 // --- ICONS ---
 // (Assuming you use Lucide-React like standard Tailwind projects. 
@@ -59,6 +62,84 @@ const SupportPage: React.FC = () => {
   const navigate = useNavigate();
 
   const [openSection, setOpenSection] = useState<string | null>('faq-1');
+
+  // --- NEW STATES ---
+  const [userProfile, setUserProfile] = useState({ fullName: '', email: '', phone: '' });
+  const [formData, setFormData] = useState({ subject: '', description: '' });
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  // --- FETCH LOGGED-IN USER PROFILE ---
+  useEffect(() => {
+    const auth = getAuth();
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+
+    const fetchProfile = async () => {
+      const companiesSnapshot = await getDocs(collection(db, "companies"));
+
+      for (const companyDoc of companiesSnapshot.docs) {
+        const userDoc = await getDoc(doc(db, "companies", companyDoc.id, "users", currentUser.uid));
+
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+
+          setUserProfile({
+            fullName: data.name || currentUser.email || 'Unknown', // ← use data.name instead of displayName
+            email: currentUser.email || 'N/A',
+            phone: data.phoneNumber || 'N/A', // ← this is correct
+          });
+          break; // Stop once found
+        }
+      }
+    };
+
+    fetchProfile();
+  }, []);
+
+  const generateRefNumber = async () => {
+  const counterRef = doc(db, "counters", "support_tickets");
+  const counterSnap = await getDoc(counterRef);
+  
+  let nextNumber = 1;
+  if (counterSnap.exists()) {
+    nextNumber = (counterSnap.data().count || 0) + 1;
+  }
+  
+  await updateDoc(counterRef, { count: nextNumber }).catch(() =>
+    addDoc(collection(db, "counters"), { count: nextNumber })
+  );
+  
+  return `TKT-${String(nextNumber).padStart(4, '0')}`; // TKT-0001, TKT-0002...
+};
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.subject || !formData.description) {
+      alert("Please fill all fields.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const refNumber = await generateRefNumber(); 
+      await addDoc(collection(db, "support_tickets"), {
+        referenceNumber: refNumber,
+        fullName: userProfile.fullName,
+        email: userProfile.email,
+        phone: userProfile.phone,
+        subject: formData.subject,
+        description: formData.description,
+        status: 'received',
+        createdAt: serverTimestamp(),
+      });
+      setSubmitted(true);
+      setFormData({ subject: '', description: '' });
+    } catch (err) {
+      alert("Failed to submit ticket. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const toggleSection = (id: string) => {
     setOpenSection(prev => (prev === id ? null : id));
@@ -192,19 +273,48 @@ const SupportPage: React.FC = () => {
             isOpen={openSection === 'ticket'}
             onClick={() => toggleSection('ticket')}
           >
-            <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); alert("Ticket Submitted!"); }}>
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Issue Subject</label>
-                <input type="text" placeholder="e.g., Cannot export sales report" className="w-full border border-gray-300 rounded-sm p-2 text-sm focus:ring-1 focus:ring-gray-900 outline-none" />
+            {submitted ? (
+              <div className="text-center py-6">
+                <p className="text-green-600 font-bold text-lg">✓ Ticket Submitted!</p>
+                <p className="text-gray-500 text-sm mt-1">Our team will reach out to you soon.</p>
+                <button
+                  onClick={() => setSubmitted(false)}
+                  className="mt-4 text-sm text-blue-600 hover:underline"
+                >
+                  Raise another ticket
+                </button>
               </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Description</label>
-                <textarea rows={4} placeholder="Describe what happened..." className="w-full border border-gray-300 rounded-sm p-2 text-sm focus:ring-1 focus:ring-gray-900 outline-none" />
-              </div>
-              <button className="w-full bg-gray-900 text-white font-bold py-2 rounded-sm hover:bg-gray-800 transition-colors">
-                Submit Ticket
-              </button>
-            </form>
+            ) : (
+              <form className="space-y-4" onSubmit={handleSubmit}>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Issue Subject</label>
+                  <input
+                    type="text"
+                    value={formData.subject}
+                    onChange={(e) => setFormData(p => ({ ...p, subject: e.target.value }))}
+                    placeholder="e.g., Cannot export sales report"
+                    className="w-full border border-gray-300 rounded-sm p-2 text-sm focus:ring-1 focus:ring-gray-900 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Description</label>
+                  <textarea
+                    rows={4}
+                    value={formData.description}
+                    onChange={(e) => setFormData(p => ({ ...p, description: e.target.value }))}
+                    placeholder="Describe what happened..."
+                    className="w-full border border-gray-300 rounded-sm p-2 text-sm focus:ring-1 focus:ring-gray-900 outline-none"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full bg-gray-900 text-white font-bold py-2 rounded-sm hover:bg-gray-800 transition-colors disabled:opacity-50"
+                >
+                  {submitting ? 'Submitting...' : 'Submit Ticket'}
+                </button>
+              </form>
+            )}
           </AccordionItem>
         </div>
 

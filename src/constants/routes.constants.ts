@@ -75,7 +75,6 @@ export const ROUTES = {
   PARTY_LEDGER: '/party-ledger',
   CATA_REGISTER: 'catalogue-register',
   CATA_COMINGSOON: 'coming-soon',
-  WEBSITE_LEADS: '/website-leads',
   CATA_SUPPORT:'support',
   SUPER_ADMINHUB:'/super-admin',
   SUPER_ADMIN:'/super-admin/companies',

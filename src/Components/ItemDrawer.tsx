@@ -580,7 +580,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                             </div>
                         </>
                     )}
-                    <div className="border-t p-4 flex gap-3 bg-white md:sticky md:bottom-0">
+                    <div className="border-t p-4 flex gap-3 bg-white sticky bottom-0">
                         <button
                             onClick={handleSave}
                             disabled={isSaving || isFetching}

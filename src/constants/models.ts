@@ -40,6 +40,7 @@ export interface Item {
   firestoreDocId?: string;
   packetSize?: number;
   unitMultiplier?: number;
+  moq?:number;
 }
 
 export interface ItemGroup {

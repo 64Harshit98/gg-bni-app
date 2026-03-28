@@ -80,6 +80,7 @@ export function OrderBarChartReport({ isDataVisible }: SalesBarChartReportProps)
                 // --- Use 'Orders' (capital 'O') to match your other files ---
                 const salesQuery = query(
                     collection(db, 'companies', currentUser.companyId, 'Orders'),
+                    where('status', 'in', ['Completed', 'Paid']),
                     where('createdAt', '>=', Timestamp.fromDate(start)),
                     where('createdAt', '<=', Timestamp.fromDate(end)),
                     orderBy('createdAt', 'asc')

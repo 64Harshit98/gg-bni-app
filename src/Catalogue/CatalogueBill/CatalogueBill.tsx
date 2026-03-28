@@ -54,7 +54,7 @@ export interface CatalogueInvoiceData {
     total: number;
     imageBase64?: string;
   }[];
-
+  specialInstruction?: string
   grandTotal: number;
 }
 
@@ -287,7 +287,7 @@ export const CatalogueBill = async (
     doc.text(data.customer.shipping?.name || "", shipX, textY);
   }
 
-  textY += 5;
+  textY += 4;
 
   // address
   if (isEstimate) {
@@ -297,7 +297,7 @@ export const CatalogueBill = async (
     );
 
     doc.text(shippingAddrLines, billX, textY);
-    textY += shippingAddrLines.length * 5;
+    textY += shippingAddrLines.length * 4;
   } else {
     const billingAddrLines = doc.splitTextToSize(
       data.customer.billing?.address || "",
@@ -370,6 +370,56 @@ export const CatalogueBill = async (
   );
 
   cursorY = sectionStartY + sectionHeight + 6;
+
+  // SPECIAL INSTRUCTION ABOVE TABLE (FOR BOTH BILL + ESTIMATE)
+
+  if (data.specialInstruction) {
+
+    const boxPadding = 3;
+
+    const heading = "Special Instructions:";
+
+    const noteLines = doc.splitTextToSize(
+      data.specialInstruction,
+      pageWidth - (margin * 2) - (boxPadding * 2)
+    );
+
+    const lineHeight = 4;
+    const headingHeight = 5;
+
+    const boxHeight =
+      headingHeight +
+      (noteLines.length * lineHeight) +
+      (boxPadding * 2);
+
+    // box (top gap kam)
+    doc.rect(
+      margin,
+      cursorY - 2,
+      pageWidth - (margin * 2),
+      boxHeight
+    );
+
+    // heading (bold + bigger)
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text(
+      heading,
+      margin + boxPadding,
+      cursorY + boxPadding
+    );
+
+    // text (with bottom padding fix)
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(
+      noteLines,
+      margin + boxPadding,
+      cursorY + boxPadding + headingHeight
+    );
+
+    cursorY += boxHeight + 3;
+  }
 
   // ================= TABLE DATA =================
   const isTaxEnabled = data.companyGstType === 'Regular';
@@ -614,7 +664,6 @@ export const CatalogueBill = async (
   // @ts-ignore
   if (!isEstimate) {
     let finalY = (doc as any).lastAutoTable.finalY + 4;
-
     const wordsH = 8;
     const bankH = 12;
     const footerH = 32;

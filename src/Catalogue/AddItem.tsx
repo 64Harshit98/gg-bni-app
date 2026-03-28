@@ -155,7 +155,7 @@ const ItemAdd: React.FC = () => {
         setError(null); setSuccess(null); setModal(null);
 
         // --- 1. Basic Field Validation ---
-        if (!itemName.trim() || !selectedCategory || !itemAmount.trim() || !itemMRP.trim()) {
+        if (!itemName.trim() || !itemAmount.trim() || !itemMRP.trim()) {
             setModal({
                 message: 'Item Name, MRP, Stock Amount, and Category are required.',
                 type: State.ERROR
@@ -263,7 +263,7 @@ const ItemAdd: React.FC = () => {
                 purchasediscount: finalPurchaseDiscount,
                 tax: parseFloat(itemTax) || 0,
                 hsnSac: hsnCode.trim(),
-                itemGroupId: selectedCategory,
+                itemGroupId: selectedCategory || "uncategorized",
                 stock: parseInt(itemAmount, 10) || 0,
                 amount: parseInt(itemAmount, 10) || 0,
                 barcode: finalBarcode,
@@ -758,7 +758,7 @@ const ItemAdd: React.FC = () => {
                                 >
 
                                     {/* Default */}
-                                    <option value="">Uncategorized</option>
+                                    <option value="uncategorized">uncategorized</option>
 
                                     {/* Add Group */}
                                     <option

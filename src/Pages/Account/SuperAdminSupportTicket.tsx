@@ -179,8 +179,8 @@ const SupportTicketLeads: React.FC = () => {
   if (loading) return <Loading />;
 
   return (
-    <div className="min-h-screen bg-gray-100 p-2 pb-16 md:p-6 md:pb-16 font-sans">
-
+    <div className="min-h-screen bg-gray-100 p-3 pb-16 md:p-6 md:pb-16 font-sans">
+ 
       {/* HEADER */}
       <div className="flex items-center justify-between pb-3 border-b mb-6">
         <div className="w-8" />
@@ -191,7 +191,7 @@ const SupportTicketLeads: React.FC = () => {
           <IconClose />
         </button>
       </div>
-
+ 
       {/* DATE FILTER */}
       <div className="bg-white p-3 rounded-sm shadow-md mb-4 md:p-5 md:rounded-sm">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 md:gap-3">
@@ -225,7 +225,7 @@ const SupportTicketLeads: React.FC = () => {
           </button>
         </div>
       </div>
-
+ 
       {/* SEARCH BAR & SORT */}
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <div className="relative flex-1">
@@ -238,8 +238,6 @@ const SupportTicketLeads: React.FC = () => {
             className="w-full pl-9 pr-4 py-2.5 text-sm bg-white border border-gray-200 rounded-sm shadow-sm focus:ring-2 focus:ring-blue-500 outline-none"
           />
         </div>
-
-        {/* SORT DROPDOWN */}
         <div className="relative sm:w-48">
           <select
             value={sortBy}
@@ -252,9 +250,9 @@ const SupportTicketLeads: React.FC = () => {
           <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
         </div>
       </div>
-
+ 
       {/* FILTER CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-3 sm:grid-cols-3 gap-3 mb-6">
         <div onClick={() => toggleFilter('received')}
           className={`cursor-pointer rounded-sm transition-all border-2 ${activeFilter === 'received' ? 'border-blue-600 bg-blue-50 shadow-md scale-105' : 'border-transparent'}`}>
           <CustomCard variant={CardVariant.Summary} title="Received" value={stats.received.toString()} />
@@ -268,14 +266,14 @@ const SupportTicketLeads: React.FC = () => {
           <CustomCard variant={CardVariant.Summary} title="Problems" value={stats.problem.toString()} />
         </div>
       </div>
-
+ 
       {/* COUNT LABEL */}
-      <p className="text-xs text-gray-400 font-semibold uppercase mb-3 ml-1">
+      <p className="text-xs text-gray-400 font-semibold uppercase mb-2 ml-1">
         Showing {filteredTickets.length} of {stats.all} tickets
         {activeFilter !== 'all' && ` — filtered by "${activeFilter}"`}
         {searchQuery && ` — searching "${searchQuery}"`}
       </p>
-
+ 
       {/* TICKET LIST */}
       <div className="flex flex-col gap-3">
         {filteredTickets.length === 0 ? (
@@ -285,8 +283,9 @@ const SupportTicketLeads: React.FC = () => {
         ) : (
           filteredTickets.map((ticket) => (
             <div key={ticket.id} className="bg-white rounded-sm shadow-sm border border-gray-100 transition-all hover:shadow-md overflow-hidden">
-
-              <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+ 
+              {/* ── DESKTOP LAYOUT (md and up) ── */}
+              <div className="hidden md:flex p-4 items-center justify-between gap-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded uppercase flex items-center gap-1">
@@ -300,20 +299,15 @@ const SupportTicketLeads: React.FC = () => {
                   <div className="flex flex-wrap gap-4 mt-1">
                     <p className="text-xs text-gray-500 flex items-center gap-1">
                       <Mail className="w-3 h-3" />
-                      <a href={`mailto:${ticket.email}`} className="hover:text-blue-600 transition-colors">
-                        {ticket.email}
-                      </a>
+                      <a href={`mailto:${ticket.email}`} className="hover:text-blue-600 transition-colors">{ticket.email}</a>
                     </p>
                     <p className="text-xs text-gray-500 flex items-center gap-1">
                       <Phone className="w-3 h-3" />
-                      <a href={`tel:${ticket.phone}`} className="hover:text-blue-600 transition-colors">
-                        {ticket.phone || 'N/A'}
-                      </a>
+                      <a href={`tel:${ticket.phone}`} className="hover:text-blue-600 transition-colors">{ticket.phone || 'N/A'}</a>
                     </p>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-3 ">
+                <div className="flex items-center gap-3">
                   <p className="text-[11px] text-gray-400 flex items-center gap-1 whitespace-nowrap">
                     <Calendar className="w-3 h-3" />
                     {ticket.createdAt?.toDate
@@ -340,9 +334,81 @@ const SupportTicketLeads: React.FC = () => {
                   </button>
                 </div>
               </div>
-
+ 
+              {/* ── MOBILE LAYOUT (below md) ── */}
+              <div className="md:hidden p-2">
+                {/* Row 1: Reference number (left) + Status badge (right) */}
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-[9px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded uppercase flex items-center gap-1">
+                    <Hash className="w-3 h-3" /> {ticket.referenceNumber}
+                  </span>
+                  <span className={`text-[9px] px-2 py-0.5 rounded-sm font-bold uppercase ${getStatusStyle(ticket.status)}`}>
+                    {ticket.status}
+                  </span>
+                </div>
+ 
+                {/* Row 2: Left content + Right controls */}
+                <div className="flex items-start justify-between gap-2">
+                  {/* Left: name, email, phone */}
+                  <div className="flex-1 min-w-0">
+                    {/* Row 2a: Customer name */}
+                    <h3 className="text-sm font-bold text-gray-800 mb-1 truncate">{ticket.fullName}</h3>
+ 
+                    {/* Row 2b: Email */}
+                    <p className="text-xs text-gray-500 flex items-center gap-1 mb-0.5">
+                      <Mail className="w-3 h-3 shrink-0" />
+                      <a href={`mailto:${ticket.email}`} className="hover:text-blue-600 transition-colors truncate">
+                        {ticket.email}
+                      </a>
+                    </p>
+ 
+                    {/* Row 2c: Phone */}
+                    <p className="text-xs text-gray-500 flex items-center gap-1">
+                      <Phone className="w-3 h-3 shrink-0" />
+                      <a href={`tel:${ticket.phone}`} className="hover:text-blue-600 transition-colors">
+                        {ticket.phone || 'N/A'}
+                      </a>
+                    </p>
+                  </div>
+ 
+                  {/* Right: status dropdown + expand arrow */}
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    {/* Status dropdown + arrow on same row */}
+                    <div className="flex items-center gap-1">
+                      <div className="relative">
+                        <select
+                          value={ticket.status}
+                          onChange={(e) => handleStatusChange(ticket.id, e.target.value)}
+                          className="appearance-none bg-gray-50 border border-gray-200 text-[10px] font-bold py-1.5 pl-2 pr-6 rounded-sm cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none"
+                        >
+                          <option value="received">RECEIVED</option>
+                          <option value="solved">SOLVED</option>
+                          <option value="problem">PROBLEM</option>
+                        </select>
+                        <Edit3 className="w-2.5 h-2.5 absolute right-1.5 top-2 text-gray-400 pointer-events-none" />
+                      </div>
+                      <button
+                        onClick={() => setExpandedId(expandedId === ticket.id ? null : ticket.id)}
+                        className="p-1 rounded-sm text-gray-400 hover:bg-gray-100 transition-colors"
+                      >
+                        <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${expandedId === ticket.id ? 'rotate-180' : ''}`} />
+                      </button>
+                    </div>
+ 
+                    {/* Date & time below the dropdown */}
+                    <p className="text-[10px] text-gray-400 flex items-center gap-1 whitespace-nowrap">
+                      <Calendar className="w-3 h-3" />
+                      {ticket.createdAt?.toDate
+                        ? ticket.createdAt.toDate().toLocaleString('en-IN')
+                        : 'Loading...'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+ 
+              {/* EXPANDED DETAIL — shared for both layouts */}
               {expandedId === ticket.id && (
-                <div className="border-t border-gray-100 bg-[#fbfcfd] p-5">
+                <div className="border-t border-gray-100 bg-[#fbfcfd] p-4 md:p-5">
                   <div className="flex flex-col gap-6">
                     <div className="relative pl-4 border-l-4 border-blue-500">
                       <h4 className="text-[10px] font-bold text-blue-600/70 uppercase tracking-widest mb-1 flex items-center gap-1.5">
@@ -364,14 +430,14 @@ const SupportTicketLeads: React.FC = () => {
                   </div>
                 </div>
               )}
-
+ 
             </div>
           ))
         )}
       </div>
-
+ 
     </div>
   );
 };
-
+ 
 export default SupportTicketLeads;

@@ -104,6 +104,7 @@ const CartPage: React.FC = () => {
     const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
     const [leadStatus, setLeadStatus] = useState<"approved" | "pending" | "declined" | null>(null);
     const [approvalError, setApprovalError] = useState<string | null>(null);
+    const [specialInstruction, setSpecialInstruction] = useState("");
     const getUpcomingDocId = () => {
         const upcomingKey =
             localStorage.getItem("upcoming_user_key");
@@ -132,14 +133,13 @@ const CartPage: React.FC = () => {
             salesPrice: item.salesPrice,
             unit: item.unit ?? "pcs",
             unitMultiplier: item.unitMultiplier ?? 1,
-            note: item.note || ''
+            note: item.note || '',
+            groupid: item.category
         }));
-
         const totalAmount = itemsForFirebase.reduce(
             (sum, i) => sum + i.salesPrice * i.quantity,
             0
         );
-
         await setDoc(
             orderRef,
             {
@@ -165,7 +165,7 @@ const CartPage: React.FC = () => {
                 const formattedItems: CartItem[] = parsedCart.map((entry: any) => ({
                     id: entry.item.id,
                     name: entry.item.name,
-                    category: entry.item.category || 'Product',
+                    category: entry.item.groupId || entry.item.category || 'Product',
                     mrp: entry.item.mrp || 0,
                     salesPrice: entry.item.salesPrice || entry.item.mrp || 0,
                     quantity: entry.quantity,
@@ -212,6 +212,7 @@ const CartPage: React.FC = () => {
                 updatedItems.map(i => ({
                     item: {
                         id: i.id,
+                        groupid: i.category, // groupId
                         name: i.name,
                         mrp: i.mrp,
                         salesPrice: i.salesPrice,
@@ -393,9 +394,7 @@ const CartPage: React.FC = () => {
             alert("Please fill complete billing and shipping details (10-digit phone required)");
             return;
         }
-
         setIsPlacing(true);
-        console.log("FINAL BILL ITEMS:", cartItems)
         try {
             // 4. GENERATE INVOICE (Atomic Transaction)
             const orderInvoiceNumber = await generateCatalogueInvoiceNumber();
@@ -411,6 +410,7 @@ const CartPage: React.FC = () => {
                 paidAmount: 0,
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
+                specialInstruction: specialInstruction || "",
                 items: cartItems.map(i => {
 
                     const mrp = i.mrp;
@@ -418,6 +418,7 @@ const CartPage: React.FC = () => {
 
                     return {
                         id: String(i.id),
+                        groupId: i.category,
                         name: i.name,
                         quantity: i.quantity,
                         mrp: mrp,
@@ -466,7 +467,7 @@ const CartPage: React.FC = () => {
             try {
                 const rawBillData = {
                     effectiveCompanyId,
-                    billTo: {
+                    specialInstruction: specialInstruction || "",                    billTo: {
                         name: billing.name,
                         phone: billing.phone,
                         address: billing.address,
@@ -557,7 +558,7 @@ const CartPage: React.FC = () => {
             placeOrder();
             setIsDrawerOpen(false);
         }
-    };;
+    };
 
     return (
         <>
@@ -714,8 +715,8 @@ const CartPage: React.FC = () => {
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex justify-between items-start gap-2">
 
-                                                            <div className="flex gap-2 leading-tight">
-                                                                <h3 className="text-[12px] font-black text-[#1A3B5D] uppercase truncate">
+                                                            <div className="leading-tight">
+                                                                <h3 className="text-[12px] font-black text-[#1A3B5D] uppercase">
                                                                     {item.name}
                                                                 </h3>
 
@@ -759,8 +760,11 @@ const CartPage: React.FC = () => {
                                         )}
                                     </div>
                                     <div className="bg-white rounded-sm p-4 shadow-sm border border-gray-50">
-                                        <label className="text-[8px] font-black text-gray-400 uppercase mb-2 block tracking-widest">Special Instructions</label>
-                                        <textarea placeholder="Anything else we should know?" className="w-full bg-gray-50 rounded-sm p-3 text-[12px] font-bold outline-none min-h-[60px] resize-none" />
+                                        <label className="text-[10px] font-black text-gray-600 uppercase mb-2 block tracking-widest">Special Instructions</label>
+                                        <textarea
+                                            value={specialInstruction}
+                                            onChange={(e) => setSpecialInstruction(e.target.value)}
+                                            placeholder="Anything else we should know?" className="w-full bg-gray-50 rounded-sm p-3 text-[14px] font-bold outline-none min-h-[60px] resize-none" />
                                     </div>
                                 </>
                             ) : (
@@ -772,11 +776,15 @@ const CartPage: React.FC = () => {
                                             </h3>
                                             <div className="grid grid-cols-2 gap-2.5">
                                                 <div className="space-y-1">
-                                                    <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">Full Name</label>
+                                                    <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">Full Name
+                                                        <span className="text-red-500 ml-0.5">*</span>
+                                                    </label>
                                                     <input value={billing.name} onChange={(e) => setBilling({ ...billing, name: e.target.value })} type="text" className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold outline-none" placeholder="Payer's Name" />
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">Phone</label>
+                                                    <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">Phone
+                                                        <span className="text-red-500 ml-0.5">*</span>
+                                                    </label>
                                                     <input
                                                         value={billing.phone}
                                                         onChange={(e) => {
@@ -792,16 +800,22 @@ const CartPage: React.FC = () => {
                                                     />
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">City</label>
+                                                    <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">City
+                                                        <span className="text-red-500 ml-0.5">*</span>
+                                                    </label>
                                                     <input value={billing.city} onChange={(e) => setBilling({ ...billing, city: e.target.value })} type="text" className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold outline-none" placeholder="City" />
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">State</label>
+                                                    <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">State
+                                                        <span className="text-red-500 ml-0.5">*</span>
+                                                    </label>
                                                     <input value={billing.state} onChange={(e) => setBilling({ ...billing, state: e.target.value })} type="text" className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold outline-none" placeholder="State" />
                                                 </div>
                                             </div>
                                             <div className="mt-3 space-y-1">
-                                                <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">Complete Address</label>
+                                                <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">Complete Address
+                                                    <span className="text-red-500 ml-0.5">*</span>
+                                                </label>
                                                 <textarea value={billing.address} onChange={(e) => setBilling({ ...billing, address: e.target.value })} className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold h-12 resize-none outline-none overflow-hidden" placeholder="Details..."></textarea>
                                             </div>
                                             <div className="space-y-1 col-span-2">
@@ -841,11 +855,15 @@ const CartPage: React.FC = () => {
                                             </h3>
                                             <div className="grid grid-cols-2 gap-2.5">
                                                 <div className="space-y-1">
-                                                    <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">Full Name</label>
+                                                    <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">Full Name
+                                                        <span className="text-red-500 ml-0.5">*</span>
+                                                    </label>
                                                     <input value={shipping.name} onChange={(e) => setShipping({ ...shipping, name: e.target.value })} type="text" className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold outline-none" placeholder="Receiver's Name" />
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">Phone</label>
+                                                    <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">Phone
+                                                        <span className="text-red-500 ml-0.5">*</span>
+                                                    </label>
                                                     <input
                                                         value={shipping.phone}
                                                         onChange={(e) => {
@@ -859,16 +877,22 @@ const CartPage: React.FC = () => {
                                                     />
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">City</label>
+                                                    <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">City
+                                                        <span className="text-red-500 ml-0.5">*</span>
+                                                    </label>
                                                     <input value={shipping.city} onChange={(e) => setShipping({ ...shipping, city: e.target.value })} type="text" className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold outline-none" placeholder="City" />
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">State</label>
+                                                    <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">State
+                                                        <span className="text-red-500 ml-0.5">*</span>
+                                                    </label>
                                                     <input value={shipping.state} onChange={(e) => setShipping({ ...shipping, state: e.target.value })} type="text" className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold outline-none" placeholder="State" />
                                                 </div>
                                             </div>
                                             <div className="mt-3 space-y-1">
-                                                <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">Complete Address</label>
+                                                <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">Complete Address
+                                                    <span className="text-red-500 ml-0.5">*</span>
+                                                </label>
                                                 <textarea value={shipping.address} onChange={(e) => setShipping({ ...shipping, address: e.target.value })} className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold h-12 resize-none outline-none overflow-hidden" placeholder="Details..."></textarea>
                                             </div>
                                             <div className="space-y-1 col-span-2">

@@ -54,11 +54,9 @@ const useCompletedSalesData = (companyId: string | undefined) => {
         // Query the 'Orders' collection for 'Completed' sales
         const salesQuery = query(
             collection(db, 'companies', companyId, 'Orders'), // Correct multi-tenant path
-            where('status', '==', 'Completed'), // Filter for "Completed"
+            where('status', 'in', ['Completed', 'Paid']), // Filter for "Completed"
             where('createdAt', '>=', Timestamp.fromDate(start)),
             where('createdAt', '<=', Timestamp.fromDate(end))
-            // Note: This query will require a Firestore Index.
-            // The console error will provide a link to create it.
         );
 
         const unsubscribe = onSnapshot(salesQuery, (snapshot) => {

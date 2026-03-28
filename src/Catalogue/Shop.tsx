@@ -20,7 +20,7 @@ const OrderingPage: React.FC = () => {
     const companyId = currentUser?.companyId;
     const { businessName: companyName, loading: _nameLoading } = useBusinessName(companyId);
     const dbOperations = useDatabase();
-    const [_items, setItems] = useState<Item[]>([]);
+    const [items, setItems] = useState<Item[]>([]);
     const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
     const [searchQuery, _setSearchQuery] = useState('');
     const [pageIsLoading, setPageIsLoading] = useState(true);
@@ -57,6 +57,16 @@ const OrderingPage: React.FC = () => {
                     dbOperations.syncItems(),
                     dbOperations.getItemGroups()
                 ]);
+                const hasuncategorized = fetchedItemGroups.some(
+                    g => g.id === "uncategorized"
+                );
+
+                if (!hasuncategorized) {
+                    fetchedItemGroups.push({
+                        id: "uncategorized",
+                        name: "uncategorized"
+                    } as ItemGroup);
+                }
 
                 setItems(fetchedItems);
 
@@ -124,7 +134,6 @@ const OrderingPage: React.FC = () => {
 
     // --- Memos ---
     const cartValue = useMemo(() => cart.reduce((acc, item) => acc + (item.mrp * item.quantity), 0), [cart]);
-    const visibleItems = _items.filter(item => item.isListed);
     const filteredItems = useMemo(() => {
         const query = searchQuery.toLowerCase();
 
@@ -133,7 +142,7 @@ const OrderingPage: React.FC = () => {
             const matchesGroupName = group.name.toLowerCase().includes(query);
 
             // Items inside group match
-            const matchesInnerItems = _items.some(item =>
+            const matchesInnerItems = items.some(item =>
                 item.itemGroupId === group.id &&
                 item.name.toLowerCase().includes(query)
             );
@@ -145,10 +154,10 @@ const OrderingPage: React.FC = () => {
             if (sortOrder === 'A-Z') return a.name.localeCompare(b.name);
             return b.name.localeCompare(a.name);
         });
-    }, [itemGroups, _items, searchQuery, sortOrder]);
+    }, [itemGroups, items, searchQuery, sortOrder]);
 
     const getGroupImages = (groupId: string): string[] => {
-        const imgs = visibleItems
+        const imgs = items
             .filter(item => item.itemGroupId === groupId)
             .map(item => item.imageUrl)
             .filter(Boolean) as string[];
@@ -221,7 +230,7 @@ const OrderingPage: React.FC = () => {
                 </div>
                 {/* --- SEARCH BAR --- */}
                 <SearchBar
-                    items={_items}
+                    items={items}
                     placeholder="Search products..."
                     onItemSelected={(item) => {
                         if (!item.id) return;
@@ -279,7 +288,7 @@ const OrderingPage: React.FC = () => {
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1">
                     {filteredItems.map(group => {
                         // Count calculation based on existing _items state
-                        const itemCount = visibleItems.filter(item => item.itemGroupId === group.id).length;
+                        const itemCount = items.filter(item => item.itemGroupId === group.id).length;
                         const collageImages = getGroupImages(group.id!);
                         return (
                             <div
@@ -329,10 +338,10 @@ const OrderingPage: React.FC = () => {
                                                 type="text"
                                                 value={tempName}
                                                 onChange={(e) => setTempName(e.target.value)}
-                                                className="w-full bg-gray-50 border border-gray-100 rounded-sm py-1 px-2 text-[12px] font-bold outline-none"
+                                                className="w-full bg-gray-50 border border-gray-100 rounded-sm py-1 px-2 text-[14px] font-bold outline-none"
                                             />
                                             <div className="flex gap-1">
-                                                <button onClick={(e) => { e.stopPropagation(); handleSaveEdit(group.id!); }} className="flex-1 bg-[#00A3E1] text-white py-1.5 rounded-sm text-[9px] font-black uppercase">Save</button>
+                                                <button onClick={(e) => { e.stopPropagation(); handleSaveEdit(group.id!); }} className="flex-1 bg-[#00A3E1] text-white py-1.5 rounded-sm text-[12px] font-black uppercase">Save</button>
                                                 <button
                                                     onClick={async (e) => {
                                                         e.stopPropagation();
@@ -348,30 +357,30 @@ const OrderingPage: React.FC = () => {
                                                             }
                                                         }
                                                     }}
-                                                    className="p-1.5 bg-red-50 text-red-600 rounded-sm"
+                                                    className="p-3 bg-red-100 text-red-700 rounded-sm"
                                                 >
                                                     <Trash2 size={12} />
                                                 </button>
-                                                <button onClick={(e) => { e.stopPropagation(); setEditingId(null); }} className="p-1.5 bg-gray-50 text-gray-400 rounded-sm"><X size={12} /></button>
+                                                <button onClick={(e) => { e.stopPropagation(); setEditingId(null); }} className="p-3 bg-gray-200 text-gray-500 rounded-sm"><X size={12} /></button>
                                             </div>
                                         </div>
                                     ) : (
                                         <>
-                                            <h3 className="text-[10px] font-bold text-[#1A3B5D] mb-1.5 truncate leading-tight uppercase">
+                                            <h3 className="text-[14px] font-bold text-[#1A3B5D] mb-1.5leading-tight uppercase">
                                                 {group.name}
                                             </h3>
 
                                             {/* Centered Item Count Badge UI */}
                                             <div className="flex items-center justify-center gap-1.5 bg-blue-50 px-2 py-0.5 rounded-sm border border-blue-100 w-fit mx-auto mb-2">
-                                                <span className="text-[10px] font-black text-[#00A3E1] leading-none">
+                                                <span className="text-[12px] font-black text-[#00A3E1] leading-none">
                                                     {itemCount}
                                                 </span>
-                                                <span className="text-[8px] font-black uppercase tracking-widest text-[#1A3B5D]/60 leading-none">
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-[#1A3B5D]/60 leading-none">
                                                     Items
                                                 </span>
                                             </div>
 
-                                            <div className="mt-auto w-full py-1.5 rounded-sm text-[9px] font-black uppercase text-center tracking-wider transition-all bg-[#00A3E1] text-white"
+                                            <div className="mt-auto w-full py-1.5 rounded-sm text-[12px] font-black uppercase text-center tracking-wider transition-all bg-[#00A3E1] text-white"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     handleEdit(group)

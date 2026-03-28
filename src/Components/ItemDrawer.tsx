@@ -13,12 +13,13 @@ interface ItemEditDrawerProps {
     isOpen: boolean;
     onClose: () => void;
     onSaveSuccess: (updatedItem: Partial<Item>) => void;
+    isCatalogue?: boolean
 }
 
 const ImagePreview: React.FC<{ imageUrl: string | null; alt: string }> = ({ imageUrl, alt }) => {
     if (!imageUrl) {
         return (
-            <div className="w-full h-40 bg-gray-200 rounded-lg flex items-center justify-center text-gray-400">
+            <div className="w-full h-40 bg-gray-200 rounded-sm flex items-center justify-center text-gray-400">
                 <FiPackage size={40} />
             </div>
         );
@@ -27,7 +28,7 @@ const ImagePreview: React.FC<{ imageUrl: string | null; alt: string }> = ({ imag
         <img
             src={imageUrl}
             alt={alt}
-            className="w-full h-40 object-cover rounded-lg border border-gray-300"
+            className="w-full h-40 object-cover rounded-sm border border-gray-300"
         />
     );
 };
@@ -41,7 +42,7 @@ const UNIT_OPTIONS = [
     { value: 'ton', label: 'Ton (1000)' },
 ];
 
-export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, onClose, onSaveSuccess }) => {
+export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, onClose, onSaveSuccess, isCatalogue = false }) => {
     const cameraInputRef = useRef<HTMLInputElement>(null);
     const dbOperations = useDatabase();
     const [formData, setFormData] = useState<Partial<Item>>({});
@@ -110,6 +111,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                         description: liveData.description || '',
                         unit: liveData.unit || '', // ADDED
                         packetSize: (liveData as any).packetSize ?? undefined,
+                        moq: (liveData as any).moq ?? 1,
                     });
 
                     setImagePreview(liveData.imageUrl || null);
@@ -146,7 +148,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
         const checked = (e.target as HTMLInputElement).checked;
 
         // Added 'salesPrice' to numeric fields
-        const isNumericField = ['mrp', 'purchasePrice', 'stock', 'tax', 'discount', 'salesPrice', 'packetSize'].includes(name);
+        const isNumericField = ['mrp', 'purchasePrice', 'stock', 'tax', 'discount', 'salesPrice', 'packetSize', 'moq'].includes(name);
 
         setFormData(prev => ({
             ...prev,
@@ -258,7 +260,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 description: String(formData.description || ''),
                 unit: String(formData.unit || ''),
                 unitMultiplier: currentMultiplier,
-                // Pass null to Firebase if not a packet, it safely clears the field
+                moq: isCatalogue ? Number(formData.moq || 1) : undefined,
                 packetSize: formData.unit === 'pkt' ? parseInt(String(formData.packetSize), 10) : null,
             };
 
@@ -367,7 +369,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                     ref={firstInputRef}
                                     type="text" id="edit-name" name="name"
                                     value={formData.name || ''} onChange={handleChange}
-                                    className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                     disabled={isSaving}
                                 />
                             </div>
@@ -376,60 +378,71 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                             {/* --- Pricing Row --- */}
 
                             <div className="grid grid-cols-2 gap-4">
+
+                                {/* --- MRP --- */}
                                 <div>
-                                    <label htmlFor="edit-mrp" className="text-sm font-medium leading-none mb-1 block">MRP (₹)</label>
+                                    <label className="text-sm font-medium mb-1 block">MRP (₹)</label>
                                     <input
-                                        type="number" id="edit-mrp" name="mrp" step="0.01"
+                                        type="number"
+                                        name="mrp"
                                         value={formData.mrp ?? ''}
                                         onChange={handleChange}
-                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                        className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                        disabled={isSaving}
+                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                     />
                                 </div>
-                                <div>
-                                    <label htmlFor="edit-itemGroupId" className="text-sm font-medium leading-none mb-1 block">Category</label>
-                                    {loadingGroups ? (
-                                        <p className="text-xs text-gray-500">Loading categories...</p>
-                                    ) : (
+
+                                {/* --- MOQ (Catalogue only) / Category (POS) --- */}
+                                {isCatalogue ? (
+                                    <div>
+                                        <label className="text-sm font-medium mb-1 block">MOQ</label>
+                                        <input
+                                            type="number"
+                                            name="moq"
+                                            value={formData.moq ?? ''}
+                                            onChange={handleChange}
+                                            className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        />
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <label className="text-sm font-medium mb-1 block">Category</label>
                                         <select
-                                            id="edit-itemGroupId"
                                             name="itemGroupId"
                                             value={formData.itemGroupId || ''}
                                             onChange={handleChange}
-                                            className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                            disabled={isSaving}
+                                            className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         >
-                                            <option value="" disabled>Select a category</option>
+                                            <option value="" disabled>Select category</option>
                                             {itemGroups.map((group) => (
                                                 <option key={group.id} value={group.id}>
                                                     {group.name}
                                                 </option>
                                             ))}
                                         </select>
-                                    )}
-                                </div>
+                                    </div>
+                                )}
+
+                                {/* --- Sales Price --- */}
                                 <div>
-                                    <label htmlFor="edit-salesPrice" className="text-sm font-medium leading-none mb-1 block">Sales Price (₹)</label>
+                                    <label className="text-sm font-medium mb-1 block">Sales Price (₹)</label>
                                     <input
-                                        type="number" id="edit-salesPrice" name="salesPrice" step="0.01"
+                                        type="number"
+                                        name="salesPrice"
                                         value={formData.salesPrice ?? ''}
                                         onChange={handleChange}
-                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                        className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                        disabled={isSaving}
-                                        placeholder="Optional"
+                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                     />
                                 </div>
+
+                                {/* --- Purchase Price --- */}
                                 <div>
-                                    <label htmlFor="edit-purchasePrice" className="text-sm font-medium leading-none mb-1 block">Purchase (₹)</label>
+                                    <label className="text-sm font-medium mb-1 block">Purchase (₹)</label>
                                     <input
-                                        type="number" id="edit-purchasePrice" name="purchasePrice" step="0.01"
+                                        type="number"
+                                        name="purchasePrice"
                                         value={formData.purchasePrice ?? ''}
                                         onChange={handleChange}
-                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                        className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                        disabled={isSaving}
+                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                     />
                                 </div>
 
@@ -444,7 +457,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         value={formData.discount ?? ''}
                                         onChange={handleChange}
                                         onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                        className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         disabled={isSaving}
                                     />
                                 </div>
@@ -455,7 +468,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         value={formData.purchasediscount ?? ''}
                                         onChange={handleChange}
                                         onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                        className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         disabled={isSaving}
                                     />
                                 </div>
@@ -470,7 +483,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         value={formData.tax ?? ''}
                                         onChange={handleChange}
                                         onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                        className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         disabled={isSaving}
                                     />
                                 </div>
@@ -481,11 +494,33 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         value={formData.hsnSac || ''}
                                         onChange={handleChange}
                                         onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                        className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         disabled={isSaving}
                                         placeholder="e.g. 123456"
                                     />
                                 </div>
+                            </div>
+                            <div>
+                                <label htmlFor="edit-itemGroupId" className="text-sm font-medium leading-none mb-1 block">Category</label>
+                                {loadingGroups ? (
+                                    <p className="text-xs text-gray-500">Loading categories...</p>
+                                ) : (
+                                    <select
+                                        id="edit-itemGroupId"
+                                        name="itemGroupId"
+                                        value={formData.itemGroupId || ''}
+                                        onChange={handleChange}
+                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        disabled={isSaving}
+                                    >
+                                        <option value="" disabled>Select a category</option>
+                                        {itemGroups.map((group) => (
+                                            <option key={group.id} value={group.id}>
+                                                {group.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                )}
                             </div>
                             <div>
                                 <label htmlFor="edit-unit" className="text-sm font-medium leading-none mb-1 block">Unit</label>
@@ -501,7 +536,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                                 setFormData(prev => ({ ...prev, packetSize: undefined }));
                                             }
                                         }}
-                                        className={`flex h-10 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50 ${formData.unit === 'pkt' ? 'w-1/2' : 'w-full'}`}
+                                        className={`flex h-10 rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50 ${formData.unit === 'pkt' ? 'w-1/2' : 'w-full'}`}
                                         disabled={isSaving}
                                     >
                                         {UNIT_OPTIONS.map(u => (
@@ -518,7 +553,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                             value={formData.packetSize ?? ''}
                                             onChange={handleChange}
                                             placeholder="Qty per pkt"
-                                            className="flex h-10 w-1/2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
+                                            className="flex h-10 w-1/2 rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
                                             disabled={isSaving}
                                             min="1"
                                         />
@@ -532,7 +567,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                     <input
                                         type="text" id="edit-barcode" name="barcode"
                                         value={formData.barcode || ''} onChange={handleChange}
-                                        className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         disabled={isSaving}
                                     />
                                 </div>
@@ -545,8 +580,8 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         step="1"
                                         value={formData.stock ?? ''}
                                         onChange={handleChange}
-                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}  
-                                        className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         disabled={isSaving}
                                     />
                                 </div>
@@ -556,7 +591,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                 <input
                                     type="text" id="edit-description" name="description"
                                     value={formData.description || ''} onChange={handleChange}
-                                    className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                     disabled={isSaving}
                                 />
                             </div>
@@ -584,7 +619,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                         <button
                             onClick={handleSave}
                             disabled={isSaving || isFetching}
-                            className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-sky-500 text-white hover:bg-gray-800 h-10 px-4 py-2 flex-1 gap-2 disabled:bg-gray-400"
+                            className="inline-flex items-center justify-center whitespace-nowrap rounded-sm text-sm font-medium ring-offset-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-sky-500 text-white hover:bg-gray-800 h-10 px-4 py-2 flex-1 gap-2 disabled:bg-gray-400"
                         >
                             {isSaving ? <Spinner /> : <FiSave size={16} />}
                             {isSaving ? (uploadProgress !== null ? 'Uploading...' : 'Saving...') : 'Save Changes'}
@@ -592,7 +627,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                         <button
                             onClick={onClose}
                             disabled={isSaving}
-                            className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-gray-300 bg-white hover:bg-gray-100 hover:text-gray-900 h-10 px-4 py-2 flex-1"
+                            className="inline-flex items-center justify-center whitespace-nowrap rounded-sm text-sm font-medium ring-offset-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-gray-300 bg-white hover:bg-gray-100 hover:text-gray-900 h-10 px-4 py-2 flex-1"
                         >
                             Cancel
                         </button>

@@ -208,8 +208,8 @@ const SearchBar: React.FC<SearchableItemInputProps> = ({
               ) : (
                 filteredItems.map((item, index) => {
                   const isSelected = index === activeIndex;
-                  const stock = item.stock || (item as any).Stock || 0;
-                  const stockColor = stock <= 0 ? 'text-red-600 bg-red-50' : stock < 10 ? 'text-orange-600 bg-orange-50' : 'text-green-700 bg-green-50';
+                  // const stock = item.stock || (item as any).Stock || 0;
+                  // const stockColor = stock <= 0 ? 'text-red-600 bg-red-50' : stock < 10 ? 'text-orange-600 bg-orange-50' : 'text-green-700 bg-green-50';
 
                   return (
                     <div
@@ -235,11 +235,11 @@ const SearchBar: React.FC<SearchableItemInputProps> = ({
                       {/* Right: Price & Stock Badge */}
                       <div className="flex flex-col items-end flex-shrink-0 gap-1">
                         <span className="text-sm font-bold text-gray-900">
-                          ₹{item.mrp.toFixed(2)}
+                          ₹{item.salesPrice || item.mrp}
                         </span>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${stockColor}`}>
+                        {/* <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${stockColor}`}>
                           {stock} in stock
-                        </span>
+                        </span> */}
                       </div>
                     </div>
                   );

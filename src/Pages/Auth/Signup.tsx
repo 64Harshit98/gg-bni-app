@@ -7,6 +7,8 @@ import { Stepper } from '../../Components/Stepper';
 import { Variant } from '../../enums';
 import { FiMail, FiLock, FiEye, FiEyeOff, FiPhone, FiUser } from 'react-icons/fi';
 import { saveLeadProgress } from '../../lib/Lead';
+import bgMain from '../../assets/bg-main.png';
+import sellarHeading from '../../assets/sellar-logo-heading.png';
 
 const LOCAL_STORAGE_KEY = 'sellar_onboarding_data';
 
@@ -99,75 +101,168 @@ const SignUpPage: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-gray-200">
-      <div className="flex-shrink-0 bg-gray-200 pt-4 pb-2 px-4 shadow-sm z-40 flex justify-center">
-        <div className="w-full max-w-xs">
-          <Stepper totalSteps={2} currentStep={1} onStepClick={() => { }} />
-        </div>
+    <div className="flex h-screen overflow-hidden bg-gray-100">
+  {/* Left side like Figma */}
+  <div className="hidden lg:block w-1/2 relative">
+    <img
+      src={bgMain}
+      alt="Registration visual"
+      className="h-full w-full object-cover"
+    />
+    <div className="absolute inset-0 flex items-center justify-center">
+      <img
+        src={sellarHeading}
+        alt="Sellar Heading"
+        className="w-48 h-auto"
+      />
+    </div>
+  </div>
+
+  {/* Right side keeps your original structure scale */}
+  <div className="flex flex-col h-screen overflow-hidden w-full lg:w-1/2 bg-gray-100">
+    <div className="flex-shrink-0 bg-gray-100 pt-4 pb-2 px-4 shadow-sm z-40 flex justify-center">
+      <div className="w-full max-w-xs">
+        <Stepper totalSteps={2} currentStep={1} onStepClick={() => {}} />
+      </div>
+    </div>
+
+    <div className="flex-grow px-4 pb-4 overflow-hidden flex flex-col justify-start">
+      <div className="flex justify-between items-end mb-6 mt-4">
+        <h1 className="text-4xl font-bold">Create Account</h1>
+        <button
+          type="button"
+          onClick={handleClearData}
+          className="text-sm font-medium text-red-500 hover:text-red-700 transition-colors bg-red-50 px-3 py-1.5 rounded-sm border border-red-100 mb-1"
+        >
+          Clear Form
+        </button>
       </div>
 
-      <div className="flex-grow px-4 pb-32 overflow-y-auto scrollbar-hide">
-        <div className="flex justify-between items-end mb-6 mt-4">
-          <h1 className="text-4xl font-bold">Create Account</h1>
-          <button
-            type="button"
-            onClick={handleClearData}
-            className="text-sm font-medium text-red-500 hover:text-red-700 transition-colors bg-red-50 px-3 py-1.5 rounded-md border border-red-100 mb-1"
-          >
-            Clear Form
-          </button>
-        </div>
-
-        <div className='bg-gray-100 p-4 rounded-lg shadow-sm border border-gray-200 space-y-2 pt-8 pb-8'>
-          <form onSubmit={handleNext} className="flex flex-col space-y-6">
-            <div className="relative">
-              <FiUser className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-              <FloatingLabelInput id="fullName" type="text" label="Full Name" value={fullName} onChange={(e) => setFullName(e.target.value)} required className="pl-10" />
+      <div className="bg-gray-100 p-7 pb-7 pt-7 rounded-sm space-y-2 pt-6 pb-6 w-[90%] mx-auto">
+        <form onSubmit={handleNext} className="flex flex-col space-y-5">
+          <div className="relative [&_label]:!left-[3rem]">
+            <div style={{ position: 'relative' }}>
+              <FiUser className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={16} />
+              <FloatingLabelInput
+                id="fullName"
+                type="text"
+                label="Full Name"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                required
+                className="pl-12 py-3 bg-gray-100
+                 border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)]"
+                style={{ '--label-left': '3rem' } as React.CSSProperties}
+              />
             </div>
+          </div>
 
-            <div className="relative">
-              <FiPhone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-              <FloatingLabelInput id="phoneNumber" type="tel" label="Phone Number" value={phoneNumber} onChange={(e) => { const val = e.target.value.replace(/\D/g, ''); if (val.length <= 10) setPhoneNumber(val); }} required className="pl-10" />
+          <div className="relative [&_label]:!left-[3rem]">
+            <div style={{ position: 'relative' }}>
+              <FiPhone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
+              <FloatingLabelInput
+                id="phoneNumber"
+                type="tel"
+                label="Phone Number"
+                value={phoneNumber}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, "");
+                  if (val.length <= 10) setPhoneNumber(val);
+                }}
+                required
+                className="pl-12 py-3 bg-gray-100 border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)]"
+                style={{ '--label-left': '3rem' } as React.CSSProperties}
+              />
             </div>
+          </div>
 
-            <div className="relative">
-              <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-              <FloatingLabelInput id="email" type="email" label="Email Address" value={email} onChange={(e) => setEmail(e.target.value)} required className="pl-10" />
+          <div className="relative [&_label]:!left-[3rem]">
+            <div style={{ position: 'relative' }}>
+              <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
+              <FloatingLabelInput
+                id="email"
+                type="email"
+                label="Email Address"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="pl-12 py-3 bg-gray-100 border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)]"
+                style={{ '--label-left': '3rem' } as React.CSSProperties}
+              />
             </div>
+          </div>
 
-            <div className="relative">
-              <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-              <FloatingLabelInput id="password" type={showPassword ? 'text' : 'password'} label="Create a Password" value={password} onChange={(e) => setPassword(e.target.value)} required className="pl-10 pr-10" />
-              <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+          <div className="relative [&_label]:!left-[3rem]">
+            <div style={{ position: 'relative' }}>
+              <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={16} />
+              <FloatingLabelInput
+                id="password"
+                type={showPassword ? "text" : "password"}
+                label="Create a Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="pl-12 py-3 pr-10 bg-gray-100 border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)] w-full"
+                style={{ '--label-left': '3rem' } as React.CSSProperties}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
                 {showPassword ? <FiEye size={20} /> : <FiEyeOff size={20} />}
               </button>
             </div>
+          </div>
 
-            <div className="relative">
-              <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-              <FloatingLabelInput id="confirmPassword" type={showConfirmPassword ? 'text' : 'password'} label="Confirm Password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required className="pl-10 pr-10" />
-              <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+          <div className="relative [&_label]:!left-[3rem]">
+            <div style={{ position: 'relative' }}>
+              <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={16} />
+              <FloatingLabelInput
+                id="confirmPassword"
+                type={showConfirmPassword ? "text" : "password"}
+                label="Confirm Password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                className="pl-12 py-3 pr-10 bg-gray-100 border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)] w-full"
+                style={{ '--label-left': '3rem' } as React.CSSProperties}
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
                 {showConfirmPassword ? <FiEye size={20} /> : <FiEyeOff size={20} />}
               </button>
             </div>
+          </div>
 
-            {error && <p className="text-red-500 text-sm text-center bg-red-50 p-2 rounded">{error}</p>}
-          </form>
-        </div>
-      </div>
-
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 z-50 shadow-lg">
-        <div className="max-w-md mx-auto space-y-3">
-          <CustomButton type="submit" variant={Variant.Filled} onClick={handleNext} className="w-full">
-            Next
-          </CustomButton>
-          <p className="text-center text-sm text-gray-600">
-            Already have an account?{' '}
-            <Link to={ROUTES.LANDING} className="font-medium text-blue-600 hover:underline">Log In</Link>
-          </p>
-        </div>
+          {error && <p className="text-red-500 text-sm text-center bg-red-50 p-2 rounded-sm">{error}</p>}
+        </form>
       </div>
     </div>
+
+    <div className="fixed lg:absolute bottom-0 left-0 lg:left-auto right-0 lg:w-1/2 p-4 h-[110px] bg-gray-100 border-t border-gray-200 z-50 shadow-lg">
+      <div className="max-w-md mx-auto space-y-3">
+        <CustomButton
+          type="submit"
+          variant={Variant.Filled}
+          onClick={handleNext}
+          className="w-full !bg-[#141212] hover:!bg-[#2a2626] !text-white"
+        >
+          Next
+        </CustomButton>
+        <p className="text-center text-sm text-gray-600">
+          Already have an account?{" "}
+          <Link to={ROUTES.LANDING} className="font-medium text-[#2B10F2] hover:underline">
+            Log In
+          </Link>
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
   );
 };
 

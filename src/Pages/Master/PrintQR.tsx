@@ -292,93 +292,177 @@ const QRCodeGeneratorPage: React.FC = () => {
         if (isLoading) return <p className="text-center text-gray-500">Loading items...</p>;
 
         return (
-            <div className="flex flex-col gap-4">
-                <div className="relative">
-                    <SearchableItemInput
-                        label=""
-                        placeholder="Search to add items to the print list..."
-                        items={availableItemsForSearch}
-                        onItemSelected={handleAddItemToQueue}
-                    />
-                </div>
+            <div className="flex flex-col gap-5 bg-white/80 p-4 rounded-sm border border-gray-100 shadow-sm">
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Preview Section */}
-                    <div className="bg-gray-50 rounded-lg p-4 self-start">
-                        <button
-                            onClick={() => setIsPreviewOpen(!isPreviewOpen)}
-                            className="w-full flex justify-between items-center text-lg font-semibold text-gray-700"
-                        >
-                            <span>Label Preview</span>
-                            <span className={`transform transition-transform duration-200 ${isPreviewOpen ? 'rotate-180' : 'rotate-0'}`}>▼</span>
-                        </button>
+  {/* Search */}
+  <div className="relative">
+    <SearchableItemInput
+      label=""
+      placeholder="Search to add items to the print list..."
+      items={availableItemsForSearch}
+      onItemSelected={handleAddItemToQueue}
+    />
+  </div>
 
-                        {isPreviewOpen && (
-                            <div className="flex flex-col items-center justify-center mt-4">
-                                {itemForPreview ? (
-                                    <LabelPreview item={itemForPreview} companyName={companyName} />
-                                ) : (
-                                    <div className="text-gray-500 py-10">Select an item to see a preview.</div>
-                                )}
-                            </div>
-                        )}
-                    </div>
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+    {/* Preview Section */}
+    <div className="bg-gray-50 rounded-sm p-3 self-start border border-gray-100">
+      <button
+        onClick={() => setIsPreviewOpen(!isPreviewOpen)}
+        className="w-full flex justify-between items-center text-sm font-medium text-gray-800"
+      >
+        <span>Label Preview</span>
+        <span
+          className={`text-xs text-gray-500 transition-transform duration-200 ${
+            isPreviewOpen ? "rotate-180" : "rotate-0"
+          }`}
+        >
+          ▼
+        </span>
+      </button>
 
-                    {/* Queue List */}
-                    <div className="flex flex-col gap-3">
-                        {printQueue.length > 0 && <h3 className="text-lg font-semibold text-gray-700">Cart</h3>}
-                        {printQueue.length === 0 && (<p className="text-center text-gray-500 py-8">Your cart is empty</p>)}
-
-                        {printQueue.map((item) => (
-                            <div
-                                key={item.queueId}
-                                onClick={() => setItemForPreview(item)}
-                                className={`p-3 border rounded-lg bg-white shadow-sm flex flex-col gap-3 cursor-pointer transition-all ${itemForPreview?.queueId === item.queueId ? 'border-blue-500 ring-2 ring-blue-500' : 'border-gray-200'}`}
-                            >
-                                <div className="flex justify-between items-start">
-                                    <div className="flex flex-col text-sm text-gray-800 overflow-hidden pr-2">
-                                        <span className="font-semibold text-base">{item.name}</span>
-                                        <span className="text-xs text-gray-500">Barcode: {item.barcode}</span>
-                                    </div>
-                                    <button onClick={(e) => { e.stopPropagation(); handleRemoveItemFromQueue(item.queueId); }} className="text-gray-400 hover:text-red-600 p-1 flex-shrink-0" aria-label={`Remove ${item.name}`}>
-                                        <IconClose width={18} height={18} />
-                                    </button>
-                                </div>
-                                <div className="flex justify-between items-center">
-                                    <span className="text-gray-600 font-medium">₹{item.mrp}</span>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-sm text-gray-500">Qty</span>
-                                        <div className="flex items-center border border-gray-300 rounded-md">
-                                            <button onClick={(e) => { e.stopPropagation(); handleQuantityChange(item.queueId, item.quantityToPrint - 1); }} className="px-3 py-1 text-xl font-bold text-gray-600 hover:bg-gray-100 rounded-l-md">-</button>
-                                            <Input type="number" value={item.quantityToPrint} onClick={(e) => e.stopPropagation()} onChange={(e) => { e.stopPropagation(); handleQuantityChange(item.queueId, Number(e.target.value)); }} className="w-16 h-8 text-center border-l border-r rounded-none p-0 focus:ring-0" />
-                                            <button onClick={(e) => { e.stopPropagation(); handleQuantityChange(item.queueId, item.quantityToPrint + 1); }} className="px-3 py-1 text-xl font-bold text-gray-600 hover:bg-gray-100 rounded-r-md">+</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                {printQueue.length > 0 && (
-                    <div className="border-t pt-4 mt-4">
-                        <CustomButton onClick={handlePrint} disabled={isPrintButtonDisabled} variant={Variant.Filled} className="w-full py-3">
-                            {isPrinting ? 'Generating Labels...' : `Print Labels for ${printQueue.length} Items`}
-                        </CustomButton>
-                    </div>
-                )}
+      {isPreviewOpen && (
+        <div className="mt-3 rounded-sm border border-dashed border-gray-200 bg-white flex items-center justify-center px-4 py-6">
+          {itemForPreview ? (
+            <LabelPreview item={itemForPreview} companyName={companyName} />
+          ) : (
+            <div className="text-xs text-gray-400 text-center">
+              Select an item from the cart to preview its label.
             </div>
+          )}
+        </div>
+      )}
+    </div>
+
+    {/* Queue List */}
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        {printQueue.length > 0 ? (
+          <>
+            <h3 className="text-sm font-medium text-gray-800">Cart</h3>
+            <span className="text-xs text-gray-500">
+              {printQueue.length} item{printQueue.length > 1 ? "s" : ""} selected
+            </span>
+          </>
+        ) : (
+          <h3 className="text-sm font-medium text-gray-400">Cart</h3>
+        )}
+      </div>
+
+      {printQueue.length === 0 && (
+        <div className="flex flex-col items-center justify-center gap-2 rounded-sm border border-dashed border-gray-200 bg-gray-50 py-8">
+          <p className="text-xs text-gray-500">Your cart is empty.</p>
+          <p className="text-[11px] text-gray-400">Search above to add items to the print list.</p>
+        </div>
+      )}
+
+      {printQueue.map((item) => (
+        <div
+          key={item.queueId}
+          onClick={() => setItemForPreview(item)}
+          className={`p-2 border rounded-sm bg-white flex items-center justify-between gap-2 cursor-pointer transition shadow-sm hover:shadow-md ${
+            itemForPreview?.queueId === item.queueId
+              ? "border-blue-400 ring-1 ring-blue-100"
+              : "border-gray-200"
+          }`}
+        >
+          <div className="flex items-center gap-2 flex-1 overflow-hidden">
+            <div className="flex flex-col min-w-0">
+              <span className="font-medium text-[12px] truncate">{item.name}</span>
+              <span className="text-[10px] text-gray-500 truncate">Barcode: {item.barcode}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] font-semibold text-gray-800">₹{item.mrp}</span>
+            <div className="flex items-center gap-1">
+              <span className="text-[11px] text-gray-500">Qty</span>
+              <div className="flex items-center border border-gray-200 rounded-sm overflow-hidden bg-gray-50 h-7">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleQuantityChange(item.queueId, item.quantityToPrint - 1);
+                  }}
+                  className="px-2 py-0.5 text-xs font-medium text-gray-600 hover:bg-gray-100"
+                >
+                  -
+                </button>
+                <Input
+                  type="number"
+                  value={item.quantityToPrint}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    handleQuantityChange(item.queueId, Number(e.target.value));
+                  }}
+                  className="w-12 h-7 text-center text-xs border-x border-gray-200 rounded-sm p-0 focus:ring-0 bg-white"
+                />
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleQuantityChange(item.queueId, item.quantityToPrint + 1);
+                  }}
+                  className="px-2 py-0.5 text-xs font-medium text-gray-600 hover:bg-gray-100"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRemoveItemFromQueue(item.queueId);
+              }}
+              className="text-gray-400 hover:text-red-500 p-1"
+            >
+              <IconClose width={14} height={14} />
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+
+  {printQueue.length > 0 && (
+    <div className="border-t border-gray-100 pt-4 mt-4 flex flex-col items-center gap-3">
+      <p className="text-[11px] text-gray-500">
+        Ready to print QR labels for{" "}
+        <span className="font-medium text-gray-700">
+          {printQueue.length} item{printQueue.length > 1 ? "s" : ""}
+        </span>
+        .
+      </p>
+
+      <div className="w-full flex justify-center">
+        <CustomButton
+          onClick={handlePrint}
+          disabled={isPrintButtonDisabled}
+          variant={Variant.Filled}
+          className="w-60 py-3 !rounded-sm !bg-gray-900 !text-white !text-sm !font-semibold hover:!bg-black"
+        >
+          {isPrinting ? "Generating..." : "Print labels"}
+        </CustomButton>
+      </div>
+    </div>
+  )}
+</div>
         );
     };
 
     return (
         <Card className="max-w-4xl mx-auto mb-16">
-            <CardHeader>
-                <button onClick={() => navigate(-1)}
-                    className="rounded-full w-8 bg-gray-200 p-2 text-gray-900 hover:bg-gray-300">
+            <CardHeader className="flex items-center justify-between">
+                <button 
+                    onClick={() => navigate(-1)}
+                    className="rounded-sm w-8 h-8 flex items-center justify-center bg-gray-200 text-gray-900 hover:bg-gray-300"
+                >
                     <IconClose width={18} height={20} />
                 </button>
-                <CardTitle className="text-2xl text-center font-bold text-gray-800">Item QR Code Generator</CardTitle>
+
+                <CardTitle className="text-lg font-bold text-gray-800 text-center flex-1">
+                    Item QR Code Generator
+                </CardTitle>
+
+                <div className="w-8" /> 
             </CardHeader>
             <CardContent>{renderContent()}</CardContent>
         </Card>

@@ -324,7 +324,7 @@ const PurchaseReport: React.FC = () => {
 
         <div className="flex justify-center mt-2">
           <button onClick={handleApplyFilters}
-            className="w-full md:w-fit mt-2 px-10 py-2 bg-blue-600 text-white text-lg font-semibold rounded-lg hover:bg-blue-700" >
+            className="w-full md:w-fit mt-2 px-10 py-2 bg-blue-600 text-white text-lg font-semibold rounded-sm hover:bg-blue-700" >
             Apply
           </button>
         </div>
@@ -359,12 +359,12 @@ const PurchaseReport: React.FC = () => {
       </div>
 
       {/* REPORT DETAILS */}
-      <div className="bg-white p-4 rounded-lg shadow-md flex flex-col md:flex-row md:justify-between md:items-center gap-3">
+      <div className="bg-white p-3 rounded-sm shadow-md mb-2 flex flex-col md:flex-row md:justify-between md:items-center gap-1">
         <h2 className="text-lg font-semibold text-gray-700 text-center md:text-left w-full md:w-auto">Report Details</h2>
-        <div className="flex justify-between w-full md:w-auto md:justify-end md:space-x-3 ">          
+        <div className="flex items-stretch gap-3 ">          
           <button
             onClick={() => setIsListVisible(!isListVisible)}
-            className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition"
+            className="flex-1 md:flex-none px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition"
           >
             {isListVisible ? 'Hide List' : 'Show List'}
           </button>
@@ -380,7 +380,7 @@ const PurchaseReport: React.FC = () => {
                 setIsDownloadModalOpen(true);
               }
             }}
-            className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 transition"
+            className="flex-1 md:flex-none px-4 py-0.5 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 transition"
           >
             Download Report
           </button>

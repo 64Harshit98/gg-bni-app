@@ -9,6 +9,8 @@ import { Variant, PLANS, ROLES } from '../../enums';
 import { FiTag, FiHash, FiMapPin, FiMap, FiAtSign, FiHome, FiCheckCircle } from 'react-icons/fi';
 import { Building2Icon, PinIcon, Scale } from 'lucide-react';
 import { Spinner } from '../../constants/Spinner';
+import bgMain from '../../assets/bg-main.png';
+import sellarHeading from '../../assets/sellar-logo-heading.png';
 
 import { registerUserWithDetails } from '../../lib/AuthOperations';
 import { saveLeadProgress } from '../../lib/Lead';
@@ -230,67 +232,224 @@ const BusinessInfoPage: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-gray-200">
-      <div className="flex-shrink-0 bg-gray-200 pt-4 pb-2 px-4 shadow-sm z-40 flex justify-center">
-        <div className="w-full max-w-xs">
-          <Stepper totalSteps={2} currentStep={2} onStepClick={handleStepClick} />
-        </div>
-      </div>
+    <div className="flex h-screen overflow-hidden bg-gray-200">
+  {/* Left visual (Figma style) */}
+  <div className="hidden lg:block w-1/2 relative overflow-hidden bg-gray-200">
+    <img
+      src={bgMain}
+      alt="Registration visual"
+      className="h-full w-full object-cover"
+    />
+    <div className="absolute inset-0 flex items-center justify-center">
+      <img
+        src={sellarHeading}
+        alt="Sellar Heading"
+        className="w-48 h-auto"
+      />
+    </div>
+  </div>
 
-      <div className="flex-grow px-4 pb-32 overflow-y-auto scrollbar-hide">
-        <div className="flex justify-between items-end mb-4 mt-4">
-          <h1 className="text-4xl font-bold">Business Details</h1>
-        </div>
-
-        <div className='bg-gray-100 p-4 rounded-lg shadow-sm border border-gray-200 space-y-2 pt-8 pb-8'>
-          <form onSubmit={handleFinishSetup} className="flex flex-col space-y-5">
-            <FloatingLabelInput id="businessName" label="Business Name" value={businessName} onChange={(e) => setBusinessName(e.target.value)} icon={<FiAtSign size={20} />} required />
-
-            <FloatingLabelSelect id="businessType" label="Business Type" value={businessType} onChange={(e) => setBusinessType(e.target.value)} options={businessTypeOptions} required icon={<FiHome size={20} />} />
-            {businessType === 'Other' && (
-              <FloatingLabelInput id="customBusinessType" label="Specify Business Type" value={customBusinessType} onChange={(e) => setCustomBusinessType(e.target.value)} required placeholder="e.g. Consultancy" />
-            )}
-
-            <FloatingLabelSelect id="businessCategory" label="Category" value={businessCategory} onChange={(e) => setBusinessCategory(e.target.value)} options={businessCategoryOptions} required icon={<FiTag size={20} />} />
-            {businessCategory === 'Other' && (
-              <FloatingLabelInput id="customBusinessCategory" label="Specify Category" value={customBusinessCategory} onChange={(e) => setCustomBusinessCategory(e.target.value)} required placeholder="e.g. Toys" />
-            )}
-
-            <FloatingLabelSelect id="gstType" label="GST Registration Type" value={gstType} onChange={(e) => setGstType(e.target.value)} options={gstTypeOptions} required icon={<Scale size={20} />} />
-            {(gstType === 'Regular' || gstType === 'Composite') && (
-              <FloatingLabelInput id="gstin" label="GSTIN Number" value={gstin} onChange={(e) => { if (e.target.value.length <= 15) setGstin(e.target.value.toUpperCase()); }} required className="pl-10" icon={<FiHash size={20} />} />
-            )}
-
-            <FloatingLabelInput id="streetAddress" label="Street Address / Area" value={streetAddress} onChange={(e) => setStreetAddress(e.target.value)} required className="pl-10" icon={<Building2Icon size={20} />} />
-
-            <div className="grid grid-cols-2 gap-4">
-              <FloatingLabelInput id="city" label="City" value={city} onChange={(e) => setCity(e.target.value)} icon={<FiMapPin size={20} />} required />
-              <FloatingLabelInput id="postalCode" label="Pincode" type="number" value={postalCode} onChange={(e) => { if (e.target.value.length <= 6) setPostalCode(e.target.value); }} icon={<PinIcon size={20} />} required />
-            </div>
-
-            <FloatingLabelSelect id="state" label="State" value={state} onChange={(e) => setState(e.target.value)} options={indianStates} required icon={<FiMap size={20} />} />
-
-            {error && <p className="text-red-500 text-sm text-center bg-red-50 p-2 rounded animate-pulse">{error}</p>}
-          </form>
-        </div>
-      </div>
-
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-100 border-t border-gray-200 z-50 shadow-lg">
-        <div className="max-w-md mx-auto space-y-4">
-          <CustomButton onClick={handleFinishSetup} variant={Variant.Filled} disabled={isSubmitting} className="h-12 text-lg w-full">
-            {isSubmitting ? (
-              <div className="flex items-center justify-center gap-2">
-                <Spinner /><span>{statusMessage}</span>
-              </div>
-            ) : (
-              <div className="flex items-center justify-center gap-2">
-                <span>Complete Registration</span><FiCheckCircle />
-              </div>
-            )}
-          </CustomButton>
-        </div>
+  {/* Right content keeps your original sizing/font logic */}
+  <div className="flex flex-col h-screen overflow-hidden bg-gray-100 w-full lg:w-1/2">
+    <div className="flex-shrink-0 bg-gray-100 pt-4 pb-2 px-4 shadow-sm z-40 flex justify-center">
+      <div className="w-full max-w-xs">
+        <Stepper totalSteps={2} currentStep={2} onStepClick={handleStepClick} />
       </div>
     </div>
+
+    <div className="flex-grow px-4 pb-0 overflow-hidden">
+      <div className="flex justify-between items-end mb-3 mt-3">
+        <h1 className="text-4xl font-bold">Business Details</h1>
+      </div>
+      <div className="bg-gray-100 p-3 space-y-2 pt-4 pb-4 w-[100%] mx-auto">
+        <form onSubmit={handleFinishSetup} className="flex flex-col space-y-4">
+          <div className="flex flex-col space-y-4">
+          <div className="relative [&_label]:!left-[3rem]">
+            <FiAtSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+            <FloatingLabelInput
+              id="businessName"
+              label="Business Name"
+              value={businessName}
+              onChange={(e) => setBusinessName(e.target.value)}
+              required
+              className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="relative [&_label]:!left-[3rem]">
+              <FiHome className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+              <FloatingLabelSelect
+                id="businessType"
+                label="Business Type"
+                value={businessType}
+                onChange={(e) => setBusinessType(e.target.value)}
+                options={businessTypeOptions}
+                required
+                className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+              />
+            </div>
+
+            <div className="relative [&_label]:!left-[3rem]">
+              <FiTag className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+              <FloatingLabelSelect
+                id="businessCategory"
+                label="Category"
+                value={businessCategory}
+                onChange={(e) => setBusinessCategory(e.target.value)}
+                options={businessCategoryOptions}
+                required
+                className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+              />
+            </div>
+          </div>
+
+          {businessType === "Other" && (
+            <div className="relative [&_label]:!left-[3rem]">
+              <FiHome className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+            <FloatingLabelInput
+              id="customBusinessType"
+              label="Specify Business Type"
+              value={customBusinessType}
+              onChange={(e) => setCustomBusinessType(e.target.value)}
+              required
+              placeholder="e.g. Consultancy"
+              className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+            />
+            </div>
+          )}
+
+          {businessCategory === "Other" && (
+            <div className="relative [&_label]:!left-[3rem]">
+              <FiTag className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+            <FloatingLabelInput
+              id="customBusinessCategory"
+              label="Specify Category"
+              value={customBusinessCategory}
+              onChange={(e) => setCustomBusinessCategory(e.target.value)}
+              required
+              placeholder="e.g. Toys"
+              className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+            />
+            </div>
+          )}
+
+          <div className="relative [&_label]:!left-[3rem]">
+            <Scale className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+            <FloatingLabelSelect
+              id="gstType"
+              label="GST Registration Type"
+              value={gstType}
+              onChange={(e) => setGstType(e.target.value)}
+              options={gstTypeOptions}
+              required
+              className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+            />
+          </div>
+
+          {(gstType === "Regular" || gstType === "Composite") && (
+            <div className="relative [&_label]:!left-[3rem]">
+              <FiHash className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+              <FloatingLabelInput
+                id="gstin"
+                label="GSTIN Number"
+                value={gstin}
+                onChange={(e) => {
+                  if (e.target.value.length <= 15) setGstin(e.target.value.toUpperCase());
+                }}
+                required
+                className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+              />
+            </div>
+          )}
+
+          <div className="relative [&_label]:!left-[3rem]">
+            <Building2Icon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+            <FloatingLabelInput
+              id="streetAddress"
+              label="Street Address / Area"
+              value={streetAddress}
+              onChange={(e) => setStreetAddress(e.target.value)}
+              required
+              className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="relative [&_label]:!left-[3rem]">
+              <FiMapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+              <FloatingLabelInput
+                id="city"
+                label="City"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                required
+                className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+              />
+            </div>
+            <div className="relative [&_label]:!left-[3rem]">
+              <PinIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+              <FloatingLabelInput
+                id="postalCode"
+                label="Pincode"
+                type="number"
+                value={postalCode}
+                onChange={(e) => {
+                  if (e.target.value.length <= 6) setPostalCode(e.target.value);
+                }}
+                required
+                className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+              />
+            </div>
+          </div>
+
+          <div className="relative [&_label]:!left-[3rem]">
+            <FiMap className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+            <FloatingLabelSelect
+              id="state"
+              label="State"
+              value={state}
+              onChange={(e) => setState(e.target.value)}
+              options={indianStates}
+              required
+              className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+            />
+          </div>
+
+          </div>
+          {error && (
+            <p className="text-red-500 text-sm text-center bg-red-50 p-2 rounded-sm animate-pulse">
+              {error}
+            </p>
+          )}
+        </form>
+      </div>
+    </div>
+
+    <div className="w-full bg-gray-100 px-4 py-4 shadow-t-lg">
+      <div className="max-w-md mx-auto space-y-4">
+        <CustomButton
+          onClick={handleFinishSetup}
+          variant={Variant.Filled}
+          disabled={isSubmitting}
+          className="h-12 text-lg w-full !bg-[#141212] hover:!bg-[#2a2626] !text-[#FFFBFB]"
+        >
+          {isSubmitting ? (
+            <div className="flex items-center justify-center gap-2">
+              <Spinner />
+              <span>{statusMessage}</span>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center gap-2">
+              <span>Complete Registration</span>
+              <FiCheckCircle />
+            </div>
+          )}
+        </CustomButton>
+      </div>
+    </div>
+  </div>
+</div>
   );
 };
 

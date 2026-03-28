@@ -1,5 +1,5 @@
 import React, { useState } from 'react'; // Added useEffect
-import { Link, useNavigate, Navigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { ROUTES } from '../../constants/routes.constants';
 import { CustomButton } from '../../Components';
 import sellarLogo from '../../assets/sellar-logo-heading.png';
@@ -18,7 +18,7 @@ const LoginPage: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [showPassword, setShowPassword] = useState(false);
-    const navigate = useNavigate();
+    //const navigate = useNavigate();
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();

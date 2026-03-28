@@ -6,6 +6,7 @@ import { ROUTES } from '../constants/routes.constants';
 import { CatItems } from '../routes/CatalougeRoutes';
 import { useAuth } from '../context/auth-context';
 import sellarLogo from '../assets/sellar-logo-heading.png';
+import { Share2 } from "lucide-react";
 
 const CatalogueLayout = () => {
     const navigate = useNavigate();
@@ -25,6 +26,23 @@ const CatalogueLayout = () => {
             : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent'
         }`;
 
+    const handleShare = () => {
+        if (!currentUser?.companyId) return;
+
+        const url = `${window.location.origin}/catalogue/${currentUser.companyId}`;
+
+        if (navigator.share) {
+            navigator.share({
+                title: "My Catalogue",
+                text: "Check out my catalogue",
+                url,
+            });
+        } else {
+            navigator.clipboard.writeText(url);
+            alert("Link copied!");
+        }
+    };
+
     const MobileActions = () => (
         <>
             <Button
@@ -32,7 +50,7 @@ const CatalogueLayout = () => {
                 className="w-full mb-2 rounded bg-white"
                 onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ORDER}`)} // <-- Fixed
             >
-                Edit Shop
+                Edit Catalog
             </Button>
 
             <Button
@@ -43,7 +61,15 @@ const CatalogueLayout = () => {
                 Add Item
             </Button>
 
-            {currentUser && (
+            <Button
+                variant="outline"
+                className="w-full mb-2 rounded bg-white"
+                onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`)}
+            >
+                Orders Return
+            </Button>
+
+            {/* {currentUser && (
                 <Button
                     variant="outline"
                     className="w-full mb-2 rounded bg-white"
@@ -51,7 +77,7 @@ const CatalogueLayout = () => {
                 >
                     Catalogue
                 </Button>
-            )}
+            )} */}
 
             {/* <Button
                 variant="outline"
@@ -93,14 +119,14 @@ const CatalogueLayout = () => {
                         </p>
                     </div>
 
-                    <NavLink
-                        to={`${ROUTES.CHOME}/${ROUTES.ORDER}`}
-                        end
-                        className={({ isActive }) => sidebarLinkClass(isActive)}
-                    >
-                        <span className="text-lg">+</span>
-                        <span>Shop</span>
-                    </NavLink>
+                        <NavLink
+                            to={`${ROUTES.CHOME}/${ROUTES.ORDER}`}
+                            end
+                            className={({ isActive }) => sidebarLinkClass(isActive)}
+                        >
+                            <span className="text-lg">+</span>
+                            <span>Edit Catalog</span>
+                        </NavLink>
 
                     <NavLink
                         to={`${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`}
@@ -111,18 +137,18 @@ const CatalogueLayout = () => {
                         <span>Add Item</span>
                     </NavLink>
 
-                    {currentUser && (
-                        <NavLink
-                            to={`/catalogue/${currentUser.companyId}`}
-                            end
-                            className={({ isActive }) =>
-                                `w-full text-left ${sidebarLinkClass(isActive)}`
-                            }
-                        >
-                            <span className="text-lg">+</span>
-                            <span>Catalogue</span>
-                        </NavLink>
-                    )}
+                        {/* {currentUser && (
+                            <NavLink
+                                to={`/catalogue/${currentUser.companyId}`}
+                                end
+                                className={({ isActive }) =>
+                                    `w-full text-left ${sidebarLinkClass(isActive)}`
+                                }
+                            >
+                                <span className="text-lg">+</span>
+                                <span>Catalogue</span>
+                            </NavLink>
+                        )} */}
 
                     {/* <NavLink
                             to={`${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`}
@@ -141,6 +167,15 @@ const CatalogueLayout = () => {
                         <span>Orders Return</span>
                     </NavLink>
 
+                        <button
+                            onClick={handleShare}
+                            className={sidebarLinkClass(false)} // same design, no active
+                        >
+                            <Share2 size={18} />
+                            <span>Share</span>
+                        </button>
+
+                    </ShowWrapper>
                 </nav>
             </aside>
 
@@ -153,7 +188,13 @@ const CatalogueLayout = () => {
                 </div>
 
                 {/* FLOATING BUTTON (MOBILE) */}
-                <div className="md:hidden absolute bottom-20 right-4 z-50">
+                <div className="md:hidden absolute bottom-36 right-4 z-50">
+                    <button
+                        onClick={handleShare}
+                        className="bg-white border border-gray-300 shadow-md rounded-full p-3"
+                    >
+                        <Share2 size={20} />
+                    </button>
                     <FloatingButton>
                         <MobileActions />
                     </FloatingButton>

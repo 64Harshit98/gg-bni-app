@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getItemGroupsByCompany, getItemsByCompany } from '../lib/ItemsFirebase';
 import type { ItemGroup, Item } from '../constants/models';
@@ -46,6 +46,7 @@ const SharedCataloguePage: React.FC = () => {
     const [socialLinks, setSocialLinks] = useState<any>({});
     const [allItems, setAllItems] = useState<Item[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
+    const [cart, setCart] = useState<{ item: Item; quantity: number }[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [sortOrder, setSortOrder] = useState<'A-Z' | 'Z-A'>('A-Z');
@@ -53,7 +54,8 @@ const SharedCataloguePage: React.FC = () => {
     const liveItems = useMemo(() => {
         return allItems.filter(item => item.isListed);
     }, [allItems]);
-
+    const cartIconRef = useRef<HTMLButtonElement | null>(null);
+    const cartCount = useMemo(() => cart.reduce((acc, curr) => acc + curr.quantity, 0), [cart]);
     useEffect(() => {
         if (!effectiveCompanyId) {
             setError("Invalid catalogue link.");
@@ -111,6 +113,28 @@ const SharedCataloguePage: React.FC = () => {
         );
     };
 
+    useEffect(() => {
+        const savedCart = localStorage.getItem('temp_cart');
+        if (savedCart) {
+            setCart(JSON.parse(savedCart));
+        }
+    }, []);
+
+    useEffect(() => {
+        const handleStorage = () => {
+            const savedCart = localStorage.getItem('temp_cart');
+            if (savedCart) {
+                setCart(JSON.parse(savedCart));
+            }
+        };
+
+        window.addEventListener('storage', handleStorage);
+
+        return () => {
+            window.removeEventListener('storage', handleStorage);
+        };
+    }, []);
+
     const getGroupImages = (groupId: string): string[] => {
         const imgs = allItems
             .filter(item => item.itemGroupId === groupId)
@@ -121,25 +145,34 @@ const SharedCataloguePage: React.FC = () => {
     };
 
     const filteredItems = useMemo(() => {
-        if (!searchQuery.trim()) return itemGroups;
+        if (!searchQuery.trim()) {
+            return itemGroups.filter(group => {
+                if (!group.id) return false;
+
+                const itemCount = allItems.filter(
+                    item => item.itemGroupId === group.id && item.isListed
+                ).length;
+
+                return itemCount > 0;
+            });
+        }
 
         const lowerQuery = searchQuery.toLowerCase().trim();
-
-        const itemsGrouped = allItems.reduce<Record<string, Item[]>>((acc, item: Item) => {
-            if (!item.itemGroupId) return acc;
-            if (!acc[item.itemGroupId]) acc[item.itemGroupId] = [];
-            acc[item.itemGroupId].push(item);
-            return acc;
-        }, {});
 
         return itemGroups
             .filter((group: ItemGroup) => {
                 if (!group.id) return false;
 
+                const groupItems = allItems.filter(
+                    (item) => item.itemGroupId === group.id && item.isListed
+                );
+
+                if (groupItems.length === 0) return false;
+
                 const catalogueMatch = fuzzyMatch(group.name, lowerQuery);
 
                 const itemMatch =
-                    itemsGrouped[group.id]?.some((item: Item) =>
+                    groupItems.some((item: Item) =>
                         fuzzyMatch(item.name, lowerQuery)
                     ) ?? false;
 
@@ -194,8 +227,13 @@ const SharedCataloguePage: React.FC = () => {
                         }}
                         className="flex items-center justify-center gap-2 bg-[#00A3E1] text-white py-2 px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative cursor-pointer"
                     >
-                        <ShoppingCart size={14} />
-                        <span>Cart</span>
+                        <ShoppingCart size={16} />
+                        <span className="hidden md:inline">Cart</span>
+                        {cartCount > 0 && (
+                            <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[8px] w-4 h-4 rounded-sm flex items-center justify-center border-2 border-white">
+                                {cartCount}
+                            </span>
+                        )}
                     </button>
                 </div>
             </header>
@@ -257,7 +295,9 @@ const SharedCataloguePage: React.FC = () => {
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-0.5">
                     {filteredItems.map(group => {
-                        const itemCount = allItems.filter(item => item.itemGroupId === group.id).length;
+                        const itemCount = allItems.filter(
+                            item => item.itemGroupId === group.id && item.isListed
+                        ).length;
                         const collageImages = getGroupImages(group.id!);
                         return (
                             <div
@@ -296,7 +336,7 @@ const SharedCataloguePage: React.FC = () => {
                                 </div>
 
                                 <div className="p-3 flex flex-col flex-1">
-                                    <h3 className="text-[10px] font-bold text-[#1A3B5D] mb-1 truncate leading-tight">
+                                    <h3 className="text-[14px] font-bold text-[#1A3B5D] mb-1 truncate leading-tight">
                                         {group.name}
                                     </h3>
 
@@ -311,7 +351,7 @@ const SharedCataloguePage: React.FC = () => {
 
                                     <div className="mt-2 flex items-center justify-center bg-[#00A3E1] px-2 py-1.5 rounded-sm">
                                         <div className="flex items-center">
-                                            <span className="text-[8px] font-bold uppercase text-white tracking-wider">View Products</span>
+                                            <span className="text-[12px] font-bold uppercase text-white tracking-wider">View Products</span>
                                         </div>
                                     </div>
                                 </div>

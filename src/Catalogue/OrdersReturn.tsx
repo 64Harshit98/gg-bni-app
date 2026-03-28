@@ -247,9 +247,9 @@ const OrdersReturnPage: React.FC = () => {
           if (!id) return null;
 
           const qty = Number(item.quantity) || 0;
-          const mrp = Number(item.mrp) || 0;
-          const unit = mrp;
-          const total = mrp * qty;
+          const price = Number(item.salesPrice ?? item.mrp) || 0;
+          const unit = price;
+          const total = price * qty;
 
 
           return {
@@ -257,6 +257,7 @@ const OrdersReturnPage: React.FC = () => {
             originalItemId: id,
             name: item.name ?? 'Unnamed Item',
             quantity: qty,
+            originalQuantity: qty,
             unitPrice: unit,
             amount: total,
             mrp: Number(item.mrp) || unit
@@ -287,7 +288,16 @@ const OrdersReturnPage: React.FC = () => {
   ) => {
     setter(prev => prev.map(item => {
       if (item.id === id) {
-        const updatedItem = { ...item, [field]: value };
+
+        let safeValue = value;
+
+        if (field === 'quantity') {
+          const num = Number(value) || 1;
+          const maxQty = (item as any).originalQuantity ?? item.quantity;
+          safeValue = Math.min(Math.max(1, num), maxQty);
+        }
+
+        const updatedItem = { ...item, [field]: safeValue };
 
         if (field === 'discount') {
           const discountValue = Number(value) || 0;
@@ -392,14 +402,15 @@ const OrdersReturnPage: React.FC = () => {
 
   const addExchangeItem = (itemToAdd: Item) => {
     const discount = itemToAdd.discount || 0;
-    let finalExchangePrice = itemToAdd.mrp * (1 - (discount / 100));
-
-    if (discount > 0) {
-      if (finalExchangePrice < 100) {
-        finalExchangePrice = Math.ceil(finalExchangePrice / 5) * 5;
-      } else {
-        finalExchangePrice = Math.ceil(finalExchangePrice / 10) * 10;
-      }
+    let finalPrice = 0;
+    if (itemToAdd.salesPrice) {
+      finalPrice = itemToAdd.salesPrice;
+    }
+    else {
+      const basePrice = itemToAdd.mrp;
+      finalPrice = discount > 0
+        ? basePrice * (1 - discount / 100)
+        : basePrice;
     }
 
     setExchangeItems(prev => [...prev, {
@@ -407,9 +418,10 @@ const OrdersReturnPage: React.FC = () => {
       originalItemId: itemToAdd.id!,
       name: itemToAdd.name,
       quantity: 1,
-      unitPrice: finalExchangePrice,
-      amount: finalExchangePrice,
       mrp: itemToAdd.mrp,
+      unitPrice: finalPrice,
+      amount: finalPrice,
+
       discount: discount,
     }]);
   };
@@ -429,6 +441,7 @@ const OrdersReturnPage: React.FC = () => {
       id: item.id,
       name: item.name,
       mrp: item.mrp,
+      salesPrice: item.unitPrice,
       quantity: item.quantity,
       note: '',
       tax: 0,
@@ -505,7 +518,7 @@ const OrdersReturnPage: React.FC = () => {
         const safeId = item.id;
         const qty = Number(item.quantity) || 1;
         const total = Number(item.finalPrice || item.amount || 0);
-        const unit = qty > 0 ? total / qty : 0;
+        const unit = Number(item.salesPrice) || (qty > 0 ? total / qty : 0);
 
         originalItemsMap.set(safeId, {
           ...item,
@@ -590,8 +603,8 @@ const OrdersReturnPage: React.FC = () => {
         const safeUnit =
           Number(item._effectiveUnitPrice) ||
           Number(item.unitPrice) ||
-          Number(item.mrp) ||
-          0;
+          Number(item.unitPrice) || Number(item.mrp)
+        0;
 
         const lineTotal = safeUnit * Number(item.quantity);
 
@@ -600,6 +613,7 @@ const OrdersReturnPage: React.FC = () => {
         return {
           ...clean,
           unitPrice: safeUnit,
+          salesPrice: safeUnit,
           finalPrice: lineTotal,
           amount: lineTotal
         };
@@ -699,13 +713,9 @@ const OrdersReturnPage: React.FC = () => {
 
       batch.update(saleRef, {
         items: newItemsList,
-
-        // ✅ unpaid case: card total ko touch hi mat karo
-        ...(isUnpaidOrder ? {} : { totalAmount: updatedFinalAmount }),
+        totalAmount: updatedFinalAmount,
 
         manualDiscount: newManualDiscount,
-
-        // ✅ due yahin se auto adjust ho rahi hai
         paymentMethods: {
           ...updatedPaymentMethods,
           due: isUnpaidOrder
@@ -714,15 +724,12 @@ const OrdersReturnPage: React.FC = () => {
         },
 
         paidAmount: actualPaid,
-
-        // ✅ unpaid me status kabhi Paid nahi hoga
         status: isUnpaidOrder ? 'Completed' : newStatus,
 
         returnHistory: arrayUnion(returnHistoryRecord),
         updatedAt: serverTimestamp()
       });
       await batch.commit();
-      // ✅ UI ko directly updated items se sync karo
       setOriginalSaleItems(
         newItemsList.map((item: any) => ({
           id: item.id,
@@ -834,11 +841,11 @@ const OrdersReturnPage: React.FC = () => {
             <div className="relative" ref={salesDropdownRef}>
               <label htmlFor="search-sale" className="block text-sm font-medium mb-1 text-gray-700">Search Original Sale</label>
               <div className="flex gap-2">
-                <input id="search-sale" type="text" value={searchSaleQuery} onChange={(e) => { setSearchSaleQuery(e.target.value); setIsSalesDropdownOpen(true); }} onFocus={() => setIsSalesDropdownOpen(true)} placeholder={selectedSale ? `(${selectedSale.orderId})` : "Invoice or Name..."} className="flex-grow p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" autoComplete="off" readOnly={!!selectedSale} />
-                {selectedSale && (<button onClick={handleClear} className=" px-3 bg-gray-200 text-gray-700 font-semibold rounded-lg whitespace-nowrap hover:bg-gray-300">Clear</button>)}
+                <input id="search-sale" type="text" value={searchSaleQuery} onChange={(e) => { setSearchSaleQuery(e.target.value); setIsSalesDropdownOpen(true); }} onFocus={() => setIsSalesDropdownOpen(true)} placeholder={selectedSale ? `(${selectedSale.orderId})` : "Invoice or Name..."} className="flex-grow p-2 border rounded-sm focus:ring-2 focus:ring-blue-500 outline-none" autoComplete="off" readOnly={!!selectedSale} />
+                {selectedSale && (<button onClick={handleClear} className=" px-3 bg-gray-200 text-gray-700 font-semibold rounded-sm whitespace-nowrap hover:bg-gray-300">Clear</button>)}
               </div>
               {isSalesDropdownOpen && !selectedSale && (
-                <div className="absolute top-full w-full z-20 mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
+                <div className="absolute top-full w-full z-20 mt-1 bg-white border rounded-sm shadow-lg max-h-60 overflow-y-auto">
                   {filteredSales.map((sale) => (
                     <div key={sale.id} className="p-3 cursor-pointer hover:bg-gray-100 border-b border-gray-50 last:border-0" onClick={() => handleSelectSale(sale)}>
                       <p className="font-semibold text-sm">{sale.userName} <span className="text-gray-500 font-normal">({sale.orderId || 'N/A'})</span></p>
@@ -873,7 +880,7 @@ const OrdersReturnPage: React.FC = () => {
                       placeholder="Search customer by number or name..."
                     />
                     {isCustomerDropdownOpen && filteredCustomers.length > 0 && (
-                      <div className="absolute top-full left-0 w-full z-20 mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                      <div className="absolute top-full left-0 w-full z-20 mt-1 bg-white border rounded-sm shadow-lg max-h-48 overflow-y-auto">
                         {filteredCustomers.map((customer) => (
                           <div
                             key={customer.id}
@@ -907,7 +914,12 @@ const OrdersReturnPage: React.FC = () => {
                       onQuantityChange={(id, val) => {
                         const item = originalSaleItems.find(i => i.id === id);
                         if (!item) return;
-                        const safeQty = Math.min(val, item.quantity);
+
+                        const safeQty = Math.min(
+                          Math.max(1, val),
+                          (item as any).originalQuantity
+                        );
+
                         handleListChange(setOriginalSaleItems, id, 'quantity', safeQty);
                       }}
 
@@ -932,19 +944,20 @@ const OrdersReturnPage: React.FC = () => {
                 {modeOfReturn === 'Exchange' && (
                   <>
                     <div className="flex items-end gap-1 mb-3">
-                      <div className="flex-grow"><SearchableItemInput
-                        label="Add Exchange Item"
-                        placeholder="Search inventory..."
-                        // FIX: availableItems ko map karke purchasePrice ensure karein
-                        items={availableItems.map((item: any) => ({
-                          ...item,
-                          purchasePrice: item.purchasePrice ?? 0 // Agar undefined hai toh 0 set kar do
-                        }))}
-                        onItemSelected={handleExchangeItemSelected}
-                        isLoading={isLoading}
-                        error={error}
-                      /></div>
-                      <button onClick={() => setScannerPurpose('item')} className="p-2.5 bg-gray-800 text-white rounded-md"><IconScanCircle width={20} height={20} /></button>
+                      <div className="flex-grow">
+                        <SearchableItemInput
+                          label="Add Exchange Item"
+                          placeholder="Search inventory..."
+                          // FIX: availableItems ko map karke purchasePrice ensure karein
+                          items={availableItems.map((item: any) => ({
+                            ...item,
+                            purchasePrice: item.purchasePrice ?? 0 // Agar undefined hai toh 0 set kar do
+                          }))}
+                          onItemSelected={handleExchangeItemSelected}
+                          isLoading={isLoading}
+                          error={error}
+                        /></div>
+                      <button onClick={() => setScannerPurpose('item')} className="p-2.5 bg-gray-800 text-white rounded-sm"><IconScanCircle width={20} height={20} /></button>
                     </div>
 
                     {/* --- DISPLAY ERROR MESSAGES FOR LOCKS --- */}
@@ -962,11 +975,12 @@ const OrdersReturnPage: React.FC = () => {
                           <GenericCartList<any>
                             items={mappedExchangeItems.map(item => ({
                               ...item,
+                              unitPrice: item.salesPrice,
                               isEditable: true // UI mein controls dikhane ke liye
                             }))}
                             availableItems={availableItems as any}
-                            basePriceKey="mrp"
-                            priceLabel="MRP"
+                            basePriceKey="salesPrice"
+                            priceLabel="Price"
                             settings={{
                               enableRounding: salesSettings?.enableRounding ?? true,
                               roundingInterval: (salesSettings as any)?.roundingInterval ?? 1,
@@ -1030,7 +1044,7 @@ const OrdersReturnPage: React.FC = () => {
               {/* Transaction Type */}
               <div className="mb-6">
                 <label className="block text-sm font-semibold text-gray-600 mb-2">Transaction Type</label>
-                <select value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none">
+                <select value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none">
                   <option>Credit Note</option>
                   <option>Exchange</option>
                   <option>Cash Refund</option>
@@ -1038,7 +1052,7 @@ const OrdersReturnPage: React.FC = () => {
               </div>
 
               {/* Financials */}
-              <div className="space-y-4 text-sm text-gray-700 bg-gray-50 p-4 rounded-xl border border-gray-100 flex-grow">
+              <div className="space-y-4 text-sm text-gray-700 bg-gray-50 p-4 rounded-sm border border-gray-100 flex-grow">
                 <div className="flex justify-between">
                   <span>Return Sale Amount</span>
                   <span className="font-medium">₹{totalReturnGross.toFixed(2)}</span>
@@ -1070,7 +1084,7 @@ const OrdersReturnPage: React.FC = () => {
                     ₹{Math.abs(finalBalance).toFixed(2)}
                   </span>
                 </div>
-                <button onClick={handleProcessReturn} className="w-full bg-blue-600 text-white py-4 px-4 rounded-xl shadow-lg shadow-blue-200 transition-all active:scale-[0.98] text-lg font-bold hover:bg-blue-700">
+                <button onClick={handleProcessReturn} className="w-full bg-blue-600 text-white py-4 px-4 rounded-sm shadow-lg shadow-blue-200 transition-all active:scale-[0.98] text-lg font-bold hover:bg-blue-700">
                   Process Transaction
                 </button>
               </div>

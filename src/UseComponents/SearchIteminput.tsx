@@ -276,7 +276,7 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
                                             {/* Right: Price & Stock Badge */}
                                             <div className="flex flex-col items-end flex-shrink-0 gap-1">
                                                 <span className="text-sm font-bold text-gray-900">
-                                                    ₹{item.mrp.toFixed(2)}
+                                                    ₹{(item.salesPrice ?? item.mrp).toFixed(2)}
                                                 </span>
                                                 <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${stockColor}`}>
                                                     {stock} in stock

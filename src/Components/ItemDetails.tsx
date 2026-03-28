@@ -24,8 +24,8 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
     onAddToCart,
     catalogueSettings,
     initialQuantity = 0,
-    isCustomerApproved = true,
-    onRequireLead
+    // isCustomerApproved = true,
+    // onRequireLead
 }) => {
     const [quantity, setQuantity] = useState(initialQuantity || 0);
     const [isAdding, setIsAdding] = useState(false);
@@ -78,10 +78,10 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
     };
 
     const handleAddToCartClick = () => {
-        if (!isCustomerApproved) {
-            onRequireLead?.();
-            return;
-        }
+        // if (!isCustomerApproved) {
+        //     onRequireLead?.();
+        //     return;
+        // }
 
         setIsAdding(true);
 
@@ -104,7 +104,7 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
 
             {/* Main Drawer */}
             <div
-                className={`fixed bottom-0 left-0 right-0 bg-white z-[110] transition-transform duration-500 ease-out max-w-[450px] mx-auto rounded-sm overflow-hidden shadow-2xl ${isOpen ? 'translate-y-0' : 'translate-y-full'}`}
+                className={`fixed bottom-0 left-0 right-0 h-[85vh] max-h-[95vh] bg-white z-[110] transition-transform duration-500 ease-out max-w-[450px] mx-auto rounded-sm overflow-hidden shadow-2xl ${isOpen ? 'translate-y-0' : 'translate-y-full'}`}
             >
                 {/* --- HEADER SECTION --- */}
                 <div className="text-center py-3 border-b border-gray-100 relative">
@@ -119,9 +119,9 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
                     </button>
                 </div>
 
-                <div className="max-h-[85vh]">
+                <div className="flex flex-col h-full">
                     {/* 1. IMAGE - Reduced Height to save vertical space */}
-                    <div className="w-full h-48 bg-gray-100 overflow-hidden">
+                    <div className="w-full flex-[0.9] bg-gray-100 overflow-hidden">
                         {item.imageUrl ? (
                             <img src={item.imageUrl} alt={item.name} className="w-full h-full object-contain" />
                         ) : (

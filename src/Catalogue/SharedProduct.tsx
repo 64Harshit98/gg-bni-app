@@ -151,11 +151,6 @@ const SharedProduct: React.FC = () => {
             const loginName = currentUser?.name || "Guest User";
 
             const itemsForFirebase = updatedCart.map(c => {
-                console.log(" SAVE CHECK:", {
-                    name: c.item.name,
-                    unit: c.item.unit,
-                    unitMultiplier: c.item.unitMultiplier
-                });
                 const multiplier = c.item.unitMultiplier ?? 1;
                 const basePrice = (c.item.salesPrice ?? c.item.mrp) || 0;
                 const salePrice = basePrice * multiplier;
@@ -292,14 +287,14 @@ const SharedProduct: React.FC = () => {
             const moqQty = (item as any).moq || 1;
 
             const multiplier = (item as any).unitMultiplier || 1;
-            console.log("ORIGINAL ITEM:", item);
             const itemWithPrice = {
                 ...item,
-                tax: Number(item.tax ?? 0), 
+                tax: Number(item.tax ?? 0),
                 unit: item.unit,
                 unitMultiplier: item.unitMultiplier || 1,
                 mrp: (item.mrp || 0) * multiplier,
-                salesPrice: ((item.salesPrice ?? item.mrp) || 0) * multiplier
+                salesPrice: ((item.salesPrice ?? item.mrp) || 0) * multiplier,
+                groupid: item.itemGroupId
             };
             const newCart = existing
                 ? prev.map(i =>
@@ -309,7 +304,18 @@ const SharedProduct: React.FC = () => {
                 )
                 : [...prev, { item: itemWithPrice, quantity: moqQty }];
 
-            localStorage.setItem('temp_cart', JSON.stringify(newCart));
+            localStorage.setItem(
+                'temp_cart',
+                JSON.stringify(
+                    newCart.map(c => ({
+                        item: {
+                            ...c.item,
+                            groupId: c.item.itemGroupId
+                        },
+                        quantity: c.quantity
+                    }))
+                )
+            );
             return newCart;
         });
     }, [approvalEnabled]);
@@ -904,14 +910,14 @@ const SharedProduct: React.FC = () => {
                                         <FiPackage className="w-10 h-10 text-gray-200" />
                                     )}
                                     {isOutOfStock && (
-                                        <div className="absolute top-2 left-2 bg-orange-500 text-white px-1 py-0.5 rounded-sm text-[9px] font-black uppercase">
+                                        <div className="absolute top-2 left-2 bg-orange-500 text-white px-1 py-0.5 rounded-sm text-[10px] font-black uppercase">
                                             Out of Stock
                                         </div>
                                     )}
 
                                     {/*  DISCOUNT BADGE */}
                                     {showDiscountBadge && (
-                                        <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-tight shadow-md">
+                                        <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-0.5 rounded-sm text-[10px] font-black uppercase tracking-tight shadow-md">
                                             {discountPercent}% OFF
                                         </div>
                                     )}
@@ -919,7 +925,7 @@ const SharedProduct: React.FC = () => {
 
                                 {/* CONTENT */}
                                 <div className="p-3 flex flex-col flex-1">
-                                    <h3 className="text-[10px] font-black text-[#1A3B5D] mb-1 truncate uppercase leading-tight">
+                                    <h3 className="text-[12px] font-black text-[#1A3B5D] mb-1 uppercase leading-tight">
                                         {item.name}
                                     </h3>
 
@@ -932,16 +938,16 @@ const SharedProduct: React.FC = () => {
                                                 <>
                                                     {hasBothPrices ? (
                                                         <>
-                                                            <p className="text-[12px] font-bold text-gray-500 line-through">
+                                                            <p className="text-[14px] font-bold text-gray-500 line-through">
                                                                 ₹{mrp}
                                                             </p>
 
-                                                            <p className="text-xs font-black text-[#00A3E1]">
+                                                            <p className="text-[14px] font-black text-[#00A3E1]">
                                                                 ₹{salePrice}
                                                             </p>
                                                         </>
                                                     ) : (
-                                                        <p className="text-sm font-black text-[#00A3E1]">
+                                                        <p className="text-[14px] font-black text-[#00A3E1]">
                                                             ₹{salePrice}
                                                         </p>
                                                     )}
@@ -949,7 +955,7 @@ const SharedProduct: React.FC = () => {
                                             )}
 
                                             {/* UNIT (ALWAYS visible) */}
-                                            <span className="text-[10px] text-gray-600 font-semibold">
+                                            <span className="text-[12px] text-gray-600 font-semibold">
                                                 ({item.unitMultiplier || 1} pcs)
                                             </span>
 
@@ -1011,7 +1017,7 @@ const SharedProduct: React.FC = () => {
                                                     if (img) animateToCart(img);
                                                     addToCart(item);
                                                 }}
-                                                className={`w-full py-2 rounded-xs text-[9px] font-black uppercase tracking-widest shadow-sm transition-all flex items-center justify-center gap-2 ${disableAddToCart
+                                                className={`w-full py-2 rounded-xs text-[12px] font-black uppercase tracking-widest mt-1 shadow-sm transition-all flex items-center justify-center gap-2 ${disableAddToCart
                                                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                                                     : 'bg-[#00A3E1] text-white active:scale-95'
                                                     }`}

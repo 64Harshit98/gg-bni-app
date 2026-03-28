@@ -93,6 +93,10 @@ const MyShop: React.FC = () => {
     const [cart, setCart] = useState<{ item: Item; quantity: number }[]>([]);
     const [isCartOpen, setIsCartOpen] = useState(false);
     const [allItemGroups, setAllItemGroups] = useState<ItemGroup[]>([]);
+    const [isAllLive, setIsAllLive] = useState(false);
+    const [showConfirmPopup, setShowConfirmPopup] = useState(false);
+    const [pendingLiveState, setPendingLiveState] = useState<boolean | null>(null);
+    const [showUncategorizedWarning, setShowUncategorizedWarning] = useState(false);
 
     // const liveItems = useMemo(() => {
     //     return allItems.filter(item => item.isListed);
@@ -150,6 +154,51 @@ const MyShop: React.FC = () => {
         [cart]);
     const cartCount = useMemo(() => cart.reduce((acc, curr) => acc + curr.quantity, 0), [cart]);
 
+    const handleToggleAllLive = () => {
+        if (groupId === "uncategorized") {
+            setShowUncategorizedWarning(true);
+            return;
+        }
+
+        const newState = !isAllLive;
+        setPendingLiveState(newState);
+        setShowConfirmPopup(true);
+    };
+
+    const confirmToggleAllLive = async () => {
+        if (!dbOperations || pendingLiveState === null) return;
+
+        const newState = pendingLiveState;
+        setShowConfirmPopup(false);
+        setIsAllLive(newState);
+
+        try {
+            const activeCat = groupId || selectedCategory;
+
+            const itemsToUpdate = allItems.filter(item =>
+                activeCat === 'All' || item.itemGroupId === activeCat
+            );
+
+            const updates = itemsToUpdate.map(item =>
+                dbOperations.updateItem(item.id!, { isListed: newState })
+            );
+
+            await Promise.all(updates);
+
+            setAllItems(prev =>
+                prev.map(item =>
+                    (activeCat === 'All' || item.itemGroupId === activeCat)
+                        ? { ...item, isListed: newState }
+                        : item
+                )
+            );
+        } catch (err) {
+            console.error("Bulk toggle failed:", err);
+        } finally {
+            setPendingLiveState(null);
+        }
+    };
+
     const currentCategoryName = useMemo(() => {
         const group = allItemGroups.find(g => g.id === groupId);
         return group ? group.name : 'Catalogue';
@@ -186,6 +235,26 @@ const MyShop: React.FC = () => {
     }, [highlightItemId]);
 
     useEffect(() => {
+        if (!Array.isArray(allItems) || allItems.length === 0) {
+            setIsAllLive(false);
+            return;
+        }
+
+        const activeCat = groupId || selectedCategory;
+
+        const filtered = allItems.filter(item =>
+            activeCat === 'All' || item.itemGroupId === activeCat
+        );
+
+        const allLive =
+            filtered.length > 0 &&
+            filtered.every(item => item.isListed === true);
+
+        setIsAllLive(allLive);
+        setIsAllLive(allLive);
+    }, [allItems]);
+
+    useEffect(() => {
         if (authLoading || !currentUser || !dbOperations || !companyId) {
             if (!authLoading && (!currentUser || !dbOperations)) {
                 setPageIsLoading(false);
@@ -204,7 +273,19 @@ const MyShop: React.FC = () => {
                 ]);
 
                 setAllItemGroups(fetchedItemGroups);
-                setAllItems(fetchedItems);
+                setAllItems(
+                    (fetchedItems || []).map(item => ({
+                        ...item,
+                        isListed: item.isListed ?? false
+                    }))
+                );
+
+                if (Array.isArray(fetchedItems) && fetchedItems.length > 0) {
+                    const allLive = fetchedItems.every(item => item?.isListed === true);
+                    setIsAllLive(allLive);
+                } else {
+                    setIsAllLive(false);
+                }
 
                 //  SAFE FIRESTORE CALL
                 const businessRef = doc(
@@ -364,7 +445,7 @@ const MyShop: React.FC = () => {
                 </div>
             </header>
 
-            <main className="p-3 md:p-6 space-y-4 flex-1 max-w-7xl mx-auto w-full pb-24">
+            <main className="p-3 md:p-6 space-y-3 flex-1 max-w-7xl mx-auto w-full pb-24">
                 <div className='flex items-center justify-center'>
                     <h1 className="text-sm md:text-xl font-extrabold text-[#00A3E1] uppercase tracking-tighter">{currentCategoryName}</h1>
                 </div>
@@ -390,6 +471,7 @@ const MyShop: React.FC = () => {
                 </div>
 
                 <div className="max-w-7xl mx-auto px-1 flex items-center justify-between relative">
+
                     <div className="flex items-center gap-2">
                         <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Total Products:</span>
                         <span className="bg-[#00A3E1]/10 text-[#00A3E1] px-2.5 py-0.5 rounded-sm text-[10px] font-black">{filteredItems.length}</span>
@@ -416,11 +498,31 @@ const MyShop: React.FC = () => {
                     </div>
                 </div>
 
+                <div>
+                    <div>
+                        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">
+                            Live All Items
+                        </span>
+
+                        <button
+                            onClick={handleToggleAllLive}
+                            className={`w-11 h-4 flex items-center rounded-sm p-1 transition-all duration-300 ${isAllLive ? 'bg-green-500' : 'bg-gray-300'
+                                }`}
+                        >
+                            <div
+                                className={`bg-white w-3 h-3 rounded-sm shadow-md transform transition-all duration-300 ${isAllLive ? 'translate-x-6' : 'translate-x-0'
+                                    }`}
+                            />
+                        </button>
+                    </div>
+                </div>
+
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1">
                     {itemsToDisplay.map((item) => {
                         // const isOutOfStock = (item.stock || 0) <= 0;
                         // const showNotifyButton = catalogueSettings?.enableOutOfStockNotification && isOutOfStock;
                         // const disableAddToCart = !catalogueSettings?.enableOutOfStockNotification && isOutOfStock;
+                        const isUncategorized = groupId === "uncategorized";
                         const basePrice = item.salesPrice || item.mrp;
                         const multiplier = (item as any).unitMultiplier || 1;
                         const salePrice = basePrice * multiplier;
@@ -459,26 +561,26 @@ const MyShop: React.FC = () => {
                                 </div>
 
                                 <div className="p-3 flex flex-col flex-1">
-                                    <h3 className="text-[10px] font-black text-[#1A3B5D] mb-1 truncate uppercase leading-tight">{item.name}</h3>
+                                    <h3 className="text-[12px] font-black text-[#1A3B5D] mb-1 uppercase leading-tight">{item.name}</h3>
                                     <div className="flex items-center justify-between w-full">
                                         <div className="flex items-center gap-2 w-full">
                                             {hasBothPrices ? (
                                                 <>
-                                                    <p className="text-[11px] font-bold text-gray-400 line-through">
+                                                    <p className="text-[14px] font-bold text-gray-400 line-through">
                                                         ₹{mrp}
                                                     </p>
 
-                                                    <p className="text-xs font-black text-[#00A3E1]">
+                                                    <p className="text-[14px]font-black text-[#00A3E1]">
                                                         ₹{salePrice}
-                                                        <span className="text-[10px] text-gray-600 font-semibold ml-1">
+                                                        <span className="text-[12px] text-gray-600 font-semibold ml-1">
                                                             ({multiplier} pcs)
                                                         </span>
                                                     </p>
                                                 </>
                                             ) : (
-                                                <p className="text-xs font-black text-[#00A3E1]">
+                                                <p className="text-[14px] font-black text-[#00A3E1]">
                                                     ₹{salePrice}
-                                                    <span className="text-[10px] text-gray-600 font-semibold ml-1">
+                                                    <span className="text-[12px] text-gray-600 font-semibold ml-1">
                                                         ({multiplier} pcs)
                                                     </span>
                                                 </p>
@@ -486,24 +588,45 @@ const MyShop: React.FC = () => {
                                         </div>
                                     </div>
 
+
+
                                     <div className="mt-1 flex gap-1">
-                                        <>
+                                        {isUncategorized ? (
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     handleOpenEditDrawer(item);
                                                 }}
-                                                className="flex-1 bg-gray-200 text-[#1A3B5D] py-1.5 rounded-sm text-[9px] font-black uppercase border border-gray-100 cursor-pointer"
+                                                className="w-full bg-gray-200 text-[#1A3B5D] py-1.5 rounded-sm text-[12px] font-black uppercase border border-gray-100"
                                             >
                                                 Edit
                                             </button>
+                                        ) : (
+                                            <>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleOpenEditDrawer(item);
+                                                    }}
+                                                    className="flex-1 bg-gray-200 text-[#1A3B5D] py-1.5 rounded-sm text-[12px] font-black uppercase border border-gray-100"
+                                                >
+                                                    Edit
+                                                </button>
 
-                                            <QuickListedToggle
-                                                itemId={item.id!}
-                                                isListed={item.isListed ?? false}
-                                                onToggle={handleToggleListed}
-                                            />
-                                        </>
+                                                <QuickListedToggle
+                                                    itemId={item.id!}
+                                                    isListed={item.isListed ?? false}
+                                                    onToggle={async (itemId, newState) => {
+                                                        if (groupId === "uncategorized" && newState === true) {
+                                                            setShowUncategorizedWarning(true);
+                                                            return;
+                                                        }
+
+                                                        await handleToggleListed(itemId, newState);
+                                                    }}
+                                                />
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -569,6 +692,7 @@ const MyShop: React.FC = () => {
 
             <ItemEditDrawer
                 item={selectedItemForEdit}
+                isCatalogue={true}
                 isOpen={isDrawerOpen}
                 onClose={() => {
                     setIsDrawerOpen(false);
@@ -578,7 +702,7 @@ const MyShop: React.FC = () => {
                     setAllItems(prev =>
                         prev.map(i =>
                             i.id === selectedItemForEdit?.id
-                                ? { ...i, ...updated }
+                                ? { ...i, ...updated, moq: updated.moq ?? i.moq ?? 1 }
                                 : i
                         )
                     );
@@ -598,6 +722,75 @@ const MyShop: React.FC = () => {
                     }
                 }}
             />
+
+            {showUncategorizedWarning && (
+                <div className="fixed inset-0 z-[300] flex items-center justify-center">
+
+                    {/* BACKDROP */}
+                    <div
+                        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+                        onClick={() => setShowUncategorizedWarning(false)}
+                    />
+
+                    {/* CARD */}
+                    <div className="relative bg-white w-[90%] max-w-sm rounded-lg shadow-xl p-5 z-10 animate-in fade-in zoom-in duration-200">
+
+                        <h2 className="text-sm font-black text-red-500 uppercase mb-2">
+                            Warning
+                        </h2>
+
+                        <p className="text-sm font-bold text-gray-600 mb-4">
+                            Please categorize the item first. You can only make it LIVE after assigning a category.
+                        </p>
+
+                        <button
+                            onClick={() => setShowUncategorizedWarning(false)}
+                            className="w-full bg-[#00A3E1] text-white py-2 rounded-sm text-xs font-black uppercase"
+                        >
+                            OK
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {showConfirmPopup && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center">
+
+                    {/* BACKDROP */}
+                    <div
+                        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+                        onClick={() => setShowConfirmPopup(false)}
+                    />
+
+                    {/* CARD */}
+                    <div className="relative bg-white w-[90%] max-w-sm rounded-lg shadow-xl p-5 z-10 animate-in fade-in zoom-in duration-200">
+
+                        <h2 className="text-sm font-black text-[#1A3B5D] uppercase mb-2">
+                            Confirmation
+                        </h2>
+
+                        <p className="text-lg font-bold text-gray-600 mb-4">
+                            Do you want to make all items {pendingLiveState ? "LIVE" : "UNLIVE"}?
+                        </p>
+
+                        <div className="flex gap-2">
+                            <button
+                                onClick={confirmToggleAllLive}
+                                className="flex-1 bg-green-500 text-white py-2 rounded-sm text-xs font-black uppercase"
+                            >
+                                Yes
+                            </button>
+
+                            <button
+                                onClick={() => setShowConfirmPopup(false)}
+                                className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-sm text-xs font-black uppercase"
+                            >
+                                No
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <ItemDetailDrawer
                 catalogueSettings={catalogueSettings}

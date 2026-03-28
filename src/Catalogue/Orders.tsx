@@ -81,6 +81,7 @@ export interface Order {
     paymentMethod?: 'Cash' | 'UPI' | 'Card';
     paymentMethods?: { [key: string]: number };
     note?: string;
+    specialInstruction?: string;
     manualDiscount?: number;
     discount?: number;
     returnHistory?: {
@@ -172,6 +173,7 @@ export const useOrdersData = (
                         paymentMethod: data.paymentMethod,
                         paymentMethods: data.paymentMethods,
                         returnHistory: Array.isArray(data.returnHistory) ? data.returnHistory : [],
+                        specialInstruction: data.specialInstruction || "",
                         updatedAt,
                         userName:
                             data.userName ||
@@ -187,11 +189,6 @@ export const useOrdersData = (
                         time: formatDate(createdAt),
                         items: Array.isArray(data.items)
                             ? data.items.map((i: any) => {
-                                console.log("FIREBASE ITEM:", {
-                                    name: i.name,
-                                    unit: i.unit,
-                                    unitMultiplier: i.unitMultiplier
-                                });
                                 return {
                                     id: i.id,
                                     name: i.name,
@@ -204,7 +201,7 @@ export const useOrdersData = (
                                     finalPrice: Number(i.finalPrice ?? i.amount ?? (i.mrp * i.quantity)),
                                     note: i.note || '',
                                     imageUrl: i.imageUrl || "",
-                                    imageBase64: ""
+                                    imageBase64: "",
                                 };
                             })
                             : [],
@@ -277,6 +274,12 @@ const getDateRange = (
 
 
 const OrdersPage: React.FC = () => {
+
+    // AUDIO REF
+    const audioRef = useRef<HTMLAudioElement | null>(null);
+    const seenOrdersRef = useRef<Set<string>>(
+        new Set(JSON.parse(localStorage.getItem("seenOrders") || "[]"))
+    );
     const navigate = useNavigate();
     const OrderStatuses: OrderStatus[] = ['Upcoming', 'Confirmed', 'Packed', 'Completed'];
 
@@ -339,6 +342,37 @@ const OrdersPage: React.FC = () => {
         dateRange.end
     );
 
+    useEffect(() => {
+        let updated = false;
+
+        Orders.forEach(order => {
+            const isNewOrder = !seenOrdersRef.current.has(order.id);
+
+            // ONLY NEW ORDER + CONFIRMED
+            if (isNewOrder && order.status === 'Confirmed') {
+                const audio = audioRef.current;
+                if (audio) {
+                    audio.currentTime = 0;
+                    audio.play().catch((err) => {
+                        console.error(err);
+                    });
+                }
+
+                // mark as seen
+                seenOrdersRef.current.add(order.id);
+                updated = true;
+            }
+        });
+
+        //  localStorage update 
+        if (updated) {
+            localStorage.setItem(
+                "seenOrders",
+                JSON.stringify(Array.from(seenOrdersRef.current))
+            );
+        }
+    }, [Orders]);
+
     const dateFilters = [
         { label: 'Today', value: 'today' },
         { label: 'Yesterday', value: 'yesterday' },
@@ -387,6 +421,33 @@ const OrdersPage: React.FC = () => {
             setActiveStatusTab(location.state.defaultStatus);
         }
     }, [location.state]);
+
+    useEffect(() => {
+        const audio = new Audio('/sounds/order-confirmed.mp3');
+        audio.preload = "auto";
+
+        audioRef.current = audio;
+
+        const unlockAudio = () => {
+            const audioEl = audioRef.current;
+            if (!audioEl) return;
+
+            audioEl.play()
+                .then(() => {
+                    audioEl.pause();
+                    audioEl.currentTime = 0;
+                })
+                .catch(() => { });
+
+            window.removeEventListener('click', unlockAudio);
+        };
+
+        window.addEventListener('click', unlockAudio);
+
+        return () => {
+            window.removeEventListener('click', unlockAudio);
+        };
+    }, []);
 
     useEffect(() => {
         const fetchCompanyInfo = async () => {
@@ -481,10 +542,8 @@ const OrdersPage: React.FC = () => {
     // }, [currentUser?.companyId]);
 
     const handlePdfAction = async (Order: Order, action: ACTION) => {
-
+        console.log("FULL ORDER:", Order);
         setPdfLoadingOrderId(Order.id);
-        console.log("ORDER BILLING:", Order.billingDetails);
-        console.log("ORDER SHIPPING:", Order.shippingDetails);
         try {
             const rawBillData = {
                 companyId: currentUser?.companyId,
@@ -492,7 +551,7 @@ const OrdersPage: React.FC = () => {
                 companyName: companyInfo?.name || "",
                 companyAddress: companyInfo?.address || "",
                 companyPhone: companyInfo?.ownerPhoneNumber || "",
-
+                specialInstruction: Order.specialInstruction || "",
                 customer: {
                     billing: {
                         name: Order.billingDetails?.name || Order.userName || "Customer",
@@ -515,7 +574,6 @@ const OrdersPage: React.FC = () => {
 
                 items: await Promise.all(
                     (Order.items || []).map(async (item, index) => {
-                        console.log("PDF ITEM", item);
                         let base64 = item.imageBase64;
 
                         if (!base64 && item.imageUrl) {
@@ -538,7 +596,7 @@ const OrdersPage: React.FC = () => {
                             mrp: mrp,
                             price: salePrice,
                             total: salePrice * item.quantity,
-                            imageBase64: base64
+                            imageBase64: base64,
                         };
                     })
                 ),
@@ -575,7 +633,6 @@ const OrdersPage: React.FC = () => {
                 type: State.ERROR,
             });
         } finally {
-
             //  spinner stop
             setPdfLoadingOrderId(null);
         }
@@ -628,10 +685,9 @@ const OrdersPage: React.FC = () => {
         setIsGeneratingPdf(true);
 
         try {
-
             const rawBillData = {
                 companyId: currentUser?.companyId,
-
+                specialInstruction: Order.specialInstruction || "",
                 customer: {
                     name: Order.userName || "Customer",
                     phone: Order.billingDetails?.phone || "",
@@ -1077,8 +1133,7 @@ const OrdersPage: React.FC = () => {
                             const isExpanded = expandedorderId === Order.id;
                             const isUpcomingStatus = Order.status === 'Upcoming';
                             const total = (Order.items || []).reduce((sum, item) => {
-                                const price = Number(item.salesPrice ?? item.mrp ?? 0) * Number(item.quantity || 0);
-                                return sum + price;
+                                return sum + Number(item.finalPrice || 0);
                             }, 0);
                             const paid = Number(Order.paidAmount || 0);
                             const due = Math.max(0, total - paid);
@@ -1092,14 +1147,14 @@ const OrdersPage: React.FC = () => {
                                     exit={{ opacity: 0, y: -20 }}
                                     transition={{ duration: 0.25 }}
                                 >
-                                    <CustomCard key={Order.id} onClick={() => handleOrderClick(Order.id)} className="p-3.5 mb-3 bg-white shadow-sm border border-gray-100 rounded-sm cursor-pointer relative">
+                                    <CustomCard key={Order.id} onClick={() => handleOrderClick(Order.id)} className="p-3 mb-3 bg-white shadow-sm border border-gray-100 rounded-sm cursor-pointer relative">
                                         {/* 🔁 RETURN METHOD BADGE - TOP LEFT */}
                                         {returnMethods.length > 0 && (
                                             <div className="absolute -top-0.5 left-0 flex flex-wrap gap-1 p-1">
                                                 {returnMethods.map((method, index) => (
                                                     <span
                                                         key={`${method}-${index}`}
-                                                        className={`text-[8px] uppercase font-bold px-2 py-0.5 rounded border ${method === 'EXCHANGE'
+                                                        className={`text-[7px] uppercase font-bold px-2 py-0.5 rounded border ${method === 'EXCHANGE'
                                                             ? 'bg-purple-50 text-purple-700 border-purple-200'
                                                             : method === 'CASH REFUND'
                                                                 ? 'bg-green-50 text-green-700 border-green-200'
@@ -1143,7 +1198,7 @@ const OrdersPage: React.FC = () => {
                                                     .map(([method]) => (
                                                         <span
                                                             key={`original-${method}`}
-                                                            className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100"
+                                                            className="text-[8px] uppercase font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100"
                                                         >
                                                             {method}
                                                         </span>
@@ -1166,7 +1221,7 @@ const OrdersPage: React.FC = () => {
                                                         .map(([method]) => (
                                                             <span
                                                                 key={`exchange-${method}`}
-                                                                className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-red-50 text-red-600 border border-red-200"
+                                                                className="text-[8px] uppercase font-bold px-2 py-0.5 rounded bg-red-50 text-red-600 border border-red-200"
                                                             >
                                                                 {method}
                                                             </span>
@@ -1189,8 +1244,7 @@ const OrdersPage: React.FC = () => {
                                                         </span>
                                                     )}
                                                 </p>
-
-                                                <p className="text-[10px] text-gray-400 mt-1">{Order.time}</p>
+                                                <p className="text-[10px] text-gray-600 mt-1">{Order.time}</p>
                                             </div>
                                             <div className="text-right flex flex-col items-end">
                                                 <div className="flex items-center gap-2">
@@ -1198,7 +1252,7 @@ const OrdersPage: React.FC = () => {
                                                     </p>
                                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}><path d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
                                                 </div>
-                                                <p className="text-[10px] font-boldpx-2 py-0.5 mt-1">Items: {Order.items?.length || 0}</p>
+                                                <p className="text-[10px] font-boldpx-2 py-0.5 mt-1 mr-6">Items: {Order.items?.length || 0}</p>
                                             </div>
                                         </div>
 
@@ -1206,7 +1260,7 @@ const OrdersPage: React.FC = () => {
                                             <div className={`mt-1 border-t pt-4 ${isUpcomingStatus ? "pb-2" : ""}`}>
                                                 {/* Addresses Section */}
                                                 {!isUpcomingStatus && (
-                                                    <div className="grid grid-cols-2 gap-4 mb-1 pb-4 border-b">
+                                                    <div className="grid grid-cols-2 gap-4 mb-1 pb-4">
                                                         <div className="space-y-1">
                                                             <p className="text-[8px] font-black text-orange-500 uppercase">Billing Address</p>
                                                             <p className="text-[11px] font-bold text-slate-800">{Order.billingDetails?.name}</p>
@@ -1220,9 +1274,23 @@ const OrdersPage: React.FC = () => {
                                                             <p className="text-[10px] text-gray-500">{Order.shippingDetails?.phone}</p>
                                                         </div>
                                                     </div>
+
                                                 )}
                                                 {/* Items Section */}
                                                 <div>
+                                                    {isExpanded && Order.specialInstruction && (
+                                                        <div className="mb-1 bg-gray-50 border border-gray-200 rounded-sm p-2">
+
+                                                            <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest mb-1">
+                                                                Special Instructions
+                                                            </p>
+
+                                                            <p className="text-[11px] text-gray-700 font-medium leading-snug break-words">
+                                                                {Order.specialInstruction}
+                                                            </p>
+
+                                                        </div>
+                                                    )}
                                                     {Order.items?.map((item, idx) => (
                                                         <div key={idx} className="p-2">
                                                             <div className="flex justify-between items-start -mb-1">
@@ -1874,7 +1942,7 @@ const OrdersPage: React.FC = () => {
                                                     isEditable: true
                                                 }))}
                                                 availableItems={availableItems}
-                                                basePriceKey="mrp"
+                                                basePriceKey="salesPrice"
                                                 priceLabel="Price"
                                                 State={State}
                                                 settings={{

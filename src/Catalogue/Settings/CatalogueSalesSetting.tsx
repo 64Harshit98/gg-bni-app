@@ -47,7 +47,7 @@ export const getDefaultCatalogueSalesSettings = (companyId: string): CatalogueSa
   allowQuantityDecreaseToZero: false,
   enableLeadPopup: false,
   minimumOrderValue: 0,
-  voucherPrefix: 'CAT-',
+  voucherPrefix: 'ORD-',
   currentVoucherNumber: 1,
   copyVoucherAfterSaving: false,
   gstScheme: 'none',

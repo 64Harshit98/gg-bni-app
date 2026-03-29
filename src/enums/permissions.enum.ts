@@ -49,4 +49,6 @@ export enum Permissions {
     CreateUsers = 'CreateUsers',
     // General Access
     SetPermissions = 'SetPermissions',
+    HiddenProFeatures = 'HiddenProFeatures',
+    ViewAddons = 'ViewAddons',
 }

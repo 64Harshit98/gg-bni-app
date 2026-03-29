@@ -11,7 +11,7 @@ import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
 
 // ─── Config ───────────────────────────────────────────────
-const SUPER_ADMIN_UID = "C6ffAAFyrfQ4dQ2UOEV5pJpcb683";
+const SUPER_ADMIN_UID = "1AKioGfop8PmHhry6uXOz8Rw6qT2";
 const DEFAULT_DURATION_DAYS = 28;
 
 const addDays = (date: Date, days: number) => {
@@ -126,9 +126,9 @@ const SuperAdminCompanies: React.FC = () => {
     const now = new Date();
     const soonMs = 7 * 24 * 60 * 60 * 1000;
     switch (activeFilter) {
-      case 'active':      return companies.filter(c => c.validity === 'active');
-      case 'expired':     return companies.filter(c => c.validity === 'inactive');
-      case 'trial':       return companies.filter(c => c.pack === 'free');
+      case 'active': return companies.filter(c => c.validity === 'active');
+      case 'expired': return companies.filter(c => c.validity === 'inactive');
+      case 'trial': return companies.filter(c => c.pack === 'free');
       case 'near_expiry': return companies.filter(c => {
         if (!c.expiryDate) return false;
         const exp = c.expiryDate.toDate ? c.expiryDate.toDate() : new Date(c.expiryDate);
@@ -197,9 +197,9 @@ const SuperAdminCompanies: React.FC = () => {
   const packBadge = (pack: string) => {
     switch (pack) {
       case 'platinum': return 'bg-purple-100 text-purple-700';
-      case 'gold':     return 'bg-yellow-100 text-yellow-700';
-      case 'basic':    return 'bg-blue-100 text-blue-700';
-      default:         return 'bg-gray-100 text-gray-500';
+      case 'gold': return 'bg-yellow-100 text-yellow-700';
+      case 'basic': return 'bg-blue-100 text-blue-700';
+      default: return 'bg-gray-100 text-gray-500';
     }
   };
 
@@ -223,7 +223,7 @@ const SuperAdminCompanies: React.FC = () => {
           </svg>
         </button>
       </div>
-     
+
 
       {/* ── FILTER CARDS ── */}
       <div className="grid grid-cols-2 gap-2 mb-4 md:grid-cols-4 md:gap-4">

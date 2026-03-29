@@ -14,7 +14,7 @@ export const EXCLUDED_OWNER_PERMISSIONS = [
     Permissions.ViewAttendance,
 ];
 
-const DEFAULT_PERMISSIONS_MAP = {
+export const DEFAULT_PERMISSIONS_MAP = {
     [ROLES.SALESMAN]: [
         Permissions.ViewAttendance,
         Permissions.ViewDashboard,
@@ -187,18 +187,31 @@ const ManagePermissionsPage: React.FC = () => {
                     let shouldUpdateDB = false;
 
                     if (docSnap.exists()) {
-                        let data = docSnap.data().allowedPermissions || [];
-                        if (typeof data === 'string') {
-                            try { data = JSON.parse(data); } catch { data = []; }
+                        let storedData = docSnap.data().allowedPermissions || [];
+                        if (typeof storedData === 'string') {
+                            try { storedData = JSON.parse(storedData); } catch { storedData = []; }
                         }
 
                         if (role === ROLES.OWNER) {
+                            // Owners always get everything (minus exclusions)
                             finalPermissions = getSafePermissionsToSave(role, Object.values(Permissions));
                             shouldUpdateDB = true;
                         } else {
-                            finalPermissions = Array.isArray(data) ? data : [];
-                        }
+                            // --- THE FIX STARTS HERE ---
+                            const defaults = getDefaultPermissions(role);
 
+                            // Combine stored permissions with defaults. 
+                            // This ensures new permissions added to DEFAULT_PERMISSIONS_MAP 
+                            // appear automatically without a manual save.
+                            finalPermissions = Array.from(new Set([...defaults, ...storedData]));
+
+                            // Optional: If you want to automatically save these new defaults 
+                            // back to Firestore immediately:
+                            if (finalPermissions.length !== storedData.length) {
+                                shouldUpdateDB = true;
+                            }
+                            // --- THE FIX ENDS HERE ---
+                        }
                     } else {
                         console.warn(`No permissions for ${role}, using defaults.`);
 

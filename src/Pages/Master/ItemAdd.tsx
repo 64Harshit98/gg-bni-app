@@ -13,7 +13,7 @@ import { useItemSettings } from '../../context/SettingsContext';
 import { IconScanCircle } from '../../constants/Icons';
 import { collection, query, where, getDocs, limit, doc, runTransaction, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
-import { InfoTooltip } from '../../Components/InfoToolTip'; // <-- IMPORTED TOOLTIP
+import { InfoTooltip } from '../../Components/InfoToolTip';
 
 const UNIT_OPTIONS = [
   { value: 'pcs', label: 'Pieces (1 pcs)' },
@@ -158,8 +158,8 @@ const ItemAdd: React.FC = () => {
     setError(null); setSuccess(null); setModal(null);
 
     // --- 1. Strictly Required Field Validation ---
-    if (!itemName.trim() || !itemAmount.trim() || !itemBarcode.trim()) {
-      setModal({ message: 'Item Name, Stock, and Barcode are strictly required.', type: State.ERROR }); return;
+    if (!itemName.trim() || !itemBarcode.trim()) {
+      setModal({ message: 'Item Name, and Barcode are strictly required.', type: State.ERROR }); return;
     }
 
     const mrpValue = parseFloat(itemMRP) || 0;
@@ -191,6 +191,9 @@ const ItemAdd: React.FC = () => {
     }
     if ((itemSettings as any).requireCategory && !selectedCategory) {
       setModal({ message: 'Category is required as per your settings.', type: State.ERROR }); return;
+    }
+    if ((itemSettings as any).requireStock && !itemAmount.trim()) {
+      setModal({ message: 'Stock is required as per your settings.', type: State.ERROR }); return;
     }
 
     // --- 3. Discount Logic ---
@@ -667,7 +670,10 @@ const ItemAdd: React.FC = () => {
                 </div>
                 <div>
                   <div className="flex items-center mb-1">
-                    <label className="text-sm font-medium text-gray-600 after:content-['*'] after:text-red-500 mr-2">Stock</label>
+                    {/* Make the required asterisk dynamic based on the new setting */}
+                    <label className={`text-sm font-medium text-gray-600 ${(itemSettings as any)?.requireStock ? reqClasses : ''} mr-2`}>
+                      Stock
+                    </label>
                     <InfoTooltip text="Current available quantity in your inventory." />
                   </div>
                   <input type="number" value={itemAmount} onChange={(e) => setItemAmount(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />

@@ -119,14 +119,14 @@ const CatalogueLayout = () => {
                         </p>
                     </div>
 
-                        <NavLink
-                            to={`${ROUTES.CHOME}/${ROUTES.ORDER}`}
-                            end
-                            className={({ isActive }) => sidebarLinkClass(isActive)}
-                        >
-                            <span className="text-lg">+</span>
-                            <span>Edit Catalog</span>
-                        </NavLink>
+                    <NavLink
+                        to={`${ROUTES.CHOME}/${ROUTES.ORDER}`}
+                        end
+                        className={({ isActive }) => sidebarLinkClass(isActive)}
+                    >
+                        <span className="text-lg">+</span>
+                        <span>Edit Catalog</span>
+                    </NavLink>
 
                     <NavLink
                         to={`${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`}
@@ -137,7 +137,7 @@ const CatalogueLayout = () => {
                         <span>Add Item</span>
                     </NavLink>
 
-                        {/* {currentUser && (
+                    {/* {currentUser && (
                             <NavLink
                                 to={`/catalogue/${currentUser.companyId}`}
                                 end
@@ -167,15 +167,13 @@ const CatalogueLayout = () => {
                         <span>Orders Return</span>
                     </NavLink>
 
-                        <button
-                            onClick={handleShare}
-                            className={sidebarLinkClass(false)} // same design, no active
-                        >
-                            <Share2 size={18} />
-                            <span>Share</span>
-                        </button>
-
-                    </ShowWrapper>
+                    <button
+                        onClick={handleShare}
+                        className={sidebarLinkClass(false)} // same design, no active
+                    >
+                        <Share2 size={18} />
+                        <span>Share</span>
+                    </button>
                 </nav>
             </aside>
 

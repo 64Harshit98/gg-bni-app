@@ -5,39 +5,32 @@ import { doc, runTransaction, DocumentReference, getDoc } from 'firebase/firesto
  * Generates the next invoice number for a specific company.
  * @param companyId The ID of the company to get the counter for.
  */
-export const generateNextInvoiceNumber = async (companyId: string): Promise<string> => {
+export const peekNextInvoiceNumber = async (companyId: string): Promise<string> => {
     if (!companyId) throw new Error("A valid companyId must be provided.");
 
-    const settingsRef: DocumentReference = doc(db, 'companies', companyId, 'settings', 'sales-settings');
-    const counterRef: DocumentReference = doc(db, 'companies', companyId, 'counters', 'invoiceCounter');
+    const settingsRef = doc(db, 'companies', companyId, 'settings', 'sales-settings');
+    const counterRef = doc(db, 'companies', companyId, 'counters', 'invoiceCounter');
 
-    try {
-        return await runTransaction(db, async (transaction) => {
-            // 1. Get Prefix from Settings
-            const settingsDoc = await transaction.get(settingsRef);
-            let prefix = 'INV';
-            if (settingsDoc.exists() && settingsDoc.data().voucherPrefix !== undefined) {
-                prefix = settingsDoc.data().voucherPrefix;
-            }
+    // Simple getDocs (no transaction, no writes)
+    const [settingsSnap, counterSnap] = await Promise.all([
+        getDoc(settingsRef),
+        getDoc(counterRef)
+    ]);
 
-            // 2. Get Sequence from Counter DB
-            const counterDoc = await transaction.get(counterRef);
-            let nextNumber = 1;
-            if (counterDoc.exists() && counterDoc.data().currentNumber !== undefined) {
-                nextNumber = counterDoc.data().currentNumber;
-            }
+    const prefix = settingsSnap.exists() ? (settingsSnap.data().voucherPrefix || 'INV') : 'INV';
+    const nextNumber = counterSnap.exists() ? (counterSnap.data().currentNumber || 1) : 1;
 
-            const finalVoucherNumber = `${prefix}-${nextNumber}`;
+    return `${prefix}-${nextNumber}`;
+};
 
-            // 3. Update ONLY the Counter DB
-            transaction.set(counterRef, { currentNumber: nextNumber + 1 }, { merge: true });
-
-            return finalVoucherNumber;
-        });
-    } catch (error) {
-        console.error("Error generating invoice number:", error);
-        throw new Error("Could not generate a new invoice number.");
-    }
+// 2. WRITE: Use this inside your handleSavePayment logic
+export const incrementInvoiceCounter = async (companyId: string) => {
+    const counterRef = doc(db, 'companies', companyId, 'counters', 'invoiceCounter');
+    await runTransaction(db, async (transaction) => {
+        const counterDoc = await transaction.get(counterRef);
+        const nextNumber = counterDoc.exists() ? (counterDoc.data().currentNumber || 1) : 1;
+        transaction.set(counterRef, { currentNumber: nextNumber + 1 }, { merge: true });
+    });
 };
 
 /**

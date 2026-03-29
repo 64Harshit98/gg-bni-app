@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/auth-context';
 
-const SUPER_ADMIN_UID = "C6ffAAFyrfQ4dQ2UOEV5pJpcb683";
+const SUPER_ADMIN_UID = "1AKioGfop8PmHhry6uXOz8Rw6qT2";
 
 const tiles = [
     {

@@ -8,7 +8,7 @@ import { collection, serverTimestamp, doc, increment as firebaseIncrement, runTr
 import SearchableItemInput from '../../UseComponents/SearchIteminput';
 import BarcodeScanner from '../../UseComponents/BarcodeScanner';
 import PaymentDrawer, { type PaymentCompletionData } from '../../Components/PaymentDrawer';
-import { generateNextInvoiceNumber } from '../../UseComponents/InvoiceCounter';
+import { peekNextInvoiceNumber } from '../../UseComponents/InvoiceCounter';
 import { Modal } from '../../constants/Modal';
 import { Permissions, ROLES, State, Variant } from '../../enums';
 import { CustomButton } from '../../Components';
@@ -17,7 +17,7 @@ import { useSalesSettings } from '../../context/SettingsContext';
 import { Spinner } from '../../constants/Spinner';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
 import { GenericCartList } from '../../Components/CartItem';
-import { FiTrash2, FiX, FiChevronDown, FiEdit, FiCamera } from 'react-icons/fi';
+import { FiTrash2, FiX, FiChevronDown, FiEdit, FiCamera, FiDelete } from 'react-icons/fi';
 import { GenericBillFooter } from '../../Components/Footer';
 import { IconScanCircle } from '../../constants/Icons';
 import QRCode from 'react-qr-code';
@@ -27,6 +27,7 @@ import { storage } from '../../lib/Firebase';
 import { generatePdfBlob } from '../../UseComponents/pdfGenerator';
 import { getFirestoreOperations } from '../../lib/ItemsFirebase';
 import { botMasterService } from '../Additional/Whatsapp/WhatsappApi';
+import { PLAN_ALLOWED_FEATURES } from '../Settings/SalesSetting';
 
 
 
@@ -49,7 +50,29 @@ export interface SalesItem extends OriginalSalesItem {
     unit?: string;               // ADDED
     unitMultiplier?: number;     // ADDED
     packetSize?: number | undefined;  // ADDED
+    isCustomAmount?: boolean;        // ADDED
+    isStagedCalcItem?: boolean;
 }
+
+// Inside Sales component, add interface and button data
+interface CalcKey {
+    label: string;
+    value: string;
+    type: 'number' | 'operator' | 'function';
+    icon?: React.ElementType;
+    colClass?: string; // <--- Changed from colspan to colClass
+}
+
+const calcKeys: CalcKey[][] = [
+    // Standard buttons explicitly set to col-span-2 (since it's an 8-column grid)
+    [{ label: '1', value: '1', type: 'number', colClass: 'col-span-2' }, { label: '2', value: '2', type: 'number', colClass: 'col-span-2' }, { label: '3', value: '3', type: 'number', colClass: 'col-span-2' }, { label: 'Del', value: 'Backspace', type: 'function', icon: FiDelete, colClass: 'col-span-2' }],
+    [{ label: '4', value: '4', type: 'number', colClass: 'col-span-2' }, { label: '5', value: '5', type: 'number', colClass: 'col-span-2' }, { label: '6', value: '6', type: 'number', colClass: 'col-span-2' }, { label: '.', value: '.', type: 'number', colClass: 'col-span-2' }],
+    [{ label: '7', value: '7', type: 'number', colClass: 'col-span-2' }, { label: '8', value: '8', type: 'number', colClass: 'col-span-2' }, { label: '9', value: '9', type: 'number', colClass: 'col-span-2' }, { label: 'X', value: '*', type: 'operator', colClass: 'col-span-2' }],
+
+    // Bottom Row: '00' takes 2 columns, '0' takes 3, '+' takes 3. Total = 8 columns.
+    [{ label: '00', value: '00', type: 'number', colClass: 'col-span-2' }, { label: '0', value: '0', type: 'number', colClass: 'col-span-3' }, { label: '+', value: '+', type: 'operator', colClass: 'col-span-3' }]
+];
+
 
 export const applyRounding = (amount: number, isRoundingEnabled: boolean, interval: number = 1): number => {
     if (!isRoundingEnabled || !interval || interval <= 0) {
@@ -63,12 +86,38 @@ const toCurrency = (num: number) => {
     return Math.round((num + Number.EPSILON) * 100) / 100;
 };
 
+
 const Sales: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const { currentUser, loading: authLoading, hasPermission } = useAuth();
     const dbOperations = useDatabase();
-    const { salesSettings, loadingSettings } = useSalesSettings();
+    // 👇 1. GRAB RAW SETTINGS FROM DB 👇
+    const { salesSettings: rawSettings, loadingSettings } = useSalesSettings();
+
+    // 👇 2. INSTANTLY ENFORCE PLAN LIMITS 👇
+    const salesSettings = useMemo(() => {
+        if (!rawSettings) return null;
+
+        // Get the active plan using your exact data structure
+        const activePlan = currentUser?.Subscription?.pack?.toLowerCase() || 'pos_basic';
+        const allowedFeatures = PLAN_ALLOWED_FEATURES[activePlan] || PLAN_ALLOWED_FEATURES['pos_basic'];
+
+        // If their saved view isn't allowed, force them to the first allowed view (e.g. 'calculator' for basic)
+        const validView = allowedFeatures.allowedViews?.includes(rawSettings.salesViewType || 'list')
+            ? rawSettings.salesViewType
+            : allowedFeatures.allowedViews[0];
+
+        return {
+            ...rawSettings,
+            salesViewType: validView,
+            enableSalesmanSelection: allowedFeatures.enableSalesmanSelection ? rawSettings.enableSalesmanSelection : false,
+            allowDueBilling: allowedFeatures.allowDueBilling ? rawSettings.allowDueBilling : false,
+            enableShippingDetails: allowedFeatures.enableShippingDetails ? rawSettings.enableShippingDetails : false,
+            enableExtraExpense: allowedFeatures.enableExtraExpense ? rawSettings.enableExtraExpense : false,
+            enableNarration: allowedFeatures.enableNarration ? rawSettings.enableNarration : false,
+        };
+    }, [rawSettings, currentUser?.Subscription?.pack]);
     const invoiceToEdit = location.state?.invoiceData;
     const isEditMode = location.state?.isEditMode === true && !!invoiceToEdit;
 
@@ -130,9 +179,45 @@ const Sales: React.FC = () => {
     // View variables
     const isCardView = salesSettings?.salesViewType === 'card';
     const isCardImageView = isCardView && (salesSettings?.cardViewWithPhoto !== false);
+    const isCalculatorView = salesSettings?.salesViewType === 'calculator';
     const showTaxRow = (activeTaxMode !== 'exempt');
+    const [calcInput, setCalcInput] = useState<string>('');
+    const [stagedCalcInput, setStagedCalcInput] = useState<string>('');
 
-    // --- Initialize Tax Mode ---
+    // If the cart gets completely cleared (e.g., successful payment), forget the staged equation
+    useEffect(() => {
+        if (items.length === 0) {
+            setStagedCalcInput('');
+        }
+    }, [items.length]);
+
+    const handlePointerDown = (key: CalcKey) => {
+        if (key.value === 'Backspace') {
+            longPressTimer.current = setTimeout(() => {
+                handleKeypadPress({ ...key, value: 'Clear' }); // Triggers the Clear logic after 1.5s
+                longPressTimer.current = null;
+            }, 1500);
+        }
+    };
+
+    const handlePointerUp = (key: CalcKey) => {
+        if (key.value === 'Backspace') {
+            if (longPressTimer.current) {
+                clearTimeout(longPressTimer.current); // Cancel the long press
+                handleKeypadPress(key); // Execute normal short press (Backspace)
+                longPressTimer.current = null;
+            }
+        } else {
+            handleKeypadPress(key); // Normal keys execute on click/up
+        }
+    };
+
+    const handlePointerLeave = (key: CalcKey) => {
+        if (key.value === 'Backspace' && longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
+    };
     // Logic: Always pre-select based on settings, but allow override.
     useEffect(() => {
         if (loadingSettings) return;
@@ -175,17 +260,13 @@ const Sales: React.FC = () => {
                 const fetchedItems = await dbOperations.syncItems();
                 setAvailableItems(fetchedItems);
                 if (!isEditMode) {
-                    const nextNum = await generateNextInvoiceNumber(currentUser.companyId);
+                    // FIX: Use PEEK instead of GENERATE
+                    const nextNum = await peekNextInvoiceNumber(currentUser.companyId);
                     setInvoiceNumber(nextNum);
                 } else if (invoiceToEdit?.invoiceNumber) {
                     setInvoiceNumber(invoiceToEdit.invoiceNumber);
                 }
-                if (!isEditMode) {
-                    const nextNum = await generateNextInvoiceNumber(currentUser.companyId);
-                    setInvoiceNumber(nextNum);
-                } else if (invoiceToEdit?.invoiceNumber) {
-                    setInvoiceNumber(invoiceToEdit.invoiceNumber);
-                }
+
                 const fetchedWorkers = await dbOperations.getWorkers();
                 setWorkers(fetchedWorkers);
                 let groupMap: Record<string, string> = {};
@@ -204,7 +285,8 @@ const Sales: React.FC = () => {
                     const currentUserAsWorker = fetchedWorkers.find(u => u.uid === currentUser.uid);
                     setSelectedWorker(currentUserAsWorker || null);
                 }
-            } catch (err) { console.error(err); setError('Failed to load initial page data.'); } finally { setPageIsLoading(false); }
+            } catch (err) { console.error(err); setError('Failed to load initial page data.'); }
+            finally { setPageIsLoading(false); }
         };
         fetchData();
     }, [authLoading, currentUser, dbOperations, isEditMode, invoiceToEdit, loadingSettings]);
@@ -372,6 +454,227 @@ const Sales: React.FC = () => {
     }, [items, salesSettings, activeTaxMode, gstSchemeDisplay]);
 
     const amountToPayNow = useMemo(() => finalAmount, [finalAmount]);
+    // Helper to evaluate the current string (e.g., "100*2" -> 200)
+
+    const displayRef = useRef<HTMLInputElement>(null);
+
+    // Injects a number exactly where the user tapped
+    const insertAtCursor = (val: string) => {
+        const input = displayRef.current;
+        if (!input || !calcInput) {
+            setCalcInput(prev => prev + val);
+            return;
+        }
+
+        const start = input.selectionStart ?? calcInput.length;
+        const end = input.selectionEnd ?? calcInput.length;
+
+        const newVal = calcInput.slice(0, start) + val + calcInput.slice(end);
+        setCalcInput(newVal);
+
+        // Keep focus and move cursor forward
+        setTimeout(() => {
+            input.focus();
+            input.setSelectionRange(start + val.length, start + val.length);
+        }, 0);
+    };
+
+    // Deletes the number exactly where the user tapped
+    const deleteAtCursor = () => {
+        const input = displayRef.current;
+        if (!input || !calcInput) return;
+
+        const start = input.selectionStart ?? calcInput.length;
+        const end = input.selectionEnd ?? calcInput.length;
+
+        if (start === end && start > 0) {
+            const newVal = calcInput.slice(0, start - 1) + calcInput.slice(end);
+            setCalcInput(newVal);
+            setTimeout(() => {
+                input.focus();
+                input.setSelectionRange(start - 1, start - 1);
+            }, 0);
+        } else if (start !== end) {
+            const newVal = calcInput.slice(0, start) + calcInput.slice(end);
+            setCalcInput(newVal);
+            setTimeout(() => {
+                input.focus();
+                input.setSelectionRange(start, start);
+            }, 0);
+        }
+    };
+
+    const generateSafeId = () => {
+        if (typeof window.crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+            return crypto.randomUUID();
+        }
+        // Fallback for mobile HTTP testing
+        return 'id-' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+    };
+    // Parses the entire string on the screen to calculate live totals and generate items
+    const parseFullEquation = (equation: string): { items: SalesItem[], total: number } => {
+        if (!equation.trim()) return { items: [], total: 0 };
+        const segments = equation.split('+');
+        const newItems: SalesItem[] = [];
+        let grandTotal = 0;
+
+        segments.forEach((segment) => {
+            if (!segment.trim()) return;
+            const multiplicationParts = segment.split('*');
+            let segmentSubtotal = 1;
+            let hasValidNumber = false;
+
+            multiplicationParts.forEach(numStr => {
+                const num = parseFloat(numStr);
+                if (!isNaN(num) && num > 0) {
+                    segmentSubtotal *= num;
+                    hasValidNumber = true;
+                }
+            });
+
+            if (hasValidNumber && segmentSubtotal > 0) {
+                newItems.push({
+                    id: generateSafeId(), // <--- UPDATED HERE
+                    productId: `${generateSafeId()}`, // <--- UPDATED HERE
+                    name: segment.includes('*') ? segment.replace('*', ' x ') : segment,
+                    mrp: segmentSubtotal,
+                    salesPrice: segmentSubtotal,
+                    customPrice: segmentSubtotal,
+                    quantity: 1,
+                    discount: 0,
+                    isEditable: true,
+                    purchasePrice: 0,
+                    tax: salesSettings?.defaultTaxRate || 0,
+                    itemGroupId: 'calculator',
+                    stock: 0,
+                    amount: segmentSubtotal,
+                    barcode: '',
+                    restockQuantity: 0,
+                    unit: 'Bill',
+                    unitMultiplier: 1,
+                    packetSize: 1,
+                    isCustomAmount: true
+                });
+                grandTotal += segmentSubtotal;
+            }
+        });
+        return { items: newItems, total: grandTotal };
+    };
+
+    // Live preview data
+    const parsedData = parseFullEquation(calcInput);
+    const liveTotal = finalAmount + parsedData.total;
+    const liveItemCount = items.length + parsedData.items.length;
+
+
+    const handleKeypadPress = (key: CalcKey) => {
+        const { value, type } = key;
+        if (type === 'function') {
+            if (value === 'Backspace') {
+                deleteAtCursor(); // <-- UPDATED
+            } else if (value === 'Clear') {
+                if (calcInput === '') {
+                    if (items.length > 0 && window.confirm("Are you sure you want to clear the entire bill?")) setItems([]);
+                } else {
+                    setCalcInput('');
+                }
+            }
+        } else {
+            // Operator (+, *) or Number
+            insertAtCursor(value); // <-- UPDATED
+        }
+    };
+
+    // Update physical keyboard listener to use the cursor too
+    useEffect(() => {
+        if (!isCalculatorView) return;
+        const handleKeyDown = (e: KeyboardEvent) => {
+
+            // 1. If the input IS focused natively, prevent double-typing but catch action keys
+            if (document.activeElement === displayRef.current) {
+                if (e.key === 'Enter' || e.key === '=') {
+                    e.preventDefault();
+                    handleCheckoutClick();
+                } else if (e.key.toLowerCase() === 'c' || e.key === 'Escape') {
+                    e.preventDefault();
+                    if (calcInput === '') {
+                        if (items.length > 0 && window.confirm("Are you sure you want to clear the bill?")) setItems([]);
+                    } else {
+                        setCalcInput('');
+                    }
+                }
+                return; // Stop here so native onChange can handle the physical number typing
+            }
+
+            // 2. If the input IS NOT focused (Global typing fallback)
+            const key = e.key;
+            if (/^[0-9*.\-+]$/.test(key)) {
+                e.preventDefault();
+                insertAtCursor(key);
+            } else if (key === 'Enter' || key === '=') {
+                e.preventDefault();
+                handleCheckoutClick();
+            } else if (key === 'Backspace') {
+                e.preventDefault();
+                deleteAtCursor();
+            } else if (key.toLowerCase() === 'c' || key === 'Escape') {
+                e.preventDefault();
+                if (calcInput === '') {
+                    if (items.length > 0 && window.confirm("Are you sure you want to clear the bill?")) setItems([]);
+                } else {
+                    setCalcInput('');
+                }
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isCalculatorView, calcInput, items.length]);
+
+    const handleCheckoutClick = () => {
+        if (calcInput.trim()) {
+            // Flag the items as 'staged' so we can remove them if the drawer is canceled
+            const stagedItems = parsedData.items.map(i => ({ ...i, isStagedCalcItem: true }));
+
+            setStagedCalcInput(calcInput); // Remember the equation
+
+            setItems(prev => {
+                const insertionOrder = salesSettings?.cartInsertionOrder || 'top';
+                return insertionOrder === 'top' ? [...stagedItems, ...prev] : [...prev, ...stagedItems];
+            });
+            setCalcInput(''); // Clear screen
+        }
+
+        setTimeout(() => {
+            if (items.length > 0 || parsedData.items.length > 0) {
+                setIsDrawerOpen(true);
+            } else {
+                setModal({ message: 'Please add at least one item.', type: State.INFO });
+            }
+        }, 10);
+    };
+
+    useEffect(() => {
+        if (!isCalculatorView) return;
+        const handleKeyDown = (e: KeyboardEvent) => {
+            const key = e.key;
+            if (/^[0-9*.\-+]$/.test(key)) {
+                setCalcInput(prev => prev + key);
+            } else if (key === 'Enter' || key === '=') {
+                e.preventDefault();
+                handleCheckoutClick();
+            } else if (key === 'Backspace') {
+                setCalcInput(prev => prev.slice(0, -1));
+            } else if (key.toLowerCase() === 'c' || key === 'Escape') {
+                if (calcInput === '') {
+                    if (items.length > 0 && window.confirm("Are you sure you want to clear the bill?")) setItems([]);
+                } else {
+                    setCalcInput('');
+                }
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isCalculatorView, calcInput, items.length]);
 
     const addItemToCart = (itemToAdd: Item) => {
         if (!itemToAdd || !itemToAdd.id) {
@@ -537,7 +840,10 @@ const Sales: React.FC = () => {
         setIsDrawerOpen(true);
     };
 
+    const [isSaving, setIsSaving] = useState(false);
     const handleSavePayment = async (completionData: PaymentCompletionData) => {
+        if (isSaving) return; // Exit if already saving
+        setIsSaving(true);
         if (!currentUser?.companyId) return;
 
         if (salesSettings?.requireCustomerName && !completionData.partyName?.trim()) throw new Error("Customer Name is required.");
@@ -642,15 +948,24 @@ const Sales: React.FC = () => {
             // 2. Handle New vs Edit behavior
             if (isNew) {
                 saleData.createdAt = serverTimestamp();
-                saleData.invoiceNumber = invoiceNumber || await generateNextInvoiceNumber(companyId);
-                saleData.invoiceNumber = invoiceNumber || await generateNextInvoiceNumber(companyId);
-                saleData.userId = currentUser.uid;
-                saleData.companyId = companyId;
-                saleData.voucherName = salesSettings?.voucherName ?? 'Sales';
+                const currentAutoNum = await peekNextInvoiceNumber(companyId);
+                const finalInvNo = invoiceNumber.trim();
 
+                saleData.invoiceNumber = finalInvNo;
+
+                // 2. Commit the Sale
                 const newSaleRef = doc(collection(db, "companies", companyId, "sales"));
                 transaction.set(newSaleRef, saleData);
+
+                // 3. Increment the sequence ONLY IF the user used the auto-suggested one
+                if (finalInvNo === currentAutoNum) {
+                    const counterRef = doc(db, 'companies', companyId, 'counters', 'invoiceCounter');
+                    // Note: We use increment(1) here for atomic safety
+                    transaction.update(counterRef, { currentNumber: firebaseIncrement(1) });
+                }
+
                 return { id: newSaleRef.id, number: saleData.invoiceNumber };
+
             } else if (existingId) {
                 const invoiceRef = doc(db, "companies", companyId, "sales", existingId);
                 transaction.update(invoiceRef, saleData);
@@ -712,7 +1027,7 @@ const Sales: React.FC = () => {
                     // Existing logic for New Invoices stays exactly the same
                     items.forEach(i => {
                         const pid = i.productId || i.id;
-                        if (pid) {
+                        if (pid && !i.isCustomAmount) {
                             const itemRef = doc(db, "companies", companyId, "items", pid);
                             transaction.update(itemRef, { stock: firebaseIncrement(-(i.quantity || 1)), updatedAt: serverTimestamp() }); // BACK TO NORMAL
                         }
@@ -749,6 +1064,8 @@ const Sales: React.FC = () => {
             }
         } catch (e: any) {
             console.error(e); setModal({ message: "Error saving", type: State.ERROR });
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -1198,113 +1515,113 @@ const Sales: React.FC = () => {
 
                                 // ── CARD WITHOUT IMAGE ───────────────────────────────────────────────────────
                                 return (
-                                                    <div
-                                                      key={item.id}
-                                                      className={`bg-white rounded-sm border flex flex-col overflow-visible transition-all relative
+                                    <div
+                                        key={item.id}
+                                        className={`bg-white rounded-sm border flex flex-col overflow-visible transition-all relative
                                       ${isSelected ? 'border-blue-400 ring-1 ring-blue-100' : 'border-gray-100 hover:shadow-sm'}`}
-                                                      style={{ minHeight: 130 }}
+                                        style={{ minHeight: 130 }}
+                                    >
+                                        {/* Discount badge - corner stamp */}
+                                        {discPct > 0 && (
+                                            <div
+                                                className="absolute -top-px -left-px bg-blue-600 text-white text-[8px] font-medium leading-tight text-center z-10"
+                                                style={{ borderRadius: '10px 0 8px 0', padding: '3px 6px', minWidth: 28 }}
+                                            >
+                                                {discPct}% OFF
+                                            </div>
+                                        )}
+
+                                        {/* X button - only when selected */}
+                                        {isSelected && (
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); handleDeleteItem(lastAddedCartItem.id); }}
+                                                className="absolute top-1 right-2 text-gray-400 hover:text-red-500 transition-colors z-10 bg-transparent border-none cursor-pointer text-xs leading-none"
+                                            >
+                                                ✕
+                                            </button>
+                                        )}
+
+                                        <div className="p-2.5 flex flex-col gap-1.5 flex-1">
+
+                                            {/* Item name - 2 line clamp then ellipsis */}
+                                            <p
+                                                className="text-[12px] font-medium text-gray-900 leading-snug pr-4 min-h-[32px] flex items-start"
+                                                style={{
+                                                    marginTop: discPct > 0 ? 14 : 2,
+                                                    display: '-webkit-box',
+                                                    WebkitLineClamp: 2,
+                                                    WebkitBoxOrient: 'vertical' as any,
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                }}
+                                                title={item.name}
+                                            >
+                                                {item.name}
+                                            </p>
+
+                                            {/* Price + edit icon in same row */}
+                                            <div className="flex items-center justify-between gap-1">
+                                                <div className="flex items-baseline gap-1.5">
+                                                    <span className="text-xs font-semibold text-gray-900">
+                                                        ₹{Number(sp).toLocaleString('en-IN')}
+                                                    </span>
+                                                    {discPct > 0 && mrp > 0 && Number(sp) < mrp && (
+                                                        <span className="text-[10px] text-gray-400 line-through">
+                                                            ₹{mrp.toLocaleString('en-IN')}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        const orig = availableItems.find(a => a.id === item.id);
+                                                        if (orig) handleOpenEditDrawer(orig);
+                                                    }}
+                                                    className="text-gray-400 hover:text-blue-600 transition-colors flex-shrink-0"
+                                                >
+                                                    <FiEdit size={10} />
+                                                </button>
+                                            </div>
+
+                                            {/* Bottom - pinned, same height for all cards */}
+                                            {/* Bottom - pinned, same height for all cards */}
+                                            <div className="mt-auto pt-2 flex items-center justify-between gap-2 min-w-0 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+
+                                                {!isSelected ? (
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); addItemToCart(item); }}
+                                                        className="w-full py-1.5 rounded-md text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 transition-colors"
                                                     >
-                                                      {/* Discount badge - corner stamp */}
-                                                      {discPct > 0 && (
-                                                        <div
-                                                          className="absolute -top-px -left-px bg-blue-600 text-white text-[8px] font-medium leading-tight text-center z-10"
-                                                          style={{ borderRadius: '10px 0 8px 0', padding: '3px 6px', minWidth: 28 }}
-                                                        >
-                                                          {discPct}% OFF
+                                                        + Add
+                                                    </button>
+                                                ) : (
+                                                    <div className="flex items-center justify-between gap-1 w-full min-w-0 overflow-hidden">
+                                                        {/* Subtotal LEFT */}
+                                                        <div className="text-left min-w-0 flex-shrink overflow-hidden">
+                                                            <p className="text-[9px] uppercase text-gray-400 tracking-wide leading-none">Subtotal</p>
+                                                            <p className="text-[11px] font-semibold text-blue-600 truncate">
+                                                                ₹{lineSubtotal.toLocaleString('en-IN')}
+                                                            </p>
                                                         </div>
-                                                      )}
-                                
-                                                      {/* X button - only when selected */}
-                                                      {isSelected && (
-                                                        <button
-                                                          onClick={(e) => { e.stopPropagation(); handleDeleteItem(lastAddedCartItem.id); }}
-                                                          className="absolute top-1 right-2 text-gray-400 hover:text-red-500 transition-colors z-10 bg-transparent border-none cursor-pointer text-xs leading-none"
-                                                        >
-                                                          ✕
-                                                        </button>
-                                                      )}
-                                
-                                                      <div className="p-2.5 flex flex-col gap-1.5 flex-1">
-                                
-                                                        {/* Item name - 2 line clamp then ellipsis */}
-                                                        <p
-                                                          className="text-[12px] font-medium text-gray-900 leading-snug pr-4 min-h-[32px] flex items-start"
-                                                          style={{
-                                                            marginTop: discPct > 0 ? 14 : 2,
-                                                            display: '-webkit-box',
-                                                            WebkitLineClamp: 2,
-                                                            WebkitBoxOrient: 'vertical' as any,
-                                                            overflow: 'hidden',
-                                                            textOverflow: 'ellipsis',
-                                                          }}
-                                                          title={item.name}
-                                                        >
-                                                          {item.name}
-                                                        </p>
-                                
-                                                        {/* Price + edit icon in same row */}
-                                                        <div className="flex items-center justify-between gap-1">
-                                                          <div className="flex items-baseline gap-1.5">
-                                                            <span className="text-xs font-semibold text-gray-900">
-                                                              ₹{Number(sp).toLocaleString('en-IN')}
-                                                            </span>
-                                                            {discPct > 0 && mrp > 0 && Number(sp) < mrp && (
-                                                              <span className="text-[10px] text-gray-400 line-through">
-                                                                ₹{mrp.toLocaleString('en-IN')}
-                                                              </span>
-                                                            )}
-                                                          </div>
-                                                          <button
-                                                            onClick={(e) => {
-                                                              e.stopPropagation();
-                                                              const orig = availableItems.find(a => a.id === item.id);
-                                                              if (orig) handleOpenEditDrawer(orig);
-                                                            }}
-                                                            className="text-gray-400 hover:text-blue-600 transition-colors flex-shrink-0"
-                                                          >
-                                                            <FiEdit size={10} />
-                                                          </button>
-                                                        </div>
-                                
-                                                        {/* Bottom - pinned, same height for all cards */}
-                                                        {/* Bottom - pinned, same height for all cards */}
-                                                        <div className="mt-auto pt-2 flex items-center justify-between gap-2 min-w-0 overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                                
-                                                          {!isSelected ? (
+
+                                                        {/* Quantity RIGHT */}
+                                                        <div className="flex items-center border border-gray-200 rounded-md overflow-hidden bg-white flex-shrink-0">
                                                             <button
-                                                              onClick={(e) => { e.stopPropagation(); addItemToCart(item); }}
-                                                              className="w-full py-1.5 rounded-md text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 transition-colors"
-                                                            >
-                                                              + Add
-                                                            </button>
-                                                          ) : (
-                                                            <div className="flex items-center justify-between gap-1 w-full min-w-0 overflow-hidden">
-                                                              {/* Subtotal LEFT */}
-                                                              <div className="text-left min-w-0 flex-shrink overflow-hidden">
-                                                                <p className="text-[9px] uppercase text-gray-400 tracking-wide leading-none">Subtotal</p>
-                                                                <p className="text-[11px] font-semibold text-blue-600 truncate">
-                                                                  ₹{lineSubtotal.toLocaleString('en-IN')}
-                                                                </p>
-                                                              </div>
-                                
-                                                              {/* Quantity RIGHT */}
-                                                              <div className="flex items-center border border-gray-200 rounded-md overflow-hidden bg-white flex-shrink-0">
-                                                                <button
-                                                                  onClick={(e) => { e.stopPropagation(); if (quantity > 1) handleQuantityChange(lastAddedCartItem.id, quantity - 1); else handleDeleteItem(lastAddedCartItem.id); }}
-                                                                  className="w-6 h-7 flex items-center justify-center bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-colors"
-                                                                >−</button>
-                                                                <span className="w-5 text-center text-xs font-semibold text-gray-800">{quantity}</span>
-                                                                <button
-                                                                  onClick={(e) => { e.stopPropagation(); handleQuantityChange(lastAddedCartItem.id, quantity + 1); }}
-                                                                  className="w-6 h-7 flex items-center justify-center bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-colors"
-                                                                >+</button>
-                                                              </div>
-                                                            </div>
-                                                          )}
+                                                                onClick={(e) => { e.stopPropagation(); if (quantity > 1) handleQuantityChange(lastAddedCartItem.id, quantity - 1); else handleDeleteItem(lastAddedCartItem.id); }}
+                                                                className="w-6 h-7 flex items-center justify-center bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-colors"
+                                                            >−</button>
+                                                            <span className="w-5 text-center text-xs font-semibold text-gray-800">{quantity}</span>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleQuantityChange(lastAddedCartItem.id, quantity + 1); }}
+                                                                className="w-6 h-7 flex items-center justify-center bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-colors"
+                                                            >+</button>
                                                         </div>
-                                                      </div>
                                                     </div>
-                                                  );
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
                             })}
                         </div>
 
@@ -1382,6 +1699,128 @@ const Sales: React.FC = () => {
                         </div>
                     </div>
                 )}
+            </div>
+        );
+    }
+
+    if (isCalculatorView) {
+        return (
+            // fixed inset-0 completely disables page scrolling
+            <div className="fixed inset-0 flex flex-col bg-transparent w-full overflow-hidden">
+                {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+
+                {/* Top Navigation */}
+                <div className="shrink-0 bg-white border-b border-gray-200">
+                    <div className="flex flex-col md:flex-row md:justify-between md:items-center p-2 md:px-4 md:py-3">
+                        <h1 className="text-2xl font-bold text-gray-800 text-center md:text-left md:mb-0">
+                            Sales
+                        </h1>
+                    </div>
+                </div>
+
+                {/* Main Calculator Area */}
+                <div className="flex-1 flex flex-col items-center p-1 sm:p-4 min-h-0 w-full">
+                    <div className="w-full max-w-sm mx-auto flex flex-col h-full">
+
+                        {/* Live Summary Totals (Moved Above Calculator) */}
+                        <div className="flex justify-between items-end px-2 py-1 shrink-0">
+                            <div className="flex flex-col">
+                                <span className="text-gray-500 font-medium text-sm mb-0.5">Grand Total</span>
+                                <span className="text-xs text-indigo-500 font-semibold">{liveItemCount} Items</span>
+                            </div>
+                            <span className="text-4xl font-bold text-gray-900 tracking-tight">₹{liveTotal.toFixed(2)}</span>
+                        </div>
+                        {/* Enlarged Display Screen */}
+                        <div
+                            className="bg-white border border-gray-200 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] p-4 flex flex-col items-end justify-end h-32 sm:h-40 shrink-0 w-full cursor-text"
+                            onClick={() => displayRef.current?.focus()}
+                        >
+                            <input
+                                ref={displayRef}
+                                type="text"
+                                inputMode="none" // <--- The magic attribute that hides mobile keyboards but keeps the cursor
+                                value={calcInput}
+                                placeholder="0"
+                                onChange={(e) => {
+                                    // Sanitizes native physical typing to only allow math chars
+                                    const val = e.target.value.replace(/[^0-9*.\-+]/g, '');
+                                    setCalcInput(val);
+                                }}
+                                className="text-4xl sm:text-5xl font-light text-gray-800 tracking-wide w-full text-right bg-transparent border-none outline-none m-0 p-0 overflow-x-auto caret-indigo-600"
+                            />
+                        </div>
+
+
+                        {/* Stretchy Keypad Grid */}
+                        <div className="grid grid-cols-8 sm:gap-2 flex-1 min-h-0 w-full">
+                            {calcKeys.flat().map((key) => {
+                                const { label, icon: Icon, colClass, type, value } = key;
+                                const isFunction = type === 'function';
+                                const isOperator = type === 'operator';
+                                const isBackspace = value === 'Backspace';
+
+                                return (
+                                    <button
+                                        key={key.label}
+                                        onPointerDown={isBackspace ? () => handlePointerDown(key) : undefined}
+                                        onPointerUp={isBackspace ? () => handlePointerUp(key) : undefined}
+                                        onPointerLeave={isBackspace ? () => handlePointerLeave(key) : undefined}
+                                        onClick={!isBackspace ? () => handleKeypadPress(key) : undefined}
+                                        className={`h-full w-full flex items-center justify-center text-2xl sm:text-3xl font-medium transition-all active:scale-95 border select-none
+                                            ${isFunction ? 'bg-red-50 border-red-300 text-red-500 hover:bg-red-100' :
+                                                isOperator ? 'bg-indigo-50 border-indigo-300 text-indigo-600 hover:bg-indigo-100' :
+                                                    'bg-white shadow-sm border-gray-300 text-gray-800 hover:bg-gray-50'}
+                                                    ${colClass || 'col-span-2'}`}>
+                                        {Icon ? <Icon size={28} /> : label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Bottom Action Bar (Now only holds the button) */}
+                <div className="shrink-0 bg-transparent p-1 sm:p-4 shadow-[0_-4px_15px_-3px_rgba(0,0,0,0.05)] mb-16">
+                    <div className="w-full max-w-sm mx-auto flex flex-col">
+                        <button
+                            onClick={handleCheckoutClick}
+                            disabled={liveItemCount === 0}
+                            className="w-full bg-emerald-500 rounded-xs hover:bg-emerald-600 disabled:bg-emerald-200 disabled:text-white text-white font-bold py-1 text-xl transition-colors shadow-md active:scale-[0.98]"
+                        >
+                            Proceed to Pay
+                        </button>
+                    </div>
+                </div>
+
+                {/* Modals & Drawers */}
+                <PaymentDrawer
+                    mode='calculator'
+                    isOpen={isDrawerOpen}
+                    onClose={() => {
+                        setIsDrawerOpen(false);
+                        if (stagedCalcInput) {
+                            setCalcInput(stagedCalcInput);
+                            setItems(prev => prev.filter(i => !i.isStagedCalcItem));
+                            setStagedCalcInput('');
+                        }
+                    }}
+                    enableCustomerDetails={salesSettings?.enableCustomerInfoToggle ?? false}
+                    subtotal={subtotal}
+                    billTotal={amountToPayNow}
+                    onPaymentComplete={handleSavePayment}
+                    enableShippingDetails={false}
+                    enableExtraExpense={false}
+                    enableNarration={false}
+                    allowDueBilling={false}
+                    requireCustomerName={false}
+                    requireCustomerMobile={false}
+                    isPartyNameEditable={true}
+                    initialPartyName={''}
+                    initialPartyNumber={''}
+                    totalItemDiscount={totalDiscount}
+                    totalQuantity={totalQuantity}
+                />
+
             </div>
         );
     }

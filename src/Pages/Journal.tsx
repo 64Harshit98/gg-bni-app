@@ -33,6 +33,7 @@ import { FiX, FiSend } from 'react-icons/fi'; // Import FiSend
 import { botMasterService } from '../Pages/Additional/Whatsapp/WhatsappApi'; // Import botMasterService
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { storage } from '../lib/Firebase'; // Ensure 'storage' is exported from here
+import { Permissions } from '../enums/permissions.enum';
 
 interface InvoiceItem {
   id: string;
@@ -333,7 +334,7 @@ const Journal: React.FC = () => {
   const [showQrModal, setShowQrModal] = useState<Invoice | null>(null);
   const [sendingPdf, setSendingPdf] = useState(false); // State for sending PDF
 
-  const { currentUser, loading: authLoading } = useAuth();
+  const { currentUser, loading: authLoading, hasPermission } = useAuth();
   const { invoices, loading: dataLoading, error } = useJournalData(currentUser?.companyId);
   const navigate = useNavigate();
 
@@ -1226,8 +1227,13 @@ const Journal: React.FC = () => {
 
       <div className="flex justify-center border-b border-gray-500 p-2 mb-2">
         <CustomButton variant={Variant.Transparent} active={activeType === 'Credit'} onClick={() => setActiveType('Credit')}>Sales</CustomButton>
-        <CustomButton variant={Variant.Transparent} active={activeType === 'Debit'} onClick={() => setActiveType('Debit')}>Purchase</CustomButton>
-      </div>
+        <CustomButton
+          variant={Variant.Transparent}
+          disabled={!hasPermission(Permissions.HiddenProFeatures)}  // Optional: style it differently if locked
+          className={!hasPermission(Permissions.HiddenProFeatures) ? 'opacity-50 cursor-not-allowed' : ''}
+        >
+          {hasPermission(Permissions.HiddenProFeatures) ? 'Purchase' : '🔒 Purchase'}
+        </CustomButton>      </div>
       <CustomToggle>
         <CustomToggleItem className="mr-2" onClick={() => setActiveTab('Paid')} data-state={activeTab === 'Paid' ? 'on' : 'off'}>Paid</CustomToggleItem>
         <CustomToggleItem onClick={() => setActiveTab('Unpaid')} data-state={activeTab === 'Unpaid' ? 'on' : 'off'}>Unpaid</CustomToggleItem>

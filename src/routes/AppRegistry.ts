@@ -66,7 +66,7 @@ const OrdersReturnPage = lazy(() => import('../Catalogue/OrdersReturn'));
 const MyShop = lazy(() => import('../Catalogue/ShopItem'));
 const Catasupport = lazy(() => import('../Catalogue/CatalogueSupport/CatalogueSupport'));
 const CatlogueItems = lazy(() => import('../Catalogue/CatalogueReports/CatalogueItems')); // catalogue items
-const CatlogueManageItems = lazy(() => import('../Catalogue/CatalogueReports/CatalogueManageItems')); 
+const CatlogueManageItems = lazy(() => import('../Catalogue/CatalogueReports/CatalogueManageItems'));
 const CatlogueSoldReport = lazy(() => import('../Catalogue/CatalogueReports/CatalogueSoldReport'));
 
 export interface AppRoute {
@@ -95,7 +95,7 @@ export const AppRegistry: AppModule[] = [
             { path: ROUTES.ACCOUNT.substring(1), component: Account, permission: Permissions.ManageEditProfile },
             { path: ROUTES.EDIT_PROFILE, component: EditProfile, permission: Permissions.ManageEditProfile },
             { path: ROUTES.JOURNAL.substring(1), component: Journal, permission: Permissions.ViewTransactions },
-            { path: ROUTES.MASTERS.substring(1), component: Masters, permission: Permissions.ManageUsers },
+            { path: ROUTES.MASTERS.substring(1), component: Masters, permission: Permissions.ViewReports },
             { path: ROUTES.SALES, component: Sales, permission: Permissions.CreateSales },
             { path: ROUTES.SALES_RETURN, component: SalesReturn, permission: Permissions.CreateSalesReturn },
             { path: ROUTES.PURCHASE, component: Purchase, permission: Permissions.CreatePurchase },
@@ -105,7 +105,7 @@ export const AppRegistry: AppModule[] = [
             { path: ROUTES.ITEM_GROUP, component: ItemGroup, permission: Permissions.ManageItemGroup },
             { path: ROUTES.MANAGE_ITEMS, component: ManageItems, permission: Permissions.ManageItemGroup },
             { path: ROUTES.USER_ADD, component: UserAdd, permission: Permissions.CreateUsers },
-            { path: ROUTES.REPORTS.substring(1), component: Reports, permission: Permissions.ViewItemReport },
+            { path: ROUTES.REPORTS.substring(1), component: Reports, permission: Permissions.ViewReports },
             { path: ROUTES.ITEM_REPORT, component: ItemReport, permission: Permissions.ViewItemReport },
             { path: ROUTES.SALES_REPORT, component: SalesReport, permission: Permissions.ViewSalesReport },
             { path: ROUTES.PURCHASE_REPORT, component: PurchaseReport, permission: Permissions.ViewPurchaseReport },
@@ -144,8 +144,8 @@ export const AppRegistry: AppModule[] = [
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`, component: RequestPage, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`, component: CatItemGroup, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_REPORTS}`, component: CatalogueReports, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_ITEMS}`, component: CatlogueItems, permission: null }, 
-            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_MANAGE_ITEMS}`, component: CatlogueManageItems, permission: null }, 
+            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_ITEMS}`, component: CatlogueItems, permission: null },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_MANAGE_ITEMS}`, component: CatlogueManageItems, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_SOLD_REPORT}`, component: CatlogueSoldReport, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_SALES}`, component: CatalogueSales, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_PNL_REPORT}`, component: CatalogueProfitLoss, permission: null },

@@ -44,7 +44,7 @@ export interface PaymentCompletionData {
 interface PaymentDrawerProps {
     isOpen: boolean;
     onClose: () => void;
-    mode?: 'sale' | 'purchase'; // Added Mode
+    mode?: 'sale' | 'purchase' | 'calculator';
     subtotal: number;
     totalTax?: number;
     billTotal: number;
@@ -69,6 +69,7 @@ interface PaymentDrawerProps {
     enableShippingDetails?: boolean;
     enableExtraExpense?: boolean;
     enableNarration?: boolean;
+    enableCustomerDetails?: boolean;
 }
 
 const SESSION_STORAGE_NAME_KEY = 'sessionPartyName';
@@ -114,6 +115,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     enableShippingDetails = false,
     enableExtraExpense = false,
     enableNarration = false,
+    enableCustomerDetails = true,
 }) => {
     const { currentUser } = useAuth();
 
@@ -121,6 +123,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const isSale = mode === 'sale';
     const collectionName = isSale ? 'customers' : 'suppliers';
     const partyLabel = isSale ? 'Customer' : 'Supplier';
+    const isCalculator = mode === 'calculator';
 
     // --- STATE ---
     const [partyName, setPartyName] = useState('');
@@ -523,168 +526,112 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 </div>
 
                 <div className="flex-1 overflow-y-auto overscroll-y-contain bg-white">
-                    {/* Party Info */}
-                    <div className="p-4 space-y-2">
-                        <div className="flex justify-between items-center mb-2">
-                            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">{partyLabel} Info</h3>
+                    {/* Party Info Section */}
+                    {enableCustomerDetails && (
+                        <div className="p-4 space-y-2">
 
-                            {/* --- BIGGER ADDRESS TOGGLE --- */}
-                            {isSale && enableShippingDetails && (
-                                <div className="flex bg-gray-200 rounded-md p-1 shadow-inner">
-                                    <button
-                                        onClick={() => setAddressType('billing')}
-                                        className={`text-xs px-4 py-1.5 rounded font-semibold transition-all ${addressType === 'billing' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                                    >
-                                        Billing
-                                    </button>
-                                    <button
-                                        onClick={() => setAddressType('shipping')}
-                                        className={`text-xs px-4 py-1.5 rounded font-semibold transition-all ${addressType === 'shipping' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                                    >
-                                        Shipping
-                                    </button>
+                            {/* NORMAL MODE: Header & Shipping Toggles */}
+                            {!isCalculator && (
+                                <div className="flex justify-between items-center mb-2">
+                                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">{partyLabel} Info</h3>
+                                    {isSale && enableShippingDetails && (
+                                        <div className="flex bg-gray-200 rounded-md p-1 shadow-inner">
+                                            <button onClick={() => setAddressType('billing')} className={`text-xs px-4 py-1.5 rounded font-semibold transition-all ${addressType === 'billing' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Billing</button>
+                                            <button onClick={() => setAddressType('shipping')} className={`text-xs px-4 py-1.5 rounded font-semibold transition-all ${addressType === 'shipping' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Shipping</button>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* NORMAL MODE: Same as Billing Checkbox */}
+                            {!isCalculator && isSale && enableShippingDetails && addressType === 'shipping' && (
+                                <div className="flex items-center justify-end mb-3 animate-in fade-in slide-in-from-top-1">
+                                    <label className="flex items-center gap-2 cursor-pointer bg-blue-50 px-3 py-1.5 rounded-md border border-blue-100">
+                                        <input type="checkbox" checked={isSameAsBilling} onChange={(e) => { const isChecked = e.target.checked; setIsSameAsBilling(isChecked); if (!isChecked) { setShippingName(''); setShippingNumber(''); setShippingAddress(''); setShippingGST(''); } }} className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer" />
+                                        <span className="text-xs font-semibold text-blue-800">Same as Billing Details</span>
+                                    </label>
+                                </div>
+                            )}
+
+                            {/* NAME AND NUMBER INPUTS (Will always render if enableCustomerDetails is true) */}
+                            <div className="grid grid-cols-2 gap-4 relative animate-in fade-in slide-in-from-top-2">
+                                {/* NUMBER INPUT */}
+                                <div className="relative">
+                                    <input
+                                        type="number"
+                                        placeholder={requireCustomerMobile ? "Phone Number *" : "Phone Number"}
+                                        value={addressType === 'billing' ? partyNumber : shippingNumber}
+                                        onChange={(e) => {
+                                            if (addressType === 'billing') { handleInputChange(e.target.value, 'number'); }
+                                            else { setShippingNumber(e.target.value); setIsSameAsBilling(false); }
+                                        }}
+                                        onFocus={() => { if (isSale && addressType === 'billing' && partyNumber.length >= 3) searchParty(partyNumber, 'number'); }}
+                                        className={`w-full bg-gray-50 p-3 text-sm rounded-xs border ${requireCustomerMobile && !partyNumber && addressType === 'billing' ? 'border-red-300 focus:border-red-500' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none`}
+                                        autoComplete="off"
+                                    />
+                                    {requireCustomerMobile && addressType === 'billing' && <span className="absolute right-3 top-3 text-red-500 font-bold">*</span>}
+                                    {isSale && addressType === 'billing' && renderSuggestions()}
+                                </div>
+
+                                {/* NAME INPUT */}
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        placeholder={requireCustomerName ? `${partyLabel} Name *` : `${partyLabel} Name`}
+                                        value={addressType === 'billing' ? partyName : shippingName}
+                                        onChange={(e) => {
+                                            if (addressType === 'billing') { handleInputChange(e.target.value, 'name'); }
+                                            else { setShippingName(e.target.value); setIsSameAsBilling(false); }
+                                        }}
+                                        onFocus={() => { if (!isSale && addressType === 'billing' && partyName.length >= 3) searchParty(partyName, 'name'); }}
+                                        className={`w-full bg-gray-50 p-3 text-sm rounded-xs border ${requireCustomerName && !partyName && addressType === 'billing' ? '' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none`}
+                                        autoComplete="off"
+                                    />
+                                    {requireCustomerName && addressType === 'billing' && <span className="absolute right-3 top-3 text-red-500 font-bold">*</span>}
+                                    {!isSale && addressType === 'billing' && renderSuggestions()}
+                                </div>
+                            </div>
+
+                            {/* NORMAL MODE: Extra Details Toggles (HIDDEN IN CALCULATOR MODE) */}
+                            {!isCalculator && (
+                                <div className="pt-2 flex flex-col gap-2 w-full">
+                                    <div className="flex items-center justify-between w-full">
+                                        <div onClick={() => setIsDetailsExpanded(!isDetailsExpanded)} className="flex items-center justify-start cursor-pointer text-blue-600 hover:text-blue-700 transition-colors text-xs font-semibold select-none">
+                                            <span>{isDetailsExpanded ? '- Hide' : '+ Add'} GST & Address</span>
+                                        </div>
+                                        {isSale && enableNarration && (
+                                            <div onClick={() => setIsNarrationExpanded(!isNarrationExpanded)} className="flex items-center justify-start cursor-pointer text-gray-500 hover:text-gray-700 transition-colors text-xs font-semibold select-none">
+                                                <span>{isNarrationExpanded ? '- Hide' : '+ Add'} Narration</span>
+                                            </div>
+                                        )}
+                                        {isSale && enableExtraExpense && (
+                                            <div onClick={() => setIsExpenseExpanded(!isExpenseExpanded)} className="flex items-center justify-end cursor-pointer text-orange-600 hover:text-orange-700 transition-colors text-xs font-semibold select-none">
+                                                <span>{isExpenseExpanded ? '- Hide' : '+ Add'} Expense</span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {isDetailsExpanded && (
+                                        <div className="grid grid-cols-2 gap-3 mt-3 animate-in slide-in-from-top-2 fade-in duration-200">
+                                            <input type="text" placeholder="GST Number" value={addressType === 'billing' ? partyGST : shippingGST} onChange={(e) => { if (addressType === 'billing') { setPartyGST(e.target.value); } else { setShippingGST(e.target.value); setIsSameAsBilling(false); } }} className="w-full p-2.5 text-sm rounded-lg border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none" />
+                                            <input type="text" placeholder="Full Address" value={addressType === 'billing' ? partyAddress : shippingAddress} onChange={(e) => { if (addressType === 'billing') { setPartyAddress(e.target.value); } else { setShippingAddress(e.target.value); setIsSameAsBilling(false); } }} className="w-full p-2.5 text-sm rounded-lg border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none" />
+                                        </div>
+                                    )}
+                                    {isExpenseExpanded && (
+                                        <div className="grid grid-cols-2 gap-3 mt-3 animate-in slide-in-from-top-2 fade-in duration-200 p-2 bg-orange-50 rounded-lg border border-orange-100">
+                                            <input type="text" placeholder="Expense Name (e.g. Freight)" value={expenseName} onChange={(e) => setExpenseName(e.target.value)} className="w-full p-2.5 text-sm rounded-lg border border-orange-200 bg-white focus:border-orange-500 outline-none" />
+                                            <input type="number" placeholder="Amount (₹)" value={expenseAmount} onChange={(e) => setExpenseAmount(parseFloat(e.target.value) || '')} className="w-full p-2.5 text-sm rounded-lg border border-orange-200 bg-white focus:border-orange-500 outline-none" />
+                                        </div>
+                                    )}
+                                    {isNarrationExpanded && (
+                                        <div className="mt-2 animate-in slide-in-from-top-2 fade-in duration-200">
+                                            <textarea placeholder="Enter narration or remarks..." value={narration} onChange={(e) => setNarration(e.target.value)} className="w-full p-2.5 text-sm rounded-lg border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none resize-none" rows={2} />
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
-
-                        {/* --- SAME AS BILLING CHECKBOX --- */}
-                        {isSale && enableShippingDetails && addressType === 'shipping' && (
-                            <div className="flex items-center justify-end mb-3 animate-in fade-in slide-in-from-top-1">
-                                <label className="flex items-center gap-2 cursor-pointer bg-blue-50 px-3 py-1.5 rounded-md border border-blue-100">
-                                    <input
-                                        type="checkbox"
-                                        checked={isSameAsBilling}
-                                        onChange={(e) => {
-                                            const isChecked = e.target.checked;
-                                            setIsSameAsBilling(isChecked);
-                                            if (!isChecked) {
-                                                setShippingName(''); setShippingNumber('');
-                                                setShippingAddress(''); setShippingGST('');
-                                            }
-                                        }}
-                                        className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
-                                    />
-                                    <span className="text-xs font-semibold text-blue-800">Same as Billing Details</span>
-                                </label>
-                            </div>
-                        )}
-
-                        <div className="grid grid-cols-2 gap-4 relative">
-                            {/* NUMBER INPUT */}
-                            <div className="relative">
-                                <input
-                                    type="number"
-                                    placeholder={requireCustomerMobile ? "Phone Number *" : "Phone Number"}
-                                    value={addressType === 'billing' ? partyNumber : shippingNumber}
-                                    onChange={(e) => {
-                                        if (addressType === 'billing') {
-                                            handleInputChange(e.target.value, 'number');
-                                        } else {
-                                            setShippingNumber(e.target.value);
-                                            setIsSameAsBilling(false); // Uncheck if manually edited
-                                        }
-                                    }}
-                                    onFocus={() => { if (isSale && addressType === 'billing' && partyNumber.length >= 3) searchParty(partyNumber, 'number'); }}
-                                    className={`w-full bg-gray-50 p-3 text-sm rounded-xs border ${requireCustomerMobile && !partyNumber && addressType === 'billing' ? 'border-red-300 focus:border-red-500' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none`}
-                                    autoComplete="off"
-                                />
-                                {requireCustomerMobile && addressType === 'billing' && <span className="absolute right-3 top-3 text-red-500 font-bold">*</span>}
-                                {isSale && addressType === 'billing' && renderSuggestions()}
-                            </div>
-
-                            {/* NAME INPUT */}
-                            <div className="relative">
-                                <input
-                                    type="text"
-                                    placeholder={requireCustomerName ? `${partyLabel} Name *` : `${partyLabel} Name`}
-                                    value={addressType === 'billing' ? partyName : shippingName}
-                                    onChange={(e) => {
-                                        if (addressType === 'billing') {
-                                            handleInputChange(e.target.value, 'name');
-                                        } else {
-                                            setShippingName(e.target.value);
-                                            setIsSameAsBilling(false); // Uncheck if manually edited
-                                        }
-                                    }}
-                                    onFocus={() => { if (!isSale && addressType === 'billing' && partyName.length >= 3) searchParty(partyName, 'name'); }}
-                                    className={`w-full bg-gray-50 p-3 text-sm rounded-xs border ${requireCustomerName && !partyName && addressType === 'billing' ? '' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none`}
-                                    autoComplete="off"
-                                />
-                                {requireCustomerName && addressType === 'billing' && <span className="absolute right-3 top-3 text-red-500 font-bold">*</span>}
-                                {!isSale && addressType === 'billing' && renderSuggestions()}
-                            </div>
-                        </div>
-
-                        <div className="pt-2 flex flex-col gap-2 w-full">
-                            <div className="flex items-center justify-between w-full">
-                                <div onClick={() => setIsDetailsExpanded(!isDetailsExpanded)} className="flex items-center justify-start cursor-pointer text-blue-600 hover:text-blue-700 transition-colors text-xs font-semibold select-none">
-                                    <span>{isDetailsExpanded ? '- Hide' : '+ Add'} GST & Address</span>
-                                </div>
-                                {isSale && enableNarration && (
-                                    <div onClick={() => setIsNarrationExpanded(!isNarrationExpanded)} className="flex items-center justify-start cursor-pointer text-gray-500 hover:text-gray-700 transition-colors text-xs font-semibold select-none">
-                                        <span>{isNarrationExpanded ? '- Hide' : '+ Add'} Narration</span>
-                                    </div>
-                                )}
-                                {isSale && enableExtraExpense && (
-                                    <div onClick={() => setIsExpenseExpanded(!isExpenseExpanded)} className="flex items-center justify-end cursor-pointer text-orange-600 hover:text-orange-700 transition-colors text-xs font-semibold select-none">
-                                        <span>{isExpenseExpanded ? '- Hide' : '+ Add'} Expense</span>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        {isDetailsExpanded && (
-                            <div className="grid grid-cols-2 gap-3 mt-3 animate-in slide-in-from-top-2 fade-in duration-200">
-                                <input
-                                    type="text"
-                                    placeholder="GST Number"
-                                    value={addressType === 'billing' ? partyGST : shippingGST}
-                                    onChange={(e) => {
-                                        if (addressType === 'billing') {
-                                            setPartyGST(e.target.value);
-                                        } else {
-                                            setShippingGST(e.target.value);
-                                            setIsSameAsBilling(false); // Uncheck if manually edited
-                                        }
-                                    }}
-                                    className="w-full p-2.5 text-sm rounded-lg border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none"
-                                />
-                                <input
-                                    type="text"
-                                    placeholder="Full Address"
-                                    value={addressType === 'billing' ? partyAddress : shippingAddress}
-                                    onChange={(e) => {
-                                        if (addressType === 'billing') {
-                                            setPartyAddress(e.target.value);
-                                        } else {
-                                            setShippingAddress(e.target.value);
-                                            setIsSameAsBilling(false); // Uncheck if manually edited
-                                        }
-                                    }}
-                                    className="w-full p-2.5 text-sm rounded-lg border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none"
-                                />
-                            </div>
-                        )}
-
-                        {/* --- EXPENSE INPUT FIELDS --- */}
-                        {isExpenseExpanded && (
-                            <div className="grid grid-cols-2 gap-3 mt-3 animate-in slide-in-from-top-2 fade-in duration-200 p-2 bg-orange-50 rounded-lg border border-orange-100">
-                                <input type="text" placeholder="Expense Name (e.g. Freight)" value={expenseName} onChange={(e) => setExpenseName(e.target.value)} className="w-full p-2.5 text-sm rounded-lg border border-orange-200 bg-white focus:border-orange-500 outline-none" />
-                                <input type="number" placeholder="Amount (₹)" value={expenseAmount} onChange={(e) => setExpenseAmount(parseFloat(e.target.value) || '')} className="w-full p-2.5 text-sm rounded-lg border border-orange-200 bg-white focus:border-orange-500 outline-none" />
-                            </div>
-                        )}
-                        {isNarrationExpanded && (
-                            <div className="mt-2 animate-in slide-in-from-top-2 fade-in duration-200">
-                                <textarea
-                                    placeholder="Enter narration or remarks..."
-                                    value={narration}
-                                    onChange={(e) => setNarration(e.target.value)}
-                                    className="w-full p-2.5 text-sm rounded-lg border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none resize-none"
-                                    rows={2}
-                                />
-                            </div>
-                        )}
-                    </div>
+                    )}
 
                     {/* Credit/Debit Balances */}
                     {(partyCredit > 0 || partyDebit > 0) && (
@@ -747,22 +694,26 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
 
                 {/* Footer Totals */}
                 <div className="p-4 bg-white border-t border-gray-200 rounded-b-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-20">
-                    <div className="flex justify-between items-center mb-2 text-sm text-gray-500">
-                        <span>Qty: <strong className="text-gray-800">{totalQuantity}</strong></span>
-                        <div className="flex items-center gap-2">
-                            <span>Subtotal:</span>
-                            <span className="font-medium text-gray-800">₹{subtotal.toFixed(2)}</span>
-                        </div>
-                    </div>
+                    {!isCalculator && (
+                        <>
+                            <div className="flex justify-between items-center mb-2 text-sm text-gray-500">
+                                <span>Qty: <strong className="text-gray-800">{totalQuantity}</strong></span>
+                                <div className="flex items-center gap-2">
+                                    <span>Subtotal:</span>
+                                    <span className="font-medium text-gray-800">₹{subtotal.toFixed(2)}</span>
+                                </div>
+                            </div>
 
-                    <div className="flex justify-between items-center mb-2 text-sm" onMouseDown={handleDiscountPressStart} onMouseUp={handleDiscountPressEnd} onMouseLeave={handleDiscountPressEnd} onTouchStart={handleDiscountPressStart} onTouchEnd={handleDiscountPressEnd} onClick={handleDiscountClick}>
-                        <div className="flex items-center gap-2">
-                            <span className={`text-gray-500 ${isDiscountLocked ? '' : 'text-blue-600 font-semibold'}`}>Bill Discount (₹)</span>
-                            {isDiscountLocked && <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>}
-                            {discountInfo && <span className="text-xs text-red-500 bg-red-50 px-1 rounded animate-pulse">{discountInfo}</span>}
-                        </div>
-                        <input id="discount" type="number" placeholder="0" value={discount || ''} onChange={handleDiscountChange} readOnly={isDiscountLocked} className={`w-20 text-center bg-red-100 rounded-sm text-red-800 focus:outline-none ${isDiscountLocked ? 'cursor-not-allowed' : 'border-b border-blue-300 font-semibold'}`} />
-                    </div>
+                            <div className="flex justify-between items-center mb-2 text-sm" onMouseDown={handleDiscountPressStart} onMouseUp={handleDiscountPressEnd} onMouseLeave={handleDiscountPressEnd} onTouchStart={handleDiscountPressStart} onTouchEnd={handleDiscountPressEnd} onClick={handleDiscountClick}>
+                                <div className="flex items-center gap-2">
+                                    <span className={`text-gray-500 ${isDiscountLocked ? '' : 'text-blue-600 font-semibold'}`}>Bill Discount (₹)</span>
+                                    {isDiscountLocked && <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>}
+                                    {discountInfo && <span className="text-xs text-red-500 bg-red-50 px-1 rounded animate-pulse">{discountInfo}</span>}
+                                </div>
+                                <input id="discount" type="number" placeholder="0" value={discount || ''} onChange={handleDiscountChange} readOnly={isDiscountLocked} className={`w-20 text-center bg-red-100 rounded-sm text-red-800 focus:outline-none ${isDiscountLocked ? 'cursor-not-allowed' : 'border-b border-blue-300 font-semibold'}`} />
+                            </div>
+                        </>
+                    )}
 
                     <div className="flex justify-between items-center mb-1.5 min-h-[24px]">
                         <div className="flex-1 flex justify-start">

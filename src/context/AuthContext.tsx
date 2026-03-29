@@ -8,10 +8,10 @@ import type { User } from '../Role/permission';
 import Loading from '../Pages/Loading/Loading';
 import { getFirestoreOperations } from '../lib/ItemsFirebase';
 import { getPackPermissions, normalizePlan } from './Plan';
-import { getDefaultPermissions } from '../Pages/Settings/Permissionsetting';
 import { getDefaultItemSettings } from '../Pages/Settings/ItemSetting';
 import { getDefaultPurchaseSettings } from '../Pages/Settings/Purchasesetting';
 import { getDefaultSalesSettings } from '../Pages/Settings/SalesSetting';
+import { syncCompanyPermissions } from '../context/Permissions';
 
 interface AuthState {
   status: 'pending' | 'authenticated' | 'unauthenticated';
@@ -102,32 +102,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           const permDocRef = doc(db, 'companies', companyId, 'permissions', uData.role);
           const permSnap = await getDoc(permDocRef);
 
+          let dbPerms: Permissions[] = [];
+
           if (permSnap.exists()) {
             const docData = permSnap.data();
-            let customPerms = docData.allowedPermissions;
+            dbPerms = docData.allowedPermissions || [];
 
-            // FIX: Handle Stringified Arrays (Matches your Settings page logic)
-            if (typeof customPerms === 'string') {
-              try {
-                customPerms = JSON.parse(customPerms);
-              } catch (e) {
-                console.error("Failed to parse permissions string:", e);
-                customPerms = [];
-              }
+            if (typeof dbPerms === 'string') {
+              try { dbPerms = JSON.parse(dbPerms); } catch { dbPerms = []; }
             }
-
-            // Ensure we actually have an array to work with
-            if (Array.isArray(customPerms) && customPerms.length > 0) {
-              rolePermissions = customPerms;
-            } else {
-              const defaultPerms = getDefaultPermissions(uData.role);
-              rolePermissions = Array.isArray(defaultPerms) ? defaultPerms : [];
-            }
-          } else {
-            // Document doesn't exist yet
-            const defaultPerms = getDefaultPermissions(uData.role);
-            rolePermissions = Array.isArray(defaultPerms) ? defaultPerms : [];
           }
+
+          // --- NEW: AUTO-SYNC LOGIC ---
+          // This runs every time a user logs in. 
+          // It compares code-defaults with db-perms and updates DB if needed.
+          rolePermissions = await syncCompanyPermissions(companyId, uData.role, dbPerms);
+          // ----------------------------
         }
 
         // Filter role permissions against what the Subscription Plan actually allows

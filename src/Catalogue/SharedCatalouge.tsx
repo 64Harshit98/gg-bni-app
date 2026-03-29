@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getItemGroupsByCompany, getItemsByCompany } from '../lib/ItemsFirebase';
 import type { ItemGroup, Item } from '../constants/models';
@@ -54,7 +54,6 @@ const SharedCataloguePage: React.FC = () => {
     const liveItems = useMemo(() => {
         return allItems.filter(item => item.isListed);
     }, [allItems]);
-    const cartIconRef = useRef<HTMLButtonElement | null>(null);
     const cartCount = useMemo(() => cart.reduce((acc, curr) => acc + curr.quantity, 0), [cart]);
     useEffect(() => {
         if (!effectiveCompanyId) {

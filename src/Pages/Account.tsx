@@ -259,7 +259,7 @@ const Account: React.FC = () => {
           </div>
           <div className="mt-4 mb-6 flex justify-center ">
             <ShowWrapper
-              requiredPermission={Permissions.ViewReports}
+              requiredPermission={Permissions.ViewAddons}
             >
               <Link
                 to={ROUTES.ADDITIONAL_FEATURES}

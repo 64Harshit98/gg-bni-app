@@ -21,6 +21,7 @@ export interface ItemSettings {
     requireBarcode: boolean;
     requireSaleDiscount: boolean;
     requirePurchaseDiscount: boolean
+    requireStock: boolean;
 }
 
 export const getDefaultItemSettings = (companyId: string): ItemSettings => ({
@@ -35,7 +36,8 @@ export const getDefaultItemSettings = (companyId: string): ItemSettings => ({
     autoGenerateBarcode: true,
     requireBarcode: false,
     requireSaleDiscount: false,
-    requirePurchaseDiscount: false
+    requirePurchaseDiscount: false,
+    requireStock: false,
 });
 
 const ItemSettingsPage: React.FC = () => {
@@ -140,7 +142,7 @@ const ItemSettingsPage: React.FC = () => {
                         </div>
                         <p className="text-sm text-gray-500 mb-3">
                             Select which of the optional fields must be filled out when manually adding a single item.
-                            <br /><span className="text-xs text-red-500 font-medium">* Name, MRP/Sale Price, Stock, and Barcode are strictly required by the system and cannot be disabled.</span>
+                            <br /><span className="text-xs text-red-500 font-medium">* Name, MRP/Sale Price, and Barcode are strictly required by the system and cannot be disabled.</span>
                         </p>
 
                         <div className="space-y-3 mt-4">
@@ -173,6 +175,13 @@ const ItemSettingsPage: React.FC = () => {
                                     onChange={(e) => handleCheckboxChange('requireTax', e.target.checked)}
                                     className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
                                 <label htmlFor="req-tax" className="ml-2 text-sm font-medium text-gray-700">Require Tax (%)</label>
+                            </div>
+                            <div className="flex items-center">
+                                <input type="checkbox" id="req-stock"
+                                    checked={settings.requireStock}
+                                    onChange={(e) => handleCheckboxChange('requireStock', e.target.checked)}
+                                    className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
+                                <label htmlFor="req-stock" className="ml-2 text-sm font-medium text-gray-700">Require Stock</label>
                             </div>
 
                             <div className="flex items-center">

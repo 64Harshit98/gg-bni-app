@@ -150,7 +150,7 @@ const PurchaseReturnPage: React.FC = () => {
           limit(50)
         );
 
-        const partiesQuery = query(collection(db, 'companies', currentUser.companyId, 'customers'), limit(100));
+        const partiesQuery = query(collection(db, 'companies', currentUser.companyId, 'suppliers'), limit(100));
 
         let specificPurchasePromise: Promise<DocumentSnapshot<DocumentData, DocumentData> | null> = Promise.resolve(null);
 
@@ -662,8 +662,7 @@ const PurchaseReturnPage: React.FC = () => {
       batch.update(purchaseRef, updateData);
 
       if (finalSupplierNumber.length >= 3) {
-        const supplierRef = doc(db, 'companies', companyId, 'customers', finalSupplierNumber);
-
+        const supplierRef = doc(db, 'companies', companyId, 'suppliers', finalSupplierNumber);
         const supplierUpdateData: any = {
           name: finalSupplierName,
           number: finalSupplierNumber,
@@ -705,6 +704,12 @@ const PurchaseReturnPage: React.FC = () => {
 
     if (itemsToReturn.length === 0 && newItemsReceived.length === 0) {
       return setModal({ type: State.ERROR, message: 'No items have been returned or received.' });
+    }
+    if (modeOfReturn === 'Exchange' && newItemsReceived.length === 0) {
+      return setModal({
+        type: State.ERROR,
+        message: 'Please add at least one new item to complete the exchange.'
+      });
     }
 
     for (const returnItem of itemsToReturn) {

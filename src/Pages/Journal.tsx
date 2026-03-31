@@ -1235,11 +1235,13 @@ const Journal: React.FC = () => {
         <CustomButton variant={Variant.Transparent} active={activeType === 'Credit'} onClick={() => setActiveType('Credit')}>Sales</CustomButton>
         <CustomButton
           variant={Variant.Transparent}
+          active={activeType === 'Debit'} onClick={() => setActiveType('Debit')}
           disabled={!hasPermission(Permissions.HiddenProFeatures)}  // Optional: style it differently if locked
           className={!hasPermission(Permissions.HiddenProFeatures) ? 'opacity-50 cursor-not-allowed' : ''}
         >
           {hasPermission(Permissions.HiddenProFeatures) ? 'Purchase' : '🔒 Purchase'}
-        </CustomButton>      </div>
+        </CustomButton>
+      </div>
       <CustomToggle>
         <CustomToggleItem className="mr-2" onClick={() => setActiveTab('Paid')} data-state={activeTab === 'Paid' ? 'on' : 'off'}>Paid</CustomToggleItem>
         <CustomToggleItem onClick={() => setActiveTab('Unpaid')} data-state={activeTab === 'Unpaid' ? 'on' : 'off'}>Unpaid</CustomToggleItem>

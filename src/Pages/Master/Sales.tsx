@@ -111,11 +111,6 @@ const Sales: React.FC = () => {
         return {
             ...rawSettings,
             salesViewType: validView,
-            enableSalesmanSelection: allowedFeatures.enableSalesmanSelection ? rawSettings.enableSalesmanSelection : false,
-            allowDueBilling: allowedFeatures.allowDueBilling ? rawSettings.allowDueBilling : false,
-            enableShippingDetails: allowedFeatures.enableShippingDetails ? rawSettings.enableShippingDetails : false,
-            enableExtraExpense: allowedFeatures.enableExtraExpense ? rawSettings.enableExtraExpense : false,
-            enableNarration: allowedFeatures.enableNarration ? rawSettings.enableNarration : false,
         };
     }, [rawSettings, currentUser?.Subscription?.pack]);
     const invoiceToEdit = location.state?.invoiceData;
@@ -1060,6 +1055,8 @@ const Sales: React.FC = () => {
                     setSavedBillData({ id: result.id, number: result.number, invoiceData: invoiceData });
                     localStorage.removeItem('sales_cart_draft');
                     setItems([]);
+                    const nextNum = await peekNextInvoiceNumber(currentUser.companyId);
+                    setInvoiceNumber(nextNum);
                 }
             }
         } catch (e: any) {

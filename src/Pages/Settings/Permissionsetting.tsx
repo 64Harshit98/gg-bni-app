@@ -36,6 +36,7 @@ export const DEFAULT_PERMISSIONS_MAP = {
         Permissions.CreateSalesReturn,
         Permissions.CreatePurchase,
         Permissions.CreatePurchaseReturn,
+        Permissions.HiddenProFeatures,
     ],
     [ROLES.OWNER]: Object.values(Permissions).filter(
         (permission) => !EXCLUDED_OWNER_PERMISSIONS.includes(permission)

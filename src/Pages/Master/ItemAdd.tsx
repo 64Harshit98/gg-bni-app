@@ -473,7 +473,7 @@ const ItemAdd: React.FC = () => {
       },
     ];
     const ws = XLSX.utils.json_to_sheet(sampleData);
-    const mandatoryCols = [0, 9, 10];
+    const mandatoryCols = [0, 10];
     mandatoryCols.forEach((colIndex) => {
       const cellAddress = XLSX.utils.encode_col(colIndex) + "1";
       if (ws[cellAddress]) {
@@ -582,7 +582,7 @@ const ItemAdd: React.FC = () => {
               <div className='grid grid-cols-2 gap-2'>
                 <div>
                   <div className="flex items-center mb-1">
-                    <label className="text-sm font-medium text-gray-600 after:content-['*'] after:text-red-500 mr-2">MRP</label>
+                    <label className="text-sm font-medium text-gray-600  mr-2">MRP</label>
                     <InfoTooltip text="Maximum Retail Price printed on the product." />
                   </div>
                   <input type="number" value={itemMRP} onChange={(e) => setItemMRP(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0.00" />

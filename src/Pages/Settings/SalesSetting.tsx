@@ -52,27 +52,12 @@ export interface SalesSettings {
 // 👇 ADD THIS ENTIRE BLOCK 👇
 export const PLAN_ALLOWED_FEATURES: Record<string, Partial<Record<keyof SalesSettings, boolean>> & { allowedViews: string[] }> = {
     'pos_basic': {
-        enableSalesmanSelection: false,
-        allowDueBilling: false,
-        enableShippingDetails: false,
-        enableExtraExpense: false,
-        enableNarration: false,
         allowedViews: ['calculator']
     },
     'pos_pro': {
-        enableSalesmanSelection: true,
-        allowDueBilling: true,
-        enableShippingDetails: true,
-        enableExtraExpense: true,
-        enableNarration: true,
         allowedViews: ['list', 'card', 'calculator']
     },
     'enterprise': {
-        enableSalesmanSelection: true,
-        allowDueBilling: true,
-        enableShippingDetails: true,
-        enableExtraExpense: true,
-        enableNarration: true,
         allowedViews: ['list', 'card', 'calculator']
     }
 };
@@ -136,57 +121,35 @@ const SalesSettingsPage: React.FC = () => {
                     getDoc(counterDocRef)
                 ]);
 
-                const defaultSettings = getDefaultSalesSettings(companyId);
-                let mergedSettings = { ...defaultSettings };
+                // 1. Start with safe defaults
+                let dbSettings = getDefaultSalesSettings(companyId);
 
+                // 2. FETCH AND APPLY ACTUAL DATA FROM BACKEND
                 if (docSnap.exists()) {
-                    mergedSettings = { ...mergedSettings, ...docSnap.data() };
+                    dbSettings = { ...dbSettings, ...docSnap.data() };
                 } else {
-                    console.log(`Creating default sales settings...`);
-                    await setDoc(settingsDocRef, defaultSettings);
-                }
-
-                // 👇 --- PLAN CHANGE DETECTION & MASKING --- 👇
-                let planJustChanged = false;
-
-                // If plan changed, completely reset back to defaults
-                if (mergedSettings.lastSavedPlan && mergedSettings.lastSavedPlan !== activePlan) {
-                    mergedSettings = {
-                        ...defaultSettings,
-                        lastSavedPlan: activePlan
-                    };
-                    planJustChanged = true;
+                    await setDoc(settingsDocRef, dbSettings);
                 }
 
                 if (counterSnap.exists() && counterSnap.data().currentNumber !== undefined) {
-                    mergedSettings.currentVoucherNumber = counterSnap.data().currentNumber;
-                } else if (!planJustChanged) { // Only create counter if not hard-resetting
-                    await setDoc(counterDocRef, { currentNumber: defaultSettings.currentVoucherNumber }, { merge: true });
+                    dbSettings.currentVoucherNumber = counterSnap.data().currentNumber;
+                } else {
+                    await setDoc(counterDocRef, { currentNumber: dbSettings.currentVoucherNumber }, { merge: true });
                 }
 
-                // Force valid view based on plan limits
-                const validView = allowedFeatures.allowedViews?.includes(mergedSettings.salesViewType || 'list')
-                    ? mergedSettings.salesViewType
-                    : 'list';
+                // 3. APPLY PLAN MASK TO UI ONLY (Never deletes backend data)
+                const validView = allowedFeatures.allowedViews?.includes(dbSettings.salesViewType || 'list')
+                    ? dbSettings.salesViewType
+                    : allowedFeatures.allowedViews[0];
 
-                const finalMaskedSettings = {
-                    ...mergedSettings,
+                const finalSettingsToDisplay = {
+                    ...dbSettings,
                     salesViewType: validView,
-                    enableSalesmanSelection: allowedFeatures.enableSalesmanSelection ? mergedSettings.enableSalesmanSelection : false,
-                    allowDueBilling: allowedFeatures.allowDueBilling ? mergedSettings.allowDueBilling : false,
-                    enableShippingDetails: allowedFeatures.enableShippingDetails ? mergedSettings.enableShippingDetails : false,
-                    enableExtraExpense: allowedFeatures.enableExtraExpense ? mergedSettings.enableExtraExpense : false,
-                    enableNarration: allowedFeatures.enableNarration ? mergedSettings.enableNarration : false,
-                    lastSavedPlan: activePlan
                 } as SalesSettings;
 
-                // If plan changed, save fresh clean settings to DB immediately
-                if (planJustChanged) {
-                    await setDoc(settingsDocRef, finalMaskedSettings, { merge: true });
-                }
+                // Set the state with the backend data
+                setSettings(finalSettingsToDisplay);
 
-                setSettings(finalMaskedSettings);
-                // 👆 --------------------------------------- 👆
             } catch (err) {
                 console.error('Failed to fetch/create sales settings:', err);
                 setModal({ message: 'Failed to load settings.', type: State.ERROR });
@@ -196,7 +159,9 @@ const SalesSettingsPage: React.FC = () => {
         };
 
         fetchOrCreateSettings();
-    }, [currentUser?.companyId]);
+
+        // 👇 CRITICAL: activePlan added to dependency array 👇
+    }, [currentUser?.companyId, activePlan]);
 
     useEffect(() => {
         if (settings?.gstScheme === 'composition') {
@@ -224,19 +189,14 @@ const SalesSettingsPage: React.FC = () => {
             // 👇 FORCES UNAUTHORIZED FEATURES TO FALSE IN THE DATABASE 👇
             const validView = allowedFeatures.allowedViews?.includes(restOfSettings.salesViewType || 'list')
                 ? restOfSettings.salesViewType
-                : 'list';
+                : allowedFeatures.allowedViews[0];
 
             const settingsToSave = {
                 ...restOfSettings,
                 salesViewType: validView,
-                enableSalesmanSelection: allowedFeatures.enableSalesmanSelection ? restOfSettings.enableSalesmanSelection : false,
-                allowDueBilling: allowedFeatures.allowDueBilling ? restOfSettings.allowDueBilling : false,
-                enableShippingDetails: allowedFeatures.enableShippingDetails ? restOfSettings.enableShippingDetails : false,
-                enableExtraExpense: allowedFeatures.enableExtraExpense ? restOfSettings.enableExtraExpense : false,
-                enableNarration: allowedFeatures.enableNarration ? restOfSettings.enableNarration : false,
                 companyId: companyId,
                 settingType: 'sales',
-                lastSavedPlan: activePlan, // <--- SAVES CURRENT PLAN
+                lastSavedPlan: activePlan, // <--- REMEMBERS THE PLAN THEY SAVED UNDER
                 updatedAt: new Date()
             };
 
@@ -697,8 +657,8 @@ const SalesSettingsPage: React.FC = () => {
                         <h2 className="text-lg font-semibold text-gray-800 mb-4">Required Fields</h2>
                         <p className="text-sm text-gray-500 mb-2">Select fields that must be filled before saving a sale.</p>
                         <div className="flex items-center mb-4">
-                            <input type="checkbox" id="req-customer" checked={settings.enableCustomerInfoToggle ?? false} onChange={(e) => handleCheckboxChange('enableCustomerInfoToggle', e.target.checked)} className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
-                            <label htmlFor="req-customer" className="ml-2 mr-2 text-gray-700 text-sm font-medium">
+                            <input type="checkbox" id="req-customer-info" checked={settings.enableCustomerInfoToggle ?? false} onChange={(e) => handleCheckboxChange('enableCustomerInfoToggle', e.target.checked)} className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
+                            <label htmlFor="req-customer-info" className="ml-2 mr-2 text-gray-700 text-sm font-medium">
                                 Enable the Customer info
                             </label>
                             <InfoTooltip text="enabling and disabling customer info while payment " />

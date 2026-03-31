@@ -260,8 +260,8 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 description: String(formData.description || ''),
                 unit: String(formData.unit || ''),
                 unitMultiplier: currentMultiplier,
-                moq: isCatalogue ? Number(formData.moq || 1) : undefined,
                 packetSize: formData.unit === 'pkt' ? parseInt(String(formData.packetSize), 10) : null,
+                ...(isCatalogue ? { moq: Number(formData.moq || 1) } : {})
             };
 
             await dbOperations.updateItem(item.id, dataToUpdate);

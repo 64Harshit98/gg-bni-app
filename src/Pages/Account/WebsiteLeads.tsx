@@ -13,9 +13,9 @@ interface Lead {
   id: string;
   fullName: string;
   email: string;
-  phone: string;      
-  city: string;        
-  message: string;    
+  phone: string;
+  city: string;
+  message: string;
   status: 'pending' | 'issue' | 'converted' | 'not_interested';
   submittedAt?: any;
 }
@@ -27,59 +27,78 @@ const WebsiteLeadsDashboard: React.FC = () => {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [activeStatus, setActiveStatus] = useState<string>('all');
   const [datePreset, setDatePreset] = useState('today');
-  const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>('');
-  const [appliedFilters, setAppliedFilters] = useState<{ start: Date; end: Date } | null>(null);
+
+  const toDateStr = (date: Date) => date.toISOString().split('T')[0];
+
+  const [startDate, setStartDate] = useState(() => toDateStr(new Date()));
+  const [endDate, setEndDate] = useState(() => toDateStr(new Date()));
+
+  const [appliedFilters, setAppliedFilters] = useState<{ start: number; end: number }>(() => {
+    const start = new Date(); start.setHours(0, 0, 0, 0);
+    const end = new Date(); end.setHours(23, 59, 59, 999);
+    return { start: start.getTime(), end: end.getTime() };
+  });
   const [loading, setLoading] = useState(true);
   const [expandedLeadId, setExpandedLeadId] = useState<string | null>(null);
 
   // 1. Handle Date Presets
   const handleDatePresetChange = (preset: string) => {
-    setDatePreset(preset);
-    const start = new Date();
-    const end = new Date();
+  setDatePreset(preset);
+  if (preset === 'custom') return;
 
-    if (preset === 'yesterday') {
+  const start = new Date();
+  const end = new Date();
+
+  switch (preset) {
+    case 'yesterday':
       start.setDate(start.getDate() - 1);
       end.setDate(end.getDate() - 1);
-    } else if (preset === 'last7') {
-      start.setDate(start.getDate() - 7);
-    } else if (preset === 'last30') {
-      start.setDate(start.getDate() - 30);
-    }
+      break;
+    case 'last7':
+      start.setDate(start.getDate() - 6);
+      break;
+    case 'last30':
+      start.setDate(start.getDate() - 29);
+      break;
+    // 'today' — start/end already today
+  }
 
-    setStartDate(start.toISOString().split('T')[0]);
-    setEndDate(end.toISOString().split('T')[0]);
-  };
+  setStartDate(toDateStr(start));
+  setEndDate(toDateStr(end));
+};
 
   const handleApplyFilters = () => {
-    const s = startDate ? new Date(startDate) : new Date(0);
-    const e = endDate ? new Date(endDate) : new Date();
-    s.setHours(0, 0, 0, 0);
-    e.setHours(23, 59, 59, 999);
-    setAppliedFilters({ start: s, end: e });
-  };
+  const s = startDate ? new Date(startDate) : new Date(0);
+  const e = endDate ? new Date(endDate) : new Date();
+  s.setHours(0, 0, 0, 0);
+  e.setHours(23, 59, 59, 999);
+  setAppliedFilters({ start: s.getTime(), end: e.getTime() });
+};
+  useEffect(() => {
+    const today = new Date();
+    const start = new Date(today);
+    const end = new Date(today);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+    setAppliedFilters({ start: start.getTime(), end: end.getTime() });
+  }, []);
 
   // 2. Firebase Listener
   useEffect(() => {
-    setLoading(true);
-    let q = query(collection(db, "contacts"), orderBy("submittedAt", "desc"));
+  setLoading(true);
+  const q = query(
+    collection(db, "contacts"),
+    where("submittedAt", ">=", Timestamp.fromMillis(appliedFilters.start)),
+    where("submittedAt", "<=", Timestamp.fromMillis(appliedFilters.end)),
+    orderBy("submittedAt", "desc")
+  );
 
-    if (appliedFilters) {
-      q = query(
-        collection(db, "contacts"),
-        where("submittedAt", ">=", Timestamp.fromDate(appliedFilters.start)),
-        where("submittedAt", "<=", Timestamp.fromDate(appliedFilters.end)),
-        orderBy("submittedAt", "desc")
-      );
-    }
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setLeads(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Lead[]);
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, [appliedFilters]);
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    setLeads(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Lead[]);
+    setLoading(false);
+  });
+  return () => unsubscribe();
+}, [appliedFilters]);
 
   // 3. Status Update Logic
   const updateStatus = async (id: string, newStatus: string) => {
@@ -91,20 +110,23 @@ const WebsiteLeadsDashboard: React.FC = () => {
   };
 
   // 4. Stats & Filtering
-  const stats = useMemo(() => ({
-    pending: leads.filter(l => !l.status || l.status === 'pending').length,
-    issue: leads.filter(l => l.status === 'issue').length,
-    converted: leads.filter(l => l.status === 'converted').length,
-    not_interested: leads.filter(l => l.status === 'not_interested').length,
-  }), [leads]);
+ // Stats always reflect active date range (already filtered by Firebase query)
+const stats = useMemo(() => ({
+  pending: leads.filter(l => !l.status || l.status === 'pending').length,
+  issue: leads.filter(l => l.status === 'issue').length,
+  converted: leads.filter(l => l.status === 'converted').length,
+  not_interested: leads.filter(l => l.status === 'not_interested').length,
+}), [leads]);
 
-  const filteredLeads = activeStatus === 'all'
-    ? leads
-    : leads.filter(l => (l.status || 'pending') === activeStatus);
+// Status filter applied on top of already date-filtered leads
+const filteredLeads = useMemo(() => {
+  if (activeStatus === 'all') return leads;
+  return leads.filter(l => (l.status || 'pending') === activeStatus);
+}, [leads, activeStatus]);
 
   const toggleExpand = (id: string) => {
-  setExpandedLeadId(prev => (prev === id ? null : id));
-};
+    setExpandedLeadId(prev => (prev === id ? null : id));
+  };
 
   return (
     <div className="min-h-screen bg-gray-100 p-2 pb-16 md:p-6 md:pb-16 font-sans">
@@ -175,97 +197,97 @@ const WebsiteLeadsDashboard: React.FC = () => {
       </div>
 
       {/* RECTANGLE ROW LIST */}
-<div className="flex flex-col gap-3">
-  {filteredLeads.map((lead) => {
-    const isExpanded = expandedLeadId === lead.id;
+      <div className="flex flex-col gap-3">
+        {filteredLeads.map((lead) => {
+          const isExpanded = expandedLeadId === lead.id;
 
-    return (
-      <div
-        key={lead.id}
-        className="bg-white rounded-sm shadow-sm border border-gray-100 transition-all hover:shadow-md overflow-hidden"
-      >
-        {/* MAIN ROW */}
-        <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
-
-          {/* Left: Name, Status, Email, Phone, City */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1 flex-wrap">
-              <h3 className="text-base font-bold text-gray-800">{lead.fullName}</h3>
-              <span className={`text-[10px] px-2 py-0.5 rounded-sm font-bold uppercase ${
-                lead.status === 'converted'      ? 'bg-green-100 text-green-600' :
-                lead.status === 'issue'          ? 'bg-red-100 text-red-600' :
-                lead.status === 'not_interested' ? 'bg-gray-100 text-gray-500' :
-                                                   'bg-orange-100 text-orange-600'
-              }`}>
-                {lead.status || 'pending'}
-              </span>
-            </div>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5">
-              <p className="text-sm text-gray-500 font-medium">{lead.email}</p>
-              {lead.phone && (
-                <p className="text-sm text-gray-500 font-medium flex items-center gap-1">
-                  📞 {lead.phone}
-                </p>
-              )}
-              {lead.city && (
-                <p className="text-sm text-gray-400 font-medium flex items-center gap-1">
-                  📍 {lead.city}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Right: Dropdown + Expand Arrow */}
-          <div className="flex items-center gap-2 mt-1 md:mt-0">
-            <div className="relative flex-1 md:flex-none">
-              <select
-                value={lead.status || 'pending'}
-                onChange={(e) => updateStatus(lead.id, e.target.value)}
-                className="w-full md:w-56 text-xs font-bold bg-gray-50 border border-gray-200 rounded-sm px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
-              >
-                <option value="pending">PENDING</option>
-                <option value="issue">PENDING ISSUE</option>
-                <option value="converted">CONVERTED</option>
-                <option value="not_interested">NOT INTERESTED</option>
-              </select>
-              <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-400">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                </svg>
-              </div>
-            </div>
-
-            {/* Expand/Collapse Arrow */}
-            <button
-              onClick={() => toggleExpand(lead.id)}
-              className="p-2 rounded-sm hover:bg-gray-100 transition-colors flex-shrink-0"
-              aria-label={isExpanded ? 'Collapse message' : 'Expand message'}
+          return (
+            <div
+              key={lead.id}
+              className="bg-white rounded-sm shadow-sm border border-gray-100 transition-all hover:shadow-md overflow-hidden"
             >
-              <svg
-                className={`w-5 h-5 text-gray-500 transition-transform duration-300 ${isExpanded ? 'rotate-180' : 'rotate-0'}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-          </div>
-        </div>
+              {/* MAIN ROW */}
+              <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer" onClick={() => toggleExpand(lead.id)}>
 
-        {/* EXPANDABLE MESSAGE */}
-        {isExpanded && (
-          <div className="px-4 pb-4 pt-3 border-t border-gray-100 bg-gray-50">
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Message</p>
-            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-              {lead.message || <span className="text-gray-400 italic">No message provided.</span>}
-            </p>
-          </div>
-        )}
+                {/* Left: Name, Status, Email, Phone, City */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <h3 className="text-base font-bold text-gray-800">{lead.fullName}</h3>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-sm font-bold uppercase ${lead.status === 'converted' ? 'bg-green-100 text-green-600' :
+                      lead.status === 'issue' ? 'bg-red-100 text-red-600' :
+                        lead.status === 'not_interested' ? 'bg-gray-100 text-gray-500' :
+                          'bg-orange-100 text-orange-600'
+                      }`}>
+                      {lead.status || 'pending'}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5">
+                    <p className="text-sm text-gray-500 font-medium">{lead.email}</p>
+                    {lead.phone && (
+                      <p className="text-sm text-gray-500 font-medium flex items-center gap-1">
+                        📞 {lead.phone}
+                      </p>
+                    )}
+                    {lead.city && (
+                      <p className="text-sm text-gray-400 font-medium flex items-center gap-1">
+                        📍 {lead.city}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right: Dropdown + Expand Arrow */}
+                <div className="flex items-center gap-2 mt-1 md:mt-0">
+                  <div className="relative flex-1 md:flex-none">
+                    <select
+                      value={lead.status || 'pending'}
+                      onChange={(e) => updateStatus(lead.id, e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-full md:w-56 text-xs font-bold bg-gray-50 border border-gray-200 rounded-sm px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
+                    >
+                      <option value="pending">PENDING</option>
+                      <option value="issue">PENDING ISSUE</option>
+                      <option value="converted">CONVERTED</option>
+                      <option value="not_interested">NOT INTERESTED</option>
+                    </select>
+                    <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-400">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </div>
+
+                  {/* Expand/Collapse Arrow */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleExpand(lead.id); }}
+                    className="p-2 rounded-sm hover:bg-gray-100 transition-colors flex-shrink-0"
+                    aria-label={isExpanded ? 'Collapse message' : 'Expand message'}
+                  >
+                    <svg
+                      className={`w-5 h-5 text-gray-500 transition-transform duration-300 ${isExpanded ? 'rotate-180' : 'rotate-0'}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* EXPANDABLE MESSAGE */}
+              {isExpanded && (
+                <div className="px-4 pb-4 pt-3 border-t border-gray-100 bg-gray-50">
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Message</p>
+                  <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+                    {lead.message || <span className="text-gray-400 italic">No message provided.</span>}
+                  </p>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
-    );
-  })}
-</div>
 
       {leads.length === 0 && !loading && (
         <div className="text-center p-10 text-gray-400">No queries found for this period.</div>

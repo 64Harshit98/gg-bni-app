@@ -1,20 +1,17 @@
 import { useEffect, useState } from 'react';
-import { db } from '../../../lib/Firebase';
-import { useAuth } from '../../../context/auth-context';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { useAuth, useDatabase } from '../../../context/auth-context';
 import { type ItemDoc } from './restockReport.utils';
-
-const STOCK_THRESHOLD = 3;
 
 const useRestockReport = () => {
   const { currentUser } = useAuth();
+  const dbOperations = useDatabase();           
 
   const [items, setItems] = useState<ItemDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!currentUser?.companyId) {
+    if (!currentUser?.companyId || !dbOperations) {
       setLoading(false);
       return;
     }
@@ -22,29 +19,18 @@ const useRestockReport = () => {
     const fetchItems = async () => {
       setLoading(true);
       try {
-        const itemsQuery = query(
-          collection(db, 'companies', currentUser.companyId, 'items'),
-          where('stock', '<=', STOCK_THRESHOLD),
-        );
+        // Uses local cache + incremental sync — no full Firestore reads
+        const allItems = await dbOperations.syncItems();
 
-        const snapshot = await getDocs(itemsQuery);
+        const lowStockItems = (allItems as ItemDoc[])
+          .filter(item => (item.stock ?? 0) <= item.restockQuantity)
+          .sort((a, b) => {
+            const aDeficit = (a.stock || 0) - a.restockQuantity;
+            const bDeficit = (b.stock || 0) - b.restockQuantity;
+            return aDeficit - bDeficit;
+          });
 
-        const fetchedItems = snapshot.docs.map(
-          (doc) =>
-            ({
-              id: doc.id,
-              ...doc.data(),
-            }) as ItemDoc,
-        );
-
-        fetchedItems.sort(
-          (a, b) =>
-            (a.stock || 0) -
-            a.restockQuantity -
-            ((b.stock || 0) - b.restockQuantity),
-        );
-
-        setItems(fetchedItems);
+        setItems(lowStockItems);
       } catch (err: any) {
         console.error(err);
         setError(`Failed to load restock report: ${err.message}`);
@@ -54,13 +40,9 @@ const useRestockReport = () => {
     };
 
     fetchItems();
-  }, [currentUser?.companyId]);
+  }, [currentUser?.companyId, dbOperations]);
 
-  return {
-    items,
-    loading,
-    error,
-  };
+  return { items, loading, error };
 };
 
 export default useRestockReport;

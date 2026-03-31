@@ -11,7 +11,7 @@ import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
 
 // ─── Config ───────────────────────────────────────────────
-const SUPER_ADMIN_UID = "1AKioGfop8PmHhry6uXOz8Rw6qT2";
+const SUPER_ADMIN_UID = "C6ffAAFyrfQ4dQ2UOEV5pJpcb683";
 const DEFAULT_DURATION_DAYS = 28;
 
 const addDays = (date: Date, days: number) => {
@@ -104,39 +104,55 @@ const SuperAdminCompanies: React.FC = () => {
     fetchCompanies();
   }, []);
 
-  // ── Stats ──────────────────────────────────────────────
-  const stats = useMemo(() => {
+  // ── Helpers ────────────────────────────────────────────
+  const getStatus = (company: CompanyData): FilterType => {
     const now = new Date();
     const soonMs = 7 * 24 * 60 * 60 * 1000;
-    return {
-      active: companies.filter(c => c.validity === 'active').length,
-      expired: companies.filter(c => c.validity === 'inactive').length,
-      trial: companies.filter(c => c.pack === 'free').length,
-      near_expiry: companies.filter(c => {
-        if (!c.expiryDate) return false;
-        const exp = c.expiryDate.toDate ? c.expiryDate.toDate() : new Date(c.expiryDate);
-        const diff = exp.getTime() - now.getTime();
-        return diff > 0 && diff <= soonMs;
-      }).length,
-    };
-  }, [companies]);
+    const exp = company.expiryDate
+      ? (company.expiryDate.toDate ? company.expiryDate.toDate() : new Date(company.expiryDate))
+      : null;
+    if (company.pack === 'free') return 'trial';
+    if (!exp || exp.getTime() < now.getTime()) return 'expired';
+    const diff = exp.getTime() - now.getTime();
+    if (diff <= soonMs) return 'near_expiry';
+    return 'active';
+  };
+
+  // ── Stats ──────────────────────────────────────────────
+  const stats = useMemo(() => ({
+    active: companies.filter(c => getStatus(c) === 'active').length,
+    expired: companies.filter(c => getStatus(c) === 'expired').length,
+    trial: companies.filter(c => getStatus(c) === 'trial').length,
+    near_expiry: companies.filter(c => getStatus(c) === 'near_expiry').length,
+  }), [companies]);
 
   // ── Filtered list ─────────────────────────────────────
   const filteredCompanies = useMemo(() => {
-    const now = new Date();
-    const soonMs = 7 * 24 * 60 * 60 * 1000;
-    switch (activeFilter) {
-      case 'active': return companies.filter(c => c.validity === 'active');
-      case 'expired': return companies.filter(c => c.validity === 'inactive');
-      case 'trial': return companies.filter(c => c.pack === 'free');
-      case 'near_expiry': return companies.filter(c => {
-        if (!c.expiryDate) return false;
-        const exp = c.expiryDate.toDate ? c.expiryDate.toDate() : new Date(c.expiryDate);
-        const diff = exp.getTime() - now.getTime();
-        return diff > 0 && diff <= soonMs;
+    const getExpiry = (c: CompanyData): Date | null => {
+      if (!c.expiryDate) return null;
+      const d = c.expiryDate.toDate ? c.expiryDate.toDate() : new Date(c.expiryDate);
+      return isNaN(d.getTime()) ? null : d;
+    };
+
+    const priorityMap: Record<FilterType, number> = {
+      near_expiry: 0, active: 1, trial: 2, expired: 3, all: 4
+    };
+
+    const sortByExpiry = (list: CompanyData[]) =>
+      [...list].sort((a, b) => {
+        const pa = priorityMap[getStatus(a)];
+        const pb = priorityMap[getStatus(b)];
+        if (pa !== pb) return pa - pb;
+        const ea = getExpiry(a)?.getTime() ?? Infinity;
+        const eb = getExpiry(b)?.getTime() ?? Infinity;
+        return ea - eb;
       });
-      default: return companies;
-    }
+
+    const filtered = activeFilter === 'all'
+      ? companies
+      : companies.filter(c => getStatus(c) === activeFilter);
+
+    return sortByExpiry(filtered);
   }, [companies, activeFilter]);
 
   // ── Edit helpers ───────────────────────────────────────
@@ -180,7 +196,7 @@ const SuperAdminCompanies: React.FC = () => {
     }
   };
 
-  // ── Helpers ────────────────────────────────────────────
+
   const formatExpiry = (expiryDate: any) => {
     if (!expiryDate) return null;
     const d = expiryDate.toDate ? expiryDate.toDate() : new Date(expiryDate);
@@ -217,7 +233,7 @@ const SuperAdminCompanies: React.FC = () => {
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800 md:text-2xl">
           Super Admin
         </h1>
-        <button onClick={() => navigate(-1)} className="p-2 rounded-full hover:bg-gray-200 transition-colors">
+        <button onClick={() => navigate(-1)} className="p-2 rounded-sm hover:bg-gray-200 transition-colors">
           <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
@@ -230,7 +246,7 @@ const SuperAdminCompanies: React.FC = () => {
 
         <div
           onClick={() => toggleFilter('active')}
-          className={`cursor-pointer rounded-xl transition-all border-2
+          className={`cursor-pointer rounded-sm transition-all border-2
             ${activeFilter === 'active'
               ? 'border-green-600 bg-green-50 shadow-md scale-105'
               : 'border-transparent'}`}
@@ -240,7 +256,7 @@ const SuperAdminCompanies: React.FC = () => {
 
         <div
           onClick={() => toggleFilter('expired')}
-          className={`cursor-pointer rounded-xl transition-all border-2
+          className={`cursor-pointer rounded-sm transition-all border-2
             ${activeFilter === 'expired'
               ? 'border-red-600 bg-red-50 shadow-md scale-105'
               : 'border-transparent'}`}
@@ -250,7 +266,7 @@ const SuperAdminCompanies: React.FC = () => {
 
         <div
           onClick={() => toggleFilter('trial')}
-          className={`cursor-pointer rounded-xl transition-all border-2
+          className={`cursor-pointer rounded-sm transition-all border-2
             ${activeFilter === 'trial'
               ? 'border-blue-600 bg-blue-50 shadow-md scale-105'
               : 'border-transparent'}`}
@@ -260,7 +276,7 @@ const SuperAdminCompanies: React.FC = () => {
 
         <div
           onClick={() => toggleFilter('near_expiry')}
-          className={`cursor-pointer rounded-xl transition-all border-2
+          className={`cursor-pointer rounded-sm transition-all border-2
             ${activeFilter === 'near_expiry'
               ? 'border-orange-500 bg-orange-50 shadow-md scale-105'
               : 'border-transparent'}`}
@@ -283,10 +299,13 @@ const SuperAdminCompanies: React.FC = () => {
             return (
               <div
                 key={company.id}
-                className="bg-white rounded-xl shadow-sm border border-gray-100 transition-all hover:shadow-md overflow-hidden"
+                className="bg-white rounded-sm shadow-sm border border-gray-100 transition-all hover:shadow-md overflow-hidden"
               >
                 {/* ── Card row ── */}
-                <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div
+                  onClick={() => isEditing ? setEditingId(null) : startEdit(company)}
+                  className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer hover:bg-gray-50 transition-colors"
+                >
 
                   {/* Left: info */}
                   <div className="flex-1 min-w-0">
@@ -295,19 +314,22 @@ const SuperAdminCompanies: React.FC = () => {
                         {company.name}
                       </h3>
                       {/* Pack badge */}
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${packBadge(company.pack)}`}>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-sm font-bold uppercase ${packBadge(company.pack)}`}>
                         {company.pack}
                       </span>
                       {/* Status badge */}
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase
-                        ${company.validity === 'active'
-                          ? 'bg-green-100 text-green-600'
-                          : 'bg-red-100 text-red-500'}`}>
-                        {company.validity}
+                      <span className={`text-[10px] px-2 py-0.5 rounded-sm font-bold uppercase ${getStatus(company) === 'expired'
+                          ? 'bg-red-100 text-red-500'
+                          : getStatus(company) === 'near_expiry'
+                            ? 'bg-orange-100 text-orange-500'
+                            : getStatus(company) === 'trial'
+                              ? 'bg-gray-100 text-gray-500'
+                              : 'bg-green-100 text-green-600'}`}>
+                        {getStatus(company) === 'expired' ? 'inactive' : getStatus(company) === 'trial' ? 'trial' : 'active'}
                       </span>
                       {/* Near expiry warning */}
                       {soon && (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-orange-100 text-orange-500">
+                        <span className="text-[10px] px-2 py-0.5 rounded-sm font-bold uppercase bg-orange-100 text-orange-500">
                           ⚠ Expiring Soon
                         </span>
                       )}
@@ -323,17 +345,14 @@ const SuperAdminCompanies: React.FC = () => {
                   </div>
 
                   {/* Right: chevron toggle */}
-                  <button
-                    onClick={() => isEditing ? setEditingId(null) : startEdit(company)}
-                    className="p-2 rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors shrink-0"
-                  >
+                  <div className="p-2 shrink-0 text-gray-400">
                     <svg
                       className={`w-5 h-5 transition-transform duration-200 ${isEditing ? 'rotate-180' : ''}`}
                       fill="none" stroke="currentColor" viewBox="0 0 24 24"
                     >
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
-                  </button>
+                  </div>
                 </div>
 
                 {/* ── Inline edit panel ── */}
@@ -350,7 +369,7 @@ const SuperAdminCompanies: React.FC = () => {
                           <select
                             value={editForm.pack}
                             onChange={e => setEditForm({ ...editForm, pack: e.target.value })}
-                            className="w-full text-sm font-semibold bg-white border border-gray-200 rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
+                            className="w-full text-sm font-semibold bg-white border border-gray-200 rounded-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
                           >
                             {Object.values(PLANS).map(p => (
                               <option key={p} value={p}>{p.toUpperCase()}</option>
@@ -373,7 +392,7 @@ const SuperAdminCompanies: React.FC = () => {
                           <select
                             value={editForm.validity}
                             onChange={e => setEditForm({ ...editForm, validity: e.target.value as 'active' | 'inactive' })}
-                            className="w-full text-sm font-semibold bg-white border border-gray-200 rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
+                            className="w-full text-sm font-semibold bg-white border border-gray-200 rounded-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
                           >
                             <option value="active">ACTIVE</option>
                             <option value="inactive">INACTIVE</option>
@@ -395,7 +414,7 @@ const SuperAdminCompanies: React.FC = () => {
                           type="date"
                           value={editForm.expiryDate}
                           onChange={e => setEditForm({ ...editForm, expiryDate: e.target.value })}
-                          className="w-full text-sm bg-white border border-gray-200 rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-full text-sm bg-white border border-gray-200 rounded-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500"
                         />
                         <p className="text-[10px] text-gray-400 mt-1">
                           {editForm.expiryDate ? 'Custom date selected' : 'Empty = +28 days from today'}
@@ -405,7 +424,7 @@ const SuperAdminCompanies: React.FC = () => {
 
                     <button
                       onClick={handleSave}
-                      className="w-full sm:w-auto px-10 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                      className="w-full sm:w-auto px-10 py-2 bg-blue-600 text-white text-sm font-semibold rounded-sm hover:bg-blue-700 transition-colors"
                     >
                       Save Changes
                     </button>

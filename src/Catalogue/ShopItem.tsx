@@ -342,8 +342,9 @@ const MyShop: React.FC = () => {
                 return false;
             }
 
-            const matchesCategory =
-                activeCat === 'All' || item.itemGroupId === activeCat;
+            const groupExists = allItemGroups.some(g => g.id === item.itemGroupId);
+            const finalGroupId = groupExists ? item.itemGroupId : "uncategorized";
+            const matchesCategory = activeCat === 'All' || finalGroupId === activeCat;
 
             const itemName = item.name?.toLowerCase() || "";
             const matchesSearch =
@@ -542,7 +543,7 @@ const MyShop: React.FC = () => {
                                 id={item.id}
                                 key={item.id}
                                 onClick={() => handleOpenDetailDrawer(item)}
-                                className={`bg-white rounded-sm overflow-hidden shadow-sm border transition-all duration-300 relative group hover:shadow-md cursor-pointer ${highlightedId === item.id ? 'ring-3 ring-blue-500 shadow-lg scale-[1.02] z-100' : 'border-gray-100'} ${!isViewMode ? 'ring-1 ring-[#00A3E1]/10' : ''}`}
+                                className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col h-full transition-all duration-300 relative group hover:shadow-md cursor-pointer ${highlightedId === item.id ? 'ring-3 ring-blue-500 shadow-lg scale-[1.02] z-100' : 'border-gray-100'} ${!isViewMode ? 'ring-1 ring-[#00A3E1]/10' : ''}`}
                             >
                                 <div className="aspect-square flex items-center justify-center relative overflow-hidden">
                                     {showDiscountBadge && (
@@ -588,9 +589,7 @@ const MyShop: React.FC = () => {
                                         </div>
                                     </div>
 
-
-
-                                    <div className="mt-1 flex gap-1">
+                                    <div className="mt-auto flex gap-1">
                                         {isUncategorized ? (
                                             <button
                                                 onClick={(e) => {
@@ -621,7 +620,6 @@ const MyShop: React.FC = () => {
                                                             setShowUncategorizedWarning(true);
                                                             return;
                                                         }
-
                                                         await handleToggleListed(itemId, newState);
                                                     }}
                                                 />

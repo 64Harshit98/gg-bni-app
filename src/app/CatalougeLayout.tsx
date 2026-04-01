@@ -167,13 +167,13 @@ const CatalogueLayout = () => {
                         <span>Orders Return</span>
                     </NavLink>
 
-                    <button
-                        onClick={handleShare}
-                        className={sidebarLinkClass(false)} // same design, no active
-                    >
-                        <Share2 size={18} />
-                        <span>Share</span>
-                    </button>
+                        <button
+                            onClick={handleShare}
+                            className={sidebarLinkClass(false)} // same design, no active
+                        >
+                            <Share2 size={18} />
+                            <span>Share</span>
+                        </button>
                 </nav>
             </aside>
 

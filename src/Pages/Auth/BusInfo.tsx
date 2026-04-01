@@ -257,97 +257,149 @@ const BusinessInfoPage: React.FC = () => {
       </div>
     </div>
 
-    <div className="flex-grow px-4 pb-0 overflow-hidden">
+    <div className="flex-grow px-4 pb-0 overflow-y-auto">
       <div className="flex justify-between items-end mb-3 mt-3">
         <h1 className="text-4xl font-bold">Business Details</h1>
       </div>
       <div className="bg-gray-100 p-3 space-y-2 pt-4 pb-4 w-[100%] mx-auto">
         <form onSubmit={handleFinishSetup} className="flex flex-col space-y-4">
           <div className="flex flex-col space-y-4">
-          <div className="relative [&_label]:!left-[3rem]">
-            <FiAtSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
-            <FloatingLabelInput
-              id="businessName"
-              label="Business Name"
-              value={businessName}
-              onChange={(e) => setBusinessName(e.target.value)}
-              required
-              className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
-            />
-          </div>
+            <div className="relative [&_label]:!left-[3rem]">
+              <FiAtSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+              <FloatingLabelInput
+                id="businessName"
+                label="Business Name"
+                value={businessName}
+                onChange={(e) => setBusinessName(e.target.value)}
+                required
+                className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+              />
+            </div>
+
+            <div className={`gap-4 ${businessType !== "Other" && businessCategory !== "Other" ? "grid grid-cols-1 md:grid-cols-2" : "flex flex-col"}`}>
+              {/* Business Type */}
+              <div className={`${businessType !== "Other" && businessCategory !== "Other" ? "w-full" : ""}`}>
+                {businessType !== "Other" && businessCategory !== "Other" ? (
+                  <div className="relative [&_label]:!left-[3rem]">
+                    <FiHome className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+                    <FloatingLabelSelect
+                      id="businessType"
+                      label="Business Type"
+                      value={businessType}
+                      onChange={(e) => setBusinessType(e.target.value)}
+                      options={businessTypeOptions}
+                      required
+                      className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+                    />
+                  </div>
+                ) : (
+                  <div className={`w-full ${businessType === "Other" ? "flex gap-4" : ""}`}>
+                    {businessType === "Other" ? (
+                      <>
+                        <div className="relative w-1/2 [&_label]:!left-[3rem]">
+                          <FiHome className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+                          <FloatingLabelSelect
+                            id="businessType"
+                            label="Business Type"
+                            value={businessType}
+                            onChange={(e) => setBusinessType(e.target.value)}
+                            options={businessTypeOptions}
+                            required
+                            className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+                          />
+                        </div>
+
+                        <div className="relative w-1/2 [&_label]:!left-[3rem]">
+                          <FiHome className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+                          <FloatingLabelInput
+                            id="customBusinessType"
+                            label="Specify Business Type"
+                            value={customBusinessType}
+                            onChange={(e) => setCustomBusinessType(e.target.value)}
+                            required
+                            className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <div className="relative w-full [&_label]:!left-[3rem]">
+                        <FiHome className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+                        <FloatingLabelSelect
+                          id="businessType"
+                          label="Business Type"
+                          value={businessType}
+                          onChange={(e) => setBusinessType(e.target.value)}
+                          options={businessTypeOptions}
+                          required
+                          className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Category */}
+              <div className={`${businessType !== "Other" && businessCategory !== "Other" ? "w-full" : "flex gap-4 w-full"}`}>
+                {businessType !== "Other" && businessCategory !== "Other" ? (
+                  <div className="relative [&_label]:!left-[3rem]">
+                    <FiTag className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+                    <FloatingLabelSelect
+                      id="businessCategory"
+                      label="Category"
+                      value={businessCategory}
+                      onChange={(e) => setBusinessCategory(e.target.value)}
+                      options={businessCategoryOptions}
+                      required
+                      className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex gap-4 w-full">
+                    <div className={`relative [&_label]:!left-[3rem] ${businessCategory === "Other" ? "w-1/2" : "flex-1"}`}>
+                      <FiTag className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+                      <FloatingLabelSelect
+                        id="businessCategory"
+                        label="Category"
+                        value={businessCategory}
+                        onChange={(e) => setBusinessCategory(e.target.value)}
+                        options={businessCategoryOptions}
+                        required
+                        className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+                      />
+                    </div>
+                    {businessCategory === "Other" && (
+                      <div className="relative w-1/2 [&_label]:!left-[3rem]">
+                        <FiTag className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+                        <FloatingLabelInput
+                          id="customBusinessCategory"
+                          label="Specify Category"
+                          value={customBusinessCategory}
+                          onChange={(e) => setCustomBusinessCategory(e.target.value)}
+                          required
+                          className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="relative [&_label]:!left-[3rem]">
-              <FiHome className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+              <Scale className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
               <FloatingLabelSelect
-                id="businessType"
-                label="Business Type"
-                value={businessType}
-                onChange={(e) => setBusinessType(e.target.value)}
-                options={businessTypeOptions}
+                id="gstType"
+                label="GST Registration Type"
+                value={gstType}
+                onChange={(e) => setGstType(e.target.value)}
+                options={gstTypeOptions}
                 required
                 className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
               />
             </div>
 
-            <div className="relative [&_label]:!left-[3rem]">
-              <FiTag className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
-              <FloatingLabelSelect
-                id="businessCategory"
-                label="Category"
-                value={businessCategory}
-                onChange={(e) => setBusinessCategory(e.target.value)}
-                options={businessCategoryOptions}
-                required
-                className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
-              />
-            </div>
-          </div>
-
-          {businessType === "Other" && (
-            <div className="relative [&_label]:!left-[3rem]">
-              <FiHome className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
-            <FloatingLabelInput
-              id="customBusinessType"
-              label="Specify Business Type"
-              value={customBusinessType}
-              onChange={(e) => setCustomBusinessType(e.target.value)}
-              required
-              placeholder="e.g. Consultancy"
-              className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
-            />
-            </div>
-          )}
-
-          {businessCategory === "Other" && (
-            <div className="relative [&_label]:!left-[3rem]">
-              <FiTag className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
-            <FloatingLabelInput
-              id="customBusinessCategory"
-              label="Specify Category"
-              value={customBusinessCategory}
-              onChange={(e) => setCustomBusinessCategory(e.target.value)}
-              required
-              placeholder="e.g. Toys"
-              className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
-            />
-            </div>
-          )}
-
-          <div className="relative [&_label]:!left-[3rem]">
-            <Scale className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
-            <FloatingLabelSelect
-              id="gstType"
-              label="GST Registration Type"
-              value={gstType}
-              onChange={(e) => setGstType(e.target.value)}
-              options={gstTypeOptions}
-              required
-              className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
-            />
-          </div>
-
-          {(gstType === "Regular" || gstType === "Composite") && (
             <div className="relative [&_label]:!left-[3rem]">
               <FiHash className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
               <FloatingLabelInput
@@ -357,11 +409,14 @@ const BusinessInfoPage: React.FC = () => {
                 onChange={(e) => {
                   if (e.target.value.length <= 15) setGstin(e.target.value.toUpperCase());
                 }}
-                required
-                className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+                required={gstType === "Regular" || gstType === "Composite"}
+                disabled={gstType === "NA"}
+                className={`pl-12 py-2.5 border border-[#7D7777A3] shadow-sm bg-gray-100 ${
+                  gstType === "NA" ? "cursor-not-allowed" : ""
+                }`}
               />
             </div>
-          )}
+          </div>
 
           <div className="relative [&_label]:!left-[3rem]">
             <Building2Icon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />

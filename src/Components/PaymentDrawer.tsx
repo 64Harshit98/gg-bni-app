@@ -420,43 +420,58 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         shouldSaveToLocalStorage.current = false;
 
         try {
-            // 1. SEND ALL DATA TO SALES COMPONENT
+            const safePartyName = partyName ? partyName.trim() : '';
+            const safePartyNumber = partyNumber ? partyNumber.trim() : '';
+            const safePartyAddress = partyAddress ? partyAddress.trim() : '';
+            const safePartyGST = partyGST ? partyGST.trim() : '';
+            const safeShippingName = shippingName ? shippingName.trim() : '';
+            const safeShippingNumber = shippingNumber ? shippingNumber.trim() : '';
+            const safeShippingAddress = shippingAddress ? shippingAddress.trim() : '';
+            const safeShippingGST = shippingGST ? shippingGST.trim() : '';
+            const safeExpenseName = expenseName ? expenseName.trim() : '';
+            const safeNarration = narration ? narration.trim() : '';
+
             await onPaymentComplete({
-                paymentDetails: payloadToSave,
-                partyName, partyNumber, discount,
-                finalAmount: netPayable,
-                appliedCredit: appliedCreditAmount,
-                appliedDebit: appliedDebitAmount,
-                partyAddress, partyGST, revDiscount,
-                // --- MUST BE INCLUDED HERE ---
-                shippingName,
-                shippingNumber,
-                shippingAddress,
-                shippingGST,
-                extraExpenseName: expenseName,
-                extraExpenseAmount: parsedExpense,
-                narration: narration.trim(),
+                paymentDetails: payloadToSave || {},
+                partyName: safePartyName,
+                partyNumber: safePartyNumber,
+                discount: discount || 0,
+                finalAmount: netPayable || 0,
+                appliedCredit: appliedCreditAmount || 0,
+                appliedDebit: appliedDebitAmount || 0,
+                partyAddress: safePartyAddress,
+                partyGST: safePartyGST,
+                revDiscount: revDiscount || 0,
+                shippingName: safeShippingName,
+                shippingNumber: safeShippingNumber,
+                shippingAddress: safeShippingAddress,
+                shippingGST: safeShippingGST,
+                extraExpenseName: safeExpenseName,
+                extraExpenseAmount: parsedExpense || 0,
+                narration: safeNarration,
             });
 
-            // 2. SAVE TO CUSTOMER/SUPPLIER DATABASE
-            const identifier = partyNumber.trim() || partyName.trim();
+            const identifier = safePartyNumber || safePartyName;
 
             if (currentUser?.companyId && identifier) {
                 const partyDocRef = doc(db, 'companies', currentUser.companyId, collectionName, identifier);
 
                 const partyData: any = {
-                    name: partyName.trim(),
-                    number: partyNumber.trim(),
+                    name: safePartyName,
+                    number: safePartyNumber,
                     companyId: currentUser.companyId,
-                    address: partyAddress.trim(),
-                    gstNumber: partyGST.trim(),
-                    // --- SAVE SHIPPING PROFILE ---
-                    shippingName: shippingName.trim(),
-                    shippingNumber: shippingNumber.trim(),
-                    shippingAddress: shippingAddress.trim(),
-                    shippingGST: shippingGST.trim(),
+                    address: safePartyAddress,
+                    gstNumber: safePartyGST,
+                    shippingName: safeShippingName,
+                    shippingNumber: safeShippingNumber,
+                    shippingAddress: safeShippingAddress,
+                    shippingGST: safeShippingGST,
                     updatedAt: serverTimestamp(),
                 };
+
+                Object.keys(partyData).forEach(key => {
+                    if (partyData[key] === undefined) delete partyData[key];
+                });
 
                 if (isSale) partyData.lastSaleAt = serverTimestamp();
                 else partyData.lastPurchaseAt = serverTimestamp();
@@ -558,12 +573,19 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                 {/* NUMBER INPUT */}
                                 <div className="relative">
                                     <input
-                                        type="number"
+                                        type="tel"
+                                        maxLength={10}
                                         placeholder={requireCustomerMobile ? "Phone Number *" : "Phone Number"}
                                         value={addressType === 'billing' ? partyNumber : shippingNumber}
                                         onChange={(e) => {
-                                            if (addressType === 'billing') { handleInputChange(e.target.value, 'number'); }
-                                            else { setShippingNumber(e.target.value); setIsSameAsBilling(false); }
+                                            const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+
+                                            if (addressType === 'billing') {
+                                                handleInputChange(val, 'number');
+                                            } else {
+                                                setShippingNumber(val);
+                                                setIsSameAsBilling(false);
+                                            }
                                         }}
                                         onFocus={() => { if (isSale && addressType === 'billing' && partyNumber.length >= 3) searchParty(partyNumber, 'number'); }}
                                         className={`w-full bg-gray-50 p-3 text-sm rounded-xs border ${requireCustomerMobile && !partyNumber && addressType === 'billing' ? 'border-red-300 focus:border-red-500' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none`}

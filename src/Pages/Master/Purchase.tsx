@@ -104,10 +104,10 @@ const PurchasePage: React.FC = () => {
   const [invoiceNumber, setInvoiceNumber] = useState<string>('');
   const [invoiceDate, setInvoiceDate] = useState<string>(() => {
     const today = new Date();
-    const dd = String(today.getDate()).padStart(2, '0');
+    const yyyy = today.getFullYear();
     const mm = String(today.getMonth() + 1).padStart(2, '0');
-    const yy = String(today.getFullYear()).slice(2);
-    return `${dd}-${mm}-${yy}`;
+    const dd = String(today.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
   });
 
   const [billTaxType, setBillTaxType] = useState<TaxOption>('exclusive');
@@ -203,7 +203,8 @@ const PurchasePage: React.FC = () => {
               const transactionDiscount = item.discount || 0;
 
               return {
-                id: item.id || crypto.randomUUID(),
+                // FIX: Force a brand new unique ID for React list rendering
+                id: crypto.randomUUID(),
                 name: item.name || 'Unknown Item',
                 purchasePrice: item.purchasePrice || 0,
                 originalPurchasePrice: masterItem?.purchasePrice || 0,
@@ -217,7 +218,7 @@ const PurchasePage: React.FC = () => {
                 taxAmount: item.taxAmount,
                 taxableAmount: item.taxableAmount,
                 stock: item.stock ?? item.Stock ?? 0,
-                productId: item.productId || item.id,
+                productId: item.productId || item.id, // The real DB ID is safely kept here
                 isEditable: true,
                 unitMultiplier: item.unitMultiplier || 1
               };
@@ -529,6 +530,33 @@ const PurchasePage: React.FC = () => {
     }
     setIsDrawerOpen(true);
   };
+  const getParsedInvoiceDate = () => {
+    try {
+      if (!invoiceDate) return new Date();
+
+      const parts = invoiceDate.split('-'); // [YYYY, MM, DD]
+
+      if (parts.length === 3) {
+        const year = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1; // Months are 0-indexed in JS
+        const day = parseInt(parts[2], 10);
+
+        // 1. Get the exact current time right now (e.g., 2:45:30 PM)
+        const finalDate = new Date();
+
+        // 2. Inject ONLY the Year, Month, and Day from the calendar input
+        finalDate.setFullYear(year);
+        finalDate.setMonth(month);
+        finalDate.setDate(day);
+
+        // Result: The user's selected date + the exact current time!
+        return finalDate;
+      }
+    } catch (e) {
+      console.error("Date parsing error", e);
+    }
+    return new Date(); // Safe fallback
+  };
 
   const handleSavePurchase = async (completionData: PaymentCompletionData) => {
     if (!currentUser?.companyId) {
@@ -638,7 +666,7 @@ const PurchasePage: React.FC = () => {
           manualDiscount: manualDiscount,
           totalAmount: finalTotalAmount,
           paymentMethods: completionData.paymentDetails,
-          createdAt: serverTimestamp(),
+          createdAt: getParsedInvoiceDate(),
           companyId: companyId,
           voucherName: purchaseSettings?.voucherName ?? 'Purchase',
         };
@@ -740,6 +768,7 @@ const PurchasePage: React.FC = () => {
           totalAmount: finalTotalAmount,
           paymentMethods: completionData.paymentDetails,
           updatedAt: serverTimestamp(),
+          createdAt: getParsedInvoiceDate(),
         };
 
         transaction.update(purchaseRef, updatedPurchaseData);
@@ -824,10 +853,11 @@ const PurchasePage: React.FC = () => {
       <div className="flex md:hidden items-center justify-between w-full mb-2">
         <div className="flex flex-col items-center">
           <input
-            type="text"
+            type="date" // 👈 Changed to "date"
             value={invoiceDate}
             onChange={(e) => setInvoiceDate(e.target.value)}
-            className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-20 text-sm outline-none transition-colors"
+            // 👇 Changed width to w-32 and added cursor-pointer
+            className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-25 text-sm outline-none transition-colors cursor-pointer"
           />
           <span className="text-[9px] text-gray-400 uppercase tracking-wide mt-0.5">DATE</span>
 
@@ -864,10 +894,11 @@ const PurchasePage: React.FC = () => {
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-500 font-medium uppercase tracking-wide">DATE:</span>
             <input
-              type="text"
+              type="date" // 👈 Changed to "date"
               value={invoiceDate}
               onChange={(e) => setInvoiceDate(e.target.value)}
-              className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-20 text-sm outline-none transition-colors"
+              // 👇 Changed width to w-32 and added cursor-pointer
+              className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-25 text-sm outline-none transition-colors cursor-pointer"
             />
           </div>
         </div>

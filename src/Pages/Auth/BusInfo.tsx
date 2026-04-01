@@ -293,10 +293,10 @@ const BusinessInfoPage: React.FC = () => {
                     />
                   </div>
                 ) : (
-                  <div className={`w-full ${businessType === "Other" ? "flex gap-4" : ""}`}>
+                  <div className={`w-full ${businessType === "Other" ? "flex flex-col md:flex-row gap-4" : ""}`}>
                     {businessType === "Other" ? (
                       <>
-                        <div className="relative w-1/2 [&_label]:!left-[3rem]">
+                        <div className="relative w-full md:w-1/2 [&_label]:!left-[3rem]">
                           <FiHome className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
                           <FloatingLabelSelect
                             id="businessType"
@@ -309,7 +309,7 @@ const BusinessInfoPage: React.FC = () => {
                           />
                         </div>
 
-                        <div className="relative w-1/2 [&_label]:!left-[3rem]">
+                        <div className="relative w-full md:w-1/2 [&_label]:!left-[3rem]">
                           <FiHome className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
                           <FloatingLabelInput
                             id="customBusinessType"
@@ -340,7 +340,7 @@ const BusinessInfoPage: React.FC = () => {
               </div>
 
               {/* Category */}
-              <div className={`${businessType !== "Other" && businessCategory !== "Other" ? "w-full" : "flex gap-4 w-full"}`}>
+              <div className={`${businessType !== "Other" && businessCategory !== "Other" ? "w-full" : "flex flex-col md:flex-row gap-4 w-full"}`}>
                 {businessType !== "Other" && businessCategory !== "Other" ? (
                   <div className="relative [&_label]:!left-[3rem]">
                     <FiTag className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
@@ -355,8 +355,8 @@ const BusinessInfoPage: React.FC = () => {
                     />
                   </div>
                 ) : (
-                  <div className="flex gap-4 w-full">
-                    <div className={`relative [&_label]:!left-[3rem] ${businessCategory === "Other" ? "w-1/2" : "flex-1"}`}>
+                  <div className="flex flex-col md:flex-row gap-4 w-full">
+                    <div className={`relative [&_label]:!left-[3rem] ${businessCategory === "Other" ? "w-full md:w-1/2" : "flex-1"}`}>
                       <FiTag className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
                       <FloatingLabelSelect
                         id="businessCategory"
@@ -369,7 +369,7 @@ const BusinessInfoPage: React.FC = () => {
                       />
                     </div>
                     {businessCategory === "Other" && (
-                      <div className="relative w-1/2 [&_label]:!left-[3rem]">
+                      <div className="relative w-full md:w-1/2 [&_label]:!left-[3rem]">
                         <FiTag className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
                         <FloatingLabelInput
                           id="customBusinessCategory"

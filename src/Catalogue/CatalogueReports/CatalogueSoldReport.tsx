@@ -95,9 +95,10 @@ const ItemsSoldReport: React.FC = () => {
                         items: Array.isArray(data.items) ? data.items : [],
                     };
                 })
-                .filter(order =>
-                    order.status === 'Completed' || order.status === 'Paid'
-                );
+                .filter(order => {
+                    const status = (order.status || "").toLowerCase();
+                    return status === 'completed' || status === 'paid';
+                })
 
             setSales(fetchedSales);
         } catch (err) {
@@ -145,14 +146,39 @@ const ItemsSoldReport: React.FC = () => {
     };
 
     const handleApplyFilters = () => {
-     
-        const start = customStartDate ? new Date(customStartDate) : new Date(0);
-        start.setHours(0, 0, 0, 0);
+        let start = new Date();
+        let end = new Date();
 
-        const end = customEndDate ? new Date(customEndDate) : new Date();
+        switch (datePreset) {
+            case 'today':
+                break;
+
+            case 'yesterday':
+                start.setDate(start.getDate() - 1);
+                end.setDate(end.getDate() - 1);
+                break;
+
+            case 'last7':
+                start.setDate(start.getDate() - 6);
+                break;
+
+            case 'last30':
+                start.setDate(start.getDate() - 29);
+                break;
+
+            case 'custom':
+                start = customStartDate ? new Date(customStartDate) : new Date(0);
+                end = customEndDate ? new Date(customEndDate) : new Date();
+                break;
+        }
+
+        start.setHours(0, 0, 0, 0);
         end.setHours(23, 59, 59, 999);
 
-        setAppliedFilters({ start: start.getTime(), end: end.getTime() });
+        setAppliedFilters({
+            start: start.getTime(),
+            end: end.getTime()
+        });
     };
 
     /* ---------- SORT ---------- */
@@ -188,33 +214,46 @@ const ItemsSoldReport: React.FC = () => {
         let overallQty = 0;
 
         billsInRange.forEach((sale) => {
-            sale.items.forEach((item: any) => {
-                const id = item.productId || item.id || 'unknown';
-                const groupId =item.itemGroupId ||item.groupId ||item.itemGroup ||item.group?.id ||null;
-                        
-                if (!itemMap.has(id)) {
-                    itemMap.set(id, {
-                        id,
-                        name: item.name || 'Unknown Item',
-                        //itemGroup: itemGroupMap[item.itemGroupId] || item.category || 'Uncategorized',
-                        itemGroup:(groupId && itemGroupMap[groupId]) || item.category ||item.groupName ||'Uncategorized',
-                        quantitySold: 0,
-                        valueSold: 0,
-                    });
-                }
+            sale.items
+                .filter((item: any) => item && item.quantity > 0)
+                .forEach((item: any) => {
+                    const id = item.productId || item.id || 'unknown';
+                    const groupId =
+                        item.groupId ||
+                        item.itemGroupId ||
+                        item.groupid ||
+                        item.itemGroup ||
+                        item.group?.id ||
+                        null;
 
-                const existingItem = itemMap.get(id)!;
-                const qty = item.quantity || 1;
+                    if (!itemMap.has(id)) {
+                        itemMap.set(id, {
+                            id,
+                            name: item.name || 'Unknown Item',
+                            //itemGroup: itemGroupMap[item.itemGroupId] || item.category || 'Uncategorized',
+                            itemGroup:
+                                (groupId && itemGroupMap[groupId]) ||
+                                item.groupName ||
+                                item.category ||
+                                'Uncategorized',
+                            quantitySold: 0,
+                            valueSold: 0,
+                        });
+                    }
 
-                const pricePerItem = item.effectiveUnitPrice || item.customPrice || item.salesPrice || item.mrp || 0;
-                const lineValue = pricePerItem * qty;
+                    const existingItem = itemMap.get(id)!;
+                    const qty = item.quantity || 1;
 
-                existingItem.quantitySold += qty;
-                existingItem.valueSold += lineValue;
+                    const pricePerItem = item.effectiveUnitPrice || item.customPrice || item.salesPrice || item.mrp || 0;
+                    if (!pricePerItem) return;
+                    const lineValue = pricePerItem * qty;
 
-                overallQty += qty;
-                overallValue += lineValue;
-            });
+                    existingItem.quantitySold += qty;
+                    existingItem.valueSold += lineValue;
+
+                    overallQty += qty;
+                    overallValue += lineValue;
+                });
         });
 
         const itemsArray = Array.from(itemMap.values());

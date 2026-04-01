@@ -161,6 +161,7 @@ const CartPage: React.FC = () => {
 
     useEffect(() => {
         const savedCart = localStorage.getItem('temp_cart');
+        console.log("Saved:", savedCart)
         if (savedCart) {
             try {
                 const parsedCart = JSON.parse(savedCart);

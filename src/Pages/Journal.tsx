@@ -13,7 +13,8 @@ import {
   type DocumentData,
   runTransaction,
   increment,
-  serverTimestamp
+  serverTimestamp,
+  writeBatch
 } from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
 import { CustomToggle, CustomToggleItem } from '../Components/CustomToggle';
@@ -56,6 +57,7 @@ interface InvoiceItem {
   taxType?: string;
   taxAmount?: number;
   taxableAmount?: number;
+  isCustomAmount?: boolean;
 }
 
 interface Invoice {
@@ -220,6 +222,7 @@ const useJournalData = (companyId?: string) => {
             taxType: item.taxType || '',
             taxAmount: Number(item.taxAmount) || 0,
             taxableAmount: Number(item.taxableAmount) || 0,
+            isCustomAmount: item.isCustomAmount === true || item.itemGroupId === 'calculator' || item.unit === 'Bill' || false,
           };
         });
 
@@ -708,19 +711,26 @@ const Journal: React.FC = () => {
     const invoiceDocRef = doc(db, 'companies', companyId, collectionName, invoiceToDelete.id);
 
     try {
-      await runTransaction(db, async (transaction) => {
-        for (const item of invoiceToDelete.items!) {
-          if (item.id && item.quantity > 0) {
-            const itemDocRef = doc(db, 'companies', companyId, 'items', item.id);
-            const stockChange = invoiceToDelete.type === 'Credit' ? item.quantity : -item.quantity;
-            transaction.update(itemDocRef, { stock: increment(stockChange), updatedAt: serverTimestamp() });
-          }
+      // 👇 1. Create a Batch instead of a Transaction
+      const batch = writeBatch(db);
+
+      for (const item of invoiceToDelete.items!) {
+        // 👇 2. Double-check the custom flag
+        if (item.id && item.quantity > 0 && item.isCustomAmount !== true) {
+          const itemDocRef = doc(db, 'companies', companyId, 'items', item.id);
+          const stockChange = invoiceToDelete.type === 'Credit' ? item.quantity : -item.quantity;
+
+          batch.update(itemDocRef, { stock: increment(stockChange), updatedAt: serverTimestamp() });
         }
-        transaction.delete(invoiceDocRef);
-      });
+      }
+
+      // 👇 3. Queue the deletion and commit instantly
+      batch.delete(invoiceDocRef);
+      await batch.commit();
+
       setModal({ message: "Invoice deleted and stock updated successfully.", type: State.SUCCESS });
     } catch (err) {
-      console.error("Error in transaction: ", err);
+      console.error("Error in batch write: ", err);
       setModal({ message: `Failed to delete invoice: ${err instanceof Error ? err.message : 'Unknown error'}`, type: State.ERROR });
     } finally {
       setInvoiceToDelete(null);

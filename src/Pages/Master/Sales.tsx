@@ -487,47 +487,71 @@ const Sales: React.FC = () => {
     // Injects a number exactly where the user tapped
     const insertAtCursor = (val: string) => {
         const input = displayRef.current;
-        if (!input || !calcInput) {
+        if (!input) {
             setCalcInput(prev => prev + val);
             return;
         }
 
-        const start = input.selectionStart ?? calcInput.length;
-        const end = input.selectionEnd ?? calcInput.length;
+        // Capture cursor position *before* the state updates
+        const start = input.selectionStart ?? 0;
+        const end = input.selectionEnd ?? 0;
+        // Detect if the user is typing at the very end of the visible text
+        const isAtEnd = start === (input.value?.length || 0);
 
-        const newVal = calcInput.slice(0, start) + val + calcInput.slice(end);
-        setCalcInput(newVal);
+        setCalcInput(prev => {
+            const currentInput = prev || '';
 
-        // Keep focus and move cursor forward
-        setTimeout(() => {
-            input.focus();
-            input.setSelectionRange(start + val.length, start + val.length);
-        }, 0);
+            // If typing rapidly at the end, safely append. Otherwise, insert at cursor.
+            const newVal = isAtEnd
+                ? currentInput + val
+                : currentInput.slice(0, start) + val + currentInput.slice(end);
+
+            setTimeout(() => {
+                input.focus();
+                const newPos = isAtEnd ? newVal.length : start + val.length;
+                input.setSelectionRange(newPos, newPos);
+            }, 0);
+
+            return newVal;
+        });
     };
 
     // Deletes the number exactly where the user tapped
     const deleteAtCursor = () => {
         const input = displayRef.current;
-        if (!input || !calcInput) return;
+        if (!input) return;
 
-        const start = input.selectionStart ?? calcInput.length;
-        const end = input.selectionEnd ?? calcInput.length;
+        const start = input.selectionStart ?? 0;
+        const end = input.selectionEnd ?? 0;
+        const isAtEnd = start === (input.value?.length || 0);
 
-        if (start === end && start > 0) {
-            const newVal = calcInput.slice(0, start - 1) + calcInput.slice(end);
-            setCalcInput(newVal);
+        setCalcInput(prev => {
+            if (!prev) return prev;
+
+            let newVal;
+            let newPos;
+
+            // If rapid-firing backspace at the end of the string
+            if (isAtEnd) {
+                newVal = prev.slice(0, -1);
+                newPos = newVal.length;
+            } else if (start === end && start > 0) {
+                newVal = prev.slice(0, start - 1) + prev.slice(end);
+                newPos = start - 1;
+            } else if (start !== end) {
+                newVal = prev.slice(0, start) + prev.slice(end);
+                newPos = start;
+            } else {
+                return prev; // Nothing to delete
+            }
+
             setTimeout(() => {
                 input.focus();
-                input.setSelectionRange(start - 1, start - 1);
+                input.setSelectionRange(newPos, newPos);
             }, 0);
-        } else if (start !== end) {
-            const newVal = calcInput.slice(0, start) + calcInput.slice(end);
-            setCalcInput(newVal);
-            setTimeout(() => {
-                input.focus();
-                input.setSelectionRange(start, start);
-            }, 0);
-        }
+
+            return newVal;
+        });
     };
 
     const generateSafeId = () => {
@@ -1825,8 +1849,6 @@ const Sales: React.FC = () => {
                             />
                         </div>
 
-
-                        {/* Stretchy Keypad Grid */}
                         <div className="grid grid-cols-8 sm:gap-2 flex-1 min-h-0 w-full">
                             {calcKeys.flat().map((key) => {
                                 const { label, icon: Icon, colClass, type, value } = key;
@@ -1837,15 +1859,22 @@ const Sales: React.FC = () => {
                                 return (
                                     <button
                                         key={key.label}
-                                        onPointerDown={isBackspace ? () => handlePointerDown(key) : undefined}
+                                        onPointerDown={(e) => {
+                                            e.preventDefault();
+                                            if (isBackspace) {
+                                                handlePointerDown(key);
+                                            } else {
+                                                handleKeypadPress(key);
+                                            }
+                                        }}
                                         onPointerUp={isBackspace ? () => handlePointerUp(key) : undefined}
                                         onPointerLeave={isBackspace ? () => handlePointerLeave(key) : undefined}
-                                        onClick={!isBackspace ? () => handleKeypadPress(key) : undefined}
                                         className={`h-full w-full flex items-center justify-center text-2xl sm:text-3xl font-medium transition-all active:scale-95 border select-none
-                                            ${isFunction ? 'bg-red-50 border-red-300 text-red-500 hover:bg-red-100' :
+        ${isFunction ? 'bg-red-50 border-red-300 text-red-500 hover:bg-red-100' :
                                                 isOperator ? 'bg-indigo-50 border-indigo-300 text-indigo-600 hover:bg-indigo-100' :
                                                     'bg-white shadow-sm border-gray-300 text-gray-800 hover:bg-gray-50'}
-                                                    ${colClass || 'col-span-2'}`}>
+        ${colClass || 'col-span-2'}`}
+                                    >
                                         {Icon ? <Icon size={28} /> : label}
                                     </button>
                                 );

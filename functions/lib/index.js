@@ -97,12 +97,11 @@ exports.getPublicCatalogue = functions.https.onRequest(async (req, res) => {
     }
 });
 exports.registerCompanyAndUser = functions.https.onCall(async (data, context) => {
-    // 1. Destructure all incoming data
+    // 1. Destructure all incoming data (salesSettings completely removed)
     const {
         email, password, name, phoneNumber, role,
         businessData,
-        planDetails,
-        salesSettings // <--- New parameter
+        planDetails
     } = data;
 
     // 2. Basic Validation
@@ -147,16 +146,10 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
         const userDocRef = db.doc(`companies/${newCompanyId}/users/${userRecord.uid}`);
         const businessInfoRef = db.doc(`companies/${newCompanyId}/business_info/${newCompanyId}`);
 
-        // NEW: Reference for Sales Settings
-        const salesSettingsRef = db.doc(`companies/${newCompanyId}/settings/sales-settings`);
-
         // 7. Prepare Data Payloads
-
         const trialDate = new Date();
         trialDate.setDate(trialDate.getDate() + 7);
-
-        // Set to exactly 18:29:59 UTC (which perfectly equals 23:59:59 IST)
-        trialDate.setUTCHours(18, 29, 59, 999);
+        trialDate.setUTCHours(18, 29, 59, 999); // Exactly 23:59:59 IST
 
         // A. Root Data (Plan & Validity)
         const companyRootData = {
@@ -171,19 +164,8 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
             expiryDate: admin.firestore.Timestamp.fromDate(trialDate),
             isTrial: true
         };
-        // B. Sales Settings Data (Clean & Defaulted)
-        const finalSalesSettings = {
-            ...salesSettings,
-            companyId: newCompanyId,
-            settingType: 'sales', // Important for filtering later
-            // Defaults
-            enableRounding: salesSettings?.enableRounding ?? true,
-            roundingInterval: salesSettings?.roundingInterval ?? 1,
-            taxType: salesSettings?.taxType || 'exclusive',
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        };
 
-        // C. Business Info Data (Name, Address, etc.)
+        // B. Business Info Data (Name, Address, etc.)
         const finalBusinessData = {
             ...businessData,
             companyId: newCompanyId,
@@ -191,7 +173,7 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
         };
 
-        // D. User Profile Data
+        // C. User Profile Data
         const userProfile = {
             name: name,
             phoneNumber: phoneNumber || '',
@@ -206,7 +188,8 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
         batch.set(companyRootRef, companyRootData);
         batch.set(userDocRef, userProfile);
         batch.set(businessInfoRef, finalBusinessData);
-        batch.set(salesSettingsRef, finalSalesSettings); // <--- Writes the settings
+
+        // Note: salesSettings batch write has been removed!
 
         await batch.commit();
 

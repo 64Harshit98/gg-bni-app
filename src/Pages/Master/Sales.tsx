@@ -4,7 +4,7 @@ import { useAuth, useDatabase } from '../../context/auth-context';
 import type { Item, SalesItem as OriginalSalesItem } from '../../constants/models';
 import { ROUTES } from '../../constants/routes.constants';
 import { db } from '../../lib/Firebase';
-import { collection, serverTimestamp, doc, increment as firebaseIncrement, runTransaction, getDocs, query, where, getDoc } from 'firebase/firestore';
+import { collection, serverTimestamp, doc, increment as firebaseIncrement, runTransaction, getDocs, query, where, getDoc, onSnapshot } from 'firebase/firestore';
 import SearchableItemInput from '../../UseComponents/SearchIteminput';
 import BarcodeScanner from '../../UseComponents/BarcodeScanner';
 import PaymentDrawer, { type PaymentCompletionData } from '../../Components/PaymentDrawer';
@@ -123,10 +123,10 @@ const Sales: React.FC = () => {
     const [invoiceNumber, setInvoiceNumber] = useState<string>('');
     const [invoiceDate, setInvoiceDate] = useState<string>(() => {
         const today = new Date();
-        const dd = String(today.getDate()).padStart(2, '0');
+        const yyyy = today.getFullYear();
         const mm = String(today.getMonth() + 1).padStart(2, '0');
-        const yy = String(today.getFullYear()).slice(2);
-        return `${dd}-${mm}-${yy}`;
+        const dd = String(today.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`; // Native date inputs require YYYY-MM-DD
     });
 
 
@@ -135,7 +135,8 @@ const Sales: React.FC = () => {
         if (isEditMode) return [];
         try {
             const savedDraft = localStorage.getItem('sales_cart_draft');
-            return savedDraft ? JSON.parse(savedDraft) : [];
+            const parsedDraft = savedDraft ? JSON.parse(savedDraft) : [];
+            return parsedDraft;
         } catch (e) {
             return [];
         }
@@ -248,17 +249,35 @@ const Sales: React.FC = () => {
             return;
         }
 
+        // --- REAL-TIME INVOICE LISTENER (Multi-tab Fix) ---
+        let unsubscribeCounter: () => void = () => { };
+
+        if (!isEditMode && currentUser?.companyId) {
+            const counterRef = doc(db, 'companies', currentUser.companyId, 'counters', 'invoiceCounter');
+            const settingsRef = doc(db, 'companies', currentUser.companyId, 'settings', 'sales-settings');
+
+            unsubscribeCounter = onSnapshot(counterRef, async (docSnap) => {
+                const settingsSnap = await getDoc(settingsRef);
+                const prefix = settingsSnap.exists() ? (settingsSnap.data().voucherPrefix || 'INV') : 'INV';
+
+                if (docSnap.exists()) {
+                    const nextNum = docSnap.data().currentNumber || 1;
+                    setInvoiceNumber(`${prefix}-${nextNum}`);
+                } else {
+                    setInvoiceNumber(`${prefix}-1`);
+                }
+            });
+        }
+
         const fetchData = async () => {
             try {
                 setPageIsLoading(true);
                 setError(null);
                 const fetchedItems = await dbOperations.syncItems();
                 setAvailableItems(fetchedItems);
-                if (!isEditMode) {
-                    // FIX: Use PEEK instead of GENERATE
-                    const nextNum = await peekNextInvoiceNumber(currentUser.companyId);
-                    setInvoiceNumber(nextNum);
-                } else if (invoiceToEdit?.invoiceNumber) {
+
+                // If in edit mode, we use the saved number, NOT the live counter
+                if (isEditMode && invoiceToEdit?.invoiceNumber) {
                     setInvoiceNumber(invoiceToEdit.invoiceNumber);
                 }
 
@@ -280,10 +299,19 @@ const Sales: React.FC = () => {
                     const currentUserAsWorker = fetchedWorkers.find(u => u.uid === currentUser.uid);
                     setSelectedWorker(currentUserAsWorker || null);
                 }
-            } catch (err) { console.error(err); setError('Failed to load initial page data.'); }
-            finally { setPageIsLoading(false); }
+            } catch (err) {
+                console.error(err);
+                setError('Failed to load initial page data.');
+            } finally {
+                setPageIsLoading(false);
+            }
         };
+
         fetchData();
+
+        // Cleanup the listener when the component unmounts
+        return () => unsubscribeCounter();
+
     }, [authLoading, currentUser, dbOperations, isEditMode, invoiceToEdit, loadingSettings]);
 
     useEffect(() => {
@@ -313,7 +341,7 @@ const Sales: React.FC = () => {
                 effectiveUnitPrice: item.effectiveUnitPrice,
                 discountPercentage: item.discountPercentage,
                 purchasePrice: item.purchasePrice || 0,
-                tax: item.tax || 0,
+                tax: Number(item.tax ?? item.taxRate ?? 0),
                 itemGroupId: item.itemGroupId || '',
                 stock: item.stock ?? item.Stock ?? 0,
                 amount: item.amount || 0,
@@ -360,18 +388,21 @@ const Sales: React.FC = () => {
         let accumulatorTax = 0;
         let accumulatorQuantity = 0;
 
-        const isTaxEnabled = salesSettings?.enableTax ?? true;
         const taxRate = salesSettings?.defaultTaxRate ?? 0;
         const isRoundingEnabled = salesSettings?.enableRounding ?? true;
         const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
 
         // Determine Effective Tax Mode
+        // Determine Effective Tax Mode
         let effectiveTaxMode = 'none';
-        if (gstSchemeDisplay === 'regular' && isTaxEnabled) {
+
+        // Removed "&& isTaxEnabled" so it only relies on the GST scheme and the dropdown
+        if (gstSchemeDisplay?.toLowerCase() === 'regular') {
             effectiveTaxMode = activeTaxMode === 'exempt' ? 'none' : activeTaxMode;
         } else {
             effectiveTaxMode = 'none';
         }
+
 
         items.forEach(cartItem => {
             const currentQuantity = cartItem.quantity || 1;
@@ -379,7 +410,8 @@ const Sales: React.FC = () => {
 
             let baseForSubtotal = (cartItem.mrp && cartItem.mrp > 0) ? cartItem.mrp : (cartItem.salesPrice || 0);
 
-            const itemSpecificTaxRate = (cartItem.tax !== undefined && cartItem.tax !== null) ? Number(cartItem.tax) : taxRate;
+            // 👇 Fixed condition here so it doesn't fail if taxRate is null
+            const itemSpecificTaxRate = cartItem.tax !== undefined ? Number(cartItem.tax) : taxRate;
 
             if (effectiveTaxMode === 'inclusive' && itemSpecificTaxRate > 0) {
                 baseForSubtotal = baseForSubtotal / (1 + (itemSpecificTaxRate / 100));
@@ -433,9 +465,8 @@ const Sales: React.FC = () => {
         }
 
         const finalPayableAmount = Math.round(rawFinalAmount);
-
-        // 4. Calculate the Round Off difference
         const roundOffAmount = toCurrency(finalPayableAmount - rawFinalAmount);
+
 
         return {
             subtotal: accumulatorSubtotal,
@@ -676,6 +707,9 @@ const Sales: React.FC = () => {
             setModal({ message: "Cannot add invalid item.", type: State.ERROR });
             return;
         }
+
+        const itemTaxExtracted = Number(itemToAdd.tax ?? (itemToAdd as any).taxRate ?? salesSettings?.defaultTaxRate ?? 0);
+
         const mrp = Number(itemToAdd.mrp || 0);
         const salesPrice = Number(itemToAdd.salesPrice || 0);
         const presetDiscount = Number(itemToAdd.discount || 0);
@@ -705,7 +739,7 @@ const Sales: React.FC = () => {
             customPrice: finalNetPrice,
             isEditable: true,
             purchasePrice: itemToAdd.purchasePrice || 0,
-            tax: itemToAdd.tax || 0,
+            tax: itemTaxExtracted,
             itemGroupId: itemToAdd.itemGroupId || '',
             stock: itemToAdd.stock || (itemToAdd as any).Stock || 0,
             amount: itemToAdd.amount || 0,
@@ -732,7 +766,6 @@ const Sales: React.FC = () => {
         if (!dbOperations) return;
 
         const cleanBarcode = barcode.trim();
-        console.log("Searching for barcode:", cleanBarcode);
 
         try {
             // Explicitly type the variable to accept Item, undefined (from .find), or null (from DB)
@@ -856,6 +889,34 @@ const Sales: React.FC = () => {
         const isRoundingEnabled = salesSettings?.enableRounding ?? true;
         const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
 
+        const getParsedInvoiceDate = () => {
+            try {
+                if (!invoiceDate) return new Date();
+
+                const parts = invoiceDate.split('-'); // [YYYY, MM, DD]
+
+                if (parts.length === 3) {
+                    const year = parseInt(parts[0], 10);
+                    const month = parseInt(parts[1], 10) - 1; // Months are 0-indexed in JS
+                    const day = parseInt(parts[2], 10);
+
+                    // 1. Get the exact current time right now (e.g., 2:45:30 PM)
+                    const finalDate = new Date();
+
+                    // 2. Inject ONLY the Year, Month, and Day from the calendar input
+                    finalDate.setFullYear(year);
+                    finalDate.setMonth(month);
+                    finalDate.setDate(day);
+
+                    // Result: The user's selected date + the exact current time!
+                    return finalDate;
+                }
+            } catch (e) {
+                console.error("Date parsing error", e);
+            }
+            return new Date(); // Safe fallback
+        };
+
         const formatItemsForDB = (itemsToFormat: SalesItem[]) => {
             return itemsToFormat.map(({ isEditable, customPrice, ...item }) => {
                 const currentDiscount = item.discount || 0;
@@ -874,7 +935,7 @@ const Sales: React.FC = () => {
 
                 const lineTotal = toCurrency(effectiveUnitPrice * currentQuantity);
 
-                const itemSpecificTaxRate = (item.tax !== undefined && item.tax !== null) ? Number(item.tax) : currentTaxRate;
+                const itemSpecificTaxRate = (item.tax !== undefined && item.taxRate !== null) ? Number(item.tax) : currentTaxRate;
                 let itemTaxableBase = 0, itemTaxAmount = 0, itemFinalPrice = 0;
 
                 if (finalGstScheme === 'regular' && itemSpecificTaxRate > 0 && isTaxEnabled) {
@@ -909,6 +970,7 @@ const Sales: React.FC = () => {
 
 
         const saveOperation = async (transaction: any, isNew: boolean, existingId?: string) => {
+            const customDate = getParsedInvoiceDate();
             const saleData: any = {
                 items: formatItemsForDB(items),
                 subtotal,
@@ -942,27 +1004,43 @@ const Sales: React.FC = () => {
 
             // 2. Handle New vs Edit behavior
             if (isNew) {
-                saleData.createdAt = serverTimestamp();
-                const currentAutoNum = await peekNextInvoiceNumber(companyId);
-                const finalInvNo = invoiceNumber.trim();
+                // 1. References
+                const counterRef = doc(db, 'companies', companyId, 'counters', 'invoiceCounter');
+                const settingsRef = doc(db, 'companies', companyId, 'settings', 'sales-settings');
 
+                // 2. FRESH FETCH INSIDE THE LOCK (Transaction)
+                // This makes sure this tab sees exactly what's in the DB right now
+                const [counterDoc, settingsDoc] = await Promise.all([
+                    transaction.get(counterRef),
+                    transaction.get(settingsRef)
+                ]);
+
+                const prefix = settingsDoc.exists() ? (settingsDoc.data().voucherPrefix || 'INV') : 'INV';
+                const nextNumber = counterDoc.exists() ? (counterDoc.data().currentNumber || 1) : 1;
+                const finalInvNo = `${prefix}-${nextNumber}`;
+
+                // 3. Assign the "Database Truth" number to the sale
+                saleData.createdAt = customDate;
                 saleData.invoiceNumber = finalInvNo;
+                saleData.userId = currentUser.uid;
+                saleData.companyId = companyId;
+                saleData.voucherName = salesSettings?.voucherName ?? 'Sales';
 
-                // 2. Commit the Sale
                 const newSaleRef = doc(collection(db, "companies", companyId, "sales"));
+
+                // 4. Set the Sale
                 transaction.set(newSaleRef, saleData);
 
-                // 3. Increment the sequence ONLY IF the user used the auto-suggested one
-                if (finalInvNo === currentAutoNum) {
-                    const counterRef = doc(db, 'companies', companyId, 'counters', 'invoiceCounter');
-                    // Note: We use increment(1) here for atomic safety
-                    transaction.update(counterRef, { currentNumber: firebaseIncrement(1) });
-                }
+                // 5. Increment the Counter
+                transaction.set(counterRef, { currentNumber: nextNumber + 1 }, { merge: true });
 
-                return { id: newSaleRef.id, number: saleData.invoiceNumber };
+                // Result returned to the UI
+                return { id: newSaleRef.id, number: finalInvNo };
+
 
             } else if (existingId) {
                 const invoiceRef = doc(db, "companies", companyId, "sales", existingId);
+                saleData.createdAt = customDate;
                 transaction.update(invoiceRef, saleData);
                 return { id: existingId, number: invoiceToEdit.invoiceNumber };
             }
@@ -1045,7 +1123,7 @@ const Sales: React.FC = () => {
                         partyNumber: completionData.partyNumber || '',
                         partyAddress: completionData.partyAddress || '',
                         partyGstin: completionData.partyGST || '',
-                        createdAt: new Date(),
+                        createdAt: getParsedInvoiceDate(),
                         manualDiscount: completionData.discount || 0,
                         salesmanName: finalSalesman.name,
                         items: finalizedItems
@@ -1233,10 +1311,10 @@ const Sales: React.FC = () => {
                 <div className="flex md:hidden items-center justify-between w-full mb-2">
                     <div className="flex flex-col items-center">
                         <input
-                            type="text"
+                            type="date"
                             value={invoiceDate}
                             onChange={(e) => setInvoiceDate(e.target.value)}
-                            className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-20 text-sm outline-none transition-colors"
+                            className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-25 text-sm outline-none transition-colors cursor-pointer" // 👈 Widened to w-32 and added cursor-pointer
                         />
                         <span className="text-[9px] text-gray-400 uppercase tracking-wide mt-0.5">DATE</span>
                     </div>
@@ -1272,10 +1350,10 @@ const Sales: React.FC = () => {
                         <div className="flex items-center gap-2">
                             <span className="text-xs text-gray-500 font-medium uppercase tracking-wide">DATE:</span>
                             <input
-                                type="text"
+                                type="date"
                                 value={invoiceDate}
                                 onChange={(e) => setInvoiceDate(e.target.value)}
-                                className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-20 text-sm outline-none transition-colors"
+                                className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-25 text-sm outline-none transition-colors cursor-pointer" // 👈 Widened to w-32 and added cursor-pointer
                             />
                         </div>
                     </div>

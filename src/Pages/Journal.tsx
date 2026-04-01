@@ -13,8 +13,7 @@ import {
   type DocumentData,
   runTransaction,
   increment,
-  serverTimestamp,
-  writeBatch
+  serverTimestamp
 } from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
 import { CustomToggle, CustomToggleItem } from '../Components/CustomToggle';
@@ -25,17 +24,19 @@ import { Spinner } from '../constants/Spinner';
 import { ROUTES } from '../constants/routes.constants';
 import { Modal, PaymentModal } from '../constants/Modal';
 import ShinyText from '../Components/ShinyText';
-import { generatePdf, generatePdfBlob } from '../UseComponents/pdfGenerator'; // Import generatePdfBlob
+import { generatePdf, generatePdfBlob } from '../UseComponents/pdfGenerator';
 import { getFirestoreOperations } from '../lib/ItemsFirebase';
 import { useSalesSettings } from '../context/SettingsContext';
 import { IconChevronDown, IconClose, IconFilter, IconSearch, IconDownload, IconPrint, IconScanCircle } from '../constants/Icons';
 import QRCode from 'react-qr-code';
-import { FiX, FiSend } from 'react-icons/fi'; // Import FiSend
-import { botMasterService } from '../Pages/Additional/Whatsapp/WhatsappApi'; // Import botMasterService
+import { FiX, FiSend } from 'react-icons/fi';
+import { botMasterService } from '../Pages/Additional/Whatsapp/WhatsappApi';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { storage } from '../lib/Firebase'; // Ensure 'storage' is exported from here
-import { Permissions } from '../enums/permissions.enum';
-import ShowWrapper from '../context/ShowWrapper';
+import { storage } from '../lib/Firebase';
+import { TutorialStep } from '../Components/TutorialStep'; // ← same import as Home.tsx
+
+// ─── Total tutorial steps for Journal ───────────────────────────────────────
+const TOTAL_STEPS = 6;
 
 interface InvoiceItem {
   id: string;
@@ -57,7 +58,6 @@ interface InvoiceItem {
   taxType?: string;
   taxAmount?: number;
   taxableAmount?: number;
-  isCustomAmount?: boolean;
 }
 
 interface Invoice {
@@ -96,7 +96,6 @@ interface Invoice {
   narration?: string;
 }
 
-// Interface for PDF Data Generation
 interface PdfData {
   gstScheme: string;
   taxType: string;
@@ -125,7 +124,6 @@ interface PdfData {
   extraExpenseName?: string;
   extraExpenseAmount?: number;
   narration?: string;
-
   invoice: {
     number: string;
     date: string;
@@ -154,7 +152,6 @@ const formatDate = (date: Date): string => {
 };
 
 const useJournalData = (companyId?: string) => {
-  // ... (useJournalData implementation remains the same)
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -192,7 +189,6 @@ const useJournalData = (companyId?: string) => {
           const effectiveUnit = Number(item.effectiveUnitPrice) || 0;
           const dbFinalPrice = Number(item.finalPrice) || 0;
 
-          // --- BUG FIX: Prevent Debit transactions from calculating MRP erroneously ---
           let calculatedFinalPrice = dbFinalPrice;
           if (type === 'Debit') {
             if (effectiveUnit > 0) {
@@ -222,7 +218,6 @@ const useJournalData = (companyId?: string) => {
             taxType: item.taxType || '',
             taxAmount: Number(item.taxAmount) || 0,
             taxableAmount: Number(item.taxableAmount) || 0,
-            isCustomAmount: item.isCustomAmount === true || item.itemGroupId === 'calculator' || item.unit === 'Bill' || false,
           };
         });
 
@@ -234,7 +229,6 @@ const useJournalData = (companyId?: string) => {
         const savedAmount = Number(data.totalAmount) || 0;
         const changeReturned = Number(data.revDiscount) || 0;
         const fallbackAmount = calculatedTotal - changeReturned;
-
         const correctDisplayAmount = savedAmount > 0 ? savedAmount : fallbackAmount;
 
         return {
@@ -314,7 +308,6 @@ const useJournalData = (companyId?: string) => {
 
 // --- MAIN COMPONENT ---
 const Journal: React.FC = () => {
-  // ... (State variables)
   const [activeTab, setActiveTab] = useState<'Paid' | 'Unpaid'>('Paid');
   const [activeType, setActiveType] = useState<'Debit' | 'Credit'>('Credit');
   const [searchQuery, setSearchQuery] = useState('');
@@ -322,6 +315,12 @@ const Journal: React.FC = () => {
   const [activeDateFilter, setActiveDateFilter] = useState<string>('today');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
+
+  // ─── Refs for tutorial autoscroll ─────────────────────────────────────────
+  const tutorialRefs = useRef<(HTMLElement | null)[]>([]);
+  const setTutorialRef = (index: number) => (el: HTMLElement | null) => {
+    tutorialRefs.current[index] = el;
+  };
   const [expandedInvoiceId, setExpandedInvoiceId] = useState<string | null>(null);
   const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
   const [invoiceToDelete, setInvoiceToDelete] = useState<Invoice | null>(null);
@@ -336,39 +335,55 @@ const Journal: React.FC = () => {
   const [pdfGenerating, setPdfGenerating] = useState<string | null>(null);
   const [invoiceToPrint, setInvoiceToPrint] = useState<Invoice | null>(null);
   const [showQrModal, setShowQrModal] = useState<Invoice | null>(null);
-  const [sendingPdf, setSendingPdf] = useState(false); // State for sending PDF
+  const [sendingPdf, setSendingPdf] = useState(false);
 
-  const { currentUser, loading: authLoading, hasPermission } = useAuth();
+  // ─── Tutorial state (mirrors Home.tsx pattern) ────────────────────────────
+  const [tutorialStep, setTutorialStep] = useState(0);
+
+  const next = (n: number) => setTutorialStep(n <= TOTAL_STEPS ? n : 0);
+  const skip = () => {
+    localStorage.setItem("journal_tutorial_done", "true");
+    setTutorialStep(0);
+    window.dispatchEvent(new Event("journal_tutorial_done"));
+  };
+
+  useEffect(() => {
+    const seen = localStorage.getItem("journal_tutorial_done");
+    if (!seen) {
+      localStorage.setItem("journal_tutorial_done", "true");
+      setTutorialStep(1); // run tutorial only first time after signup
+    }
+  }, []);
+
+  // ─── Autoscroll: whenever tutorialStep changes, scroll that element into view
+  useEffect(() => {
+    if (tutorialStep === 0) return;
+    const el = tutorialRefs.current[tutorialStep];
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [tutorialStep]);
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const { currentUser, loading: authLoading } = useAuth();
   const { invoices, loading: dataLoading, error } = useJournalData(currentUser?.companyId);
   const navigate = useNavigate();
 
-  // ... (daysRemaining, showBadge, isUrgent, useEffect for click outside, filteredInvoices, selectedPeriodText)
   const daysRemaining = useMemo(() => {
-    // 1. Get subData exactly like SubscriptionPage
     const subData = (currentUser as any)?.subscription || (currentUser as any)?.Subscription;
-
-    // 2. Get the raw expiry date
     const rawDate = subData?.expiryDate;
-
     if (!rawDate) return null;
-
-    // 3. Convert to JS Date using the EXACT logic from SubscriptionPage
     const expiryDate = new Date(
       (rawDate as any).toDate ? (rawDate as any).toDate() : rawDate
     );
-
-    // 4. Calculate difference
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     expiryDate.setHours(0, 0, 0, 0);
-
     const diffTime = expiryDate.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
     return diffDays;
   }, [currentUser]);
 
-  // Badge Visibility Logic
   const showBadge = daysRemaining !== null && daysRemaining <= 5 && daysRemaining >= 0;
   const isUrgent = daysRemaining !== null && daysRemaining <= 2;
 
@@ -399,15 +414,11 @@ const Journal: React.FC = () => {
           case 'last30': return invoiceDate >= daysAgo(today, 30);
           case 'custom':
             if (!customStartDate || !customEndDate) return false;
-
             const start = new Date(customStartDate);
             start.setHours(0, 0, 0, 0);
-
             const end = new Date(customEndDate);
             end.setHours(23, 59, 59, 999);
-
             return invoiceDate >= start && invoiceDate <= end;
-
           default: return true;
         }
       })
@@ -415,18 +426,14 @@ const Journal: React.FC = () => {
         const trimmedQuery = searchQuery.toLowerCase().trim();
         if (!trimmedQuery) return true;
         const searchTokens = trimmedQuery.split(/\s+/);
-
         return searchTokens.every((token) => {
-
           const matchesDetails =
             invoice.invoiceNumber.toLowerCase().includes(token) ||
             invoice.partyName.toLowerCase().includes(token) ||
             (invoice.partyNumber && invoice.partyNumber.includes(token));
-
           const matchesItems = invoice.items?.some(item =>
             item.name.toLowerCase().includes(token)
           );
-
           return matchesDetails || matchesItems;
         });
       })
@@ -450,7 +457,6 @@ const Journal: React.FC = () => {
           return `${new Date(customStartDate).toLocaleDateString('en-IN', options)} - ${new Date(customEndDate).toLocaleDateString('en-IN', options)}`;
         }
         return 'Select Custom Range';
-
       default: return 'Selected Period';
     }
   }, [activeDateFilter, customStartDate, customEndDate]);
@@ -510,7 +516,6 @@ const Journal: React.FC = () => {
         hsn: fullItem?.hsnSac || item.hsnSac || "N/A",
         discountAmount: isPurchase ? (item.purchasediscount || item.discount || item.manualDiscount || 0) : (item.discount || item.manualDiscount || 0),
         amount: itemAmount,
-        // Pass the explicit item-level tax data down to the PDF generator
         taxType: item.taxType,
         taxAmount: item.taxAmount,
         taxableAmount: item.taxableAmount
@@ -518,10 +523,8 @@ const Journal: React.FC = () => {
     });
 
     return {
-      // 1. Prioritize the document's saved gstScheme/taxType over the global salesSettings
       gstScheme: salesSettings?.gstScheme || '',
       taxType: invoice.taxType || salesSettings?.taxType || '',
-
       companyName: businessInfo?.name || 'Your Company',
       companyAddress: businessInfo?.address || 'Your Address',
       companyContact: businessInfo?.phoneNumber || 'Your Phone',
@@ -532,7 +535,6 @@ const Journal: React.FC = () => {
       panNumber: billSettings.panNumber || '',
       billDiscount: invoice.manualDiscount || 0,
       upiId: billSettings.upiId || '',
-
       billTo: {
         name: invoice.partyName,
         address: invoice.partyAddress || '',
@@ -548,7 +550,6 @@ const Journal: React.FC = () => {
       extraExpenseName: invoice.extraExpenseName || '',
       extraExpenseAmount: invoice.extraExpenseAmount || 0,
       narration: invoice.narration || '',
-
       invoice: {
         number: invoice.invoiceNumber,
         date: new Date(invoice.createdAt).toLocaleString('en-IN', {
@@ -558,11 +559,9 @@ const Journal: React.FC = () => {
         billedBy: salesSettings?.enableSalesmanSelection ? (invoice.salesmanName || 'N/A') : '',
         roNumber: '',
       },
-
       items: populatedItems,
       terms: billSettings.termsAndConditions || 'Goods once sold will not be taken back.',
       finalAmount: invoice.amount,
-
       bankDetails: {
         accountName: billSettings.accountName || businessInfo?.accountHolderName,
         accountNumber: billSettings.accountNumber || businessInfo?.accountNumber,
@@ -571,6 +570,7 @@ const Journal: React.FC = () => {
       }
     };
   };
+
   const handlePdfAction = async (invoice: Invoice, action: ACTION.DOWNLOAD | ACTION.PRINT) => {
     setInvoiceToPrint(null);
     setPdfGenerating(invoice.id);
@@ -588,7 +588,6 @@ const Journal: React.FC = () => {
       } else {
         throw new Error("Could not prepare PDF data");
       }
-
     } catch (err) {
       console.error('Failed to generate PDF:', err);
       setModal({ message: 'Failed to process PDF action.', type: State.ERROR });
@@ -596,7 +595,6 @@ const Journal: React.FC = () => {
       setPdfGenerating(null);
     }
   };
-
 
   const handleSendWhatsapp = async (invoice: Invoice) => {
     if (!invoice.partyNumber) {
@@ -609,7 +607,6 @@ const Journal: React.FC = () => {
     try {
       if (!currentUser?.companyId || !currentUser?.uid) throw new Error("User context missing.");
 
-      // 1. Get Credentials
       const businessDocRef = doc(db, 'companies', currentUser.companyId, 'business_info', currentUser.companyId);
       const businessSnap = await getDoc(businessDocRef);
       const { botMasterToken, whatsappNumber } = businessSnap.data() || {};
@@ -620,22 +617,17 @@ const Journal: React.FC = () => {
         return;
       }
 
-      // 2. Generate PDF Blob
       const dataForPdf = await preparePdfData(invoice);
       if (!dataForPdf) throw new Error("Failed to prepare invoice data.");
       const pdfBlob = await generatePdfBlob(dataForPdf);
 
-      // 3. Upload to Root (Cleanest possible URL)
-      // Clean the invoice number
       const safeNum = invoice.invoiceNumber.replace(/[\/\\?%*:|"<>]/g, '-');
       const cleanName = `${safeNum}.pdf`;
       const storageRef = ref(storage, cleanName);
       await uploadBytes(storageRef, pdfBlob);
 
-      // 4. Get Public URL
       const fileUrl = await getDownloadURL(storageRef);
 
-      // 5. Send to WhatsApp
       const message = `Hello ${invoice.partyName},\n\nHere is your invoice #${invoice.invoiceNumber}.\nAmount: ${invoice.amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}\n\nThank you!`;
 
       const response = await botMasterService.sendPdfFromUrl(
@@ -647,13 +639,9 @@ const Journal: React.FC = () => {
         cleanName
       );
 
-      // 7. Check Success
       let isSuccess = false;
       if (isSuccess) {
         setModal({ message: "Invoice sent! Cleaning up...", type: State.SUCCESS });
-
-        // --- NEW: AUTO-DELETE LOGIC ---
-        // Wait 60 seconds (enough time for WhatsApp to fetch it), then delete.
         setTimeout(async () => {
           try {
             await deleteObject(storageRef);
@@ -661,15 +649,13 @@ const Journal: React.FC = () => {
           } catch (error) {
             console.warn("Could not auto-delete temp file:", error);
           }
-        }, 60000); // 60000 ms = 1 Minute
-
+        }, 60000);
         setInvoiceToPrint(null);
       }
       if (Array.isArray(response) && response.length > 0) {
         const res = response[0];
         if (res.status === 'sent' || res.status === 'delivered') isSuccess = true;
-      }
-      else if (response.status === 'sent' || response.status === 'success' || response.status === 200) {
+      } else if (response.status === 'sent' || response.status === 'success' || response.status === 200) {
         isSuccess = true;
       }
 
@@ -679,7 +665,6 @@ const Journal: React.FC = () => {
       } else {
         throw new Error("API reported failure.");
       }
-
     } catch (err: any) {
       console.error("WhatsApp Send Error:", err);
       setModal({ message: "Failed to send WhatsApp invoice.", type: State.ERROR });
@@ -698,9 +683,7 @@ const Journal: React.FC = () => {
     setModal({ message: "Are you sure you want to delete this invoice? This action cannot be undone and will restore item stock.", type: State.INFO });
   };
 
-
   const confirmDeleteInvoice = async () => {
-    // ... (confirmDeleteInvoice implementation remains the same)
     if (!invoiceToDelete || !invoiceToDelete.items) return;
     if (!currentUser?.companyId) {
       setModal({ message: "Error: No company ID found. Cannot delete.", type: State.ERROR });
@@ -711,26 +694,19 @@ const Journal: React.FC = () => {
     const invoiceDocRef = doc(db, 'companies', companyId, collectionName, invoiceToDelete.id);
 
     try {
-      // 👇 1. Create a Batch instead of a Transaction
-      const batch = writeBatch(db);
-
-      for (const item of invoiceToDelete.items!) {
-        // 👇 2. Double-check the custom flag
-        if (item.id && item.quantity > 0 && item.isCustomAmount !== true) {
-          const itemDocRef = doc(db, 'companies', companyId, 'items', item.id);
-          const stockChange = invoiceToDelete.type === 'Credit' ? item.quantity : -item.quantity;
-
-          batch.update(itemDocRef, { stock: increment(stockChange), updatedAt: serverTimestamp() });
+      await runTransaction(db, async (transaction) => {
+        for (const item of invoiceToDelete.items!) {
+          if (item.id && item.quantity > 0) {
+            const itemDocRef = doc(db, 'companies', companyId, 'items', item.id);
+            const stockChange = invoiceToDelete.type === 'Credit' ? item.quantity : -item.quantity;
+            transaction.update(itemDocRef, { stock: increment(stockChange), updatedAt: serverTimestamp() });
+          }
         }
-      }
-
-      // 👇 3. Queue the deletion and commit instantly
-      batch.delete(invoiceDocRef);
-      await batch.commit();
-
+        transaction.delete(invoiceDocRef);
+      });
       setModal({ message: "Invoice deleted and stock updated successfully.", type: State.SUCCESS });
     } catch (err) {
-      console.error("Error in batch write: ", err);
+      console.error("Error in transaction: ", err);
       setModal({ message: `Failed to delete invoice: ${err instanceof Error ? err.message : 'Unknown error'}`, type: State.ERROR });
     } finally {
       setInvoiceToDelete(null);
@@ -764,7 +740,6 @@ const Journal: React.FC = () => {
     setIsModalOpen(true);
   };
 
-
   const handleSettlePayment = async (invoice: any, amount: number, method: string) => {
     if (!currentUser?.companyId) {
       throw new Error("No company ID found. Cannot settle payment.");
@@ -792,7 +767,6 @@ const Journal: React.FC = () => {
         due: newDue,
       };
 
-      // NEW: Create an individual payment record
       const paymentRecord = {
         amount,
         method,
@@ -800,18 +774,16 @@ const Journal: React.FC = () => {
         timestamp: Date.now()
       };
 
-      // Fetch existing history or initialize an empty array
       const currentHistory = data.paymentHistory || [];
 
       transaction.update(docRef, {
         paymentMethods: newPaymentMethods,
-        paymentHistory: [...currentHistory, paymentRecord] // Append the new record
+        paymentHistory: [...currentHistory, paymentRecord]
       });
     });
   };
 
   const handlePrintQr = (invoice: Invoice) => {
-    // ... (handlePrintQr implementation remains the same)
     if (!invoice.items || invoice.items.length === 0) {
       setModal({ message: "No items found in this invoice to print.", type: State.ERROR });
       return;
@@ -830,31 +802,25 @@ const Journal: React.FC = () => {
 
   const totalUnpaidAmount = useMemo(() => {
     if (activeTab !== 'Unpaid') return 0;
-
     return filteredInvoices.reduce((sum, invoice) => {
       return sum + (invoice.dueAmount || 0);
     }, 0);
   }, [filteredInvoices, activeTab]);
 
   const renderContent = () => {
-    // ... (renderContent implementation remains the same)
     if (authLoading || dataLoading) return <Spinner />;
     if (error) return <p className="p-8 text-center text-red-500">{error}</p>;
 
     if (filteredInvoices.length > 0) {
       return filteredInvoices.map((invoice) => {
         const isExpanded = expandedInvoiceId === invoice.id;
-
         const paymentMethods = invoice.paymentMethods || {};
         const activeModes = Object.entries(paymentMethods)
           .filter(([key, value]) => key !== 'due' && Number(value) > 0);
 
-
         return (
           <CustomCard key={invoice.id} onClick={() => handleInvoiceClick(invoice.id)} className="cursor-pointer transition-shadow hover:shadow-md">
             <div className="flex justify-between items-end w-full -mt-5 relative pointer-events-none">
-
-              {/* LEFT: Return History Badges */}
               <div className="flex justify-start gap-1 flex-wrap max-w-[50%] pointer-events-auto">
                 {invoice.returnHistory && invoice.returnHistory.length > 0 && (
                   invoice.returnHistory.map((historyItem: any, index: number) => (
@@ -867,8 +833,6 @@ const Journal: React.FC = () => {
                   ))
                 )}
               </div>
-
-              {/* RIGHT: Payment Mode Badges */}
               <div className="flex justify-end gap-1 flex-wrap max-w-[50%] text-right pointer-events-auto">
                 {activeModes.map(([mode]) => (
                   <span
@@ -879,7 +843,6 @@ const Journal: React.FC = () => {
                   </span>
                 ))}
               </div>
-
             </div>
             <div className="flex items-center justify-between">
               <div>
@@ -914,7 +877,6 @@ const Journal: React.FC = () => {
                 </div>
                 <div className="space-y-2 text-sm">
                   {(invoice.items && invoice.items.length > 0) ? invoice.items.map((item, index) => {
-
                     const netUnitPrice = item.effectiveUnitPrice
                       ? item.effectiveUnitPrice
                       : (item.quantity > 0 ? (item.finalPrice / item.quantity) : 0);
@@ -926,7 +888,6 @@ const Journal: React.FC = () => {
                           <p className="text-xs text-slate-400 flex items-center gap-1">
                             <span>MRP: {item.mrp.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}</span>
                             <span className="text-slate-400">|</span>
-                            {/* 2. Display Net Price */}
                             <span className="text-slate-400 font-medium">
                               Net: {netUnitPrice.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}
                             </span>
@@ -940,6 +901,7 @@ const Journal: React.FC = () => {
                     );
                   }) : <p className="text-xs text-slate-400">No item details available.</p>}
                 </div>
+
                 {invoice.manualDiscount && invoice.manualDiscount > 0 ? (
                   <div className="flex justify-between items-center mt-3 pt-1.5 border-t border-line border-slate-200">
                     <p className="text-xs font-medium text-slate-400">Bill Discount</p>
@@ -949,7 +911,6 @@ const Journal: React.FC = () => {
                   </div>
                 ) : null}
 
-                {/* --- NEW: EXTRA EXPENSE ROW --- */}
                 {invoice.extraExpenseAmount && invoice.extraExpenseAmount > 0 ? (
                   <div className="flex justify-between items-center mt-1 pt-1.5 border-t border-slate-200">
                     <p className="text-xs font-medium text-slate-400">{invoice.extraExpenseName || 'Extra Expense'}</p>
@@ -980,30 +941,25 @@ const Journal: React.FC = () => {
                 <div className="flex justify-between gap-2 mt-2 pt-4 border-t border-slate-200">
                   {invoice.status === 'Unpaid' && (<button onClick={(e) => { e.stopPropagation(); openPaymentModal(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-emerald-500 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors">Settle</button>)}
                   {invoice.status === 'Paid' && (<button onClick={(e) => { e.stopPropagation(); promptDeleteInvoice(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors">Delete</button>)}
-                  <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-                    <button onClick={(e) => { e.stopPropagation(); handleEditInvoice(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-gray-400 rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors">Edit</button>
-                  </ShowWrapper>
+                  <button onClick={(e) => { e.stopPropagation(); handleEditInvoice(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-gray-400 rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors">Edit</button>
+
                   {invoice.type === 'Credit' && (
                     <>
-                      <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-                        <button onClick={(e) => { e.stopPropagation(); handleSalesReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-sky-500 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">Return</button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }}
-                          disabled={pdfGenerating === invoice.id}
-                          className="px-4 py-2 text-sm font-medium text-white bg-black rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {pdfGenerating === invoice.id ? <Spinner /> : 'Print'}
-                        </button>
-                      </ShowWrapper>
+                      <button onClick={(e) => { e.stopPropagation(); handleSalesReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-sky-500 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">Return</button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }}
+                        disabled={pdfGenerating === invoice.id}
+                        className="px-4 py-2 text-sm font-medium text-white bg-black rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {pdfGenerating === invoice.id ? <Spinner /> : 'Print'}
+                      </button>
                     </>
                   )}
 
                   {invoice.type === 'Debit' && (
                     <>
-                      <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-                        <button onClick={(e) => { e.stopPropagation(); handlePurchaseReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-sky-500 rounded-lg hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-colors">Return</button>
-                        <button onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-black rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center gap-2">Print</button>
-                      </ShowWrapper>
+                      <button onClick={(e) => { e.stopPropagation(); handlePurchaseReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-sky-500 rounded-lg hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-colors">Return</button>
+                      <button onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-black rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center gap-2">Print</button>
                     </>
                   )}
                 </div>
@@ -1017,11 +973,11 @@ const Journal: React.FC = () => {
   };
 
   return (
-    <div className="flex min-h-screen w-full flex-col overflow-hidden bg-gray-100 mb-10 ">
+    <div className="flex min-h-screen w-full flex-col overflow-hidden bg-gray-100 mb-10">
       {modal && <Modal message={modal.message} type={modal.type} onClose={cancelDelete} onConfirm={confirmDeleteInvoice} showConfirmButton={invoiceToDelete !== null} />}
       <PaymentModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} invoice={selectedInvoice} onSubmit={handleSettlePayment} />
 
-      {/* --- ACTION SELECTION MODAL --- */}
+      {/* ACTION SELECTION MODAL */}
       {invoiceToPrint && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setInvoiceToPrint(null)}>
           <div className="bg-white rounded-lg p-6 w-full max-w-sm mx-4 shadow-xl animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
@@ -1035,7 +991,6 @@ const Journal: React.FC = () => {
             <div className="flex flex-col gap-3">
               {invoiceToPrint.type === 'Credit' ? (
                 <>
-                  {/* Existing Sales/Credit Options */}
                   <button
                     onClick={() => handleSendWhatsapp(invoiceToPrint)}
                     disabled={sendingPdf}
@@ -1043,28 +998,25 @@ const Journal: React.FC = () => {
                   >
                     {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
                   </button>
-
                   <button onClick={() => handlePdfAction(invoiceToPrint, ACTION.DOWNLOAD)} className="w-full bg-blue-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2">
                     <IconDownload /> Download PDF
                   </button>
                   <button onClick={() => handlePdfAction(invoiceToPrint, ACTION.PRINT)} className="w-full bg-white text-gray-700 border border-gray-300 py-2.5 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
                     <IconPrint /> Print Directly
                   </button>
-
                   <button onClick={() => handleShowQr(invoiceToPrint)} className="w-full bg-gray-900 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2">
                     <IconScanCircle width={20} height={20} /> Generate QR Code
                   </button>
                 </>
               ) : (
                 <>
-                  {/* New Purchase/Debit Options */}
                   <button onClick={() => handlePdfAction(invoiceToPrint, ACTION.DOWNLOAD)} className="w-full bg-blue-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 bg-sky-500 text-gray-300" disabled>
                     <IconDownload /> Download PDF
                   </button>
                   <button
                     onClick={() => {
                       handlePrintQr(invoiceToPrint);
-                      setInvoiceToPrint(null); // Close the modal after clicking
+                      setInvoiceToPrint(null);
                     }}
                     className="w-full bg-gray-900 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
                   >
@@ -1077,17 +1029,14 @@ const Journal: React.FC = () => {
         </div>
       )}
 
-      {/* ... (rest of the render logic remains the same) */}
       {showQrModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm flex flex-col items-center animate-in fade-in zoom-in duration-300 relative">
             <button onClick={() => setShowQrModal(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
               <FiX size={24} />
             </button>
-
             <h3 className="text-xl font-bold text-gray-800 mb-1">Download Bill</h3>
             <p className="text-sm text-gray-500 mb-4">Invoice #{showQrModal.invoiceNumber}</p>
-
             <div className="bg-white p-2 border-2 border-gray-100 rounded-lg shadow-inner mb-4">
               <QRCode
                 value={`${window.location.origin}/download-bill/${currentUser?.companyId}/${showQrModal.id}`}
@@ -1095,11 +1044,7 @@ const Journal: React.FC = () => {
                 viewBox={`0 0 256 256`}
               />
             </div>
-
-            <p className="text-center text-sm text-gray-600 mb-4">
-              Scan to download PDF
-            </p>
-
+            <p className="text-center text-sm text-gray-600 mb-4">Scan to download PDF</p>
             <button
               onClick={() => setShowQrModal(null)}
               className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
@@ -1110,50 +1055,64 @@ const Journal: React.FC = () => {
         </div>
       )}
 
+      {/* Subscription expiry badge */}
       {showBadge && (
         <div className={`w-full text-center py-2 text-sm font-bold text-white shadow-sm transition-colors duration-300 ${isUrgent ? 'bg-red-300' : 'bg-amber-200'}`}>
           <ShinyText
             text={`Subscription expires in ${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'}.`}
-            speed={4}
-            delay={0}
-            color="#030303"
-            shineColor="#faf5f5"
-            spread={100}
-            direction="left"
-            yoyo={false}
-            pauseOnHover={false}
-            disabled={false}
+            speed={4} delay={0} color="#030303" shineColor="#faf5f5" spread={100}
+            direction="left" yoyo={false} pauseOnHover={false} disabled={false}
           />
-          <Link to="/subscription" className=" text-black ml-2 underline hover:text-gray-100">Renew Now</Link>
+          <Link to="/subscription" className="text-black ml-2 underline hover:text-gray-100">Renew Now</Link>
         </div>
       )}
+
+      {/* ── HEADER ROW ─────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between p-2 px-2 z-20 relative">
+
+        {/* Step 1 — Search toggle */}
         <div className="flex flex-1 items-center">
-          <button onClick={() => setShowSearch(!showSearch)} className="text-slate-500 hover:text-slate-800 transition-colors mr-4">
-            {showSearch ? (
-              <IconClose />) : (<IconSearch />)}
-          </button>
+          <TutorialStep
+            step={1}
+            currentStep={tutorialStep}
+            text="Tap the search icon to find invoices by name, number, or phone."
+            onNext={() => next(2)}
+            onSkip={skip}
+          >
+            <button onClick={() => setShowSearch(!showSearch)} className="text-slate-500 hover:text-slate-800 transition-colors mr-4">
+              {showSearch ? <IconClose /> : <IconSearch />}
+            </button>
+          </TutorialStep>
+
           <div className="flex-1">
             {!showSearch ? (
-              <div className="flex flex-col items-center relative z-20"> {/* Shared Parent Container */}
+              <div className="flex flex-col items-center relative z-20">
+                <h1 className="text-3xl font-bold text-slate-800">Transactions</h1>
 
-                <h1 className="text-3xl font-bold  text-slate-800">Transactions</h1>
-
-                <div
-                  onClick={() => {
-                    if (showCustomPicker) {
-                      setShowCustomPicker(false);
-                    } else {
-                      setShowCustomPicker(true);
-                      setActiveDateFilter('custom');
-                    }
-                  }} className="flex items-center gap-2 cursor-pointer hover:bg-gray-200 px-3 py-1 rounded-full transition-colors select-none -mb-3"
+                {/* Step 2 — only the date label row gets the tutorial highlight */}
+                <TutorialStep
+                  step={2}
+                  currentStep={tutorialStep}
+                  text="Tap the date to pick a custom range for your transactions."
+                  onNext={() => next(3)}
+                  onSkip={skip}
                 >
-                  <p className='text-center text-lg font-light text-slate-600'>
-                    {selectedPeriodText}
-                  </p>
-                  <IconChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${showCustomPicker ? 'rotate-180' : ''}`} />
-                </div>
+                  <div
+                    ref={setTutorialRef(2) as any}
+                    onClick={() => {
+                      if (showCustomPicker) {
+                        setShowCustomPicker(false);
+                      } else {
+                        setShowCustomPicker(true);
+                        setActiveDateFilter('custom');
+                      }
+                    }}
+                    className="flex items-center gap-2 cursor-pointer hover:bg-gray-200 px-3 py-1 rounded-full transition-colors select-none -mb-3"
+                  >
+                    <p className='text-center text-lg font-light text-slate-600'>{selectedPeriodText}</p>
+                    <IconChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${showCustomPicker ? 'rotate-180' : ''}`} />
+                  </div>
+                </TutorialStep>
 
                 {showCustomPicker && (
                   <div className="absolute top-full bg-white shadow-xl border border-gray-200 rounded-lg p-4 z-50 min-w-[300px] flex flex-col gap-4 animate-in fade-in zoom-in duration-200 cursor-default">
@@ -1163,10 +1122,7 @@ const Journal: React.FC = () => {
                         <input
                           type="date"
                           value={customStartDate}
-                          onChange={(e) => {
-                            setCustomStartDate(e.target.value);
-                            setActiveDateFilter('custom');
-                          }}
+                          onChange={(e) => { setCustomStartDate(e.target.value); setActiveDateFilter('custom'); }}
                           className="border border-gray-300 rounded-sm px-2 py-1.5 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                         />
                       </div>
@@ -1175,15 +1131,11 @@ const Journal: React.FC = () => {
                         <input
                           type="date"
                           value={customEndDate}
-                          onChange={(e) => {
-                            setCustomEndDate(e.target.value);
-                            setActiveDateFilter('custom');
-                          }}
+                          onChange={(e) => { setCustomEndDate(e.target.value); setActiveDateFilter('custom'); }}
                           className="border border-gray-300 rounded-sm px-2 py-1.5 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                         />
                       </div>
                     </div>
-
                     <div className="flex justify-center text-center border-t border-gray-100 -mt-2 -mb-2">
                       <button
                         onClick={() => setShowCustomPicker(false)}
@@ -1196,15 +1148,32 @@ const Journal: React.FC = () => {
                 )}
               </div>
             ) : (
-              <input type="text" placeholder="Search by Invoice, Name, or Phone..." className="w-full text-xl font-light p-1 border-b-2 border-slate-300 focus:border-slate-800 outline-none transition-colors" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} autoFocus />
+              <input
+                type="text"
+                placeholder="Search by Invoice, Name, or Phone..."
+                className="w-full text-xl font-light p-1 border-b-2 border-slate-300 focus:border-slate-800 outline-none transition-colors"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                autoFocus
+              />
             )}
           </div>
         </div>
 
+        {/* Step 3 — Date filter icon */}
         <div className="relative pl-4" ref={filterRef}>
-          <button onClick={() => setIsFilterOpen(!isFilterOpen)} className="text-slate-500 hover:text-slate-800 transition-colors">
-            <IconFilter />
-          </button>
+          <TutorialStep
+            step={3}
+            currentStep={tutorialStep}
+            text="Use this filter to quickly jump to Today, Last 7 Days, Last 30 Days, and more."
+            onNext={() => next(4)}
+            onSkip={skip}
+          >
+            <button onClick={() => setIsFilterOpen(!isFilterOpen)} className="text-slate-500 hover:text-slate-800 transition-colors">
+              <IconFilter />
+            </button>
+          </TutorialStep>
+
           {isFilterOpen && (
             <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-md shadow-lg z-10 border overflow-hidden">
               <ul className="py-1">
@@ -1212,10 +1181,7 @@ const Journal: React.FC = () => {
                   filter.value !== 'custom' && (
                     <li key={filter.value}>
                       <button
-                        onClick={() => {
-                          handleDateFilterSelect(filter.value);
-                          setIsFilterOpen(false);
-                        }}
+                        onClick={() => { handleDateFilterSelect(filter.value); setIsFilterOpen(false); }}
                         className={`w-full text-left px-4 py-2 text-sm ${activeDateFilter === filter.value ? 'bg-slate-100 text-slate-900' : 'text-slate-700'} hover:bg-slate-50`}
                       >
                         {filter.label}
@@ -1225,11 +1191,7 @@ const Journal: React.FC = () => {
                 ))}
                 <li>
                   <button
-                    onClick={() => {
-                      setActiveDateFilter('custom');
-                      setIsFilterOpen(false);
-                      setShowCustomPicker(true);
-                    }}
+                    onClick={() => { setActiveDateFilter('custom'); setIsFilterOpen(false); setShowCustomPicker(true); }}
                     className={`w-full text-left px-4 py-2 text-sm ${activeDateFilter === 'custom' ? 'bg-slate-100 text-slate-900' : 'text-slate-700'} hover:bg-slate-50`}
                   >
                     Custom Range
@@ -1241,21 +1203,34 @@ const Journal: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex justify-center border-b border-gray-500 p-2 mb-2">
-        <CustomButton variant={Variant.Transparent} active={activeType === 'Credit'} onClick={() => setActiveType('Credit')}>Sales</CustomButton>
-        <CustomButton
-          variant={Variant.Transparent}
-          active={activeType === 'Debit'} onClick={() => setActiveType('Debit')}
-          disabled={!hasPermission(Permissions.HiddenProFeatures)}  // Optional: style it differently if locked
-          className={!hasPermission(Permissions.HiddenProFeatures) ? 'opacity-50 cursor-not-allowed' : ''}
-        >
-          {hasPermission(Permissions.HiddenProFeatures) ? 'Purchase' : '🔒 Purchase'}
-        </CustomButton>
-      </div>
-      <CustomToggle>
-        <CustomToggleItem className="mr-2" onClick={() => setActiveTab('Paid')} data-state={activeTab === 'Paid' ? 'on' : 'off'}>Paid</CustomToggleItem>
-        <CustomToggleItem onClick={() => setActiveTab('Unpaid')} data-state={activeTab === 'Unpaid' ? 'on' : 'off'}>Unpaid</CustomToggleItem>
-      </CustomToggle>
+      {/* Step 4 — Sales / Purchase toggle */}
+      <TutorialStep
+        step={4}
+        currentStep={tutorialStep}
+        text="Switch between Sales (money received) and Purchase (money spent) transactions here."
+        onNext={() => next(5)}
+        onSkip={skip}
+      >
+        <div className="flex justify-center border-b border-gray-500 p-2 mb-2">
+          <CustomButton variant={Variant.Transparent} active={activeType === 'Credit'} onClick={() => setActiveType('Credit')}>Sales</CustomButton>
+          <CustomButton variant={Variant.Transparent} active={activeType === 'Debit'} onClick={() => setActiveType('Debit')}>Purchase</CustomButton>
+        </div>
+      </TutorialStep>
+
+      {/* Step 5 — Paid / Unpaid toggle */}
+      <TutorialStep
+        step={5}
+        currentStep={tutorialStep}
+        text="Toggle between Paid and Unpaid invoices. Unpaid shows your outstanding dues."
+        onNext={() => next(6)}
+        onSkip={skip}
+        isLast
+      >
+        <CustomToggle>
+          <CustomToggleItem className="mr-2" onClick={() => setActiveTab('Paid')} data-state={activeTab === 'Paid' ? 'on' : 'off'}>Paid</CustomToggleItem>
+          <CustomToggleItem onClick={() => setActiveTab('Unpaid')} data-state={activeTab === 'Unpaid' ? 'on' : 'off'}>Unpaid</CustomToggleItem>
+        </CustomToggle>
+      </TutorialStep>
 
       {activeTab === 'Unpaid' && (
         <div className="mx-2 mt-2 p-2 bg-red-50 border border-red-200 rounded-sm flex justify-between items-center shadow-sm animate-in fade-in slide-in-from-top-2">
@@ -1267,10 +1242,13 @@ const Journal: React.FC = () => {
           </div>
         </div>
       )}
-      <div className="flex-grow overflow-y-auto bg-slate-100 space-y-3 pt-2 pb-24">
-        {renderContent()}
-      </div>
-    </div >
+
+      
+        <div className="flex-grow overflow-y-auto bg-slate-100 space-y-3 pt-2 pb-24">
+          {renderContent()}
+        </div>
+      
+    </div>
   );
 };
 

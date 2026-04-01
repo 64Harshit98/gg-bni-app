@@ -6,6 +6,7 @@ import { IconClose } from '../../constants/Icons';
 
 // --- HELPER: Feature Descriptions ---
 const FEATURE_DESCRIPTIONS: Record<string, string> = {
+    'Calculator Billing': 'A quick-entry billing mode that works like a calculator for fast checkouts.',
     'Vendor POS Dashboard Access': 'A central hub to manage sales, inventory, and staff from any device.',
     'Total Sale Board': 'Real-time overview of your total revenue and transaction counts.',
     'Automated Sales Reports': 'Detailed insights into what is selling, when, and to whom, generated automatically.',
@@ -52,24 +53,41 @@ const FEATURE_DESCRIPTIONS: Record<string, string> = {
     'Multi-tax Purchase vouchering': 'Handle multiple tax brackets in a single purchase entry.',
     'Individual barcode printing': 'Print specific barcodes for individual items as needed.',
     'Credit sales setting': 'Enable or disable the ability to sell items on credit.',
-    'Multiple owners in same company': 'Grant full administrative access to business partners.'
+    'Multiple owners in same company': 'Grant full administrative access to business partners.',
+    'Completed Sales Board': 'Overview of completed orders and total revenue for the day.',
+    'Order Journey Tracking': 'Track every order through Confirmed, Packed, and Completed stages.',
+    'Top 5 Items Sold Board': 'See your best-selling catalogue products in the selected period.',
+    'Restock Alerts': 'Get notified when catalogue items need restocking.',
+    'Sales Report': 'Detailed log of all completed sales transactions.',
+    'Customer Report': 'Insights into your customer base and their order history.',
+    'Profit & Loss Report': 'Instant P&L summary based on catalogue orders.',
+    'Item Report': 'Performance and sales history for every catalogue item.',
+    'Online Catalogue': 'A digital storefront where customers can browse your products online.',
+    'Share on WhatsApp': 'Share your catalogue link directly with customers via WhatsApp.',
+    'Receive Orders': 'Accept and manage incoming customer orders from your catalogue.',
+    'Online Payments': 'Collect payments digitally through your catalogue store.',
+    'Custom Domain': 'Use your own branded domain name for your online catalogue.',
+    'Order Analytics': 'Detailed breakdown of order trends, volumes, and performance.'
+
 };
 
 const BASIC_FEATURES = [
+    'Calculator Billing',
     'Vendor POS Dashboard Access',
     'Total Sale Board',
     'Automated Sales Reports',
     'Custom Voucher Numbering',
-    'Bar Code + QR Code Scanner',
     'Autofill Bill Amount & Balances',
-    'Bulk Import Items',
-    'Parent Categorisation of Items',
-    'Automated Invoice Generation',
-    'GST composition'
+    'Daily Performance Board',
+    'Payment Methods Board',
+    'Hide Data Functionality',
+    'Amount vs Quantity in Boards',
+    'Transaction filter & search',
+    'Automated business card making',
 ];
 
 const PRO_FEATURES = [
-    ...BASIC_FEATURES,
+     ...BASIC_FEATURES.filter(f => f !== 'Calculator Billing'),
     'Daily Performance Board',
     'Payment Methods Board',
     'Top Items Sold Board',
@@ -112,7 +130,7 @@ const PRO_FEATURES = [
 const POS_TIERS = [
     {
         id: PLANS.POS_BASIC,
-        name: 'POS Basic',
+        name: 'POS Basic (Cal-C)',
         price: { monthly: '₹99', yearly: '₹999' },
         originalPrice: { monthly: '₹199', yearly: '₹1,999' },
         description: 'Essential tools for small businesses.',
@@ -121,7 +139,7 @@ const POS_TIERS = [
     },
     {
         id: PLANS.POS_PRO || 'pro',
-        name: 'POS Pro',
+        name: 'POS Pro (POSi)',
         price: { monthly: '₹299', yearly: '₹2,999' },
         originalPrice: { monthly: '₹499', yearly: '₹3,999' },
         description: 'Complete solution for growing businesses.',
@@ -132,21 +150,28 @@ const POS_TIERS = [
 
 const CATALOGUE_TIERS = [
     {
-        id: 'cat_starter',
-        name: 'Starter',
-        price: { monthly: '₹149', yearly: '₹1,499' },
-        originalPrice: { monthly: '₹299', yearly: '₹2,999' },
-        description: 'Digital menu.',
-        features: ['Online Catalogue', 'Share on WhatsApp', 'Receive Orders'],
-        recommended: false,
-    },
-    {
         id: 'cat_premium',
         name: 'Premium',
         price: { monthly: '₹499', yearly: '₹4,999' },
         originalPrice: { monthly: '₹799', yearly: '₹7,999' },
         description: 'Store + Payments.',
-        features: ['Online Catalogue', 'Share on WhatsApp', 'Receive Orders', 'Online Payments', 'Custom Domain', 'Order Analytics'],
+        features: [
+            'Online Catalogue',
+            'Share on WhatsApp',
+            'Receive Orders',
+            'Online Payments',
+            'Custom Domain',
+            'Order Analytics',
+            'Completed Sales Board',
+            'Order Journey Tracking',
+            'Daily Performance Board',
+            'Top 5 Items Sold Board',
+            'Restock Alerts',
+            'Sales Report',
+            'Customer Report',
+            'Profit & Loss Report',
+            'Item Report',
+        ],
         recommended: true,
     }
 ];
@@ -157,7 +182,9 @@ const BOTH_TIERS = [
         price: { monthly: '₹799', yearly: '₹7,999' },
         originalPrice: { monthly: '₹1,299', yearly: '₹12,999' },
         description: 'Store + Payments + Catalogue.',
-        features: PRO_FEATURES.concat(['Online Catalogue', 'Share on WhatsApp', 'Receive Orders', 'Online Payments', 'Custom Domain', 'Order Analytics']),
+        features: [
+            ...new Set([...PRO_FEATURES, ...CATALOGUE_TIERS[0].features])  // ← merge both, no duplicates
+        ],
         recommended: true,
     }
 ];
@@ -167,7 +194,6 @@ const SubscriptionPage: React.FC = () => {
     const navigate = useNavigate();
 
     const [activeTab, setActiveTab] = useState<'pos' | 'catalogue' | 'both'>('pos');
-    const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
     const [isDetailsOpen] = useState(true);
     const [selectedTooltip, setSelectedTooltip] = useState<string | null>(null);
 
@@ -185,7 +211,10 @@ const SubscriptionPage: React.FC = () => {
     const currentTiers = activeTab === 'pos' ? POS_TIERS : activeTab === 'catalogue' ? CATALOGUE_TIERS : BOTH_TIERS;
 
     const allFeatures = useMemo(() => {
-        if (activeTab === 'pos') return PRO_FEATURES;
+        if (activeTab === 'pos') {
+            const proOnly = PRO_FEATURES.filter(f => !BASIC_FEATURES.includes(f));
+            return [...BASIC_FEATURES, ...proOnly];
+        }
         const features = new Set<string>();
         currentTiers.forEach(tier => tier.features.forEach(f => features.add(f)));
         return Array.from(features);
@@ -288,21 +317,6 @@ const SubscriptionPage: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="flex justify-center w-full items-center mb-8 gap-4">
-                    <span className={`text-sm font-medium ${billingCycle === 'monthly' ? 'text-gray-900 font-bold' : 'text-gray-500'}`}>
-                        4 Weeks
-                    </span>
-                    <button
-                        onClick={() => setBillingCycle(prev => prev === 'monthly' ? 'yearly' : 'monthly')}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-sm transition-colors focus:outline-none ${billingCycle === 'yearly' ? 'bg-green-600' : 'bg-gray-300'}`}
-                    >
-                        <span className={`inline-block h-4 w-4 transform rounded-sm bg-white transition duration-200 ease-in-out ${billingCycle === 'yearly' ? 'translate-x-6' : 'translate-x-1'}`} />
-                    </button>
-                    <span className={`text-sm font-medium ${billingCycle === 'yearly' ? 'text-gray-900 font-bold' : 'text-gray-500'}`}>
-                        Yearly <span className="text-green-600 text-xs ml-1 font-bold">(Save 22.2%)</span>
-                    </span>
-                </div>
-
                 <div className="bg-white rounded-sm shadow-xl border border-gray-200 max-w-5xl mx-auto overflow-visible">
                     <div className="relative">
                         {/* Changed table-fixed to auto-layout to prevent truncation */}
@@ -320,25 +334,25 @@ const SubscriptionPage: React.FC = () => {
                                         >
                                             {tier.recommended && (
                                                 <span className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-yellow-400 text-yellow-900 text-[9px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wide shadow-sm whitespace-nowrap z-10">
-                                                    Recommended
+                                                    {activeTab === 'catalogue' ? 'Best Seller' : 'Recommended'}
                                                 </span>
                                             )}
                                             <h3 className="text-sm sm:text-lg font-bold text-gray-900 truncate">{tier.name}</h3>
                                             <div className="mt-1 sm:mt-2">
                                                 {tier.originalPrice && (
                                                     <span className="text-sm sm:text-base text-gray-400 line-through mr-2 font-medium">
-                                                        {tier.originalPrice[billingCycle]}
+                                                        {tier.originalPrice.yearly}
                                                     </span>
                                                 )}
                                                 <span className="text-xl sm:text-3xl font-extrabold text-gray-900">
-                                                    {tier.price[billingCycle]}
+                                                    {tier.price.yearly}
                                                 </span>
                                                 <span className="text-xs text-gray-500 block font-medium">
-                                                    {billingCycle === 'monthly' ? 'per 4 weeks' : 'per year'}
+                                                    per year
                                                 </span>
                                             </div>
                                             <button
-                                                onClick={() => alert(`Contact Admin for ${tier.name} (${billingCycle})`)}
+                                                onClick={() => alert(`Contact Admin for ${tier.name} (yearly)`)}
                                                 className={`mt-3 w-full py-1.5 rounded-sm text-xs sm:text-sm font-bold transition-colors ${tier.recommended
                                                     ? activeTab === 'pos' ? 'bg-gray-900 text-white hover:bg-gray-800' : activeTab === 'catalogue' ? 'bg-sky-600 text-white hover:bg-sky-700' : 'bg-yellow-400 text-black hover:bg-yellow-500'
                                                     : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'

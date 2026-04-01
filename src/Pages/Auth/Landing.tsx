@@ -32,15 +32,27 @@ const LoginPage: React.FC = () => {
 
         try {
             await loginUser(email, password);
+        } catch (err: any) {
 
             // 🚨 CRITICAL: DO NOT PUT ANY navigate('/') OR navigate(ROUTES.HOME) HERE! 🚨
             // The Firebase login will trigger the AuthProvider, 
             // which will update the currentUser, 
             // which will trigger "The Smart Door" above automatically!
 
-        } catch (err: any) {
-            setError(err.message || 'Failed to log in.');
-            setLoading(false); // Only turn off the spinner if it FAILS.
+            const errorCode = err?.code || '';
+
+            const firebaseErrorMessages: Record<string, string> = {
+                'auth/invalid-credential': 'Incorrect email or password. Please try again.',
+                'auth/user-not-found': 'No account found with this email.',
+                'auth/wrong-password': 'Incorrect password. Please try again.',
+                'auth/invalid-email': 'Please enter a valid email address.',
+                'auth/user-disabled': 'This account has been disabled. Please contact support.',
+                'auth/too-many-requests': 'Too many failed attempts. Please try again later.',
+                'auth/network-request-failed': 'Network error. Please check your connection.',
+            };
+
+            setError(firebaseErrorMessages[errorCode] || 'Incorrect email or password. Please try again.');
+            setLoading(false);
         }
     };
 

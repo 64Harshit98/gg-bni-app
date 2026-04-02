@@ -79,6 +79,8 @@ const CartPage: React.FC = () => {
     const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
     const [isPlacing, setIsPlacing] = useState(false);
     const { companyId: pathId } = useParams<{ companyId: string }>();
+    const [showAlert, setShowAlert] = useState(false);
+
     // 2. Get the subdomain
     const hostname = window.location.hostname;
     const parts = hostname.split('.');
@@ -134,7 +136,7 @@ const CartPage: React.FC = () => {
             unit: item.unit ?? "pcs",
             unitMultiplier: item.unitMultiplier ?? 1,
             note: item.note || '',
-            groupid: item.category
+            groupId: item.category
         }));
         const totalAmount = itemsForFirebase.reduce(
             (sum, i) => sum + i.salesPrice * i.quantity,
@@ -159,6 +161,7 @@ const CartPage: React.FC = () => {
 
     useEffect(() => {
         const savedCart = localStorage.getItem('temp_cart');
+        console.log("Saved:", savedCart)
         if (savedCart) {
             try {
                 const parsedCart = JSON.parse(savedCart);
@@ -212,7 +215,7 @@ const CartPage: React.FC = () => {
                 updatedItems.map(i => ({
                     item: {
                         id: i.id,
-                        groupid: i.category, // groupId
+                        groupId: (i as any).itemGroupId || i.category, // groupId
                         name: i.name,
                         mrp: i.mrp,
                         salesPrice: i.salesPrice,
@@ -391,7 +394,7 @@ const CartPage: React.FC = () => {
         const shippingValid = isSameAsShipping ? billingValid : isAddressValid(shipping);
 
         if (!billingValid || !shippingValid) {
-            alert("Please fill complete billing and shipping details (10-digit phone required)");
+            setShowAlert(true);
             return;
         }
         setIsPlacing(true);
@@ -412,13 +415,13 @@ const CartPage: React.FC = () => {
                 updatedAt: serverTimestamp(),
                 specialInstruction: specialInstruction || "",
                 items: cartItems.map(i => {
-
+                    console.log("ITEM DEBUG:", i);
                     const mrp = i.mrp;
                     const salePrice = i.salesPrice;
 
                     return {
                         id: String(i.id),
-                        groupId: i.category,
+                        groupId: (i as any).itemGroupId || i.category,
                         name: i.name,
                         quantity: i.quantity,
                         mrp: mrp,
@@ -467,7 +470,7 @@ const CartPage: React.FC = () => {
             try {
                 const rawBillData = {
                     effectiveCompanyId,
-                    specialInstruction: specialInstruction || "",                    billTo: {
+                    specialInstruction: specialInstruction || "", billTo: {
                         name: billing.name,
                         phone: billing.phone,
                         address: billing.address,
@@ -566,6 +569,26 @@ const CartPage: React.FC = () => {
                 {salesSettings?.requireApproval && (
                     <LeadPopUp companyId={effectiveCompanyId} companyName={companyName} />
                 )}
+
+                {showAlert && (
+                    <div className="fixed inset-0 flex items-center justify-center bg-black/30 backdrop-blur-sm z-200">
+                        <div className="bg-white rounded-sm p-6 w-[320px] shadow-lg text-center">
+                            <h2 className="text-lg font-semibold mb-2 text-red-600">
+                                Incomplete Details
+                            </h2>
+                            <p className="text-sm text-gray-600 mb-4">
+                                Please fill all the details
+                            </p>
+                            <button
+                                onClick={() => setShowAlert(false)}
+                                className="bg-blue-500 text-white px-4 py-2 rounded-sm hover:bg-blue-600"
+                            >
+                                OK
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {orderSuccess && (
                     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                         <div className="bg-white rounded-sm shadow-2xl max-w-md w-full p-8 text-center animate-in zoom-in duration-300">

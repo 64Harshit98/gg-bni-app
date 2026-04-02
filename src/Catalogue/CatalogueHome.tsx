@@ -85,10 +85,10 @@ const HomePage: React.FC = () => {
 
                     {/* Left Path Dropdown */}
                     <div className="relative w-14 flex justify-start">
-                        <button disabled={!hasCataloguePermission} onClick={() => setIsMenuOpen(!isMenuOpen)} className={`flex min-w-20 items-center justify-between gap-2 rounded-sm border border-slate-400 p-2 text-sm font-medium text-slate-700 transition-colors ${!hasCataloguePermission ? 'opacity-50 cursor-not-allowed bg-gray-100' : 'hover:bg-slate-200 cursor-pointer'}`}>
-                            <span className="font-medium">{currentLabel}</span>
+                        <button disabled={!hasCataloguePermission} onClick={() => setIsMenuOpen(!isMenuOpen)} className={`flex min-w-20 items-center justify-between gap-2 rounded-sm border border-slate-400 px-0.5 py-2 text-sm font-medium text-slate-700 transition-colors ${!hasCataloguePermission ? 'opacity-50 cursor-not-allowed bg-gray-100' : 'hover:bg-slate-200 cursor-pointer'}`}>
+                            <span className="font-medium flex-1">{currentLabel}</span>
                             <IconChevronDown width={16} height={16} className={`transition-transform ${isMenuOpen ? 'rotate-180' : 'rotate-0'}`} />
-                        </button>
+                        </button>   
                         {isMenuOpen && hasCataloguePermission && (
                             <div className="absolute top-full left-0 mt-2 w-56 bg-white border border-slate-300 rounded-md shadow-lg z-10">
                                 <ul className="py-1">

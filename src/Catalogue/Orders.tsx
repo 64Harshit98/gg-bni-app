@@ -423,32 +423,32 @@ const OrdersPage: React.FC = () => {
         }
     }, [location.state]);
 
-    useEffect(() => {
-        const audio = new Audio('/sounds/order-confirmed.mp3');
-        audio.preload = "auto";
+    // useEffect(() => {
+    //     const audio = new Audio('/sounds/order-confirmed.mp3');
+    //     audio.preload = "auto";
 
-        audioRef.current = audio;
+    //     audioRef.current = audio;
 
-        const unlockAudio = () => {
-            const audioEl = audioRef.current;
-            if (!audioEl) return;
+    //     const unlockAudio = () => {
+    //         const audioEl = audioRef.current;
+    //         if (!audioEl) return;
 
-            audioEl.play()
-                .then(() => {
-                    audioEl.pause();
-                    audioEl.currentTime = 0;
-                })
-                .catch(() => { });
+    //         audioEl.play()
+    //             .then(() => {
+    //                 audioEl.pause();
+    //                 audioEl.currentTime = 0;
+    //             })
+    //             .catch(() => { });
 
-            window.removeEventListener('click', unlockAudio);
-        };
+    //         window.removeEventListener('click', unlockAudio);
+    //     };
 
-        window.addEventListener('click', unlockAudio);
+    //     window.addEventListener('click', unlockAudio);
 
-        return () => {
-            window.removeEventListener('click', unlockAudio);
-        };
-    }, []);
+    //     return () => {
+    //         window.removeEventListener('click', unlockAudio);
+    //     };
+    // }, []);
 
     useEffect(() => {
         const fetchCompanyInfo = async () => {

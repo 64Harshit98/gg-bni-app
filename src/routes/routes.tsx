@@ -131,6 +131,7 @@ const router = createBrowserRouter([
 
 
 const AppRouter: React.FC = () => {
+
   return (
     <Suspense fallback={<Loading />}>
       <RouterProvider router={router} />

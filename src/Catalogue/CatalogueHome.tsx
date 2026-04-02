@@ -13,7 +13,6 @@ import { CompletedSalesCard } from '../Components/CatalougeSales'; // Assuming t
 import { TopSoldItemsCard } from '../Components/TopFiveOrder';
 import { OrderBarChartReport } from '../Components/OrderSalesGraph';
 import { IconChevronDown } from '../constants/Icons';
-import { FiRefreshCw, FiLoader } from 'react-icons/fi';
 
 // --- Custom Hook for Business Name ---
 const useBusinessName = (userId?: string, companyId?: string) => { // <-- FIX: Added companyId
@@ -55,27 +54,10 @@ const HomePage: React.FC = () => {
     const isLoading = authLoading || nameLoading;
     const currentItem = SiteItems.find(item => item.to === location.pathname);
     const currentLabel = currentItem ? currentItem.label : "Menu";
-    const [lastUpdated, setLastUpdated] = useState<number>(Date.now());
-    const [isRefreshing, setIsRefreshing] = useState(false);
-    const [refreshKey, setRefreshKey] = useState(0);
     // --- FIX: This class is no longer needed on the main container ---
     // const dataVisibilityClass = isDataVisible ? '' : 'blur-sm select-none';
 
-    const handleRefresh = async () => {
-        if (isRefreshing) return;
-        setIsRefreshing(true);
-        setTimeout(() => {
-            setLastUpdated(Date.now());
-            setRefreshKey(prev => prev + 1);
-            setIsRefreshing(false);
-        }, 800);
-    };
-    
-    const formattedLastUpdated = new Date(lastUpdated).toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit'
-    });
-
+   
     return (
         <FilterProvider>
             <div className="flex min-h-screen w-full flex-col bg-gray-100 mb-16">
@@ -126,25 +108,13 @@ const HomePage: React.FC = () => {
 
                 {/* === MAIN CONTENT === */}
                 <main className="flex-grow overflow-y-auto p-2">
-                    <div className="flex justify-center gap-2 mb-2">
-                        <p className="text-sm text-slate-500 flex items-center">
-                            Last Updated: {formattedLastUpdated}
-                        </p>
-
-                        <button
-                            onClick={handleRefresh}
-                            className={`p-1 rounded-full hover:bg-slate-200 text-slate-600 transition-all ${isRefreshing ? 'animate-spin' : ''
-                                }`}
-                        >
-                            {isRefreshing ? <FiLoader size={14} /> : <FiRefreshCw size={14} />}
-                        </button>
-                    </div>
-                    <div key={refreshKey} className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                        <FilterControls key={refreshKey} />
-                        <CompletedSalesCard key={refreshKey} isDataVisible={isDataVisible} />
-                        <OrderTimeline key={refreshKey} isDataVisible={isDataVisible} />
-                        <OrderBarChartReport key={refreshKey} isDataVisible={isDataVisible} />
-                        <TopSoldItemsCard key={refreshKey} isDataVisible={isDataVisible} />
+                
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                        <FilterControls  />
+                        <CompletedSalesCard isDataVisible={isDataVisible} />
+                        <OrderTimeline isDataVisible={isDataVisible} />
+                        <OrderBarChartReport isDataVisible={isDataVisible} />
+                        <TopSoldItemsCard isDataVisible={isDataVisible} />
                         {/* <RestockAlertsCard/>     */}
                         <div className="relative rounded-xl border border-gray-200 bg-white p-4 shadow-sm opacity-70 cursor-not-allowed flex items-center justify-center min-h-[160px]">
 

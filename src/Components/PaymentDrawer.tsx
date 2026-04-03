@@ -165,20 +165,22 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const parsedExpense = parseFloat(expenseAmount.toString()) || 0;
     const netPayable = useMemo(() => Math.max(0, billTotal - discount + parsedExpense), [billTotal, discount, parsedExpense]);
 
-    const appliedCreditAmount = useMemo(() => {
-        if (!useCredit || partyCredit <= 0) return 0;
-        return Math.min(netPayable, partyCredit);
-    }, [useCredit, partyCredit, netPayable]);
-
-    const appliedDebitAmount = useMemo(() => {
-        if (!useDebit || partyDebit <= 0) return 0;
-        return Math.min(netPayable - appliedCreditAmount, partyDebit);
-    }, [useDebit, partyDebit, netPayable, appliedCreditAmount]);
-
     const totalManualPayment = useMemo(() => {
         const sum = Object.values(selectedPayments).reduce((acc, amount) => acc + (amount || 0), 0);
         return parseFloat(sum.toFixed(2));
     }, [selectedPayments]);
+
+    const appliedCreditAmount = useMemo(() => {
+        if (!useCredit || partyCredit <= 0) return 0;
+        const remainingAfterManual = Math.max(0, netPayable - totalManualPayment);
+        return Math.min(remainingAfterManual, partyCredit);
+    }, [useCredit, partyCredit, netPayable, totalManualPayment]);
+
+    const appliedDebitAmount = useMemo(() => {
+        if (!useDebit || partyDebit <= 0) return 0;
+        const remainingAfterManualAndCredit = Math.max(0, netPayable - totalManualPayment - appliedCreditAmount);
+        return Math.min(remainingAfterManualAndCredit, partyDebit);
+    }, [useDebit, partyDebit, netPayable, totalManualPayment, appliedCreditAmount]);
 
     const totalPaymentReceived = useMemo(() => {
         return parseFloat((totalManualPayment + appliedCreditAmount + appliedDebitAmount).toFixed(2));
@@ -390,6 +392,14 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const handleConfirm = async () => {
         if (pendingAmount > 0.01) {
             setModal({ message: `Mismatch: ₹${pendingAmount.toFixed(2)} remaining.`, type: State.ERROR });
+            return;
+        }
+        // ✅ ADD THIS CHECK — block if manual payment already covers full bill but credit is also applied
+        if (useCredit && appliedCreditAmount === 0 && partyCredit > 0) {
+            setModal({
+                message: `Credit note not needed — payment methods already cover the full bill of ₹${netPayable.toFixed(2)}.`,
+                type: State.ERROR
+            });
             return;
         }
 

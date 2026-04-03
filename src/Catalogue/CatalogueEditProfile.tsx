@@ -255,6 +255,7 @@ const EditProfilePage: React.FC = () => {
   const [businessCategory, setBusinessCategory] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [postalError, setPostalError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -274,6 +275,18 @@ const EditProfilePage: React.FC = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  const handlePostalCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    if (/^\d{0,6}$/.test(value)) {
+        setFormData(prev => ({ ...prev, postalCode: value }));
+        if (value.length > 0 && value.length < 6) {
+            setPostalError('Postal code must be exactly 6 digits.');
+        } else {
+            setPostalError(null);
+        }
+    }
+};
+
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -287,8 +300,13 @@ const EditProfilePage: React.FC = () => {
     e.preventDefault();
     setSubmitError(null);
     setSubmitSuccess(null);
-    setIsSubmitting(true);
 
+    if (formData.postalCode && formData.postalCode.length !== 6) {
+        setSubmitError('Postal code must be exactly 6 digits.');
+        return;
+    }
+
+    setIsSubmitting(true);
     try {
       let finalPhotoUrl = formData.profilePicture;
 
@@ -412,7 +430,20 @@ const EditProfilePage: React.FC = () => {
               </div>
               <FloatingLabelInput type="text" name="city" value={formData.city || ''} onChange={handleInputChange} label="City" />
               <FloatingLabelInput type="text" name="state" value={formData.state || ''} onChange={handleInputChange} label="State" />
-              <FloatingLabelInput type="text" name="postalCode" value={formData.postalCode || ''} onChange={handleInputChange} label="Postal Code" />
+              <div>
+    <FloatingLabelInput
+        type="text"
+        name="postalCode"
+        value={formData.postalCode || ''}
+        onChange={handlePostalCodeChange}
+        label="Postal Code"
+        maxLength={6}
+        inputMode="numeric"
+    />
+    {postalError && (
+        <p className="text-red-500 text-xs mt-1 ml-1">{postalError}</p>
+    )}
+</div>
             </div>
           </fieldset>
 

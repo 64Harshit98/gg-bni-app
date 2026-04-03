@@ -30,6 +30,12 @@ function BusinessCard() {
 
         const buttons = ref.current.querySelectorAll(".no-export");
 
+        const safeName = name
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9-]/g, '');
+
         try {
             // hide buttons
             buttons.forEach((el) => ((el as HTMLElement).style.display = "none"));
@@ -40,7 +46,7 @@ function BusinessCard() {
             });
 
             const link = document.createElement("a");
-            link.download = `${name}-business-card.png`;
+            link.download = `${safeName}-business-card.png`;
             link.href = dataUrl;
             link.click();
 
@@ -116,7 +122,7 @@ function BusinessCard() {
                 {/* ================= DESIGN 1 ================= */}
                 <div ref={cardRef1} className="relative flex-shrink-0 w-[280px] h-[155px] flex rounded shadow-md overflow-hidden bg-white border border-gray-200 snap-center">
                     <div className="absolute top-1.5 right-1.5 flex gap-1 z-20 no-export">
-                        <button onClick={() => downloadCard(cardRef1, 'design1')} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
+                        <button onClick={() => downloadCard(cardRef1, formatName(data.personName))} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
                             <FiDownload size={10} />
                         </button>
                         <button onClick={handleShare} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
@@ -143,7 +149,7 @@ function BusinessCard() {
                 {/* ================= DESIGN 2 ================= */}
                 <div ref={cardRef2} className="relative flex-shrink-0 w-[280px] h-[155px] flex flex-col rounded-sm shadow-lg overflow-hidden bg-white border border-gray-100 snap-center p-4">
                     <div className="absolute top-2 right-2 flex gap-1 z-20 mt-1 no-export">
-                        <button onClick={() => downloadCard(cardRef2, 'design2')} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
+                        <button onClick={() => downloadCard(cardRef2, formatName(data.personName))} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
                             <FiDownload size={10} />
                         </button>
                         <button onClick={handleShare} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">

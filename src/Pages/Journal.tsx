@@ -877,9 +877,12 @@ const Journal: React.FC = () => {
                 </div>
                 <div className="space-y-2 text-sm">
                   {(invoice.items && invoice.items.length > 0) ? invoice.items.map((item, index) => {
-                    const netUnitPrice = item.effectiveUnitPrice
-                      ? item.effectiveUnitPrice
-                      : (item.quantity > 0 ? (item.finalPrice / item.quantity) : 0);
+                    const netUnitPrice =
+                      item.taxableAmount && item.quantity > 0
+                        ? item.taxableAmount / item.quantity
+                        : item.effectiveUnitPrice
+                          ? item.effectiveUnitPrice
+                          : (item.quantity > 0 ? (item.finalPrice / item.quantity) : 0);
 
                     return (
                       <div key={index} className="flex justify-between items-center text-slate-700 mb-3">
@@ -911,6 +914,16 @@ const Journal: React.FC = () => {
                   </div>
                 ) : null}
 
+                {invoice.taxAmount && invoice.taxAmount > 0 ? (
+                  <div className="flex justify-between items-center mt-1 pt-1.5 border-t border-slate-200">
+                    <p className="text-xs font-medium text-slate-400">Tax</p>
+                    <p className="text-xs font-semibold text-yellow-500">
+                      + {invoice.taxAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+                    </p>
+                  </div>
+                ) : null}
+
+                {/* --- NEW: EXTRA EXPENSE ROW --- */}
                 {invoice.extraExpenseAmount && invoice.extraExpenseAmount > 0 ? (
                   <div className="flex justify-between items-center mt-1 pt-1.5 border-t border-slate-200">
                     <p className="text-xs font-medium text-slate-400">{invoice.extraExpenseName || 'Extra Expense'}</p>

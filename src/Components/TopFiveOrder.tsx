@@ -1,14 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { db } from '../lib/Firebase';
-import { useAuth } from '../context/auth-context';
-import {
-    collection,
-    query,
-    onSnapshot,
-    Timestamp,
-    where,
-} from 'firebase/firestore';
-import type { FirestoreError } from 'firebase/firestore';
+import React, { useState } from 'react';
 import { Spinner } from '../constants/Spinner';
 import {
     Card,
@@ -16,125 +6,32 @@ import {
     CardHeader,
     CardTitle,
 } from './ui/card';
-import { useFilter } from './Filter'; // Import your filter context
-
-// --- Interfaces ---
-interface OrderItem {
-    id: string;
-    name: string;
-    quantity: number;
-    mrp: number;
-}
-interface OrderDoc {
-    items: OrderItem[];
-    createdAt: Timestamp;
-    status: string; // 'Upcoming', 'Confirmed', 'Completed', etc.
-}
 interface TopItem {
     id: string;
     name: string;
     totalQuantity: number;
     totalAmount: number;
 }
-
-// --- Custom Hook to Fetch and Process Top Sold Items from Orders ---
-const useTopSoldItemsFromOrders = (companyId: string | undefined) => {
-    const { filters } = useFilter(); // Get date filters
-    const [topByQuantity, setTopByQuantity] = useState<TopItem[]>([]);
-    const [topByAmount, setTopByAmount] = useState<TopItem[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-
-    useEffect(() => {
-        // Wait for all required data
-        if (!companyId || !filters.startDate || !filters.endDate) {
-            setLoading(false);
-            return;
-        }
-
-        setLoading(true);
-        setError(null);
-
-        // Set date range from filters
-        const start = new Date(filters.startDate);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(filters.endDate);
-        end.setHours(23, 59, 59, 999);
-
-        const ordersQuery = query(
-            collection(db, 'companies', companyId, 'Orders'),
-            where('status', '==', 'Completed'), // <-- Only "Completed" orders
-            where('createdAt', '>=', Timestamp.fromDate(start)),
-            where('createdAt', '<=', Timestamp.fromDate(end))
-            // Note: This query will require a Firestore Index.
-            // The console error will provide a link to create it.
-        );
-
-        const unsubscribe = onSnapshot(ordersQuery, (snapshot) => {
-            // A Map to aggregate data: { "itemId": { name, totalQuantity, totalAmount } }
-            const stats = new Map<string, { name: string; totalQuantity: number; totalAmount: number }>();
-
-            snapshot.docs.forEach((doc) => {
-                const order = doc.data() as OrderDoc;
-                order.items?.forEach((item) => {
-                    if (!item.id || !item.name) return; // Skip invalid items
-
-                    const currentStats = stats.get(item.id) || { name: item.name, totalQuantity: 0, totalAmount: 0 };
-                    const itemTotalAmount = (item.mrp || 0) * (item.quantity || 0);
-
-                    stats.set(item.id, {
-                        name: item.name,
-                        totalQuantity: currentStats.totalQuantity + (item.quantity || 0),
-                        totalAmount: currentStats.totalAmount + itemTotalAmount,
-                    });
-                });
-            });
-
-            const allItems: TopItem[] = Array.from(stats.entries()).map(([id, data]) => ({
-                id,
-                ...data
-            }));
-
-            // Sort by Quantity
-            const sortedByQuantity = [...allItems].sort((a, b) => b.totalQuantity - a.totalQuantity).slice(0, 5);
-            setTopByQuantity(sortedByQuantity);
-
-            // Sort by Amount
-            const sortedByAmount = [...allItems].sort((a, b) => b.totalAmount - a.totalAmount).slice(0, 5);
-            setTopByAmount(sortedByAmount);
-
-            setLoading(false);
-            setError(null);
-        }, (err: FirestoreError) => {
-            console.error("Error fetching top items from orders:", err);
-            setError("Failed to load top items. (Check console for index link)");
-            setLoading(false);
-        });
-
-        return () => unsubscribe();
-    }, [companyId, filters.startDate, filters.endDate]);
-
-    return { topByQuantity, topByAmount, loading, error };
-};
-
-
-// --- Main Card Component ---
+ 
+// ── Props (data comes from HomePage, no internal fetch) ──────────────────────
 interface TopSoldItemsCardProps {
     isDataVisible: boolean;
+    topByQuantity: TopItem[];
+    topByAmount: TopItem[];
+    loading: boolean;
 }
-
-export const TopSoldItemsCard: React.FC<TopSoldItemsCardProps> = ({ isDataVisible }) => {
-    const [viewMode, setViewMode] = useState<'amount' | 'quantity'>('quantity'); // Default to Qty
-    const { topByQuantity, topByAmount, loading, error } = useTopSoldItemsFromOrders(
-        useAuth().currentUser?.companyId
-    );
-
+ 
+export const TopSoldItemsCard: React.FC<TopSoldItemsCardProps> = ({
+    isDataVisible,
+    topByQuantity,
+    topByAmount,
+    loading,
+}) => {
+    const [viewMode, setViewMode] = useState<'amount' | 'quantity'>('quantity');
+ 
     const renderContent = () => {
         if (loading) {
             return <div className="flex h-40 items-center justify-center"><Spinner /></div>;
-        }
-        if (error) {
-            return <div className="flex h-40 items-center justify-center text-center"><p className="text-red-500 text-sm">{error}</p></div>;
         }
         if (!isDataVisible) {
             return (

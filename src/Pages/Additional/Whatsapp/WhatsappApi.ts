@@ -1,16 +1,26 @@
 import axios from 'axios';
 
 // The base URL from your Postman screenshots
-const API_BASE_URL = import.meta.env.VITE_BMS_BASE_URL; // Define the base URL here
-const PARTNER_UID = import.meta.env.VITE_BMS_PARTNER_UID; // Define the partner UID here
-const API_SEND_URL = import.meta.env.VITE_BMS_BASE_SEND_URL; // Define the send URL here
+const API_BASE_URL = (import.meta.env.VITE_BMS_BASE_URL || '').trim();
+const PARTNER_UID = (import.meta.env.VITE_BMS_PARTNER_UID || '').trim();
+const API_SEND_URL = (import.meta.env.VITE_BMS_BASE_SEND_URL || '').trim();
+
+const requireEnv = (value: string, key: string) => {
+  if (!value) {
+    throw new Error(`Missing ${key} in .env. Please configure WhatsApp API settings.`);
+  }
+  return value;
+};
+
+const getBaseApiUrl = () => `${requireEnv(API_BASE_URL, 'VITE_BMS_BASE_URL').replace(/\/+$/, '')}/`;
+const getSendApiUrl = () => `${requireEnv(API_SEND_URL, 'VITE_BMS_BASE_SEND_URL').replace(/\/+$/, '')}/`;
 
 export const botMasterService = {
 
   // Matches image_059bc0.png
   registerUser: async (data: any) => {
-    const response = await axios.post(`${API_BASE_URL}/`, {
-      partnerUid: PARTNER_UID,
+    const response = await axios.post(getBaseApiUrl(), {
+      partnerUid: requireEnv(PARTNER_UID, 'VITE_BMS_PARTNER_UID'),
       username: data.name.toLowerCase().replace(/\s/g, ''),
       name: data.name,
       phone: data.phone.replace(/\D/g, ''),
@@ -23,7 +33,7 @@ export const botMasterService = {
 
   // Matches image_059ba2.png
   createSession: async (authToken: string, senderId: string) => {
-    const response = await axios.post(`${API_BASE_URL}/`, {
+    const response = await axios.post(getBaseApiUrl(), {
       auth_token: authToken, // Key from image_059ba2.png
       senderId: senderId.replace(/\D/g, '')
     }, { params: { action: 'createsession' } });
@@ -31,14 +41,14 @@ export const botMasterService = {
   },
 
   getQrCode: async (authToken: string, senderId: string) => {
-    const response = await axios.get(`${API_BASE_URL}/`, {
+    const response = await axios.get(getBaseApiUrl(), {
       params: { action: 'getqrcode', authToken, senderId: senderId.replace(/\D/g, '') }
     });
     return response.data;
   },
 
   getMe: async (authToken: string, senderId: string) => {
-    const response = await axios.get(`${API_BASE_URL}/`, {
+    const response = await axios.get(getBaseApiUrl(), {
       params: { action: 'getme', authToken, senderId: senderId.replace(/\D/g, '') }
     });
     return response.data;
@@ -76,7 +86,7 @@ export const botMasterService = {
     }
 
     // 4. Send Request
-    const response = await axios.post(`${API_SEND_URL}/`, body, {
+    const response = await axios.post(getSendApiUrl(), body, {
       params: { action: 'send' }
     });
 
@@ -111,7 +121,7 @@ export const botMasterService = {
 
     // 4. Send as multipart/form-data
     // Note: We don't set Content-Type header manually; axios/browser does it with the boundary.
-    const response = await axios.post(`${API_SEND_URL}/`, formData, {
+    const response = await axios.post(getSendApiUrl(), formData, {
       params: { action: 'send' },
       headers: {
         'Content-Type': 'multipart/form-data'
@@ -129,7 +139,7 @@ export const botMasterService = {
     filename: string
   ) => {
 
-    const response = await axios.post(`${API_SEND_URL}/`, {
+    const response = await axios.post(getSendApiUrl(), {
       authToken: authToken,
       senderId: senderId,
       receiverId: number.replace(/\D/g, ''),
@@ -170,7 +180,7 @@ export const botMasterService = {
     params.append('filename', filename);
     params.append('message', caption);
 
-    const response = await axios.post(`${API_BASE_URL}/`, params);
+    const response = await axios.post(getBaseApiUrl(), params);
     return response.data;
   },
   /**

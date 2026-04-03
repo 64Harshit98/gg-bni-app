@@ -216,7 +216,7 @@ const BusinessInfoPage: React.FC = () => {
       // 6. Cleanup & Redirect to Dashboard (AppGuard will handle Phase 2)
       localStorage.removeItem(LOCAL_STORAGE_KEY);
       setStatusMessage('Setup Complete!');
-      //navigate(ROUTES.HOME);
+      
 
     } catch (err: any) {
       console.error('Registration failed:', err);

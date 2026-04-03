@@ -42,6 +42,9 @@ export interface Item {
   packetSize?: number;
   unitMultiplier?: number;
   moq?: number;
+  mrpOriginal?: number;
+  mfgDate?: string;
+  expDate?: string;
   variants?: string[];
   godownStock?: Record<string, number>;
 }

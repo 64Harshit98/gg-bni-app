@@ -58,6 +58,8 @@ const ItemAdd: React.FC = () => {
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const [isSaving, setIsSaving] = useState<boolean>(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const headerRef = useRef<HTMLDivElement>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [itemUnit, setItemUnit] = useState<string>('pcs');
     const [packetSize, setPacketSize] = useState<string>('');
 
@@ -126,6 +128,14 @@ const ItemAdd: React.FC = () => {
         setMoq('1');
         setItemUnit('pcs');
         setPacketSize('');
+    };
+
+    const scrollToSuccessBanner = () => {
+        if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+        } else {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
     };
 
     // --- HELPER: Transactional Sequence for Bulk Uploads ---
@@ -291,7 +301,10 @@ const ItemAdd: React.FC = () => {
 
             setSuccess(`Item "${itemName}" added!`);
             resetForm();
-            setTimeout(() => setSuccess(null), 3000);
+            setTimeout(() => {
+                scrollToSuccessBanner();
+            }, 120);
+            setTimeout(() => setSuccess(null), 30000);
         } catch (err: any) {
             setError('Failed to add item.');
             setModal({ message: err.message, type: State.ERROR });
@@ -463,6 +476,9 @@ const ItemAdd: React.FC = () => {
                     });
                 } else {
                     setSuccess(`Imported: ${createdCount} New, ${updatedCount} Updated.`);
+                    setTimeout(() => {
+                        scrollToSuccessBanner();
+                    }, 120);
                 }
 
                 setTimeout(() => setSuccess(null), 5000);
@@ -523,7 +539,7 @@ const ItemAdd: React.FC = () => {
     if (pageIsLoading) return <Spinner />;
 
     const renderHeader = () => (
-        <div className="fixed top-0 left-0 right-0 z-10 p-4 bg-gray-100 border-b border-gray-300 flex flex-col md:static md:flex-row md:justify-between md:items-center md:p-3 md:bg-white md:shadow-sm">
+        <div ref={headerRef} className="fixed top-0 left-0 right-0 z-10 p-4 bg-gray-100 border-b border-gray-300 flex flex-col md:static md:flex-row md:justify-between md:items-center md:p-3 md:bg-white md:shadow-sm">
             <h1 className="text-2xl font-bold text-gray-800 text-center mb-4 md:mb-0 md:text-left">
                 Add Item
             </h1>
@@ -536,6 +552,12 @@ const ItemAdd: React.FC = () => {
 
     return (
         <div className="flex flex-col h-screen w-full bg-gray-100 font-poppins text-gray-800 relative">
+            {/* --- GLOBAL SUCCESS BANNER --- */}
+            {success && (
+                <div className="fixed top-0 left-0 right-0 z-[100] text-center p-4 bg-green-100 text-green-700 font-bold shadow-lg animate-in fade-in">
+                    {success}
+                </div>
+            )}
             <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
@@ -563,10 +585,9 @@ const ItemAdd: React.FC = () => {
             <div className="flex-1 flex flex-col md:flex-row relative">
 
                 {/* LEFT PANEL */}
-                <div className="flex-1 w-full md:w-[65%] bg-gray-100 md:bg-gray-50 md:border-r border-gray-200 pt-28 pb-24 px-2 md:pt-6 md:px-6 md:pb-6 overflow-y-auto">
+                <div ref={scrollContainerRef} className="flex-1 w-full md:w-[65%] bg-gray-100 md:bg-gray-50 md:border-r border-gray-200 pt-28 pb-24 px-2 md:pt-6 md:px-6 md:pb-6 overflow-y-auto">
 
                     {error && <div className="mb-4 text-center p-3 bg-red-100 text-red-700 rounded-lg">{error}</div>}
-                    {success && <div className="mb-4 text-center p-3 bg-green-100 text-green-700 rounded-lg">{success}</div>}
 
                     {/* MOBILE BULK IMPORT */}
                     <div className="md:hidden bg-white p-2 rounded-sm shadow-md mb-4">

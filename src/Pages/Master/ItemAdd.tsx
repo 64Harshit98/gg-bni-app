@@ -24,6 +24,8 @@ const UNIT_OPTIONS = [
   { value: 'ton', label: 'Ton(1000 pcs)' },
 ];
 
+const SUCCESS_BANNER_DURATION_MS = 30000;
+
 const ItemAdd: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -57,11 +59,14 @@ const ItemAdd: React.FC = () => {
   // --- UPLOAD STATE ---
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
+  const [overwritePrompt, setOverwritePrompt] = useState<{ file: File; count: number } | null>(null);
 
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const formScrollRef = useRef<HTMLDivElement>(null);
+  const successBannerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setPageIsLoading(authLoading || loadingItemSettings || !dbOperations);
@@ -130,6 +135,59 @@ const ItemAdd: React.FC = () => {
     setPacketSize('');
     setSelectedCategory(itemGroups.length > 0 ? itemGroups[0].id! : '');
   };
+
+  const findScrollableParent = (element: HTMLElement | null): HTMLElement | null => {
+    if (!element) return null;
+
+    let parent: HTMLElement | null = element.parentElement;
+    while (parent) {
+      const { overflowY } = window.getComputedStyle(parent);
+      const isScrollable = (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay')
+        && parent.scrollHeight > parent.clientHeight;
+
+      if (isScrollable) return parent;
+      parent = parent.parentElement;
+    }
+
+    return null;
+  };
+
+  const scrollToSuccessBanner = () => {
+    if (successBannerRef.current) {
+      successBannerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const scrollParent = findScrollableParent(successBannerRef.current);
+      scrollParent?.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    if (formScrollRef.current) {
+      formScrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    document.scrollingElement?.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    if (!success) return;
+
+    let raf2: number | undefined;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        scrollToSuccessBanner();
+      });
+    });
+    const timeout1 = window.setTimeout(scrollToSuccessBanner, 120);
+    const timeout2 = window.setTimeout(scrollToSuccessBanner, 420);
+
+    return () => {
+      cancelAnimationFrame(raf1);
+      if (raf2 !== undefined) {
+        cancelAnimationFrame(raf2);
+      }
+      window.clearTimeout(timeout1);
+      window.clearTimeout(timeout2);
+    };
+  }, [success]);
 
   // --- HELPER: Transactional Sequence for Bulk Uploads ---
   const reserveSequenceBlock = async (count: number): Promise<number> => {
@@ -265,7 +323,7 @@ const ItemAdd: React.FC = () => {
 
       setSuccess(`Item "${itemName}" added!`);
       resetForm();
-      setTimeout(() => setSuccess(null), 3000);
+      setTimeout(() => setSuccess(null), SUCCESS_BANNER_DURATION_MS);
     } catch (err: any) {
       setError('Failed to add item.');
       setModal({ message: err.message, type: State.ERROR });
@@ -275,179 +333,222 @@ const ItemAdd: React.FC = () => {
   };
 
   // --- BULK UPLOAD ---
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !dbOperations || !currentUser || !itemSettings || !currentUser.companyId) return;
+  const normalizeImportRows = (rawRows: any[]) => {
+    return rawRows.map((rawRow) => {
+      const row: any = {};
+      Object.keys(rawRow || {}).forEach((k) => {
+        const cleanKey = k.toLowerCase().replace(/[^a-z0-9]/g, "");
+        row[cleanKey] = rawRow[k];
+      });
+      return row;
+    });
+  };
+
+  const detectOverwriteCount = async (rows: any[]) => {
+    if (!currentUser?.companyId) return 0;
+    const itemsRef = collection(db, 'companies', currentUser.companyId, 'items');
+    let count = 0;
+
+    for (const row of rows) {
+      const rowBarcode = String(row.barcode || '').trim();
+      if (!rowBarcode) continue;
+      const q = query(itemsRef, where('barcode', '==', rowBarcode), limit(1));
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) count++;
+    }
+
+    return count;
+  };
+
+  const processBulkImportFile = async (file: File, allowOverwrite: boolean) => {
+    if (!dbOperations || !currentUser || !itemSettings || !currentUser.companyId) return;
 
     setIsUploading(true);
     setUploadProgress(null);
-    setError(null); setSuccess(null); setModal(null);
+    setError(null);
+    setSuccess(null);
+    setModal(null);
 
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const data = new Uint8Array(e.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const rawJson: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+    try {
+      const buffer = await file.arrayBuffer();
+      const data = new Uint8Array(buffer);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const rawJson: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: null });
 
-        if (rawJson.length === 0) throw new Error("File empty.");
+      if (rawJson.length === 0) throw new Error("File empty.");
 
-        let processedCount = 0;
-        let createdCount = 0;
-        let updatedCount = 0;
-        let failedCount = 0;
+      const normalizedRows = normalizeImportRows(rawJson);
 
-        const totalItems = rawJson.length;
-        setUploadProgress({ current: 0, total: totalItems });
-
-        // --- PREP CATEGORIES ---
-        let currentGroups = await dbOperations.getItemGroups();
-        const groupMap = new Map<string, string>();
-        currentGroups.forEach(g => groupMap.set(g.name.toLowerCase().trim(), g.id!));
-
-        // --- PREP SEQUENTIAL BARCODES ---
-        const itemsNeedingBarcode = rawJson.filter((row: any) => !row.barcode && !row.Barcode).length;
-        let nextSeqNumber = 0;
-
-        if (itemsNeedingBarcode > 0) {
-          nextSeqNumber = await reserveSequenceBlock(itemsNeedingBarcode);
+      if (!allowOverwrite) {
+        const overwriteCount = await detectOverwriteCount(normalizedRows);
+        if (overwriteCount > 0) {
+          setOverwritePrompt({ file, count: overwriteCount });
+          return;
         }
-
-        for (let i = 0; i < rawJson.length; i++) {
-          await new Promise(resolve => setTimeout(resolve, 0));
-          setUploadProgress({ current: i + 1, total: totalItems });
-
-          const rawRow = rawJson[i];
-          const row: any = {};
-
-          Object.keys(rawRow).forEach(k => {
-            const cleanKey = k.toLowerCase().replace(/[^a-z0-9]/g, "");
-            row[cleanKey] = rawRow[k];
-          });
-
-          const rawCat = row.itemgroupid || row.itemgroup || row.category || row.group || row.categoryname;
-          let targetGroupId = "";
-
-          if (rawCat) {
-            const csvCategoryValue = String(rawCat).trim();
-            const categoryLower = csvCategoryValue.toLowerCase();
-
-            if (groupMap.has(categoryLower)) {
-              targetGroupId = groupMap.get(categoryLower)!;
-            } else {
-              try {
-                const newGroupData: any = {
-                  name: csvCategoryValue,
-                  description: 'Auto-created via Bulk Import'
-                };
-                const newGroupId = await dbOperations.createItemGroup(newGroupData);
-                if (newGroupId && typeof newGroupId === 'string') {
-                  groupMap.set(categoryLower, newGroupId);
-                  targetGroupId = newGroupId;
-                }
-              } catch (grpErr) {
-                console.warn("Failed to create group via bulk import.");
-              }
-            }
-          }
-
-          // --- BULK VALIDATION LOGIC ---
-          if (!row.name) {
-            failedCount++;
-            continue;
-          }
-
-          const rowMRP = parseFloat(String(row.mrp ?? row.MRP ?? 0));
-          const rowSale = parseFloat(String(row.salesprice ?? row.sellingprice ?? 0));
-          const rowPurchase = parseFloat(String(row.purchaseprice ?? row.purchasePrice ?? row.PurchasePrice ?? 0));
-
-          if (rowMRP === 0 && rowSale === 0) {
-            failedCount++;
-            continue;
-          }
-
-          let rowSaleDiscount = parseFloat(String(row.discount ?? row.salediscount ?? row.salesdiscount ?? row.saledisc ?? 0));
-          if (rowMRP > 0 && rowSale > 0) {
-            rowSaleDiscount = 0;
-          }
-
-          let rowPurchaseDiscount = parseFloat(String(row.purchasediscount ?? 0));
-          if (rowMRP > 0 && rowPurchase > 0) {
-            rowPurchaseDiscount = 0;
-          }
-
-          try {
-            const stockVal = parseInt(String(row.stock ?? row.amount ?? row.qty ?? row.quantity ?? 0), 10);
-
-            let rowBarcode = String(row.barcode || '').trim();
-            const rowHsn = String(row.hsn || row.hsncode || row.sac || row.hsnsac || '').trim();
-            const rowUnitStr = String(row.unit || row.uom || '').trim();
-
-            if (!rowBarcode) {
-              rowBarcode = String(nextSeqNumber);
-              nextSeqNumber++;
-            }
-
-            const itemData: any = {
-              name: String(row.name).trim(),
-              mrp: rowMRP,
-              salesPrice: rowSale,
-              purchasePrice: rowPurchase,
-              discount: rowSaleDiscount,
-              purchasediscount: rowPurchaseDiscount,
-              tax: parseFloat(String(row.tax ?? 0)),
-              hsnSac: rowHsn,
-              itemGroupId: targetGroupId,
-              stock: stockVal,
-              amount: stockVal,
-              barcode: rowBarcode,
-              restockQuantity: parseInt(String(row.restockquantity ?? 0), 10),
-              taxRate: parseFloat(String(row.tax ?? 0)),
-              unit: rowUnitStr,
-            };
-
-            let isUpdate = false;
-            const itemsRef = collection(db, 'companies', currentUser.companyId, 'items');
-            const q = query(itemsRef, where('barcode', '==', rowBarcode), limit(1));
-            const snapshot = await getDocs(q);
-            if (!snapshot.empty) isUpdate = true;
-
-            await dbOperations.createItem(itemData, rowBarcode);
-
-            if (isUpdate) updatedCount++;
-            else createdCount++;
-
-            processedCount++;
-          } catch (e: any) {
-            failedCount++;
-          }
-        }
-
-        await fetchGroups();
-
-        if (failedCount > 0) {
-          setModal({
-            message: `Error in ${failedCount} entries. Please check for missing required fields (Item Name, Sale Price, MRP, Stock, Barcode) or invalid data.`,
-            type: State.ERROR
-          });
-        } else {
-          setSuccess(`Imported: ${createdCount} New, ${updatedCount} Updated.`);
-        }
-
-        setTimeout(() => setSuccess(null), 5000);
-
-      } catch (err: any) {
-        console.error(err);
-        setError("File processing failed.");
-      } finally {
-        setIsUploading(false);
-        setUploadProgress(null);
-        if (fileInputRef.current) fileInputRef.current.value = '';
       }
-    };
-    reader.readAsArrayBuffer(file);
+
+      let createdCount = 0;
+      let updatedCount = 0;
+      let failedCount = 0;
+
+      const totalItems = normalizedRows.length;
+      setUploadProgress({ current: 0, total: totalItems });
+
+      // --- PREP CATEGORIES ---
+      const currentGroups = await dbOperations.getItemGroups();
+      const groupMap = new Map<string, string>();
+      currentGroups.forEach(g => groupMap.set(g.name.toLowerCase().trim(), g.id!));
+
+      // --- PREP SEQUENTIAL BARCODES ---
+      const itemsNeedingBarcode = normalizedRows.filter((row: any) => !row.barcode).length;
+      let nextSeqNumber = 0;
+
+      if (itemsNeedingBarcode > 0) {
+        nextSeqNumber = await reserveSequenceBlock(itemsNeedingBarcode);
+      }
+
+      for (let i = 0; i < normalizedRows.length; i++) {
+        await new Promise(resolve => setTimeout(resolve, 0));
+        setUploadProgress({ current: i + 1, total: totalItems });
+
+        const row = normalizedRows[i];
+
+        const rawCat = row.itemgroupid || row.itemgroup || row.category || row.group || row.categoryname;
+        let targetGroupId = "";
+
+        if (rawCat) {
+          const csvCategoryValue = String(rawCat).trim();
+          const categoryLower = csvCategoryValue.toLowerCase();
+
+          if (groupMap.has(categoryLower)) {
+            targetGroupId = groupMap.get(categoryLower)!;
+          } else {
+            try {
+              const newGroupData: any = {
+                name: csvCategoryValue,
+                description: 'Auto-created via Bulk Import'
+              };
+              const newGroupId = await dbOperations.createItemGroup(newGroupData);
+              if (newGroupId && typeof newGroupId === 'string') {
+                groupMap.set(categoryLower, newGroupId);
+                targetGroupId = newGroupId;
+              }
+            } catch {
+              console.warn("Failed to create group via bulk import.");
+            }
+          }
+        }
+
+        if (!row.name) {
+          failedCount++;
+          continue;
+        }
+
+        const rowMRP = parseFloat(String(row.mrp ?? row.MRP ?? 0));
+        const rowSale = parseFloat(String(row.salesprice ?? row.sellingprice ?? 0));
+        const rowPurchase = parseFloat(String(row.purchaseprice ?? row.purchasePrice ?? row.PurchasePrice ?? 0));
+
+        if (rowMRP === 0 && rowSale === 0) {
+          failedCount++;
+          continue;
+        }
+
+        let rowSaleDiscount = parseFloat(String(row.discount ?? row.salediscount ?? row.salesdiscount ?? row.saledisc ?? 0));
+        if (rowMRP > 0 && rowSale > 0) {
+          rowSaleDiscount = 0;
+        }
+
+        let rowPurchaseDiscount = parseFloat(String(row.purchasediscount ?? 0));
+        if (rowMRP > 0 && rowPurchase > 0) {
+          rowPurchaseDiscount = 0;
+        }
+
+        try {
+          const stockVal = parseInt(String(row.stock ?? row.amount ?? row.qty ?? row.quantity ?? 0), 10);
+
+          let rowBarcode = String(row.barcode || '').trim();
+          const rowHsn = String(row.hsn || row.hsncode || row.sac || row.hsnsac || '').trim();
+          const rowUnitStr = String(row.unit || row.uom || '').trim();
+
+          if (!rowBarcode) {
+            rowBarcode = String(nextSeqNumber);
+            nextSeqNumber++;
+          }
+
+          const itemData: any = {
+            name: String(row.name).trim(),
+            mrp: rowMRP,
+            salesPrice: rowSale,
+            purchasePrice: rowPurchase,
+            discount: rowSaleDiscount,
+            purchasediscount: rowPurchaseDiscount,
+            tax: parseFloat(String(row.tax ?? 0)),
+            hsnSac: rowHsn,
+            itemGroupId: targetGroupId,
+            stock: stockVal,
+            amount: stockVal,
+            barcode: rowBarcode,
+            restockQuantity: parseInt(String(row.restockquantity ?? 0), 10),
+            taxRate: parseFloat(String(row.tax ?? 0)),
+            unit: rowUnitStr,
+          };
+
+          let isUpdate = false;
+          const itemsRef = collection(db, 'companies', currentUser.companyId, 'items');
+          const q = query(itemsRef, where('barcode', '==', rowBarcode), limit(1));
+          const snapshot = await getDocs(q);
+          if (!snapshot.empty) isUpdate = true;
+
+          await dbOperations.createItem(itemData, rowBarcode);
+
+          if (isUpdate) updatedCount++;
+          else createdCount++;
+        } catch {
+          failedCount++;
+        }
+      }
+
+      await fetchGroups();
+
+      if (failedCount > 0) {
+        setModal({
+          message: `Error in ${failedCount} entries. Please check for missing required fields (Item Name, Sale Price, MRP, Stock, Barcode) or invalid data.`,
+          type: State.ERROR
+        });
+      } else {
+        const overwriteText = updatedCount > 0 ? `, ${updatedCount} Overwritten` : '';
+        setSuccess(`Imported: ${createdCount} New${overwriteText}.`);
+      }
+
+      setTimeout(() => setSuccess(null), SUCCESS_BANNER_DURATION_MS);
+    } catch (err: any) {
+      console.error(err);
+      setError("File processing failed.");
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    processBulkImportFile(file, false);
+  };
+
+  const handleConfirmOverwriteImport = () => {
+    if (!overwritePrompt) return;
+    const pendingFile = overwritePrompt.file;
+    setOverwritePrompt(null);
+    processBulkImportFile(pendingFile, true);
+  };
+
+  const handleCancelOverwriteImport = () => {
+    setOverwritePrompt(null);
+    setModal({ message: 'Import cancelled. Existing items were not overwritten.', type: State.INFO });
   };
 
   const handleBarcodeScanned = (barcode: string) => {
@@ -508,6 +609,15 @@ const ItemAdd: React.FC = () => {
     <div className="flex flex-col h-screen w-full bg-gray-100 font-poppins text-gray-800 relative">
       <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+      {overwritePrompt && (
+        <Modal
+          message={`Found ${overwritePrompt.count} existing barcode matches. Do you want to overwrite those items?`}
+          onClose={handleCancelOverwriteImport}
+          onConfirm={handleConfirmOverwriteImport}
+          showConfirmButton={true}
+          type={State.INFO}
+        />
+      )}
 
       {/* --- PROGRESS MODAL --- */}
       {uploadProgress && (
@@ -533,10 +643,10 @@ const ItemAdd: React.FC = () => {
       <div className="flex-1 flex flex-col md:flex-row relative">
 
         {/* LEFT PANEL */}
-        <div className="flex-1 w-full md:w-[65%] bg-gray-100 md:bg-gray-50 md:border-r border-gray-200 pt-28 pb-24 px-2 md:pt-6 md:px-6 md:pb-6 overflow-y-auto">
+        <div ref={formScrollRef} className="flex-1 w-full md:w-[65%] bg-gray-100 md:bg-gray-50 md:border-r border-gray-200 pt-28 pb-24 px-2 md:pt-6 md:px-6 md:pb-6 overflow-y-auto">
 
           {error && <div className="mb-4 text-center p-3 bg-red-100 text-red-700 rounded-lg">{error}</div>}
-          {success && <div className="mb-4 text-center p-3 bg-green-100 text-green-700 rounded-lg">{success}</div>}
+          {success && <div ref={successBannerRef} className="mb-4 text-center p-3 bg-green-100 text-green-700 rounded-lg">{success}</div>}
 
           {/* MOBILE BULK IMPORT */}
           <div className="md:hidden bg-white p-2 rounded-sm shadow-md mb-4">

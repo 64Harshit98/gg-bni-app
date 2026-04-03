@@ -15,6 +15,7 @@ import { incrementPurchaseCounter, peekNextPurchaseNumber } from '../../UseCompo
 import { Spinner } from '../../constants/Spinner';
 import { FiTrash2, FiEdit, FiCamera } from 'react-icons/fi';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
+import BarcodeLinkModal from '../../Components/BarcodeLinkModal';
 import { usePurchaseSettings } from '../../context/SettingsContext';
 import { GenericCartList } from '../../Components/CartItem';
 import { GenericBillFooter } from '../../Components/Footer';
@@ -100,6 +101,9 @@ const PurchasePage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [barcodeToLink, setBarcodeToLink] = useState<string | null>(null);
+  const [isBarcodeLinkModalOpen, setIsBarcodeLinkModalOpen] = useState(false);
+  const [isLinkingBarcode, setIsLinkingBarcode] = useState(false);
 
   const [invoiceNumber, setInvoiceNumber] = useState<string>('');
   const [invoiceDate, setInvoiceDate] = useState<string>(() => {
@@ -794,13 +798,68 @@ const PurchasePage: React.FC = () => {
     }, 1500);
   };
 
-  const handleBarcodeScanned = (barcode: string) => {
+  const closeBarcodeLinkModal = () => {
+    setIsBarcodeLinkModalOpen(false);
+    setBarcodeToLink(null);
+  };
+
+  const handleLinkScannedBarcode = async (selectedItem: Item) => {
+    if (!barcodeToLink || !dbOperations) return;
+    if (!selectedItem.id) {
+      setModal({ message: 'Selected item is invalid. Please try another item.', type: State.ERROR });
+      return;
+    }
+
+    setIsLinkingBarcode(true);
+    try {
+      await dbOperations.updateItem(selectedItem.id, { barcode: barcodeToLink });
+      const updatedItem: Item = { ...selectedItem, barcode: barcodeToLink };
+
+      setAvailableItems(prev => {
+        const exists = prev.some(item => item.id === selectedItem.id);
+        if (!exists) return [...prev, updatedItem];
+        return prev.map(item => item.id === selectedItem.id ? { ...item, barcode: barcodeToLink } : item);
+      });
+
+      addItemToCart(updatedItem);
+      closeBarcodeLinkModal();
+      setModal({ message: `Barcode linked to "${selectedItem.name}".`, type: State.SUCCESS });
+    } catch (err) {
+      console.error('Failed to link barcode:', err);
+      setModal({ message: 'Failed to link barcode. Please try again.', type: State.ERROR });
+    } finally {
+      setIsLinkingBarcode(false);
+    }
+  };
+
+  const handleBarcodeScanned = async (barcode: string) => {
     setIsScannerOpen(false);
-    const itemToAdd = availableItems.find(item => item.barcode === barcode);
-    if (itemToAdd) {
-      addItemToCart(itemToAdd);
-    } else {
-      setModal({ message: 'Item not found for this barcode.', type: State.ERROR });
+    try {
+      const cleanBarcode = barcode.trim();
+      let itemToAdd: Item | null | undefined = availableItems.find(item => item.barcode === cleanBarcode);
+
+      if (!itemToAdd && dbOperations) {
+        itemToAdd = await dbOperations.getItemByBarcode(cleanBarcode);
+      }
+
+      if (itemToAdd) {
+        addItemToCart(itemToAdd);
+        setAvailableItems(prev => {
+          const exists = prev.some(item => item.id === itemToAdd!.id);
+          return exists ? prev : [...prev, itemToAdd!];
+        });
+      } else {
+        const hasAnyItemWithoutBarcode = availableItems.some(item => !(item.barcode || '').trim());
+        if (!hasAnyItemWithoutBarcode) {
+          setModal({ message: `Item not found for barcode: "${cleanBarcode}"`, type: State.ERROR });
+          return;
+        }
+        setBarcodeToLink(cleanBarcode);
+        setIsBarcodeLinkModalOpen(true);
+      }
+    } catch (err) {
+      console.error('Barcode scan error:', err);
+      setModal({ message: 'Scan error occurred.', type: State.ERROR });
     }
   };
 
@@ -920,6 +979,14 @@ const PurchasePage: React.FC = () => {
       <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden pb-0">
         {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
         <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
+        <BarcodeLinkModal
+          isOpen={isBarcodeLinkModalOpen}
+          barcode={barcodeToLink}
+          items={availableItems}
+          isLinking={isLinkingBarcode}
+          onClose={closeBarcodeLinkModal}
+          onLink={handleLinkScannedBarcode}
+        />
         {renderHeader()}
         <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
           <div className="flex flex-col w-full md:w-3/4 h-full relative min-w-0 border-r border-gray-200 overflow-hidden">
@@ -1370,6 +1437,14 @@ const PurchasePage: React.FC = () => {
     <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden">
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
       <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
+      <BarcodeLinkModal
+        isOpen={isBarcodeLinkModalOpen}
+        barcode={barcodeToLink}
+        items={availableItems}
+        isLinking={isLinkingBarcode}
+        onClose={closeBarcodeLinkModal}
+        onLink={handleLinkScannedBarcode}
+      />
 
       {renderHeader()}
 

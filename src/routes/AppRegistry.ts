@@ -38,6 +38,7 @@ const RestockReportPage = lazy(() => import('../Pages/Reports/RestockReport'));
 const TaxReport = lazy(() => import('../Pages/Reports/TaxReport'));
 const CustomerReport = lazy(() => import('../Pages/Reports/CustomerReport'));
 const PartyLedger = lazy(() => import('../Pages/Reports/PartyLedger'));
+const GallaHisaabTool = lazy(() => import('../Pages/Reports/GallaHisaabTool'))
 const ItemSoldReport = lazy(() => import('../Pages/Reports/ItemSoldReport'));
 
 // --- CATALOGUE MODULE IMPORTS ---
@@ -128,6 +129,7 @@ export const AppRegistry: AppModule[] = [
             { path: ROUTES.TAX_REPORT, component: TaxReport, permission: Permissions.ViewItemReport },
             { path: ROUTES.CUSTOMER_REPORT, component: CustomerReport, permission: Permissions.ViewItemReport },
             { path: ROUTES.PARTY_LEDGER, component: PartyLedger, permission: Permissions.ViewPurchaseReport },
+            { path: ROUTES.GALLA_HISAAB_TOOL, component: GallaHisaabTool, permission: Permissions.ViewPurchaseReport },
             { path: ROUTES.ITEM_SOLD_REPORT, component: ItemSoldReport, permission: Permissions.ViewItemReport },
         ],
     },

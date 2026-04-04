@@ -264,6 +264,7 @@ const DashboardContent = () => {
     return new Date(data.lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }, [data]);
 
+
   useEffect(() => {
     const seen = localStorage.getItem("dashboard_tutorial_done");
     if (!seen) {

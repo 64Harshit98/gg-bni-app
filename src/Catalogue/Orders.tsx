@@ -1373,7 +1373,7 @@ const OrdersPage: React.FC = () => {
                                                         className={`grid ${isUpcomingStatus
                                                             ? 'grid-cols-3'
                                                             : Order.status === "Packed"
-                                                                ? 'grid-cols-[40px_1fr_1fr_1fr_40px]'
+                                                                ? 'grid-cols-5 md:grid-cols-5'
                                                                 : Order.status === "Paid"
                                                                     ? 'grid-cols-3'
                                                                     : Order.status === "Completed"
@@ -1475,7 +1475,7 @@ const OrdersPage: React.FC = () => {
                                                                             e.stopPropagation();
                                                                             handlePreviousStatus(Order.id, Order.status);
                                                                         }}
-                                                                        className="py-2.5 bg-gray-200 text-black text-sm font-bold rounded-sm flex items-center justify-center flex-col">
+                                                                        className="w-full py-2.5 bg-gray-200 text-black text-sm font-bold rounded-sm flex items-center justify-center flex-col">
                                                                         ←
                                                                         <span className='text-[10px]'>back</span>
                                                                     </button>
@@ -1751,8 +1751,7 @@ const OrdersPage: React.FC = () => {
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-
+                            <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
                                 {/* LEFT SIDE: ADDRESSES */}
                                 <div className="space-y-4">
                                     <div className="flex sm:hidden p-1 bg-slate-100 rounded-sm mb-2">
@@ -1770,7 +1769,7 @@ const OrdersPage: React.FC = () => {
                                         </button>
                                     </div>
 
-                                    <div className="grid grid-cols-1 gap-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         {/* Billing Address Section */}
                                         <div className={`p-4 rounded-sm border border-slate-200 bg-orange-50/30 space-y-3 ${activeTab === 'billing' ? 'block' : 'hidden sm:block'}`}>
                                             <div className="flex justify-between items-center">
@@ -1899,7 +1898,7 @@ const OrdersPage: React.FC = () => {
                                 </div>
 
                                 {/* RIGHT SIDE: ITEMS & TOTAL */}
-                                <div className="flex flex-col h-min space-y-2">
+                                <div className="flex flex-col w-full space-y-2">
                                     {/* ADD NEW ITEM SEARCH BOX */}
                                     <div className="p-2 border-t border-slate-200">
                                         <p className="text-[9px] font-black text-orange-600 uppercase tracking-widest mb-2">Add New Item</p>

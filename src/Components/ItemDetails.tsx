@@ -104,7 +104,7 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
 
             {/* Main Drawer */}
             <div
-                className={`fixed bottom-0 left-0 right-0 h-[85vh] max-h-[95vh] bg-white z-[110] transition-transform duration-500 ease-out max-w-[450px] mx-auto rounded-sm overflow-hidden shadow-2xl ${isOpen ? 'translate-y-0' : 'translate-y-full'}`}
+                className={`fixed bottom-0 left-0 right-0 h-[85vh] max-h-[95vh] bg-white z-[1000] transition-transform duration-500 ease-out max-w-[450px] mx-auto rounded-sm overflow-hidden shadow-2xl ${isOpen ? 'translate-y-0' : 'translate-y-full'}`}
             >
                 {/* --- HEADER SECTION --- */}
                 <div className="text-center py-3 border-b border-gray-100 relative">

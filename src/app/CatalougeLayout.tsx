@@ -29,20 +29,9 @@ const CatalogueLayout = () => {
         }`;
 
     const handleShare = () => {
-        if (!currentUser?.companyId) return;
-
-        const url = `${window.location.origin}/catalogue/${currentUser.companyId}`;
-
-        if (navigator.share) {
-            navigator.share({
-                title: "My Catalogue",
-                text: "Check out my catalogue",
-                url,
-            });
-        } else {
-            navigator.clipboard.writeText(url);
-            alert("Link copied!");
-        }
+        navigate("/catalogue-home", {
+            state: { openShare: true }
+        });
     };
 
     const MobileActions = () => (

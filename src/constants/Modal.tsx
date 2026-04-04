@@ -80,7 +80,7 @@ interface PaymentModalProps {
     isOpen: boolean;
     onClose: () => void;
     invoice: ModalInvoice | null;
-    onSubmit: (invoice: ModalInvoice, amount: number, method: string) => Promise<void>;
+    onSubmit: (invoice: ModalInvoice, amount: number, method: string, chequeNumber?: string, chequeDate?: string) => Promise<void>;
     onConfirm?: (amountToAdd: number) => Promise<void>;
 }
 
@@ -89,11 +89,15 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
     const [method, setMethod] = useState('cash');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState('');
+    const [chequeNumber, setChequeNumber] = useState('');
+    const [chequeDate, setChequeDate] = useState('');
 
     useEffect(() => {
         if (invoice) {
             setAmount(invoice.dueAmount?.toString() ?? '');
             setError('');
+            setChequeNumber('');
+            setChequeDate('');
         }
     }, [invoice]);
 
@@ -110,11 +114,27 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
             setError('Payment cannot exceed the due amount.');
             return;
         }
+        if (method === 'PDC') {
+            if (!chequeNumber.trim()) {
+                setError('Please enter cheque number.');
+                return;
+            }
+            if (!chequeDate) {
+                setError('Please select cheque date.');
+                return;
+            }
+        }
 
         setIsSubmitting(true);
         setError('');
         try {
-            await onSubmit(invoice, paymentAmount, method);
+            await onSubmit(
+                invoice,
+                paymentAmount,
+                method,
+                method === 'PDC' ? chequeNumber : undefined,
+                method === 'PDC' ? chequeDate : undefined
+            );
             onClose(); // Close modal on successful submission
         } catch (err) {
             console.error(err);
@@ -154,8 +174,34 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                             <option value="cash">Cash</option>
                             <option value="upi">UPI</option>
                             <option value="card">Card</option>
+                            <option value="PDC">PDC</option>
                         </select>
                     </div>
+                    {method === 'PDC' && (
+                        <div className="mb-6">
+                            <div className="mb-4">
+                                <label className="block text-sm font-medium text-slate-700">Cheque Number</label>
+                                <input
+                                    type="text"
+                                    value={chequeNumber}
+                                    onChange={(e) => setChequeNumber(e.target.value)}
+                                    className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                    placeholder="Enter cheque number"
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700">Cheque Date</label>
+                                <input
+                                    type="date"
+                                    value={chequeDate}
+                                    onChange={(e) => setChequeDate(e.target.value)}
+                                    className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                    required
+                                />
+                            </div>
+                        </div>
+                    )}
                     {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
                     <div className="flex justify-end gap-3">
                         <button type="button" onClick={onClose} className="px-4 py-2 rounded-md bg-slate-200 text-slate-800 hover:bg-slate-300">Cancel</button>

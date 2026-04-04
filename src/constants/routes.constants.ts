@@ -73,6 +73,7 @@ export const ROUTES = {
   CATA_EDIT: 'cata-edit-profile',
   CATA_REQUEST: 'requests',
   PARTY_LEDGER: '/party-ledger',
+  GALLA_HISAAB_TOOL: '/galla-hisaab-tool',
   CATA_REGISTER: 'catalogue-register',
   CATA_COMINGSOON: 'coming-soon',
   CATA_SUPPORT:'support',

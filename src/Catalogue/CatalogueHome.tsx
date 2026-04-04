@@ -77,6 +77,11 @@ const useBusinessName = (userId?: string, companyId?: string) => {
 // This is required because useFilter() must be called inside a FilterProvider.
 const HomePageContent: React.FC = () => {
     const location = useLocation();
+    useEffect(() => {
+        if (location.state?.openShare) {
+            setShowCatalogueCard(true);
+        }
+    }, [location.state]);
     const { currentUser, loading: authLoading } = useAuth();
     const { filters } = useFilter(); // Read selected date range from FilterProvider context
     const { businessName, loading: nameLoading } = useBusinessName(currentUser?.uid, currentUser?.companyId);

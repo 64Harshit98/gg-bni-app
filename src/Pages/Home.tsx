@@ -18,6 +18,7 @@ import { PaymentChart } from '../Components/PaymentChart';
 import { TopEntitiesList } from '../Components/TopFiveEntities';
 import { TutorialStep } from '../Components/TutorialStep';
 import ShinyText from '../Components/ShinyText';
+import { CACHE_DURATION } from '../lib/fetchDashboardData';
 
 export interface SmartMetric { name: string; amount: number; quantity: number; }
 
@@ -34,8 +35,6 @@ interface DashboardData {
   cacheStart?: string;
   cacheEnd?: string;
 }
-
-const CACHE_DURATION = 60 * 60 * 1000;
 
 const cleanString = (str: string) => {
   if (!str) return 'N/A';
@@ -233,10 +232,6 @@ const DashboardContent = () => {
         }
         if (saleDate >= prevStart && saleDate <= prevEnd) prevTotalSales += amount;
       });
-
-      let percentageChange = 0;
-      if (prevTotalSales > 0) percentageChange = ((currentTotalSales - prevTotalSales) / prevTotalSales) * 100;
-      else if (currentTotalSales > 0) percentageChange = 100;
 
       const chartData = [];
       const itr = new Date(prevStart);

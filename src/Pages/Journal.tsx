@@ -740,6 +740,7 @@ const Journal: React.FC = () => {
     setIsModalOpen(true);
   };
 
+
   const handleSettlePayment = async (invoice: any, amount: number, method: string) => {
     if (!currentUser?.companyId) {
       throw new Error("No company ID found. Cannot settle payment.");
@@ -771,7 +772,9 @@ const Journal: React.FC = () => {
         amount,
         method,
         date: new Date().toISOString(),
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        chequeNumber: method === 'PDC' ? chequeNumber || '' : '',
+        chequeDate: method === 'PDC' ? chequeDate || '' : ''
       };
 
       const currentHistory = data.paymentHistory || [];

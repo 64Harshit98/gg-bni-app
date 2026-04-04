@@ -52,13 +52,15 @@ export const TopSoldItemsCard: React.FC<TopSoldItemsCardProps> = ({
             <ul className="space-y-4">
                 {itemsToDisplay.map((item, index) => (
                     <li key={item.id} className="flex items-center">
-                        <div className="flex items-center w-3/5">
+                        <div className="flex items-center w-4/5">
                             <span className={`text-sm font-bold rounded-full h-6 w-6 flex items-center justify-center mr-3 flex-shrink-0 text-blue-600 bg-blue-100`}>
                                 {index + 1}
                             </span>
-                            <span className="font-medium text-gray-700" title={item.name}>{item.name.slice(0, 15)}</span>
+                            <span className="font-medium text-gray-700" title={item.name}>
+                                {item.name.slice(0, 30)}
+                            </span>
                         </div>
-                        <div className="w-2/5 text-right">
+                        <div className="w-1/5 text-right">
                             {viewMode === 'quantity' ? (
                                 <>
                                     <span className="font-semibold text-gray-800">{item.totalQuantity}</span>

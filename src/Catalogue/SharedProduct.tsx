@@ -4,7 +4,6 @@ import { ShoppingCart, Minus, Plus, ChevronLeft } from 'lucide-react';
 import { useAuth } from '../context/auth-context';
 import type { Item, ItemGroup } from '../constants/models';
 import { FiPackage, FiPlus } from 'react-icons/fi';
-import { ItemEditDrawer } from '../Components/ItemDrawer';
 import { ItemDetailDrawer } from '../Components/ItemDetails';
 import { Spinner } from '../constants/Spinner';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -50,11 +49,9 @@ const SharedProduct: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [catalogueSettings, setCatalogueSettings] = useState<CatalogueSalesSettings | null>(null);
     const [itemsToRenderCount, setItemsToRenderCount] = useState(ITEMS_PER_BATCH_RENDER);
-    const [isDrawerOpen, setIsDrawerOpen] = useState(false);
     const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
     const [_isLeadFilled, setIsLeadFilled] = useState(false);
     const [forceLeadOpen, setForceLeadOpen] = useState(false);
-    const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
     const [selectedItemForDetails, setSelectedItemForDetails] = useState<Item | null>(null);
     const [socialLinks, setSocialLinks] = useState<any>({});
     const observerRef = useRef<IntersectionObserver | null>(null);
@@ -83,6 +80,14 @@ const SharedProduct: React.FC = () => {
     const approvalEnabled = catalogueSettings?.requireApproval === true;
     const hidePriceEnabled = catalogueSettings?.hidePrice === true;
     const cartCount = useMemo(() => cart.reduce((acc, curr) => acc + curr.quantity, 0), [cart]);
+
+    const cartTotal = useMemo(() => {
+        return cart.reduce((acc, curr) => {
+            const price = curr.item?.salesPrice || curr.item?.mrp || 0;
+            return acc + price * curr.quantity;
+        }, 0);
+    }, [cart]);
+
     // --- New Firebase Sync Function ---
     const generateCatalogueInvoiceNumber = async (companyId: string): Promise<string> => {
         if (!companyId) throw new Error("Missing companyId");
@@ -1042,12 +1047,41 @@ const SharedProduct: React.FC = () => {
                 gmail={socialLinks.gmail}
             />
 
-            <ItemEditDrawer
-                item={selectedItemForEdit}
-                isOpen={isDrawerOpen}
-                onClose={() => { setIsDrawerOpen(false); setSelectedItemForEdit(null); }}
-                onSaveSuccess={(updated) => setAllItems(prev => prev.map(i => i.id === selectedItemForEdit?.id ? { ...i, ...updated } as Item : i))}
-            />
+            {/* --- STICKY BOTTOM CART --- */}
+            <div
+                onClick={() => {
+                    if (effectiveCompanyId) {
+                        navigate(`/checkout/${effectiveCompanyId}`);
+                    }
+                }}
+                className="fixed bottom-0 left-0 w-full md:w-[50%] md:left-1/2 md:-translate-x-1/2 z-[1000] bg-[#00A3E1] text-white shadow-lg cursor-pointer active:scale-[0.98] transition-all"
+            >
+                <div className="max-w-7xl mx-auto flex items-center justify-between px-4 py-3">
+
+                    {/* Left side */}
+                    <div className="flex items-center gap-3">
+
+                        <div className="flex flex-col">
+                            <span className="text-[12px] font-bold uppercase tracking-wide">
+                                {cartCount} Item{cartCount > 1 ? 's' : ''}
+                            </span>
+                            <span className="text-[15px] font-bold">
+                                ₹{cartTotal}
+                            </span>
+                        </div>
+
+
+                        <ShoppingCart size={20} />
+
+                    </div>
+
+                    {/* Right side */}
+                    <div className="flex items-center gap-2 font-black uppercase text-[12px]">
+                        View Cart →
+                    </div>
+
+                </div>
+            </div>
 
             <ItemDetailDrawer
                 catalogueSettings={catalogueSettings}

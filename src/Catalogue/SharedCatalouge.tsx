@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo} from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getItemGroupsByCompany, getItemsByCompany } from '../lib/ItemsFirebase';
 import type { ItemGroup, Item } from '../constants/models';
@@ -56,6 +56,14 @@ const SharedCataloguePage: React.FC = () => {
     }, [allItems]);
     // const cartIconRef = useRef<HTMLButtonElement | null>(null);
     const cartCount = useMemo(() => cart.reduce((acc, curr) => acc + curr.quantity, 0), [cart]);
+
+    const cartTotal = useMemo(() => {
+        return cart.reduce((acc, curr) => {
+            const price = curr.item?.salesPrice || curr.item?.mrp || 0;
+            return acc + price * curr.quantity;
+        }, 0);
+    }, [cart]);
+
     useEffect(() => {
         if (!effectiveCompanyId) {
             setError("Invalid catalogue link.");
@@ -238,9 +246,9 @@ const SharedCataloguePage: React.FC = () => {
                 </div>
             </header>
 
-            <main className="p-4 md:p-6 space-y-4 flex-1 max-w-7xl mx-auto w-full pb-10">
-                <div className='flex items-center justify-center'>
-                    <h1 className="text-sm md:text-xl font-extrabold text-[#00A3E1] uppercase tracking-tighter">Categories</h1>
+            <main className="p-1 md:p-6 space-y-4 flex-1 max-w-7xl mx-auto w-full pb-12 md:pb-20">
+                <div className='flex items-center justify-center mt-1'>
+                    <h1 className="text-lg md:text-xl font-extrabold text-[#00A3E1] uppercase tracking-tighter">Categories</h1>
                 </div>
                 <div className="relative group max-w-md mx-auto w-full">
                     <SearchBar
@@ -368,7 +376,46 @@ const SharedCataloguePage: React.FC = () => {
                         </div>
                     </div>
                 )}
+
+
+
             </main>
+
+            {/* --- STICKY BOTTOM CART --- */}
+            <div
+                onClick={() => {
+                    if (effectiveCompanyId) {
+                        navigate(`/checkout/${effectiveCompanyId}`);
+                    }
+                }}
+                className="fixed bottom-0 left-0 w-full md:w-[50%] md:left-1/2 md:-translate-x-1/2 z-[9999] bg-[#00A3E1] text-white shadow-lg cursor-pointer active:scale-[0.98] transition-all"
+            >
+                <div className="max-w-7xl mx-auto flex items-center justify-between px-4 py-3">
+
+                    {/* Left side */}
+                    <div className="flex items-center gap-3">
+
+                        <div className="flex flex-col">
+                            <span className="text-[12px] font-bold uppercase tracking-wide">
+                                {cartCount} Item{cartCount > 1 ? 's' : ''}
+                            </span>
+                            <span className="text-[15px] font-bold">
+                                ₹{cartTotal}
+                            </span>
+                        </div>
+
+
+                        <ShoppingCart size={20} />
+
+                    </div>
+
+                    {/* Right side */}
+                    <div className="flex items-center gap-2 font-black uppercase text-[12px]">
+                        View Cart →
+                    </div>
+
+                </div>
+            </div>
 
             {/* FOOTER */}
             <Footer

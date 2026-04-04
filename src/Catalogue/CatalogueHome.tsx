@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { db } from '../lib/Firebase';
-import { doc, getDoc, collection, query, where, getDocs, Timestamp, orderBy } from 'firebase/firestore';
+import { doc, getDoc,Timestamp } from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
 import { FilterControls, FilterProvider, useFilter } from '../Components/Filter';
 import ShowWrapper from '../context/ShowWrapper';
@@ -14,9 +14,8 @@ import { TopSoldItemsCard } from '../Components/TopFiveOrder';
 import { OrderBarChartReport } from '../Components/OrderSalesGraph';
 import { IconChevronDown } from '../constants/Icons';
 import { FiRefreshCw, FiLoader } from 'react-icons/fi';
-
-// Cache duration: 1 hour in milliseconds — same constant as POS Home
-const CACHE_DURATION = 60 * 60 * 1000;
+import { fetchDashboardData, CACHE_DURATION } from '../lib/fetchDashboardData';
+import type { WithCacheMeta } from '../lib/fetchDashboardData';
  
 // ─── Shared Types ─────────────────────────────────────────────────────────────
 // Exported so child components can import instead of defining their own duplicates
@@ -42,9 +41,6 @@ export interface CatalogueDashboardData {
     topByQuantity: TopItem[];       // used by TopSoldItemsCard
     topByAmount: TopItem[];         // used by TopSoldItemsCard
     orderCounts: Record<string, number>; // used by OrderTimeline (counts only, not full Order objects)
-    lastUpdated: number;            // timestamp of last Firestore fetch
-    cacheStart: string;             // filter start date at time of fetch
-    cacheEnd: string;               // filter end date at time of fetch
 }
  
 // ─── Business Name Hook ───────────────────────────────────────────────────────
@@ -94,156 +90,86 @@ const HomePageContent: React.FC = () => {
  
     // Single source of truth for all dashboard data
     // All child components read from this state via props
-    const [data, setData] = useState<CatalogueDashboardData | null>(null);
+    const [data, setData] = useState<WithCacheMeta<CatalogueDashboardData> | null>(null);
     const [loading, setLoading] = useState(true);
  
-    // ── Main data fetch — mirrors POS Home's fetchData pattern exactly ────────
-    //
-    // Flow:
-    //   1. Check localStorage for valid cached data
-    //   2. If cache hit → use it, skip Firestore (0 reads)
-    //   3. If cache miss → run 1 Firestore query, process in-memory, save to cache
     const fetchData = useCallback(async (forceRefresh = false) => {
- 
-        // Guard: do nothing until user and filter dates are available
-        if (!currentUser?.companyId || !filters.startDate || !filters.endDate) {
-            setLoading(false);
-            return;
-        }
- 
-        // Per-company cache key prevents data leakage between different logged-in users
-        const CACHE_KEY = `catalogue_cache_${currentUser.companyId}`;
- 
-        if (!forceRefresh) setLoading(true);
- 
-        try {
-            // ── Step 1: Try reading from localStorage cache ───────────────────
-            const cached = localStorage.getItem(CACHE_KEY);
-            if (!forceRefresh && cached) {
-                const parsed: CatalogueDashboardData = JSON.parse(cached);
- 
-                // Cache is valid only if:
-                //   a) It was fetched within the last CACHE_DURATION (1 hour)
-                //   b) The date range matches the currently selected filters
-                const timeOk = Date.now() - parsed.lastUpdated < CACHE_DURATION;
-                const dateOk = parsed.cacheStart === filters.startDate && parsed.cacheEnd === filters.endDate;
- 
-                if (timeOk && dateOk) {
-                    setData(parsed);
-                    setLoading(false);
-                    return; // Cache hit — no Firestore read needed
+    if (!currentUser?.companyId || !filters.startDate || !filters.endDate) {
+        setLoading(false);
+        return;
+    }
+
+    if (!forceRefresh) setLoading(true);
+
+    try {
+        const result = await fetchDashboardData<CatalogueDashboardData>({
+            companyId:    currentUser.companyId,
+            startDate:    filters.startDate,
+            endDate:      filters.endDate,
+            cacheKey:     `catalogue_cache_${currentUser.companyId}`,
+            forceRefresh,
+            transform: (snap, start, end) => {
+                let totalSalesAmount = 0;
+                let totalSalesCount  = 0;
+                const salesByDate: Record<string, { sales: number; bills: number }> = {};
+                for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                    salesByDate[d.toLocaleDateString('en-CA')] = { sales: 0, bills: 0 };
                 }
-            }
- 
-            // ── Step 2: Fetch from Firestore (cache miss or forced refresh) ───
-            const start = new Date(filters.startDate); start.setHours(0, 0, 0, 0);
-            const end   = new Date(filters.endDate);   end.setHours(23, 59, 59, 999);
- 
-            // Single query with no status filter — fetch ALL orders in the date range.
-            // Status-based filtering is done in-memory below to avoid multiple queries.
-            const snap = await getDocs(query(
-                collection(db, 'companies', currentUser.companyId, 'Orders'),
-                where('createdAt', '>=', Timestamp.fromDate(start)),
-                where('createdAt', '<=', Timestamp.fromDate(end)),
-                orderBy('createdAt', 'asc')
-            ));
- 
-            // ── Step 3: Process all documents in a single loop ─────────────────
-            // One pass generates data for all 4 child components simultaneously.
-            // No additional Firestore calls needed.
- 
-            let totalSalesAmount = 0;
-            let totalSalesCount  = 0;
- 
-            // Pre-fill every date in the range with zero so chart has no gaps
-            const salesByDate: Record<string, { sales: number; bills: number }> = {};
-            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-                salesByDate[d.toLocaleDateString('en-CA')] = { sales: 0, bills: 0 };
-            }
- 
-            // Accumulates quantity and revenue per item across all completed orders
-            const itemStats = new Map<string, { name: string; totalQuantity: number; totalAmount: number }>();
- 
-            // Order counts per status — OrderTimeline only needs these numbers, not full objects
-            const orderCounts: Record<string, number> = {
-                Upcoming: 0, Confirmed: 0, Packed: 0, Completed: 0,
-            };
- 
-            snap.forEach(docSnap => {
-                const o      = docSnap.data();
-                const status: string = o.status || 'Upcoming';
-                const amount: number = o.totalAmount || 0;
-                const dateKey: string = (o.createdAt as Timestamp).toDate().toLocaleDateString('en-CA');
- 
-                // For OrderTimeline:
-                // Treat 'Paid' as 'Completed' — matches original OrderTimeline grouping logic
-                const timelineStatus = status === 'Paid' ? 'Completed' : status;
-                if (timelineStatus in orderCounts) {
-                    orderCounts[timelineStatus] = (orderCounts[timelineStatus] || 0) + 1;
-                }
- 
-                // For CompletedSalesCard and OrderBarChartReport:
-                // Only Completed and Paid orders count toward sales totals
-                if (status === 'Completed' || status === 'Paid') {
-                    totalSalesAmount += amount;
-                    totalSalesCount  += 1;
-                    if (salesByDate[dateKey]) {
-                        salesByDate[dateKey].sales += amount;
-                        salesByDate[dateKey].bills += 1;
+                const itemStats = new Map<string, { name: string; totalQuantity: number; totalAmount: number }>();
+                const orderCounts: Record<string, number> = {
+                    Upcoming: 0, Confirmed: 0, Packed: 0, Completed: 0,
+                };
+
+                snap.forEach(docSnap => {
+                    const o      = docSnap.data();
+                    const status: string = o.status || 'Upcoming';
+                    const amount: number = o.totalAmount || 0;
+                    const dateKey: string = (o.createdAt as Timestamp).toDate().toLocaleDateString('en-CA');
+
+                    const timelineStatus = status === 'Paid' ? 'Completed' : status;
+                    if (timelineStatus in orderCounts) {
+                        orderCounts[timelineStatus] = (orderCounts[timelineStatus] || 0) + 1;
                     }
-                }
- 
-                // For TopSoldItemsCard:
-                // Only Completed orders (not Paid) — matches original component's query
-                if (status === 'Completed' && Array.isArray(o.items)) {
-                    o.items.forEach((item: any) => {
-                        if (!item.id || !item.name) return; // Skip malformed items
- 
-                        const cur = itemStats.get(item.id) || { name: item.name, totalQuantity: 0, totalAmount: 0 };
-                        itemStats.set(item.id, {
-                            name: item.name,
-                            totalQuantity: cur.totalQuantity + (item.quantity || 0),
-                            totalAmount:   cur.totalAmount   + ((item.mrp || 0) * (item.quantity || 0)),
+                    if (status === 'Completed' || status === 'Paid') {
+                        totalSalesAmount += amount;
+                        totalSalesCount  += 1;
+                        if (salesByDate[dateKey]) {
+                            salesByDate[dateKey].sales += amount;
+                            salesByDate[dateKey].bills += 1;
+                        }
+                    }
+                    if (status === 'Completed' && Array.isArray(o.items)) {
+                        o.items.forEach((item: any) => {
+                            if (!item.id || !item.name) return;
+                            const cur = itemStats.get(item.id) || { name: item.name, totalQuantity: 0, totalAmount: 0 };
+                            itemStats.set(item.id, {
+                                name: item.name,
+                                totalQuantity: cur.totalQuantity + (item.quantity || 0),
+                                totalAmount:   cur.totalAmount   + ((item.mrp || 0) * (item.quantity || 0)),
+                            });
                         });
-                    });
-                }
-            });
- 
-            // ── Step 4: Build final data structures ───────────────────────────
- 
-            // Convert date map to array for Recharts LineChart
-            const chartData: ChartDataPoint[] = Object.entries(salesByDate).map(([date, v]) => ({
-                date, sales: v.sales, bills: v.bills,
-            }));
- 
-            // Sort all items by each metric, keep top 5
-            const allItems: TopItem[] = Array.from(itemStats.entries()).map(([id, v]) => ({ id, ...v }));
-            const topByQuantity = [...allItems].sort((a, b) => b.totalQuantity - a.totalQuantity).slice(0, 5);
-            const topByAmount   = [...allItems].sort((a, b) => b.totalAmount   - a.totalAmount  ).slice(0, 5);
- 
-            const finalData: CatalogueDashboardData = {
-                totalSalesAmount,
-                totalSalesCount,
-                chartData,
-                topByQuantity,
-                topByAmount,
-                orderCounts,
-                lastUpdated: Date.now(),     // timestamp for cache validation
-                cacheStart:  filters.startDate,
-                cacheEnd:    filters.endDate,
-            };
- 
-            setData(finalData);
- 
-            // ── Step 5: Save to localStorage for future visits within 1 hour ──
-            localStorage.setItem(CACHE_KEY, JSON.stringify(finalData));
- 
-        } catch (e) {
-            console.error('Catalogue dashboard fetch error:', e);
-        } finally {
-            setLoading(false);
-        }
-    }, [currentUser, filters]); // Re-run whenever user or date filters change
+                    }
+                });
+
+                const chartData: ChartDataPoint[] = Object.entries(salesByDate).map(([date, v]) => ({
+                    date, sales: v.sales, bills: v.bills,
+                }));
+                const allItems: TopItem[] = Array.from(itemStats.entries()).map(([id, v]) => ({ id, ...v }));
+                const topByQuantity = [...allItems].sort((a, b) => b.totalQuantity - a.totalQuantity).slice(0, 5);
+                const topByAmount   = [...allItems].sort((a, b) => b.totalAmount   - a.totalAmount  ).slice(0, 5);
+
+                return { totalSalesAmount, totalSalesCount, chartData, topByQuantity, topByAmount, orderCounts };
+            },
+        });
+
+        setData(result);
+
+    } catch (e) {
+        console.error('Catalogue dashboard fetch error:', e);
+    } finally {
+        setLoading(false);
+    }
+}, [currentUser, filters]);
  
     // Trigger fetch on mount and whenever filters (date range) change
     useEffect(() => { fetchData(); }, [fetchData]);

@@ -4,6 +4,7 @@ import { db } from "../../lib/Firebase";
 import { useEffect, useState, useRef } from "react";
 import { FiShare2, FiDownload } from "react-icons/fi"; // Download icon add kiya
 import { toPng } from 'html-to-image'; // Install this: npm install html-to-image
+import { sanitizeName } from "../utils/stringUtils";
 
 function BusinessCard() {
     const { currentUser } = useAuth();
@@ -30,11 +31,7 @@ function BusinessCard() {
 
         const buttons = ref.current.querySelectorAll(".no-export");
 
-        const safeName = name
-        .trim()
-        .toLowerCase()
-        .replace(/\s+/g, '-')
-        .replace(/[^a-z0-9-]/g, '');
+        const safeName = sanitizeName(name);
 
         try {
             // hide buttons

@@ -1081,7 +1081,6 @@ const Journal: React.FC = () => {
       )}
 
       {/* ── HEADER ROW ─────────────────────────────────────────────────────── */}
-      {/* ── HEADER ROW ─────────────────────────────────────────────────────── */}
 <div className="flex flex-col z-20 relative">
 
   {/* Row 1: Title + Filter icon */}

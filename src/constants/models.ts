@@ -109,5 +109,4 @@ export interface SalesItem {
   discountPercentage?: number;
   finalPrice?: number;
   stock?: number;
-  productId?:string
 }

@@ -735,7 +735,7 @@ const SharedProduct: React.FC = () => {
     }
 
     return (
-        <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative">
+        <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative overflow-x-hidden">
             {approvalEnabled && <LeadPopUp
                 companyId={effectiveCompanyId}
                 companyName={companyName}

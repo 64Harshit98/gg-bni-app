@@ -7,13 +7,11 @@ import { CatItems } from '../routes/CatalougeRoutes';
 import { useAuth } from '../context/auth-context';
 import sellarLogo from '../assets/sellar-logo-heading.png';
 import { Share2 } from "lucide-react";
-import { useOrderSound } from '../Catalogue/hooks/useOrderSound';
 
 const CatalogueLayout = () => {
     const navigate = useNavigate();
     const { currentUser } = useAuth();
     const scrollRef = useRef<HTMLDivElement>(null);
-    useOrderSound(currentUser?.companyId);
 
     // 2. Scroll to top whenever the URL changes
     useEffect(() => {
@@ -169,13 +167,13 @@ const CatalogueLayout = () => {
                         <span>Orders Return</span>
                     </NavLink>
 
-                    <button
-                        onClick={handleShare}
-                        className={sidebarLinkClass(false)} // same design, no active
-                    >
-                        <Share2 size={18} />
-                        <span>Share</span>
-                    </button>
+                        <button
+                            onClick={handleShare}
+                            className={sidebarLinkClass(false)} // same design, no active
+                        >
+                            <Share2 size={18} />
+                            <span>Share</span>
+                        </button>
                 </nav>
             </aside>
 

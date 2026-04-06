@@ -19,8 +19,8 @@ import {
     CardHeader,
     CardTitle,
 } from './ui/card';
-import { Tooltip } from 'recharts';
-import { ResponsiveContainer } from 'recharts';
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from './ui/chart';
+import type { ChartConfig } from './ui/chart';
 import { useFilter } from './Filter';
 
 // --- Interfaces ---
@@ -33,8 +33,20 @@ interface ChartData {
     date: string;
     sales: number;
     bills: number; // To store the count of bills
-    previous: number;
 }
+
+// --- Chart Configuration ---
+const chartConfig = {
+    sales: {
+        label: 'Sales',
+        color: '#3b82f6',
+    },
+    bills: {
+        label: 'Bills',
+        color: '#3b82f6',
+    },
+} satisfies ChartConfig;
+
 
 interface SalesBarChartReportProps {
     isDataVisible: boolean;
@@ -64,14 +76,6 @@ export function OrderBarChartReport({ isDataVisible }: SalesBarChartReportProps)
             const end = new Date(filters.endDate);
             end.setHours(23, 59, 59, 999);
 
-            const diffDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-
-            const prevStart = new Date(start);
-            const prevEnd = new Date(end);
-
-            prevStart.setDate(prevStart.getDate() - diffDays - 1);
-            prevEnd.setDate(prevEnd.getDate() - diffDays - 1);
-
             try {
                 // --- Use 'Orders' (capital 'O') to match your other files ---
                 const salesQuery = query(
@@ -85,19 +89,7 @@ export function OrderBarChartReport({ isDataVisible }: SalesBarChartReportProps)
                 );
                 const querySnapshot = await getDocs(salesQuery);
 
-                const prevQuery = query(
-                    collection(db, 'companies', currentUser.companyId, 'Orders'),
-                    where('status', 'in', ['Completed', 'Paid']),
-                    where('createdAt', '>=', Timestamp.fromDate(prevStart)),
-                    where('createdAt', '<=', Timestamp.fromDate(prevEnd)),
-                    orderBy('createdAt', 'asc')
-                );
-
-                const prevSnapshot = await getDocs(prevQuery);
-
                 const salesByDate: { [key: string]: { sales: number; bills: number } } = {};
-
-                const prevSalesByDate: { [key: string]: number } = {};
 
                 // Initialize all dates in the range with 0 sales and 0 bills
                 for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
@@ -107,59 +99,19 @@ export function OrderBarChartReport({ isDataVisible }: SalesBarChartReportProps)
 
                 querySnapshot.forEach((doc) => {
                     const sale = doc.data() as SaleRecord;
+                    // --- Use toDate() on the Timestamp ---
                     const dateKey = sale.createdAt.toDate().toLocaleDateString('en-CA');
-
                     if (salesByDate[dateKey]) {
                         salesByDate[dateKey].sales += sale.totalAmount;
                         salesByDate[dateKey].bills += 1;
                     }
                 });
 
-                prevSnapshot.forEach((doc) => {
-                    const sale = doc.data() as SaleRecord;
-                    const dateKey = sale.createdAt.toDate().toLocaleDateString('en-CA');
-
-                    prevSalesByDate[dateKey] = (prevSalesByDate[dateKey] || 0) + sale.totalAmount;
-                });
-
-                const formatDate = (dateStr: string) => {
-                    const d = new Date(dateStr);
-                    const day = String(d.getDate()).padStart(2, '0');
-                    const month = String(d.getMonth() + 1).padStart(2, '0');
-                    return `${day}/${month}`;
-                };
-
-                let newChartData: ChartData[] = [];
-
-                if (diffDays <= 1) {
-                    const dates = Object.keys(salesByDate);
-                    const lastDate = dates[dates.length - 1];
-                    const prevDate = dates[dates.length - 2];
-
-                    newChartData = [
-                        {
-                            date: prevDate ? formatDate(prevDate) : '',
-                            sales: prevDate ? salesByDate[prevDate].sales : 0,
-                            bills: prevDate ? salesByDate[prevDate].bills : 0,
-                            previous: 0,
-                        },
-                        {
-                            date: formatDate(lastDate),
-                            sales: salesByDate[lastDate].sales,
-                            bills: salesByDate[lastDate].bills,
-                            previous: 0,
-                        }
-                    ];
-
-                } else {
-                    // 👉 7 days / 30 days → heartbeat (full data)
-                    newChartData = Object.keys(salesByDate).map((dateKey) => ({
-                        date: formatDate(dateKey),
-                        sales: salesByDate[dateKey].sales,
-                        bills: salesByDate[dateKey].bills,
-                        previous: prevSalesByDate[dateKey] || 0,
-                    }));
-                }
+                const newChartData: ChartData[] = Object.keys(salesByDate).map((date) => ({
+                    date,
+                    sales: salesByDate[date].sales,
+                    bills: salesByDate[date].bills,
+                }));
 
                 setChartData(newChartData);
             } catch (err) {
@@ -222,40 +174,39 @@ export function OrderBarChartReport({ isDataVisible }: SalesBarChartReportProps)
                 {isLoading ? <div className="flex h-[260px] items-center justify-center"></div> :
                     error ? <div className="flex h-[260px] items-center justify-center text-center"><p className="text-red-500 text-sm">{error}</p></div> :
                         isDataVisible ? (
-                            <div className="h-[260px] w-full">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                                        <CartesianGrid vertical={false} stroke="#e5e7eb" strokeDasharray="3 3" />
-                                        <Tooltip
-                                            cursor={{ stroke: '#9ca3af', strokeWidth: 1, strokeDasharray: '4 4' }}
-                                        />
-                                        <XAxis
-                                            dataKey="date"
-                                            tickLine={false}
-                                            axisLine={false}
-                                            tickMargin={8}
-                                            fontSize={10}
-                                        />
-                                        <YAxis
-                                            stroke="#888888"
-                                            fontSize={10}
-                                            tickLine={false}
-                                            axisLine={false}
-                                            tickFormatter={(value) => `₹${value}`}
-                                        />
-                                        {/* --- FIX: Changed to Line --- */}
-                                        <Line
-                                            type="linear"
-                                            dataKey={viewMode === 'amount' ? 'sales' : 'bills'}
-                                            stroke="#3b82f6"
-                                            strokeWidth={2}
-                                            dot={{ fill: 'white', stroke: '#3b82f6', strokeWidth: 2, r: 4 }}
-                                            activeDot={{ r: 6 }}
-                                        />
-
-                                    </LineChart>
-                                </ResponsiveContainer>
-                            </div>
+                            <ChartContainer config={chartConfig} className="h-[260px] w-full">
+                                {/* --- FIX: Changed to LineChart --- */}
+                                <LineChart data={chartData} margin={{ top: 30, left: -10, right: 12, bottom: 10 }}>
+                                    <CartesianGrid vertical={false} />
+                                    <ChartTooltip
+                                        cursor={false}
+                                        content={<ChartTooltipContent hideLabel />}
+                                    />
+                                    <XAxis
+                                        dataKey="date"
+                                        tickLine={false}
+                                        axisLine={false}
+                                        tickMargin={8}
+                                        fontSize={10}
+                                        tickFormatter={(value) => new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                                    />
+                                    <YAxis
+                                        stroke="#888888"
+                                        fontSize={10}
+                                        tickLine={false}
+                                        axisLine={false}
+                                        tickFormatter={(value) => viewMode === 'amount' ? `₹${value / 1000}k` : value.toString()}
+                                    />
+                                    {/* --- FIX: Changed to Line --- */}
+                                    <Line
+                                        dataKey={viewMode === 'amount' ? 'sales' : 'bills'}
+                                        type="monotone"
+                                        stroke={viewMode === 'amount' ? chartConfig.sales.color : chartConfig.bills.color}
+                                        strokeWidth={2}
+                                        dot={{ r: 4 }}
+                                    />
+                                </LineChart>
+                            </ChartContainer>
                         ) : (
                             <div className="flex h-[250px] w-full flex-col items-center justify-center rounded-lg bg-white">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 mb-2"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" /><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" /><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" /><line x1="2" x2="22" y1="2" y2="22" /></svg>

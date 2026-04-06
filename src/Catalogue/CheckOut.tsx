@@ -161,6 +161,7 @@ const CartPage: React.FC = () => {
 
     useEffect(() => {
         const savedCart = localStorage.getItem('temp_cart');
+        console.log("Saved:", savedCart)
         if (savedCart) {
             try {
                 const parsedCart = JSON.parse(savedCart);
@@ -414,6 +415,7 @@ const CartPage: React.FC = () => {
                 updatedAt: serverTimestamp(),
                 specialInstruction: specialInstruction || "",
                 items: cartItems.map(i => {
+                    console.log("ITEM DEBUG:", i);
                     const mrp = i.mrp;
                     const salePrice = i.salesPrice;
 
@@ -646,7 +648,7 @@ const CartPage: React.FC = () => {
 
                 <main className="max-w-6xl mx-auto p-4 lg:p-6 w-full flex-grow">
                     {movError && (
-                        <div className="mb-4 bg-white border border-red-200 rounded-sm shadow-sm overflow-hidden">
+                        <div className="mb-4 bg-white border border-red-200 rounded-lg shadow-sm overflow-hidden">
                             <div className="flex items-start gap-3 p-4">
                                 {/* left icon */}
                                 <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center shrink-0">
@@ -674,7 +676,7 @@ const CartPage: React.FC = () => {
                         </div>
                     )}
                     {approvalError && (
-                        <div className="mb-4 bg-white border border-red-200 rounded-sm shadow-sm overflow-hidden">
+                        <div className="mb-4 bg-white border border-red-200 rounded-lg shadow-sm overflow-hidden">
                             <div className="flex items-start gap-3 p-4">
                                 <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center shrink-0">
                                     <span className="text-red-600 font-bold">!</span>
@@ -866,7 +868,7 @@ const CartPage: React.FC = () => {
                                                 />
                                             </button>
                                             <span className="text-[9px] font-black text-[#1A3B5D] uppercase tracking-wider">
-                                                Shipping details same as billing details
+                                                Shipping same as billing
                                             </span>
                                         </div>
 
@@ -935,7 +937,7 @@ const CartPage: React.FC = () => {
                                         <button onClick={() => setIsSameAsShipping(!isSameAsShipping)} className={`w-9 h-4.5 rounded-sm transition-all flex items-center px-1 ${isSameAsShipping ? 'bg-[#00A3E1]' : 'bg-gray-300'}`}>
                                             <div className={`bg-white w-3 h-3 rounded-sm shadow-sm transition-transform ${isSameAsShipping ? 'translate-x-4.5' : 'translate-x-0'}`} />
                                         </button>
-                                        <span className="text-[9px] font-black text-[#1A3B5D] uppercase tracking-wider">Shipping details same as billing details</span>
+                                        <span className="text-[9px] font-black text-[#1A3B5D] uppercase tracking-wider">Shipping same as billing</span>
                                     </div>
                                 </div>
                             )}

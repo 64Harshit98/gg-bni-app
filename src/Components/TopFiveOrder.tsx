@@ -159,7 +159,7 @@ export const TopSoldItemsCard: React.FC<TopSoldItemsCardProps> = ({ isDataVisibl
                             <span className={`text-sm font-bold rounded-full h-6 w-6 flex items-center justify-center mr-3 flex-shrink-0 text-blue-600 bg-blue-100`}>
                                 {index + 1}
                             </span>
-                            <span className="font-medium text-gray-700" title={item.name}>{item.name.slice(0, 15)}</span>
+                            <span className="font-medium text-gray-700 truncate" title={item.name}>{item.name.slice(0, 18)}</span>
                         </div>
                         <div className="w-2/5 text-right">
                             {viewMode === 'quantity' ? (

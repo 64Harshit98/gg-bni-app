@@ -201,12 +201,12 @@ const SharedCataloguePage: React.FC = () => {
 
 
     return (
-        <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative">
+        <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative overflow-x-hidden">
 
             {/* <LeadPopUp effectiveCompanyId={effectiveCompanyId} companyName={companyName} /> */}
 
             {/* --- HEADER --- */}
-            <header className="sticky top-0 z-[100] bg-white border-b border-gray-100 shadow-sm w-full">
+            <header className="sticky top-0 z-[60] bg-white border-b border-gray-100 shadow-sm">
                 <div className="max-w-7xl mx-auto px-3 py-3 flex justify-between items-center">
                     <div className="flex items-center gap-3">
                         <div className="flex items-center gap-1.5">

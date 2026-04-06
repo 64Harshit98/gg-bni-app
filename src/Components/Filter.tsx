@@ -129,7 +129,7 @@ export const FilterControls: React.FC = () => {
         <div className="bg-white p-2 rounded-sm shadow-md w-full max-w-lg mx-auto">
             <div className="space-y-2">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <Menubar className="sm:col-span-1">
+                    <Menubar className="sm:col-span-2">
                         <MenubarMenu>
                             <MenubarTrigger className="w-full justify-center">
                                 {presetLabels[localFilters.filterType]}

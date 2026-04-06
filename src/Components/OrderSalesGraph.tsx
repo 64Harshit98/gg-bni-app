@@ -8,9 +8,9 @@ import {
     CardHeader,
     CardTitle,
 } from './ui/card';
-
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from './ui/chart';
+import type { ChartConfig } from './ui/chart';
 import { useFilter } from './Filter';
-import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from './ui/chart';
 interface ChartDataPoint {
     date: string;
     sales: number;

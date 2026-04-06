@@ -199,6 +199,11 @@ const ItemAdd: React.FC = () => {
             return;
         }
 
+        if (itemSettings.requireDiscount && !itemDiscount.trim()) {
+            setModal({ message: 'Sale Discount required.', type: State.ERROR });
+            return;
+        }
+
         if (itemSettings.requirePurchaseDiscount && !PurchaseDiscount.trim()) {
             setModal({ message: 'Purchase Discount required.', type: State.ERROR });
             return;
@@ -678,7 +683,7 @@ const ItemAdd: React.FC = () => {
                                 <div>
                                     <label className="block text-sm font-medium text-gray-600 mb-1">
                                         Sale Disc (%)
-                                        {itemSettings?.requireSaleDiscount && (
+                                        {itemSettings?.requireDiscount && (
                                             <span className="text-red-500 ml-0.5">*</span>
                                         )}
                                     </label>

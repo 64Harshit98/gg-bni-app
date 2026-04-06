@@ -195,7 +195,6 @@ export const useOrdersData = (
                                     quantity: Number(i.quantity || 0),
                                     mrp: Number(i.mrp || 0),
                                     salesPrice: Number(i.salesPrice || 0),
-                                    groupId: i.groupId || i.groupid || i.itemGroupId || i.category || null,
                                     tax: Number(i.tax ?? 0),
                                     unitMultiplier: Number(i.unitMultiplier ?? i.multiplier ?? 1),
                                     unit: i.unit ?? "pcs",
@@ -1913,7 +1912,7 @@ const OrdersPage: React.FC = () => {
                                                     id: selectedItem.id,
                                                     name: selectedItem.name,
                                                     mrp: Number(selectedItem.mrp),
-                                                    salesPrice: Number(selectedItem.salesPrice || selectedItem.mrp),
+                                                    salesPrice: Number(selectedItem.salesPrice ?? selectedItem.mrp),
                                                     quantity: 1,
                                                     note: "",
                                                     tax: Number(selectedItem.tax),
@@ -1921,7 +1920,7 @@ const OrdersPage: React.FC = () => {
                                                     imageBase64: ""
                                                 };
                                                 const updatedItems = [newItem, ...(editingOrder.items || [])];
-                                                const newTotal = updatedItems.reduce((sum, i) => sum + ((i.salesPrice || i.mrp) * i.quantity), 0);
+                                                const newTotal = updatedItems.reduce((sum, i) => sum + ((i.salesPrice ?? i.mrp) * i.quantity), 0);
                                                 setEditingOrder({ ...editingOrder, items: updatedItems, totalAmount: newTotal });
                                             }}
                                             placeholder="Search item to add..."

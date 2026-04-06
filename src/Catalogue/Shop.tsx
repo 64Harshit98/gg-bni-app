@@ -158,13 +158,7 @@ const OrderingPage: React.FC = () => {
 
     const getGroupImages = (groupId: string): string[] => {
         const imgs = items
-            .filter(item => {
-                const groupExists = itemGroups.some(g => g.id === item.itemGroupId);
-                const finalGroupId = groupExists
-                    ? item.itemGroupId
-                    : "uncategorized";
-                return finalGroupId === groupId;
-            })
+            .filter(item => item.itemGroupId === groupId)
             .map(item => item.imageUrl)
             .filter(Boolean) as string[];
 
@@ -294,15 +288,7 @@ const OrderingPage: React.FC = () => {
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1">
                     {filteredItems.map(group => {
                         // Count calculation based on existing _items state
-                        const itemCount = items.filter(item => {
-                            const groupExists = itemGroups.some(g => g.id === item.itemGroupId);
-
-                            const finalGroupId = groupExists
-                                ? item.itemGroupId
-                                : "uncategorized";
-
-                            return finalGroupId === group.id;
-                        }).length;
+                        const itemCount = items.filter(item => item.itemGroupId === group.id).length;
                         const collageImages = getGroupImages(group.id!);
                         return (
                             <div

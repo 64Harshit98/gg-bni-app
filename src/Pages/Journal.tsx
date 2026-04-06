@@ -1081,140 +1081,146 @@ const Journal: React.FC = () => {
       )}
 
       {/* ── HEADER ROW ─────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between p-2 px-2 z-20 relative">
+      {/* ── HEADER ROW ─────────────────────────────────────────────────────── */}
+<div className="flex flex-col z-20 relative">
 
-        {/* Step 1 — Search toggle */}
-        <div className="flex flex-1 items-center">
-          <TutorialStep
-            step={1}
-            currentStep={tutorialStep}
-            text="Tap the search icon to find invoices by name, number, or phone."
-            onNext={() => next(2)}
-            onSkip={skip}
-          >
-            <button onClick={() => setShowSearch(!showSearch)} className="text-slate-500 hover:text-slate-800 transition-colors mr-4">
-              {showSearch ? <IconClose /> : <IconSearch />}
-            </button>
-          </TutorialStep>
+  {/* Row 1: Title + Filter icon */}
+  <div className="flex items-center justify-between px-4 pt-2">
+    <div className="flex-1 flex flex-col items-center relative">
+      <h1 className="text-3xl font-bold text-slate-800">Transactions</h1>
 
-          <div className="flex-1">
-            {!showSearch ? (
-              <div className="flex flex-col items-center relative z-20">
-                <h1 className="text-3xl font-bold text-slate-800">Transactions</h1>
+      {/* Step 2 — date label */}
+      <TutorialStep
+        step={2}
+        currentStep={tutorialStep}
+        text="Tap the date to pick a custom range for your transactions."
+        onNext={() => next(3)}
+        onSkip={skip}
+      >
+        <div
+          ref={setTutorialRef(2) as any}
+          onClick={() => {
+            if (showCustomPicker) {
+              setShowCustomPicker(false);
+            } else {
+              setShowCustomPicker(true);
+              setActiveDateFilter('custom');
+            }
+          }}
+          className="flex items-center gap-2 cursor-pointer hover:bg-gray-200 px-3 py-1 rounded-full transition-colors select-none -mb-3"
+        >
+          <p className='text-center text-lg font-light text-slate-600'>{selectedPeriodText}</p>
+          <IconChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${showCustomPicker ? 'rotate-180' : ''}`} />
+        </div>
+      </TutorialStep>
 
-                {/* Step 2 — only the date label row gets the tutorial highlight */}
-                <TutorialStep
-                  step={2}
-                  currentStep={tutorialStep}
-                  text="Tap the date to pick a custom range for your transactions."
-                  onNext={() => next(3)}
-                  onSkip={skip}
-                >
-                  <div
-                    ref={setTutorialRef(2) as any}
-                    onClick={() => {
-                      if (showCustomPicker) {
-                        setShowCustomPicker(false);
-                      } else {
-                        setShowCustomPicker(true);
-                        setActiveDateFilter('custom');
-                      }
-                    }}
-                    className="flex items-center gap-2 cursor-pointer hover:bg-gray-200 px-3 py-1 rounded-full transition-colors select-none -mb-3"
-                  >
-                    <p className='text-center text-lg font-light text-slate-600'>{selectedPeriodText}</p>
-                    <IconChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${showCustomPicker ? 'rotate-180' : ''}`} />
-                  </div>
-                </TutorialStep>
-
-                {showCustomPicker && (
-                  <div className="absolute top-full bg-white shadow-xl border border-gray-200 rounded-lg p-4 z-50 min-w-[300px] flex flex-col gap-4 animate-in fade-in zoom-in duration-200 cursor-default">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="flex flex-col">
-                        <label className="text-center text-xs font-semibold text-gray-500 mb-1">From</label>
-                        <input
-                          type="date"
-                          value={customStartDate}
-                          onChange={(e) => { setCustomStartDate(e.target.value); setActiveDateFilter('custom'); }}
-                          className="border border-gray-300 rounded-sm px-2 py-1.5 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div className="flex flex-col">
-                        <label className="text-center text-xs font-semibold text-gray-500 mb-1">To</label>
-                        <input
-                          type="date"
-                          value={customEndDate}
-                          onChange={(e) => { setCustomEndDate(e.target.value); setActiveDateFilter('custom'); }}
-                          className="border border-gray-300 rounded-sm px-2 py-1.5 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                        />
-                      </div>
-                    </div>
-                    <div className="flex justify-center text-center border-t border-gray-100 -mt-2 -mb-2">
-                      <button
-                        onClick={() => setShowCustomPicker(false)}
-                        className="flex-grow bg-black text-white text-sm px-4 py-2 rounded hover:bg-gray-800 transition-colors"
-                      >
-                        Apply
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
+      {showCustomPicker && (
+        <div className="absolute top-full bg-white shadow-xl border border-gray-200 rounded-lg p-4 z-50 min-w-[300px] flex flex-col gap-4 animate-in fade-in zoom-in duration-200 cursor-default">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex flex-col">
+              <label className="text-center text-xs font-semibold text-gray-500 mb-1">From</label>
               <input
-                type="text"
-                placeholder="Search by Invoice, Name, or Phone..."
-                className="w-full text-xl font-light p-1 border-b-2 border-slate-300 focus:border-slate-800 outline-none transition-colors"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                autoFocus
+                type="date"
+                value={customStartDate}
+                onChange={(e) => { setCustomStartDate(e.target.value); setActiveDateFilter('custom'); }}
+                className="border border-gray-300 rounded-sm px-2 py-1.5 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               />
-            )}
+            </div>
+            <div className="flex flex-col">
+              <label className="text-center text-xs font-semibold text-gray-500 mb-1">To</label>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => { setCustomEndDate(e.target.value); setActiveDateFilter('custom'); }}
+                className="border border-gray-300 rounded-sm px-2 py-1.5 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          <div className="flex justify-center text-center border-t border-gray-100 -mt-2 -mb-2">
+            <button
+              onClick={() => setShowCustomPicker(false)}
+              className="flex-grow bg-black text-white text-sm px-4 py-2 rounded hover:bg-gray-800 transition-colors"
+            >
+              Apply
+            </button>
           </div>
         </div>
+      )}
+    </div>
 
-        {/* Step 3 — Date filter icon */}
-        <div className="relative pl-4" ref={filterRef}>
-          <TutorialStep
-            step={3}
-            currentStep={tutorialStep}
-            text="Use this filter to quickly jump to Today, Last 7 Days, Last 30 Days, and more."
-            onNext={() => next(4)}
-            onSkip={skip}
-          >
-            <button onClick={() => setIsFilterOpen(!isFilterOpen)} className="text-slate-500 hover:text-slate-800 transition-colors">
-              <IconFilter />
-            </button>
-          </TutorialStep>
+    {/* Filter icon — top right */}
+    <div className="absolute right-4 top-3" ref={filterRef}>
+      <TutorialStep
+        step={3}
+        currentStep={tutorialStep}
+        text="Use this filter to quickly jump to Today, Last 7 Days, Last 30 Days, and more."
+        onNext={() => next(4)}
+        onSkip={skip}
+      >
+        <button onClick={() => setIsFilterOpen(!isFilterOpen)} className="text-slate-500 hover:text-slate-800 transition-colors">
+          <IconFilter />
+        </button>
+      </TutorialStep>
 
-          {isFilterOpen && (
-            <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-md shadow-lg z-10 border overflow-hidden">
-              <ul className="py-1">
-                {dateFilters.map((filter) => (
-                  filter.value !== 'custom' && (
-                    <li key={filter.value}>
-                      <button
-                        onClick={() => { handleDateFilterSelect(filter.value); setIsFilterOpen(false); }}
-                        className={`w-full text-left px-4 py-2 text-sm ${activeDateFilter === filter.value ? 'bg-slate-100 text-slate-900' : 'text-slate-700'} hover:bg-slate-50`}
-                      >
-                        {filter.label}
-                      </button>
-                    </li>
-                  )
-                ))}
-                <li>
+      {isFilterOpen && (
+        <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-md shadow-lg z-10 border overflow-hidden">
+          <ul className="py-1">
+            {dateFilters.map((filter) => (
+              filter.value !== 'custom' && (
+                <li key={filter.value}>
                   <button
-                    onClick={() => { setActiveDateFilter('custom'); setIsFilterOpen(false); setShowCustomPicker(true); }}
-                    className={`w-full text-left px-4 py-2 text-sm ${activeDateFilter === 'custom' ? 'bg-slate-100 text-slate-900' : 'text-slate-700'} hover:bg-slate-50`}
+                    onClick={() => { handleDateFilterSelect(filter.value); setIsFilterOpen(false); }}
+                    className={`w-full text-left px-4 py-2 text-sm ${activeDateFilter === filter.value ? 'bg-slate-100 text-slate-900' : 'text-slate-700'} hover:bg-slate-50`}
                   >
-                    Custom Range
+                    {filter.label}
                   </button>
                 </li>
-              </ul>
-            </div>
-          )}
+              )
+            ))}
+            <li>
+              <button
+                onClick={() => { setActiveDateFilter('custom'); setIsFilterOpen(false); setShowCustomPicker(true); }}
+                className={`w-full text-left px-4 py-2 text-sm ${activeDateFilter === 'custom' ? 'bg-slate-100 text-slate-900' : 'text-slate-700'} hover:bg-slate-50`}
+              >
+                Custom Range
+              </button>
+            </li>
+          </ul>
         </div>
-      </div>
+      )}
+    </div>
+  </div>
+
+  {/* Row 2: Search icon + inline search input (below the date line) */}
+  <div className="flex items-center px-4 pt-1 pb-1 min-h-[36px]">
+    <TutorialStep
+      step={1}
+      currentStep={tutorialStep}
+      text="Tap the search icon to find invoices by name, number, or phone."
+      onNext={() => next(2)}
+      onSkip={skip}
+    >
+      <button
+        onClick={() => { setShowSearch(!showSearch); }}
+        className="text-slate-500 hover:text-slate-800 transition-colors mr-3 flex-shrink-0"
+      >
+        {showSearch ? <IconClose /> : <IconSearch />}
+      </button>
+    </TutorialStep>
+
+    {showSearch && (
+      <input
+        type="text"
+        placeholder="Search by Invoice, Name, or Phone..."
+        className="flex-1 text-base font-light p-1 border-b-2 border-slate-300 focus:border-slate-800 outline-none transition-colors bg-transparent"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        autoFocus
+      />
+    )}
+  </div>
+
+</div>
 
       {/* Step 4 — Sales / Purchase toggle */}
       <TutorialStep

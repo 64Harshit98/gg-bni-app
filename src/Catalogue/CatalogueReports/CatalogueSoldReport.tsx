@@ -18,6 +18,7 @@ import { IconClose } from '../../constants/Icons';
 import ReportDetails from '../../Pages/Reports/SalesReportComponents/ReportDetails';
 import DownloadChoiceModal from '../../Pages/Reports/ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
+import { DatePreset } from '../../Catalogue/enum/datePreset.enum';
 
 // 1. Define the strictly 4-column structure
 export interface AggregatedItem {
@@ -31,7 +32,7 @@ export interface AggregatedItem {
 const ItemsSoldReport: React.FC = () => {
     const navigate = useNavigate();
 
-    const [datePreset, setDatePreset] = useState<string>('today');
+    const [datePreset, setDatePreset] = useState<DatePreset>(DatePreset.TODAY);
     const [customStartDate, setCustomStartDate] = useState<string>('');
     const [customEndDate, setCustomEndDate] = useState<string>('');
     const [appliedFilters, setAppliedFilters] = useState<{ start: number; end: number } | null>(null);
@@ -119,25 +120,25 @@ const ItemsSoldReport: React.FC = () => {
     }>({ key: 'valueSold', direction: 'desc' });
 
     /* ---------- DATE PRESET ---------- */
-    const handleDatePresetChange = (preset: string) => {
+    const handleDatePresetChange = (preset: DatePreset) => {
         setDatePreset(preset);
         const start = new Date();
         const end = new Date();
 
         switch (preset) {
-            case 'today':
+            case DatePreset.TODAY:
                 break;
-            case 'yesterday':
+            case DatePreset.YESTERDAY:
                 start.setDate(start.getDate() - 1);
                 end.setDate(end.getDate() - 1);
                 break;
-            case 'last7':
+            case DatePreset.LAST_7_DAYS:
                 start.setDate(start.getDate() - 6);
                 break;
-            case 'last30':
+            case DatePreset.LAST_30_DAYS:
                 start.setDate(start.getDate() - 29);
                 break;
-            case 'custom':
+            case DatePreset.CUSTOM:
                 return;
         }
 
@@ -150,23 +151,23 @@ const ItemsSoldReport: React.FC = () => {
         let end = new Date();
 
         switch (datePreset) {
-            case 'today':
+            case DatePreset.TODAY:
                 break;
 
-            case 'yesterday':
+            case DatePreset.YESTERDAY:
                 start.setDate(start.getDate() - 1);
                 end.setDate(end.getDate() - 1);
                 break;
 
-            case 'last7':
+            case DatePreset.LAST_7_DAYS:
                 start.setDate(start.getDate() - 6);
                 break;
 
-            case 'last30':
+            case DatePreset.LAST_30_DAYS:
                 start.setDate(start.getDate() - 29);
                 break;
 
-            case 'custom':
+            case DatePreset.CUSTOM:
                 start = customStartDate ? new Date(customStartDate) : new Date(0);
                 end = customEndDate ? new Date(customEndDate) : new Date();
                 break;
@@ -431,13 +432,13 @@ const ItemsSoldReport: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <FilterSelect
                         value={datePreset}
-                        onChange={(e) => handleDatePresetChange(e.target.value)}
+                        onChange={(e) => handleDatePresetChange(e.target.value as DatePreset)}
                     >
-                        <option value="today">Today</option>
-                        <option value="yesterday">Yesterday</option>
-                        <option value="last7">Last 7 Days</option>
-                        <option value="last30">Last 30 Days</option>
-                        <option value="custom">Custom</option>
+                        <option value={DatePreset.TODAY}>Today</option>
+                        <option value={DatePreset.YESTERDAY}>Yesterday</option>
+                        <option value={DatePreset.LAST_7_DAYS}>Last 7 Days</option>
+                        <option value={DatePreset.LAST_30_DAYS}>Last 30 Days</option>
+                        <option value={DatePreset.CUSTOM}>Custom</option>
                     </FilterSelect>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -446,7 +447,7 @@ const ItemsSoldReport: React.FC = () => {
                             value={customStartDate}
                             onChange={(e) => {
                                 setCustomStartDate(e.target.value);
-                                setDatePreset('custom');
+                                setDatePreset(DatePreset.CUSTOM);
                             }}
                             className="w-full p-2 text-sm bg-gray-50 border rounded-md"
                         />
@@ -455,7 +456,7 @@ const ItemsSoldReport: React.FC = () => {
                             value={customEndDate}
                             onChange={(e) => {
                                 setCustomEndDate(e.target.value);
-                                setDatePreset('custom');
+                                setDatePreset(DatePreset.CUSTOM);
                             }}
                             className="w-full p-2 text-sm bg-gray-50 border rounded-md"
                         />

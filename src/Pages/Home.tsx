@@ -117,10 +117,10 @@ const DashboardContent = () => {
 
   const next = (n: number) => setTutorialStep(n <= TOTAL_STEPS ? n : 0);
   const skip = () => {
-  localStorage.setItem("dashboard_tutorial_done", "true");
-  setTutorialStep(0);
-  window.dispatchEvent(new Event("dashboard_tutorial_done"));
-};
+    localStorage.setItem("dashboard_tutorial_done", "true");
+    setTutorialStep(0);
+    window.dispatchEvent(new Event("dashboard_tutorial_done"));
+  };
 
   const daysRemaining = useMemo(() => {
     const subData = (currentUser as any)?.subscription || (currentUser as any)?.Subscription;
@@ -351,7 +351,7 @@ const DashboardContent = () => {
           ) : (
             <>
               <div className="space-y-2 pb-30">
-                <div className="grid grid-cols-1 md:grid-cols-10 md:grid-rows-2 gap-2 items-stretch md:h-[420px]">
+                <div className="grid grid-cols-1 md:grid-cols-10 md:grid-rows-2 gap-2 items-stretch">
                   {/* Step 4 — Sales Card */}
                   <TutorialStep step={4} currentStep={tutorialStep} text="This is your Sales Card. It shows total sales and overall performance for the selected period." onNext={() => next(5)} onSkip={skip}>
                     <div ref={setTutorialRef(4)} className="order-1 h-full min-h-0 md:col-span-4 md:row-start-1 md:row-end-2">

@@ -11,7 +11,7 @@ import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
 
 // ─── Config ───────────────────────────────────────────────
-const SUPER_ADMIN_UID = "C6ffAAFyrfQ4dQ2UOEV5pJpcb683";
+const SUPER_ADMIN_UID = "1AKioGfop8PmHhry6uXOz8Rw6qT2";
 const DEFAULT_DURATION_DAYS = 28;
 
 const addDays = (date: Date, days: number) => {
@@ -319,12 +319,12 @@ const SuperAdminCompanies: React.FC = () => {
                       </span>
                       {/* Status badge */}
                       <span className={`text-[10px] px-2 py-0.5 rounded-sm font-bold uppercase ${getStatus(company) === 'expired'
-                          ? 'bg-red-100 text-red-500'
-                          : getStatus(company) === 'near_expiry'
-                            ? 'bg-orange-100 text-orange-500'
-                            : getStatus(company) === 'trial'
-                              ? 'bg-gray-100 text-gray-500'
-                              : 'bg-green-100 text-green-600'}`}>
+                        ? 'bg-red-100 text-red-500'
+                        : getStatus(company) === 'near_expiry'
+                          ? 'bg-orange-100 text-orange-500'
+                          : getStatus(company) === 'trial'
+                            ? 'bg-gray-100 text-gray-500'
+                            : 'bg-green-100 text-green-600'}`}>
                         {getStatus(company) === 'expired' ? 'inactive' : getStatus(company) === 'trial' ? 'trial' : 'active'}
                       </span>
                       {/* Near expiry warning */}

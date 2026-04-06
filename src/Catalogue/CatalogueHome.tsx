@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { db } from '../lib/Firebase';
-import { doc, getDoc,Timestamp } from 'firebase/firestore';
+import { doc, getDoc, Timestamp } from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
 import { FilterControls, FilterProvider, useFilter } from '../Components/Filter';
 import ShowWrapper from '../context/ShowWrapper';
@@ -16,23 +16,23 @@ import { IconChevronDown } from '../constants/Icons';
 import { FiRefreshCw, FiLoader } from 'react-icons/fi';
 import { fetchDashboardData, CACHE_DURATION } from '../lib/fetchDashboardData';
 import type { WithCacheMeta } from '../lib/fetchDashboardData';
- 
+
 // ─── Shared Types ─────────────────────────────────────────────────────────────
 // Exported so child components can import instead of defining their own duplicates
- 
+
 export interface TopItem {
     id: string;
     name: string;
     totalQuantity: number;
     totalAmount: number;
 }
- 
+
 export interface ChartDataPoint {
     date: string;   // YYYY-MM-DD format (en-CA locale)
     sales: number;  // total sale amount for that day
     bills: number;  // number of completed orders for that day
 }
- 
+
 // Shape of data stored in localStorage and passed down to all child components
 export interface CatalogueDashboardData {
     totalSalesAmount: number;       // used by CompletedSalesCard
@@ -42,18 +42,18 @@ export interface CatalogueDashboardData {
     topByAmount: TopItem[];         // used by TopSoldItemsCard
     orderCounts: Record<string, number>; // used by OrderTimeline (counts only, not full Order objects)
 }
- 
+
 // ─── Business Name Hook ───────────────────────────────────────────────────────
 // Fetches business name once on mount. Kept separate from main data hook
 // so it doesn't interfere with the dashboard caching logic.
 const useBusinessName = (userId?: string, companyId?: string) => {
     const [businessName, setBusinessName] = useState<string>('');
     const [loading, setLoading] = useState(true);
- 
+
     useEffect(() => {
         // Wait for both userId and companyId to be available
         if (!userId || !companyId) { setLoading(false); return; }
- 
+
         const fetchBusinessInfo = async () => {
             try {
                 const docRef = doc(db, 'companies', companyId, 'business_info', companyId);
@@ -65,120 +65,123 @@ const useBusinessName = (userId?: string, companyId?: string) => {
                 setLoading(false);
             }
         };
- 
+
         fetchBusinessInfo();
     }, [userId, companyId]);
- 
+
     return { businessName, loading };
 };
- 
+
 // ─── Inner Dashboard Component ────────────────────────────────────────────────
 // Separated from the exported component so FilterProvider can wrap it below.
 // This is required because useFilter() must be called inside a FilterProvider.
 const HomePageContent: React.FC = () => {
     const location = useLocation();
+    const [showCatalogueCard, setShowCatalogueCard] = useState(false);
+
     useEffect(() => {
         if (location.state?.openShare) {
             setShowCatalogueCard(true);
         }
     }, [location.state]);
+
     const { currentUser, loading: authLoading } = useAuth();
     const { filters } = useFilter(); // Read selected date range from FilterProvider context
     const { businessName, loading: nameLoading } = useBusinessName(currentUser?.uid, currentUser?.companyId);
- 
+
     const hasCataloguePermission = currentUser?.permissions?.includes(Permissions.ViewCatalogue);
     const [isDataVisible, setIsDataVisible] = useState<boolean>(false);
     const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
     const currentItem = SiteItems.find(item => item.to === location.pathname);
     const currentLabel = currentItem ? currentItem.label : 'Menu';
     const isHeaderLoading = authLoading || nameLoading;
- 
+
     // Single source of truth for all dashboard data
     // All child components read from this state via props
     const [data, setData] = useState<WithCacheMeta<CatalogueDashboardData> | null>(null);
     const [loading, setLoading] = useState(true);
- 
+
     const fetchData = useCallback(async (forceRefresh = false) => {
-    if (!currentUser?.companyId || !filters.startDate || !filters.endDate) {
-        setLoading(false);
-        return;
-    }
+        if (!currentUser?.companyId || !filters.startDate || !filters.endDate) {
+            setLoading(false);
+            return;
+        }
 
-    if (!forceRefresh) setLoading(true);
+        if (!forceRefresh) setLoading(true);
 
-    try {
-        const result = await fetchDashboardData<CatalogueDashboardData>({
-            companyId:    currentUser.companyId,
-            startDate:    filters.startDate,
-            endDate:      filters.endDate,
-            cacheKey:     `catalogue_cache_${currentUser.companyId}`,
-            forceRefresh,
-            transform: (snap, start, end) => {
-                let totalSalesAmount = 0;
-                let totalSalesCount  = 0;
-                const salesByDate: Record<string, { sales: number; bills: number }> = {};
-                for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-                    salesByDate[d.toLocaleDateString('en-CA')] = { sales: 0, bills: 0 };
-                }
-                const itemStats = new Map<string, { name: string; totalQuantity: number; totalAmount: number }>();
-                const orderCounts: Record<string, number> = {
-                    Upcoming: 0, Confirmed: 0, Packed: 0, Completed: 0,
-                };
-
-                snap.forEach(docSnap => {
-                    const o      = docSnap.data();
-                    const status: string = o.status || 'Upcoming';
-                    const amount: number = o.totalAmount || 0;
-                    const dateKey: string = (o.createdAt as Timestamp).toDate().toLocaleDateString('en-CA');
-
-                    const timelineStatus = status === 'Paid' ? 'Completed' : status;
-                    if (timelineStatus in orderCounts) {
-                        orderCounts[timelineStatus] = (orderCounts[timelineStatus] || 0) + 1;
+        try {
+            const result = await fetchDashboardData<CatalogueDashboardData>({
+                companyId: currentUser.companyId,
+                startDate: filters.startDate,
+                endDate: filters.endDate,
+                cacheKey: `catalogue_cache_${currentUser.companyId}`,
+                forceRefresh,
+                transform: (snap, start, end) => {
+                    let totalSalesAmount = 0;
+                    let totalSalesCount = 0;
+                    const salesByDate: Record<string, { sales: number; bills: number }> = {};
+                    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                        salesByDate[d.toLocaleDateString('en-CA')] = { sales: 0, bills: 0 };
                     }
-                    if (status === 'Completed' || status === 'Paid') {
-                        totalSalesAmount += amount;
-                        totalSalesCount  += 1;
-                        if (salesByDate[dateKey]) {
-                            salesByDate[dateKey].sales += amount;
-                            salesByDate[dateKey].bills += 1;
+                    const itemStats = new Map<string, { name: string; totalQuantity: number; totalAmount: number }>();
+                    const orderCounts: Record<string, number> = {
+                        Upcoming: 0, Confirmed: 0, Packed: 0, Completed: 0,
+                    };
+
+                    snap.forEach(docSnap => {
+                        const o = docSnap.data();
+                        const status: string = o.status || 'Upcoming';
+                        const amount: number = o.totalAmount || 0;
+                        const dateKey: string = (o.createdAt as Timestamp).toDate().toLocaleDateString('en-CA');
+
+                        const timelineStatus = status === 'Paid' ? 'Completed' : status;
+                        if (timelineStatus in orderCounts) {
+                            orderCounts[timelineStatus] = (orderCounts[timelineStatus] || 0) + 1;
                         }
-                    }
-                    if (status === 'Completed' && Array.isArray(o.items)) {
-                        o.items.forEach((item: any) => {
-                            if (!item.id || !item.name) return;
-                            const cur = itemStats.get(item.id) || { name: item.name, totalQuantity: 0, totalAmount: 0 };
-                            itemStats.set(item.id, {
-                                name: item.name,
-                                totalQuantity: cur.totalQuantity + (item.quantity || 0),
-                                totalAmount:   cur.totalAmount   + ((item.mrp || 0) * (item.quantity || 0)),
+                        if (status === 'Completed' || status === 'Paid') {
+                            totalSalesAmount += amount;
+                            totalSalesCount += 1;
+                            if (salesByDate[dateKey]) {
+                                salesByDate[dateKey].sales += amount;
+                                salesByDate[dateKey].bills += 1;
+                            }
+                        }
+                        if (status === 'Completed' && Array.isArray(o.items)) {
+                            o.items.forEach((item: any) => {
+                                if (!item.id || !item.name) return;
+                                const cur = itemStats.get(item.id) || { name: item.name, totalQuantity: 0, totalAmount: 0 };
+                                itemStats.set(item.id, {
+                                    name: item.name,
+                                    totalQuantity: cur.totalQuantity + (item.quantity || 0),
+                                    totalAmount: cur.totalAmount + ((item.mrp || 0) * (item.quantity || 0)),
+                                });
                             });
-                        });
-                    }
-                });
+                        }
+                    });
 
-                const chartData: ChartDataPoint[] = Object.entries(salesByDate).map(([date, v]) => ({
-                    date, sales: v.sales, bills: v.bills,
-                }));
-                const allItems: TopItem[] = Array.from(itemStats.entries()).map(([id, v]) => ({ id, ...v }));
-                const topByQuantity = [...allItems].sort((a, b) => b.totalQuantity - a.totalQuantity).slice(0, 5);
-                const topByAmount   = [...allItems].sort((a, b) => b.totalAmount   - a.totalAmount  ).slice(0, 5);
+                    const chartData: ChartDataPoint[] = Object.entries(salesByDate).map(([date, v]) => ({
+                        date, sales: v.sales, bills: v.bills,
+                    }));
+                    const allItems: TopItem[] = Array.from(itemStats.entries()).map(([id, v]) => ({ id, ...v }));
+                    const topByQuantity = [...allItems].sort((a, b) => b.totalQuantity - a.totalQuantity).slice(0, 5);
+                    const topByAmount = [...allItems].sort((a, b) => b.totalAmount - a.totalAmount).slice(0, 5);
 
-                return { totalSalesAmount, totalSalesCount, chartData, topByQuantity, topByAmount, orderCounts };
-            },
-        });
+                    return { totalSalesAmount, totalSalesCount, chartData, topByQuantity, topByAmount, orderCounts };
+                },
+            });
 
-        setData(result);
+            setData(result);
 
-    } catch (e) {
-        console.error('Catalogue dashboard fetch error:', e);
-    } finally {
-        setLoading(false);
-    }
-}, [currentUser, filters]);
- 
+        } catch (e) {
+            console.error('Catalogue dashboard fetch error:', e);
+        } finally {
+            setLoading(false);
+        }
+    }, [currentUser, filters]);
+
     // Trigger fetch on mount and whenever filters (date range) change
     useEffect(() => { fetchData(); }, [fetchData]);
- 
+
     // Auto-refresh every 1 hour — same CACHE_DURATION as POS Home.
     // Forces a fresh Firestore fetch after the cache window expires,
     // even if the user keeps the page open without manually refreshing.
@@ -186,22 +189,22 @@ const HomePageContent: React.FC = () => {
         const interval = setInterval(() => fetchData(true), CACHE_DURATION);
         return () => clearInterval(interval); // Cleanup to prevent memory leaks on unmount
     }, [fetchData]);
- 
+
     // Manual refresh: bypass cache and fetch latest data immediately
     const handleRefresh = () => fetchData(true);
- 
+
     // Format the last-updated timestamp for display in the header
     const formattedLastUpdated = useMemo(() => {
         if (!data?.lastUpdated) return 'Never';
         return new Date(data.lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }, [data]);
- 
+
     return (
         <div className="flex min-h-screen w-full flex-col bg-gray-100 mb-16">
- 
+
             {/* ── Header ──────────────────────────────────────────────────── */}
             <header className="flex flex-shrink-0 items-center justify-between border-b border-slate-300 bg-gray-100 p-2">
- 
+
                 {/* Left: page navigation dropdown */}
                 <div className="relative flex justify-start">
                     <button
@@ -213,7 +216,7 @@ const HomePageContent: React.FC = () => {
                         <span className="font-medium">{currentLabel}</span>
                         <IconChevronDown width={16} height={16} className={`transition-transform ${isMenuOpen ? 'rotate-180' : 'rotate-0'}`} />
                     </button>
- 
+
                     {isMenuOpen && hasCataloguePermission && (
                         <div className="absolute top-full left-0 mt-2 w-56 bg-white border border-slate-300 rounded-md shadow-lg z-10">
                             <ul className="py-1">
@@ -233,13 +236,13 @@ const HomePageContent: React.FC = () => {
                         </div>
                     )}
                 </div>
- 
+
                 {/* Center: dashboard title and business name */}
                 <div className="flex-1 text-center">
                     <h1 className="text-2xl font-bold text-slate-800">Dashboard</h1>
                     <p className="text-sm text-slate-500">{isHeaderLoading ? 'Loading...' : businessName}</p>
                 </div>
- 
+
                 {/* Right: toggle button to show or hide sensitive data values */}
                 <div className="w-14 flex justify-end">
                     <ShowWrapper requiredPermission={Permissions.ViewSalescard}>
@@ -259,10 +262,75 @@ const HomePageContent: React.FC = () => {
                     </ShowWrapper>
                 </div>
             </header>
- 
+
             {/* ── Main Content ─────────────────────────────────────────────── */}
             <main className="flex-grow overflow-y-auto p-2">
- 
+
+                {showCatalogueCard && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center">
+
+                        {/* Background Blur */}
+                        <div
+                            className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+                            onClick={() => setShowCatalogueCard(false)}
+                        />
+
+                        {/* Card */}
+                        <div className="relative bg-white rounded-sm shadow-xl p-5 w-[90%] max-w-sm z-10 animate-fadeIn">
+
+                            {/* Close Button */}
+                            <button
+                                className="absolute top-2 right-3 text-gray-500 hover:text-black"
+                                onClick={() => setShowCatalogueCard(false)}
+                            >
+                                ✕
+                            </button>
+
+                            <h2 className="text-lg font-semibold text-center mb-4">
+                                Catalogue Actions
+                            </h2>
+
+                            <div className="flex flex-col gap-3">
+
+                                {/* View Catalogue */}
+                                <button
+                                    className="w-full py-2 rounded bg-blue-500 text-white"
+                                    onClick={() => {
+                                        if (currentUser?.companyId) {
+                                            window.open(`/catalogue/${currentUser.companyId}`, "_blank");
+                                        }
+                                    }}
+                                >
+                                    View Catalogue
+                                </button>
+
+                                {/* Share Catalogue */}
+                                <button
+                                    className="w-full py-2 rounded bg-green-500 text-white"
+                                    onClick={() => {
+                                        if (currentUser?.companyId) {
+                                            const url = `${window.location.origin}/catalogue/${currentUser.companyId}`;
+
+                                            if (navigator.share) {
+                                                navigator.share({
+                                                    title: "My Catalogue",
+                                                    text: "Check out my catalogue",
+                                                    url: url,
+                                                });
+                                            } else {
+                                                navigator.clipboard.writeText(url);
+                                                alert("Link copied!");
+                                            }
+                                        }
+                                    }}
+                                >
+                                    Share Catalogue
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Refresh bar: shows when data was last fetched + manual refresh button */}
                 <div className="flex justify-center gap-2 mb-2">
                     <p className="text-sm text-slate-500 flex items-center">
@@ -275,7 +343,7 @@ const HomePageContent: React.FC = () => {
                         {loading ? <FiLoader size={14} /> : <FiRefreshCw size={14} />}
                     </button>
                 </div>
- 
+
                 {/* Full-page loader shown only on the very first load (before any data exists) */}
                 {loading && !data ? (
                     <div className="flex h-64 items-center justify-center text-slate-500">
@@ -283,27 +351,27 @@ const HomePageContent: React.FC = () => {
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
- 
+
                         {/* FilterControls manages its own state inside FilterProvider — no props needed */}
                         <FilterControls />
- 
+
                         {/* All cards below receive pre-processed props from the single fetchData call.
                             None of them make their own Firestore requests.
                             The ?? fallbacks ensure safe rendering before data loads. */}
- 
+
                         <CompletedSalesCard
                             isDataVisible={isDataVisible}
                             totalSalesAmount={data?.totalSalesAmount ?? 0}
                             totalSalesCount={data?.totalSalesCount ?? 0}
                             loading={loading}
                         />
- 
+
                         <OrderTimeline
                             isDataVisible={isDataVisible}
                             orderCounts={data?.orderCounts ?? {}}
                             loading={loading}
                         />
- 
+
                         <OrderBarChartReport
                             isDataVisible={isDataVisible}
                             chartData={data?.chartData ?? []}
@@ -311,14 +379,14 @@ const HomePageContent: React.FC = () => {
                             totalBills={data?.totalSalesCount ?? 0}
                             loading={loading}
                         />
- 
+
                         <TopSoldItemsCard
                             isDataVisible={isDataVisible}
                             topByQuantity={data?.topByQuantity ?? []}
                             topByAmount={data?.topByAmount ?? []}
                             loading={loading}
                         />
- 
+
                         {/* Placeholder card for the upcoming Restock Alerts feature */}
                         <div className="relative rounded-xl border border-gray-200 bg-white p-4 shadow-sm opacity-70 cursor-not-allowed flex items-center justify-center min-h-[160px]">
                             <span className="absolute top-2 right-2 text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">
@@ -329,14 +397,14 @@ const HomePageContent: React.FC = () => {
                                 <p className="text-sm text-gray-400">Feature under development</p>
                             </div>
                         </div>
- 
+
                     </div>
                 )}
             </main>
         </div>
     );
 };
- 
+
 // FilterProvider wraps HomePageContent so that useFilter() works inside it.
 // HomePageContent is a separate component specifically to enable this pattern.
 const HomePage: React.FC = () => (
@@ -344,5 +412,5 @@ const HomePage: React.FC = () => (
         <HomePageContent />
     </FilterProvider>
 );
- 
+
 export default HomePage;

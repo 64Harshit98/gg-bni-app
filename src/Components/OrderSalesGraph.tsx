@@ -8,9 +8,9 @@ import {
     CardHeader,
     CardTitle,
 } from './ui/card';
-import { Tooltip } from 'recharts';
-import { ResponsiveContainer } from 'recharts';
+
 import { useFilter } from './Filter';
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from './ui/chart';
 interface ChartDataPoint {
     date: string;
     sales: number;
@@ -87,8 +87,17 @@ export function OrderBarChartReport({
                             <LineChart data={chartData} margin={{ top: 30, left: -10, right: 12, bottom: 10 }}>
                                 <CartesianGrid vertical={false} />
                                 <ChartTooltip
-                                    cursor={false}
-                                    content={<ChartTooltipContent hideLabel />}
+                                    cursor={{ stroke: '#ccc', strokeWidth: 1 }}
+                                    content={
+                                        <ChartTooltipContent
+                                            labelFormatter={(label) =>
+                                                new Date(label).toLocaleDateString('en-IN', {
+                                                    day: '2-digit',
+                                                    month: '2-digit',
+                                                })
+                                            }
+                                        />
+                                    }
                                 />
                                 <XAxis
                                     dataKey="date"

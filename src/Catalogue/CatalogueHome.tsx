@@ -17,6 +17,7 @@ import { FiRefreshCw, FiLoader } from 'react-icons/fi';
 import { fetchDashboardData, CACHE_DURATION } from '../lib/fetchDashboardData';
 import type { WithCacheMeta } from '../lib/fetchDashboardData';
 
+
 // ─── Shared Types ─────────────────────────────────────────────────────────────
 
 export interface TopItem {
@@ -26,11 +27,13 @@ export interface TopItem {
     totalAmount: number;
 }
 
+
 export interface ChartDataPoint {
     date: string; 
     sales: number;  
     bills: number;  
 }
+
 
 // Shape of data stored in localStorage and passed down to all child components
 export interface CatalogueDashboardData {
@@ -42,6 +45,7 @@ export interface CatalogueDashboardData {
     orderCounts: Record<string, number>; 
 }
 
+
 // ─── Business Name Hook ───────────────────────────────────────────────────────
 // Fetches business name once on mount. Kept separate from main data hook
 // so it doesn't interfere with the dashboard caching logic.
@@ -49,9 +53,11 @@ const useBusinessName = (userId?: string, companyId?: string) => {
     const [businessName, setBusinessName] = useState<string>('');
     const [loading, setLoading] = useState(true);
 
+
     useEffect(() => {
         // Wait for both userId and companyId to be available
         if (!userId || !companyId) { setLoading(false); return; }
+
 
         const fetchBusinessInfo = async () => {
             try {
@@ -65,11 +71,14 @@ const useBusinessName = (userId?: string, companyId?: string) => {
             }
         };
 
+
         fetchBusinessInfo();
     }, [userId, companyId]);
 
+
     return { businessName, loading };
 };
+
 
 // ─── Inner Dashboard Component ────────────────────────────────────────────────
 // Separated from the exported component so FilterProvider can wrap it below.
@@ -87,6 +96,7 @@ const HomePageContent: React.FC = () => {
     const isHeaderLoading = authLoading || nameLoading;
     const [data, setData] = useState<WithCacheMeta<CatalogueDashboardData> | null>(null);
     const [loading, setLoading] = useState(true);
+
 
     const fetchData = useCallback(async (forceRefresh = false) => {
         if (!currentUser?.companyId || !filters.startDate || !filters.endDate) {
@@ -168,6 +178,7 @@ const HomePageContent: React.FC = () => {
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
+
     // Auto-refresh every 1 hour — same CACHE_DURATION as POS Home.
     // Forces a fresh Firestore fetch after the cache window expires,
     // even if the user keeps the page open without manually refreshing.
@@ -176,8 +187,10 @@ const HomePageContent: React.FC = () => {
         return () => clearInterval(interval); // Cleanup to prevent memory leaks on unmount
     }, [fetchData]);
 
+
     // Manual refresh: bypass cache and fetch latest data immediately
     const handleRefresh = () => fetchData(true);
+
 
     // Format the last-updated timestamp for display in the header
     const formattedLastUpdated = useMemo(() => {
@@ -185,11 +198,14 @@ const HomePageContent: React.FC = () => {
         return new Date(data.lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }, [data]);
 
+
     return (
         <div className="flex min-h-screen w-full flex-col bg-gray-100 mb-16">
 
+
             {/* ── Header ──────────────────────────────────────────────────── */}
             <header className="flex flex-shrink-0 items-center justify-between border-b border-slate-300 bg-gray-100 p-2">
+
 
                 {/* Left: page navigation dropdown */}
                 <div className="relative flex justify-start">
@@ -202,6 +218,7 @@ const HomePageContent: React.FC = () => {
                         <span className="font-medium">{currentLabel}</span>
                         <IconChevronDown width={16} height={16} className={`transition-transform ${isMenuOpen ? 'rotate-180' : 'rotate-0'}`} />
                     </button>
+
 
                     {isMenuOpen && hasCataloguePermission && (
                         <div className="absolute top-full left-0 mt-2 w-56 bg-white border border-slate-300 rounded-md shadow-lg z-10">
@@ -223,11 +240,13 @@ const HomePageContent: React.FC = () => {
                     )}
                 </div>
 
+
                 {/* Center: dashboard title and business name */}
-                <div className="flex-1 text-center">
-                    <h1 className="text-2xl font-bold text-slate-800">Dashboard</h1>
-                    <p className="text-sm text-slate-500">{isHeaderLoading ? 'Loading...' : businessName}</p>
+                <div className="flex-1 text-center flex flex-col items-center justify-center">
+                    <h1 className="text-3xl font-bold text-slate-800">Dashboard</h1>
+                    <p className="text-sm text-slate-500">{isHeaderLoading ? '...' : businessName}</p>
                 </div>
+
 
                 {/* Right: toggle button to show or hide sensitive data values */}
                 <div className="w-14 flex justify-end">
@@ -249,6 +268,7 @@ const HomePageContent: React.FC = () => {
                 </div>
             </header>
 
+
             {/* ── Main Content ─────────────────────────────────────────────── */}
             <main className="flex-grow overflow-y-auto p-2">
 
@@ -265,56 +285,69 @@ const HomePageContent: React.FC = () => {
                     </button>
                 </div>
 
-                {/* Full-page loader shown only on the very first load (before any data exists) */}
-                {loading && !data ? (
-                    <div className="flex h-64 items-center justify-center text-slate-500">
-                        <FiLoader className="animate-spin mr-2" /> Loading Dashboard...
-                    </div>
-                ) : (
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="mx-auto max-w-7xl relative">
+
+                    {/* Date Filter — matches POS (mb-2 inside max-w-7xl) */}
+                    <div className="mb-2">
                         <FilterControls />
+                    </div>
 
-                        <CompletedSalesCard
-                            isDataVisible={isDataVisible}
-                            totalSalesAmount={data?.totalSalesAmount ?? 0}
-                            totalSalesCount={data?.totalSalesCount ?? 0}
-                            loading={loading}
-                        />
+                    {/* Full-page loader shown only on the very first load */}
+                    {loading && !data ? (
+                        <div className="flex h-64 items-center justify-center text-slate-500">
+                            <FiLoader className="animate-spin mr-2" /> Loading Dashboard...
+                        </div>
+                    ) : (
+                        <div className="flex flex-col gap-2">
 
-                        <OrderTimeline
-                            isDataVisible={isDataVisible}
-                            orderCounts={data?.orderCounts ?? {}}
-                            loading={loading}
-                        />
+                            {/* ── Row 1+2: Completed Sales + Order Journey — side by side ── */}
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                <CompletedSalesCard
+                                    isDataVisible={isDataVisible}
+                                    totalSalesAmount={data?.totalSalesAmount ?? 0}
+                                    totalSalesCount={data?.totalSalesCount ?? 0}
+                                    loading={loading}
+                                />
+                                <OrderTimeline
+                                    isDataVisible={isDataVisible}
+                                    orderCounts={data?.orderCounts ?? {}}
+                                    loading={loading}
+                                />
+                            </div>
 
-                        <OrderBarChartReport
-                            isDataVisible={isDataVisible}
-                            chartData={data?.chartData ?? []}
-                            totalSales={data?.totalSalesAmount ?? 0}
-                            totalBills={data?.totalSalesCount ?? 0}
-                            loading={loading}
-                        />
+                            {/* ── Row 3: Three equal columns ──────────────── */}
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
 
-                        <TopSoldItemsCard
-                            isDataVisible={isDataVisible}
-                            topByQuantity={data?.topByQuantity ?? []}
-                            topByAmount={data?.topByAmount ?? []}
-                            loading={loading}
-                        />
+                                <OrderBarChartReport
+                                    isDataVisible={isDataVisible}
+                                    chartData={data?.chartData ?? []}
+                                    totalSales={data?.totalSalesAmount ?? 0}
+                                    totalBills={data?.totalSalesCount ?? 0}
+                                    loading={loading}
+                                />
 
-                        {/* Placeholder card for the upcoming Restock Alerts feature */}
-                        <div className="relative rounded-xl border border-gray-200 bg-white p-4 shadow-sm opacity-70 cursor-not-allowed flex items-center justify-center min-h-[160px]">
-                            <span className="absolute top-2 right-2 text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">
-                                Coming Soon
-                            </span>
-                            <div className="text-center">
-                                <h3 className="text-lg font-semibold text-gray-500">Restock Alerts</h3>
-                                <p className="text-sm text-gray-400">Feature under development</p>
+                                <TopSoldItemsCard
+                                    isDataVisible={isDataVisible}
+                                    topByQuantity={data?.topByQuantity ?? []}
+                                    topByAmount={data?.topByAmount ?? []}
+                                    loading={loading}
+                                />
+
+                                {/* Coming Soon placeholder */}
+                                <div className="relative rounded-xl border border-gray-200 bg-white p-4 shadow-sm opacity-70 cursor-not-allowed flex items-center justify-center min-h-[160px]">
+                                    <span className="absolute top-2 right-2 text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">
+                                        Coming Soon
+                                    </span>
+                                    <div className="text-center">
+                                        <h3 className="text-lg font-semibold text-gray-500">Restock Alerts</h3>
+                                        <p className="text-sm text-gray-400">Feature under development</p>
+                                    </div>
+                                </div>
+
                             </div>
                         </div>
-
-                    </div>
-                )}
+                    )}
+                </div>
             </main>
         </div>
     );
@@ -327,5 +360,6 @@ const HomePage: React.FC = () => (
         <HomePageContent />
     </FilterProvider>
 );
+
 
 export default HomePage;

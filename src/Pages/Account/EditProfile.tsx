@@ -12,6 +12,10 @@ import { FiCamera } from 'react-icons/fi';
 interface ProfileData {
   name: string;
   email: string;
+  phone: string;
+  whatsappNumber: string;
+  panNumber: string;
+  accountType: string;
   profilePicture?: string;
   businessName: string;
   businessType: string;
@@ -135,7 +139,7 @@ const useProfileData = (userId?: string, companyId?: string) => {
       throw new Error("User or company is not authenticated.");
     }
 
-    const { name, profilePicture, ...businessData } = data;
+    const { name, email, phone, profilePicture, whatsappNumber, panNumber, accountType, ...businessData } = data;
 
     const userDocRef = doc(db, 'companies', companyId, 'users', userId);
     const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
@@ -153,6 +157,11 @@ const useProfileData = (userId?: string, companyId?: string) => {
     // 2. User Doc Update (Sanitize data to ensure no undefined values)
     const userUpdateData: Record<string, any> = {};
     if (name) userUpdateData.name = name;
+    if (phone !== undefined) userUpdateData.phone = phone;
+    if (email !== undefined) userUpdateData.email = email;
+    if (whatsappNumber !== undefined) userUpdateData.whatsappNumber = whatsappNumber;
+    if (panNumber !== undefined) userUpdateData.panNumber = panNumber;
+    if (accountType !== undefined) userUpdateData.accountType = accountType;
     // Only include profilePicture if it is defined (avoid Firestore crash)
     if (profilePicture !== undefined) userUpdateData.profilePicture = profilePicture;
 
@@ -192,6 +201,7 @@ const EditProfilePage: React.FC = () => {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [postalError, setPostalError] = useState<string | null>(null);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -209,14 +219,33 @@ const EditProfilePage: React.FC = () => {
   const handlePostalCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     if (/^\d{0,6}$/.test(value)) {
-        setFormData(prev => ({ ...prev, postalCode: value }));
-        if (value.length > 0 && value.length < 6) {
-            setPostalError('Postal code must be exactly 6 digits.');
-        } else {
-            setPostalError(null);
-        }
+      setFormData(prev => ({ ...prev, postalCode: value }));
+      if (value.length > 0 && value.length < 6) {
+        setPostalError('Postal code must be exactly 6 digits.');
+      } else {
+        setPostalError(null);
+      }
     }
-};
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    if (/^\d{0,10}$/.test(value)) {
+      setFormData(prev => ({ ...prev, phone: value }));
+      if (value.length > 0 && value.length < 10) {
+        setPhoneError('Phone number must be exactly 10 digits.');
+      } else {
+        setPhoneError(null);
+      }
+    }
+  };
+
+  const handleWhatsappChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    if (/^\d{0,10}$/.test(value)) {
+      setFormData(prev => ({ ...prev, whatsappNumber: value }));
+    }
+  };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -233,8 +262,18 @@ const EditProfilePage: React.FC = () => {
     setSubmitSuccess(null);
 
     if (formData.postalCode && formData.postalCode.length !== 6) {
-        setSubmitError('Postal code must be exactly 6 digits.');
-        return;
+      setSubmitError('Postal code must be exactly 6 digits.');
+      return;
+    }
+
+    if (formData.phone && formData.phone.length !== 10) {
+      setSubmitError('Phone number must be exactly 10 digits.');
+      return;
+    }
+
+    if (formData.whatsappNumber && formData.whatsappNumber.length !== 10) {
+      setSubmitError('WhatsApp number must be exactly 10 digits.');
+      return;
     }
 
     setIsSubmitting(true);
@@ -314,7 +353,45 @@ const EditProfilePage: React.FC = () => {
               </div>
             </div>
             <div className="space-y-4">
-              <FloatingLabelInput type="text" name="name" value={formData.name || ''} onChange={handleInputChange} label="Your Full Name" />
+              <FloatingLabelInput
+                type="text"
+                name="name"
+                value={formData.name || ''}
+                onChange={handleInputChange}
+                label="Your Full Name"
+              />
+              <div>
+                <FloatingLabelInput
+                  type="text"
+                  name="phone"
+                  value={formData.phone || ''}
+                  onChange={handlePhoneChange}
+                  label="Phone Number"
+                  maxLength={10}
+                  inputMode="numeric"
+                />
+                <div className="mt-4">
+                  <FloatingLabelInput
+                    type="text"
+                    name="whatsappNumber"
+                    value={formData.whatsappNumber || ''}
+                    onChange={handleWhatsappChange}
+                    label="WhatsApp Number"
+                    maxLength={10}
+                    inputMode="numeric"
+                  />
+                </div>
+                {phoneError && (
+                  <p className="text-red-500 text-xs mt-1 ml-1">{phoneError}</p>
+                )}
+              </div>
+              <FloatingLabelInput
+                type="email"
+                name="email"
+                value={formData.email || ''}
+                onChange={handleInputChange}
+                label="Email Address"
+              />
             </div>
           </fieldset>
 
@@ -327,6 +404,13 @@ const EditProfilePage: React.FC = () => {
               <FloatingLabelInput type="text" name="businessType" value={formData.businessType || ''} onChange={handleInputChange} label="Business Type" />
               <FloatingLabelInput type="text" name="businessCategory" value={formData.businessCategory || ''} onChange={handleInputChange} label="Business Category" />
               <FloatingLabelInput type="text" name="gstin" value={formData.gstin || ''} onChange={handleInputChange} label="GSTIN" />
+              <FloatingLabelInput
+                type="text"
+                name="panNumber"
+                value={formData.panNumber || ''}
+                onChange={handleInputChange}
+                label="PAN Number"
+              />
             </div>
           </fieldset>
 
@@ -339,19 +423,19 @@ const EditProfilePage: React.FC = () => {
               <FloatingLabelInput type="text" name="city" value={formData.city || ''} onChange={handleInputChange} label="City" />
               <FloatingLabelInput type="text" name="state" value={formData.state || ''} onChange={handleInputChange} label="State" />
               <div>
-    <FloatingLabelInput
-        type="text"
-        name="postalCode"
-        value={formData.postalCode || ''}
-        onChange={handlePostalCodeChange}
-        label="Postal Code"
-        maxLength={6}
-        inputMode="numeric"
-    />
-    {postalError && (
-        <p className="text-red-500 text-xs mt-1 ml-1">{postalError}</p>
-    )}
-</div>
+                <FloatingLabelInput
+                  type="text"
+                  name="postalCode"
+                  value={formData.postalCode || ''}
+                  onChange={handlePostalCodeChange}
+                  label="Postal Code"
+                  maxLength={6}
+                  inputMode="numeric"
+                />
+                {postalError && (
+                  <p className="text-red-500 text-xs mt-1 ml-1">{postalError}</p>
+                )}
+              </div>
             </div>
           </fieldset>
 
@@ -363,6 +447,24 @@ const EditProfilePage: React.FC = () => {
               </div>
               <FloatingLabelInput type="text" name="bankName" value={formData.bankName || ''} onChange={handleInputChange} label="Bank Name" />
               <FloatingLabelInput type="text" name="ifscCode" value={formData.ifscCode || ''} onChange={handleInputChange} label="IFSC Code" />
+              <div className="relative md:col-span-2 bg-gray-100">
+                <select
+                  name="accountType"
+                  value={formData.accountType || ''}
+                  onChange={(e) => setFormData(prev => ({ ...prev, accountType: e.target.value }))}
+                  className="w-full border border-gray-700 rounded-md px-3 pt-6 pb-2 text-sm text-gray-800 bg-gray-100 focus:outline-none focus:border-sky-500 appearance-none h-[58px]"
+                >
+                  <option value="" disabled hidden></option>
+                  <option value="Savings">Savings</option>
+                  <option value="Current">Current</option>
+                </select>
+                <label className="absolute left-3 top-2 text-xs text-gray-500 pointer-events-none">
+                  Account Type
+                </label>
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+                </div>
+              </div>
               <div className="md:col-span-2">
                 <FloatingLabelInput type="text" name="accountNumber" value={formData.accountNumber || ''} onChange={handleInputChange} label="Account No." />
               </div>

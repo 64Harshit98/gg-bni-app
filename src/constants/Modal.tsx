@@ -125,7 +125,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-[2000]">
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex justify-center items-center z-[2000]">
             <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
                 <h2 className="text-2xl font-bold mb-2 text-slate-800">Settle Payment</h2>
                 <p className="mb-4 text-slate-600">

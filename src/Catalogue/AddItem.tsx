@@ -537,9 +537,9 @@ const ItemAdd: React.FC = () => {
             {/* --- PROGRESS MODAL --- */}
             {uploadProgress && (
                 <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center">
-                    <div className="bg-white p-8 rounded-lg shadow-xl w-80 text-center">
+                    <div className="bg-white p-8 rounded-sm shadow-xl w-80 text-center">
                         <h3 className="text-lg font-bold mb-4 text-gray-800">Uploading Items...</h3>
-                        <div className="w-full bg-gray-200 rounded-full h-4 mb-2 overflow-hidden">
+                        <div className="w-full bg-gray-200 rounded-sm h-4 mb-2 overflow-hidden">
                             <div
                                 className="bg-sky-500 h-4 rounded-full transition-all duration-100"
                                 style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
@@ -560,8 +560,8 @@ const ItemAdd: React.FC = () => {
                 {/* LEFT PANEL */}
                 <div className="flex-1 w-full md:w-[65%] bg-gray-100 md:bg-gray-50 md:border-r border-gray-200 pt-28 pb-24 px-2 md:pt-6 md:px-6 md:pb-6 overflow-y-auto">
 
-                    {error && <div className="mb-4 text-center p-3 bg-red-100 text-red-700 rounded-lg">{error}</div>}
-                    {success && <div className="mb-4 text-center p-3 bg-green-100 text-green-700 rounded-lg">{success}</div>}
+                    {error && <div className="mb-4 text-center p-3 bg-red-100 text-red-700 rounded-sm">{error}</div>}
+                    {success && <div className="mb-4 text-center p-3 bg-green-100 text-green-700 rounded-sm">{success}</div>}
 
                     {/* MOBILE BULK IMPORT */}
                     <div className="md:hidden bg-white p-2 rounded-sm shadow-md mb-4">
@@ -578,7 +578,7 @@ const ItemAdd: React.FC = () => {
                     </div>
 
                     {/* SINGLE ITEM FORM */}
-                    <div className="bg-white p-6 rounded-lg shadow-md md:mb-0 md:rounded-sm md:shadow-sm md:border md:border-gray-200 mb-10">
+                    <div className="bg-white p-6 rounded-sm shadow-md md:mb-0 md:rounded-sm md:shadow-sm md:border md:border-gray-200 mb-10">
                         <h2 className="text-lg font-bold text-gray-800 mb-4 md:mb-6 md:border-b md:pb-2">Add a Single Item</h2>
                         <div className="space-y-4">
 
@@ -621,7 +621,7 @@ const ItemAdd: React.FC = () => {
                                                 setItemSalesPrice(String(Math.round(salePrice * 100) / 100));
                                             }
                                         }}
-                                        className="w-full p-3 border border-gray-300 rounded-md focus:ring-sky-500"
+                                        className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500"
                                         placeholder="0"
                                     />
                                     <p className="text-[10px] text-gray-400">Required if Sale Price is empty</p>
@@ -816,7 +816,7 @@ const ItemAdd: React.FC = () => {
                 <div className="hidden md:flex w-[35%] flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
                     <div className="flex-1 p-6 flex flex-col">
 
-                        <div className="bg-sky-50 rounded-xl p-5 border border-sky-100">
+                        <div className="bg-sky-50 rounded-sm p-5 border border-sky-100">
                             <h2 className="text-lg font-bold text-sky-800 mb-2">Bulk Import</h2>
                             <p className="text-sm text-sky-600 mb-4">
                                 Upload Excel/CSV. Missing categories created automatically.
@@ -826,7 +826,7 @@ const ItemAdd: React.FC = () => {
                                 <button
                                     onClick={() => fileInputRef.current?.click()}
                                     disabled={isUploading}
-                                    className="w-full bg-white text-sky-600 border border-sky-200 py-3 px-4 rounded-lg font-semibold hover:bg-sky-50 disabled:bg-gray-100 flex items-center justify-center gap-2"
+                                    className="w-full bg-white text-sky-600 border border-sky-200 py-3 px-4 rounded-sm font-semibold hover:bg-sky-50 disabled:bg-gray-100 flex items-center justify-center gap-2"
                                 >
                                     {isUploading ? <Spinner /> : 'Upload Excel File'}
                                 </button>
@@ -848,7 +848,7 @@ const ItemAdd: React.FC = () => {
                             <button
                                 onClick={handleAddItem}
                                 disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)}
-                                className="w-full bg-sky-600 text-white py-4 px-6 rounded-xl text-lg font-bold hover:bg-sky-700 disabled:bg-gray-300 flex items-center justify-center gap-2"
+                                className="w-full bg-sky-600 text-white py-4 px-6 rounded-sm text-lg font-bold hover:bg-sky-700 disabled:bg-gray-300 flex items-center justify-center gap-2"
                             >
                                 {isSaving ? <Spinner /> : 'Add Item'}
                             </button>
@@ -859,7 +859,7 @@ const ItemAdd: React.FC = () => {
 
                 {/* --- MOBILE FIXED FOOTER (Button) --- */}
                 <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-gray-100 border-t border-gray-200 z-20 flex justify-center pb-20">
-                    <button onClick={handleAddItem} disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)} className="w-full max-w-sm bg-sky-500 text-white py-3 px-6 rounded-lg text-lg font-semibold hover:bg-sky-600 disabled:bg-gray-400 flex items-center justify-center gap-2 shadow-md">
+                    <button onClick={handleAddItem} disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)} className="w-full max-w-sm bg-sky-500 text-white py-3 px-6 rounded-sm text-lg font-semibold hover:bg-sky-600 disabled:bg-gray-400 flex items-center justify-center gap-2 shadow-md">
                         {isSaving ? <Spinner /> : 'Add Item'}
                     </button>
                 </div>

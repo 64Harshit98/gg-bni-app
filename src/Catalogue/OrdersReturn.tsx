@@ -7,6 +7,7 @@ import {
   query,
   getDocs,
   doc,
+  getDoc,
   writeBatch,
   arrayUnion,
   serverTimestamp,
@@ -21,7 +22,6 @@ import { State, Variant } from '../enums';
 import { CustomButton } from '../Components';
 import PaymentDrawer, { type PaymentCompletionData } from '../Components/PaymentDrawer';
 import { ReturnListItem } from '../Components/ReturnListItem';
-import { useSalesSettings } from '../context/SettingsContext';
 import type { Order, OrderItem } from './Orders';
 import SearchableItemInput from '../UseComponents/SearchIteminput';
 import { IconScanCircle } from '../constants/Icons'
@@ -67,13 +67,12 @@ const OrdersReturnPage: React.FC = () => {
   const { currentUser } = useAuth();
   const { state } = useLocation();
   // const location = useLocation();
-  const { salesSettings } = useSalesSettings();
 
   const [returnDate, setReturnDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [partyName, setPartyName] = useState<string>('');
   const [partyNumber, setPartyNumber] = useState<string>('');
   const [modeOfReturn, setModeOfReturn] = useState<string>('Credit Note');
-
+  const [catalogueSettings, setCatalogueSettings] = useState<any>(null);
   const [originalSaleItems, setOriginalSaleItems] = useState<TransactionItem[]>([]);
   const [selectedReturnIds, setSelectedReturnIds] = useState<Set<string>>(new Set());
   const [exchangeItems, setExchangeItems] = useState<ExchangeItem[]>([]);
@@ -99,9 +98,6 @@ const OrdersReturnPage: React.FC = () => {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   // const isActive = (path: string) => location.pathname === path;
-  const [isPriceLocked, setIsPriceLocked] = useState(true);
-  const [priceInfo, setPriceInfo] = useState<string | null>(null);
-  const longPressTimer = useRef<NodeJS.Timeout | null>(null);
 
   const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
   const [isItemDrawerOpen, setIsItemDrawerOpen] = useState(false);
@@ -155,6 +151,28 @@ const OrdersReturnPage: React.FC = () => {
     }
   }, [state, salesList]);
 
+
+  useEffect(() => {
+    if (!currentUser?.companyId) return;
+
+    const fetchSettings = async () => {
+      const ref = doc(
+        db,
+        "companies",
+        currentUser.companyId,
+        "settings",
+        "catalogue-sales-settings"
+      );
+
+      const snap = await getDoc(ref);
+
+      if (snap.exists()) {
+        setCatalogueSettings(snap.data());
+      }
+    };
+
+    fetchSettings();
+  }, [currentUser]);
 
   useEffect(() => {
     if (!currentUser?.companyId) return;
@@ -350,6 +368,20 @@ const OrdersReturnPage: React.FC = () => {
 
         if (field === 'quantity') {
           const num = Number(value) || 1;
+
+          if ((item as any).originalItemId) {
+            const realItem = availableItems.find(i => i.id === (item as any).originalItemId);
+            const stock = realItem?.stock ?? 0;
+
+            if (num > stock) {
+              setModal({
+                type: State.ERROR,
+                message: "You don't have enough stock for this item."
+              });
+              return item;
+            }
+          }
+
           if ((item as any).originalQuantity !== undefined) {
             const maxQty = (item as any).originalQuantity;
             safeValue = Math.min(Math.max(1, num), maxQty);
@@ -433,17 +465,26 @@ const OrdersReturnPage: React.FC = () => {
   };
 
 
-
-  const handlePricePressStart = () => { if (!salesSettings?.lockSalePriceEntry) longPressTimer.current = setTimeout(() => setIsPriceLocked(false), 200); };
-  const handlePricePressEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
-  const handlePriceClick = () => { if (isPriceLocked) { setPriceInfo("Cannot edit price"); setTimeout(() => setPriceInfo(null), 1000); } };
-
   const handleDiscountChange = (id: string, discountValue: number | string) => {
     const val = typeof discountValue === 'string' ? parseFloat(discountValue) : discountValue;
     handleListChange(setExchangeItems, id, 'discount', val);
   };
 
   const handleQuantityChange = (id: string, newQuantity: number) => {
+    const item = exchangeItems.find(i => i.id === id);
+    if (!item) return;
+
+    const realItem = availableItems.find(i => i.id === item.originalItemId);
+    const stock = realItem?.stock ?? 0;
+
+    if (newQuantity > stock) {
+      setModal({
+        type: State.ERROR,
+        message: "You don't have enough stock for this item."
+      });
+      return;
+    }
+
     handleListChange(setExchangeItems, id, 'quantity', Math.max(1, newQuantity));
   };
 
@@ -497,14 +538,17 @@ const OrdersReturnPage: React.FC = () => {
       calculatedDiscount = 0;
     }
 
-    const isRoundingEnabled = salesSettings?.enableRounding ?? true;
-    const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
 
-    finalExchangePrice = applyRounding(
-      finalExchangePrice,
-      isRoundingEnabled,
-      roundingInterval
-    );
+
+    const existingStock = itemToAdd.stock ?? 0;
+
+    if (existingStock <= 0) {
+      setModal({
+        type: State.ERROR,
+        message: "This item is out of stock."
+      });
+      return;
+    }
 
     setExchangeItems(prev => [
       ...prev,
@@ -523,7 +567,7 @@ const OrdersReturnPage: React.FC = () => {
         salesPrice: salesPrice,
 
         discount: parseFloat(calculatedDiscount.toFixed(2)),
-        basePrice: mrp, // optional but useful
+        basePrice: mrp,
       }
     ]);
   };
@@ -539,25 +583,28 @@ const OrdersReturnPage: React.FC = () => {
   };
 
   const mappedExchangeItems: SalesItem[] = useMemo(() => {
-    return exchangeItems.map(item => ({
-      id: item.id, //FIX
-      productId: item.originalItemId,
-      name: item.name,
-      mrp: item.mrp,
-      quantity: item.quantity,
-      discount: item.discount,
-      isEditable: true,
-      purchasePrice: 0,
-      tax: 0,
-      itemGroupId: 0,
-      stock: 100,
-      amount: item.amount,
-      barcode: '',
-      restockQuantity: 0,
-      customPrice: item.customPrice ?? item.unitPrice,
-    } as SalesItem));
-  }, [exchangeItems]);
+    return exchangeItems.map(item => {
+      const realItem = availableItems.find(i => i.id === item.originalItemId);
 
+      return {
+        id: item.id,
+        productId: item.originalItemId,
+        name: item.name,
+        mrp: item.mrp,
+        quantity: item.quantity,
+        discount: item.discount,
+        isEditable: true,
+        purchasePrice: 0,
+        tax: 0,
+        itemGroupId: 0,
+        stock: realItem?.stock ?? 0,
+        amount: item.amount,
+        barcode: '',
+        restockQuantity: 0,
+        customPrice: item.customPrice ?? item.unitPrice,
+      } as SalesItem;
+    });
+  }, [exchangeItems, availableItems]);
 
   // --- CALCULATION LOGIC (UI) ---
   const {
@@ -1154,9 +1201,7 @@ const OrdersReturnPage: React.FC = () => {
                     </div>
 
                     {/* --- DISPLAY ERROR MESSAGES FOR LOCKS --- */}
-                    <div className="flex gap-2 text-xs text-red-500 mb-2">
-                      <span>{priceInfo}</span>
-                    </div>
+                  
 
                     {exchangeItems.length > 0 && (
                       <div className="border rounded-sm overflow-hidden mt-4">
@@ -1173,7 +1218,7 @@ const OrdersReturnPage: React.FC = () => {
                             settings={{
                               enableRounding: false,
                               roundingInterval: 1,
-                              enableItemWiseDiscount: true,
+                              enableItemWiseDiscount: catalogueSettings?.enableItemWiseDiscount ?? false,
                               lockDiscount: false,
                               lockPrice: false,
                               hideMrp: false
@@ -1201,10 +1246,6 @@ const OrdersReturnPage: React.FC = () => {
                             onCustomPriceChange={handleCustomPriceChange}
                             onCustomPriceBlur={handleCustomPriceBlur}
                             onQuantityChange={handleQuantityChange}
-
-                            onPricePressStart={handlePricePressStart}
-                            onPricePressEnd={handlePricePressEnd}
-                            onPriceClick={handlePriceClick}
                           />
 
                         </div>

@@ -774,7 +774,7 @@ const SharedProduct: React.FC = () => {
                                 <ChevronLeft size={20} className="text-[#1A3B5D]" />
                             </button>
 
-                            <div className="w-1 h-5 bg-[#00A3E1] rounded-sm"></div>
+                            <div className="w-1 h-5 bg-[#F97316] rounded-sm"></div>
 
                             <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">
                                 {companyName}
@@ -785,7 +785,7 @@ const SharedProduct: React.FC = () => {
                         <button
                             ref={cartIconRef}
                             onClick={() => navigate(`/checkout/${effectiveCompanyId}`)}
-                            className="flex items-center justify-center gap-2 bg-[#00A3E1] text-white py-2 px-3 md:px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative mr-1 md:mr-0"
+                            className="flex items-center justify-center gap-2 bg-[#F97316] text-white py-2 px-3 md:px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative mr-1 md:mr-0"
                         >
                             <ShoppingCart size={16} />
                             <span className="hidden md:inline">Cart</span>
@@ -824,7 +824,7 @@ const SharedProduct: React.FC = () => {
                     </div>
                 )}
                 <div className='flex items-center justify-center'>
-                    <h1 className="text-sm md:text-xl font-extrabold text-[#00A3E1] uppercase tracking-tighter">{currentCategoryName}</h1>
+                    <h1 className="text-sm md:text-xl font-extrabold text-[#F97316] uppercase tracking-tighter">{currentCategoryName}</h1>
                 </div>
                 <div className="relative group md:max-w-md md:mx-auto w-full">
                     <SearchBar
@@ -842,7 +842,7 @@ const SharedProduct: React.FC = () => {
                 <div className="max-w-7xl mx-auto px-1 flex items-center justify-between relative">
                     <div className="flex items-center gap-2">
                         <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Total Products:</span>
-                        <span className="bg-[#00A3E1]/10 text-[#00A3E1] px-2.5 py-0.5 rounded-sm text-[10px] font-black">{filteredItems.length}</span>
+                        <span className="bg-[#F97316]/10 text-[#F97316] px-2.5 py-0.5 rounded-sm text-[10px] font-black">{filteredItems.length}</span>
                     </div>
                     <div className="relative">
                         <button onClick={() => setIsSortOpen(!isSortOpen)} className="flex items-center gap-2 bg-white border border-gray-100 px-3 py-1.5 rounded-sm shadow-sm active:scale-95 transition-all">
@@ -852,7 +852,7 @@ const SharedProduct: React.FC = () => {
                         {isSortOpen && (
                             <div className="absolute right-0 mt-2 w-40 bg-white rounded-sm shadow-xl border border-gray-50 z-[70] overflow-hidden">
                                 {(['A-Z', 'Z-A', 'Price: Low-High', 'Price: High-Low'] as const).map((opt) => (
-                                    <button key={opt} onClick={() => { setSortOrder(opt); setIsSortOpen(false); }} className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 border-t border-gray-50 first:border-0 ${sortOrder === opt ? 'text-[#00A3E1]' : 'text-[#1A3B5D]'}`}>
+                                    <button key={opt} onClick={() => { setSortOrder(opt); setIsSortOpen(false); }} className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 border-t border-gray-50 first:border-0 ${sortOrder === opt ? 'text-[#F97316]' : 'text-[#1A3B5D]'}`}>
                                         {opt.replace(':', ': ')}
                                     </button>
                                 ))}
@@ -899,7 +899,7 @@ const SharedProduct: React.FC = () => {
                                 key={item.id}
                                 onClick={() => handleOpenDetailDrawer(item)}
                                 className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col transition-all duration-300 relative group hover:shadow-md cursor-pointer ${activeHighlight === item.id
-                                    ? 'ring-2 ring-[#00A3E1] scale-105 bg-blue-50 border-[#00A3E1] z-100'
+                                    ? 'ring-2 ring-[#F97316] scale-105 bg-blue-50 border-[#F97316] z-100'
                                     : 'border-gray-100'
                                     }`}
                             >
@@ -922,7 +922,7 @@ const SharedProduct: React.FC = () => {
 
                                     {/*  DISCOUNT BADGE */}
                                     {showDiscountBadge && (
-                                        <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-0.5 rounded-sm text-[10px] font-black uppercase tracking-tight shadow-md">
+                                        <div className="absolute top-2 right-2 bg-[#F97316] text-white px-2 py-0.5 rounded-sm text-[10px] font-black uppercase tracking-tight shadow-md">
                                             {discountPercent}% OFF
                                         </div>
                                     )}
@@ -947,12 +947,12 @@ const SharedProduct: React.FC = () => {
                                                                 ₹{mrp}
                                                             </p>
 
-                                                            <p className="text-[14px] font-black text-[#00A3E1]">
+                                                            <p className="text-[14px] font-black text-[#F97316]">
                                                                 ₹{salePrice}
                                                             </p>
                                                         </>
                                                     ) : (
-                                                        <p className="text-[14px] font-black text-[#00A3E1]">
+                                                        <p className="text-[14px] font-black text-[#F97316]">
                                                             ₹{salePrice}
                                                         </p>
                                                     )}
@@ -976,7 +976,7 @@ const SharedProduct: React.FC = () => {
                                                         e.stopPropagation();
                                                         updateQuantity(item.id!, -1);
                                                     }}
-                                                    className="p-1.5 bg-white shadow-sm text-[#00A3E1] hover:bg-[#00A3E1] hover:text-white rounded-sm transition-all"
+                                                    className="p-1.5 bg-white shadow-sm text-[#F97316] hover:bg-[#F97316] hover:text-white rounded-sm transition-all"
                                                 >
                                                     <Minus size={12} strokeWidth={3} />
                                                 </button>
@@ -990,7 +990,7 @@ const SharedProduct: React.FC = () => {
                                                         e.stopPropagation();
                                                         updateQuantity(item.id!, 1);
                                                     }}
-                                                    className="p-1.5 bg-white shadow-sm text-[#00A3E1] hover:bg-[#00A3E1] hover:text-white rounded-sm transition-all"
+                                                    className="p-1.5 bg-white shadow-sm text-[#F97316] hover:bg-[#F97316] hover:text-white rounded-sm transition-all"
                                                 >
                                                     <Plus size={12} strokeWidth={3} />
                                                 </button>
@@ -1024,7 +1024,7 @@ const SharedProduct: React.FC = () => {
                                                 }}
                                                 className={`w-full py-2 rounded-xs text-[12px] font-black uppercase tracking-widest mt-1 shadow-sm transition-all flex items-center justify-center gap-2 ${disableAddToCart
                                                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                                    : 'bg-[#00A3E1] text-white active:scale-95'
+                                                    : 'bg-[#F97316] text-white active:scale-95'
                                                     }`}
                                             >
                                                 <Plus size={12} /> Add to Cart
@@ -1054,7 +1054,7 @@ const SharedProduct: React.FC = () => {
                         navigate(`/checkout/${effectiveCompanyId}`);
                     }
                 }}
-                className="fixed bottom-0 left-0 w-full md:w-[50%] md:left-1/2 md:-translate-x-1/2 z-[1000] bg-[#00A3E1] text-white shadow-lg cursor-pointer active:scale-[0.98] transition-all"
+                className="fixed bottom-0 left-0 w-full md:w-[50%] md:left-1/2 md:-translate-x-1/2 z-[1000] bg-[#F97316] text-white shadow-lg cursor-pointer active:scale-[0.98] transition-all"
             >
                 <div className="max-w-7xl mx-auto flex items-center justify-between px-4 py-3">
 

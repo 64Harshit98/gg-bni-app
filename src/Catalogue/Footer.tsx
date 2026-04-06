@@ -24,7 +24,7 @@ function Footer({
                 <div className="flex flex-col items-center text-center">
                     <div className="mb-6">
                         <h2 className="text-sm font-black text-[#1A3B5D] tracking-[0.3em] uppercase mb-2">{companyName}</h2>
-                        <div className="h-0.5 w-8 bg-[#00A3E1] mx-auto rounded-sm"></div>
+                        <div className="h-0.5 w-8 bg-[#F97316] mx-auto rounded-sm"></div>
                     </div>
                     <div className="flex gap-8 mb-6 text-gray-400">
 
@@ -33,7 +33,7 @@ function Footer({
                                 href={fixUrl(instagram)}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="hover:text-[#00A3E1] transition-colors"
+                                className="hover:text-[#F97316] transition-colors"
                             >
                                 <Instagram size={18} />
                             </a>
@@ -44,7 +44,7 @@ function Footer({
                                 href={fixUrl(facebook)}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="hover:text-[#00A3E1] transition-colors"
+                                className="hover:text-[#F97316] transition-colors"
                             >
                                 <Facebook size={18} />
                             </a>
@@ -55,7 +55,7 @@ function Footer({
                                 href={fixUrl(twitter)}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="hover:text-[#00A3E1] transition-colors"
+                                className="hover:text-[#F97316] transition-colors"
                             >
                                 <Twitter size={18} />
                             </a>
@@ -66,7 +66,7 @@ function Footer({
                                 href={`mailto:${gmail.trim()}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="hover:text-[#00A3E1] transition-colors"
+                                className="hover:text-[#F97316] transition-colors"
                             >
                                 <Mail size={18} />
                             </a>
@@ -80,7 +80,7 @@ function Footer({
                                 <p className="text-[9px] font-black text-[#11111]/40 uppercase tracking-widest">
                                     Powered by{" "}
                                     <a
-                                        className="text-[#00A3E1] cursor-pointer"
+                                        className="text-[#F97316] cursor-pointer"
                                         href="https://www.sellar.in"
                                         target="_blank"
                                         rel="noopener noreferrer"

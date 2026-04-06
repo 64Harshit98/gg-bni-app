@@ -57,23 +57,18 @@ const OrderingPage: React.FC = () => {
                     dbOperations.syncItems(),
                     dbOperations.getItemGroups()
                 ]);
-                const hasuncategorized = fetchedItemGroups.some(
-                    g => g.id === "uncategorized"
-                );
 
-                if (!hasuncategorized) {
-                    fetchedItemGroups.push({
-                        id: "uncategorized",
-                        name: "uncategorized"
-                    } as ItemGroup);
-                }
+                let updatedGroups = [...fetchedItemGroups];
 
                 setItems(fetchedItems);
 
                 const groupMap = new Map<string, ItemGroup>();
-                fetchedItemGroups.forEach(group => {
-                    if (!groupMap.has(group.name.toLowerCase())) {
-                        groupMap.set(group.name.toLowerCase(), group);
+
+                updatedGroups.forEach(group => {
+                    if (!group.id) return;
+
+                    if (!groupMap.has(group.id)) {
+                        groupMap.set(group.id, group);
                     }
                 });
 
@@ -160,9 +155,13 @@ const OrderingPage: React.FC = () => {
         const imgs = items
             .filter(item => {
                 const groupExists = itemGroups.some(g => g.id === item.itemGroupId);
+                const uncategorizedGroup = itemGroups.find(
+                    g => g.name.toLowerCase().trim() === "uncategorized"
+                );
+
                 const finalGroupId = groupExists
                     ? item.itemGroupId
-                    : "uncategorized";
+                    : uncategorizedGroup?.id;
                 return finalGroupId === groupId;
             })
             .map(item => item.imageUrl)
@@ -222,7 +221,7 @@ const OrderingPage: React.FC = () => {
                         >
                             <ChevronLeft className="text-[#1A3B5D]" size={20} />
                         </button>
-                        <div className="w-1 h-5 bg-[#00A3E1] rounded-sm"></div>
+                        <div className="w-1 h-5 bg-[#F97316] rounded-sm"></div>
                         <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">
                             {companyName}
                         </h1>
@@ -232,7 +231,7 @@ const OrderingPage: React.FC = () => {
 
             <main className="p-4 space-y-4 flex-1 max-w-7xl mx-auto w-full pb-20">
                 <div className='flex items-center justify-center'>
-                    <h1 className="text-sm md:text-xl font-extrabold text-[#00A3E1] uppercase tracking-tighter">Categories</h1>
+                    <h1 className="text-sm md:text-xl font-extrabold text-[#F97316] uppercase tracking-tighter">Categories</h1>
                 </div>
                 {/* --- SEARCH BAR --- */}
                 <SearchBar
@@ -257,7 +256,7 @@ const OrderingPage: React.FC = () => {
                         <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">
                             Total Catalogues:
                         </span>
-                        <span className="bg-[#00A3E1]/10 text-[#00A3E1] px-2.5 py-0.5 rounded-sm text-[10px] font-black">
+                        <span className="bg-[#F97316]/10 text-[#F97316] px-2.5 py-0.5 rounded-sm text-[10px] font-black">
                             {filteredItems.length}
                         </span>
                     </div>
@@ -275,13 +274,13 @@ const OrderingPage: React.FC = () => {
                             <div className="absolute right-0 mt-2 w-32 bg-white rounded-sm shadow-xl border border-gray-50 z-[70] overflow-hidden">
                                 <button
                                     onClick={() => { setSortOrder('A-Z'); setIsSortOpen(false); }}
-                                    className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 ${sortOrder === 'A-Z' ? 'text-[#00A3E1]' : 'text-[#1A3B5D]'}`}
+                                    className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 ${sortOrder === 'A-Z' ? 'text-[#F97316]' : 'text-[#1A3B5D]'}`}
                                 >
                                     A to Z
                                 </button>
                                 <button
                                     onClick={() => { setSortOrder('Z-A'); setIsSortOpen(false); }}
-                                    className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 border-t border-gray-50 ${sortOrder === 'Z-A' ? 'text-[#00A3E1]' : 'text-[#1A3B5D]'}`}
+                                    className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 border-t border-gray-50 ${sortOrder === 'Z-A' ? 'text-[#F97316]' : 'text-[#1A3B5D]'}`}
                                 >
                                     Z to A
                                 </button>
@@ -311,7 +310,7 @@ const OrderingPage: React.FC = () => {
                                 onClick={() => {
                                     navigate(`/catalogue-home/my-shop/${group.id}`)
                                 }}
-                                className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col transition-all group cursor-pointer active:scale-95 ${highlightedId === group.id ? 'ring-2 ring-[#00A3E1] shadow-lg scale-[1.02]' : 'border-gray-100'}`}>
+                                className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col transition-all group cursor-pointer active:scale-95 ${highlightedId === group.id ? 'ring-2 ring-[#F97316] shadow-lg scale-[1.02]' : 'border-gray-100'}`}>
                                 {/* --- IMAGE SECTION WITH TOP BADGE --- */}
                                 <div className="aspect-square bg-[#F8FAFC] relative overflow-hidden">
                                     {collageImages.length > 0 ? (
@@ -355,7 +354,7 @@ const OrderingPage: React.FC = () => {
                                                 className="w-full bg-gray-50 border border-gray-100 rounded-sm py-1 px-2 text-[14px] font-bold outline-none"
                                             />
                                             <div className="flex gap-1">
-                                                <button onClick={(e) => { e.stopPropagation(); handleSaveEdit(group.id!); }} className="flex-1 bg-[#00A3E1] text-white py-1.5 rounded-sm text-[12px] font-black uppercase">Save</button>
+                                                <button onClick={(e) => { e.stopPropagation(); handleSaveEdit(group.id!); }} className="flex-1 bg-[#F97316] text-white py-1.5 rounded-sm text-[12px] font-black uppercase">Save</button>
                                                 <button
                                                     onClick={async (e) => {
                                                         e.stopPropagation();
@@ -386,7 +385,7 @@ const OrderingPage: React.FC = () => {
 
                                             {/* Centered Item Count Badge UI */}
                                             <div className="flex items-center justify-center gap-1.5 bg-blue-50 px-2 py-0.5 rounded-sm border border-blue-100 w-fit mx-auto mb-2">
-                                                <span className="text-[12px] font-black text-[#00A3E1] leading-none">
+                                                <span className="text-[12px] font-black text-[#F97316] leading-none">
                                                     {itemCount}
                                                 </span>
                                                 <span className="text-[10px] font-black uppercase tracking-widest text-[#1A3B5D]/60 leading-none">
@@ -394,7 +393,7 @@ const OrderingPage: React.FC = () => {
                                                 </span>
                                             </div>
 
-                                            <div className="mt-auto w-full py-1.5 rounded-sm text-[12px] font-black uppercase text-center tracking-wider transition-all bg-[#00A3E1] text-white"
+                                            <div className="mt-auto w-full py-1.5 rounded-sm text-[12px] font-black uppercase text-center tracking-wider transition-all bg-[#F97316] text-white"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     handleEdit(group)
@@ -417,10 +416,10 @@ const OrderingPage: React.FC = () => {
                         <button onClick={() => setIsCustomerModalOpen(false)} className="absolute top-6 right-6 text-gray-400"><FiX size={20} /></button>
                         <h3 className="text-sm font-black text-[#1A3B5D] uppercase mb-6">Customer Details</h3>
                         <div className="space-y-4">
-                            <input type="text" placeholder="Customer Name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="w-full bg-gray-50 border-none rounded-sm p-4 text-xs font-bold outline-none focus:ring-2 focus:ring-[#00A3E1]/20" />
-                            <input type="tel" placeholder="Phone Number" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className="w-full bg-gray-50 border-none rounded-sm p-4 text-xs font-bold outline-none focus:ring-2 focus:ring-[#00A3E1]/20" />
+                            <input type="text" placeholder="Customer Name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="w-full bg-gray-50 border-none rounded-sm p-4 text-xs font-bold outline-none focus:ring-2 focus:ring-[#F97316]/20" />
+                            <input type="tel" placeholder="Phone Number" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className="w-full bg-gray-50 border-none rounded-sm p-4 text-xs font-bold outline-none focus:ring-2 focus:ring-[#F97316]/20" />
                         </div>
-                        <button disabled={isPlacingOrder} onClick={handleConfirmAndSaveOrder} className="w-full mt-6 bg-[#00A3E1] text-white py-4 rounded-sm font-black text-[10px] uppercase shadow-lg tracking-widest active:scale-95 disabled:opacity-50 transition-all">
+                        <button disabled={isPlacingOrder} onClick={handleConfirmAndSaveOrder} className="w-full mt-6 bg-[#F97316] text-white py-4 rounded-sm font-black text-[10px] uppercase shadow-lg tracking-widest active:scale-95 disabled:opacity-50 transition-all">
                             {isPlacingOrder ? 'Placing Order...' : 'Confirm Order'}
                         </button>
                     </div>

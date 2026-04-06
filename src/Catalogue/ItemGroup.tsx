@@ -234,35 +234,65 @@ const ItemGroupPage: React.FC = () => {
         }
     };
 
+
     const handleDeleteItemGroup = async (groupToDelete: ItemGroup) => {
         if (!dbOperations) return;
-        const groupId = groupToDelete.id ?? null;
 
+        const groupId = groupToDelete.id;
 
-        if (groupId && groupCounts[groupId] > 0) {
-            setError(`Cannot delete group. It contains ${groupCounts[groupId]} items.`);
-            setConfirmingDeleteId(null);
+        if (!groupId) {
+            setError("Cannot delete Uncategorized group.");
             return;
         }
 
-        if (confirmingDeleteId !== groupId) {
-            setConfirmingDeleteId(groupId);
-            return;
-        }
-
-        setError(null);
         try {
+            // 1. Get all items
+            const allItems = await dbOperations.syncItems();
+
+            // 2. Find items of this group
+            const itemsToUpdate = allItems.filter(
+                item => item.itemGroupId === groupId
+            );
+
+            // ensure uncategorized exists before moving items
+            const groups = await dbOperations.getItemGroups();
+
+            let uncategorized = groups.find(
+                g => g.name.toLowerCase().trim() === "uncategorized"
+            );
+
+            if (!uncategorized) {
+                await dbOperations.createItemGroup({
+                    name: "Uncategorized",
+                    description: "Default system category"
+                });
+
+                const updatedGroups = await dbOperations.getItemGroups();
+                uncategorized = updatedGroups.find(
+                    g => g.name.toLowerCase().trim() === "uncategorized"
+                );
+            }
+
+            // 3. Move items → uncategorized
+            for (const item of itemsToUpdate) {
+                await dbOperations.updateItem(item.id!, {
+                    itemGroupId: uncategorized?.id || ""
+                });
+            }
+
+            // 4. Delete group
             await dbOperations.deleteItemGroupIfUnused(groupToDelete);
-            setConfirmingDeleteId(null);
+
+            showSuccessMessage(
+                `Group deleted & ${itemsToUpdate.length} items moved to Uncategorized`
+            );
+
             await fetchAndSyncGroups();
-            showSuccessMessage(`Group "${groupToDelete.name}" deleted.`);
+
         } catch (err: any) {
-            console.error('Error deleting item group:', err);
-            setError(err.message || 'Failed to delete group.');
-            setConfirmingDeleteId(null);
+            setError(err.message || "Delete failed");
         }
     };
-
     return (
         <div className="flex flex-col mb-10 bg-gray-100 w-full pt-24 sm:pt-24">
 
@@ -287,8 +317,8 @@ const ItemGroupPage: React.FC = () => {
                 <div className="p-4 sm:p-6 bg-white rounded-sm shadow-md">
                     <div className="flex flex-col gap-2 mb-6">
                         <input type="text" placeholder="Create a New Group" value={newItemGroupName} onChange={(e) => setNewItemGroupName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleAddItemGroup()}
-                            className="w-full p-3 border border-gray-300 rounded-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                        <button onClick={handleAddItemGroup} disabled={loading} className="bg-sky-500 text-white py-3 px-6 rounded-sm font-semibold shadow-sm transition hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed">Add New Group</button>
+                            className="w-full p-3 border border-gray-300 rounded-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#F97316]" />
+                        <button onClick={handleAddItemGroup} disabled={loading} className="bg-[#F97316] text-white py-3 px-6 rounded-sm font-semibold shadow-sm transition hover:bg-[#ea580c] disabled:bg-[#F97316]/40 disabled:cursor-not-allowed">Add New Group</button>
                     </div>
 
                     <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">Official Item Groups</h2>
@@ -307,7 +337,7 @@ const ItemGroupPage: React.FC = () => {
                                     <div key={group.id} className="flex items-center justify-between p-3 bg-white rounded-sm shadow-sm border" onMouseLeave={() => setConfirmingDeleteId(null)}>
                                         {editingGroupId === group.id ? (
                                             <div className="flex flex-col w-full gap-2">
-                                                <input type="text" value={editingGroupName} onChange={(e) => setEditingGroupName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSaveEdit(group)} autoFocus className="w-full p-2 border border-blue-500 rounded-md" />
+                                                <input type="text" value={editingGroupName} onChange={(e) => setEditingGroupName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSaveEdit(group)} autoFocus className="w-full p-2 border border-[#F97316] rounded-md" />
                                                 <div className="flex justify-end gap-2">
                                                     <button onClick={() => handleSaveEdit(group)} className="bg-green-600 text-white py-1 px-3 rounded-md text-sm font-semibold">Save</button>
                                                     <button onClick={handleCancelEdit} className="bg-gray-500 text-white py-1 px-3 rounded-md text-sm font-semibold">Cancel</button>
@@ -317,12 +347,12 @@ const ItemGroupPage: React.FC = () => {
                                             <>
                                                 <div className="flex items-center gap-2 overflow-hidden">
                                                     <span className="text-gray-800 font-medium truncate">{group.name}</span>
-                                                    <span className={`text-sm px-2 py-0.5 rounded-sm font-medium ${count > 0 ? 'text-blue-900' : 'text-gray-500'}`}>
+                                                    <span className={`text-sm px-2 py-0.5 rounded-sm font-medium ${count > 0 ? 'text-[#F97316]' : 'text-gray-500'}`}>
                                                         {count} {count === 1 ? 'item' : 'items'}
                                                     </span>
                                                 </div>
                                                 <div className="flex gap-2 flex-shrink-0">
-                                                    <button onClick={() => handleEditClick(group)} className="text-gray-500 hover:text-blue-600" aria-label={`Edit ${group.name}`}><EditIcon /></button>
+                                                    <button onClick={() => handleEditClick(group)} className="text-gray-500 hover:text-[#F97316]" aria-label={`Edit ${group.name}`}><EditIcon /></button>
                                                     <button onClick={() => handleDeleteItemGroup(group)} className={`transition-colors p-1 rounded ${confirmingDeleteId === group.id ? 'bg-red-500 text-white' : 'text-gray-500 hover:text-red-600'}`} aria-label={`Delete ${group.name}`}>
                                                         {confirmingDeleteId === group.id ? <span className="text-xs font-bold px-1">Confirm?</span> : <DeleteIcon />}
                                                     </button>

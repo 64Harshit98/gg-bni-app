@@ -167,12 +167,7 @@ const SearchBar: React.FC<SearchableItemInputProps> = ({
           onFocus={() => setIsDropdownOpen(true)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
-          className={`w-full pl-10 pr-10 py-3 bg-white border border-gray-300 rounded-sm shadow-sm 
-                               focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all 
-                               text-gray-800 placeholder-gray-400 font-medium
-                               ${error ? 'border-red-500 focus:border-red-500 focus:ring-red-100' : ''}`}
-          autoComplete="off"
-        />
+          className={`w-full pl-10 pr-10 py-3 bg-white border border-gray-300 rounded-sm shadow-sm focus:border-[#F97316] focus:ring-2 focus:ring-[#F97316]/20 outline-none transition-all text-gray-800 placeholder-gray-400 font-medium ${error ? 'border-red-500 focus:border-red-500 focus:ring-red-100' : ''}`} autoComplete="off" />
 
         {searchQuery && (
           <button
@@ -216,9 +211,8 @@ const SearchBar: React.FC<SearchableItemInputProps> = ({
                       key={item.id}
                       onMouseEnter={() => setActiveIndex(index)}
                       onClick={() => handleSelect(item)}
-                      className={`px-4 py-3 cursor-pointer border-b border-gray-50 last:border-0 transition-colors duration-150 flex justify-between items-center
-                                                ${isSelected ? 'bg-blue-100' : 'hover:bg-gray-50'}
-                                            `}
+                      className={`px-4 py-3 cursor-pointer border-b border-gray-50 last:border-0 transition-colors duration-150 flex justify-between items-center ${isSelected ? '' : 'hover:bg-gray-50'}`}
+                      style={isSelected ? { backgroundColor: '#E0F2FE', color: '#0369A1' } : {}}
                     >
                       {/* Left: Name & Barcode */}
                       <div className="flex flex-col min-w-0 pr-4">

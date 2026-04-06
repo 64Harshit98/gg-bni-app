@@ -8,12 +8,14 @@ import { useAuth } from '../context/auth-context';
 import sellarLogo from '../assets/sellar-logo-heading.png';
 import { Share2 } from "lucide-react";
 import { useOrderSound } from '../Catalogue/hooks/useOrderSound';
+import { useConfirmedOrdersCount } from '../Catalogue/hooks/useConfirmedOrdersCount';
 
 const CatalogueLayout = () => {
     const navigate = useNavigate();
     const { currentUser } = useAuth();
     const scrollRef = useRef<HTMLDivElement>(null);
     useOrderSound(currentUser?.companyId);
+    const confirmedCount = useConfirmedOrdersCount(currentUser?.companyId);
 
     // 2. Scroll to top whenever the URL changes
     useEffect(() => {
@@ -98,7 +100,16 @@ const CatalogueLayout = () => {
                             className={({ isActive }) => sidebarLinkClass(isActive)}
                         >
                             <span className="text-lg">{icon}</span>
-                            <span>{label}</span>
+
+                            <div className="flex items-center justify-between w-full">
+                                <span>{label}</span>
+
+                                {label === "Orders" && confirmedCount > 0 && (
+                                    <span className="ml-2 px-2 py-[2px] text-[10px] font-bold bg-red-500 text-white rounded-full">
+                                        {confirmedCount}
+                                    </span>
+                                )}
+                            </div>
                         </NavLink>
                     ))}
 
@@ -205,10 +216,21 @@ const CatalogueLayout = () => {
                                 }`
                             }
                         >
-                            <div className="flex-shrink-0">{icon}</div>
-                            <span className="font-medium truncate text-xs sm:text-sm">
-                                {label}
-                            </span>
+                            <div className="relative flex items-center gap-1">
+                                <div className="flex-shrink-0 relative">
+                                    {icon}
+
+                                    {label === "Orders" && confirmedCount > 0 && (
+                                        <span className="absolute -top-2 -right-2 min-w-[16px] h-[16px] px-1 flex items-center justify-center text-[9px] font-bold bg-red-500 text-white rounded-full">
+                                            {confirmedCount}
+                                        </span>
+                                    )}
+                                </div>
+
+                                <span className="font-medium truncate text-xs sm:text-sm">
+                                    {label}
+                                </span>
+                            </div>
                         </NavLink>
                     ))}
                 </div>

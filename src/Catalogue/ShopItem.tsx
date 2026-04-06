@@ -51,7 +51,7 @@ const QuickListedToggle: React.FC<QuickListedToggleProps> = ({ itemId, isListed,
         <button
             onClick={handleClick}
             disabled={disabled || isLoading}
-            className={`flex-1 py-1.5 rounded-sm text-[9px] font-black uppercase cursor-pointer tracking-wider transition-all flex items-center justify-center gap-1 ${isListed ? 'bg-green-500 text-white shadow-sm' : 'bg-gray-100 text-gray-400 cursor-pointer'
+            className={`flex-1 py-1.5 rounded-sm text-[9px] font-black uppercase cursor-pointer tracking-wider transition-all flex items-center justify-center gap-1 ${isListed ? 'bg-[#F97316] text-white shadow-sm' : 'bg-gray-100 text-gray-400 cursor-pointer'
                 }`}
         >
             {isLoading ? <FiLoader className="animate-spin" size={10} /> : isListed ? <FiCheckSquare size={10} /> : <FiStar size={10} />}
@@ -272,7 +272,9 @@ const MyShop: React.FC = () => {
                     dbOperations.syncItems()
                 ]);
 
-                setAllItemGroups(fetchedItemGroups);
+                let groups = fetchedItemGroups || [];
+
+                setAllItemGroups(groups);
                 setAllItems(
                     (fetchedItems || []).map(item => ({
                         ...item,
@@ -343,7 +345,13 @@ const MyShop: React.FC = () => {
             }
 
             const groupExists = allItemGroups.some(g => g.id === item.itemGroupId);
-            const finalGroupId = groupExists ? item.itemGroupId : "uncategorized";
+            const uncategorizedGroup = allItemGroups.find(
+                g => g.name.toLowerCase().trim() === "uncategorized"
+            );
+
+            const finalGroupId = groupExists
+                ? item.itemGroupId
+                : uncategorizedGroup?.id;
             const matchesCategory = activeCat === 'All' || finalGroupId === activeCat;
 
             const itemName = item.name?.toLowerCase() || "";
@@ -431,7 +439,7 @@ const MyShop: React.FC = () => {
                             >
                                 <ChevronLeft className="text-[#1A3B5D]" size={20} />
                             </button>
-                            <div className="w-1 h-5 bg-[#00A3E1] rounded-sm"></div>
+                            <div className="w-1 h-5 bg-[#F97316] rounded-sm"></div>
 
                             <div className="flex items-center gap-1">
                                 <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">
@@ -448,7 +456,7 @@ const MyShop: React.FC = () => {
 
             <main className="p-3 md:p-6 space-y-3 flex-1 max-w-7xl mx-auto w-full pb-24">
                 <div className='flex items-center justify-center'>
-                    <h1 className="text-sm md:text-xl font-extrabold text-[#00A3E1] uppercase tracking-tighter">{currentCategoryName}</h1>
+                    <h1 className="text-sm md:text-xl font-extrabold text-[#F97316] uppercase tracking-tighter">{currentCategoryName}</h1>
                 </div>
                 <div className="relative group md:max-w-md md:mx-auto w-full">
                     <SearchBar
@@ -475,7 +483,7 @@ const MyShop: React.FC = () => {
 
                     <div className="flex items-center gap-2">
                         <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Total Products:</span>
-                        <span className="bg-[#00A3E1]/10 text-[#00A3E1] px-2.5 py-0.5 rounded-sm text-[10px] font-black">{filteredItems.length}</span>
+                        <span className="bg-[#F97316]/10 text-[#F97316] px-2.5 py-0.5 rounded-sm text-[10px] font-black">{filteredItems.length}</span>
                     </div>
 
                     <div className="relative">
@@ -489,7 +497,7 @@ const MyShop: React.FC = () => {
                                     <button
                                         key={opt}
                                         onClick={() => { setSortOrder(opt as any); setIsSortOpen(false); }}
-                                        className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 border-t border-gray-50 first:border-0 ${sortOrder === opt ? 'text-[#00A3E1]' : 'text-[#1A3B5D]'}`}
+                                        className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 border-t border-gray-50 first:border-0 ${sortOrder === opt ? 'text-[#F97316]' : 'text-[#1A3B5D]'}`}
                                     >
                                         {opt.replace(':', ': ')}
                                     </button>
@@ -507,7 +515,7 @@ const MyShop: React.FC = () => {
 
                         <button
                             onClick={handleToggleAllLive}
-                            className={`w-11 h-4 flex items-center rounded-sm p-1 transition-all duration-300 ${isAllLive ? 'bg-green-500' : 'bg-gray-300'
+                            className={`w-11 h-4 flex items-center rounded-sm p-1 transition-all duration-300 ${isAllLive ? 'bg-[#F97316]' : 'bg-gray-300'
                                 }`}
                         >
                             <div
@@ -543,11 +551,10 @@ const MyShop: React.FC = () => {
                                 id={item.id}
                                 key={item.id}
                                 onClick={() => handleOpenDetailDrawer(item)}
-                                className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col h-full transition-all duration-300 relative group hover:shadow-md cursor-pointer ${highlightedId === item.id ? 'ring-3 ring-blue-500 shadow-lg scale-[1.02] z-100' : 'border-gray-100'} ${!isViewMode ? 'ring-1 ring-[#00A3E1]/10' : ''}`}
-                            >
+                                className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col h-full transition-all duration-300 relative group hover:shadow-md cursor-pointer ${highlightedId === item.id ? 'ring-3 ring-[#F97316] shadow-lg scale-[1.02] z-50 border-[#F97316]' : 'border-gray-100'}  ${!isViewMode ? 'ring-1 ring-[#F97316]/10' : ''}`}>
                                 <div className="aspect-square flex items-center justify-center relative overflow-hidden">
                                     {showDiscountBadge && (
-                                        <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-tight shadow-md">
+                                        <div className="absolute top-2 right-2 bg-[#F97316] text-white px-2 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-tight shadow-md">
                                             {discountPercent}% OFF
                                         </div>
                                     )}
@@ -571,7 +578,7 @@ const MyShop: React.FC = () => {
                                                         ₹{mrp}
                                                     </p>
 
-                                                    <p className="text-[14px]font-black text-[#00A3E1]">
+                                                    <p className="text-[14px]font-black text-[#F97316]">
                                                         ₹{salePrice}
                                                         <span className="text-[12px] text-gray-600 font-semibold ml-1">
                                                             ({multiplier} pcs)
@@ -579,7 +586,7 @@ const MyShop: React.FC = () => {
                                                     </p>
                                                 </>
                                             ) : (
-                                                <p className="text-[14px] font-black text-[#00A3E1]">
+                                                <p className="text-[14px] font-black text-[#F97316]">
                                                     ₹{salePrice}
                                                     <span className="text-[12px] text-gray-600 font-semibold ml-1">
                                                         ({multiplier} pcs)
@@ -658,13 +665,13 @@ const MyShop: React.FC = () => {
                                             {item.imageUrl ? <img src={item.imageUrl} className="w-full h-full object-cover" /> : <FiPackage className="w-full h-full p-4 text-gray-200" />}
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <h4 className="text-[10px] font-black text-[#00A3E1] uppercase truncate">{item.name}</h4>
+                                            <h4 className="text-[10px] font-black text-[#F97316] uppercase truncate">{item.name}</h4>
                                             <p className="text-xs font-black text-[#1A3B5D]">₹{item.mrp}</p>
                                             <div className="flex items-center gap-3 mt-2">
                                                 <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-sm px-2 py-1">
-                                                    <button onClick={() => updateQuantity(item.id!, -1)} className="text-gray-400 hover:text-[#00A3E1]"><Minus size={14} /></button>
+                                                    <button onClick={() => updateQuantity(item.id!, -1)} className="text-gray-400 hover:text-[#F97316]"><Minus size={14} /></button>
                                                     <span className="text-xs font-black w-4 text-center">{quantity}</span>
-                                                    <button onClick={() => updateQuantity(item.id!, 1)} className="text-gray-400 hover:text-[#00A3E1]"><Plus size={14} /></button>
+                                                    <button onClick={() => updateQuantity(item.id!, 1)} className="text-gray-400 hover:text-[#F97316]"><Plus size={14} /></button>
                                                 </div>
                                                 <button onClick={() => removeFromCart(item.id!)} className="text-red-400 hover:text-red-600 ml-auto"><Trash2 size={16} /></button>
                                             </div>
@@ -679,7 +686,7 @@ const MyShop: React.FC = () => {
                                     <span className="text-[10px] font-black text-gray-400 uppercase">Subtotal</span>
                                     <span className="text-lg font-black text-[#1A3B5D]">₹{cartTotal}</span>
                                 </div>
-                                <button className="w-full bg-[#00A3E1] text-white py-4 rounded-sm font-black text-xs uppercase tracking-widest shadow-lg shadow-[#00A3E1]/20 active:scale-[0.98] transition-all">
+                                <button className="w-full bg-[#F97316] text-white py-4 rounded-sm font-black text-xs uppercase tracking-widest shadow-lg shadow-[#F97316]/20 active:scale-[0.98] transition-all">
                                     Checkout Now
                                 </button>
                             </div>
@@ -743,7 +750,7 @@ const MyShop: React.FC = () => {
 
                         <button
                             onClick={() => setShowUncategorizedWarning(false)}
-                            className="w-full bg-[#00A3E1] text-white py-2 rounded-sm text-xs font-black uppercase"
+                            className="w-full bg-[#F97316] text-white py-2 rounded-sm text-xs font-black uppercase"
                         >
                             OK
                         </button>

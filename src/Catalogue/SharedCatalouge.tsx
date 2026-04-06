@@ -218,7 +218,7 @@ const SharedCataloguePage: React.FC = () => {
                 <div className="max-w-7xl mx-auto px-3 py-3 flex justify-between items-center">
                     <div className="flex items-center gap-3">
                         <div className="flex items-center gap-1.5">
-                            <div className="w-1 h-5 bg-[#00A3E1] rounded-sm"></div>
+                            <div className="w-1 h-5 bg-[#F97316] rounded-sm"></div>
                             <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">
                                 {companyName}
                             </h1>
@@ -233,7 +233,7 @@ const SharedCataloguePage: React.FC = () => {
                                 console.error("Company ID missing!");
                             }
                         }}
-                        className="flex items-center justify-center gap-2 bg-[#00A3E1] text-white py-2 px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative cursor-pointer"
+                        className="flex items-center justify-center gap-2 bg-[#F97316] text-white py-2 px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative cursor-pointer"
                     >
                         <ShoppingCart size={16} />
                         <span className="hidden md:inline">Cart</span>
@@ -248,7 +248,7 @@ const SharedCataloguePage: React.FC = () => {
 
             <main className="p-1 md:p-6 space-y-4 flex-1 max-w-7xl mx-auto w-full pb-12 md:pb-20">
                 <div className='flex items-center justify-center mt-1'>
-                    <h1 className="text-lg md:text-xl font-extrabold text-[#00A3E1] uppercase tracking-tighter">Categories</h1>
+                    <h1 className="text-lg md:text-xl font-extrabold text-[#F97316] uppercase tracking-tighter">Categories</h1>
                 </div>
                 <div className="relative group max-w-md mx-auto w-full">
                     <SearchBar
@@ -268,7 +268,7 @@ const SharedCataloguePage: React.FC = () => {
                         <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">
                             Total Catalogues:
                         </span>
-                        <span className="bg-[#00A3E1]/10 text-[#00A3E1] px-2.5 py-0.5 rounded-sm text-[10px] font-black">
+                        <span className="bg-[#F97316]/10 text-[#F97316] px-2.5 py-0.5 rounded-sm text-[10px] font-black">
                             {filteredItems.length}
                         </span>
                     </div>
@@ -286,13 +286,13 @@ const SharedCataloguePage: React.FC = () => {
                             <div className="absolute right-0 mt-2 w-32 bg-white rounded-sm shadow-xl border border-gray-50 z-[70] overflow-hidden">
                                 <button
                                     onClick={() => { setSortOrder('A-Z'); setIsSortOpen(false); }}
-                                    className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 ${sortOrder === 'A-Z' ? 'text-[#00A3E1]' : 'text-[#1A3B5D]'}`}
+                                    className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 ${sortOrder === 'A-Z' ? 'text-[#F97316]' : 'text-[#1A3B5D]'}`}
                                 >
                                     A to Z
                                 </button>
                                 <button
                                     onClick={() => { setSortOrder('Z-A'); setIsSortOpen(false); }}
-                                    className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 border-t border-gray-50 ${sortOrder === 'Z-A' ? 'text-[#00A3E1]' : 'text-[#1A3B5D]'}`}
+                                    className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 border-t border-gray-50 ${sortOrder === 'Z-A' ? 'text-[#F97316]' : 'text-[#1A3B5D]'}`}
                                 >
                                     Z to A
                                 </button>
@@ -349,7 +349,7 @@ const SharedCataloguePage: React.FC = () => {
                                     </h3>
 
                                     <div className="flex items-center justify-center gap-1.5 bg-blue-50 px-2 py-0.5 rounded-sm border border-blue-100 w-fit mx-auto">
-                                        <span className="text-[10px] font-black text-[#00A3E1] leading-none">
+                                        <span className="text-[10px] font-black text-[#F97316] leading-none">
                                             {itemCount}
                                         </span>
                                         <span className="text-[8px] font-black uppercase tracking-widest text-[#1A3B5D]/60 leading-none">
@@ -357,7 +357,7 @@ const SharedCataloguePage: React.FC = () => {
                                         </span>
                                     </div>
 
-                                    <div className="mt-2 flex items-center justify-center bg-[#00A3E1] px-2 py-1.5 rounded-sm">
+                                    <div className="mt-2 flex items-center justify-center bg-[#F97316] px-2 py-1.5 rounded-sm">
                                         <div className="flex items-center">
                                             <span className="text-[12px] font-bold uppercase text-white tracking-wider">View Products</span>
                                         </div>
@@ -388,7 +388,7 @@ const SharedCataloguePage: React.FC = () => {
                         navigate(`/checkout/${effectiveCompanyId}`);
                     }
                 }}
-                className="fixed bottom-0 left-0 w-full md:w-[50%] md:left-1/2 md:-translate-x-1/2 z-[9999] bg-[#00A3E1] text-white shadow-lg cursor-pointer active:scale-[0.98] transition-all"
+                className="fixed bottom-0 left-0 w-full md:w-[50%] md:left-1/2 md:-translate-x-1/2 z-[9999] bg-[#F97316] text-white shadow-lg cursor-pointer active:scale-[0.98] transition-all"
             >
                 <div className="max-w-7xl mx-auto flex items-center justify-between px-4 py-3">
 

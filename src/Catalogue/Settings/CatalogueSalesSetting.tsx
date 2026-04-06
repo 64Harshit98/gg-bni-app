@@ -10,6 +10,7 @@ import { Spinner } from '../../constants/Spinner';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
 import { useAuth } from '../../context/auth-context';
+import { InfoTooltip } from '../../Components/InfoToolTip';
 
 export interface CatalogueSalesSettings {
   companyId: string
@@ -34,6 +35,7 @@ export interface CatalogueSalesSettings {
   hidePrice?: boolean;
   cartInsertionOrder?: 'top' | 'bottom';
   requireApproval: boolean;
+  enableItemWiseDiscount?: boolean;
 }
 
 export const getDefaultCatalogueSalesSettings = (companyId: string): CatalogueSalesSettings => ({
@@ -58,7 +60,8 @@ export const getDefaultCatalogueSalesSettings = (companyId: string): CatalogueSa
   enforceExactMRP: false,
   hidePrice: false,
   cartInsertionOrder: 'top',
-  requireApproval: false
+  requireApproval: false,
+  enableItemWiseDiscount: false
 });
 
 const CatalogueSalesSettings: React.FC = () => {
@@ -331,6 +334,15 @@ const CatalogueSalesSettings: React.FC = () => {
                 </div>
               </div>
             )}
+
+            <div className="flex items-center mb-4">
+              <input type="checkbox" id="item-discount" checked={settings.enableItemWiseDiscount ?? false} onChange={(e) => handleCheckboxChange('enableItemWiseDiscount', e.target.checked)} className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
+              <label htmlFor="item-discount" className="ml-2 mr-2 text-gray-700 text-sm font-medium">
+                Enable Item-wise Discount
+              </label>
+              <InfoTooltip text="Allow discounts to be applied to individual cart items." />
+            </div>
+
           </div>
 
           {/* Card 2 — Minimum Order Value */}

@@ -408,7 +408,7 @@ const CatalogueBillSettings: React.FC = () => {
                     disabled={isSaving}
                     className={`
             w-full md:w-auto px-8 py-3 rounded-lg text-white font-bold text-lg shadow-md transition-all transform active:scale-[0.98]
-            ${isSaving ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 hover:shadow-lg'}
+            ${isSaving ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#F97316] hover:bg-orange-700 hover:shadow-lg'}
           `}
                 >
                     {isSaving ? (

@@ -465,7 +465,7 @@ const ItemsSoldReport: React.FC = () => {
 
                 <button
                     onClick={handleApplyFilters}
-                    className="w-full mt-2 px-3 py-1 bg-blue-600 text-white text-lg font-semibold rounded-lg hover:bg-blue-700"
+                    className="w-full mt-2 px-3 py-1 bg-[#F97316] text-white text-lg font-semibold rounded-lg hover:bg-orange-700"
                 >
                     Apply
                 </button>
@@ -487,6 +487,7 @@ const ItemsSoldReport: React.FC = () => {
                 filteredSales={aggregatedItems as any}
                 isListVisible={isListVisible}
                 setIsListVisible={setIsListVisible}
+                isCatalogueMode = {true}
             />
 
             {/* DATA TABLE */}

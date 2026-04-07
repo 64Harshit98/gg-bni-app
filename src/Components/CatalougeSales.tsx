@@ -48,7 +48,7 @@ export const CompletedSalesCard: React.FC<CompletedSalesCardProps> = ({
                     </div>
                 ) : (
                     <div className="text-center">
-                        <p className="text-4xl font-bold text-green-600">
+                        <p className="text-4xl font-bold text-[#F97316]">
                             {isDataVisible ? `₹${totalSalesAmount.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '₹ ******'}
                         </p>
                         <p className="text-md text-gray-500 mt-2">

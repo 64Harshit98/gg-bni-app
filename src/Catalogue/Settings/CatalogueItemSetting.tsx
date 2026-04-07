@@ -143,7 +143,7 @@ const CatalogueItemSetting: React.FC = () => {
                                 <input type="checkbox" id="req-purchasePrice"
                                     checked={settings.requirePurchasePrice}
                                     onChange={(e) => handleCheckboxChange('requirePurchasePrice', e.target.checked)}
-                                    className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
+                                    className="w-4 h-4 accent-[#F97316] rounded focus:ring-[#F97316]" />
                                 <label htmlFor="req-purchasePrice" className="ml-2 text-sm font-medium text-gray-700">Require Purchase Price</label>
                             </div>
                             <div className="flex items-center">
@@ -152,7 +152,7 @@ const CatalogueItemSetting: React.FC = () => {
                                     id="req-sale-discount"
                                     checked={settings.requireSaleDiscount}
                                     onChange={(e) => handleCheckboxChange('requireSaleDiscount', e.target.checked)}
-                                    className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500"
+                                    className="w-4 h-4 accent-[#F97316] rounded focus:ring-[#F97316]"
                                 />
                                 <label htmlFor="req-sale-discount" className="ml-2 text-sm font-medium text-gray-700">
                                     Require Sale Discount (%)
@@ -164,7 +164,7 @@ const CatalogueItemSetting: React.FC = () => {
                                     id="req-purchase-discount"
                                     checked={settings.requirePurchaseDiscount}
                                     onChange={(e) => handleCheckboxChange('requirePurchaseDiscount', e.target.checked)}
-                                    className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500"
+                                    className="w-4 h-4 accent-[#F97316] rounded focus:ring-[#F97316]"
                                 />
                                 <label htmlFor="req-purchase-discount" className="ml-2 text-sm font-medium text-gray-700">
                                     Require Purchase Discount (%)
@@ -174,7 +174,7 @@ const CatalogueItemSetting: React.FC = () => {
                                 <input type="checkbox" id="req-tax"
                                     checked={settings.requireTax}
                                     onChange={(e) => handleCheckboxChange('requireTax', e.target.checked)}
-                                    className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
+                                    className="w-4 h-4 accent-[#F97316] rounded focus:ring-[#F97316]" />
                                 <label htmlFor="req-tax" className="ml-2 text-sm font-medium text-gray-700">Require Tax (%)</label>
                             </div>
 
@@ -182,7 +182,7 @@ const CatalogueItemSetting: React.FC = () => {
                                 <input type="checkbox" id="req-barcode"
                                     checked={settings.requireBarcode}
                                     onChange={(e) => handleCheckboxChange('requireBarcode', e.target.checked)}
-                                    className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
+                                    className="w-4 h-4 accent-[#F97316] rounded focus:ring-[#F97316]" />
                                 <label htmlFor="req-barcode" className="ml-2 text-sm font-medium text-gray-700">Require Barcode</label>
                             </div>
 
@@ -190,7 +190,7 @@ const CatalogueItemSetting: React.FC = () => {
                                 <input type="checkbox" id="req-restock"
                                     checked={settings.requireRestockQuantity}
                                     onChange={(e) => handleCheckboxChange('requireRestockQuantity', e.target.checked)}
-                                    className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
+                                    className="w-4 h-4 accent-[#F97316] rounded focus:ring-[#F97316]" />
                                 <label htmlFor="req-restock" className="ml-2 text-sm font-medium text-gray-700">Require Restock Quantity</label>
                             </div>
                         </div>
@@ -202,7 +202,7 @@ const CatalogueItemSetting: React.FC = () => {
                             <input type="checkbox" id="auto-barcode"
                                 checked={settings.autoGenerateBarcode}
                                 onChange={(e) => handleCheckboxChange('autoGenerateBarcode', e.target.checked)}
-                                className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
+                                className="w-4 h-4 accent-[#F97316] rounded focus:ring-[#F97316]" />
                             <label htmlFor="auto-barcode" className="ml-2 text-sm font-medium text-gray-700">Automatically Generate Barcode if Empty</label>
                         </div>
                         <p className="text-xs text-gray-500 mt-1 pl-6">If checked, a unique barcode will be generated when adding an item if the barcode field is left blank.</p>
@@ -211,7 +211,7 @@ const CatalogueItemSetting: React.FC = () => {
                     <button
                         type="submit"
                         disabled={isSaving || isLoading}
-                        className="w-full mt-6 flex items-center justify-center bg-sky-500 text-white font-bold py-3 px-4 rounded-sm hover:bg-sky-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                        className="w-full mt-6 flex items-center justify-center bg-[#F97316] text-white font-bold py-3 px-4 rounded-sm hover:bg-orange-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
                     >
                         {isSaving ? <Spinner /> : 'Save Item Settings'}
                     </button>

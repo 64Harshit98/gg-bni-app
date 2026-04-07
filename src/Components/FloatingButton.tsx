@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import React, { useState } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { cn } from '../lib/utils';
+import { useLocation } from 'react-router-dom';
 
 interface IFloatingButtonProps {
   className?: string;
@@ -13,12 +14,16 @@ const FloatingButton: React.FC<IFloatingButtonProps> = ({
   children,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const location = useLocation();
+  const isCatalogue = location.pathname.includes('catalogue');
+
+  const bgClass = isCatalogue ? 'bg-[#F97316] hover:bg-orange-600' : 'bg-sky-500 hover:bg-sky-600';
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger
         className={cn(
-          'fixed bottom-18 right-4 z-30 bg-sky-500 text-white p-1 w-11 h-11 rounded-full flex items-center justify-center',
+          `fixed bottom-18 right-4 z-30 text-white p-1 w-11 h-11 rounded-full flex items-center justify-center ${bgClass}`,
           className,
         )}
       >

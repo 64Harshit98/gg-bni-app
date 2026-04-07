@@ -101,7 +101,7 @@ const SignUpPage: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-100">
+    <div className="flex h-screen overflow-hidden bg-white">
   {/* Left side like Figma */}
   <div className="hidden lg:block w-1/2 relative">
     <img
@@ -119,8 +119,8 @@ const SignUpPage: React.FC = () => {
   </div>
 
   {/* Right side keeps your original structure scale */}
-  <div className="flex flex-col h-screen overflow-hidden w-full lg:w-1/2 bg-gray-100">
-    <div className="flex-shrink-0 bg-gray-100 pt-4 pb-2 px-4 shadow-sm z-40 flex justify-center">
+  <div className="flex flex-col h-screen overflow-hidden w-full lg:w-1/2 bg-white">
+    <div className="flex-shrink-0 bg-white pt-4 pb-2 px-4 shadow-sm z-40 flex justify-center">
       <div className="w-full max-w-xs">
         <Stepper totalSteps={2} currentStep={1} onStepClick={() => {}} />
       </div>
@@ -128,7 +128,7 @@ const SignUpPage: React.FC = () => {
 
     <div className="flex-grow px-4 pb-4 overflow-hidden flex flex-col justify-start">
       <div className="flex justify-between items-end mb-6 mt-4">
-        <h1 className="text-4xl font-bold">Create Account</h1>
+        <h1 className="text-3xl font-bold">Create Account</h1>
         <button
           type="button"
           onClick={handleClearData}
@@ -138,9 +138,9 @@ const SignUpPage: React.FC = () => {
         </button>
       </div>
 
-      <div className="bg-gray-100 p-7 pb-7 pt-7 rounded-sm space-y-2 pt-6 pb-6 w-[90%] mx-auto">
+      <div className="bg-white p-7 pb-7 pt-7 rounded-sm space-y-2 pt-6 pb-6 pl-5 w-[103%] mx-auto">
         <form onSubmit={handleNext} className="flex flex-col space-y-5">
-          <div className="relative [&_label]:!left-[3rem]">
+          <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
             <div style={{ position: 'relative' }}>
               <FiUser className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={16} />
               <FloatingLabelInput
@@ -150,14 +150,14 @@ const SignUpPage: React.FC = () => {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 required
-                className="pl-12 py-3 bg-gray-100
+                className="pl-12 py-3 bg-white
                  border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)]"
                 style={{ '--label-left': '3rem' } as React.CSSProperties}
               />
             </div>
           </div>
 
-          <div className="relative [&_label]:!left-[3rem]">
+          <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
             <div style={{ position: 'relative' }}>
               <FiPhone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
               <FloatingLabelInput
@@ -170,13 +170,13 @@ const SignUpPage: React.FC = () => {
                   if (val.length <= 10) setPhoneNumber(val);
                 }}
                 required
-                className="pl-12 py-3 bg-gray-100 border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)]"
+                className="pl-12 py-3 bg-white border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)]"
                 style={{ '--label-left': '3rem' } as React.CSSProperties}
               />
             </div>
           </div>
 
-          <div className="relative [&_label]:!left-[3rem]">
+          <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
             <div style={{ position: 'relative' }}>
               <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
               <FloatingLabelInput
@@ -186,13 +186,13 @@ const SignUpPage: React.FC = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="pl-12 py-3 bg-gray-100 border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)]"
+                className="pl-12 py-3 bg-white border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)]"
                 style={{ '--label-left': '3rem' } as React.CSSProperties}
               />
             </div>
           </div>
 
-          <div className="relative [&_label]:!left-[3rem]">
+          <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
             <div style={{ position: 'relative' }}>
               <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={16} />
               <FloatingLabelInput
@@ -202,7 +202,7 @@ const SignUpPage: React.FC = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="pl-12 py-3 pr-10 bg-gray-100 border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)] w-full"
+                className="pl-12 py-3 pr-10 bg-white border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)] w-full"
                 style={{ '--label-left': '3rem' } as React.CSSProperties}
               />
               <button
@@ -215,7 +215,7 @@ const SignUpPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="relative [&_label]:!left-[3rem]">
+          <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
             <div style={{ position: 'relative' }}>
               <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={16} />
               <FloatingLabelInput
@@ -225,7 +225,7 @@ const SignUpPage: React.FC = () => {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
-                className="pl-12 py-3 pr-10 bg-gray-100 border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)] w-full"
+                className="pl-12 py-3 pr-10 bg-white border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)] w-full"
                 style={{ '--label-left': '3rem' } as React.CSSProperties}
               />
               <button

@@ -236,6 +236,7 @@ const OrderingPage: React.FC = () => {
                 {/* --- SEARCH BAR --- */}
                 <SearchBar
                     items={items}
+                     itemGroups={itemGroups} 
                     placeholder="Search products..."
                     onItemSelected={(item) => {
                         if (!item.id) return;
@@ -296,9 +297,13 @@ const OrderingPage: React.FC = () => {
                         const itemCount = items.filter(item => {
                             const groupExists = itemGroups.some(g => g.id === item.itemGroupId);
 
+                            const uncategorizedGroup = itemGroups.find(
+                                g => g.name.toLowerCase().trim() === "uncategorized"
+                            );
+
                             const finalGroupId = groupExists
                                 ? item.itemGroupId
-                                : "uncategorized";
+                                : uncategorizedGroup?.id;
 
                             return finalGroupId === group.id;
                         }).length;
@@ -358,12 +363,34 @@ const OrderingPage: React.FC = () => {
                                                 <button
                                                     onClick={async (e) => {
                                                         e.stopPropagation();
+
                                                         if (window.confirm("Delete product group?") && dbOperations) {
                                                             try {
+                                                                // 1. find uncategorized group
+                                                                const uncategorizedGroup = itemGroups.find(
+                                                                    g => g.name.toLowerCase().trim() === "uncategorized"
+                                                                );
+
+                                                                // 2. get items of this group
+                                                                const itemsToUpdate = items.filter(
+                                                                    item => item.itemGroupId === group.id
+                                                                );
+
+                                                                // 3. move items to uncategorized
+                                                                await Promise.all(
+                                                                    itemsToUpdate.map(item =>
+                                                                        dbOperations.updateItem(item.id!, {
+                                                                            itemGroupId: uncategorizedGroup?.id 
+                                                                        })
+                                                                    )
+                                                                );
+
+                                                                // 4. delete group
                                                                 await dbOperations.deleteItemGroup(group.id!);
+
                                                                 setItemGroups(itemGroups.filter(p => p.id !== group.id));
-                                                                setEditingId(null);
                                                                 setModal({ message: 'Deleted successfully', type: State.SUCCESS });
+
                                                             } catch (err) {
                                                                 console.error(err);
                                                                 setModal({ message: 'Delete failed', type: State.ERROR });

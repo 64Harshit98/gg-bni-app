@@ -1228,10 +1228,7 @@ const OrdersReturnPage: React.FC = () => {
                             setModal={setModal}
 
                             onOpenEditDrawer={(item: any) => {
-                              console.log("EDIT CLICKED", item);
-
                               const realItem = availableItems.find(i => i.id === item.id);
-
                               if (!realItem) {
                                 console.error("Original item not found");
                                 return;

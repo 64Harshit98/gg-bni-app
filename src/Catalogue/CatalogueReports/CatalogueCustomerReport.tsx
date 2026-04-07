@@ -286,7 +286,7 @@ const CatalogueCustomerReport: React.FC = () => {
 
         <button
           onClick={handleApplyFilters}
-          className="w-full mt-2 px-3 py-1 bg-blue-600 text-white text-lg font-semibold rounded-lg hover:bg-blue-700"
+          className="w-full mt-2 px-3 py-1 bg-[#F97316] text-white text-lg font-semibold rounded-lg hover:bg-[#F97316]"
         >
           Apply
         </button>
@@ -298,7 +298,7 @@ const CatalogueCustomerReport: React.FC = () => {
           variant={CardVariant.Summary}
           title="Total Customers"
           value={metrics.totalCustomers.toString()}
-          valueClassName="text-blue-600 text-3xl"
+          valueClassName="text-[#F97316] text-3xl"
         />
         <CustomCard
           variant={CardVariant.Summary}
@@ -344,7 +344,7 @@ const CatalogueCustomerReport: React.FC = () => {
                 setIsDownloadModalOpen(true);
               }
             }}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md font-semibold"
+            className="px-4 py-2 bg-[#F97316] text-white rounded-md font-semibold"
           >
             Download Report
           </button>

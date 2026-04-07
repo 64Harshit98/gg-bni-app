@@ -214,7 +214,7 @@ const CatalogueSalesSettings: React.FC = () => {
                     e.target.checked
                   )
                 }
-                className="w-4 h-4"
+                className="w-4 h-4 accent-[#F97316]"
               />
               <label className="ml-2 text-sm">
                 Allow Negative Inventory
@@ -230,7 +230,7 @@ const CatalogueSalesSettings: React.FC = () => {
                     e.target.checked
                   )
                 }
-                className="w-4 h-4"
+                className="w-4 h-4 accent-[#F97316]"
               />
               <label className="ml-2 text-sm">
                 Enable Notify me button when item is out of stock
@@ -247,7 +247,7 @@ const CatalogueSalesSettings: React.FC = () => {
                     e.target.checked
                   )
                 }
-                className="w-4 h-4"
+                className="w-4 h-4 accent-[#F97316]"
               />
               <label className="ml-2 text-sm">
                 Require Customer Approval Before Ordering
@@ -264,7 +264,7 @@ const CatalogueSalesSettings: React.FC = () => {
                     e.target.checked
                   )
                 }
-                className="w-4 h-4"
+                className="w-4 h-4 accent-[#F97316]"
               />
               <label className="ml-2 text-sm">
                 Hide Price from Customers
@@ -283,7 +283,7 @@ const CatalogueSalesSettings: React.FC = () => {
                   id="gst-scheme"
                   value={settings.gstScheme || 'none'}
                   onChange={(e) => handleChange('gstScheme', e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg bg-white"
+                  className="w-full p-3 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#F97316] focus:border-[#F97316]"
                 >
                   <option value="none">None (Tax Disabled)</option>
                   <option value="regular">Regular GST</option>
@@ -300,7 +300,7 @@ const CatalogueSalesSettings: React.FC = () => {
                     id="tax-type"
                     value={settings.taxType || 'exclusive'}
                     onChange={(e) => handleChange('taxType', e.target.value)}
-                    className="w-full p-3 border border-gray-300 rounded-lg bg-white"
+                    className="w-full p-3 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#F97316] focus:border-[#F97316]"
                   >
                     <option value="exclusive">Tax Exclusive (Sales Price excludes GST)</option>
                     <option value="inclusive">Tax Inclusive (Sales Price includes GST)</option>
@@ -309,7 +309,7 @@ const CatalogueSalesSettings: React.FC = () => {
               </div>
             )}
             <div className="flex items-center mb-2">
-              <input type="checkbox" id="enable-rounding" checked={settings.enableRounding ?? false} onChange={(e) => handleCheckboxChange('enableRounding', e.target.checked)} className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
+              <input type="checkbox" id="enable-rounding" checked={settings.enableRounding ?? false} onChange={(e) => handleCheckboxChange('enableRounding', e.target.checked)} className="w-4 h-4 accent-[#F97316] rounded focus:ring-[#F97316]" />
               <label htmlFor="enable-rounding" className="ml-2 text-gray-700 text-sm font-medium">Enable Rounding Off</label>
             </div>
             {settings.enableRounding && (
@@ -336,7 +336,7 @@ const CatalogueSalesSettings: React.FC = () => {
             )}
 
             <div className="flex items-center mb-4">
-              <input type="checkbox" id="item-discount" checked={settings.enableItemWiseDiscount ?? false} onChange={(e) => handleCheckboxChange('enableItemWiseDiscount', e.target.checked)} className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
+              <input type="checkbox" id="item-discount" checked={settings.enableItemWiseDiscount ?? false} onChange={(e) => handleCheckboxChange('enableItemWiseDiscount', e.target.checked)} className="w-4 h-4 accent-[#F97316] rounded focus:ring-[#F97316]"/>
               <label htmlFor="item-discount" className="ml-2 mr-2 text-gray-700 text-sm font-medium">
                 Enable Item-wise Discount
               </label>
@@ -416,7 +416,7 @@ const CatalogueSalesSettings: React.FC = () => {
           <button
             onClick={handleSave}
             disabled={isSaving || isLoading}
-            className="w-auto min-w-[150px] flex items-center justify-center bg-sky-500 text-white font-bold py-3 px-6 rounded-sm hover:bg-sky-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed shadow-lg"
+            className="w-auto min-w-[150px] flex items-center justify-center bg-[#F97316] text-white font-bold py-3 px-6 rounded-sm hover:bg-orange-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed shadow-lg"
           >
             {isSaving ? <Spinner /> : 'Save Settings'}
           </button>

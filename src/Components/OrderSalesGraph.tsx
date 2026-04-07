@@ -18,8 +18,8 @@ interface ChartDataPoint {
 }
 
 const chartConfig = {
-    sales: { label: 'Sales', color: '#3b82f6' },
-    bills: { label: 'Bills', color: '#3b82f6' },
+    sales: { label: 'Sales', color: '#F97316' },
+    bills: { label: 'Bills', color: '#F97316' },
 } satisfies ChartConfig;
 
 // ── Props (data comes from HomePage, no internal fetch) ──────────────────────
@@ -67,13 +67,13 @@ export function OrderBarChartReport({
                 <div className="flex items-center p-1 bg-gray-100 rounded-lg">
                     <button
                         onClick={() => setViewMode('amount')}
-                        className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${viewMode === 'amount' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}
+                        className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${viewMode === 'amount' ? 'bg-white text-[#F97316] shadow-sm' : 'text-gray-500'}`}
                     >
                         Amt
                     </button>
                     <button
                         onClick={() => setViewMode('quantity')}
-                        className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${viewMode === 'quantity' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}
+                        className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${viewMode === 'quantity' ? 'bg-white text-[#F97316] shadow-sm' : 'text-gray-500'}`}
                     >
                         Qty
                     </button>

@@ -638,7 +638,7 @@ const CartPage: React.FC = () => {
                                 <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 rounded-sm transition-colors">
                                     <ChevronLeft size={20} className="text-[#1A3B5D]" />
                                 </button>
-                                <div className="w-1 h-5 bg-[#00A3E1] rounded-sm"></div>
+                                <div className="w-1 h-5 bg-[#F97316] rounded-sm"></div>
                                 <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">My Cart</h1>
                             </div>
                         </div>
@@ -701,14 +701,14 @@ const CartPage: React.FC = () => {
                     )}
                     <div className="mb-6 flex items-center justify-center lg:justify-start gap-4">
                         <button onClick={() => setStep(1)} className="flex items-center gap-2">
-                            <span className={`w-6 h-6 rounded-sm flex items-center justify-center text-[12px] font-black transition-all ${step === 1 ? 'bg-[#00A3E1] text-white' : 'bg-green-500 text-white'}`}>
+                            <span className={`w-6 h-6 rounded-sm flex items-center justify-center text-[12px] font-black transition-all ${step === 1 ? 'bg-[#F97316] text-white' : 'bg-green-500 text-white'}`}>
                                 {step > 1 ? <Check size={12} strokeWidth={4} /> : "1"}
                             </span>
                             <span className={`text-[12px] font-black uppercase tracking-widest ${step === 1 ? 'text-[#1A3B5D]' : 'text-gray-400'}`}>Cart</span>
                         </button>
                         <div className="w-10 h-[2px] bg-gray-200" />
                         <button onClick={() => setStep(2)} className="flex items-center gap-2">
-                            <span className={`w-6 h-6 rounded-sm flex items-center justify-center text-[12px] font-black transition-all ${step === 2 ? 'bg-[#00A3E1] text-white' : 'bg-gray-200 text-gray-400'}`}>2</span>
+                            <span className={`w-6 h-6 rounded-sm flex items-center justify-center text-[12px] font-black transition-all ${step === 2 ? 'bg-[#F97316] text-white' : 'bg-gray-200 text-gray-400'}`}>2</span>
                             <span className={`text-[12px] font-black uppercase tracking-widest ${step === 2 ? 'text-[#1A3B5D]' : 'text-gray-400'}`}>Shipping</span>
                         </button>
                     </div>
@@ -769,7 +769,7 @@ const CartPage: React.FC = () => {
                                                             <div className="flex items-center bg-gray-50 rounded-sm p-0.5 border border-gray-100 shrink-0">
                                                                 <button onClick={() => updateQuantity(item.id, -1)} className="w-5 h-5 flex items-center justify-center text-xs font-bold">-</button>
                                                                 <span className="px-2 text-[12px] font-black">{item.quantity}</span>
-                                                                <button onClick={() => updateQuantity(item.id, 1)} className="w-5 h-5 flex items-center justify-center text-[#00A3E1] text-xs font-bold">+</button>
+                                                                <button onClick={() => updateQuantity(item.id, 1)} className="w-5 h-5 flex items-center justify-center text-[#F97316] text-xs font-bold">+</button>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -858,7 +858,7 @@ const CartPage: React.FC = () => {
                                         <div className="flex lg:hidden items-center gap-3 px-2 -mt-1">
                                             <button
                                                 onClick={() => setIsSameAsShipping(!isSameAsShipping)}
-                                                className={`w-9 h-4.5 rounded-sm transition-all flex items-center px-1 ${isSameAsShipping ? 'bg-[#00A3E1]' : 'bg-gray-300'
+                                                className={`w-9 h-4.5 rounded-sm transition-all flex items-center px-1 ${isSameAsShipping ? 'bg-[#F97316]' : 'bg-gray-300'
                                                     }`}
                                             >
                                                 <div
@@ -873,7 +873,7 @@ const CartPage: React.FC = () => {
 
                                         <div className={`bg-white rounded-sm shadow-sm p-4 border border-gray-50 transition-all ${isSameAsShipping ? 'opacity-60 pointer-events-none grayscale-[0.5]' : 'opacity-100'}`}>
                                             <h3 className="text-[9px] font-black text-[#1A3B5D] uppercase tracking-widest mb-3 flex items-center gap-2">
-                                                <span className="w-1.5 h-1.5 bg-[#00A3E1] rounded-sm"></span> Shipping Address
+                                                <span className="w-1.5 h-1.5 bg-[#F97316] rounded-sm"></span> Shipping Address
                                             </h3>
                                             <div className="grid grid-cols-2 gap-2.5">
                                                 <div className="space-y-1">
@@ -933,7 +933,7 @@ const CartPage: React.FC = () => {
                                         </div>
                                     </div>
                                     <div className="hidden lg:flex items-center gap-3 px-2">
-                                        <button onClick={() => setIsSameAsShipping(!isSameAsShipping)} className={`w-9 h-4.5 rounded-sm transition-all flex items-center px-1 ${isSameAsShipping ? 'bg-[#00A3E1]' : 'bg-gray-300'}`}>
+                                        <button onClick={() => setIsSameAsShipping(!isSameAsShipping)} className={`w-9 h-4.5 rounded-sm transition-all flex items-center px-1 ${isSameAsShipping ? 'bg-[#F97316]' : 'bg-gray-300'}`}>
                                             <div className={`bg-white w-3 h-3 rounded-sm shadow-sm transition-transform ${isSameAsShipping ? 'translate-x-4.5' : 'translate-x-0'}`} />
                                         </button>
                                         <span className="text-[9px] font-black text-[#1A3B5D] uppercase tracking-wider">Shipping details same as billing details</span>
@@ -951,8 +951,8 @@ const CartPage: React.FC = () => {
                                     </div>
 
                                     <div className="pt-3 border-t border-gray-50 flex justify-between items-center">
-                                        <span className="text-[#00A3E1] font-black text-xs uppercase">Total Pay</span>
-                                        <span className="text-xl font-black text-[#00A3E1]">
+                                        <span className="text-[#F97316] font-black text-xs uppercase">Total Pay</span>
+                                        <span className="text-xl font-black text-[#F97316]">
                                             {shouldShowPrice ? `₹${totalPay.toLocaleString()}` : "—"}
                                         </span>
                                     </div>
@@ -978,7 +978,7 @@ const CartPage: React.FC = () => {
                                             placeOrder();
                                         }
                                     }}
-                                    className={`w-full bg-[#00A3E1] text-white py-4 rounded-sm font-black text-[12px] uppercase tracking-widest shadow-lg hover:brightness-110 transition-all active:scale-95 flex items-center justify-center 
+                                    className={`w-full bg-[#F97316] text-white py-4 rounded-sm font-black text-[12px] uppercase tracking-widest shadow-lg hover:brightness-110 transition-all active:scale-95 flex items-center justify-center 
                                       ${(isPlacing || cartItems.length === 0) ? 'opacity-70 cursor-not-allowed' : ''}`}
                                 >
                                     {isPlacing ? "Placing Order..." : step === 1 ? "Proceed to Shipping" : "Complete Purchase"}
@@ -1013,7 +1013,7 @@ const CartPage: React.FC = () => {
 
                             <div className="pt-4 border-t border-gray-100 flex justify-between items-center">
                                 <span className="text-[#1A3B5D] font-black text-sm uppercase">Amount Payable</span>
-                                <span className="text-2xl font-black text-[#00A3E1]">
+                                <span className="text-2xl font-black text-[#F97316]">
                                     {shouldShowPrice ? `₹${totalPay.toLocaleString()}` : "—"}
                                 </span>
                             </div>
@@ -1031,7 +1031,7 @@ const CartPage: React.FC = () => {
                     <div className="flex flex-col" onClick={() => setIsDrawerOpen(true)}>
                         <div className="flex items-center gap-1">
                             <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Total Pay</span>
-                            <ChevronUp size={12} className="text-[#00A3E1]" />
+                            <ChevronUp size={12} className="text-[#F97316]" />
                         </div>
                         <span className="text-xl font-black text-[#1A3B5D]">
                             {shouldShowPrice ? `₹${totalPay.toLocaleString()}` : "—"}
@@ -1058,7 +1058,7 @@ const CartPage: React.FC = () => {
                             }
                         }}
                         disabled={cartItems.length === 0}
-                        className={`bg-[#00A3E1] text-white px-10 py-3.5 rounded-sm font-black text-[12px] uppercase tracking-widest active:scale-95 transition-transform${cartItems.length === 0 ? 'opacity-60 cursor-not-allowed' : ''} `}>
+                        className={`bg-[#F97316] text-white px-10 py-3.5 rounded-sm font-black text-[12px] uppercase tracking-widest active:scale-95 transition-transform${cartItems.length === 0 ? 'opacity-60 cursor-not-allowed' : ''} `}>
                         {step === 1 ? "Checkout" : "View Summary"}
                     </button>
                 </div>

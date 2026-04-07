@@ -53,7 +53,7 @@ export const TopSoldItemsCard: React.FC<TopSoldItemsCardProps> = ({
                 {itemsToDisplay.map((item, index) => (
                     <li key={item.id} className="flex items-center">
                         <div className="flex items-center w-4/5">
-                            <span className={`text-sm font-bold rounded-full h-6 w-6 flex items-center justify-center mr-3 flex-shrink-0 text-blue-600 bg-blue-100`}>
+                            <span className={`text-sm font-bold rounded-full h-6 w-6 flex items-center justify-center mr-3 flex-shrink-0 text-[#F97316] bg-orange-100`}>
                                 {index + 1}
                             </span>
                             <span className="font-medium text-gray-700" title={item.name}>
@@ -85,13 +85,13 @@ export const TopSoldItemsCard: React.FC<TopSoldItemsCardProps> = ({
                 <div className="flex items-center p-1 bg-gray-100 rounded-lg">
                     <button
                         onClick={() => setViewMode('amount')}
-                        className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${viewMode === 'amount' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}
+                        className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${viewMode === 'amount' ? 'bg-white text-[#F97316] shadow-sm' : 'text-gray-500'}`}
                     >
                         Amt
                     </button>
                     <button
                         onClick={() => setViewMode('quantity')}
-                        className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${viewMode === 'quantity' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}
+                        className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${viewMode === 'quantity' ? 'bg-white text-[#F97316] shadow-sm' : 'text-gray-500'}`}
                     >
                         Qty
                     </button>

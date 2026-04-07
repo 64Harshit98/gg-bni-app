@@ -181,6 +181,10 @@ const BusinessInfoPage: React.FC = () => {
         businessCategory: finalBusinessCategory,
         gstType,
         gstin: finalGstin,
+        streetAddress,
+        city,
+        state,
+        postalCode,
         fullAddress: `${streetAddress}, ${city}, ${state} - ${postalCode}`,
         createdAt: new Date(),
       };

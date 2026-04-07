@@ -26,7 +26,7 @@ const Reports = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <Link
                             to={`${ROUTES.CHOME}/${ROUTES.CATALOGUE_SALES}`} // Use your ROUTES constant
-                            className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
+                            className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
                         >
                             <span className="text-lg font-medium">Sales Report</span>
                             <span className="text-xl text-gray-500">→</span>
@@ -34,7 +34,7 @@ const Reports = () => {
 
                         <Link
                             to={`${ROUTES.CHOME}/${ROUTES.CATALOGUE_CUSTOMER_REPORT}`} // Example
-                            className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
+                            className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
                         >
                             <span className="text-lg font-medium">Customer Report</span>
                             <span className="text-xl text-gray-500">→</span>
@@ -42,7 +42,7 @@ const Reports = () => {
 
                         <Link
                             to={`${ROUTES.CHOME}/${ROUTES.CATALOGUE_PNL_REPORT}`} // Example
-                            className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
+                            className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
                         >
                             <span className="text-lg font-medium">Profit & Loss Report</span>
                             <span className="text-xl text-gray-500">→</span>
@@ -50,20 +50,20 @@ const Reports = () => {
 
                         <Link
                             to={`${ROUTES.CHOME}/${ROUTES.CATALOGUE_ITEMS}`} // Example
-                            className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
+                            className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
                         >
                             <span className="text-lg font-medium">Item Report</span>
                             <span className="text-xl text-gray-500">→</span>
                         </Link>
                         {/* <Link
                             to={`${ROUTES.CHOME}/${ROUTES.CATALOGUE_USER_REPORT}`} // Example
-                            className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
+                            className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
                         >
                             <span className="text-lg font-medium">User Report</span>
                             <span className="text-xl text-gray-500">→</span>
                         </Link> */}
 
-                        <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-200 text-gray-400 cursor-not-allowed opacity-70 relative">
+                        <div className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm border border-gray-200 text-gray-400 cursor-not-allowed opacity-70 relative">
                             <span className="text-lg font-medium">User Report</span>
 
                             <span className="absolute top-2 right-2 text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">
@@ -75,13 +75,13 @@ const Reports = () => {
 
                         {/* <Link
                             to={`${ROUTES.CHOME}/${ROUTES.CATALOGUE_TAX_REPORT}`} // Example
-                            className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
+                            className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
                         >
                             <span className="text-lg font-medium">Tax Report</span>
                             <span className="text-xl text-gray-500">→</span>
                         </Link> */}
 
-                        <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-200 text-gray-400 cursor-not-allowed opacity-70 relative">
+                        <div className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm border border-gray-200 text-gray-400 cursor-not-allowed opacity-70 relative">
                             <span className="text-lg font-medium">Tax Report</span>
 
                             <span className="absolute top-2 right-2 text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">
@@ -94,7 +94,7 @@ const Reports = () => {
                 ) : (
                     // --- This now renders in the full-width container ---
                     // It is no longer inside a grid.
-                    <div className="bg-white p-2 md:p-6 rounded-xl shadow-md min-h-[200px]">
+                    <div className="bg-white p-2 md:p-6 rounded-sm shadow-md min-h-[200px]">
                         <Outlet />
                     </div>
                 )}

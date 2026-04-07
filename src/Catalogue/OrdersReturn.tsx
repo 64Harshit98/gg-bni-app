@@ -1081,7 +1081,7 @@ const OrdersReturnPage: React.FC = () => {
             <div className="relative" ref={salesDropdownRef}>
               <label htmlFor="search-sale" className="block text-sm font-medium mb-1 text-gray-700">Search Original Sale</label>
               <div className="flex gap-2">
-                <input id="search-sale" type="text" value={searchSaleQuery} onChange={(e) => { setSearchSaleQuery(e.target.value); setIsSalesDropdownOpen(true); }} onFocus={() => setIsSalesDropdownOpen(true)} placeholder={selectedSale ? `(${selectedSale.orderId})` : "Invoice or Name..."} className="flex-grow p-2 border rounded-sm focus:ring-2 focus:ring-blue-500 outline-none" autoComplete="off" readOnly={!!selectedSale} />
+                <input id="search-sale" type="text" value={searchSaleQuery} onChange={(e) => { setSearchSaleQuery(e.target.value); setIsSalesDropdownOpen(true); }} onFocus={() => setIsSalesDropdownOpen(true)} placeholder={selectedSale ? `(${selectedSale.orderId})` : "Invoice or Name..."} className="flex-grow p-2 border rounded-sm focus:ring-2 focus:ring-[#F97316] outline-none" autoComplete="off" readOnly={!!selectedSale} />
                 {selectedSale && (<button onClick={handleClear} className=" px-3 bg-gray-200 text-gray-700 font-semibold rounded-sm whitespace-nowrap hover:bg-gray-300">Clear</button>)}
               </div>
               {isSalesDropdownOpen && !selectedSale && (
@@ -1103,8 +1103,8 @@ const OrdersReturnPage: React.FC = () => {
               <div className="bg-white p-3 rounded-sm shadow-md mb-4 border border-gray-200">
                 <div className="space-y-3 mb-4">
                   <div className="grid grid-cols-2 gap-4">
-                    <div><label className="block text-xs font-bold text-gray-500 uppercase">Date</label><input type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm" /></div>
-                    <div><label className="block text-xs font-bold text-gray-500 uppercase">Party</label><input type="text" value={partyName} onChange={(e) => setPartyName(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm" /></div>
+                    <div><label className="block text-xs font-bold text-gray-500 uppercase">Date</label><input type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-[#F97316] outline-none text-sm" /></div>
+                    <div><label className="block text-xs font-bold text-gray-500 uppercase">Party</label><input type="text" value={partyName} onChange={(e) => setPartyName(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-[#F97316] outline-none text-sm" /></div>
                   </div>
 
                   {/* --- NEW DROPDOWN FOR PARTY NUMBER --- */}
@@ -1115,7 +1115,7 @@ const OrdersReturnPage: React.FC = () => {
                       value={partyNumber}
                       onChange={(e) => { setPartyNumber(e.target.value); setPartyName(''); setIsCustomerDropdownOpen(true); }}
                       onFocus={() => setIsCustomerDropdownOpen(true)}
-                      className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm"
+                      className="w-full p-1 border-b border-gray-300 focus:border-[#F97316] outline-none text-sm"
                       autoComplete="off"
                       placeholder="Search customer by number or name..."
                     />
@@ -1266,7 +1266,7 @@ const OrdersReturnPage: React.FC = () => {
 
               {/* Mobile Only: Inline Summary (Above Footer) */}
               <div className="md:hidden bg-white p-2 rounded-sm shadow-md">
-                <div className="flex justify-between items-center text-sm text-blue-700">
+                <div className="flex justify-between items-center text-sm text-[#F97316]">
                   <p>Return Value</p><p className="font-medium">₹{totalReturnGross.toFixed(2)}</p>
                 </div>
                 {discountDeducted > 0 && (
@@ -1275,12 +1275,12 @@ const OrdersReturnPage: React.FC = () => {
                   </div>
                 )}
                 {modeOfReturn === 'Exchange' && (
-                  <div className="flex justify-between items-center text-sm text-blue-700 mt-1">
+                  <div className="flex justify-between items-center text-sm text-[#F97316] mt-1">
                     <p>Exchange Value</p><p className="font-medium">₹{totalExchangeValue.toFixed(2)}</p>
                   </div>
                 )}
                 <div className="border-t border-gray-200 my-2"></div>
-                <div className={`flex justify-between items-center text-lg font-bold ${finalBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                <div className={`flex justify-between items-center text-lg font-bold ${finalBalance >= 0 ? 'text-[#F97316]' : 'text-red-600'}`}>
                   <p>{getBalanceLabel()}</p><p>₹{Math.abs(finalBalance).toFixed(2)}</p>
                 </div>
               </div>
@@ -1297,7 +1297,7 @@ const OrdersReturnPage: React.FC = () => {
               {/* Transaction Type */}
               <div className="mb-6">
                 <label className="block text-sm font-semibold text-gray-600 mb-2">Transaction Type</label>
-                <select value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none">
+                <select value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm bg-gray-50 focus:ring-2 focus:ring-[#F97316] outline-none">
                   <option>Credit Note</option>
                   <option>Exchange</option>
                   <option>Cash Refund</option>
@@ -1322,7 +1322,7 @@ const OrdersReturnPage: React.FC = () => {
                 </div>
 
                 {modeOfReturn === 'Exchange' && (
-                  <div className="flex justify-between text-blue-600 mt-2">
+                  <div className="flex justify-between text-[#F97316] mt-2">
                     <span>Less: New Items Value</span>
                     <span>- ₹{totalExchangeValue.toFixed(2)}</span>
                   </div>
@@ -1333,13 +1333,13 @@ const OrdersReturnPage: React.FC = () => {
               <div className="mt-auto pt-4 border-t border-gray-100">
                 <div className="flex justify-between items-end mb-4">
                   <span className="text-gray-500 font-medium">{getBalanceLabel()}</span>
-                  <span className={`text-3xl font-bold ${finalBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  <span className={`text-3xl font-bold ${finalBalance >= 0 ? 'text-[#F97316]' : 'text-red-600'}`}>
                     ₹{Math.abs(finalBalance).toFixed(2)}
                   </span>
                 </div>
                 <button
                   onClick={handleProcessReturn}
-                  className={`w-full py-4 px-4 rounded-sm text-lg font-bold transition-all ${modeOfReturn === 'Exchange' && exchangeItems.length === 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}>
+                  className={`w-full py-4 px-4 rounded-sm text-lg font-bold transition-all ${modeOfReturn === 'Exchange' && exchangeItems.length === 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#F97316] hover:bg-orange-600 text-white'}`}>
                   Process Transaction
                 </button>
               </div>

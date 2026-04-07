@@ -7,6 +7,7 @@ import {
     MenubarSeparator,
     MenubarTrigger,
 } from "./ui/menubar";
+import { useLocation } from 'react-router-dom';
 
 const FormattedDateInput: React.FC<{ value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; }> = ({ value, onChange }) => {
 
@@ -74,6 +75,11 @@ export const useFilter = (): FilterContextType => {
 export const FilterControls: React.FC = () => {
     const { filters, setFilters } = useFilter();
     const [localFilters, setLocalFilters] = useState<FilterState>(filters);
+    const location = useLocation();
+    const isCatalogue = location.pathname.includes('catalogue');
+
+    const primaryColor = isCatalogue ? '#F97316' : '#2563eb';   // orange : blue
+    const primaryHover = isCatalogue ? '#ea580c' : '#1d4ed8';
 
     useEffect(() => {
         setLocalFilters(filters);
@@ -153,7 +159,7 @@ export const FilterControls: React.FC = () => {
                 <div>
                     <button
                         onClick={handleApply}
-                        className="w-full px-3 py-1 bg-blue-600 text-white font-semibold rounded-sm shadow-sm hover:bg-blue-700 transition-colors"
+                        className="w-full px-3 py-1 text-white font-semibold rounded-sm shadow-sm transition-colors" style={{backgroundColor: primaryColor}} onMouseOver={(e) => (e.currentTarget.style.backgroundColor = primaryHover)} onMouseOut={(e) => (e.currentTarget.style.backgroundColor = primaryColor)}
                     >
                         Apply
                     </button>

@@ -230,6 +230,10 @@ const ItemAdd: React.FC = () => {
         }
 
         setIsSaving(true);
+
+        // STEP 1: ensure uncategorized group exists
+        const groups = await dbOperations.getItemGroups();
+
         try {
             // Check for Duplicate Barcode
             const itemsRef = collection(db, 'companies', currentUser.companyId, 'items');
@@ -241,6 +245,14 @@ const ItemAdd: React.FC = () => {
                 setIsSaving(false);
                 return;
             }
+
+            // find uncategorized group by NAME (not id)
+            const uncategorizedGroup = groups.find(
+                g => g.name.toLowerCase().trim() === "uncategorized"
+            );
+
+            // final group id
+            const finalGroupId = selectedCategory || uncategorizedGroup?.id || "";
 
             const customDocId = finalBarcode;
             let currentMultiplier = 1;
@@ -258,7 +270,7 @@ const ItemAdd: React.FC = () => {
                 purchasediscount: finalPurchaseDiscount,
                 tax: parseFloat(itemTax) || 0,
                 hsnSac: hsnCode.trim(),
-                itemGroupId: selectedCategory || "uncategorized",
+                itemGroupId: finalGroupId,
                 stock: parseInt(itemAmount, 10) || 0,
                 amount: parseInt(itemAmount, 10) || 0,
                 barcode: finalBarcode,
@@ -349,7 +361,7 @@ const ItemAdd: React.FC = () => {
                     });
 
                     const csvCategoryValue = String(
-                        row.itemgroupid || row.itemgroup || row.category || row.group || row.categoryname || "General"
+                        row.itemgroupid || row.itemgroup || row.category || row.group || row.categoryname || "Uncategorized"
                     ).trim();
 
                     const categoryLower = csvCategoryValue.toLowerCase();
@@ -541,7 +553,7 @@ const ItemAdd: React.FC = () => {
                         <h3 className="text-lg font-bold mb-4 text-gray-800">Uploading Items...</h3>
                         <div className="w-full bg-gray-200 rounded-sm h-4 mb-2 overflow-hidden">
                             <div
-                                className="bg-sky-500 h-4 rounded-full transition-all duration-100"
+                                className="bg-[#F97316] h-4 rounded-full transition-all duration-100"
                                 style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
                             ></div>
                         </div>
@@ -568,10 +580,10 @@ const ItemAdd: React.FC = () => {
                         <div className="flex flex-col items-center justify-center mb-4">
                             <h2 className="text-lg font-semibold text-gray-700 mb-2">Bulk Import</h2>
                             <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".xlsx, .xls, .csv" />
-                            <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="w-full max-w-xs bg-sky-500 text-white py-2 px-4 rounded-sm hover:bg-sky-600 disabled:bg-gray-400 flex items-center justify-center gap-2">
+                            <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="w-full max-w-xs bg-[#F97316] text-white py-2 px-4 rounded-sm hover:bg-[#ea580c] disabled:bg-gray-400 flex items-center justify-center gap-2">
                                 {isUploading ? <Spinner /> : 'Import from Excel'}
                             </button>
-                            <button type="button" onClick={handleDownloadSample} disabled={isUploading} className="w-full max-w-xs bg-white text-sky-500 border border-sky-500 py-2 px-4 rounded-sm mt-4 hover:bg-sky-50">
+                            <button type="button" onClick={handleDownloadSample} disabled={isUploading} className="w-full max-w-xs bg-white text-[#F97316] border border-[#F97316] py-2 px-4 rounded-sm mt-4 hover:bg-[#F97316]/10">
                                 Download Sample
                             </button>
                         </div>
@@ -584,7 +596,7 @@ const ItemAdd: React.FC = () => {
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:ml-0.5 after:text-red-500">Item Name</label>
-                                <input type="text" value={itemName} onChange={(e) => setItemName(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500 outline-none" placeholder="e.g. Apple" />
+                                <input type="text" value={itemName} onChange={(e) => setItemName(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316] outline-none" placeholder="e.g. Apple" />
                             </div>
 
                             <div className='w-full'>
@@ -596,7 +608,7 @@ const ItemAdd: React.FC = () => {
                                         )}
                                     </label>
                                     <div className="flex gap-2">
-                                        <input type="text" value={itemBarcode} onChange={(e) => setItemBarcode(e.target.value)} className="flex-grow p-3 border border-gray-300 rounded-sm focus:ring-sky-500 outline-none" placeholder="Scan or Type" />
+                                        <input type="text" value={itemBarcode} onChange={(e) => setItemBarcode(e.target.value)} className="flex-grow p-3 border border-gray-300 rounded-sm focus:ring-[#F97316] outline-none" placeholder="Scan or Type" />
                                         <button type="button" onClick={() => setIsScannerOpen(true)} className="bg-gray-700 text-white p-3 rounded-sm"><IconScanCircle width={20} height={20} /></button>
                                     </div>
                                     <p className="text-xs text-gray-400 mt-1">This is the next available number. You can change it if needed.</p>
@@ -621,7 +633,7 @@ const ItemAdd: React.FC = () => {
                                                 setItemSalesPrice(String(Math.round(salePrice * 100) / 100));
                                             }
                                         }}
-                                        className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500"
+                                        className="w-full p-3 border border-gray-300 rounded-md focus:ring-[#F97316]"
                                         placeholder="0"
                                     />
                                     <p className="text-[10px] text-gray-400">Required if Sale Price is empty</p>
@@ -636,7 +648,7 @@ const ItemAdd: React.FC = () => {
                                         value={moq}
                                         onWheel={(e) => (e.target as HTMLInputElement).blur()}
                                         onChange={(e) => setMoq(e.target.value)}
-                                        className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500"
+                                        className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]"
                                         placeholder="1"
                                     />
                                     <p className="text-[10px] text-gray-400">Minimum Item Quantity</p>
@@ -661,7 +673,7 @@ const ItemAdd: React.FC = () => {
 
                                             setItemSalesPrice(value);
                                         }}
-                                        className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500"
+                                        className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]"
                                         placeholder="0"
                                     />
                                     <p className="text-[10px] text-gray-400">Required if MRP is empty</p>
@@ -673,7 +685,7 @@ const ItemAdd: React.FC = () => {
                                             <span className="text-red-500 ml-0.5">*</span>
                                         )}
                                     </label>
-                                    <input type="number" value={itemPurchasePrice} onChange={(e) => setItemPurchasePrice(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />
+                                    <input type="number" value={itemPurchasePrice} onChange={(e) => setItemPurchasePrice(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]" placeholder="0" />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-600 mb-1">
@@ -697,7 +709,7 @@ const ItemAdd: React.FC = () => {
                                                 setItemSalesPrice(String(Math.round(salePrice * 100) / 100));
                                             }
                                         }}
-                                        className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500"
+                                        className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]"
                                         placeholder="Enter discount"
                                     />
                                 </div>
@@ -708,31 +720,31 @@ const ItemAdd: React.FC = () => {
                                             <span className="text-red-500 ml-0.5">*</span>
                                         )}
                                     </label>
-                                    <input type="number" value={PurchaseDiscount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setPurchaseDiscount(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />
+                                    <input type="number" value={PurchaseDiscount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setPurchaseDiscount(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]" placeholder="0" />
                                 </div>
 
                                 <div>
                                     <label className="block text-sm font-medium text-gray-600 mb-1">Tax (%){itemSettings?.requireTax && (
                                         <span className="text-red-500 ml-0.5">*</span>
                                     )}</label>
-                                    <input type="number" value={itemTax} onChange={(e) => setItemTax(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />
+                                    <input type="number" value={itemTax} onChange={(e) => setItemTax(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]" placeholder="0" />
                                 </div>
 
                                 <div>
                                     <label className="block text-sm font-medium text-gray-600 mb-1">HSN Code</label>
-                                    <input type="text" value={hsnCode} onChange={(e) => setHsnCode(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="e.g. 123456" />
+                                    <input type="text" value={hsnCode} onChange={(e) => setHsnCode(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]" placeholder="e.g. 123456" />
                                 </div>
 
                                 <div>
                                     <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">Stock</label>
-                                    <input type="number" value={itemAmount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemAmount(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />
+                                    <input type="number" value={itemAmount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemAmount(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]" placeholder="0" />
                                 </div>
 
                                 <div>
                                     <label className="block text-sm font-medium text-gray-600 mb-1">Restock Level{itemSettings?.requireRestockQuantity && (
                                         <span className="text-red-500 ml-0.5">*</span>
                                     )}</label>
-                                    <input type="number" onWheel={(e) => (e.target as HTMLInputElement).blur()} value={restockQuantity} onChange={(e) => setRestockQuantity(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />
+                                    <input type="number" onWheel={(e) => (e.target as HTMLInputElement).blur()} value={restockQuantity} onChange={(e) => setRestockQuantity(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]" placeholder="0" />
                                 </div>
                             </div>
                             <div>
@@ -749,11 +761,11 @@ const ItemAdd: React.FC = () => {
                                             setSelectedCategory(e.target.value);
                                         }
                                     }}
-                                    className="w-full p-3 border border-gray-300 rounded-sm bg-white focus:ring-sky-500"
+                                    className="w-full p-3 border border-gray-300 rounded-sm bg-white focus:ring-[#F97316]"
                                 >
 
                                     {/* Default */}
-                                    <option value="uncategorized">uncategorized</option>
+                                    <option value="">uncategorized</option>
 
                                     {/* Add Group */}
                                     <option
@@ -785,7 +797,7 @@ const ItemAdd: React.FC = () => {
                                             setItemUnit(e.target.value);
                                             if (e.target.value !== 'pkt') setPacketSize('');
                                         }}
-                                        className={`p-3 border border-gray-300 rounded-sm bg-white focus:ring-sky-500 ${itemUnit === 'pkt' ? 'w-1/2' : 'w-full'
+                                        className={`p-3 border border-gray-300 rounded-sm bg-white focus:ring-[#F97316] ${itemUnit === 'pkt' ? 'w-1/2' : 'w-full'
                                             }`}
                                     >
                                         {UNIT_OPTIONS.map(unit => (
@@ -800,7 +812,7 @@ const ItemAdd: React.FC = () => {
                                             type="number"
                                             value={packetSize}
                                             onChange={(e) => setPacketSize(e.target.value)}
-                                            className="w-1/2 p-3 border border-gray-300 rounded-sm focus:ring-sky-500"
+                                            className="w-1/2 p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]"
                                             placeholder="Qty per pkt"
                                             min="1"
                                         />
@@ -816,9 +828,9 @@ const ItemAdd: React.FC = () => {
                 <div className="hidden md:flex w-[35%] flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
                     <div className="flex-1 p-6 flex flex-col">
 
-                        <div className="bg-sky-50 rounded-sm p-5 border border-sky-100">
-                            <h2 className="text-lg font-bold text-sky-800 mb-2">Bulk Import</h2>
-                            <p className="text-sm text-sky-600 mb-4">
+                        <div className="bg-[#F97316]/10 rounded-xl p-5 border border-[#F97316]/20">
+                            <h2 className="text-lg font-bold text-[#F97316] mb-2">Bulk Import</h2>
+                            <p className="text-sm text-[#F97316] mb-4">
                                 Upload Excel/CSV. Missing categories created automatically.
                             </p>
 
@@ -826,7 +838,7 @@ const ItemAdd: React.FC = () => {
                                 <button
                                     onClick={() => fileInputRef.current?.click()}
                                     disabled={isUploading}
-                                    className="w-full bg-white text-sky-600 border border-sky-200 py-3 px-4 rounded-sm font-semibold hover:bg-sky-50 disabled:bg-gray-100 flex items-center justify-center gap-2"
+                                    className="w-full bg-white text-[#F97316] border border-sky-200 py-3 px-4 rounded-lg font-semibold hover:bg-[#F97316]/10 disabled:bg-gray-100 flex items-center justify-center gap-2"
                                 >
                                     {isUploading ? <Spinner /> : 'Upload Excel File'}
                                 </button>
@@ -835,7 +847,7 @@ const ItemAdd: React.FC = () => {
                                     type="button"
                                     onClick={handleDownloadSample}
                                     disabled={isUploading}
-                                    className="text-sm text-sky-500 hover:text-sky-700 underline text-center"
+                                    className="text-sm text-[#F97316] hover:text-sky-700 underline text-center"
                                 >
                                     Download Sample Template
                                 </button>
@@ -848,7 +860,7 @@ const ItemAdd: React.FC = () => {
                             <button
                                 onClick={handleAddItem}
                                 disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)}
-                                className="w-full bg-sky-600 text-white py-4 px-6 rounded-sm text-lg font-bold hover:bg-sky-700 disabled:bg-gray-300 flex items-center justify-center gap-2"
+                                className="w-full bg-[#F97316] text-white py-4 px-6 rounded-xl text-lg font-bold hover:bg-[#ea580c] disabled:bg-gray-300 flex items-center justify-center gap-2"
                             >
                                 {isSaving ? <Spinner /> : 'Add Item'}
                             </button>
@@ -859,7 +871,7 @@ const ItemAdd: React.FC = () => {
 
                 {/* --- MOBILE FIXED FOOTER (Button) --- */}
                 <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-gray-100 border-t border-gray-200 z-20 flex justify-center pb-20">
-                    <button onClick={handleAddItem} disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)} className="w-full max-w-sm bg-sky-500 text-white py-3 px-6 rounded-sm text-lg font-semibold hover:bg-sky-600 disabled:bg-gray-400 flex items-center justify-center gap-2 shadow-md">
+                    <button onClick={handleAddItem} disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)} className="w-full max-w-sm bg-[#F97316] text-white py-3 px-6 rounded-lg text-lg font-semibold hover:bg-[#F97316] disabled:bg-gray-400 flex items-center justify-center gap-2 shadow-md">
                         {isSaving ? <Spinner /> : 'Add Item'}
                     </button>
                 </div>

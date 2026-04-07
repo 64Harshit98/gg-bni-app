@@ -249,7 +249,7 @@ const CatalogueItemReport: React.FC = () => {
           </FilterSelect>
           <button
             onClick={handleApplyFilters}
-            className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 transition"
+            className="px-6 py-2 bg-[#F97316] text-white font-semibold rounded-md shadow-sm hover:bg-[#F97316] transition"
           >
             Apply
           </button>
@@ -312,7 +312,7 @@ const CatalogueItemReport: React.FC = () => {
                 setIsDownloadModalOpen(true);
               }
             }}
-            className="bg-blue-600 text-white font-semibold rounded-md py-2 px-4 shadow-sm hover:bg-blue-700 whitespace-nowrap"
+            className="bg-[#F97316] text-white font-semibold rounded-md py-2 px-4 shadow-sm hover:bg-[#F97316] whitespace-nowrap"
           >
             Download Report
           </button>

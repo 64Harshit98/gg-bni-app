@@ -174,7 +174,7 @@ const ManageItems: React.FC = () => {
 
           <button
             onClick={applyFilters}
-            className="px-5 py-2 bg-blue-600 text-white rounded-md font-semibold hover:bg-blue-700 transition"
+            className="px-5 py-2 bg-[#F97316] hover:bg-orange-700 text-white rounded-md font-semibold transition"
           >
             Apply
           </button>
@@ -248,7 +248,7 @@ const ManageItems: React.FC = () => {
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => openEditDrawer(item)}
-                    className="text-blue-600 hover:text-blue-800"
+                    className="text-[#F97316] hover:text-orange-800"
                   >
                     <FiEdit2 size={18} />
                   </button>

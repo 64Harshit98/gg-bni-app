@@ -68,7 +68,7 @@ const FilterSelect: React.FC<{
         <select
             value={value}
             onChange={onChange}
-            className="w-full p-2.5 text-sm text-center bg-gray-50 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+            className="w-full p-2.5 text-sm text-center bg-gray-50 border border-gray-300 rounded-md focus:ring-[#F97316] focus:border-[#F97316]"
         >
             {children}
         </select>
@@ -76,7 +76,7 @@ const FilterSelect: React.FC<{
 );
 
 const RankCircle: React.FC<{ rank: number }> = ({ rank }) => (
-    <div className="w-8 h-8 flex-shrink-0 flex items-center justify-center bg-blue-100 text-blue-700 rounded-full font-bold text-sm mr-4">
+    <div className="w-8 h-8 flex-shrink-0 flex items-center justify-center bg-blue-100 text-[#F97316] rounded-full font-bold text-sm mr-4">
         {rank}
     </div>
 );
@@ -128,7 +128,7 @@ const PaymentChart: React.FC<{ data: { [key: string]: number } }> = ({ data }) =
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-2.5">
                             <div
-                                className="bg-blue-600 h-2.5 rounded-full transition-all duration-500"
+                                className="bg-[#F97316] h-2.5 rounded-full transition-all duration-500"
                                 style={{ width: `${(value / maxValue) * 100}%` }}
                             ></div>
                         </div>
@@ -156,7 +156,7 @@ const SalesListTable: React.FC<{
                     {children}
                     <span className="w-0">
                         {isSorted ? (
-                            <span className="text-blue-600 text-xs">{directionIcon}</span>
+                            <span className="text-[#F97316] text-xs">{directionIcon}</span>
                         ) : (
                             <span className="text-gray-400 hover:text-gray-600 text-xs inline-flex flex-col leading-3">
                                 <span>▲</span>
@@ -429,7 +429,7 @@ const OrdersReport: React.FC = () => {
                         <input type="date" value={customEndDate} onChange={e => { setCustomEndDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border rounded-md" placeholder="End Date" />
                     </div>
                 </div>
-                <button onClick={handleApplyFilters} className="w-full mt-2 px-3 py-1 bg-blue-600 text-white text-lg font-semibold rounded-lg shadow-sm hover:bg-blue-700 transition">Apply</button>
+                <button onClick={handleApplyFilters} className="w-full mt-2 px-3 py-1 bg-[#F97316] text-white text-lg font-semibold rounded-lg shadow-sm hover:bg-[#F97316] transition">Apply</button>
             </div>
 
             <div className="grid grid-cols-2 gap-2 mb-2">
@@ -450,7 +450,7 @@ const OrdersReport: React.FC = () => {
                 <h2 className="text-lg font-semibold text-gray-700">Report Details</h2>
                 <div className="flex items-center space-x-3">
                     <button onClick={() => setIsListVisible(!isListVisible)} className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition">{isListVisible ? 'Hide List' : 'Show List'}</button>
-                    <button onClick={downloadAsPdf} disabled={filteredSales.length === 0} className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 ">Download PDF</button>
+                    <button onClick={downloadAsPdf} disabled={filteredSales.length === 0} className="px-4 py-2 bg-[#F97316] text-white font-semibold rounded-md shadow-sm hover:bg-[#F97316] ">Download PDF</button>
                 </div>
             </div>
 

@@ -54,7 +54,7 @@ export const OrderTimeline: React.FC<OrderTimelineProps> = ({
         <div className="w-full p-4 md:p-6 bg-white rounded-sm shadow-md">
             <div className="flex flex-col items-center mb-4">
                 <h2 className="text-xl md:text-2xl font-bold text-gray-800">Order Journey</h2>
-                <span className="bg-blue-100 text-blue-600 text-[10px] font-bold px-2 py-0.5 rounded-full mt-1 uppercase">
+                <span className="bg-gray-50 text-[#F97316] text-[12px] font-bold px-2 py-0.5 rounded-full mt-1 uppercase">
                     {selectedPeriodText}
                 </span>
             </div>
@@ -82,9 +82,9 @@ export const OrderTimeline: React.FC<OrderTimelineProps> = ({
                                             {labelContent}
                                         </span>
                                     )}
-                                    <div className="relative w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full bg-orange-400 flex items-center justify-center transition-all duration-300 z-10 border-2 md:border-4 border-yellow-500 shadow-sm group-hover:scale-110">
+                                    <div className="relative w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full bg-[#F97316] flex items-center justify-center transition-all duration-300 z-10 border-2 md:border-4 border-gray-300 shadow-sm group-hover:scale-110">
                                         {status === "Upcoming" ? (
-                                            <span className="absolute px-1 py-[2px] text-[6px] font-black uppercase rounded-full bg-orange-100 text-orange-700 border border-orange-300 whitespace-nowrap">
+                                            <span className="absolute px-1 py-[2px] text-[6px] font-black uppercase rounded-full bg-orange-100 text-[#F97316] border border-orange-300 whitespace-nowrap">
                                                 Coming Soon
                                             </span>
                                         ) : (

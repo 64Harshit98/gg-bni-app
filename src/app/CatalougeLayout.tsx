@@ -26,7 +26,7 @@ const CatalogueLayout = () => {
 
     const sidebarLinkClass = (isActive: boolean) =>
         `flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium transition-all ${isActive
-            ? 'bg-sky-50 text-sky-600 shadow-sm border border-sky-100'
+            ? 'bg-orange-50 text-[#F97316] shadow-sm border border-orange-100'
             : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent'
         }`;
 
@@ -209,7 +209,7 @@ const CatalogueLayout = () => {
                             end
                             className={({ isActive }) =>
                                 `flex-1 flex flex-row items-center justify-center gap-1 py-2 rounded-sm text-sm transition-colors border border-[rgba(0,0,0,0.15)] duration-200 min-w-0 ${isActive
-                                    ? 'bg-sky-500 text-white'
+                                    ? 'bg-[#F97316] text-white'
                                     : 'text-black-500 hover:bg-gray-100'
                                 }`
                             }

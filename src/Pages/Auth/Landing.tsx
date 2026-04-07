@@ -95,11 +95,11 @@ const LoginPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="w-full bg-gray-100 p-6 py-8 shadow-t-lg rounded-sm flex-shrink-0 z-20 mt-[-50px]">
+          <div className="w-full bg-white p-6 py-8 shadow-t-lg rounded-sm flex-shrink-0 z-20 mt-[-50px]">
             <div className="w-full max-w-sm mx-auto mb-auto">
               <form onSubmit={handleLogin} className="space-y-4">
 
-                <div className="relative">
+                <div className="relative [&_label]:bg-white">
                   <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                   <FloatingLabelInput
                     id="email"
@@ -109,11 +109,11 @@ const LoginPage: React.FC = () => {
                     onChange={(e) => setEmail(e.target.value)}
                     required
                     disabled={loading}
-                    className="pl-10 h-14 border border-gray-300 rounded-sm text-lg"
+                    className="pl-10 h-14 border border-gray-300 rounded-sm text-lg bg-white"
                   />
                 </div>
 
-                <div className="relative">
+                <div className="relative [&_label]:bg-white">
                   <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                   <FloatingLabelInput
                     id="password"
@@ -123,7 +123,7 @@ const LoginPage: React.FC = () => {
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     disabled={loading}
-                    className="pl-10 pr-10 h-14 border border-gray-300 rounded-sm text-lg"
+                    className="pl-10 pr-10 h-14 border border-gray-300 rounded-sm text-lg bg-white"
                   />
                   <button
                     type="button"
@@ -186,16 +186,16 @@ const LoginPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="w-1/2 flex items-center justify-center bg-gray-100">
+            <div className="w-1/2 flex items-center justify-center bg-white">
               <div className="flex-grow px-0 overflow-hidden flex flex-col justify-center">
                 <div className="w-full max-w-md mx-auto px-4">
 
                   <h1 className="text-4xl font-bold mb-6 text-left">Login</h1>
 
-                  <div className="px-2 py-2 bg-gray-100 flex flex-col justify-center">
+                  <div className="px-2 py-2 bg-white flex flex-col justify-center">
                     <form onSubmit={handleLogin} className="space-y-6">
                       {/* KEEP EXISTING FORM CONTENT SAME */}
-                      <div className="relative [&_label]:!left-[3rem]">
+                      <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
                         <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
                         <FloatingLabelInput
                           id="email"
@@ -205,12 +205,12 @@ const LoginPage: React.FC = () => {
                           onChange={(e) => setEmail(e.target.value)}
                           required
                           disabled={loading}
-                          className="pl-12 py-3 bg-gray-100 border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)]"
+                          className="pl-12 py-3 bg-white border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)]"
                           style={{ '--label-left': '3rem' } as React.CSSProperties}
                         />
                       </div>
 
-                      <div className="relative [&_label]:!left-[3rem]">
+                      <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
                         <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={16} />
                         <FloatingLabelInput
                           id="password"
@@ -220,7 +220,7 @@ const LoginPage: React.FC = () => {
                           onChange={(e) => setPassword(e.target.value)}
                           required
                           disabled={loading}
-                          className="pl-12 py-3 pr-10 bg-gray-100 border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)]"
+                          className="pl-12 py-3 pr-10 bg-white border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)]"
                           style={{ '--label-left': '3rem' } as React.CSSProperties}
                         />
                         <button

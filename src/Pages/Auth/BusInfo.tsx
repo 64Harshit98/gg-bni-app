@@ -102,6 +102,21 @@ const BusinessInfoPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState('Creating Account...');
 
+  const handleClearData = () => {
+    setBusinessName('');
+    setBusinessType('');
+    setCustomBusinessType('');
+    setBusinessCategory('');
+    setCustomBusinessCategory('');
+    setGstType('');
+    setGstin('');
+    setStreetAddress('');
+    setCity('');
+    setState('');
+    setPostalCode('');
+    setError(null);
+  };
+
   const previousData = location.state || JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '{}');
 
   // Guard: Ensure user came from Step 1
@@ -231,7 +246,7 @@ const BusinessInfoPage: React.FC = () => {
     }
   };
 
-  return (
+return (
     <div className="flex h-screen overflow-hidden bg-gray-200">
   {/* Left visual (Figma style) */}
   <div className="hidden lg:block w-1/2 relative overflow-hidden bg-gray-200">
@@ -250,21 +265,28 @@ const BusinessInfoPage: React.FC = () => {
   </div>
 
   {/* Right content keeps your original sizing/font logic */}
-  <div className="flex flex-col h-screen overflow-hidden bg-gray-100 w-full lg:w-1/2">
-    <div className="flex-shrink-0 bg-gray-100 pt-4 pb-2 px-4 shadow-sm z-40 flex justify-center">
+  <div className="flex flex-col h-screen overflow-hidden bg-white w-full lg:w-1/2">
+    <div className="flex-shrink-0 bg-white pt-4 pb-2 px-4 shadow-sm z-40 flex justify-center">
       <div className="w-full max-w-xs">
         <Stepper totalSteps={2} currentStep={2} onStepClick={handleStepClick} />
       </div>
     </div>
 
     <div className="flex-grow px-4 pb-0 overflow-y-auto">
-      <div className="flex justify-between items-end mb-3 mt-3">
-        <h1 className="text-4xl font-bold">Business Details</h1>
+      <div className="flex justify-between items-center mb-3 mt-3">
+        <h1 className="text-3xl font-bold">Business Details</h1>
+        <button
+          type="button"
+          onClick={handleClearData}
+          className="text-sm font-medium text-red-500 hover:text-red-700 transition-colors bg-red-50 px-3 py-1.5 rounded-sm border border-red-100 mb-1"
+        >
+          Clear Form
+        </button>
       </div>
-      <div className="bg-gray-100 p-3 space-y-2 pt-4 pb-4 w-[100%] mx-auto">
+      <div className="bg-white p-3 space-y-2 pt-4 pb-4 w-[100%] mx-auto">
         <form onSubmit={handleFinishSetup} className="flex flex-col space-y-4">
           <div className="flex flex-col space-y-4">
-            <div className="relative [&_label]:!left-[3rem]">
+            <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
               <FiAtSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
               <FloatingLabelInput
                 id="businessName"
@@ -272,7 +294,7 @@ const BusinessInfoPage: React.FC = () => {
                 value={businessName}
                 onChange={(e) => setBusinessName(e.target.value)}
                 required
-                className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+                className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
               />
             </div>
 
@@ -280,7 +302,7 @@ const BusinessInfoPage: React.FC = () => {
               {/* Business Type */}
               <div className={`${businessType !== "Other" && businessCategory !== "Other" ? "w-full" : ""}`}>
                 {businessType !== "Other" && businessCategory !== "Other" ? (
-                  <div className="relative [&_label]:!left-[3rem]">
+                  <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
                     <FiHome className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
                     <FloatingLabelSelect
                       id="businessType"
@@ -289,14 +311,14 @@ const BusinessInfoPage: React.FC = () => {
                       onChange={(e) => setBusinessType(e.target.value)}
                       options={businessTypeOptions}
                       required
-                      className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+                      className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
                     />
                   </div>
                 ) : (
                   <div className={`w-full ${businessType === "Other" ? "flex flex-col md:flex-row gap-4" : ""}`}>
                     {businessType === "Other" ? (
                       <>
-                        <div className="relative w-full md:w-1/2 [&_label]:!left-[3rem]">
+                        <div className="relative w-full md:w-1/2 [&_label]:!left-[3rem] [&_label]:bg-white">
                           <FiHome className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
                           <FloatingLabelSelect
                             id="businessType"
@@ -305,11 +327,11 @@ const BusinessInfoPage: React.FC = () => {
                             onChange={(e) => setBusinessType(e.target.value)}
                             options={businessTypeOptions}
                             required
-                            className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+                            className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
                           />
                         </div>
 
-                        <div className="relative w-full md:w-1/2 [&_label]:!left-[3rem]">
+                        <div className="relative w-full md:w-1/2 [&_label]:!left-[3rem] [&_label]:bg-white">
                           <FiHome className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
                           <FloatingLabelInput
                             id="customBusinessType"
@@ -317,12 +339,12 @@ const BusinessInfoPage: React.FC = () => {
                             value={customBusinessType}
                             onChange={(e) => setCustomBusinessType(e.target.value)}
                             required
-                            className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+                            className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
                           />
                         </div>
                       </>
                     ) : (
-                      <div className="relative w-full [&_label]:!left-[3rem]">
+                      <div className="relative w-full [&_label]:!left-[3rem] [&_label]:bg-white">
                         <FiHome className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
                         <FloatingLabelSelect
                           id="businessType"
@@ -331,7 +353,7 @@ const BusinessInfoPage: React.FC = () => {
                           onChange={(e) => setBusinessType(e.target.value)}
                           options={businessTypeOptions}
                           required
-                          className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+                          className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
                         />
                       </div>
                     )}
@@ -342,7 +364,7 @@ const BusinessInfoPage: React.FC = () => {
               {/* Category */}
               <div className={`${businessType !== "Other" && businessCategory !== "Other" ? "w-full" : "flex flex-col md:flex-row gap-4 w-full"}`}>
                 {businessType !== "Other" && businessCategory !== "Other" ? (
-                  <div className="relative [&_label]:!left-[3rem]">
+                  <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
                     <FiTag className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
                     <FloatingLabelSelect
                       id="businessCategory"
@@ -351,12 +373,12 @@ const BusinessInfoPage: React.FC = () => {
                       onChange={(e) => setBusinessCategory(e.target.value)}
                       options={businessCategoryOptions}
                       required
-                      className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+                      className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
                     />
                   </div>
                 ) : (
                   <div className="flex flex-col md:flex-row gap-4 w-full">
-                    <div className={`relative [&_label]:!left-[3rem] ${businessCategory === "Other" ? "w-full md:w-1/2" : "flex-1"}`}>
+                    <div className={`relative [&_label]:!left-[3rem] [&_label]:bg-white ${businessCategory === "Other" ? "w-full md:w-1/2" : "flex-1"}`}>
                       <FiTag className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
                       <FloatingLabelSelect
                         id="businessCategory"
@@ -365,11 +387,11 @@ const BusinessInfoPage: React.FC = () => {
                         onChange={(e) => setBusinessCategory(e.target.value)}
                         options={businessCategoryOptions}
                         required
-                        className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+                        className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
                       />
                     </div>
                     {businessCategory === "Other" && (
-                      <div className="relative w-full md:w-1/2 [&_label]:!left-[3rem]">
+                      <div className="relative w-full md:w-1/2 [&_label]:!left-[3rem] [&_label]:bg-white">
                         <FiTag className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
                         <FloatingLabelInput
                           id="customBusinessCategory"
@@ -377,7 +399,7 @@ const BusinessInfoPage: React.FC = () => {
                           value={customBusinessCategory}
                           onChange={(e) => setCustomBusinessCategory(e.target.value)}
                           required
-                          className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+                          className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
                         />
                       </div>
                     )}
@@ -387,7 +409,7 @@ const BusinessInfoPage: React.FC = () => {
             </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="relative [&_label]:!left-[3rem]">
+            <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
               <Scale className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
               <FloatingLabelSelect
                 id="gstType"
@@ -396,11 +418,11 @@ const BusinessInfoPage: React.FC = () => {
                 onChange={(e) => setGstType(e.target.value)}
                 options={gstTypeOptions}
                 required
-                className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+                className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
               />
             </div>
 
-            <div className="relative [&_label]:!left-[3rem]">
+            <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
               <FiHash className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
               <FloatingLabelInput
                 id="gstin"
@@ -411,14 +433,14 @@ const BusinessInfoPage: React.FC = () => {
                 }}
                 required={gstType === "Regular" || gstType === "Composite"}
                 disabled={gstType === "NA"}
-                className={`pl-12 py-2.5 border border-[#7D7777A3] shadow-sm bg-gray-100 ${
+                className={`pl-12 py-2.5 border border-[#7D7777A3] shadow-sm bg-white ${
                   gstType === "NA" ? "cursor-not-allowed" : ""
                 }`}
               />
             </div>
           </div>
 
-          <div className="relative [&_label]:!left-[3rem]">
+          <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
             <Building2Icon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
             <FloatingLabelInput
               id="streetAddress"
@@ -426,12 +448,12 @@ const BusinessInfoPage: React.FC = () => {
               value={streetAddress}
               onChange={(e) => setStreetAddress(e.target.value)}
               required
-              className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+              className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <div className="relative [&_label]:!left-[3rem]">
+            <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
               <FiMapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
               <FloatingLabelInput
                 id="city"
@@ -439,10 +461,10 @@ const BusinessInfoPage: React.FC = () => {
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
                 required
-                className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+                className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
               />
             </div>
-            <div className="relative [&_label]:!left-[3rem]">
+            <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
               <PinIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
               <FloatingLabelInput
                 id="postalCode"
@@ -453,12 +475,12 @@ const BusinessInfoPage: React.FC = () => {
                   if (e.target.value.length <= 6) setPostalCode(e.target.value);
                 }}
                 required
-                className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+                className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
               />
             </div>
           </div>
 
-          <div className="relative [&_label]:!left-[3rem]">
+          <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
             <FiMap className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
             <FloatingLabelSelect
               id="state"
@@ -467,7 +489,7 @@ const BusinessInfoPage: React.FC = () => {
               onChange={(e) => setState(e.target.value)}
               options={indianStates}
               required
-              className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+              className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
             />
           </div>
 
@@ -481,13 +503,14 @@ const BusinessInfoPage: React.FC = () => {
       </div>
     </div>
 
-    <div className="w-full bg-gray-100 px-4 py-4 shadow-t-lg">
-      <div className="max-w-md mx-auto space-y-4">
+    <div className="fixed lg:absolute bottom-0 left-0 lg:left-auto right-0 lg:w-1/2 p-4 h-[110px] bg-gray-100 border-t border-gray-200 z-50 shadow-lg">
+      <div className="max-w-md mx-auto space-y-3">
         <CustomButton
-          onClick={handleFinishSetup}
+          type="submit"
           variant={Variant.Filled}
+          onClick={handleFinishSetup}
           disabled={isSubmitting}
-          className="h-12 text-lg w-full !bg-[#141212] hover:!bg-[#2a2626] !text-[#FFFBFB]"
+          className="w-full !bg-[#141212] hover:!bg-[#2a2626] !text-[#FFFBFB]"
         >
           {isSubmitting ? (
             <div className="flex items-center justify-center gap-2">

@@ -41,6 +41,38 @@ export function OrderBarChartReport({
     const { filters } = useFilter();
     const [viewMode, setViewMode] = useState<'amount' | 'quantity'>('amount');
 
+    const processedChartData = useMemo(() => {
+        if (!filters.startDate || !filters.endDate) return chartData;
+
+        const start = new Date(filters.startDate);
+        const end = new Date(filters.endDate);
+
+        const isTodayFilter =
+            start.toDateString() === end.toDateString();
+
+        if (!isTodayFilter) return chartData;
+
+        // 👇 yesterday
+        const yesterday = new Date(start);
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        // 👇 format function (same as backend: en-CA)
+        const format = (d: Date) =>
+            d.toLocaleDateString('en-CA');
+
+        const yesterdayKey = format(yesterday);
+        const todayKey = format(end);
+
+        // 👇 existing data map
+        const map = new Map(chartData.map(item => [item.date, item]));
+
+        return [
+            map.get(yesterdayKey) || { date: yesterdayKey, sales: 0, bills: 0 },
+            map.get(todayKey) || { date: todayKey, sales: 0, bills: 0 },
+        ];
+
+    }, [chartData, filters.startDate, filters.endDate]);
+
     const selectedPeriodText = useMemo(() => {
         if (!filters.startDate || !filters.endDate) {
             return 'for the selected period';
@@ -84,7 +116,7 @@ export function OrderBarChartReport({
                     isDataVisible ? (
                         <ChartContainer config={chartConfig} className="h-[260px] w-full">
                             {/* --- FIX: Changed to LineChart --- */}
-                            <LineChart data={chartData} margin={{ top: 30, left: -10, right: 12, bottom: 10 }}>
+                            <LineChart data={processedChartData} margin={{ top: 30, left: -10, right: 12, bottom: 10 }}>
                                 <CartesianGrid vertical={false} />
                                 <ChartTooltip
                                     cursor={{ stroke: '#ccc', strokeWidth: 1 }}
@@ -117,7 +149,7 @@ export function OrderBarChartReport({
                                 {/* --- FIX: Changed to Line --- */}
                                 <Line
                                     dataKey={viewMode === 'amount' ? 'sales' : 'bills'}
-                                    type="monotone"
+                                    type="linear"
                                     stroke={viewMode === 'amount' ? chartConfig.sales.color : chartConfig.bills.color}
                                     strokeWidth={2}
                                     dot={{ r: 4 }}

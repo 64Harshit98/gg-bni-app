@@ -52,7 +52,11 @@ const SharedCataloguePage: React.FC = () => {
     const [sortOrder, setSortOrder] = useState<'A-Z' | 'Z-A'>('A-Z');
     const [isSortOpen, setIsSortOpen] = useState(false);
     const liveItems = useMemo(() => {
-        return allItems.filter(item => item.isListed);
+        return allItems.filter(item =>
+            item.isListed &&
+            item.itemGroupId &&
+            item.itemGroupId !== 'uncategorized'
+        );
     }, [allItems]);
     // const cartIconRef = useRef<HTMLButtonElement | null>(null);
     const cartCount = useMemo(() => cart.reduce((acc, curr) => acc + curr.quantity, 0), [cart]);
@@ -158,7 +162,7 @@ const SharedCataloguePage: React.FC = () => {
                 if (!group.id) return false;
 
                 const itemCount = allItems.filter(
-                    item => item.itemGroupId === group.id && item.isListed
+                    item => item.itemGroupId === group.id
                 ).length;
 
                 return itemCount > 0;
@@ -172,7 +176,7 @@ const SharedCataloguePage: React.FC = () => {
                 if (!group.id) return false;
 
                 const groupItems = allItems.filter(
-                    (item) => item.itemGroupId === group.id && item.isListed
+                    (item) => item.itemGroupId === group.id
                 );
 
                 if (groupItems.length === 0) return false;
@@ -253,8 +257,10 @@ const SharedCataloguePage: React.FC = () => {
                 <div className="relative group max-w-md mx-auto w-full">
                     <SearchBar
                         items={liveItems}
+                        itemGroups={itemGroups}
+                        hideUncategorized={true}
                         onItemSelected={(item: any) => {
-                            setSearchQuery(item.name); // agar query update karni hai
+                            setSearchQuery(item.name); 
                             navigate(
                                 `/product/${effectiveCompanyId}/${item.itemGroupId}`,
                                 { state: { highlightItemId: item.id } }
@@ -304,7 +310,7 @@ const SharedCataloguePage: React.FC = () => {
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-0.5">
                     {filteredItems.map(group => {
                         const itemCount = allItems.filter(
-                            item => item.itemGroupId === group.id && item.isListed
+                            item => item.itemGroupId === group.id
                         ).length;
                         const collageImages = getGroupImages(group.id!);
                         return (

@@ -76,6 +76,7 @@ interface Invoice {
   dueAmount?: number;
   items?: InvoiceItem[];
   paymentMethods?: DocumentData;
+  paymentHistory?: any[];
   returnHistory?: DocumentData[];
   salesmanId?: string | null;
   salesmanName?: string;
@@ -393,7 +394,6 @@ const Journal: React.FC = () => {
 
           // Trigger notification for today, 1 day before, or overdue
           if (diffDays === 1 || diffDays === 0 || diffDays < 0) {
-            const notificationId = `${invoice.id}_${payment.chequeDate}`;
             const invoiceRef = doc(
               db,
               'companies',

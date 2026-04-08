@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useNotifications } from "../context/NotificationContext";
 import { FiBell } from "react-icons/fi";
 

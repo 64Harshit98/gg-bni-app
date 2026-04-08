@@ -424,6 +424,8 @@ const Journal: React.FC = () => {
                     chequeNumber: payment.chequeNumber,
                     chequeDate: payment.chequeDate,
                     partyName: invoice.partyName,
+                    amount: payment.amount || invoice.amount,
+                    createdAt: new Date().toISOString(),
                     status:
                       invoice.status === 'Paid'
                         ? 'PAID'
@@ -872,6 +874,8 @@ const Journal: React.FC = () => {
             detail: {
               invoiceNumber: invoice.invoiceNumber,
               partyName: invoice.partyName,
+              amount: amount,
+              createdAt: new Date().toISOString(),
               status: isNowPaid ? 'PAID' : 'UPCOMING',
               method: method
             },

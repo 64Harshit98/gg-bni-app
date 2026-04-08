@@ -10,6 +10,7 @@ import {
   QuerySnapshot,
   doc,
   getDoc,
+  setDoc,
   type DocumentData,
   runTransaction,
   increment,
@@ -340,23 +341,46 @@ const Journal: React.FC = () => {
   const [showQrModal, setShowQrModal] = useState<Invoice | null>(null);
   const [sendingPdf, setSendingPdf] = useState(false);
 
+  const { currentUser, loading: authLoading } = useAuth();
+
   // ─── Tutorial state (mirrors Home.tsx pattern) ────────────────────────────
   const [tutorialStep, setTutorialStep] = useState(0);
 
   const next = (n: number) => setTutorialStep(n <= TOTAL_STEPS ? n : 0);
-  const skip = () => {
-    localStorage.setItem("journal_tutorial_done", "true");
+  const skip = async () => {
+    if (!currentUser?.companyId) return;
+    try {
+      await setDoc(
+        doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial'),
+        { journalTutorialDone: true },
+        { merge: true }
+      );
+    } catch (e) {
+      console.error('Error saving journal tutorial:', e);
+    }
     setTutorialStep(0);
     window.dispatchEvent(new Event("journal_tutorial_done"));
   };
 
   useEffect(() => {
-    const seen = localStorage.getItem("journal_tutorial_done");
-    if (!seen) {
-      localStorage.setItem("journal_tutorial_done", "true");
-      setTutorialStep(1); // run tutorial only first time after signup
-    }
-  }, []);
+    const checkTutorial = async () => {
+      if (!currentUser?.companyId) return;
+      try {
+        const ref = doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial');
+        const snap = await getDoc(ref);
+        const done = snap.exists() && snap.data()?.journalTutorialDone;
+
+        if (!done) {
+          setTutorialStep(1);
+        }
+      } catch (e) {
+        console.error('Error fetching journal tutorial:', e);
+        setTutorialStep(1);
+      }
+    };
+
+    checkTutorial();
+  }, [currentUser]);
 
   // ─── Autoscroll: whenever tutorialStep changes, scroll that element into view
   useEffect(() => {
@@ -368,7 +392,6 @@ const Journal: React.FC = () => {
   }, [tutorialStep]);
   // ─────────────────────────────────────────────────────────────────────────
 
-  const { currentUser, loading: authLoading } = useAuth();
   const { invoices, loading: dataLoading, error } = useJournalData(currentUser?.companyId);
 
   // PDC cheque notification effect
@@ -920,6 +943,9 @@ const Journal: React.FC = () => {
         const activeModes = Object.entries(paymentMethods)
           .filter(([key, value]) => key !== 'due' && Number(value) > 0);
 
+        // If the tutorial is completed via last step (step 6), persist in Firestore as well
+        // (If there are any localStorage.setItem("journal_tutorial_done", "true") calls, replace below)
+
         return (
           <CustomCard key={invoice.id} onClick={() => handleInvoiceClick(invoice.id)} className="cursor-pointer transition-shadow hover:shadow-md">
             <div className="flex justify-between items-end w-full -mt-5 relative pointer-events-none">
@@ -1208,6 +1234,7 @@ const Journal: React.FC = () => {
             text="Tap the search icon to find invoices by name, number, or phone."
             onNext={() => next(2)}
             onSkip={skip}
+            mobileArrowAlign="left" 
           >
             <button
               onClick={() => setShowSearch(!showSearch)}
@@ -1339,12 +1366,30 @@ const Journal: React.FC = () => {
         </div>
       </TutorialStep>
 
-      {/* Step 5 — Paid / Unpaid toggle */}
+                {/* Step 5 — Paid / Unpaid toggle */}
       <TutorialStep
         step={5}
         currentStep={tutorialStep}
         text="Toggle between Paid and Unpaid invoices. Unpaid shows your outstanding dues."
-        onNext={() => next(6)}
+        onNext={async () => {
+          // When the last step is completed, also persist in Firestore
+          if (!currentUser?.companyId) {
+            setTutorialStep(0);
+            window.dispatchEvent(new Event("journal_tutorial_done"));
+            return;
+          }
+          try {
+            await setDoc(
+              doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial'),
+              { journalTutorialDone: true },
+              { merge: true }
+            );
+          } catch (e) {
+            console.error('Error saving journal tutorial:', e);
+          }
+          setTutorialStep(0);
+          window.dispatchEvent(new Event("journal_tutorial_done"));
+        }}
         onSkip={skip}
         isLast
       >

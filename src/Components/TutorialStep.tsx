@@ -8,11 +8,15 @@ interface Props {
   onSkip: () => void;
   children: React.ReactNode;
   isLast?: boolean;
-  position?: 'top' | 'bottom'; // ✅ new prop, default bottom
+  position?: 'top' | 'bottom'; // prop, default bottom
+  arrowAlign?: 'left' | 'right'; // desktop
+  mobileArrowAlign?: 'left' | 'right'; // mobile
 }
 
 export const TutorialStep: React.FC<Props> = ({
   step, currentStep, text, onNext, onSkip, children, isLast, position = 'bottom',
+  arrowAlign = 'right',
+  mobileArrowAlign = 'right',
 }) => {
   const isActive = step === currentStep;
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -58,6 +62,9 @@ export const TutorialStep: React.FC<Props> = ({
     return { top, left };
   };
 
+  const isMobile = window.innerWidth < 768;
+  const computedArrowAlign = isMobile ? mobileArrowAlign : arrowAlign;
+
   return (
     <>
       <div ref={wrapperRef} style={{ display: "contents" }}>
@@ -68,7 +75,7 @@ export const TutorialStep: React.FC<Props> = ({
         <>
           {/* Overlay */}
           <div
-            className="fixed inset-0 z-40 pointer-events-none"
+            className="fixed inset-0 z-40 pointer-events-auto"
             style={{
               background: "rgba(0,0,0,0.55)",
               clipPath: `polygon(
@@ -93,9 +100,9 @@ export const TutorialStep: React.FC<Props> = ({
           >
             {/* Arrow: points DOWN if tooltip is above, UP if below */}
             {position === 'top' ? (
-              <div className="absolute -bottom-2 right-6 w-4 h-4 bg-white border-r border-b border-gray-100 rotate-45" />
+              <div className={`absolute -bottom-2 ${computedArrowAlign === 'left' ? 'left-6' : 'right-6'} w-4 h-4 bg-white border-r border-b border-gray-100 rotate-45`} />
             ) : (
-              <div className="absolute -top-2 right-6 w-4 h-4 bg-white border-l border-t border-gray-100 rotate-45" />
+              <div className={`absolute -top-2 ${computedArrowAlign === 'left' ? 'left-6' : 'right-6'} w-4 h-4 bg-white border-l border-t border-gray-100 rotate-45`} />
             )}
 
             <p className="text-sm font-medium text-gray-800 mb-3">{text}</p>

@@ -239,7 +239,7 @@ const Account: React.FC = () => {
                   text="View detailed sales and business reports here."
                   onNext={() => next(4)}
                   onSkip={skip}
-                  arrowAlign="left" 
+                  mobileArrowAlign="left" 
                 >
                   <Link to={ROUTES.REPORTS} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-2 border border-gray-200 text-gray-800 hover:shadow-lg">
                     <span className="text-lg font-medium">Reports</span>
@@ -274,7 +274,7 @@ const Account: React.FC = () => {
                 text="View and manage your subscription plan here."
                 onNext={() => next(6)}
                 onSkip={skip}
-                arrowAlign='left'
+                mobileArrowAlign="left" 
               >
                 <Link to={ROUTES.SUBSCRIPTION_PAGE} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-2 border border-gray-200 text-gray-800 hover:shadow-lg">
                   <span className="text-lg font-medium">Plans</span>

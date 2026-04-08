@@ -34,6 +34,7 @@ import { botMasterService } from '../Pages/Additional/Whatsapp/WhatsappApi';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { storage } from '../lib/Firebase';
 import { TutorialStep } from '../Components/TutorialStep'; // ← same import as Home.tsx
+import NotificationBell from "../Components/NotificationBell"
 
 // ─── Total tutorial steps for Journal ───────────────────────────────────────
 const TOTAL_STEPS = 6;
@@ -250,6 +251,7 @@ const useJournalData = (companyId?: string) => {
           returnHistory: returnHistory,
           items: items,
           paymentMethods: paymentMethods,
+          paymentHistory: data.paymentHistory || [],
           taxType: data.taxType || '',
           gstScheme: data.gstScheme || '',
           subtotal: Number(data.subtotal) || 0,
@@ -367,6 +369,71 @@ const Journal: React.FC = () => {
 
   const { currentUser, loading: authLoading } = useAuth();
   const { invoices, loading: dataLoading, error } = useJournalData(currentUser?.companyId);
+
+  // PDC cheque notification effect
+  useEffect(() => {
+    if (!invoices || invoices.length === 0) return;
+
+    const today = new Date();
+
+    invoices.forEach((invoice) => {
+      const history = invoice.paymentHistory || [];
+
+      history.forEach((payment: any) => {
+        if (payment.method === 'PDC' && payment.chequeDate) {
+          const chequeDate = new Date(payment.chequeDate);
+
+          // Normalize both dates (ignore time)
+          const todayMid = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+          const chequeMid = new Date(chequeDate.getFullYear(), chequeDate.getMonth(), chequeDate.getDate());
+
+          const diffTime = chequeMid.getTime() - todayMid.getTime();
+          const rawDays = diffTime / (1000 * 60 * 60 * 24);
+          const diffDays = Math.ceil(rawDays); // normalize to whole days
+
+          // Trigger notification for today, 1 day before, or overdue
+          if (diffDays === 1 || diffDays === 0 || diffDays < 0) {
+            const notificationId = `${invoice.id}_${payment.chequeDate}`;
+            const invoiceRef = doc(
+              db,
+              'companies',
+              currentUser?.companyId || '',
+              invoice.type === 'Credit' ? 'sales' : 'purchases',
+              invoice.id
+            );
+
+            runTransaction(db, async (transaction) => {
+              const snap = await transaction.get(invoiceRef);
+              if (!snap.exists()) return;
+
+              const data = snap.data() as any;
+              const notified = data.pdcNotifiedDates || [];
+
+              if (notified.includes(payment.chequeDate)) {
+                return;
+              }
+
+              transaction.update(invoiceRef, {
+                pdcNotifiedDates: [...notified, payment.chequeDate]
+              });
+
+              window.dispatchEvent(
+                new CustomEvent('pdc_notification', {
+                  detail: {
+                    invoiceNumber: invoice.invoiceNumber,
+                    chequeNumber: payment.chequeNumber,
+                    chequeDate: payment.chequeDate,
+                    partyName: invoice.partyName,
+                    status: diffDays < 0 ? 'OVERDUE' : 'UPCOMING'
+                  },
+                })
+              );
+            });
+          }
+        }
+      });
+    });
+  }, [invoices]);
   const navigate = useNavigate();
 
   const daysRemaining = useMemo(() => {
@@ -645,7 +712,6 @@ const Journal: React.FC = () => {
         setTimeout(async () => {
           try {
             await deleteObject(storageRef);
-            console.log("Temp invoice deleted from storage.");
           } catch (error) {
             console.warn("Could not auto-delete temp file:", error);
           }
@@ -741,7 +807,13 @@ const Journal: React.FC = () => {
   };
 
 
-  const handleSettlePayment = async (invoice: any, amount: number, method: string) => {
+  const handleSettlePayment = async (
+    invoice: any,
+    amount: number,
+    method: string,
+    chequeNumber?: string,
+    chequeDate?: string
+  ) => {
     if (!currentUser?.companyId) {
       throw new Error("No company ID found. Cannot settle payment.");
     }
@@ -773,8 +845,8 @@ const Journal: React.FC = () => {
         method,
         date: new Date().toISOString(),
         timestamp: Date.now(),
-        chequeNumber: method === 'PDC' ? chequeNumber || '' : '',
-        chequeDate: method === 'PDC' ? chequeDate || '' : ''
+        chequeNumber: method === 'PDC' ? (chequeNumber || '') : '',
+        chequeDate: method === 'PDC' ? (chequeDate || '') : ''
       };
 
       const currentHistory = data.paymentHistory || [];

@@ -139,8 +139,8 @@ const SignUpPage: React.FC = () => {
       </div>
 
       <div className="bg-white p-7 pb-7 pt-7 rounded-sm space-y-2 pt-6 pb-6 pl-5 w-[103%] mx-auto">
-        <form onSubmit={handleNext} className="flex flex-col space-y-5">
-          <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
+        <form onSubmit={handleNext} className="flex flex-col space-y-6 lg:space-y-5">
+          <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white lg:w-[85%] lg:mx-auto">
             <div style={{ position: 'relative' }}>
               <FiUser className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={16} />
               <FloatingLabelInput
@@ -157,7 +157,7 @@ const SignUpPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
+          <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white lg:w-[85%] lg:mx-auto">
             <div style={{ position: 'relative' }}>
               <FiPhone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
               <FloatingLabelInput
@@ -176,7 +176,7 @@ const SignUpPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
+          <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white lg:w-[85%] lg:mx-auto">
             <div style={{ position: 'relative' }}>
               <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
               <FloatingLabelInput
@@ -192,7 +192,7 @@ const SignUpPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
+          <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white lg:w-[85%] lg:mx-auto">
             <div style={{ position: 'relative' }}>
               <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={16} />
               <FloatingLabelInput
@@ -215,7 +215,7 @@ const SignUpPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
+          <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white lg:w-[85%] lg:mx-auto">
             <div style={{ position: 'relative' }}>
               <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={16} />
               <FloatingLabelInput

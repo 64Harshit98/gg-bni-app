@@ -9,7 +9,7 @@ import sellarLogo from '../assets/sellar-logo-heading.png';
 import { Share2 } from "lucide-react";
 import { useOrderSound } from '../Catalogue/hooks/useOrderSound';
 import { useConfirmedOrdersCount } from '../Catalogue/hooks/useConfirmedOrdersCount';
-
+import GlobalCatalogueModal from '../Components/CatalogueShareCard';
 const CatalogueLayout = () => {
     const navigate = useNavigate();
     const { currentUser } = useAuth();
@@ -31,9 +31,7 @@ const CatalogueLayout = () => {
         }`;
 
     const handleShare = () => {
-        navigate("/catalogue-home", {
-            state: { openShare: true }
-        });
+        window.dispatchEvent(new Event("open-catalogue-share"));
     };
 
     const MobileActions = () => (
@@ -169,13 +167,13 @@ const CatalogueLayout = () => {
                         <span>Orders Return</span>
                     </NavLink>
 
-                        <button
-                            onClick={handleShare}
-                            className={sidebarLinkClass(false)} // same design, no active
-                        >
-                            <Share2 size={18} />
-                            <span>Share</span>
-                        </button>
+                    <button
+                        onClick={handleShare}
+                        className={sidebarLinkClass(false)} // same design, no active
+                    >
+                        <Share2 size={18} />
+                        <span>Share</span>
+                    </button>
                 </nav>
             </aside>
 
@@ -235,6 +233,7 @@ const CatalogueLayout = () => {
                     ))}
                 </div>
             </nav>
+            <GlobalCatalogueModal />
         </div>
     );
 };

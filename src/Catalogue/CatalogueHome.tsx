@@ -18,7 +18,6 @@ import { fetchDashboardData, CACHE_DURATION } from '../lib/fetchDashboardData';
 import type { WithCacheMeta } from '../lib/fetchDashboardData';
 
 // ─── Shared Types ─────────────────────────────────────────────────────────────
-// Exported so child components can import instead of defining their own duplicates
 
 export interface TopItem {
     id: string;
@@ -28,19 +27,19 @@ export interface TopItem {
 }
 
 export interface ChartDataPoint {
-    date: string;   // YYYY-MM-DD format (en-CA locale)
-    sales: number;  // total sale amount for that day
-    bills: number;  // number of completed orders for that day
+    date: string; 
+    sales: number;  
+    bills: number;  
 }
 
 // Shape of data stored in localStorage and passed down to all child components
 export interface CatalogueDashboardData {
-    totalSalesAmount: number;       // used by CompletedSalesCard
-    totalSalesCount: number;        // used by CompletedSalesCard
-    chartData: ChartDataPoint[];    // used by OrderBarChartReport
-    topByQuantity: TopItem[];       // used by TopSoldItemsCard
-    topByAmount: TopItem[];         // used by TopSoldItemsCard
-    orderCounts: Record<string, number>; // used by OrderTimeline (counts only, not full Order objects)
+    totalSalesAmount: number;
+    totalSalesCount: number;       
+    chartData: ChartDataPoint[];  
+    topByQuantity: TopItem[];       
+    topByAmount: TopItem[];        
+    orderCounts: Record<string, number>; 
 }
 
 // ─── Business Name Hook ───────────────────────────────────────────────────────
@@ -60,7 +59,7 @@ const useBusinessName = (userId?: string, companyId?: string) => {
                 const docSnap = await getDoc(docRef);
                 setBusinessName(docSnap.exists() ? docSnap.data().businessName || 'Business' : 'Business');
             } catch {
-                setBusinessName('Business'); // Fallback on error
+                setBusinessName('Business'); 
             } finally {
                 setLoading(false);
             }
@@ -77,27 +76,15 @@ const useBusinessName = (userId?: string, companyId?: string) => {
 // This is required because useFilter() must be called inside a FilterProvider.
 const HomePageContent: React.FC = () => {
     const location = useLocation();
-    const [showCatalogueCard, setShowCatalogueCard] = useState(false);
-
-    useEffect(() => {
-        if (location.state?.openShare) {
-            setShowCatalogueCard(true);
-        }
-    }, [location.state]);
-
     const { currentUser, loading: authLoading } = useAuth();
-    const { filters } = useFilter(); // Read selected date range from FilterProvider context
+    const { filters } = useFilter(); 
     const { businessName, loading: nameLoading } = useBusinessName(currentUser?.uid, currentUser?.companyId);
-
     const hasCataloguePermission = currentUser?.permissions?.includes(Permissions.ViewCatalogue);
     const [isDataVisible, setIsDataVisible] = useState<boolean>(false);
     const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
     const currentItem = SiteItems.find(item => item.to === location.pathname);
     const currentLabel = currentItem ? currentItem.label : 'Menu';
     const isHeaderLoading = authLoading || nameLoading;
-
-    // Single source of truth for all dashboard data
-    // All child components read from this state via props
     const [data, setData] = useState<WithCacheMeta<CatalogueDashboardData> | null>(null);
     const [loading, setLoading] = useState(true);
 
@@ -179,7 +166,6 @@ const HomePageContent: React.FC = () => {
         }
     }, [currentUser, filters]);
 
-    // Trigger fetch on mount and whenever filters (date range) change
     useEffect(() => { fetchData(); }, [fetchData]);
 
     // Auto-refresh every 1 hour — same CACHE_DURATION as POS Home.
@@ -266,71 +252,6 @@ const HomePageContent: React.FC = () => {
             {/* ── Main Content ─────────────────────────────────────────────── */}
             <main className="flex-grow overflow-y-auto p-2">
 
-                {showCatalogueCard && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center">
-
-                        {/* Background Blur */}
-                        <div
-                            className="absolute inset-0 bg-black/30 backdrop-blur-sm"
-                            onClick={() => setShowCatalogueCard(false)}
-                        />
-
-                        {/* Card */}
-                        <div className="relative bg-white rounded-sm shadow-xl p-5 w-[90%] max-w-sm z-10 animate-fadeIn">
-
-                            {/* Close Button */}
-                            <button
-                                className="absolute top-2 right-3 text-gray-500 hover:text-black"
-                                onClick={() => setShowCatalogueCard(false)}
-                            >
-                                ✕
-                            </button>
-
-                            <h2 className="text-lg font-semibold text-center mb-4">
-                                Catalogue Actions
-                            </h2>
-
-                            <div className="flex flex-col gap-3">
-
-                                {/* View Catalogue */}
-                                <button
-                                    className="w-full py-2 rounded bg-blue-500 text-white"
-                                    onClick={() => {
-                                        if (currentUser?.companyId) {
-                                            window.open(`/catalogue/${currentUser.companyId}`, "_blank");
-                                        }
-                                    }}
-                                >
-                                    View Catalogue
-                                </button>
-
-                                {/* Share Catalogue */}
-                                <button
-                                    className="w-full py-2 rounded bg-green-500 text-white"
-                                    onClick={() => {
-                                        if (currentUser?.companyId) {
-                                            const url = `${window.location.origin}/catalogue/${currentUser.companyId}`;
-
-                                            if (navigator.share) {
-                                                navigator.share({
-                                                    title: "My Catalogue",
-                                                    text: "Check out my catalogue",
-                                                    url: url,
-                                                });
-                                            } else {
-                                                navigator.clipboard.writeText(url);
-                                                alert("Link copied!");
-                                            }
-                                        }
-                                    }}
-                                >
-                                    Share Catalogue
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
                 {/* Refresh bar: shows when data was last fetched + manual refresh button */}
                 <div className="flex justify-center gap-2 mb-2">
                     <p className="text-sm text-slate-500 flex items-center">
@@ -351,13 +272,7 @@ const HomePageContent: React.FC = () => {
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-
-                        {/* FilterControls manages its own state inside FilterProvider — no props needed */}
                         <FilterControls />
-
-                        {/* All cards below receive pre-processed props from the single fetchData call.
-                            None of them make their own Firestore requests.
-                            The ?? fallbacks ensure safe rendering before data loads. */}
 
                         <CompletedSalesCard
                             isDataVisible={isDataVisible}

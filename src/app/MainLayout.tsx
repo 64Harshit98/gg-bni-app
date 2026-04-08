@@ -1,4 +1,7 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db } from '../lib/Firebase'; // adjust path if your db export differs
+import { useAuth } from '../context/auth-context'; // adjust if your auth hook path/name differs
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '../Components/ui/button';
 import { navItems } from '../routes/bottomRoutes';
@@ -14,32 +17,58 @@ const MainLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
-
   const [tutorialStep, setTutorialStep] = useState(-1); // -1 = hidden by default
+  const { currentUser } = useAuth();
 
-useEffect(() => {
-  const checkTutorial = () => {
-    const floatDone = localStorage.getItem("floating_tutorial_done");
-    if (!floatDone && window.innerWidth < 768) {
-      setTutorialStep(0)
+  useEffect(() => {
+    const checkTutorial = async () => {
+      if (!currentUser?.companyId) return;
+
+      try {
+        const ref = doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial');
+        const snap = await getDoc(ref);
+        const done = snap.exists() && snap.data()?.floatingTutorialDone;
+
+        if (!done && window.innerWidth < 768) {
+          setTutorialStep(0);
+        }
+      } catch (e) {
+        console.error('Error fetching floating tutorial:', e);
+        if (window.innerWidth < 768) setTutorialStep(0);
+      }
+    };
+
+    // run once when user is available
+    checkTutorial();
+
+    // keep listening for dashboard completion
+    window.addEventListener("dashboard_tutorial_done", checkTutorial);
+
+    return () => window.removeEventListener("dashboard_tutorial_done", checkTutorial);
+  }, [currentUser]);
+
+  const saveFloatingDone = async () => {
+    if (!currentUser?.companyId) return;
+    try {
+      await setDoc(
+        doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial'),
+        { floatingTutorialDone: true },
+        { merge: true }
+      );
+    } catch (e) {
+      console.error('Error saving floating tutorial:', e);
     }
   };
 
-  // Listen for custom event (same tab)
-  window.addEventListener("dashboard_tutorial_done", checkTutorial);
+  const handleTutorialNext = async () => {
+    await saveFloatingDone();
+    setTutorialStep(-1);
+  };
 
-  return () => window.removeEventListener("dashboard_tutorial_done", checkTutorial);
-}, []);
-
-const handleTutorialNext = () => {
-  setTutorialStep(-1);
-  localStorage.setItem("floating_tutorial_done", "true");
-};
-
-const handleTutorialSkip = () => {
-  setTutorialStep(-1);
-  localStorage.setItem("floating_tutorial_done", "true");
-};
+  const handleTutorialSkip = async () => {
+    await saveFloatingDone();
+    setTutorialStep(-1);
+  };
 
   useEffect(() => {
     if (scrollRef.current) {

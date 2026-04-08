@@ -8,6 +8,7 @@ import { Permissions } from '../enums';
 import ShowWrapper from '../context/ShowWrapper';
 import sellarLogo from '../assets/sellar-logo-heading.png';
 import { TutorialStep } from '../Components/TutorialStep';
+import { NotificationProvider } from '../context/NotificationContext';
 
 const MainLayout = () => {
   const location = useLocation();
@@ -74,6 +75,7 @@ const handleTutorialSkip = () => {
     }`;
 
   return (
+    <NotificationProvider>
     <div className="h-dvh w-screen flex flex-col md:flex-row overflow-hidden bg-gray-100">
 
       {/* DESKTOP SIDEBAR */}
@@ -155,6 +157,7 @@ const handleTutorialSkip = () => {
       </nav>
 
     </div>
+    </NotificationProvider>
   );
 };
 

@@ -18,6 +18,7 @@ import { PaymentChart } from '../Components/PaymentChart';
 import { TopEntitiesList } from '../Components/TopFiveEntities';
 import { TutorialStep } from '../Components/TutorialStep';
 import ShinyText from '../Components/ShinyText';
+import NotificationBell from '../Components/NotificationBell';
 import { CACHE_DURATION } from '../lib/fetchDashboardData';
 
 export interface SmartMetric { name: string; amount: number; quantity: number; }
@@ -308,12 +309,17 @@ const DashboardContent = () => {
         </TutorialStep>
 
         <div className="flex-1 text-center flex flex-col items-center justify-center">
-          <h1 className="text-3xl font-bold text-slate-800">Dashboard</h1>
-          <p className="text-sm text-slate-500">{nameLoading ? '...' : businessName}</p>
+          <h1 className="text-3xl font-bold text-slate-800 pl-8">Dashboard</h1>
+          <p className="text-sm text-slate-500 pl-8">{nameLoading ? '...' : businessName}</p>
         </div>
 
-        {/* Step 2 — Eye / hide button */}
-        <div className="w-14 flex justify-end">
+        {/* Step 2 — Eye / hide button and Notification Bell */}
+        <div className="flex items-center gap-3 justify-end">
+          {/* Notification Bell */}
+          <div className="relative border border-slate-300 rounded-sm p-2 bg-gray-100 shadow-sm">
+            <NotificationBell />
+          </div>
+
           <ShowWrapper requiredPermission={Permissions.ViewHidebutton}>
             <TutorialStep step={2} currentStep={tutorialStep} text="Toggle this to show or hide sensitive sales figures." onNext={() => next(3)} onSkip={skip}>
               <button ref={setTutorialRef(2)} onClick={() => setIsDataVisible(!isDataVisible)} className="p-2 rounded-sm border border-slate-400 hover:bg-slate-200 transition-colors">

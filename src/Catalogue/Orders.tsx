@@ -125,8 +125,29 @@ export const useOrdersData = (
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    const ordersQuery = useMemo(() => {
+        if (!companyId) return null;
+
+        const ordersRef = collection(db, 'companies', companyId, 'Orders');
+
+        if (startDate && endDate) {
+            return query(
+                ordersRef,
+                where('createdAt', '>=', Timestamp.fromDate(startDate)),
+                where('createdAt', '<=', Timestamp.fromDate(endDate)),
+                orderBy('createdAt', 'desc')
+            );
+        }
+
+        return query(ordersRef, orderBy('createdAt'));
+    }, [
+        companyId,
+        startDate?.getTime(),   
+        endDate?.getTime()      
+    ]);
+
     useEffect(() => {
-        if (!companyId) {
+        if (!ordersQuery) {
             setOrders([]);
             setLoading(false);
             return;
@@ -134,20 +155,8 @@ export const useOrdersData = (
 
         setLoading(true);
 
-        const ordersRef = collection(db, 'companies', companyId, 'Orders');
-
-        const q =
-            startDate && endDate
-                ? query(
-                    ordersRef,
-                    where('createdAt', '>=', Timestamp.fromDate(startDate)),
-                    where('createdAt', '<=', Timestamp.fromDate(endDate)),
-                    orderBy('createdAt', 'desc')
-                )
-                : query(ordersRef, orderBy('createdAt'));
-
         const unsubscribe = onSnapshot(
-            q,
+            ordersQuery,
             (snapshot) => {
                 const list: Order[] = snapshot.docs.map((doc) => {
                     const data = doc.data();
@@ -219,7 +228,7 @@ export const useOrdersData = (
         );
 
         return () => unsubscribe();
-    }, [companyId, startDate, endDate]);
+    }, [ordersQuery]);
 
     return { Orders, loading, error };
 };

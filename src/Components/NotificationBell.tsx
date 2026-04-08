@@ -36,11 +36,28 @@ const NotificationBell: React.FC = () => {
           {notifications.length === 0 ? (
             <p className="p-4 text-sm text-gray-500">No notifications</p>
           ) : (
-            notifications.map((n) => (
-              <div key={n.id} className="p-3 border-b text-sm text-gray-700">
-                <p>{n.message}</p>
-              </div>
-            ))
+            <div className="max-h-64 overflow-y-auto">
+              {notifications.slice(0, 5).map((n) => {
+                let bgColor = "bg-white";
+
+                if (n.status === "OVERDUE") {
+                  bgColor = "bg-red-50";
+                } else if (n.status === "UPCOMING") {
+                  bgColor = "bg-yellow-50";
+                } else if (n.status === "PAID") {
+                  bgColor = "bg-green-50";
+                }
+
+                return (
+                  <div
+                    key={n.id}
+                    className={`p-3 border-b text-sm text-gray-700 ${bgColor}`}
+                  >
+                    <p>{n.message}</p>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       )}

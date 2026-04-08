@@ -10,6 +10,7 @@ interface Notification {
   id: string;
   message: string;
   read: boolean;
+  status?: string;
   createdAt?: any;
 }
 
@@ -41,6 +42,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         id: doc.id,
         message: doc.data().message,
         read: doc.data().read ?? false,
+        status: doc.data().status,
         createdAt: doc.data().createdAt,
       }));
       setNotifications(loaded);
@@ -55,16 +57,22 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     const handlePdc = async (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      const message =
-        detail.status === "OVERDUE"
-          ? `⚠️ Overdue cheque for ${detail.partyName} (Invoice ${detail.invoiceNumber}) — Cheque #${detail.chequeNumber} was due on ${detail.chequeDate}`
-          : `🔔 Cheque due soon for ${detail.partyName} (Invoice ${detail.invoiceNumber}) — Cheque #${detail.chequeNumber} on ${detail.chequeDate}`;
+      let message = "";
+
+      if (detail.status === "OVERDUE") {
+        message = `⚠️ Overdue cheque for ${detail.partyName} (Invoice ${detail.invoiceNumber}) — Cheque #${detail.chequeNumber} was due on ${detail.chequeDate}`;
+      } else if (detail.status === "UPCOMING") {
+        message = `🔔 Cheque due soon for ${detail.partyName} (Invoice ${detail.invoiceNumber}) — Cheque #${detail.chequeNumber} on ${detail.chequeDate}`;
+      } else if (detail.status === "PAID") {
+        message = `✅ Payment received from ${detail.partyName} (Invoice ${detail.invoiceNumber})`;
+      }
 
       try {
         await addDoc(
           collection(db, "companies", currentUser.companyId!, "notifications"),
           {
             message,
+            status: detail.status,
             read: false,
             createdAt: serverTimestamp(),
           }

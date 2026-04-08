@@ -393,7 +393,7 @@ const Journal: React.FC = () => {
           const diffDays = Math.ceil(rawDays); // normalize to whole days
 
           // Trigger notification for today, 1 day before, or overdue
-          if (diffDays === 1 || diffDays === 0 || diffDays < 0) {
+          if (diffDays === 1 || diffDays === 0 || diffDays < 0 || diffDays <= -7) {
             const invoiceRef = doc(
               db,
               'companies',
@@ -424,7 +424,12 @@ const Journal: React.FC = () => {
                     chequeNumber: payment.chequeNumber,
                     chequeDate: payment.chequeDate,
                     partyName: invoice.partyName,
-                    status: diffDays < 0 ? 'OVERDUE' : 'UPCOMING'
+                    status:
+                      invoice.status === 'Paid'
+                        ? 'PAID'
+                        : diffDays < 0
+                        ? 'OVERDUE'
+                        : 'UPCOMING'
                   },
                 })
               );
@@ -855,6 +860,24 @@ const Journal: React.FC = () => {
         paymentMethods: newPaymentMethods,
         paymentHistory: [...currentHistory, paymentRecord]
       });
+
+      // Trigger notification ONLY for unpaid sales settled via CASH/UPI
+      const isSales = invoice.type === 'Credit';
+      const isCashOrUpi = method?.toLowerCase() === 'cash' || method?.toLowerCase() === 'upi';
+      const isNowPaid = newDue === 0;
+
+      if (isSales && isCashOrUpi) {
+        window.dispatchEvent(
+          new CustomEvent('pdc_notification', {
+            detail: {
+              invoiceNumber: invoice.invoiceNumber,
+              partyName: invoice.partyName,
+              status: isNowPaid ? 'PAID' : 'UPCOMING',
+              method: method
+            },
+          })
+        );
+      }
     });
   };
 

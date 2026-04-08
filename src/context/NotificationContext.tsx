@@ -60,11 +60,11 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       let message = "";
 
       if (detail.status === "OVERDUE") {
-        message = `⚠️ Overdue cheque for ${detail.partyName} (Invoice ${detail.invoiceNumber}) — Cheque #${detail.chequeNumber} was due on ${detail.chequeDate}`;
+        message = `⚠️ Overdue cheque for ${detail.partyName} (Invoice ${detail.invoiceNumber}) — Cheque #${detail.chequeNumber} of ₹${detail.amount} was due on ${detail.chequeDate}`;
       } else if (detail.status === "UPCOMING") {
-        message = `🔔 Cheque due soon for ${detail.partyName} (Invoice ${detail.invoiceNumber}) — Cheque #${detail.chequeNumber} on ${detail.chequeDate}`;
+        message = `🔔 Cheque due soon for ${detail.partyName} (Invoice ${detail.invoiceNumber}) — Cheque #${detail.chequeNumber} of ₹${detail.amount} on ${detail.chequeDate}`;
       } else if (detail.status === "PAID") {
-        message = `✅ Payment received from ${detail.partyName} (Invoice ${detail.invoiceNumber})`;
+        message = `✅ Payment received from ${detail.partyName} (Invoice ${detail.invoiceNumber}) — Amount ₹${detail.amount}`;
       }
 
       try {
@@ -75,6 +75,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
             status: detail.status,
             read: false,
             createdAt: serverTimestamp(),
+            amount: detail.amount || 0,
           }
         );
       } catch (err) {

@@ -1,16 +1,22 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNotifications } from "../context/NotificationContext";
 import { FiBell } from "react-icons/fi";
 
 const NotificationBell: React.FC = () => {
   const { notifications, markAsRead } = useNotifications();
   const [open, setOpen] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(5);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const handleOpen = () => {
     const newOpen = !open;
     setOpen(newOpen);
+
+    if (newOpen) {
+      setVisibleCount(5);
+    }
 
     // Mark all unread as read when opening
     if (newOpen) {
@@ -20,8 +26,25 @@ const NotificationBell: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        open &&
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [open]);
+
   return (
-    <div className="relative">
+    <div className="relative" ref={containerRef}>
       <div className="cursor-pointer relative" onClick={handleOpen}>
         <FiBell className="w-5 h-5" />
         {unreadCount > 0 && (
@@ -36,8 +59,9 @@ const NotificationBell: React.FC = () => {
           {notifications.length === 0 ? (
             <p className="p-4 text-sm text-gray-500">No notifications</p>
           ) : (
-            <div className="max-h-64 overflow-y-auto">
-              {notifications.slice(0, 5).map((n) => {
+            <>
+            <div className="max-h-80 overflow-y-auto rounded-sm">
+              {notifications.slice(0, visibleCount).map((n) => {
                 let bgColor = "bg-white";
 
                 if (n.status === "OVERDUE") {
@@ -53,11 +77,35 @@ const NotificationBell: React.FC = () => {
                     key={n.id}
                     className={`p-3 border-b text-sm text-gray-700 ${bgColor}`}
                   >
-                    <p>{n.message}</p>
+                    <div className="flex flex-col gap-1">
+                      <p className="leading-snug">{n.message}</p>
+
+                      {n.createdAt && (
+                        <div className="text-[11px] text-gray-500 text-right">
+                          {new Date(n.createdAt.seconds * 1000).toLocaleString('en-IN', {
+                            day: 'numeric',
+                            month: 'short',
+                            hour: 'numeric',
+                            minute: '2-digit'
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 );
               })}
             </div>
+            {visibleCount < notifications.length && (
+              <div className="p-2 text-center border-t">
+                <button
+                  onClick={() => setVisibleCount((prev) => prev + 10)}
+                  className="text-sm text-blue-600 hover:underline"
+                >
+                  Load more
+                </button>
+              </div>
+            )}
+            </>
           )}
         </div>
       )}

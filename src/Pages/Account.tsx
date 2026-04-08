@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/auth-context';
 import { logoutUser } from '../lib/AuthOperations';
 import { db } from '../lib/Firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { ROUTES } from '../constants/routes.constants';
 import { Permissions } from '../enums';
 import ShowWrapper from '../context/ShowWrapper';
@@ -55,11 +55,22 @@ const Account: React.FC = () => {
     setTutorialStep(nextStep);
   }, []);
 
-  const skip = useCallback(() => {
-    localStorage.setItem("account_tutorial_done", "true"); // uncomment for one-time
+  const skip = useCallback(async () => {
+    if (!currentUser?.companyId) return;
+
+    try {
+      await setDoc(
+        doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial'),
+        { accountTutorialDone: true },
+        { merge: true }
+      );
+    } catch (e) {
+      console.error('Error saving account tutorial:', e);
+    }
+
     setTutorialStep(0);
     window.dispatchEvent(new Event("account_tutorial_done"));
-  }, []);
+  }, [currentUser]);
 
   // Auto-scroll when step changes
   useEffect(() => {
@@ -113,13 +124,25 @@ const Account: React.FC = () => {
   }, [currentUser, loadingAuth, navigate]);
 
   useEffect(() => {
-    const seen = localStorage.getItem("account_tutorial_done");
-    if (!seen) {
-      localStorage.setItem("account_tutorial_done", "true");
-      setTutorialStep(1);
-    }
-    //setTutorialStep(1); // always show for testing
-  }, []);
+    const checkTutorial = async () => {
+      if (!currentUser?.companyId) return;
+
+      try {
+        const ref = doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial');
+        const snap = await getDoc(ref);
+        const done = snap.exists() && snap.data()?.accountTutorialDone;
+
+        if (!done) {
+          setTutorialStep(1);
+        }
+      } catch (e) {
+        console.error('Error fetching account tutorial:', e);
+        setTutorialStep(1);
+      }
+    };
+
+    checkTutorial();
+  }, [currentUser]);
 
   const handleLogout = async () => {
     try { await logoutUser(); navigate(ROUTES.LANDING); }
@@ -216,6 +239,7 @@ const Account: React.FC = () => {
                   text="View detailed sales and business reports here."
                   onNext={() => next(4)}
                   onSkip={skip}
+                  arrowAlign="left" 
                 >
                   <Link to={ROUTES.REPORTS} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-2 border border-gray-200 text-gray-800 hover:shadow-lg">
                     <span className="text-lg font-medium">Reports</span>
@@ -250,6 +274,7 @@ const Account: React.FC = () => {
                 text="View and manage your subscription plan here."
                 onNext={() => next(6)}
                 onSkip={skip}
+                arrowAlign='left'
               >
                 <Link to={ROUTES.SUBSCRIPTION_PAGE} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-2 border border-gray-200 text-gray-800 hover:shadow-lg">
                   <span className="text-lg font-medium">Plans</span>
@@ -283,7 +308,20 @@ const Account: React.FC = () => {
                 step={7}
                 currentStep={tutorialStep}
                 text="Unlock extra features for your business with Add Ons."
-                onNext={() => next(8)}
+                onNext={async () => {
+                  if (currentUser?.companyId) {
+                    try {
+                      await setDoc(
+                        doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial'),
+                        { accountTutorialDone: true },
+                        { merge: true }
+                      );
+                    } catch (e) {
+                      console.error('Error saving account tutorial:', e);
+                    }
+                  }
+                  next(8);
+                }}
                 onSkip={skip}
                 isLast
               >

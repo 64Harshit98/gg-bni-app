@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { collection, query, where, orderBy, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 import { useAuth } from '../context/auth-context';
 import ShowWrapper from '../context/ShowWrapper';
@@ -117,11 +117,18 @@ const DashboardContent = () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   const next = (n: number) => setTutorialStep(n <= TOTAL_STEPS ? n : 0);
-  const skip = () => {
-    localStorage.setItem("dashboard_tutorial_done", "true");
+  const skip = async () => {
+      if (!currentUser?.companyId) return;
+
+    await setDoc(
+      doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial'),
+      { dashboardTutorialDone: true },
+      { merge: true }
+    );
+  
     setTutorialStep(0);
-    window.dispatchEvent(new Event("dashboard_tutorial_done"));
-  };
+      window.dispatchEvent(new Event("dashboard_tutorial_done"));
+    };
 
   const daysRemaining = useMemo(() => {
     const subData = (currentUser as any)?.subscription || (currentUser as any)?.Subscription;
@@ -267,11 +274,21 @@ const DashboardContent = () => {
 
 
   useEffect(() => {
-    const seen = localStorage.getItem("dashboard_tutorial_done");
-    if (!seen) {
-      setTutorialStep(1); // run tutorial only first time after signup
-    }
-  }, []);
+    const checkTutorial = async () => {
+      if (!currentUser?.companyId) return;
+
+      const docRef = doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial');
+      const snap = await getDoc(docRef);
+
+      const done = snap.exists() && snap.data()?.dashboardTutorialDone;
+
+      if (!done) {
+        setTutorialStep(1);
+      }
+    };
+
+    checkTutorial();
+  }, [currentUser]);
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-100">
@@ -284,8 +301,8 @@ const DashboardContent = () => {
 
       <header className="flex flex-shrink-0 items-center justify-between border-b border-slate-300 bg-gray-100 p-2">
         {/* Step 1 — POS/Catalogue switch button */}
-        <TutorialStep step={1} currentStep={tutorialStep} text="Use this menu to switch between POS and Catalogue views." onNext={() => next(2)} onSkip={skip}>
-          <div ref={setTutorialRef(1)} className="relative w-14 flex justify-start">
+        <TutorialStep step={1} currentStep={tutorialStep} text="Use this menu to switch between POS and Catalogue views." onNext={() => next(2)} onSkip={skip} mobileArrowAlign="left" >
+          <div ref={setTutorialRef(1)} className="relative inline-block">
             <button
               disabled={!hasCataloguePermission}
               onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -417,13 +434,16 @@ const DashboardContent = () => {
                     currentStep={tutorialStep}
                     isLast={window.innerWidth >= 768}
                     text="Your top 5 customers by purchase value. Great for identifying your most loyal buyers."
-                    onNext={
-                      () => {
-                        localStorage.setItem("dashboard_tutorial_done", "true");
-                        setTutorialStep(0);
-                        window.dispatchEvent(new Event("dashboard_tutorial_done"));
-                      }
-                    }
+                    onNext={async () => {
+                      if (!currentUser?.companyId) return;
+                      await setDoc(
+                        doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial'),
+                        { dashboardTutorialDone: true },
+                        { merge: true }
+                      );
+                      setTutorialStep(0);
+                      window.dispatchEvent(new Event("dashboard_tutorial_done"));
+                    }}
                     onSkip={skip}
                   >
                     <div ref={setTutorialRef(9)} className="h-full [&>*]:h-full">

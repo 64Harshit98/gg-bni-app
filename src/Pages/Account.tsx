@@ -8,6 +8,7 @@ import { ROUTES } from '../constants/routes.constants';
 import { Permissions } from '../enums';
 import ShowWrapper from '../context/ShowWrapper';
 import ShinyText from '../Components/ShinyText';
+import NotificationBell from '../Components/NotificationBell';
 import { useMemo } from 'react';
 import BusinessCard from '../Catalogue/BusinessCards/BusinessCard';
 import { TutorialStep } from '../Components/TutorialStep';
@@ -146,8 +147,15 @@ const Account: React.FC = () => {
         </div>
       )}
 
-      <div className="bg-gray-100 p-2 border-b border-gray-300 mb-4">
+      <div className="bg-gray-100 p-2 border-b border-gray-300 mb-4 flex items-center justify-between">
+        <div className="w-10" />
+
         <h1 className="text-3xl font-bold text-center text-slate-800">Account</h1>
+
+        {/* Notification Bell */}
+        <div className="relative border border-slate-300 rounded-sm p-2 bg-gray-100 shadow-sm">
+          <NotificationBell />
+        </div>
       </div>
 
       {/* Step 1 — Profile photo + edit */}

@@ -121,6 +121,7 @@ const Sales: React.FC = () => {
     const [sendingPdf, setSendingPdf] = useState(false);
 
     const [invoiceNumber, setInvoiceNumber] = useState<string>('');
+    const isInvoiceNumberManuallyEdited = useRef(false);
     const [invoiceDate, setInvoiceDate] = useState<string>(() => {
         const today = new Date();
         const yyyy = today.getFullYear();
@@ -257,6 +258,7 @@ const Sales: React.FC = () => {
             const settingsRef = doc(db, 'companies', currentUser.companyId, 'settings', 'sales-settings');
 
             unsubscribeCounter = onSnapshot(counterRef, async (docSnap) => {
+                if (isInvoiceNumberManuallyEdited.current) return;
                 const settingsSnap = await getDoc(settingsRef);
                 const prefix = settingsSnap.exists() ? (settingsSnap.data().voucherPrefix || 'INV') : 'INV';
 
@@ -1041,7 +1043,9 @@ const Sales: React.FC = () => {
 
                 const prefix = settingsDoc.exists() ? (settingsDoc.data().voucherPrefix || 'INV') : 'INV';
                 const nextNumber = counterDoc.exists() ? (counterDoc.data().currentNumber || 1) : 1;
-                const finalInvNo = `${prefix}-${nextNumber}`;
+                const finalInvNo = isInvoiceNumberManuallyEdited.current
+                                    ? invoiceNumber  // Use what the user typed
+                                    : `${prefix}-${nextNumber}`;
 
                 // 3. Assign the "Database Truth" number to the sale
                 saleData.createdAt = customDate;
@@ -1056,7 +1060,9 @@ const Sales: React.FC = () => {
                 transaction.set(newSaleRef, saleData);
 
                 // 5. Increment the Counter
-                transaction.set(counterRef, { currentNumber: nextNumber + 1 }, { merge: true });
+                if (!isInvoiceNumberManuallyEdited.current) {
+                    transaction.set(counterRef, { currentNumber: nextNumber + 1 }, { merge: true });
+}
 
                 // Result returned to the UI
                 return { id: newSaleRef.id, number: finalInvNo };
@@ -1158,6 +1164,7 @@ const Sales: React.FC = () => {
                     localStorage.removeItem('sales_cart_draft');
                     setItems([]);
                     const nextNum = await peekNextInvoiceNumber(currentUser.companyId);
+                    isInvoiceNumberManuallyEdited.current = false;
                     setInvoiceNumber(nextNum);
                 }
             }
@@ -1298,32 +1305,63 @@ const Sales: React.FC = () => {
     const renderTaxToggle = () => {
         const isSettingLocked = salesSettings?.lockTaxToggle ?? false;
         const isSchemeLocked = salesSettings?.gstScheme !== 'regular';
-
         const isLocked = isSettingLocked || isSchemeLocked;
         return (
-            <div className="flex justify-between items-center p-2 bg-white border-b border-gray-200 px-5 rounded-sm">
-                <span className="text-sm font-semibold text-gray-700">Tax Calculation</span>
-                <div className="relative">
-                    <select
-                        value={activeTaxMode}
-                        onChange={(e) => setActiveTaxMode(e.target.value as any)}
-                        disabled={(salesSettings?.gstScheme !== 'regular')} // --- DISABLE INPUT IF LOCKED ---
-                        className={`appearance-none border border-gray-300 pr-8 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium transition-all ${isLocked
-                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed' // Locked Style
-                            : 'bg-gray-50 hover:border-blue-400 text-gray-700 cursor-pointer' // Active Style
+            <>
+                {/* MOBILE VIEW */}
+                <div className="flex md:hidden justify-between items-center p-1 bg-white border-b border-gray-200 px-5 rounded-sm">
+                    <span className="text-sm font-semibold text-gray-700">Tax Calculation</span>
+                    <div className="relative">
+                        <select
+                            value={activeTaxMode}
+                            onChange={(e) => setActiveTaxMode(e.target.value as any)}
+                            disabled={(salesSettings?.gstScheme !== 'regular')}
+                            className={`appearance-none border border-gray-300 pr-8 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium transition-all ${
+                                isLocked
+                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                    : 'bg-gray-50 hover:border-blue-400 text-gray-700 cursor-pointer'
                             }`}
-                    >
-                        <option value="exclusive">Tax Exclusive</option>
-                        <option value="inclusive">Tax Inclusive</option>
-                        <option value="exempt">Tax Exempt</option>
-                    </select>
-                    {!isLocked && (
-                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
-                            <FiChevronDown size={14} />
-                        </div>
-                    )}
+                        >
+                            <option value="exclusive">Tax Exclusive</option>
+                            <option value="inclusive">Tax Inclusive</option>
+                            <option value="exempt">Tax Exempt</option>
+                        </select>
+                        {!isLocked && (
+                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
+                                <FiChevronDown size={14} />
+                            </div>
+                        )}
+                    </div>
                 </div>
-            </div>
+
+                {/* DESKTOP VIEW */}
+                <div className="hidden md:flex flex-row items-center justify-between md:flex-col md:items-start gap-2 py-2 bg-white border-b border-gray-200">
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
+                        Tax Calculation
+                    </span>
+                    <div className="relative w-1/2 md:w-full">
+                        <select
+                            value={activeTaxMode}
+                            onChange={(e) => setActiveTaxMode(e.target.value as any)}
+                            disabled={(salesSettings?.gstScheme !== 'regular')}
+                            className={`appearance-none w-full bg-white border border-gray-300 px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium transition-all shadow-sm md:px-4 md:py-2.5 md:text-[15px] md:rounded-xl ${
+                                isLocked
+                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                    : 'hover:border-blue-400 text-gray-700 cursor-pointer'
+                            }`}
+                        >
+                            <option value="exclusive">Tax Exclusive</option>
+                            <option value="inclusive">Tax Inclusive</option>
+                            <option value="exempt">Tax Exempt</option>
+                        </select>
+                        {!isLocked && (
+                            <div className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-gray-400">
+                                <FiChevronDown size={14} />
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </>
         );
     };
 
@@ -1349,7 +1387,9 @@ const Sales: React.FC = () => {
                         <input
                             type="text"
                             value={invoiceNumber}
-                            onChange={(e) => setInvoiceNumber(e.target.value)}
+                            onChange={(e) => { 
+                                isInvoiceNumberManuallyEdited.current = true;
+                                setInvoiceNumber(e.target.value)}}
                             className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-24 text-sm outline-none transition-colors"
                         />
                         <span className="text-[9px] text-gray-400 uppercase tracking-wide mt-0.5">INV NO</span>
@@ -1367,7 +1407,10 @@ const Sales: React.FC = () => {
                             <input
                                 type="text"
                                 value={invoiceNumber}
-                                onChange={(e) => setInvoiceNumber(e.target.value)}
+                                onChange={(e) => {
+                                    isInvoiceNumberManuallyEdited.current = true;
+                                    setInvoiceNumber(e.target.value);
+                                }}
                                 className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-24 text-sm outline-none transition-colors"
                             />
                         </div>
@@ -1744,7 +1787,10 @@ const Sales: React.FC = () => {
                     {/* RIGHT PANEL — desktop only */}
                     <div className="hidden md:flex w-1/4 flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
                         <div className="flex-1 p-6 flex flex-col justify-end">
-                            <h2 className="text-xl font-bold text-gray-800 mb-6 border-b pb-2">Bill Summary</h2>
+                            <div className="mb-6 border-b pb-2 flex items-end justify-between">
+                                <h2 className="text-xl font-bold text-gray-800">Bill Summary</h2>
+                                <span className="text-xs text-indigo-500 font-semibold">{items.length} Items</span>
+                            </div>
                             {renderTaxToggle()}
                             <GenericBillFooter
                                 isExpanded={true} onToggleExpand={() => { }}
@@ -1945,7 +1991,7 @@ const Sales: React.FC = () => {
                             <div className="flex-grow">
                                 <SearchableItemInput label="Search Item" placeholder="Search by name or barcode..." items={availableItems} onItemSelected={handleItemSelected} isLoading={pageIsLoading} error={error} onAddItem={(query) => navigate(ROUTES.ITEM_ADD, { state: { prefillName: query } })} />
                             </div>
-                            <button onClick={() => setIsScannerOpen(true)} className='bg-transparent text-gray-700 p-3 border border-gray-700 rounded-md font-semibold transition hover:bg-gray-800' title="Scan Barcode">
+                            <button onClick={() => setIsScannerOpen(true)} className='bg-transparent text-gray-700 p-3 border border-gray-700 rounded-sm font-semibold transition hover:bg-gray-800' title="Scan Barcode">
                                 <IconScanCircle width={20} height={20} />
                             </button>
                         </div>
@@ -2034,7 +2080,10 @@ const Sales: React.FC = () => {
 
                 <div className="hidden md:flex w-1/4 flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
                     <div className="flex-1 p-6 flex flex-col justify-end">
-                        <h2 className="text-xl font-bold text-gray-800 mb-6 border-b pb-2">Bill Summary</h2>
+                        <div className="mb-6 border-b pb-2 flex items-end justify-between">
+                            <h2 className="text-xl font-bold text-gray-800">Bill Summary</h2>
+                            <span className="text-xs text-indigo-500 font-semibold">{liveItemCount} Items</span>
+                        </div>
 
                         {/* Desktop Toggle */}
                         {renderTaxToggle()}

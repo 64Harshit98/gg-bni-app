@@ -35,6 +35,8 @@ import { botMasterService } from '../Pages/Additional/Whatsapp/WhatsappApi';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { storage } from '../lib/Firebase';
 import { TutorialStep } from '../Components/TutorialStep'; // ← same import as Home.tsx
+import { Permissions } from '../enums/permissions.enum';
+import ShowWrapper from '../context/ShowWrapper';
 import NotificationBell from "../Components/NotificationBell"
 
 // ─── Total tutorial steps for Journal ───────────────────────────────────────
@@ -1082,25 +1084,31 @@ const Journal: React.FC = () => {
                 <div className="flex justify-between gap-2 mt-2 pt-4 border-t border-slate-200">
                   {invoice.status === 'Unpaid' && (<button onClick={(e) => { e.stopPropagation(); openPaymentModal(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-emerald-500 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors">Settle</button>)}
                   {invoice.status === 'Paid' && (<button onClick={(e) => { e.stopPropagation(); promptDeleteInvoice(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors">Delete</button>)}
-                  <button onClick={(e) => { e.stopPropagation(); handleEditInvoice(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-gray-400 rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors">Edit</button>
+                  <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+                    <button onClick={(e) => { e.stopPropagation(); handleEditInvoice(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-gray-400 rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors">Edit</button>
+                  </ShowWrapper>
 
                   {invoice.type === 'Credit' && (
                     <>
-                      <button onClick={(e) => { e.stopPropagation(); handleSalesReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-sky-500 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">Return</button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }}
-                        disabled={pdfGenerating === invoice.id}
-                        className="px-4 py-2 text-sm font-medium text-white bg-black rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {pdfGenerating === invoice.id ? <Spinner /> : 'Print'}
-                      </button>
+                      <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+                        <button onClick={(e) => { e.stopPropagation(); handleSalesReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-sky-500 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">Return</button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }}
+                          disabled={pdfGenerating === invoice.id}
+                          className="px-4 py-2 text-sm font-medium text-white bg-black rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {pdfGenerating === invoice.id ? <Spinner /> : 'Print'}
+                        </button>
+                      </ShowWrapper>
                     </>
                   )}
 
                   {invoice.type === 'Debit' && (
                     <>
-                      <button onClick={(e) => { e.stopPropagation(); handlePurchaseReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-sky-500 rounded-lg hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-colors">Return</button>
-                      <button onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-black rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center gap-2">Print</button>
+                      <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+                        <button onClick={(e) => { e.stopPropagation(); handlePurchaseReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-sky-500 rounded-lg hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-colors">Return</button>
+                        <button onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-black rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center gap-2">Print</button>
+                      </ShowWrapper>
                     </>
                   )}
                 </div>

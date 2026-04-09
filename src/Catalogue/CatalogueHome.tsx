@@ -27,37 +27,30 @@ export interface TopItem {
     totalAmount: number;
 }
 
-
 export interface ChartDataPoint {
-    date: string; 
+    date: string;   
     sales: number;  
     bills: number;  
 }
 
-
-// Shape of data stored in localStorage and passed down to all child components
 export interface CatalogueDashboardData {
-    totalSalesAmount: number;
-    totalSalesCount: number;       
-    chartData: ChartDataPoint[];  
+    totalSalesAmount: number;     
+    totalSalesCount: number;        
+    chartData: ChartDataPoint[];    
     topByQuantity: TopItem[];       
-    topByAmount: TopItem[];        
+    topByAmount: TopItem[];         
     orderCounts: Record<string, number>; 
 }
 
-
 // ─── Business Name Hook ───────────────────────────────────────────────────────
-// Fetches business name once on mount. Kept separate from main data hook
-// so it doesn't interfere with the dashboard caching logic.
+
 const useBusinessName = (userId?: string, companyId?: string) => {
     const [businessName, setBusinessName] = useState<string>('');
     const [loading, setLoading] = useState(true);
 
-
     useEffect(() => {
         // Wait for both userId and companyId to be available
         if (!userId || !companyId) { setLoading(false); return; }
-
 
         const fetchBusinessInfo = async () => {
             try {
@@ -66,46 +59,42 @@ const useBusinessName = (userId?: string, companyId?: string) => {
                 setBusinessName(docSnap.exists() ? docSnap.data().businessName || 'Business' : 'Business');
             } catch {
                 setBusinessName('Business'); 
+                setBusinessName('Business'); 
             } finally {
                 setLoading(false);
             }
         };
 
-
         fetchBusinessInfo();
     }, [userId, companyId]);
-
 
     return { businessName, loading };
 };
 
-
 // ─── Inner Dashboard Component ────────────────────────────────────────────────
-// Separated from the exported component so FilterProvider can wrap it below.
-// This is required because useFilter() must be called inside a FilterProvider.
 const HomePageContent: React.FC = () => {
     const location = useLocation();
     const { currentUser, loading: authLoading } = useAuth();
     const { filters } = useFilter(); 
+    const { filters } = useFilter(); 
     const { businessName, loading: nameLoading } = useBusinessName(currentUser?.uid, currentUser?.companyId);
+
     const hasCataloguePermission = currentUser?.permissions?.includes(Permissions.ViewCatalogue);
     const [isDataVisible, setIsDataVisible] = useState<boolean>(false);
     const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
     const currentItem = SiteItems.find(item => item.to === location.pathname);
     const currentLabel = currentItem ? currentItem.label : 'Menu';
     const isHeaderLoading = authLoading || nameLoading;
+
     const [data, setData] = useState<WithCacheMeta<CatalogueDashboardData> | null>(null);
     const [loading, setLoading] = useState(true);
-
 
     const fetchData = useCallback(async (forceRefresh = false) => {
         if (!currentUser?.companyId || !filters.startDate || !filters.endDate) {
             setLoading(false);
             return;
         }
-
         if (!forceRefresh) setLoading(true);
-
         try {
             const result = await fetchDashboardData<CatalogueDashboardData>({
                 companyId: currentUser.companyId,
@@ -166,7 +155,6 @@ const HomePageContent: React.FC = () => {
                     return { totalSalesAmount, totalSalesCount, chartData, topByQuantity, topByAmount, orderCounts };
                 },
             });
-
             setData(result);
 
         } catch (e) {
@@ -175,22 +163,16 @@ const HomePageContent: React.FC = () => {
             setLoading(false);
         }
     }, [currentUser, filters]);
-
+    
     useEffect(() => { fetchData(); }, [fetchData]);
 
-
-    // Auto-refresh every 1 hour — same CACHE_DURATION as POS Home.
-    // Forces a fresh Firestore fetch after the cache window expires,
-    // even if the user keeps the page open without manually refreshing.
     useEffect(() => {
         const interval = setInterval(() => fetchData(true), CACHE_DURATION);
-        return () => clearInterval(interval); // Cleanup to prevent memory leaks on unmount
+        return () => clearInterval(interval); 
     }, [fetchData]);
-
 
     // Manual refresh: bypass cache and fetch latest data immediately
     const handleRefresh = () => fetchData(true);
-
 
     // Format the last-updated timestamp for display in the header
     const formattedLastUpdated = useMemo(() => {
@@ -198,14 +180,11 @@ const HomePageContent: React.FC = () => {
         return new Date(data.lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }, [data]);
 
-
     return (
         <div className="flex min-h-screen w-full flex-col bg-gray-100 mb-16">
 
-
             {/* ── Header ──────────────────────────────────────────────────── */}
             <header className="flex flex-shrink-0 items-center justify-between border-b border-slate-300 bg-gray-100 p-2">
-
 
                 {/* Left: page navigation dropdown */}
                 <div className="relative flex justify-start">
@@ -218,7 +197,6 @@ const HomePageContent: React.FC = () => {
                         <span className="font-medium">{currentLabel}</span>
                         <IconChevronDown width={16} height={16} className={`transition-transform ${isMenuOpen ? 'rotate-180' : 'rotate-0'}`} />
                     </button>
-
 
                     {isMenuOpen && hasCataloguePermission && (
                         <div className="absolute top-full left-0 mt-2 w-56 bg-white border border-slate-300 rounded-md shadow-lg z-10">
@@ -240,13 +218,11 @@ const HomePageContent: React.FC = () => {
                     )}
                 </div>
 
-
                 {/* Center: dashboard title and business name */}
                 <div className="flex-1 text-center flex flex-col items-center justify-center">
                     <h1 className="text-3xl font-bold text-slate-800">Dashboard</h1>
                     <p className="text-sm text-slate-500">{isHeaderLoading ? '...' : businessName}</p>
                 </div>
-
 
                 {/* Right: toggle button to show or hide sensitive data values */}
                 <div className="w-14 flex justify-end">
@@ -267,7 +243,6 @@ const HomePageContent: React.FC = () => {
                     </ShowWrapper>
                 </div>
             </header>
-
 
             {/* ── Main Content ─────────────────────────────────────────────── */}
             <main className="flex-grow overflow-y-auto p-2">
@@ -354,12 +329,10 @@ const HomePageContent: React.FC = () => {
 };
 
 // FilterProvider wraps HomePageContent so that useFilter() works inside it.
-// HomePageContent is a separate component specifically to enable this pattern.
 const HomePage: React.FC = () => (
     <FilterProvider>
         <HomePageContent />
     </FilterProvider>
 );
-
 
 export default HomePage;

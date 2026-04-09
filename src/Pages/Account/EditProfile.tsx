@@ -6,14 +6,13 @@ import { updateProfile } from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../../context/auth-context';
 import { FloatingLabelInput } from '../../Components/ui/FloatingLabelInput';
-import { FiCamera } from 'react-icons/fi';
+import { FiCamera, FiCheck, FiX } from 'react-icons/fi';
 
 // --- Data Types ---
 interface ProfileData {
   name: string;
   email: string;
   phone: string;
-  whatsappNumber: string;
   panNumber: string;
   accountType: string;
   profilePicture?: string;
@@ -22,6 +21,7 @@ interface ProfileData {
   businessCategory: string;
   registrationNumber: string;
   gstin: string;
+  msmeUdyamNumber: string;
   streetAddress: string;
   city: string;
   state: string;
@@ -139,7 +139,7 @@ const useProfileData = (userId?: string, companyId?: string) => {
       throw new Error("User or company is not authenticated.");
     }
 
-    const { name, email, phone, profilePicture, whatsappNumber, panNumber, accountType, ...businessData } = data;
+    const { name, email, phone, profilePicture, panNumber, accountType, ...businessData } = data;
 
     const userDocRef = doc(db, 'companies', companyId, 'users', userId);
     const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
@@ -159,7 +159,6 @@ const useProfileData = (userId?: string, companyId?: string) => {
     if (name) userUpdateData.name = name;
     if (phone !== undefined) userUpdateData.phone = phone;
     if (email !== undefined) userUpdateData.email = email;
-    if (whatsappNumber !== undefined) userUpdateData.whatsappNumber = whatsappNumber;
     if (panNumber !== undefined) userUpdateData.panNumber = panNumber;
     if (accountType !== undefined) userUpdateData.accountType = accountType;
     // Only include profilePicture if it is defined (avoid Firestore crash)
@@ -186,6 +185,38 @@ const useProfileData = (userId?: string, companyId?: string) => {
   return { profile, loading, error, saveData };
 };
 
+// ─── SectionCard ───────────────────────────────────────────────────────────
+const SectionCard: React.FC<{ title: string; icon: string; children: React.ReactNode }> = ({
+  title,
+  icon,
+  children,
+}) => (
+  <div className="bg-white rounded-sm border border-slate-100 shadow-sm overflow-hidden flex flex-col">
+    <div className="px-3 py-2 border-b border-slate-100 flex items-center gap-2">
+      <span className="text-xs">{icon}</span>
+      <span className="text-[9px] font-bold tracking-widest uppercase text-slate-500">{title}</span>
+    </div>
+    <div className="p-4 flex-1">{children}</div>
+  </div>
+);
+// ─── Shared input style (no coloured label highlight) ─────────────────────
+const inputClass =
+  'w-full border border-slate-200 rounded-sm text-sm bg-slate-50 outline-none ' +
+  'transition-all px-[12px] py-[8px] text-slate-800 ' +
+  'focus:border-slate-400 focus:bg-white';
+
+// Simple labelled field wrapper (no floating-label colour highlight)
+const LabeledField: React.FC<{
+  label: string;
+  children: React.ReactNode;
+}> = ({ label, children }) => (
+  <div className="flex flex-col gap-0.5">
+    <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+      {label}
+    </label>
+    {children}
+  </div>
+);
 
 // --- Main Edit Profile Page Component ---
 const EditProfilePage: React.FC = () => {
@@ -240,13 +271,6 @@ const EditProfilePage: React.FC = () => {
     }
   };
 
-  const handleWhatsappChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    if (/^\d{0,10}$/.test(value)) {
-      setFormData(prev => ({ ...prev, whatsappNumber: value }));
-    }
-  };
-
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -270,12 +294,16 @@ const EditProfilePage: React.FC = () => {
       setSubmitError('Phone number must be exactly 10 digits.');
       return;
     }
-
-    if (formData.whatsappNumber && formData.whatsappNumber.length !== 10) {
-      setSubmitError('WhatsApp number must be exactly 10 digits.');
+    if (formData.msmeUdyamNumber && formData.msmeUdyamNumber.length !== 12) {
+      setSubmitError('MSME/Udyam number must be exactly 12 digits.');
+      return;
+    }
+    if (formData.panNumber && formData.panNumber.length !== 10) {
+      setSubmitError('PAN number must be exactly 10 characters.');
       return;
     }
 
+    setIsSubmitting(true);
     setIsSubmitting(true);
 
     try {
@@ -309,176 +337,186 @@ const EditProfilePage: React.FC = () => {
     }
   };
 
+  // ── Loading state ──
   if (authLoading || dataLoading) {
-    return <div className="flex min-h-screen items-center justify-center">Loading Profile...</div>;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <div className="w-10 h-10 rounded-full border-[3px] border-slate-200 border-t-sky-500 animate-spin mx-auto mb-3" />
+          <p className="text-slate-500 text-sm">Loading profile…</p>
+        </div>
+      </div>
+    );
   }
 
   if (dataError) {
-    return <div className="flex min-h-screen items-center justify-center text-red-500">{dataError}</div>;
+    return (
+      <div className="flex min-h-screen items-center justify-center text-red-500">
+        {dataError}
+      </div>
+    );
   }
 
+  // Derived submit button colour class (kept out of JSX to avoid long ternary chains)
+  const submitBtnClass = submitSuccess
+    ? 'bg-gradient-to-br from-green-400 to-green-600 shadow-green-200/60'
+    : isSubmitting
+      ? 'bg-sky-200'
+      : 'bg-gradient-to-br from-sky-400 to-sky-600 shadow-sky-200/60';
+
   return (
-    <div className="min-h-screen bg-gray-100 mb-12 sm:p-6">
-      <div className="max-w-3xl mx-auto bg-gray-100 p-2 rounded-xl ">
-        <div className="flex items-center justify-between pb-2 border-b border-gray-200 mb-2">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Edit Profile</h1>
-          <button onClick={() => navigate(-1)} className="rounded-full bg-gray-200 p-2 text-gray-700 transition hover:bg-gray-300">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+    <div className="min-h-screen bg-slate-100">
+      <div className="max-w-4xl mx-auto px-4 py-5 pb-24">
+
+        {/* ── Page Header ── */}
+        <div className="flex items-center justify-between mb-1">
+          <h1 className="text-xl font-bold text-slate-900 m-0">Edit Profile</h1>
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="w-9 h-9 rounded-sm bg-white border-0 cursor-pointer flex items-center justify-center shadow text-slate-500 hover:text-slate-700 transition-colors"
+          >
+            <FiX size={18} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-8">
-          <fieldset>
-            <legend className="text-xl font-semibold text-gray-700 mb-4">Owner Details</legend>
-            <div className="flex justify-center mb-6">
-              <div className="relative cursor-pointer group" onClick={() => fileInputRef.current?.click()}>
-                <img
-                  src={previewUrl || "https://github.com/shadcn.png"}
-                  alt="Profile"
-                  className="w-42 h-42 rounded-full object-cover border-4 border-white shadow-md group-hover:opacity-75 transition"
-                />
-                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
-                  <FiCamera className="text-gray-800 w-8 h-8" />
-                </div>
-                <div className="absolute bottom-0 right-0 bg-sky-500 p-2 rounded-full text-white shadow-sm">
-                  <FiCamera className="w-4 h-4" />
-                </div>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  className="hidden"
-                  accept="image/png, image/jpeg, image/jpg"
-                  onChange={handleImageChange}
-                />
-              </div>
-            </div>
-            <div className="space-y-4">
-              <FloatingLabelInput
-                type="text"
-                name="name"
-                value={formData.name || ''}
-                onChange={handleInputChange}
-                label="Your Full Name"
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+
+          {/* ── AVATAR — compact centered ── */}
+          <div className="flex flex-col items-center py-0">
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className="relative cursor-pointer inline-block"
+            >
+              <img
+                src={previewUrl || 'https://github.com/shadcn.png'}
+                alt="Profile"
+                className="w-20 h-20 rounded-full object-cover border-3 border-white shadow-md shadow-sky-200 block"
               />
-              <div>
+              <div className="absolute bottom-0.5 right-0.5 w-5 h-5 rounded-full bg-sky-500 border-2 border-white flex items-center justify-center text-white">
+                <FiCamera size={9} />
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png, image/jpeg, image/jpg"
+                className="hidden"
+                onChange={handleImageChange}
+              />
+            </div>
+          </div>
+
+          {/* ── 2 × 2 CARD GRID ── */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+
+            {/* Card 1 — Personal Information */}
+            <SectionCard title="Personal Information" icon="">
+              <div className="flex flex-col gap-4">
                 <FloatingLabelInput
                   type="text"
-                  name="phone"
-                  value={formData.phone || ''}
-                  onChange={handlePhoneChange}
-                  label="Phone Number"
-                  maxLength={10}
-                  inputMode="numeric"
+                  name="name"
+                  value={formData.name || ''}
+                  onChange={handleInputChange}
+                  label="Full Name"
                 />
-                <div className="mt-4">
+                <div>
                   <FloatingLabelInput
                     type="text"
-                    name="whatsappNumber"
-                    value={formData.whatsappNumber || ''}
-                    onChange={handleWhatsappChange}
-                    label="WhatsApp Number"
+                    name="phone"
+                    value={formData.phone || ''}
+                    onChange={handlePhoneChange}
+                    label="Phone Number"
                     maxLength={10}
                     inputMode="numeric"
                   />
+                  {phoneError && (
+                    <p className="text-red-500 text-[11px] mt-1 mb-0">{phoneError}</p>
+                  )}
                 </div>
-                {phoneError && (
-                  <p className="text-red-500 text-xs mt-1 ml-1">{phoneError}</p>
-                )}
+                {/* Email — read-only */}
+                <div className="-mt-2">
+                  <LabeledField label="Email Address">
+                    <input
+                      type="email"
+                      name="email"
+                      value={formData.email || ''}
+                      readOnly
+                      className={`${inputClass} bg-slate-100 text-slate-400 cursor-not-allowed`}
+                      placeholder="Email Address"
+                    />
+                  </LabeledField>
+                </div>
               </div>
-              <FloatingLabelInput
-                type="email"
-                name="email"
-                value={formData.email || ''}
-                onChange={handleInputChange}
-                label="Email Address"
-              />
-            </div>
-          </fieldset>
+            </SectionCard>
 
-          <fieldset>
-            <legend className="text-xl font-semibold text-gray-700 mb-4">Business Information</legend>
-            <div className="grid grid-cols-2 md:grid-cols-2 gap-6 mb-6">
-              <div className="md:col-span-2">
+            <SectionCard title="Business Information" icon="">
+              <div className="grid grid-cols-2 gap-4">
                 <FloatingLabelInput type="text" name="businessName" value={formData.businessName || ''} onChange={handleInputChange} label="Business Name" />
+                <FloatingLabelInput type="text" name="businessType" value={formData.businessType || ''} onChange={handleInputChange} label="Business Type" />
+                <FloatingLabelInput type="text" name="businessCategory" value={formData.businessCategory || ''} onChange={handleInputChange} label="Category" />
+                <FloatingLabelInput type="text" name="gstin" value={formData.gstin || ''} onChange={handleInputChange} label="GSTIN" />
+                <FloatingLabelInput type="text" name="panNumber" value={formData.panNumber || ''} onChange={handleInputChange} label="PAN Number" />
+                <FloatingLabelInput type="text" name="msmeUdyamNumber" value={formData.msmeUdyamNumber || ''} onChange={handleInputChange} label="MSME / Udyam No." />
               </div>
-              <FloatingLabelInput type="text" name="businessType" value={formData.businessType || ''} onChange={handleInputChange} label="Business Type" />
-              <FloatingLabelInput type="text" name="businessCategory" value={formData.businessCategory || ''} onChange={handleInputChange} label="Business Category" />
-              <FloatingLabelInput type="text" name="gstin" value={formData.gstin || ''} onChange={handleInputChange} label="GSTIN" />
-              <FloatingLabelInput
-                type="text"
-                name="panNumber"
-                value={formData.panNumber || ''}
-                onChange={handleInputChange}
-                label="PAN Number"
-              />
-            </div>
-          </fieldset>
+            </SectionCard>
 
-          <fieldset>
-            <legend className="text-xl font-semibold text-gray-700 mb-2">Business Address</legend>
-            <div className="grid grid-cols-2 md:grid-cols-2 gap-6">
-              <div className="md:col-span-2">
+            <SectionCard title="Business Address" icon="">
+              <div className="grid grid-cols-2 gap-4">
                 <FloatingLabelInput name="streetAddress" value={formData.streetAddress || ''} onChange={handleInputChange} label="Street Address" />
-              </div>
-              <FloatingLabelInput type="text" name="city" value={formData.city || ''} onChange={handleInputChange} label="City" />
-              <FloatingLabelInput type="text" name="state" value={formData.state || ''} onChange={handleInputChange} label="State" />
-              <div>
-                <FloatingLabelInput
-                  type="text"
-                  name="postalCode"
-                  value={formData.postalCode || ''}
-                  onChange={handlePostalCodeChange}
-                  label="Postal Code"
-                  maxLength={6}
-                  inputMode="numeric"
-                />
-                {postalError && (
-                  <p className="text-red-500 text-xs mt-1 ml-1">{postalError}</p>
-                )}
-              </div>
-            </div>
-          </fieldset>
-
-          <fieldset>
-            <legend className="text-xl font-semibold text-gray-700 mb-2">Bank Details</legend>
-            <div className="grid grid-cols-2 md:grid-cols-2 gap-6">
-              <div className="md:col-span-2">
-                <FloatingLabelInput type="text" name="accountHolderName" value={formData.accountHolderName || ''} onChange={handleInputChange} label="Account Name" />
-              </div>
-              <FloatingLabelInput type="text" name="bankName" value={formData.bankName || ''} onChange={handleInputChange} label="Bank Name" />
-              <FloatingLabelInput type="text" name="ifscCode" value={formData.ifscCode || ''} onChange={handleInputChange} label="IFSC Code" />
-              <div className="relative md:col-span-2 bg-gray-100">
-                <select
-                  name="accountType"
-                  value={formData.accountType || ''}
-                  onChange={(e) => setFormData(prev => ({ ...prev, accountType: e.target.value }))}
-                  className="w-full border border-gray-700 rounded-md px-3 pt-6 pb-2 text-sm text-gray-800 bg-gray-100 focus:outline-none focus:border-sky-500 appearance-none h-[58px]"
-                >
-                  <option value="" disabled hidden></option>
-                  <option value="Savings">Savings</option>
-                  <option value="Current">Current</option>
-                </select>
-                <label className="absolute left-3 top-2 text-xs text-gray-500 pointer-events-none">
-                  Account Type
-                </label>
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+                <FloatingLabelInput type="text" name="city" value={formData.city || ''} onChange={handleInputChange} label="City" />
+                <FloatingLabelInput type="text" name="state" value={formData.state || ''} onChange={handleInputChange} label="State" />
+                <div>
+                  <FloatingLabelInput type="text" name="postalCode" value={formData.postalCode || ''} onChange={handlePostalCodeChange} label="Postal Code" maxLength={6} inputMode="numeric" />
+                  {postalError && <p className="text-red-500 text-[11px] mt-1 mb-0">{postalError}</p>}
                 </div>
               </div>
-              <div className="md:col-span-2">
-                <FloatingLabelInput type="text" name="accountNumber" value={formData.accountNumber || ''} onChange={handleInputChange} label="Account No." />
+            </SectionCard>
+
+            <SectionCard title="Bank Details" icon="">
+              <div className="grid grid-cols-2 gap-4">
+                <FloatingLabelInput type="text" name="accountHolderName" value={formData.accountHolderName || ''} onChange={handleInputChange} label="Account Holder Name" />
+                <FloatingLabelInput type="text" name="bankName" value={formData.bankName || ''} onChange={handleInputChange} label="Bank Name" />
+                <FloatingLabelInput type="text" name="ifscCode" value={formData.ifscCode || ''} onChange={handleInputChange} label="IFSC Code" />
+                <FloatingLabelInput type="text" name="accountNumber" value={formData.accountNumber || ''} onChange={handleInputChange} label="Account Number" />
               </div>
+            </SectionCard>
+
+          </div>{/* end grid */}
+
+          {/* ── Error banner ── */}
+          {submitError && (
+            <div className="bg-red-50 border border-red-200 rounded-sm px-4 py-2.5 flex items-center gap-2">
+              <FiX size={14} className="text-red-500 shrink-0" />
+              <p className="text-red-500 text-sm m-0">{submitError}</p>
             </div>
-          </fieldset>
+          )}
 
-          {submitError && <p className="text-sm text-center text-red-600">{submitError}</p>}
-          {submitSuccess && <p className="text-sm text-center text-green-600">{submitSuccess}</p>}
+          {/* ── Submit button ── */}
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className={[
+              'w-full py-4 rounded-sm text-white text-[15px] font-semibold border-0',
+              'flex items-center justify-center gap-2 shadow-lg transition-all duration-300',
+              isSubmitting ? 'cursor-not-allowed' : 'cursor-pointer',
+              submitBtnClass,
+            ].join(' ')}
+          >
+            {isSubmitting ? (
+              <>
+                <div className="w-4 h-4 rounded-sm border-2 border-white/40 border-t-white animate-spin" />
+                Saving…
+              </>
+            ) : submitSuccess ? (
+              <>
+                <FiCheck size={18} />
+                {submitSuccess}
+              </>
+            ) : (
+              'Save All Changes'
+            )}
+          </button>
 
-          <div className="flex justify-left ">
-            <button type="submit" disabled={isSubmitting} className="inline-flex items-center= justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-sky-500 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-400">
-              {isSubmitting ? 'Saving...' : 'Save All Changes'}
-            </button>
-          </div>
         </form>
       </div>
     </div>

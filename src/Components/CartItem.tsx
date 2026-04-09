@@ -201,7 +201,7 @@ export const GenericCartList = <T extends CartItem>({
                         if (originalItem) onOpenEditDrawer(originalItem);
                         else setModal({ message: "Original item not found.", type: State.ERROR });
                       }}
-                      className=" w-[26px] h-[26px] border rounded-md  text-gray-400 hover:text-blue-600 disabled:text-gray-200 disabled:cursor-not-allowed shadow-sm z-20"
+                      className="flex items-center justify-center w-[26px] h-[26px] text-gray-400 hover:text-blue-600 disabled:text-gray-200 disabled:cursor-not-allowed z-20"
                     >
                       <FiEdit size={14} />
                     </button>

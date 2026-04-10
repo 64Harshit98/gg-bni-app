@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { ShoppingCart, X, Minus, Plus, Trash2, ChevronLeft } from 'lucide-react';
+import { ShoppingCart, X, Minus, Plus, Trash2 } from 'lucide-react';
 import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting'
+import { ROUTES } from '../constants/routes.constants';
 import { useAuth, useDatabase } from '../context/auth-context';
 import type { Item, ItemGroup } from '../constants/models';
 import { FiStar, FiCheckSquare, FiLoader, FiPackage, FiPlus } from 'react-icons/fi';
@@ -66,6 +67,7 @@ const MyShop: React.FC = () => {
     const navigate = useNavigate()
     const location = useLocation();
     const highlightItemId = location.state?.highlightItemId;
+    const highlightTrigger = location.state?.trigger;
     // const isUnlisted = location.state?.isUnlisted;
     const { groupId } = useParams<{ groupId: string }>();
     const { currentUser, loading: authLoading } = useAuth();
@@ -97,17 +99,29 @@ const MyShop: React.FC = () => {
     const [showConfirmPopup, setShowConfirmPopup] = useState(false);
     const [pendingLiveState, setPendingLiveState] = useState<boolean | null>(null);
     const [showUncategorizedWarning, setShowUncategorizedWarning] = useState(false);
+    const [isScrolled, setIsScrolled] = useState(false);
 
     // const liveItems = useMemo(() => {
     //     return allItems.filter(item => item.isListed);
     // }, [allItems]);
 
     // Sync selectedCategory when groupId changes from URL
+
+    const uncategorizedGroup = allItemGroups.find(
+        g => g.name.toLowerCase().trim() === "uncategorized"
+    );
+
+    const isUncategorized = groupId === uncategorizedGroup?.id;
+
     useEffect(() => {
         if (groupId) {
             setSelectedCategory(groupId);
         }
     }, [groupId]);
+
+    useEffect(() => {
+        setSearchQuery("");
+    }, [groupId])
 
     const addToCart = (item: Item, quantity: number = 1, isFromDrawer: boolean = false) => {
         setCart(prev => {
@@ -141,12 +155,9 @@ const MyShop: React.FC = () => {
         cart.reduce((acc, curr) => {
 
             const basePrice = curr.item.salesPrice || curr.item.mrp || 0;
-            const multiplier = (curr.item as any).unitMultiplier || 1;
+            // const multiplier = (curr.item as any).unitMultiplier || 1;
 
-            const price =
-                multiplier > 1
-                    ? basePrice * multiplier
-                    : basePrice;
+            const price = basePrice;
 
             return acc + price * curr.quantity;
 
@@ -155,7 +166,7 @@ const MyShop: React.FC = () => {
     const cartCount = useMemo(() => cart.reduce((acc, curr) => acc + curr.quantity, 0), [cart]);
 
     const handleToggleAllLive = () => {
-        if (groupId === "uncategorized") {
+        if (isUncategorized) {
             setShowUncategorizedWarning(true);
             return;
         }
@@ -205,34 +216,32 @@ const MyShop: React.FC = () => {
     }, [allItemGroups, groupId]);
 
     useEffect(() => {
-        if (!highlightedId) return;
+        if (!highlightItemId) return;
+
+        // Reset highlight so same item can be highlighted again
+        setHighlightedId(null);
 
         const timer = setTimeout(() => {
-            const element = document.getElementById(highlightedId);
+            setHighlightedId(highlightItemId);
 
+            const element = document.getElementById(highlightItemId);
             if (element) {
                 element.scrollIntoView({
                     behavior: "smooth",
-                    block: "center"
+                    block: "center",
                 });
             }
-        }, 400);
+        }, 150);
 
         const removeTimer = setTimeout(() => {
             setHighlightedId(null);
-        }, 2200);
+        }, 2500);
 
         return () => {
             clearTimeout(timer);
             clearTimeout(removeTimer);
         };
-
-    }, [highlightedId, itemsToRenderCount]);
-
-    useEffect(() => {
-        if (!highlightItemId) return;
-        setHighlightedId(highlightItemId);
-    }, [highlightItemId]);
+    }, [highlightItemId, highlightTrigger]);
 
     useEffect(() => {
         if (!Array.isArray(allItems) || allItems.length === 0) {
@@ -253,6 +262,22 @@ const MyShop: React.FC = () => {
         setIsAllLive(allLive);
         setIsAllLive(allLive);
     }, [allItems]);
+
+    useEffect(() => {
+        const handleScroll = () => {
+            const scrollTop =
+                window.scrollY ||
+                document.documentElement.scrollTop ||
+                document.body.scrollTop;
+            console.log("Scroll Position:", scrollTop);
+            setIsScrolled(scrollTop > 50);
+        };
+
+        handleScroll(); // Initial check
+
+        window.addEventListener("scroll", handleScroll, { passive: true });
+        return () => window.removeEventListener("scroll", handleScroll);
+    }, []);
 
     useEffect(() => {
         if (authLoading || !currentUser || !dbOperations || !companyId) {
@@ -429,49 +454,98 @@ const MyShop: React.FC = () => {
         <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative">
             {/* --- HEADER SECTION --- */}
             <header className="sticky top-0 z-[10] bg-white border-b border-gray-100 shadow-sm w-full">
-                <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col gap-2 relative">
-                    <div className="flex items-center justify-between">
-                        {/* LEFT: Logo/Name + Category (Combined for Mobile) */}
-                        <div className="flex items-center gap-1.5">
-                            <button
-                                onClick={() => navigate(-1)}
-                                className="p-1 hover:bg-gray-100 rounded-sm transition-colors"
+                <div className="max-w-7xl mx-auto px-4 py-3 relative flex items-center justify-between">
+
+                    {/* Left Section - Back Button + Small Company Name */}
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ORDER}`)}
+                            className="p-2 rounded-sm border border-slate-400 hover:bg-slate-200 transition-colors text-slate-700"
+                            title="Back"
+                        >
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
                             >
-                                <ChevronLeft className="text-[#1A3B5D]" size={20} />
-                            </button>
-                            <div className="w-1 h-5 bg-[#F97316] rounded-sm"></div>
+                                <line x1="19" y1="12" x2="5" y2="12"></line>
+                                <polyline points="12 19 5 12 12 5"></polyline>
+                            </svg>
+                        </button>
 
-                            <div className="flex items-center gap-1">
-                                <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">
-                                    {companyName}
-                                </h1>
-
-
-                            </div>
-
-                        </div>
+                        {/* Small Company Name on Scroll */}
+                        <span
+                            className={`transition-all duration-500 ease-in-out transform ${isScrolled
+                                ? "opacity-100 translate-x-0"
+                                : "opacity-0 -translate-x-4"
+                                } text-[10px] md:text-xs font-semibold text-gray-500 uppercase whitespace-nowrap`}
+                        >
+                            {companyName}
+                        </span>
                     </div>
+
+                    {/* Center Animated Title */}
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden">
+
+                        {/* Company Name - Default */}
+                        <span
+                            className={`absolute transition-all duration-500 ease-in-out transform ${isScrolled
+                                ? "-translate-y-full opacity-0 scale-95"
+                                : "translate-y-0 opacity-100 scale-100"
+                                } text-xs md:text-lg font-black text-[#1A3B5D] uppercase tracking-tighter whitespace-nowrap`}
+                        >
+                            {companyName}
+                        </span>
+
+                        {/* Category Name - On Scroll */}
+                        <span
+                            className={`absolute transition-all duration-500 ease-in-out transform ${isScrolled
+                                ? "translate-y-0 opacity-100 scale-100"
+                                : "translate-y-full opacity-0 scale-95"
+                                } text-xs md:text-lg font-black text-[#1A3B5D] uppercase tracking-tighter whitespace-nowrap`}
+                        >
+                            {currentCategoryName}
+                        </span>
+                    </div>
+
+                    {/* Right Spacer for Balance */}
+                    <div className="w-10"></div>
                 </div>
             </header>
 
             <main className="p-3 md:p-6 space-y-3 flex-1 max-w-7xl mx-auto w-full pb-24">
-                <div className='flex items-center justify-center'>
-                    <h1 className="text-sm md:text-xl font-extrabold text-[#F97316] uppercase tracking-tighter">{currentCategoryName}</h1>
+                <div
+                    className={`flex items-center justify-center transition-all duration-500 ${isScrolled
+                        ? "opacity-0 -translate-y-4 h-0 overflow-hidden"
+                        : "opacity-100 translate-y-0"
+                        }`}
+                >
+                    <h1 className="text-sm md:text-xl font-extrabold text-[#F97316] uppercase tracking-tighter">
+                        {currentCategoryName}
+                    </h1>
                 </div>
                 <div className="relative group md:max-w-md md:mx-auto w-full">
                     <SearchBar
                         items={allItems}
+                        itemGroups={allItemGroups}
                         placeholder="Search products..."
                         onItemSelected={(item) => {
                             if (!item.id) return;
 
-                            setSearchQuery(item.name);
+                            setSearchQuery("");
 
                             navigate(
                                 `/catalogue-home/my-shop/${item.itemGroupId}`,
                                 {
                                     state: {
-                                        highlightItemId: item.id
+                                        highlightItemId: item.id,
+                                        trigger: Date.now()
                                     }
                                 }
                             );
@@ -515,8 +589,7 @@ const MyShop: React.FC = () => {
 
                         <button
                             onClick={handleToggleAllLive}
-                            className={`w-11 h-4 flex items-center rounded-sm p-1 transition-all duration-300 ${isAllLive ? 'bg-[#F97316]' : 'bg-gray-300'
-                                }`}
+                            className={`w-11 h-4 flex items-center rounded-sm p-1 transition-all duration-300 ${isAllLive ? 'bg-[#F97316]' : 'bg-gray-300'}`}
                         >
                             <div
                                 className={`bg-white w-3 h-3 rounded-sm shadow-md transform transition-all duration-300 ${isAllLive ? 'translate-x-6' : 'translate-x-0'
@@ -531,11 +604,10 @@ const MyShop: React.FC = () => {
                         // const isOutOfStock = (item.stock || 0) <= 0;
                         // const showNotifyButton = catalogueSettings?.enableOutOfStockNotification && isOutOfStock;
                         // const disableAddToCart = !catalogueSettings?.enableOutOfStockNotification && isOutOfStock;
-                        const isUncategorized = groupId === "uncategorized";
                         const basePrice = item.salesPrice || item.mrp;
                         const multiplier = (item as any).unitMultiplier || 1;
-                        const salePrice = basePrice * multiplier;
-                        const mrp = (item.mrp || 0) * multiplier;
+                        const salePrice = basePrice;
+                        const mrp = (item.mrp || 0);
                         const hasBothPrices =
                             item.salesPrice &&
                             item.mrp &&
@@ -551,7 +623,7 @@ const MyShop: React.FC = () => {
                                 id={item.id}
                                 key={item.id}
                                 onClick={() => handleOpenDetailDrawer(item)}
-                                className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col h-full transition-all duration-300 relative group hover:shadow-md cursor-pointer ${highlightedId === item.id ? 'ring-3 ring-[#F97316] shadow-lg scale-[1.02] z-50 border-[#F97316]' : 'border-gray-100'}  ${!isViewMode ? 'ring-1 ring-[#F97316]/10' : ''}`}>
+                                className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col h-full transition-all duration-300 relative group hover:shadow-md cursor-pointer ${highlightedId === item.id ? 'ring-3 ring-orange-600 shadow-lg scale-110 z-50 border-[#F97316]' : 'border-gray-100'}  ${!isViewMode ? 'ring-1 ring-[#F97316]/10' : ''}`}>
                                 <div className="aspect-square flex items-center justify-center relative overflow-hidden">
                                     {showDiscountBadge && (
                                         <div className="absolute top-2 right-2 bg-[#F97316] text-white px-2 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-tight shadow-md">
@@ -623,7 +695,7 @@ const MyShop: React.FC = () => {
                                                     itemId={item.id!}
                                                     isListed={item.isListed ?? false}
                                                     onToggle={async (itemId, newState) => {
-                                                        if (groupId === "uncategorized" && newState === true) {
+                                                        if (isUncategorized && newState === true) {
                                                             setShowUncategorizedWarning(true);
                                                             return;
                                                         }

@@ -42,7 +42,7 @@ export interface OrderItem {
     mrp: number;
     note: string;
     tax?: number;
-    itemGroupId?: number;
+    itemGroupId?: string;
     purchasePrice?: number;
     stock?: number;
     createdAt?: Timestamp;
@@ -54,6 +54,10 @@ export interface OrderItem {
     salesPrice?: number
     unit?: string;
     unitMultiplier?: number;
+    unitPrice?: number;
+    customPrice?: number;
+    moq?: number;
+    itemId?: string
 }
 
 // 1. Updated Status Types
@@ -198,17 +202,27 @@ export const useOrdersData = (
                         time: formatDate(createdAt),
                         items: Array.isArray(data.items)
                             ? data.items.map((i: any) => {
+                                const salesPrice = Number(i.salesPrice || 0);
+                                const mrp = Number(i.mrp || 0);
+                                const finalPrice =
+                                    i.customPrice ??
+                                    (salesPrice > 0 ? salesPrice : mrp);
+
                                 return {
                                     id: i.id,
+                                    itemId: i.itemId || i.id,
                                     name: i.name,
                                     quantity: Number(i.quantity || 0),
-                                    mrp: Number(i.mrp || 0),
-                                    salesPrice: Number(i.salesPrice || 0),
-                                    groupId: i.groupId || i.groupid || i.itemGroupId || i.category || null,
+                                    mrp: mrp,
+                                    salesPrice: salesPrice,
+                                    unitPrice: finalPrice,
+                                    customPrice: finalPrice,
+                                    moq: Number(i.moq ?? 0),
+                                    itemGroupId: i.itemGroupId || i.groupId || null,
                                     tax: Number(i.tax ?? 0),
                                     unitMultiplier: Number(i.unitMultiplier ?? i.multiplier ?? 1),
                                     unit: i.unit ?? "pcs",
-                                    finalPrice: Number(i.finalPrice ?? i.amount ?? (i.mrp * i.quantity)),
+                                    finalPrice: Number(i.finalPrice ?? finalPrice * Number(i.quantity || 0)),
                                     note: i.note || '',
                                     imageUrl: i.imageUrl || "",
                                     imageBase64: "",
@@ -232,7 +246,6 @@ export const useOrdersData = (
 
     return { Orders, loading, error };
 };
-
 
 const getDateRange = (
     filter: string,
@@ -649,44 +662,60 @@ const OrdersPage: React.FC = () => {
     };
 
     const handleSaveSuccess = (updatedItemData: Partial<Item>) => {
-        if (!selectedItemForEdit) return;
+        if (!selectedItemForEdit || !editingOrder) return;
 
-        // 1. Data Cleaning (Sales logic ki tarah)
         const updatePayload: any = { ...updatedItemData };
 
-        // Capital 'Stock' ko small 'stock' mein convert karna (Drawer ki compatibility ke liye)
+        // Stock fix
         if (updatePayload.Stock !== undefined) {
             updatePayload.stock = updatePayload.Stock;
             delete updatePayload.Stock;
         }
 
-        // Undefined values hata do
         Object.keys(updatePayload).forEach(key => {
             if (updatePayload[key] === undefined) delete updatePayload[key];
         });
 
-        // 2. editingOrder state update karo
-        setEditingOrder(prevOrder => {
-            if (!prevOrder) return prevOrder;
-
-            const updatedItems = (prevOrder.items || []).map(item => {
-                // Check matching ID (Drawer String id bhejta hai)
-                if (String(item.id) === String(selectedItemForEdit.id)) {
-                    return { ...item, ...updatePayload };
-                }
-                return item;
-            });
-
-            // 3. Recalculate Total Amount (MRP * Quantity)
-            const newTotal = updatedItems.reduce((sum, i) => sum + ((Number(i.salesPrice ?? i.mrp) || 0) * Number(i.quantity || 0)), 0);
-            return {
-                ...prevOrder,
-                items: updatedItems,
-                totalAmount: newTotal
-            };
+        const updatedItems = (editingOrder.items || []).map(item => {
+            if (String(item.id) === String(selectedItemForEdit.id)) {
+                return { ...item, ...updatePayload };
+            }
+            return item;
         });
 
-        // Drawer band karo
+        const newTotal = updatedItems.reduce((sum, i) => {
+            const salesPrice = Number(i.salesPrice || 0);
+            const mrp = Number(i.mrp || 0);
+
+            const price =
+                i.customPrice ??
+                (salesPrice > 0 ? salesPrice : mrp);
+
+            return sum + price * Number(i.quantity || 0);
+        }, 0);
+
+        setEditingOrder(prev => prev ? {
+            ...prev,
+            items: updatedItems,
+            totalAmount: newTotal
+        } : prev);
+
+        if (currentUser?.companyId) {
+            const orderRef = doc(
+                db,
+                "companies",
+                currentUser.companyId,
+                "Orders",
+                editingOrder.id
+            );
+
+            updateDoc(orderRef, {
+                items: updatedItems,
+                totalAmount: newTotal,
+                updatedAt: serverTimestamp()
+            });
+        }
+
         setIsEditDrawerOpen(false);
         setSelectedItemForEdit(null);
     };
@@ -864,11 +893,66 @@ const OrdersPage: React.FC = () => {
     const handleDeleteOrder = async (orderId: string) => {
         const confirmDelete = window.confirm("Are you sure you want to delete this entire Order?");
         if (!confirmDelete || !currentUser?.companyId) return;
+
         try {
-            const OrderDocRef = doc(db, 'companies', currentUser.companyId, 'Orders', orderId);
-            await deleteDoc(OrderDocRef);
-            setModal({ message: "Order deleted successfully", type: State.SUCCESS });
+            const orderRef = doc(db, 'companies', currentUser.companyId, 'Orders', orderId);
+
+            const orderSnap = await getDoc(orderRef);
+
+            if (!orderSnap.exists()) {
+                throw new Error("Order not found");
+            }
+
+            const orderData = orderSnap.data();
+            const items = orderData.items || [];
+
+            //  PARALLEL UPDATE (FAST + SAFE)
+            await Promise.all(
+                items.map(async (item: any) => {
+                    try {
+                        const itemId = item.itemId || item.id;
+                        if (!itemId) return;
+
+                        const itemRef = doc(
+                            db,
+                            'companies',
+                            currentUser.companyId,
+                            'Items', //  FIXED
+                            itemId
+                        );
+
+                        const itemSnap = await getDoc(itemRef);
+
+                        if (!itemSnap.exists()) {
+                            console.log("❌ Item not found:", itemId);
+                            return;
+                        }
+
+                        const currentStock = Number(itemSnap.data().stock || 0);
+
+                        const restoreQty =
+                            Number(item.quantity || 0) *
+                            Number(item.unitMultiplier || 1);
+
+                        console.log(" Updating stock:", itemId, currentStock, "+", restoreQty);
+
+                        await updateDoc(itemRef, {
+                            stock: currentStock + restoreQty
+                        });
+
+                    } catch (err) {
+                        console.error("❌ Item update failed:", err);
+                    }
+                })
+            );
+
+            // 🔥 DELETE ORDER
+            await deleteDoc(orderRef);
+
+            setModal({ message: "Order deleted & stock restored", type: State.SUCCESS });
+
         } catch (err) {
+            console.error(err);
             setModal({ message: "Failed to delete Order", type: State.ERROR });
         }
     };
@@ -901,6 +985,51 @@ const OrdersPage: React.FC = () => {
                 "Orders",
                 orderId
             );
+
+            // 🔥 STOCK DECREASE WHEN CONFIRMED
+            if (nextStatus === "Confirmed") {
+                const orderSnap = await getDoc(OrderRef);
+                const orderData = orderSnap.data();
+                const items = orderData?.items || [];
+
+                await Promise.all(
+                    items.map(async (item: any) => {
+                        try {
+                            const itemId = item.itemId || item.id;
+                            if (!itemId) return;
+
+                            const itemRef = doc(
+                                db,
+                                "companies",
+                                currentUser.companyId,
+                                "Items",
+                                itemId
+                            );
+
+                            const snap = await getDoc(itemRef);
+                            if (!snap.exists()) {
+                                console.log("❌ Item not found:", itemId);
+                                return;
+                            }
+
+                            const currentStock = Number(snap.data().stock || 0);
+
+                            const deductQty =
+                                Number(item.quantity || 0) *
+                                Number(item.unitMultiplier || 1);
+
+                            console.log("🔥 STOCK DECREASE:", itemId, currentStock, "-", deductQty);
+
+                            await updateDoc(itemRef, {
+                                stock: currentStock - deductQty
+                            });
+
+                        } catch (err) {
+                            console.error("❌ Stock update failed:", err);
+                        }
+                    })
+                );
+            }
 
             await updateDoc(OrderRef, {
                 status: nextStatus,
@@ -1143,7 +1272,12 @@ const OrdersPage: React.FC = () => {
                             const isExpanded = expandedorderId === Order.id;
                             const isUpcomingStatus = Order.status === 'Upcoming';
                             const total = (Order.items || []).reduce((sum, item) => {
-                                return sum + Number(item.finalPrice || 0);
+                                const salesPrice = Number(item.salesPrice || 0);
+                                const mrp = Number(item.mrp || 0);
+                                const price =
+                                    item.customPrice ??
+                                    (salesPrice > 0 ? salesPrice : mrp);
+                                return sum + price * Number(item.quantity || 0);
                             }, 0);
                             const paid = Number(Order.paidAmount || 0);
                             const due = Math.max(0, total - paid);
@@ -1178,7 +1312,10 @@ const OrdersPage: React.FC = () => {
                                         )}
                                         {!isUpcomingStatus && (
                                             <button
-                                                onClick={(e) => { e.stopPropagation(); setEditingOrder(Order); }}
+                                                onClick={(e) => {
+                                                    e.stopPropagation(); setEditingOrder(Order); setEditingOrder(Order);
+                                                    setSelectedItemForEdit(null);
+                                                }}
                                                 className="absolute top-5 left-2 p-2 bg-white/90 backdrop-blur-sm text-slate-500 rounded-sm transition-all duration-300 z-20 group"
                                             >
                                                 <div className="flex items-center cursor-pointer">
@@ -1302,7 +1439,16 @@ const OrdersPage: React.FC = () => {
                                                         </div>
                                                     )}
                                                     {Order.items?.map((item, idx) => (
-                                                        <div key={idx} className="p-2">
+                                                        <div
+                                                            key={idx}
+                                                            className="p-2 cursor-pointer"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setEditingOrder(Order);
+                                                                setSelectedItemForEdit(item);
+                                                                setIsEditDrawerOpen(true);
+                                                            }}
+                                                        >
                                                             <div className="flex justify-between items-start -mb-1">
                                                                 <div className="flex-1">
                                                                     <p className="text-[11px] font-extrabold text-slate-800 leading-tight mb-1">{item.name}
@@ -1316,10 +1462,22 @@ const OrdersPage: React.FC = () => {
                                                                             <span className="font-xs italic text-slate-600">{item.note}</span>
                                                                         </p>
                                                                     )}
-                                                                    <p className="text-[10px] text-gray-400">₹{formatAmount((item.salesPrice || item.mrp) / (item.unitMultiplier || 1))} per unit</p>
+                                                                    <p className="text-[10px] text-gray-400">₹{formatAmount(
+                                                                        (item.customPrice ??
+                                                                            (Number(item.salesPrice || 0) > 0
+                                                                                ? Number(item.salesPrice)
+                                                                                : Number(item.mrp)))
+                                                                        / (item.moq || 1)
+                                                                    )} per {item.unitMultiplier} pcs</p>
                                                                 </div>
                                                                 <div className="text-right ml-4">
-                                                                    <p className="text-[13px] font-black text-slate-900">₹{formatAmount((item.salesPrice || item.mrp) * item.quantity)}
+                                                                    <p className="text-[13px] font-black text-slate-900">₹{formatAmount(
+                                                                        (item.customPrice ??
+                                                                            (Number(item.salesPrice || 0) > 0
+                                                                                ? Number(item.salesPrice)
+                                                                                : Number(item.mrp)))
+                                                                        * item.quantity
+                                                                    )}
                                                                     </p>
                                                                     <p className="text-[9px] font-bold text-slate-500 bg-white">Qty: {item.quantity}</p>
                                                                 </div>
@@ -1645,7 +1803,13 @@ const OrdersPage: React.FC = () => {
                 const updatedTotal =
                     (showPaymentModal.items || []).reduce(
                         (sum, item) =>
-                            sum + (Number(item.salesPrice || item.mrp || 0) * Number(item.quantity || 0)),
+                            sum + (
+                                (item.customPrice ??
+                                    (Number(item.salesPrice || 0) > 0
+                                        ? Number(item.salesPrice)
+                                        : Number(item.mrp || 0)))
+                                * Number(item.quantity || 0)
+                            ),
                         0
                     );
 
@@ -1917,19 +2081,37 @@ const OrdersPage: React.FC = () => {
                                                 // Yahan ensure kar rahe hain ki item wahi add ho jiska ID ho
                                                 if (!selectedItem.id) return;
 
+                                                const newMrp = Number(selectedItem.mrp || 0);
+                                                const newSalesPrice = Number(selectedItem.salesPrice || 0);
+
+                                                let finalPrice = newSalesPrice > 0 ? newSalesPrice : newMrp;
+
+                                                const qty = selectedItem.moq && selectedItem.moq > 0
+                                                    ? selectedItem.moq
+                                                    : 1
                                                 const newItem: OrderItem = {
-                                                    id: selectedItem.id,
+                                                    id: crypto.randomUUID(), // unique for UI
+                                                    itemId: selectedItem.id, // original id (NEW FIELD),
                                                     name: selectedItem.name,
-                                                    mrp: Number(selectedItem.mrp),
-                                                    salesPrice: Number(selectedItem.salesPrice || selectedItem.mrp),
-                                                    quantity: 1,
+                                                    mrp: newMrp,
+                                                    salesPrice: newSalesPrice,
+                                                    quantity: qty,
+                                                    unitMultiplier: selectedItem.unitMultiplier ?? 1,
                                                     note: "",
+                                                    itemGroupId: selectedItem.itemGroupId,
+                                                    moq: selectedItem.moq ?? 0,
                                                     tax: Number(selectedItem.tax),
                                                     imageUrl: selectedItem.imageUrl || "",
-                                                    imageBase64: ""
+                                                    imageBase64: "",
+                                                    unitPrice: finalPrice,
+                                                    finalPrice: finalPrice,
+                                                    customPrice: finalPrice
                                                 };
                                                 const updatedItems = [newItem, ...(editingOrder.items || [])];
-                                                const newTotal = updatedItems.reduce((sum, i) => sum + ((i.salesPrice || i.mrp) * i.quantity), 0);
+                                                const newTotal = updatedItems.reduce((sum, i) => sum + ((i.customPrice ??
+                                                    (Number(i.salesPrice || 0) > 0
+                                                        ? Number(i.salesPrice)
+                                                        : Number(i.mrp))) * i.quantity), 0);
                                                 setEditingOrder({ ...editingOrder, items: updatedItems, totalAmount: newTotal });
                                             }}
                                             placeholder="Search item to add..."
@@ -1944,15 +2126,26 @@ const OrdersPage: React.FC = () => {
                                         {/* Items List Container */}
                                         <div className="h-auto">
                                             <GenericCartList
-                                                items={(editingOrder.items || []).map(item => ({
-                                                    ...item,
-                                                    id: String(item.id),
-                                                    itemGroupId: item.itemGroupId ? String(item.itemGroupId) : undefined,
-                                                    isEditable: true
-                                                }))}
+                                                items={(editingOrder.items || []).map(item => {
+                                                    const salesPrice = Number(item.salesPrice || 0);
+                                                    const mrp = Number(item.mrp || 0);
+
+                                                    const finalPrice =
+                                                        item.customPrice ??
+                                                        (salesPrice > 0 ? salesPrice : mrp);
+
+                                                    return {
+                                                        ...item,
+                                                        id: String(item.id),
+                                                        itemGroupId: item.itemGroupId ? String(item.itemGroupId) : undefined,
+                                                        isEditable: true,
+                                                        unitPrice: finalPrice,
+                                                        customPrice: item.customPrice
+                                                    };
+                                                })}
                                                 availableItems={availableItems}
-                                                basePriceKey="salesPrice"
-                                                priceLabel="Price"
+                                                basePriceKey="mrp"
+                                                priceLabel="MRP"
                                                 State={State}
                                                 settings={{
                                                     enableRounding: false,
@@ -1992,28 +2185,53 @@ const OrdersPage: React.FC = () => {
                                                     const newTotal = updatedItems.reduce((sum, i) => sum + (i.mrp * i.quantity), 0);
                                                     setEditingOrder({ ...editingOrder, items: updatedItems, totalAmount: newTotal });
                                                 }}
-                                                onQuantityChange={(itemId, newQuantity) => {
-                                                    const updatedItems = [...(editingOrder.items || [])];
-                                                    const idx = updatedItems.findIndex(i => String(i.id) === String(itemId));
-                                                    if (idx !== -1) {
-                                                        updatedItems[idx].quantity = newQuantity;
-                                                        const newTotal = updatedItems.reduce((sum, i) => sum + (i.mrp * i.quantity), 0);
-                                                        setEditingOrder({ ...editingOrder, items: updatedItems, totalAmount: newTotal });
-                                                    }
+                                                onQuantityChange={(id, newQuantity) => {
+                                                    if (!editingOrder) return;
+
+                                                    const updatedItems = (editingOrder.items || []).map(item => {
+                                                        if (item.id !== id) return item;
+
+                                                        const moq = item.moq && item.moq > 0 ? item.moq : 1;
+                                                        const currentQty = item.quantity || moq;
+
+                                                        let finalQty = newQuantity;
+
+                                                        if (newQuantity > currentQty + 1) {
+                                                            finalQty = currentQty + 1;
+                                                        }
+
+                                                        if (newQuantity < currentQty - 1) {
+                                                            finalQty = currentQty - 1;
+                                                        }
+
+                                                        if (finalQty < moq) {
+                                                            finalQty = moq;
+                                                        }
+
+                                                        return {
+                                                            ...item,
+                                                            quantity: finalQty
+                                                        };
+                                                    });
+
+                                                    setEditingOrder(prev => prev ? {
+                                                        ...prev,
+                                                        items: updatedItems
+                                                    } : prev);
                                                 }}
                                             />
                                         </div>
 
                                         {/* --- ITEM EDIT DRAWER COMPONENT --- */}
-                                        <ItemEditDrawer
-                                            item={selectedItemForEdit}
-                                            isOpen={isEditDrawerOpen} // Check karo tumhare Orders.tsx mein yahi state name hai na?
-                                            onClose={() => {
-                                                setIsEditDrawerOpen(false);
-                                                setSelectedItemForEdit(null);
-                                            }}
-                                            onSaveSuccess={handleSaveSuccess}
-                                        />
+                                        {isEditDrawerOpen && selectedItemForEdit && (
+                                            <ItemEditDrawer
+                                                item={selectedItemForEdit}
+                                                isOpen={isEditDrawerOpen}
+                                                onClose={() => setIsEditDrawerOpen(false)}
+                                                onSaveSuccess={handleSaveSuccess}
+                                                isCatalogue={true}
+                                            />
+                                        )}
                                     </div>
                                 </div>
                             </div>

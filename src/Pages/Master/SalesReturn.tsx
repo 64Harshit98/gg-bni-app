@@ -463,7 +463,7 @@ const SalesReturnPage: React.FC = () => {
     } as SalesItem));
   }, [exchangeItems]);
 
-  const { totalReturnGross, totalReturnValue, totalExchangeValue, finalBalance, discountDeducted, returnTax } = useMemo(() => {
+  const { totalReturnGross, totalReturnValue, totalExchangeValue, finalBalance, discountDeducted } = useMemo(() => {
     const totalReturnGross = itemsToReturn.reduce((sum, item) => sum + item.amount, 0);
     const totalExchangeValue = exchangeItems.reduce((sum, item) => sum + item.amount, 0);
 
@@ -507,7 +507,7 @@ const SalesReturnPage: React.FC = () => {
     const totalReturnValue = totalReturnGross - discountDeducted + returnTax;
     const finalBalance = totalReturnValue - totalExchangeValue;
 
-    return { totalReturnGross, totalReturnValue, totalExchangeValue, finalBalance: Math.round(finalBalance), discountDeducted, returnTax };
+    return { totalReturnGross, totalReturnValue, totalExchangeValue, finalBalance: Math.round(finalBalance), discountDeducted };
   }, [itemsToReturn, exchangeItems, selectedSale]);
 
   const saveReturnTransaction = async (completionData?: Partial<PaymentCompletionData>) => {
@@ -734,7 +734,7 @@ const SalesReturnPage: React.FC = () => {
     }
   };
 
-  const isDueSale = selectedSale?.paymentMethods?.due > 0;
+  const isDueSale = (selectedSale?.paymentMethods?.due ?? 0) > 0;
   useEffect(() => {
   if (isDueSale) {
     setModeOfReturn('Exchange'); 

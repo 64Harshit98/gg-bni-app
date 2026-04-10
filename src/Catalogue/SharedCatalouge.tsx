@@ -219,16 +219,14 @@ const SharedCataloguePage: React.FC = () => {
 
             {/* --- HEADER --- */}
             <header className="sticky top-0 z-[100] bg-white border-b border-gray-100 shadow-sm w-full">
-                <div className="max-w-7xl mx-auto px-3 py-3 flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-1.5">
-                            <div className="w-1 h-5 bg-[#F97316] rounded-sm"></div>
-                            <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">
-                                {companyName}
-                            </h1>
-                        </div>
-                    </div>
+                <div className="max-w-7xl mx-auto px-3 py-3 relative flex items-center justify-end">
 
+                    {/* Center Section - Company Name */}
+                    <h1 className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-lg md:text-lg font-black text-[#1A3B5D] uppercase tracking-tighter text-center whitespace-nowrap">
+                        {companyName}
+                    </h1>
+
+                    {/* Right Section - Cart Button */}
                     <button
                         onClick={() => {
                             if (effectiveCompanyId) {
@@ -241,6 +239,7 @@ const SharedCataloguePage: React.FC = () => {
                     >
                         <ShoppingCart size={16} />
                         <span className="hidden md:inline">Cart</span>
+
                         {cartCount > 0 && (
                             <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[8px] w-4 h-4 rounded-sm flex items-center justify-center border-2 border-white">
                                 {cartCount}
@@ -260,7 +259,7 @@ const SharedCataloguePage: React.FC = () => {
                         itemGroups={itemGroups}
                         hideUncategorized={true}
                         onItemSelected={(item: any) => {
-                            setSearchQuery(item.name); 
+                            setSearchQuery(item.name);
                             navigate(
                                 `/product/${effectiveCompanyId}/${item.itemGroupId}`,
                                 { state: { highlightItemId: item.id } }
@@ -323,7 +322,7 @@ const SharedCataloguePage: React.FC = () => {
                                     {collageImages.length > 0 ? (
                                         <div className="grid grid-cols-2 grid-rows-2 w-full h-full gap-[2px] p-[2px]">
                                             {collageImages.map((img, index) => (
-                                                <div key={index} className="w-full h-full overflow-hidden rounded-[2px]">
+                                                <div key={index} className="w-full h-full overflow-hidden rounded-sm">
                                                     <img
                                                         src={img}
                                                         alt={`product-${index}`}

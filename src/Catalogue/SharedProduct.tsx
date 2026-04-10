@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting'
-import { ShoppingCart, Minus, Plus, ChevronLeft } from 'lucide-react';
+import { ShoppingCart, Minus, Plus } from 'lucide-react';
 import { useAuth } from '../context/auth-context';
 import type { Item, ItemGroup } from '../constants/models';
 import { FiPackage, FiPlus } from 'react-icons/fi';
@@ -40,6 +40,7 @@ const SharedProduct: React.FC = () => {
     const { businessName: companyName } = useBusinessName(effectiveCompanyId);
     const location = useLocation();
     const highlightItemId = location.state?.highlightItemId;
+    const highlightTrigger = location.state?.trigger;
     const { currentUser, loading: authLoading } = useAuth();
     const [activeHighlight, setActiveHighlight] = useState<string | null>(null);
     const [allItems, setAllItems] = useState<Item[]>([]);
@@ -64,6 +65,7 @@ const SharedProduct: React.FC = () => {
     const [leadPhone, setLeadPhone] = useState<string>("");
     const [showNotifySuccess, setShowNotifySuccess] = useState(false);
     const [notifiedItems, setNotifiedItems] = useState<Record<string, boolean>>({});
+    const [isScrolled, setIsScrolled] = useState(false);
     const cartIconRef = useRef<HTMLButtonElement | null>(null);
 
     const getUserKey = () => {
@@ -158,7 +160,7 @@ const SharedProduct: React.FC = () => {
             const itemsForFirebase = updatedCart.map(c => {
                 const multiplier = c.item.unitMultiplier ?? 1;
                 const basePrice = (c.item.salesPrice ?? c.item.mrp) || 0;
-                const salePrice = basePrice * multiplier;
+                const salePrice = basePrice
 
                 return {
                     id: String(c.item.id),
@@ -251,6 +253,15 @@ const SharedProduct: React.FC = () => {
     }, [cart]);
 
     useEffect(() => {
+        const handleScroll = () => {
+            setIsScrolled(window.scrollY > 50);
+        };
+
+        window.addEventListener("scroll", handleScroll);
+        return () => window.removeEventListener("scroll", handleScroll);
+    }, []);
+
+    useEffect(() => {
         if (showNotifySuccess) {
             const t = setTimeout(() => {
                 setShowNotifySuccess(false);
@@ -273,7 +284,7 @@ const SharedProduct: React.FC = () => {
                 element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }, 300);
         }
-    }, [highlightItemId]);
+    }, [highlightItemId, highlightTrigger]);
 
     const addToCart = useCallback((item: Item) => {
         //  SINGLE SOURCE OF TRUTH
@@ -291,14 +302,14 @@ const SharedProduct: React.FC = () => {
 
             const moqQty = (item as any).moq || 1;
 
-            const multiplier = (item as any).unitMultiplier || 1;
+            // const multiplier = (item as any).unitMultiplier || 1;
             const itemWithPrice = {
                 ...item,
                 tax: Number(item.tax ?? 0),
                 unit: item.unit,
                 unitMultiplier: item.unitMultiplier || 1,
-                mrp: (item.mrp || 0) * multiplier,
-                salesPrice: ((item.salesPrice ?? item.mrp) || 0) * multiplier,
+                mrp: (item.mrp || 0),
+                salesPrice: ((item.salesPrice ?? item.mrp) || 0),
                 groupid: item.itemGroupId
             };
             const newCart = existing
@@ -536,7 +547,7 @@ const SharedProduct: React.FC = () => {
                                 ? (i.item as any).moq
                                 : 1;
 
-                        const stepChange = delta > 0 ? moqQty : -moqQty;
+                        const stepChange = delta > 0 ? 1 : -1;
                         const newQty = i.quantity + stepChange;
 
                         //  UNIVERSAL REMOVE RULE
@@ -726,6 +737,10 @@ const SharedProduct: React.FC = () => {
         }
     }, []);
 
+    useEffect(() => {
+        setSearchQuery("")
+    }, [groupId])
+
     const handleOpenDetailDrawer = (item: Item) => {
         setSelectedItemForDetails(item);
         setIsDetailDrawerOpen(true);
@@ -764,28 +779,72 @@ const SharedProduct: React.FC = () => {
                 }}
             />}
             <header className="sticky top-0 bg-white border-b border-gray-100 shadow-sm z-[60]">
-                <div className="max-w-7xl mx-auto px-1 md:px-4 py-2 flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center justify-center gap-1">
-                            <button
-                                onClick={() => navigate(-1)}
-                                className="p-2 hover:bg-gray-100 rounded-sm transition-colors -ml-1 md:ml-0"
+                <div className="max-w-7xl mx-auto px-1 md:px-4 py-2 relative">
+
+                    {/* Back Button - Left Side */}
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => navigate(`/catalogue/${currentUser?.companyId}`)}
+                            className="p-2 rounded-sm border border-slate-400 hover:bg-slate-200 transition-colors text-slate-700"
+                            title="Back"
+                        >
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
                             >
-                                <ChevronLeft size={20} className="text-[#1A3B5D]" />
-                            </button>
+                                <line x1="19" y1="12" x2="5" y2="12"></line>
+                                <polyline points="12 19 5 12 12 5"></polyline>
+                            </svg>
+                        </button>
 
-                            <div className="w-1 h-5 bg-[#F97316] rounded-sm"></div>
+                        <span
+                            className={`transition-all duration-500 ease-in-out transform ${isScrolled
+                                ? "opacity-100 translate-x-0"
+                                : "opacity-0 -translate-x-4"
+                                } text-[10px] md:text-xs font-semibold text-gray-500 uppercase whitespace-nowrap`}
+                        >
+                            {companyName}
+                        </span>
+                    </div>
 
-                            <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">
-                                {companyName}
-                            </h1>
-                        </div>
+                    {/* Company Name */}
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
 
-                        {/* Right Side Cart Button (Already optimized) */}
+                        {/* Company Name - Default */}
+                        <span
+                            className={`absolute transition-all duration-500 ease-in-out transform ${isScrolled
+                                    ? "-translate-y-6 opacity-0 scale-95"
+                                    : "translate-y-0 opacity-100 scale-100"
+                                } text-base md:text-lg font-bold text-[#1A3B5D] uppercase tracking-tight whitespace-nowrap`}
+                        >
+                            {companyName}
+                        </span>
+
+                        {/* Category Name - On Scroll */}
+                        <span
+                            className={`absolute transition-all duration-500 ease-in-out transform ${isScrolled
+                                    ? "translate-y-0 opacity-100 scale-100"
+                                    : "translate-y-6 opacity-0 scale-95"
+                                } text-base md:text-lg font-extrabold text-[#1A3B5D] uppercase tracking-tight whitespace-nowrap`}
+                        >
+                            {currentCategoryName}
+                        </span>
+
+                    </div>
+
+                    {/* Cart Button - Right Side */}
+                    <div className="absolute right-1 md:right-4 top-1/2 -translate-y-1/2">
                         <button
                             ref={cartIconRef}
                             onClick={() => navigate(`/checkout/${effectiveCompanyId}`)}
-                            className="flex items-center justify-center gap-2 bg-[#F97316] text-white py-2 px-3 md:px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative mr-1 md:mr-0"
+                            className="flex items-center justify-center gap-2 bg-[#F97316] text-white py-2 px-3 md:px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative"
                         >
                             <ShoppingCart size={16} />
                             <span className="hidden md:inline">Cart</span>
@@ -796,6 +855,7 @@ const SharedProduct: React.FC = () => {
                             )}
                         </button>
                     </div>
+
                 </div>
             </header>
 
@@ -823,17 +883,31 @@ const SharedProduct: React.FC = () => {
                         Your request is under review. Prices will be visible after approval.
                     </div>
                 )}
-                <div className='flex items-center justify-center'>
-                    <h1 className="text-sm md:text-xl font-extrabold text-[#F97316] uppercase tracking-tighter">{currentCategoryName}</h1>
+                <div
+                    className={`flex items-center justify-center transition-all duration-500 ${isScrolled
+                        ? "opacity-0 -translate-y-4 h-0 overflow-hidden"
+                        : "opacity-100 translate-y-0"
+                        }`}
+                >
+                    <h1 className="text-sm md:text-xl font-extrabold text-[#F97316] uppercase tracking-tighter">
+                        {currentCategoryName}
+                    </h1>
                 </div>
                 <div className="relative group md:max-w-md md:mx-auto w-full">
                     <SearchBar
                         items={allItems}
+                        itemGroups={allItemGroups}
+                        hideUncategorized={true}
                         onItemSelected={(item: any) => {
-                            setSearchQuery(item.name); // agar query update karni hai
+                            setSearchQuery("");
                             navigate(
                                 `/product/${effectiveCompanyId}/${item.itemGroupId}`,
-                                { state: { highlightItemId: item.id } }
+                                {
+                                    state: {
+                                        highlightItemId: item.id,
+                                        trigger: Date.now() // unique value to force re-trigger
+                                    }
+                                }
                             );
                         }}
                     />
@@ -870,9 +944,9 @@ const SharedProduct: React.FC = () => {
                         const showNotifyButton = catalogueSettings?.enableOutOfStockNotification && isOutOfStock;
                         const disableAddToCart = isOutOfStock;
                         const basePrice = item.salesPrice || item.mrp;
-                        const multiplier = (item as any).unitMultiplier || 1;
-                        const salePrice = basePrice * multiplier
-                        const mrp = (item.mrp || 0) * multiplier;
+                        // const multiplier = (item as any).unitMultiplier || 1;
+                        const salePrice = basePrice
+                        const mrp = (item.mrp || 0)
                         const hasBothPrices =
                             item.salesPrice &&
                             item.mrp &&
@@ -880,26 +954,13 @@ const SharedProduct: React.FC = () => {
                         const hasDiscount = salePrice < mrp;
                         const discountPercent = mrp && hasDiscount ? Math.round(((mrp - salePrice) / mrp) * 100) : 0;
                         const showDiscountBadge = !hidePriceEnabled && catalogueSettings?.showDiscountBadge && hasDiscount;
-                        // const unitMultiplier = (item as any).unitMultiplier || 1;
-                        // const unit = (item as any).unit || "pcs";
-
-                        // let unitLabel = "";
-                        // if (unit === "pcs") unitLabel = `(1 pcs)`;
-                        // else if (unit === "box") unitLabel = `(10 pcs)`;
-                        // else if (unit === "doz") unitLabel = `(12 pcs)`;
-                        // else if (unit === "qt") unitLabel = `(100 pcs)`;
-                        // else if (unit === "ton") unitLabel = `(1000 pcs)`;
-                        // else if (unit === "pkt") {
-                        //     const packetSize = (item as any).packetSize || unitMultiplier;
-                        //     unitLabel = `(${packetSize} pcs)`;
-                        // }
                         return (
                             <div
                                 id={item.id}
                                 key={item.id}
                                 onClick={() => handleOpenDetailDrawer(item)}
                                 className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col transition-all duration-300 relative group hover:shadow-md cursor-pointer ${activeHighlight === item.id
-                                    ? 'ring-2 ring-[#F97316] scale-105 bg-blue-50 border-[#F97316] z-100'
+                                    ? 'ring-2 ring-orange-600 scale-110 bg-blue-50 border-[#F97316] z-100'
                                     : 'border-gray-100'
                                     }`}
                             >

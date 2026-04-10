@@ -65,31 +65,31 @@ export default function useCustomerReport() {
       q,
       (snapshot) => {
         setSales(
-          snapshot.docs.map((doc) => {
-            const data = doc.data();
-            const totalAmount = Number(data.totalAmount || 0);
-            const paidAmount = Number(data.paidAmount || 0);
-            
+          snapshot.docs
+            .map((doc) => {
+              const data = doc.data();
+              const totalAmount = Number(data.totalAmount || 0);
+              const paidAmount = Number(data.paidAmount || 0);
 
-            // ONLY Completed + unpaid orders
-            const isCompletedUnpaid =
-              data.status === 'Completed' &&
-              paidAmount < totalAmount;
+              const isValidOrder = data.status !== 'Upcoming';
 
-            return {
-              id: doc.id,
-              partyName: data.userName || 'N/A',
-              partyNumber: data.userLoginPhone ? String(data.userLoginPhone) : 'N/A',
-              totalAmount,
-              dueAmount: isCompletedUnpaid
-                ? totalAmount - paidAmount
-                : 0,
-              createdAt:
-                data.createdAt instanceof Timestamp
-                  ? data.createdAt.toDate()
-                  : new Date(),
-            };
-          }),
+              return {
+                id: doc.id,
+                partyName: data.userName || 'N/A',
+                partyNumber: data.userLoginPhone
+                  ? String(data.userLoginPhone)
+                  : 'N/A',
+                totalAmount,
+                paidAmount,
+                dueAmount: totalAmount - paidAmount,
+                createdAt:
+                  data.createdAt instanceof Timestamp
+                    ? data.createdAt.toDate()
+                    : new Date(),
+                isValidOrder,
+              };
+            })
+            .filter((s) => s.isValidOrder)
         );
         setLoading(false);
       },

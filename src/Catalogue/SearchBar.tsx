@@ -1,25 +1,27 @@
-// src/Components/SearchableItemInput.tsx
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import type { Item } from '../constants/models';
+import type { Item, ItemGroup } from '../constants/models';
 import { FiSearch, FiX, FiBox } from 'react-icons/fi';
 
 interface SearchableItemInputProps {
   items: Item[];
+  itemGroups: ItemGroup[];
   onItemSelected: (item: Item) => void;
   label?: string;
   placeholder?: string;
   isLoading?: boolean;
   error?: string | null;
+  hideUncategorized?: boolean;
 }
 
 const THROTTLE_DELAY = 500;
 
 const SearchBar: React.FC<SearchableItemInputProps> = ({
   items,
+  itemGroups,
   onItemSelected,
   placeholder = "Scan or search item...",
   isLoading = false,
+  hideUncategorized = false,
   error = null
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -64,13 +66,26 @@ const SearchBar: React.FC<SearchableItemInputProps> = ({
   }, []);
 
   // --- FILTER & SORT LOGIC ---
-  const filteredItems = useMemo(() => {
+  const filteredItems = useMemo<Item[]>(() => {
     const trimmedQuery = throttledQuery.toLowerCase().trim();
     if (!trimmedQuery) return [];
 
     const searchTokens = trimmedQuery.split(/\s+/);
 
     const matches = items.filter(item => {
+      const uncategorizedGroup = itemGroups.find(
+        g => g.name.toLowerCase().trim() === "uncategorized"
+      );
+
+      const groupExists = itemGroups.some(g => g.id === item.itemGroupId);
+
+      const finalGroupId = groupExists
+        ? item.itemGroupId
+        : uncategorizedGroup?.id;
+
+      if (hideUncategorized && finalGroupId === uncategorizedGroup?.id) {
+        return false;
+      }
       const lowerName = item.name.toLowerCase();
       const lowerBarcode = item.barcode ? item.barcode.toLowerCase() : '';
       const matchesName = searchTokens.every(token => lowerName.includes(token));
@@ -203,9 +218,9 @@ const SearchBar: React.FC<SearchableItemInputProps> = ({
               ) : (
                 filteredItems.map((item, index) => {
                   const isSelected = index === activeIndex;
-                  // const stock = item.stock || (item as any).Stock || 0;
-                  // const stockColor = stock <= 0 ? 'text-red-600 bg-red-50' : stock < 10 ? 'text-orange-600 bg-orange-50' : 'text-green-700 bg-green-50';
-
+                  const categoryName =
+                    itemGroups.find(group => group.id === item.itemGroupId)?.name ||
+                    "Uncategorized";
                   return (
                     <div
                       key={item.id}
@@ -219,11 +234,11 @@ const SearchBar: React.FC<SearchableItemInputProps> = ({
                         <span className="text-sm font-medium text-gray-800 truncate">
                           {item.name}
                         </span>
-                        {item.barcode && (
+                        
                           <span className="text-xs text-gray-400 font-mono mt-0.5">
-                            {item.barcode}
+                            {categoryName}
                           </span>
-                        )}
+                       
                       </div>
 
                       {/* Right: Price & Stock Badge */}

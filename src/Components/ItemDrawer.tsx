@@ -290,6 +290,16 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
         ? 'opacity-100 bg-black/60'
         : 'opacity-0 bg-transparent pointer-events-none';
 
+
+    const getUnitLabel = () => {
+        if (formData.unit === 'box') return '10 pcs';
+        if (formData.unit === 'doz') return '12 pcs';
+        if (formData.unit === 'qt') return '100 pcs';
+        if (formData.unit === 'ton') return '1000 pcs';
+        if (formData.unit === 'pkt') return `${formData.packetSize || 1} pcs`;
+        return '1 pcs';
+    };
+
     return (
         <div
             className={`fixed inset-0 z-1000 flex justify-center items-end transition-opacity duration-300 ease-in-out ${overlayClasses}`}
@@ -381,7 +391,12 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
 
                                 {/* --- MRP --- */}
                                 <div>
-                                    <label className="text-sm font-medium mb-1 block">MRP (₹)</label>
+                                    <label className="text-sm font-medium mb-1 block">
+                                        {isCatalogue
+                                            ? `MRP (for ${getUnitLabel()})`
+                                            : 'MRP (₹)'
+                                        }
+                                    </label>
                                     <input
                                         type="number"
                                         name="mrp"
@@ -424,7 +439,12 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
 
                                 {/* --- Sales Price --- */}
                                 <div>
-                                    <label className="text-sm font-medium mb-1 block">Sales Price (₹)</label>
+                                    <label className="text-sm font-medium mb-1 block">
+                                        {isCatalogue
+                                            ? `Sales Price (for ${getUnitLabel()})`
+                                            : 'Sales Price (₹)'
+                                        }
+                                    </label>
                                     <input
                                         type="number"
                                         name="salesPrice"
@@ -610,7 +630,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                     htmlFor={`edit-isListed-${item?.id}`}
                                     className="text-sm font-medium text-gray-700 select-none cursor-pointer"
                                 >
-                                    List this item on Ordering Page
+                                    {isCatalogue ?"List this item in Catalogue" :"List this item on Ordering Page"}
                                 </label>
                             </div>
                         </>

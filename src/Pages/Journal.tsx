@@ -991,7 +991,7 @@ const Journal: React.FC = () => {
                         <div className="flex-1 pr-4">
                           <p className="font-medium">{item.name}</p>
                           <p className="text-xs text-slate-400 flex items-center gap-1">
-                            <span>MRP: {item.mrp.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}</span>
+                            <span>COST: {item.mrp.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}</span>
                             <span className="text-slate-400">|</span>
                             <span className="text-slate-400 font-medium">
                               Net: {netUnitPrice.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}

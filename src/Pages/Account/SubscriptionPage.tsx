@@ -87,7 +87,7 @@ const BASIC_FEATURES = [
 ];
 
 const PRO_FEATURES = [
-     ...BASIC_FEATURES.filter(f => f !== 'Calculator Billing'),
+    ...BASIC_FEATURES.filter(f => f !== 'Calculator Billing'),
     'Daily Performance Board',
     'Payment Methods Board',
     'Top Items Sold Board',
@@ -209,6 +209,9 @@ const SubscriptionPage: React.FC = () => {
         currentPack === 'enterprise'
     );
     const currentTiers = activeTab === 'pos' ? POS_TIERS : activeTab === 'catalogue' ? CATALOGUE_TIERS : BOTH_TIERS;
+
+    const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+    const [selectedPlan, setSelectedPlan] = useState('');
 
     const allFeatures = useMemo(() => {
         if (activeTab === 'pos') {
@@ -352,7 +355,10 @@ const SubscriptionPage: React.FC = () => {
                                                 </span>
                                             </div>
                                             <button
-                                                onClick={() => alert(`Contact Admin for ${tier.name} (yearly)`)}
+                                                onClick={() => {
+                                                    setSelectedPlan(tier.name);
+                                                    setIsContactModalOpen(true);
+                                                }}
                                                 className={`mt-3 w-full py-1.5 rounded-sm text-xs sm:text-sm font-bold transition-colors ${tier.recommended
                                                     ? activeTab === 'pos' ? 'bg-gray-900 text-white hover:bg-gray-800' : activeTab === 'catalogue' ? 'bg-sky-600 text-white hover:bg-sky-700' : 'bg-yellow-400 text-black hover:bg-yellow-500'
                                                     : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
@@ -425,7 +431,33 @@ const SubscriptionPage: React.FC = () => {
                     </div>
                 </div>
             </div>
+            {isContactModalOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-2xl max-w-md w-full p-6">
+                        <h3 className="text-lg font-bold text-gray-900 mb-4">Contact Admin</h3>
+                        <p className="text-gray-700 mb-4">
+                            To subscribe to <span className="font-semibold">{selectedPlan}</span>, please contact our admin:
+                        </p>
+                        <div className="bg-gray-50 rounded-md p-4 mb-6 text-center">
+                            <p className="text-sm text-gray-600 mb-2">Call us at:</p>
+                            <a
+                                href="tel:9818815838"
+                                className="text-2xl font-bold text-blue-600 hover:text-blue-700"
+                            >
+                                9818815838
+                            </a>
+                        </div>
+                        <button
+                            onClick={() => setIsContactModalOpen(false)}
+                            className="w-full py-2 bg-gray-900 text-white rounded-md font-semibold hover:bg-gray-800 transition-colors"
+                        >
+                            OK
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
+
     );
 };
 

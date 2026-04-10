@@ -6,17 +6,61 @@ import { FiShare2, FiDownload } from "react-icons/fi"; // Download icon add kiya
 import { toPng } from 'html-to-image'; // Install this: npm install html-to-image
 import { sanitizeName } from "../utils/stringUtils";
 
+// ─── Compress uploaded card image (same logic as EditProfilePage) ───────────
+const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.src = URL.createObjectURL(file);
+ 
+        img.onload = () => {
+            const MAX_WIDTH = 800;
+            const MAX_HEIGHT = 450; // business card is landscape
+ 
+            let width = img.width;
+            let height = img.height;
+ 
+            if (width > height) {
+                if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
+            } else {
+                if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
+            }
+ 
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+ 
+            const ctx = canvas.getContext('2d');
+            if (!ctx) { reject(new Error("Canvas context failed")); return; }
+ 
+            ctx.drawImage(img, 0, 0, width, height);
+ 
+            // Convert to base64 string (JPEG, 60% quality) so we can store in localStorage
+            const base64 = canvas.toDataURL('image/jpeg', 0.6);
+            URL.revokeObjectURL(img.src);
+            resolve(base64);
+        };
+ 
+        img.onerror = (error) => { URL.revokeObjectURL(img.src); reject(error); };
+    });
+};
+ 
+const STORAGE_KEY = "businessCard_uploadedCard";
 function BusinessCard() {
     const { currentUser } = useAuth();
     const [data, setData] = useState<any>(null);
     const [activeIndex, setActiveIndex] = useState(0);
     const [uploadedCard, setUploadedCard] = useState<string | null>(null);
+    const uploadedCardRef = useRef<HTMLDivElement>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
 
     // Cards ke liye references
     const cardRef1 = useRef<HTMLDivElement>(null);
     const cardRef2 = useRef<HTMLDivElement>(null);
 
+    useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) setUploadedCard(saved);
+}, []);
     const handleScroll = () => {
         if (scrollRef.current) {
             const scrollLeft = scrollRef.current.scrollLeft;
@@ -55,12 +99,53 @@ function BusinessCard() {
         }
     };
 
-    const handleUploadCard = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        const fileURL = URL.createObjectURL(file);
-        setUploadedCard(fileURL)
-    };
+    const handleUploadCard = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+        const compressed = await compressImage(file);
+        setUploadedCard(compressed);
+        localStorage.setItem(STORAGE_KEY, compressed);
+    } catch (err) {
+        console.error("Compression error:", err);
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            const base64 = ev.target?.result as string;
+            setUploadedCard(base64);
+            localStorage.setItem(STORAGE_KEY, base64);
+        };
+        reader.readAsDataURL(file);
+    }
+};
+const downloadUploadedCard = () => {
+    if (!uploadedCard) return;
+    const link = document.createElement("a");
+    link.download = "my-business-card.jpg";
+    link.href = uploadedCard;
+    link.click();
+};
+
+const handleShareUploadedCard = async () => {
+    if (!uploadedCard) return;
+    try {
+        const response = await fetch(uploadedCard);
+        const blob = await response.blob();
+        const file = new File([blob], "my-business-card.jpg", { type: 'image/jpeg' });
+
+        if (navigator.share && navigator.canShare({ files: [file] })) {
+            await navigator.share({ files: [file], title: "My Business Card" });
+        } else {
+            downloadUploadedCard();
+        }
+    } catch (err) {
+        console.error("Share error:", err);
+    }
+};
+
+const removeUploadedCard = () => {
+    setUploadedCard(null);
+    localStorage.removeItem(STORAGE_KEY);
+};
 
     useEffect(() => {
         const fetchBusinessCardData = async () => {
@@ -88,12 +173,46 @@ function BusinessCard() {
         fetchBusinessCardData();
     }, [currentUser]);
 
-    const handleShare = async () => {
-        if (navigator.share) {
-            try { await navigator.share({ title: data.companyName, url: window.location.href }); }
-            catch (e) { console.log(e); }
-        } else { navigator.clipboard.writeText(window.location.href); alert("Link Copied!"); }
-    };
+    const handleShare = async (ref: React.RefObject<HTMLDivElement | null>, name: string) => {
+    if (!ref.current) return;
+
+    const buttons = ref.current.querySelectorAll(".no-export");
+    const safeName = sanitizeName(name);
+
+    try {
+        // Hide buttons
+        buttons.forEach((el) => ((el as HTMLElement).style.display = "none"));
+
+        const dataUrl = await toPng(ref.current, {
+            cacheBust: true,
+            pixelRatio: 3
+        });
+
+        // Convert base64 to blob
+        const response = await fetch(dataUrl);
+        const blob = await response.blob();
+        const file = new File([blob], `${safeName}-business-card.png`, { type: 'image/png' });
+
+        if (navigator.share && navigator.canShare({ files: [file] })) {
+            await navigator.share({
+                files: [file],
+                title: `${data.companyName} - Business Card`,
+            });
+        } else {
+            // Fallback: download the image
+            const link = document.createElement("a");
+            link.download = `${safeName}-business-card.png`;
+            link.href = dataUrl;
+            link.click();
+            alert("Card downloaded!");
+        }
+    } catch (err) {
+        console.error("Share error:", err);
+    } finally {
+        // Show buttons again
+        buttons.forEach((el) => ((el as HTMLElement).style.display = "flex"));
+    }
+};
 
     if (!data) return <div className="p-4 text-[10px]">Loading...</div>;
 
@@ -122,7 +241,7 @@ function BusinessCard() {
                         <button onClick={() => downloadCard(cardRef1, formatName(data.personName))} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
                             <FiDownload size={10} />
                         </button>
-                        <button onClick={handleShare} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
+                        <button onClick={() => handleShare(cardRef1, formatName(data.personName))} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
                             <FiShare2 size={10} />
                         </button>
                     </div>
@@ -149,7 +268,7 @@ function BusinessCard() {
                         <button onClick={() => downloadCard(cardRef2, formatName(data.personName))} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
                             <FiDownload size={10} />
                         </button>
-                        <button onClick={handleShare} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
+                        <button onClick={() => handleShare(cardRef2, formatName(data.personName))} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
                             <FiShare2 size={10} />
                         </button>
                     </div>
@@ -193,47 +312,55 @@ function BusinessCard() {
                 </div>
 
                 {/* ================= DESIGN 3 (UPLOAD CARD) ================= */}
-                <div className="relative flex-shrink-0 w-[280px] h-[155px] flex flex-col items-center justify-center rounded-sm shadow-lg overflow-hidden bg-white border border-dashed border-gray-300 snap-center p-4">
+                <div
+                    ref={uploadedCardRef}
+                    className="relative flex-shrink-0 w-[280px] h-[155px] flex flex-col items-center justify-center rounded-sm shadow-lg overflow-hidden bg-white border border-dashed border-gray-300 snap-center p-4"
+                >
 
-                    {!uploadedCard ? (
-                        <>
-                            <label className="flex flex-col items-center justify-center cursor-pointer text-center">
-                                <div className="text-gray-400 text-xs font-semibold mb-2">
-                                    Upload Your Business Card
-                                </div>
-
-                                <div className="px-3 py-1 bg-blue-600 text-white text-[10px] rounded">
-                                    Upload Card
-                                </div>
-
-                                <input
-                                    type="file"
-                                    accept="image/png, image/jpeg, image/jpg, image/webp"
-                                    className="hidden"
-                                    onChange={handleUploadCard}
-                                />
-                            </label>
-                        </>
+                     {!uploadedCard ? (
+                        <label className="flex flex-col items-center justify-center cursor-pointer text-center">
+                            <div className="text-gray-400 text-xs font-semibold mb-2">
+                                Upload Your Business Card
+                            </div>
+                            <div className="px-3 py-1 bg-blue-600 text-white text-[10px] rounded">
+                                Upload Card
+                            </div>
+                            <input
+                                type="file"
+                                accept="image/png, image/jpeg, image/jpg, image/webp"
+                                className="hidden"
+                                onChange={handleUploadCard}
+                            />
+                        </label>
                     ) : (
                         <>
                             {/* Preview */}
-                                <img
-                                    src={uploadedCard}
-                                    alt="Uploaded card"
-                                    className="w-full h-full object-contain rounded"
-                                />
-                            {/* Buttons */}
+                            <img
+                                src={uploadedCard}
+                                alt="Uploaded card"
+                                className="w-full h-full object-contain rounded"
+                            />
+ 
+                            {/* Action buttons — same layout as Design 1 & 2 */}
                             <div className="absolute top-1.5 right-1.5 flex gap-1 z-20 no-export">
-                                <a
-                                    href={uploadedCard}
-                                    download="my-business-card"
+                                {/* Download */}
+                                <button
+                                    onClick={downloadUploadedCard}
                                     className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100"
                                 >
                                     <FiDownload size={10} />
-                                </a>
-
+                                </button>
+ 
+                                {/* Share */}
                                 <button
-                                    onClick={() => setUploadedCard(null)}
+                                    onClick={handleShareUploadedCard}
+                                    className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100"
+                                >
+                                    <FiShare2 size={10} />
+                                </button>
+                                {/* Remove / Replace */}
+                                <button
+                                    onClick={removeUploadedCard}
                                     className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100"
                                 >
                                     <svg

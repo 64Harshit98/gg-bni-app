@@ -528,6 +528,34 @@ const PurchaseReturnPage: React.FC = () => {
   // --- UI CALCULATIONS (With Discount) ---
   const { totalReturnValue, totalNewItemsValue, finalBalance, discountDeducted } = useMemo(() => {
     const totalReturnGross = itemsToReturn.reduce((sum, item) => sum + item.amount, 0);
+    // --- TAX CALCULATION---
+    let returnTax = 0;
+
+    if (selectedPurchase) {
+      returnTax = selectedPurchase.items.reduce((sum: number, item: any) => {
+        const itemFinalPrice = Number(item.purchasePrice || item.finalPrice || 0);
+        const taxRate = Number(item.taxRate || item.tax || 0);
+        const taxType = item.taxType;
+
+        if (taxType === 'inclusive' && taxRate > 0) {
+          const itemTax = itemFinalPrice * (taxRate / 100);
+          return sum + itemTax;
+        }
+
+        return sum;
+      }, 0);
+
+      // proportional tax based on return ratio
+      const originalGross = selectedPurchase.items.reduce((sum, item) => {
+        const price = item.purchasePrice ?? (item.quantity ? item.quantity : 0);
+        return sum + (item.quantity * price);
+      }, 0);
+
+      if (originalGross > 0 && returnTax > 0) {
+        const ratio = totalReturnGross / originalGross;
+        returnTax = Math.round(returnTax * ratio * 100) / 100;
+      }
+    }
     const totalNewItemsValue = newItemsReceived.reduce((sum, item) => sum + item.amount, 0);
 
     let discountDeducted = 0;
@@ -549,7 +577,7 @@ const PurchaseReturnPage: React.FC = () => {
       }
     }
 
-    const netReturnValue = totalReturnGross - discountDeducted;
+    const netReturnValue = totalReturnGross - discountDeducted + returnTax;
     const finalBalance = netReturnValue - totalNewItemsValue;
 
     return { totalReturnValue: netReturnValue, totalNewItemsValue, finalBalance: Math.round(finalBalance), discountDeducted };

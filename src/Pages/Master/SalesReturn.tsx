@@ -103,6 +103,7 @@ const SalesReturnPage: React.FC = () => {
 
   const [salesList, setSalesList] = useState<SalesData[]>([]);
   const [selectedSale, setSelectedSale] = useState<SalesData | null>(null);
+  console.log(selectedSale)
   const [searchSaleQuery, setSearchSaleQuery] = useState<string>('');
 
   const [isSalesDropdownOpen, setIsSalesDropdownOpen] = useState<boolean>(false);
@@ -462,11 +463,12 @@ const SalesReturnPage: React.FC = () => {
     } as SalesItem));
   }, [exchangeItems]);
 
-  const { totalReturnGross, totalExchangeValue, finalBalance, discountDeducted } = useMemo(() => {
+  const { totalReturnGross, totalReturnValue, totalExchangeValue, finalBalance, discountDeducted, returnTax } = useMemo(() => {
     const totalReturnGross = itemsToReturn.reduce((sum, item) => sum + item.amount, 0);
     const totalExchangeValue = exchangeItems.reduce((sum, item) => sum + item.amount, 0);
 
     let discountDeducted = 0;
+    let returnTax = 0;
 
     if (selectedSale) {
       const originalInvoiceTotal = selectedSale.items.reduce((sum, item) => {
@@ -480,12 +482,32 @@ const SalesReturnPage: React.FC = () => {
         discountDeducted = originalManualDiscount * ratio;
         discountDeducted = Math.round(discountDeducted * 100) / 100;
       }
+
+      // Calculate tax from items
+      returnTax = selectedSale.items.reduce((sum, item: any) => {
+        const itemFinalPrice = Number(item.finalPrice || 0);
+        const taxRate = Number(item.taxRate || item.tax || 0);
+        const taxType = item.taxType;
+
+        if (taxType === 'inclusive' && taxRate > 0) {
+          const itemTax = itemFinalPrice * (taxRate / 100);
+          return sum + itemTax;
+        }
+
+        return sum;
+      }, 0);
+
+      // proportional tax based on return amount
+      if (returnTax > 0 && originalInvoiceTotal > 0) {
+        const ratio = totalReturnGross / originalInvoiceTotal;
+        returnTax = Math.round(returnTax * ratio * 100) / 100;
+      }
     }
 
-    const totalReturnValue = totalReturnGross - discountDeducted;
+    const totalReturnValue = totalReturnGross - discountDeducted + returnTax;
     const finalBalance = totalReturnValue - totalExchangeValue;
 
-    return { totalReturnGross, totalReturnValue, totalExchangeValue, finalBalance: Math.round(finalBalance), discountDeducted };
+    return { totalReturnGross, totalReturnValue, totalExchangeValue, finalBalance: Math.round(finalBalance), discountDeducted, returnTax };
   }, [itemsToReturn, exchangeItems, selectedSale]);
 
   const saveReturnTransaction = async (completionData?: Partial<PaymentCompletionData>) => {
@@ -712,7 +734,14 @@ const SalesReturnPage: React.FC = () => {
     }
   };
 
+  const isDueSale = selectedSale?.paymentMethods?.due > 0;
+  useEffect(() => {
+  if (isDueSale) {
+    setModeOfReturn('Exchange'); 
+  }
+}, [isDueSale]);
   const handleProcessReturn = () => {
+    if(modeOfReturn === 'Exchange' && exchangeItems.length == 0) return setModal({ type: State.ERROR, message: 'No exchange items selected.' });
     if (itemsToReturn.length === 0 && exchangeItems.length === 0) return setModal({ type: State.ERROR, message: 'No items selected.' });
     if (modeOfReturn === 'Cash Refund' && finalBalance > 0) saveReturnTransaction();
     else if (finalBalance >= 0) saveReturnTransaction();
@@ -811,8 +840,14 @@ const SalesReturnPage: React.FC = () => {
                 <div className="bg-white p-2 rounded-sm shadow-md mb-4 md:mb-0 border border-gray-200">
                   <div className="md:hidden mb-4">
                     <label className="block font-medium text-sm mb-1">Transaction Type</label>
-                    <select value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-2 border rounded bg-white">
-                      <option>Credit Note</option>
+                    <select value={modeOfReturn} onChange={(e) =>{
+                      const value = e.target.value;
+                     setModeOfReturn(value)
+                     if(value !== 'Exchange')
+                        setExchangeItems([])
+                    }}
+                      className="w-full p-2 border rounded bg-white">
+                      <option disabled={isDueSale}>Credit Note</option>
                       <option>Exchange</option>
                       <option>Refund</option>
                     </select>
@@ -900,8 +935,13 @@ const SalesReturnPage: React.FC = () => {
               <h2 className="text-xl font-bold text-gray-800 mb-6 border-b pb-2">Return Summary</h2>
               <div className="mb-6">
                 <label className="block text-sm font-semibold text-gray-600 mb-2">Transaction Type</label>
-                <select value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none">
-                  <option>Credit Note</option>
+                <select value={modeOfReturn} onChange={(e) => {
+                  const value = e.target.value;
+                  setModeOfReturn(value)
+                   if(value !== 'Exchange')
+                        setExchangeItems([])
+                  }} className="w-full p-3 border border-gray-300 rounded-lg bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none">
+                  <option disabled={isDueSale} >Credit Note</option>
                   <option>Exchange</option>
                   <option>Cash Refund</option>
                 </select>
@@ -919,7 +959,7 @@ const SalesReturnPage: React.FC = () => {
                 )}
                 <div className="flex justify-between font-semibold border-t border-gray-200 pt-2">
                   <span>Net Return Value</span>
-                  <span>₹{(totalReturnGross - discountDeducted).toFixed(2)}</span>
+                  <span>₹{totalReturnValue.toFixed(2)}</span>
                 </div>
                 {modeOfReturn === 'Exchange' && (
                   <div className="flex justify-between text-blue-600 mt-2">

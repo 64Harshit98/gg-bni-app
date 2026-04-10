@@ -27,7 +27,7 @@ export const TopSoldItemsCard: React.FC<TopSoldItemsCardProps> = ({
     topByAmount,
     loading,
 }) => {
-    const [viewMode, setViewMode] = useState<'amount' | 'quantity'>('quantity');
+    const [viewMode, setViewMode] = useState<'amount' | 'quantity'>('amount');
  
     const renderContent = () => {
         if (loading) {

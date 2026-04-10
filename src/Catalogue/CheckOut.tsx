@@ -12,6 +12,7 @@ import LeadPopUp from './PopUp';
 // import { getCompressedBase64 } from './utils/imageCache';
 import { CatalogueBill, prepareCatalogueBillData } from './CatalogueBill/CatalogueBill'
 import { ACTION } from '../enums';
+import { indianStates } from '../Components/IndianStates';
 
 
 interface CartItem {
@@ -831,7 +832,18 @@ const CartPage: React.FC = () => {
                                                     <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">State
                                                         <span className="text-red-500 ml-0.5">*</span>
                                                     </label>
-                                                    <input value={billing.state} onChange={(e) => setBilling({ ...billing, state: e.target.value })} type="text" className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold outline-none" placeholder="State" />
+                                                    <select
+                                                        value={billing.state}
+                                                        onChange={(e) => setBilling({ ...billing, state: e.target.value })}
+                                                        className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold outline-none"
+                                                    >
+                                                        <option value="">Select State</option>
+                                                        {indianStates.map((state) => (
+                                                            <option key={state} value={state}>
+                                                                {state}
+                                                            </option>
+                                                        ))}
+                                                    </select>
                                                 </div>
                                             </div>
                                             <div className="mt-3 space-y-1">
@@ -908,7 +920,19 @@ const CartPage: React.FC = () => {
                                                     <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">State
                                                         <span className="text-red-500 ml-0.5">*</span>
                                                     </label>
-                                                    <input value={shipping.state} onChange={(e) => setShipping({ ...shipping, state: e.target.value })} type="text" className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold outline-none" placeholder="State" />
+                                                    <select
+                                                        value={shipping.state}
+                                                        onChange={(e) => setShipping({ ...shipping, state: e.target.value })}
+                                                        disabled={isSameAsShipping}
+                                                        className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold outline-none"
+                                                    >
+                                                        <option value="">Select State</option>
+                                                        {indianStates.map((state) => (
+                                                            <option key={state} value={state}>
+                                                                {state}
+                                                            </option>
+                                                        ))}
+                                                    </select>
                                                 </div>
                                             </div>
                                             <div className="mt-3 space-y-1">

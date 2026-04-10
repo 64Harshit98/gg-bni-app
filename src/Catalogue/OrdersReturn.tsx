@@ -302,7 +302,6 @@ const OrdersReturnPage: React.FC = () => {
   const handleSaveSuccess = (updatedItemData: Partial<Item>) => {
     if (!selectedItemForEdit) return;
 
-    // ✅ 1. Update available items (existing logic)
     setAvailableItems(prev =>
       prev.map(item => {
         if (item.id !== selectedItemForEdit.id) return item;
@@ -321,7 +320,6 @@ const OrdersReturnPage: React.FC = () => {
       })
     );
 
-    // ✅ 2. UPDATE EXCHANGE CART ITEM 🔥
     setExchangeItems(prev =>
       prev.map(item => {
         if (item.originalItemId !== selectedItemForEdit.id) return item;
@@ -361,16 +359,25 @@ const OrdersReturnPage: React.FC = () => {
     field: keyof TransactionItem | keyof ExchangeItem,
     value: string | number
   ) => {
-    setter(prev => prev.map(item => {
-      if (item.id === id) {
+    setter(prev =>
+      prev.map(item => {
+        if (item.id !== id) return item;
 
         let safeValue = value;
 
         if (field === 'quantity') {
           const num = Number(value) || 1;
 
-          if ((item as any).originalItemId) {
-            const realItem = availableItems.find(i => i.id === (item as any).originalItemId);
+          //  Return Items Validation
+          if ((item as any).originalQuantity !== undefined) {
+            const maxQty = (item as any).originalQuantity;
+            safeValue = Math.min(Math.max(1, num), maxQty);
+          }
+          //  Exchange Items Validation (Check Stock)
+          else {
+            const realItem = availableItems.find(
+              i => i.id === (item as any).originalItemId
+            );
             const stock = realItem?.stock ?? 0;
 
             if (num > stock) {
@@ -380,12 +387,7 @@ const OrdersReturnPage: React.FC = () => {
               });
               return item;
             }
-          }
 
-          if ((item as any).originalQuantity !== undefined) {
-            const maxQty = (item as any).originalQuantity;
-            safeValue = Math.min(Math.max(1, num), maxQty);
-          } else {
             safeValue = Math.max(1, num);
           }
         }
@@ -394,17 +396,15 @@ const OrdersReturnPage: React.FC = () => {
 
         if (field === 'discount') {
           const discountValue = Number(value) || 0;
-
           const basePrice = Number(item.mrp) || 0;
 
           let newPrice = basePrice * (1 - discountValue / 100);
 
           if (discountValue > 0) {
-            if (newPrice < 100) {
-              newPrice = Math.ceil(newPrice / 5) * 5;
-            } else {
-              newPrice = Math.ceil(newPrice / 10) * 10;
-            }
+            newPrice =
+              newPrice < 100
+                ? Math.ceil(newPrice / 5) * 5
+                : Math.ceil(newPrice / 10) * 10;
           }
 
           if (discountValue === 0) {
@@ -414,13 +414,19 @@ const OrdersReturnPage: React.FC = () => {
           updatedItem.unitPrice = newPrice;
         }
 
-        if (field === 'quantity' || field === 'unitPrice' || field === 'discount') {
-          updatedItem.amount = Number(updatedItem.quantity) * Number(updatedItem.unitPrice);
+        if (
+          field === 'quantity' ||
+          field === 'unitPrice' ||
+          field === 'discount'
+        ) {
+          updatedItem.amount =
+            Number(updatedItem.quantity) *
+            Number(updatedItem.unitPrice);
         }
+
         return updatedItem;
-      }
-      return item;
-    }));
+      })
+    );
   };
 
   const handleRemoveFromList = (setter: any, id: string) => {
@@ -606,6 +612,38 @@ const OrdersReturnPage: React.FC = () => {
     });
   }, [exchangeItems, availableItems]);
 
+  const refreshSelectedOrder = async (orderId: string) => {
+    if (!currentUser?.companyId) return;
+
+    const orderRef = doc(
+      db,
+      'companies',
+      currentUser.companyId,
+      'Orders',
+      orderId
+    );
+
+    const snap = await getDoc(orderRef);
+
+    if (snap.exists()) {
+      const updatedOrder = {
+        id: snap.id,
+        ...snap.data(),
+      } as Order;
+
+      // Update selected sale
+      setSelectedSale(updatedOrder);
+      handleSelectSale(updatedOrder);
+
+      // Update sales list
+      setSalesList(prev =>
+        prev.map(order =>
+          order.id === updatedOrder.id ? updatedOrder : order
+        )
+      );
+    }
+  };
+
   // --- CALCULATION LOGIC (UI) ---
   const {
     totalReturnGross,
@@ -613,38 +651,56 @@ const OrdersReturnPage: React.FC = () => {
     finalBalance,
     discountDeducted
   } = useMemo(() => {
-    const trg = itemsToReturn.reduce((sum, item) => sum + (item.amount || 0), 0);
-    const tev = exchangeItems.reduce((sum, item) => sum + (item.amount || 0), 0);
+    const trg = itemsToReturn.reduce(
+      (sum, item) => sum + (item.amount || 0),
+      0
+    );
+
+    const tev = exchangeItems.reduce(
+      (sum, item) => sum + (item.amount || 0),
+      0
+    );
 
     let dd = 0;
+
     if (selectedSale) {
       const baseItems = selectedSale.items || [];
 
       const originalInvoiceTotal = baseItems.reduce(
-        (sum: number, item: any) => sum + Number(item.finalPrice || 0),
+        (sum: number, item: any) =>
+          sum + Number(item.finalPrice || 0),
         0
       );
 
-
-      const originalManualDiscount = Number(selectedSale.manualDiscount) || 0;
+      const originalManualDiscount =
+        Number(selectedSale.manualDiscount) || 0;
 
       if (originalInvoiceTotal > 0 && originalManualDiscount > 0) {
         const ratio = trg / originalInvoiceTotal;
-        dd = Math.round((originalManualDiscount * ratio) * 100) / 100;
+        dd = Math.round(originalManualDiscount * ratio * 100) / 100;
       }
     }
 
-    const trv = trg - dd;
-    const fb = trv - tev;
+    const totalReturnValue = trg - dd;
+
+    //  Mode-based final balance calculation
+    let fb = 0;
+
+    if (modeOfReturn === 'Exchange') {
+      fb = totalReturnValue - tev;
+    } else {
+      // Credit Note & Cash Refund
+      fb = totalReturnValue;
+    }
 
     return {
       totalReturnGross: trg,
-      totalReturnValue: trv,
+      totalReturnValue,
       totalExchangeValue: tev,
       finalBalance: fb,
       discountDeducted: dd
     };
-  }, [itemsToReturn, exchangeItems, selectedSale]);
+  }, [itemsToReturn, exchangeItems, selectedSale, modeOfReturn]);
 
 
   // --- SAVE LOGIC ---
@@ -727,27 +783,29 @@ const OrdersReturnPage: React.FC = () => {
       }
 
       // ➕ add exchange items
-      exchangeItems.forEach(exchangeItem => {
-        const existingItem = originalItemsMap.get(exchangeItem.originalItemId);
+      if (modeOfReturn === 'Exchange') {
+        exchangeItems.forEach(exchangeItem => {
+          const existingItem = originalItemsMap.get(exchangeItem.originalItemId);
 
-        if (existingItem) {
-          existingItem.quantity += exchangeItem.quantity;
-        } else {
-          originalItemsMap.set(exchangeItem.originalItemId, {
-            id: exchangeItem.originalItemId,
-            name: exchangeItem.name,
-            mrp: exchangeItem.mrp,
-            quantity: exchangeItem.quantity,
-            discount: exchangeItem.discount || 0,
-            finalPrice: exchangeItem.amount,
-            amount: exchangeItem.amount,
-            unitPrice:
-              exchangeItem.amount / exchangeItem.quantity || exchangeItem.mrp,
-            _effectiveUnitPrice:
-              exchangeItem.amount / exchangeItem.quantity || exchangeItem.mrp
-          });
-        }
-      });
+          if (existingItem) {
+            existingItem.quantity += exchangeItem.quantity;
+          } else {
+            originalItemsMap.set(exchangeItem.originalItemId, {
+              id: exchangeItem.originalItemId,
+              name: exchangeItem.name,
+              mrp: exchangeItem.mrp,
+              quantity: exchangeItem.quantity,
+              discount: exchangeItem.discount || 0,
+              finalPrice: exchangeItem.amount,
+              amount: exchangeItem.amount,
+              unitPrice:
+                exchangeItem.amount / exchangeItem.quantity || exchangeItem.mrp,
+              _effectiveUnitPrice:
+                exchangeItem.amount / exchangeItem.quantity || exchangeItem.mrp
+            });
+          }
+        });
+      }
 
       // --- 3.5 HANDLE RETURN STOCK (ADD BACK) ---
       itemsToReturn.forEach(returnItem => {
@@ -931,12 +989,14 @@ const OrdersReturnPage: React.FC = () => {
         updatedAt: serverTimestamp()
       });
       await batch.commit();
+      await refreshSelectedOrder(selectedSale.id);
       setOriginalSaleItems(
         newItemsList.map((item: any) => ({
           id: item.id,
           originalItemId: item.id,
           name: item.name,
           quantity: item.quantity,
+          originalQuantity: item.quantity,
           unitPrice: item.unitPrice,
           amount: item.finalPrice,
           mrp: item.mrp
@@ -968,15 +1028,38 @@ const OrdersReturnPage: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    if (modeOfReturn !== 'Exchange') {
+      setExchangeItems([]);
+    }
+  }, [modeOfReturn]);
 
   const handleProcessReturn = () => {
 
+    // ❌ No items selected at all
     if (itemsToReturn.length === 0 && exchangeItems.length === 0) {
       return setModal({
         type: State.ERROR,
         message: 'No items selected.'
       });
     }
+
+    //  CREDIT NOTE
+    if (modeOfReturn === 'Credit Note') {
+      if (itemsToReturn.length === 0) {
+        return setModal({
+          type: State.ERROR,
+          message: 'Please select at least one item to return.'
+        });
+      }
+
+      // Ensure no exchange items are included
+      setExchangeItems([]);
+      saveReturnTransaction();
+      return;
+    }
+
+    //  EXCHANGE
     if (modeOfReturn === 'Exchange') {
       if (itemsToReturn.length === 0) {
         return setModal({
@@ -993,19 +1076,31 @@ const OrdersReturnPage: React.FC = () => {
       }
 
       if (finalBalance < 0) {
-        // customer needs to PAY → open drawer
+        // Customer needs to pay extra
         setIsDrawerOpen(true);
       } else {
-        // no payment needed → direct save
+        // No payment required
         saveReturnTransaction();
       }
-
       return;
     }
+
+    //  CASH REFUND
     if (modeOfReturn === 'Cash Refund') {
+      if (itemsToReturn.length === 0) {
+        return setModal({
+          type: State.ERROR,
+          message: 'Please select at least one item for cash refund.'
+        });
+      }
+
+      // Remove any mistakenly added exchange items
+      setExchangeItems([]);
       saveReturnTransaction();
       return;
     }
+
+    // 🔄 FALLBACK (Safety Check)
     if (finalBalance < 0) {
       setIsDrawerOpen(true);
     } else {
@@ -1086,12 +1181,37 @@ const OrdersReturnPage: React.FC = () => {
               </div>
               {isSalesDropdownOpen && !selectedSale && (
                 <div className="absolute top-full w-full z-20 mt-1 bg-white border rounded-sm shadow-lg max-h-60 overflow-y-auto">
-                  {filteredSales.map((sale) => (
-                    <div key={sale.id} className="p-3 cursor-pointer hover:bg-gray-100 border-b border-gray-50 last:border-0" onClick={() => handleSelectSale(sale)}>
-                      <p className="font-semibold text-sm">{sale.userName} <span className="text-gray-500 font-normal">({sale.orderId || 'N/A'})</span></p>
-                      <p className="text-xs text-gray-500">Amount: ₹{sale.totalAmount.toFixed(2)}</p>
-                    </div>
-                  ))}
+                  {filteredSales.map((sale) => {
+                    // Calculate total from items instead of using static totalAmount
+                    const calculatedAmount = (sale.items || []).reduce(
+                      (sum: number, item: any) =>
+                        sum +
+                        Number(
+                          item.finalPrice ??
+                          item.amount ??
+                          (item.salesPrice || item.mrp || 0) * (item.quantity || 0)
+                        ),
+                      0
+                    );
+
+                    return (
+                      <div
+                        key={sale.id}
+                        className="p-3 cursor-pointer hover:bg-gray-100 border-b border-gray-50 last:border-0"
+                        onClick={() => handleSelectSale(sale)}
+                      >
+                        <p className="font-semibold text-sm">
+                          {sale.userName}{' '}
+                          <span className="text-gray-500 font-normal">
+                            ({sale.orderId || 'N/A'})
+                          </span>
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          Amount: ₹{calculatedAmount.toFixed(2)}
+                        </p>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1113,11 +1233,19 @@ const OrdersReturnPage: React.FC = () => {
                     <input
                       type="text"
                       value={partyNumber}
-                      onChange={(e) => { setPartyNumber(e.target.value); setPartyName(''); setIsCustomerDropdownOpen(true); }}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/\D/g, '');
+                        if (value.length <= 10) {
+                          setPartyNumber(value);
+                          setPartyName('');
+                          setIsCustomerDropdownOpen(true);
+                        }
+                      }}
                       onFocus={() => setIsCustomerDropdownOpen(true)}
                       className="w-full p-1 border-b border-gray-300 focus:border-[#F97316] outline-none text-sm"
                       autoComplete="off"
                       placeholder="Search customer by number or name..."
+                      maxLength={10}
                     />
                     {isCustomerDropdownOpen && filteredCustomers.length > 0 && (
                       <div className="absolute top-full left-0 w-full z-20 mt-1 bg-white border rounded-sm shadow-lg max-h-48 overflow-y-auto">
@@ -1201,7 +1329,7 @@ const OrdersReturnPage: React.FC = () => {
                     </div>
 
                     {/* --- DISPLAY ERROR MESSAGES FOR LOCKS --- */}
-                  
+
 
                     {exchangeItems.length > 0 && (
                       <div className="border rounded-sm overflow-hidden mt-4">

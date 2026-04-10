@@ -25,6 +25,15 @@ const ItemAdd: React.FC = () => {
         { value: 'ton', label: 'Ton (1000 pcs)' },
     ];
 
+    const getUnitLabel = () => {
+        if (itemUnit === 'box') return '10 pcs';
+        if (itemUnit === 'doz') return '12 pcs';
+        if (itemUnit === 'qt') return '100 pcs';
+        if (itemUnit === 'ton') return '1000 pcs';
+        if (itemUnit === 'pkt') return `${packetSize || 1} pcs`;
+        return '1 pcs';
+    };
+
     const navigate = useNavigate();
     const location = useLocation();
     const dbOperations = useDatabase();
@@ -617,7 +626,9 @@ const ItemAdd: React.FC = () => {
 
                             <div className='grid grid-cols-2 gap-4'>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">MRP</label>
+                                    <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">
+                                        {`MRP (for ${getUnitLabel()})`}
+                                    </label>
                                     <input
                                         type="number"
                                         value={itemMRP}
@@ -655,7 +666,7 @@ const ItemAdd: React.FC = () => {
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">Sales Price</label>
+                                    <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">{`Sales Price (for ${getUnitLabel()})`}</label>
                                     <input
                                         type="number"
                                         value={itemSalesPrice}

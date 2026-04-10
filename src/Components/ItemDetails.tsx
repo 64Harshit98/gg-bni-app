@@ -40,8 +40,8 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
     const unitLabel = `(${multiplier} pcs)`;
     const priceMode = catalogueSettings?.priceDisplayMode || 'both';
     const baseSalePrice = item.salesPrice || item.mrp;
-    const salePrice = baseSalePrice * multiplier;
-    const mrp = (item.mrp || 0) * multiplier;
+    const salePrice = baseSalePrice;
+    const mrp = (item.mrp || 0);
     const hasBothPrices =
         item.salesPrice &&
         item.mrp &&
@@ -154,7 +154,7 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
                                         )}
 
                                         {priceMode === 'salePrice' && (
-                                            <p className="text-xl font-black text-[#00A3E1]">
+                                            <p className="text-xl font-black text-[#F97316]">
                                                 ₹{salePrice}
                                                 <span className="text-xs text-gray-500 ml-1 font-semibold">
                                                     {unitLabel}
@@ -167,7 +167,7 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
                                                 <p className="text-sm font-bold text-gray-400 line-through">
                                                     ₹{mrp}
                                                 </p>
-                                                <p className="text-xl font-black text-[#00A3E1]">
+                                                <p className="text-xl font-black text-[#F97316]">
                                                     ₹{salePrice}
                                                     <span className="text-xs text-gray-500 ml-1 font-semibold">
                                                         {unitLabel}
@@ -175,7 +175,7 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
                                                 </p>
                                             </>
                                         ) : priceMode === 'both' ? (
-                                            <p className="text-xl font-black text-[#00A3E1]">
+                                            <p className="text-xl font-black text-[#F97316]">
                                                 ₹{salePrice}
                                                 <span className="text-xs text-gray-500 ml-1 font-semibold">
                                                     {unitLabel}
@@ -210,7 +210,7 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
                                 <div className="flex items-center border border-gray-200 rounded-sm p-0.5">
                                     <button
                                         onClick={() => updateQuantity(-1)}
-                                        className="p-1.5 text-gray-500 hover:text-[#00A3E1]"
+                                        className="p-1.5 text-gray-500 hover:text-[#F97316]"
                                     >
                                         <Minus size={16} />
                                     </button>
@@ -221,7 +221,7 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
 
                                     <button
                                         onClick={() => updateQuantity(1)}
-                                        className="p-1.5 text-gray-500 hover:text-[#00A3E1]"
+                                        className="p-1.5 text-gray-500 hover:text-[#F97316]"
                                     >
                                         <Plus size={16} />
                                     </button>
@@ -236,7 +236,7 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
                                 }}
                                 className={`w-full py-3.5 rounded-sm font-black text-[10px] uppercase tracking-[0.2em] shadow-lg flex items-center justify-center gap-2 active:scale-[0.97] transition-all mb-4 ${isOutOfStock
                                     ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                                    : "bg-[#00A3E1] text-white shadow-blue-200"
+                                    : "bg-[#F97316] text-white shadow-blue-200"
                                     }`}
                             >
                                 {isAdding ? <Spinner /> : <ShoppingCart size={16} />}

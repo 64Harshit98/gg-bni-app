@@ -4,7 +4,7 @@ import type { Item, ItemGroup } from '../constants/models';
 import { Modal } from '../constants/Modal';
 import { State } from '../enums';
 import { FiX, FiPackage, FiPlus } from 'react-icons/fi';
-import { Trash2, X, ChevronLeft } from 'lucide-react';
+import { Trash2, X } from 'lucide-react';
 import { Spinner } from '../constants/Spinner';
 import { db } from '../lib/Firebase';
 import { addDoc, collection, serverTimestamp, doc, getDoc } from 'firebase/firestore';
@@ -213,22 +213,17 @@ const OrderingPage: React.FC = () => {
 
             {/* --- FIXED HEADER SECTION --- */}
             <header className="sticky top-0 z-[100] bg-white border-b border-gray-100 shadow-sm w-full">
-                <div className="max-w-7xl mx-auto px-4 py-3 flex items-center">
-                    <div className="flex items-center gap-3">
-                        <button
-                            onClick={() => navigate(-1)}
-                            className="p-1 hover:bg-gray-100 rounded-full transition-colors"
-                        >
-                            <ChevronLeft className="text-[#1A3B5D]" size={20} />
-                        </button>
-                        <div className="w-1 h-5 bg-[#F97316] rounded-sm"></div>
-                        <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">
-                            {companyName}
-                        </h1>
-                    </div>
+                <div className="max-w-7xl mx-auto px-4 py-8 relative flex items-center justify-between">
+
+                    {/* Center Section - Company Name */}
+                    <h1 className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-lg md:text-lg font-black text-[#1A3B5D] uppercase tracking-tighter text-center whitespace-nowrap">
+                        {companyName}
+                    </h1>
+
+                    {/* Right Spacer for Perfect Center Alignment */}
+                    <div className="w-6"></div>
                 </div>
             </header>
-
             <main className="p-4 space-y-4 flex-1 max-w-7xl mx-auto w-full pb-20">
                 <div className='flex items-center justify-center'>
                     <h1 className="text-sm md:text-xl font-extrabold text-[#F97316] uppercase tracking-tighter">Categories</h1>
@@ -236,7 +231,7 @@ const OrderingPage: React.FC = () => {
                 {/* --- SEARCH BAR --- */}
                 <SearchBar
                     items={items}
-                     itemGroups={itemGroups} 
+                    itemGroups={itemGroups}
                     placeholder="Search products..."
                     onItemSelected={(item) => {
                         if (!item.id) return;
@@ -380,7 +375,7 @@ const OrderingPage: React.FC = () => {
                                                                 await Promise.all(
                                                                     itemsToUpdate.map(item =>
                                                                         dbOperations.updateItem(item.id!, {
-                                                                            itemGroupId: uncategorizedGroup?.id 
+                                                                            itemGroupId: uncategorizedGroup?.id
                                                                         })
                                                                     )
                                                                 );

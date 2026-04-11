@@ -344,7 +344,7 @@ const Journal: React.FC = () => {
   const [showQrModal, setShowQrModal] = useState<Invoice | null>(null);
   const [sendingPdf, setSendingPdf] = useState(false);
 
-  const { currentUser, loading: authLoading } = useAuth();
+  const { currentUser, loading: authLoading, hasPermission } = useAuth();
 
   // ─── Tutorial state (mirrors Home.tsx pattern) ────────────────────────────
   const [tutorialStep, setTutorialStep] = useState(0);
@@ -1344,7 +1344,14 @@ const Journal: React.FC = () => {
         >
           <div className="flex justify-center border-b border-gray-500 p-2 mb-2">
             <CustomButton variant={Variant.Transparent} active={activeType === 'Credit'} onClick={() => setActiveType('Credit')}>Sales</CustomButton>
-            <CustomButton variant={Variant.Transparent} active={activeType === 'Debit'} onClick={() => setActiveType('Debit')}>Purchase</CustomButton>
+            <CustomButton
+              variant={Variant.Transparent}
+              active={activeType === 'Debit'} onClick={() => setActiveType('Debit')}
+              disabled={!hasPermission(Permissions.HiddenProFeatures)}  // Optional: style it differently if locked
+              className={!hasPermission(Permissions.HiddenProFeatures) ? 'opacity-50 cursor-not-allowed' : ''}
+            >
+              {hasPermission(Permissions.HiddenProFeatures) ? 'Purchase' : '🔒 Purchase'}
+            </CustomButton>
           </div>
         </TutorialStep>
 

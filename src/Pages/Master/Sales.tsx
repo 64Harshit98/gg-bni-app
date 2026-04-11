@@ -64,13 +64,42 @@ interface CalcKey {
 }
 
 const calcKeys: CalcKey[][] = [
-    // Standard buttons explicitly set to col-span-2 (since it's an 8-column grid)
-    [{ label: '1', value: '1', type: 'number', colClass: 'col-span-2' }, { label: '2', value: '2', type: 'number', colClass: 'col-span-2' }, { label: '3', value: '3', type: 'number', colClass: 'col-span-2' }, { label: 'Del', value: 'Backspace', type: 'function', icon: FiDelete, colClass: 'col-span-2' }],
-    [{ label: '4', value: '4', type: 'number', colClass: 'col-span-2' }, { label: '5', value: '5', type: 'number', colClass: 'col-span-2' }, { label: '6', value: '6', type: 'number', colClass: 'col-span-2' }, { label: '.', value: '.', type: 'number', colClass: 'col-span-2' }],
-    [{ label: '7', value: '7', type: 'number', colClass: 'col-span-2' }, { label: '8', value: '8', type: 'number', colClass: 'col-span-2' }, { label: '9', value: '9', type: 'number', colClass: 'col-span-2' }, { label: 'X', value: '*', type: 'operator', colClass: 'col-span-2' }],
+    // Row 1: %, -, delete 
+    [
+        { label: '%', value: '%', type: 'operator', colClass: 'col-span-2' },
+        { label: '-', value: '-', type: 'operator', colClass: 'col-span-2' },
+        { label: '', value: 'Backspace', type: 'function', icon: FiDelete, colClass: 'col-span-4' }
+    ],
 
-    // Bottom Row: '00' takes 2 columns, '0' takes 3, '+' takes 3. Total = 8 columns.
-    [{ label: '00', value: '00', type: 'number', colClass: 'col-span-2' }, { label: '0', value: '0', type: 'number', colClass: 'col-span-3' }, { label: '+', value: '+', type: 'operator', colClass: 'col-span-3' }]
+    // Row 2: 1,2,3,*
+    [
+        { label: '1', value: '1', type: 'number', colClass: 'col-span-2' },
+        { label: '2', value: '2', type: 'number', colClass: 'col-span-2' },
+        { label: '3', value: '3', type: 'number', colClass: 'col-span-2' },
+        { label: '×', value: '*', type: 'operator', colClass: 'col-span-2' }
+    ],
+
+    // Row 3: 4,5,6,+
+    [
+        { label: '4', value: '4', type: 'number', colClass: 'col-span-2' },
+        { label: '5', value: '5', type: 'number', colClass: 'col-span-2' },
+        { label: '6', value: '6', type: 'number', colClass: 'col-span-2' },
+        { label: '+', value: '+', type: 'operator', colClass: 'col-span-2' }
+    ],
+
+    // Row 4: 7,8,9,.
+    [
+        { label: '7', value: '7', type: 'number', colClass: 'col-span-2' },
+        { label: '8', value: '8', type: 'number', colClass: 'col-span-2' },
+        { label: '9', value: '9', type: 'number', colClass: 'col-span-2' },
+        { label: '.', value: '.', type: 'number', colClass: 'col-span-2' }
+    ],
+
+    // Row 5: 0,00
+    [
+        { label: '0', value: '0', type: 'number', colClass: 'col-span-4' },
+        { label: '00', value: '00', type: 'number', colClass: 'col-span-4' }
+    ]
 ];
 
 
@@ -566,32 +595,52 @@ const Sales: React.FC = () => {
     // Parses the entire string on the screen to calculate live totals and generate items
     const parseFullEquation = (equation: string): { items: SalesItem[], total: number } => {
         if (!equation.trim()) return { items: [], total: 0 };
-        const segments = equation.split('+');
+
+        // Normalize equation: handle subtraction by converting "-" into "+-" form
+        const normalized = equation.replace(/-/g, '+-');
+        const segments = normalized.split('+');
+
         const newItems: SalesItem[] = [];
         let grandTotal = 0;
 
         segments.forEach((segment) => {
             if (!segment.trim()) return;
-            const multiplicationParts = segment.split('*');
-            let segmentSubtotal = 1;
-            let hasValidNumber = false;
 
-            multiplicationParts.forEach(numStr => {
-                const num = parseFloat(numStr);
-                if (!isNaN(num) && num > 0) {
-                    segmentSubtotal *= num;
-                    hasValidNumber = true;
+            let segmentValue = 0;
+
+            // Handle percentage 
+            if (segment.includes('%')) {
+                const num = parseFloat(segment.replace('%', ''));
+                if (!isNaN(num)) {
+                    segmentValue = (grandTotal * num) / 100;
                 }
-            });
+            } else {
+                // Handle multiplication
+                const multiplicationParts = segment.split('*');
+                let subtotal = 1;
+                let hasValidNumber = false;
 
-            if (hasValidNumber && segmentSubtotal > 0) {
+                multiplicationParts.forEach(numStr => {
+                    const num = parseFloat(numStr);
+                    if (!isNaN(num)) {
+                        subtotal *= num;
+                        hasValidNumber = true;
+                    }
+                });
+
+                if (hasValidNumber) {
+                    segmentValue = subtotal;
+                }
+            }
+
+            if (!isNaN(segmentValue) && segmentValue !== 0) {
                 newItems.push({
-                    id: generateSafeId(), // <--- UPDATED HERE
-                    productId: `${generateSafeId()}`, // <--- UPDATED HERE
-                    name: segment.includes('*') ? segment.replace('*', ' x ') : segment,
-                    mrp: segmentSubtotal,
-                    salesPrice: segmentSubtotal,
-                    customPrice: segmentSubtotal,
+                    id: generateSafeId(),
+                    productId: `${generateSafeId()}`,
+                    name: segment.replace('*', ' x '),
+                    mrp: segmentValue,
+                    salesPrice: segmentValue,
+                    customPrice: segmentValue,
                     quantity: 1,
                     discount: 0,
                     isEditable: true,
@@ -599,7 +648,7 @@ const Sales: React.FC = () => {
                     tax: salesSettings?.defaultTaxRate || 0,
                     itemGroupId: 'calculator',
                     stock: 0,
-                    amount: segmentSubtotal,
+                    amount: segmentValue,
                     barcode: '',
                     restockQuantity: 0,
                     unit: 'Bill',
@@ -607,9 +656,11 @@ const Sales: React.FC = () => {
                     packetSize: 1,
                     isCustomAmount: true
                 });
-                grandTotal += segmentSubtotal;
+
+                grandTotal += segmentValue;
             }
         });
+
         return { items: newItems, total: grandTotal };
     };
 

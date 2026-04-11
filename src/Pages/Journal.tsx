@@ -37,7 +37,9 @@ import { storage } from '../lib/Firebase';
 import { TutorialStep } from '../Components/TutorialStep'; // ← same import as Home.tsx
 import { Permissions } from '../enums/permissions.enum';
 import ShowWrapper from '../context/ShowWrapper';
-
+import NotificationBell from "../Components/NotificationBell"
+import useTutorial from '../Catalogue/hooks/useTutorial';
+import { completeTutorial } from '../Catalogue/hooks/useCompleteTutorial';
 // ─── Total tutorial steps for Journal ───────────────────────────────────────
 const TOTAL_STEPS = 6;
 
@@ -1190,7 +1192,7 @@ const Journal: React.FC = () => {
 <div className="flex flex-col z-20 relative">
 
   {/* Row 1: Title + Filter icon */}
-  <div className="flex items-center justify-between px-4 pt-2">
+  <div className="flex items-center justify-between px-4 pt-2 relative">
     <div className="flex-1 flex flex-col items-center relative">
       <h1 className="text-3xl font-bold text-slate-800">Transactions</h1>
 
@@ -1327,7 +1329,9 @@ const Journal: React.FC = () => {
         </div>
       )}
     </div>
-
+    <div className="absolute right-4 top-1 border border-slate-300 rounded-sm p-1 bg-gray-100 shadow-sm">
+      <NotificationBell />
+    </div>
   </div>
 
       {/* Step 4 — Sales / Purchase toggle */}

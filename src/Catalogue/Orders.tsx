@@ -445,32 +445,28 @@ const OrdersPage: React.FC = () => {
         }
     }, [location.state]);
 
-    // useEffect(() => {
-    //     const audio = new Audio('/sounds/order-confirmed.mp3');
-    //     audio.preload = "auto";
+    const calculatedEditTotal = useMemo(() => {
+        if (!editingOrder?.items) return 0;
 
-    //     audioRef.current = audio;
+        return editingOrder.items.reduce((sum, item) => {
+            const salesPrice = Number(item.salesPrice || 0);
+            const mrp = Number(item.mrp || 0);
 
-    //     const unlockAudio = () => {
-    //         const audioEl = audioRef.current;
-    //         if (!audioEl) return;
+            const price =
+                item.customPrice ??
+                (salesPrice > 0 ? salesPrice : mrp);
 
-    //         audioEl.play()
-    //             .then(() => {
-    //                 audioEl.pause();
-    //                 audioEl.currentTime = 0;
-    //             })
-    //             .catch(() => { });
+            return sum + price * Number(item.quantity || 0);
+        }, 0);
+    }, [editingOrder?.items]);
 
-    //         window.removeEventListener('click', unlockAudio);
-    //     };
+    useEffect(() => {
+        if (!editingOrder || !currentUser?.companyId) return;
 
-    //     window.addEventListener('click', unlockAudio);
-
-    //     return () => {
-    //         window.removeEventListener('click', unlockAudio);
-    //     };
-    // }, []);
+        setEditingOrder(prev =>
+            prev ? { ...prev, totalAmount: calculatedEditTotal } : prev
+        );
+    }, [calculatedEditTotal]);
 
     useEffect(() => {
         const fetchCompanyInfo = async () => {
@@ -732,14 +728,11 @@ const OrdersPage: React.FC = () => {
                     phone: Order.billingDetails?.phone || "",
                     address: Order.billingDetails?.address || "",
                 },
-
                 order: {
                     orderId: Order.orderId,
                     date: Order.time,
                 },
-
                 items: (Order.items || []).map((item, index) => {
-
                     const mrp = item.mrp || 0;
                     const salePrice = item.salesPrice || item.mrp || 0;
 
@@ -754,37 +747,51 @@ const OrdersPage: React.FC = () => {
                         imageBase64: item.imageBase64,
                     };
                 }),
-
                 grandTotal: Order.totalAmount,
             };
 
-            const preparedData = await prepareCatalogueBillData(rawBillData);
+            // ✅ FIX: Bill type ke basis par Estimate ya Bill generate hoga
+            const preparedData = await prepareCatalogueBillData({
+                ...rawBillData,
+                isEstimate: billType === "estimate",
+            });
 
-            //  BLOB generate
+            // Generate PDF as Blob
             const pdfBlob = await CatalogueBill(preparedData, "blob");
-
             if (!pdfBlob) throw new Error("PDF generation failed");
 
-            const file = new File(
-                [pdfBlob],
-                `Estimate_${Order.orderId}.pdf`,
-                { type: "application/pdf" }
-            );
+            const fileName =
+                billType === "estimate"
+                    ? `Estimate_${Order.orderId}.pdf`
+                    : `Invoice_${Order.orderId}.pdf`;
 
-            //  Native share (mobile / supported browser)
+            const file = new File([pdfBlob], fileName, {
+                type: "application/pdf",
+            });
+
+            const title =
+                billType === "estimate"
+                    ? `Estimate #${Order.orderId}`
+                    : `Invoice #${Order.orderId}`;
+
+            const text =
+                billType === "estimate"
+                    ? `Hi ${Order.userName}, your estimate is ready.`
+                    : `Hi ${Order.userName}, your invoice is ready.`;
+
+            // Native Share
             if (navigator.canShare && navigator.canShare({ files: [file] })) {
                 await navigator.share({
                     files: [file],
-                    title: `Estimate #${Order.orderId}`,
-                    text: `Hi ${Order.userName}, your estimate is ready.`,
+                    title,
+                    text,
                 });
-            }
-            else {
-                // fallback whatsapp link
+            } else {
+                // WhatsApp fallback
                 const billUrl = `${window.location.origin}/download-bill/${currentUser?.companyId}/${Order.id}`;
 
                 const message =
-                    `*Estimate from ${companyInfo?.name}*%0A` +
+                    `*${billType === "estimate" ? "Estimate" : "Invoice"} from ${companyInfo?.name}*%0A` +
                     `Amount: ₹${Order.totalAmount}%0A` +
                     `Download: ${billUrl}`;
 
@@ -793,7 +800,6 @@ const OrdersPage: React.FC = () => {
                     "_blank"
                 );
             }
-
         } catch (err) {
             console.error("Sharing error:", err);
             alert("Sharing failed. Please use Download option.");
@@ -891,12 +897,15 @@ const OrdersPage: React.FC = () => {
     };
 
     const handleDeleteOrder = async (orderId: string) => {
-        const confirmDelete = window.confirm("Are you sure you want to delete this entire Order?");
+        const confirmDelete = window.confirm(
+            "Are you sure you want to delete this entire Order?"
+        );
         if (!confirmDelete || !currentUser?.companyId) return;
 
         try {
-            const orderRef = doc(db, 'companies', currentUser.companyId, 'Orders', orderId);
+            const companyId = currentUser.companyId;
 
+            const orderRef = doc(db, "companies", companyId, "Orders", orderId);
             const orderSnap = await getDoc(orderRef);
 
             if (!orderSnap.exists()) {
@@ -906,54 +915,57 @@ const OrdersPage: React.FC = () => {
             const orderData = orderSnap.data();
             const items = orderData.items || [];
 
-            //  PARALLEL UPDATE (FAST + SAFE)
-            await Promise.all(
-                items.map(async (item: any) => {
-                    try {
-                        const itemId = item.itemId || item.id;
-                        if (!itemId) return;
+            console.log("🧾 Restoring stock for items:", items);
 
-                        const itemRef = doc(
-                            db,
-                            'companies',
-                            currentUser.companyId,
-                            'Items', //  FIXED
-                            itemId
-                        );
+            // Restore stock
+            for (const item of items) {
+                const itemId = item.itemId || item.id;
+                if (!itemId) {
+                    console.warn(" Missing itemId:", item);
+                    continue;
+                }
 
-                        const itemSnap = await getDoc(itemRef);
+                const itemRef = doc(
+                    db,
+                    "companies",
+                    companyId,
+                    "items",
+                    itemId
+                );
 
-                        if (!itemSnap.exists()) {
-                            console.log("❌ Item not found:", itemId);
-                            return;
-                        }
+                const itemSnap = await getDoc(itemRef);
 
-                        const currentStock = Number(itemSnap.data().stock || 0);
+                if (!itemSnap.exists()) {
+                    console.warn("Item not found:", itemId);
+                    continue;
+                }
 
-                        const restoreQty =
-                            Number(item.quantity || 0) *
-                            Number(item.unitMultiplier || 1);
+                const currentStock = Number(itemSnap.data().stock || 0);
+                const restoreQty =
+                    Number(item.quantity || 0);
 
-                        console.log(" Updating stock:", itemId, currentStock, "+", restoreQty);
+                console.log(
+                    `🔄 Restoring Stock → ${itemId}: ${currentStock} + ${restoreQty}`
+                );
 
-                        await updateDoc(itemRef, {
-                            stock: currentStock + restoreQty
-                        });
+                await updateDoc(itemRef, {
+                    stock: currentStock + restoreQty,
+                });
+            }
 
-                    } catch (err) {
-                        console.error("❌ Item update failed:", err);
-                    }
-                })
-            );
-
-            // 🔥 DELETE ORDER
+            // Delete order
             await deleteDoc(orderRef);
 
-            setModal({ message: "Order deleted & stock restored", type: State.SUCCESS });
-
-        } catch (err) {
-            console.error(err);
-            setModal({ message: "Failed to delete Order", type: State.ERROR });
+            setModal({
+                message: "Order deleted & stock restored successfully",
+                type: State.SUCCESS,
+            });
+        } catch (error) {
+            console.error("Delete Order Error:", error);
+            setModal({
+                message: "Failed to delete order",
+                type: State.ERROR,
+            });
         }
     };
 
@@ -986,7 +998,7 @@ const OrdersPage: React.FC = () => {
                 orderId
             );
 
-            // 🔥 STOCK DECREASE WHEN CONFIRMED
+            //  STOCK DECREASE WHEN CONFIRMED
             if (nextStatus === "Confirmed") {
                 const orderSnap = await getDoc(OrderRef);
                 const orderData = orderSnap.data();
@@ -1002,13 +1014,13 @@ const OrdersPage: React.FC = () => {
                                 db,
                                 "companies",
                                 currentUser.companyId,
-                                "Items",
+                                "items",
                                 itemId
                             );
 
                             const snap = await getDoc(itemRef);
                             if (!snap.exists()) {
-                                console.log("❌ Item not found:", itemId);
+                                console.log(" Item not found:", itemId);
                                 return;
                             }
 
@@ -1018,14 +1030,14 @@ const OrdersPage: React.FC = () => {
                                 Number(item.quantity || 0) *
                                 Number(item.unitMultiplier || 1);
 
-                            console.log("🔥 STOCK DECREASE:", itemId, currentStock, "-", deductQty);
+                            console.log("STOCK DECREASE:", itemId, currentStock, "-", deductQty);
 
                             await updateDoc(itemRef, {
                                 stock: currentStock - deductQty
                             });
 
                         } catch (err) {
-                            console.error("❌ Stock update failed:", err);
+                            console.error("Stock update failed:", err);
                         }
                     })
                 );
@@ -1451,9 +1463,10 @@ const OrdersPage: React.FC = () => {
                                                         >
                                                             <div className="flex justify-between items-start -mb-1">
                                                                 <div className="flex-1">
-                                                                    <p className="text-[11px] font-extrabold text-slate-800 leading-tight mb-1">{item.name}
+                                                                    <p className="text-[11px] font-extrabold text-slate-800 leading-tight mb-1">
+                                                                        {item.name}
                                                                         <span className="ml-1 text-[9px] font-semibold text-gray-500">
-                                                                            ({item.unitMultiplier || 1} {"pcs"})
+                                                                            {item.unit || "pcs"}
                                                                         </span>
                                                                     </p>
                                                                     {item.note && (
@@ -1462,13 +1475,15 @@ const OrdersPage: React.FC = () => {
                                                                             <span className="font-xs italic text-slate-600">{item.note}</span>
                                                                         </p>
                                                                     )}
-                                                                    <p className="text-[10px] text-gray-400">₹{formatAmount(
-                                                                        (item.customPrice ??
-                                                                            (Number(item.salesPrice || 0) > 0
-                                                                                ? Number(item.salesPrice)
-                                                                                : Number(item.mrp)))
-                                                                        / (item.moq || 1)
-                                                                    )} per {item.unitMultiplier} pcs</p>
+                                                                    <p className="text-[10px] text-gray-400">
+                                                                        ₹{formatAmount(
+                                                                            (item.customPrice ??
+                                                                                (Number(item.salesPrice || 0) > 0
+                                                                                    ? Number(item.salesPrice)
+                                                                                    : Number(item.mrp)))
+                                                                            / (item.moq || 1)
+                                                                        )} per {item.unit || "pcs"}
+                                                                    </p>
                                                                 </div>
                                                                 <div className="text-right ml-4">
                                                                     <p className="text-[13px] font-black text-slate-900">₹{formatAmount(
@@ -1910,7 +1925,7 @@ const OrdersPage: React.FC = () => {
                                 <div className="h-8 w-[1px] bg-gray-500 mx-2"></div>
                                 <div className="flex flex-col gap-1">
                                     <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest leading-none">Total Amount</span>
-                                    <span className="text-md font-black text-slate-900 leading-none">₹{formatAmount(editingOrder.totalAmount)}  </span>
+                                    <span className="text-md font-black text-slate-900 leading-none">₹{formatAmount(calculatedEditTotal)}  </span>
                                 </div>
                             </div>
 
@@ -2220,7 +2235,7 @@ const OrdersPage: React.FC = () => {
                         <div className="px-6 py-4 bg-slate-50 border-t flex gap-3">
                             <button
                                 onClick={() => setEditingOrder(null)}
-                                className="flex-1 py-2.5 text-slate-500 text-sm font-bold hover:bg-slate-100 rounded-sm transition-colors"
+                                className="flex-1 py-2.5 bg-gray-400 text-black text-sm font-bold hover:bg-slate-300 rounded-sm transition-colors"
                             >
                                 Discard
                             </button>

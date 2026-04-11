@@ -272,19 +272,33 @@ const SharedProduct: React.FC = () => {
     }, [showNotifySuccess]);
 
     useEffect(() => {
-        if (highlightItemId) {
-            setActiveHighlight(highlightItemId);
+        const params = new URLSearchParams(location.search);
+        const itemIdFromQuery = params.get("itemId");
 
-            setTimeout(() => {
-                setActiveHighlight(null);
-            }, 3000);
+        const itemIdToHighlight =
+            highlightItemId || itemIdFromQuery;
 
-            setTimeout(() => {
-                const element = document.getElementById(highlightItemId);
-                element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }, 300);
-        }
-    }, [highlightItemId, highlightTrigger]);
+        if (!itemIdToHighlight || allItems.length === 0) return;
+
+        // Highlight item
+        setActiveHighlight(itemIdToHighlight);
+
+        // Auto-scroll after rendering
+        setTimeout(() => {
+            const element = document.getElementById(itemIdToHighlight);
+            element?.scrollIntoView({
+                behavior: "smooth",
+                block: "center",
+            });
+        }, 400);
+
+        // Remove highlight after 3 seconds
+        const timer = setTimeout(() => {
+            setActiveHighlight(null);
+        }, 3000);
+
+        return () => clearTimeout(timer);
+    }, [location.search, highlightItemId, highlightTrigger, allItems]);
 
     const addToCart = useCallback((item: Item) => {
         //  SINGLE SOURCE OF TRUTH
@@ -687,6 +701,22 @@ const SharedProduct: React.FC = () => {
         fetchUserNotifyStatus();
     }, [effectiveCompanyId]);
 
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const itemId = params.get("itemId");
+
+        if (!itemId || allItems.length === 0) return;
+
+        const selectedItem = allItems.find(
+            (item) => String(item.id) === String(itemId)
+        );
+
+        if (selectedItem) {
+            setSelectedItemForDetails(selectedItem);
+            setIsDetailDrawerOpen(false);
+        }
+    }, [location.search, allItems]);
+
     const filteredItems = useMemo(() => {
         const result = allItems.filter(item => {
             //  hide unlisted items (LIVE RULE)
@@ -820,8 +850,8 @@ const SharedProduct: React.FC = () => {
                         {/* Company Name - Default */}
                         <span
                             className={`absolute transition-all duration-500 ease-in-out transform ${isScrolled
-                                    ? "-translate-y-6 opacity-0 scale-95"
-                                    : "translate-y-0 opacity-100 scale-100"
+                                ? "-translate-y-6 opacity-0 scale-95"
+                                : "translate-y-0 opacity-100 scale-100"
                                 } text-base md:text-lg font-bold text-[#1A3B5D] uppercase tracking-tight whitespace-nowrap`}
                         >
                             {companyName}
@@ -830,8 +860,8 @@ const SharedProduct: React.FC = () => {
                         {/* Category Name - On Scroll */}
                         <span
                             className={`absolute transition-all duration-500 ease-in-out transform ${isScrolled
-                                    ? "translate-y-0 opacity-100 scale-100"
-                                    : "translate-y-6 opacity-0 scale-95"
+                                ? "translate-y-0 opacity-100 scale-100"
+                                : "translate-y-6 opacity-0 scale-95"
                                 } text-base md:text-lg font-extrabold text-[#1A3B5D] uppercase tracking-tight whitespace-nowrap`}
                         >
                             {currentCategoryName}

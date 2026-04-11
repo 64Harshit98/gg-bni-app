@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { ShoppingCart, X, Minus, Plus, Trash2 } from 'lucide-react';
+import { ShoppingCart, X, Minus, Plus, Trash2, Send } from 'lucide-react';
 import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting'
 import { ROUTES } from '../constants/routes.constants';
 import { useAuth, useDatabase } from '../context/auth-context';
@@ -136,6 +136,27 @@ const MyShop: React.FC = () => {
 
     const removeFromCart = (itemId: string) => {
         setCart(prev => prev.filter(i => i.item.id !== itemId));
+    };
+
+    const handleShareItem = async (item: Item) => {
+        if (!companyId || !item?.itemGroupId || !item?.id) return;
+
+        const shareUrl = `${window.location.origin}/product/${companyId}/${item.itemGroupId}?itemId=${item.id}`;
+
+        try {
+            if (navigator.share) {
+                await navigator.share({
+                    title: `${companyName} - ${item.name}`,
+                    text: `Check out this product from ${companyName}`,
+                    url: shareUrl,
+                });
+            } else {
+                await navigator.clipboard.writeText(shareUrl);
+                alert("Product link copied to clipboard!");
+            }
+        } catch (error) {
+            console.error("Error sharing item:", error);
+        }
     };
 
     const updateQuantity = (itemId: string, delta: number) => {
@@ -292,10 +313,8 @@ const MyShop: React.FC = () => {
                 setPageIsLoading(true);
                 setError(null);
 
-                const [fetchedItemGroups, fetchedItems] = await Promise.all([
-                    dbOperations.getItemGroups(),
-                    dbOperations.syncItems()
-                ]);
+                const fetchedItemGroups = await dbOperations.getItemGroups();
+                const fetchedItems = await dbOperations.syncItems(); // Force fresh data
 
                 let groups = fetchedItemGroups || [];
 
@@ -641,7 +660,22 @@ const MyShop: React.FC = () => {
                                 </div>
 
                                 <div className="p-3 flex flex-col flex-1">
-                                    <h3 className="text-[12px] font-black text-[#1A3B5D] mb-1 uppercase leading-tight">{item.name}</h3>
+                                    <div className="flex items-start justify-between mb-1">
+                                        <h3 className="text-[12px] font-black text-[#1A3B5D] uppercase leading-tight">
+                                            {item.name}
+                                        </h3>
+
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleShareItem(item);
+                                            }}
+                                            className="p-1 rounded-sm bg-[#F97316]/10 text-[#F97316] hover:bg-[#F97316] hover:text-white transition-all"
+                                            title="Share Product"
+                                        >
+                                            <Send size={12} />
+                                        </button>
+                                    </div>
                                     <div className="flex items-center justify-between w-full">
                                         <div className="flex items-center gap-2 w-full">
                                             {hasBothPrices ? (

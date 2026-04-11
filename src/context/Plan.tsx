@@ -39,8 +39,7 @@ export const PACK_LIMITS: Record<PLANS, Permissions[]> = {
         Permissions.ViewPaymentmethods,
         Permissions.ViewReports,
         Permissions.ViewSalesReport,
-
-
+        Permissions.CreateUsers
     ],
     [PLANS.POS_PRO]: Object.values(Permissions).filter(
         (p) => !PRO_EXCLUDED_PERMISSIONS.includes(p)

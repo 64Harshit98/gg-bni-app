@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../../lib/Firebase';
 import { doc, getDoc, setDoc, collection } from 'firebase/firestore';
-import { Permissions, ROLES } from '../../enums';
+import { Permissions, PLANS, ROLES } from '../../enums';
 import Loading from '../Loading/Loading';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../context/auth-context';
@@ -12,6 +12,20 @@ type RolePermissionsMap = Record<string, Permissions[]>;
 
 export const EXCLUDED_OWNER_PERMISSIONS = [
     Permissions.ViewAttendance,
+];
+export const BASIC_ALLOWED_PERMISSIONS = [
+    Permissions.ViewDashboard,
+    Permissions.ViewSalescard,
+    Permissions.ManageEditProfile,
+    Permissions.CreateSales,
+    Permissions.ViewTransactions,
+    Permissions.ViewHidebutton,
+    Permissions.ViewFilter,
+    Permissions.ViewSalesbarchart,
+    Permissions.ViewPaymentmethods,
+    Permissions.ViewReports,
+    Permissions.ViewSalesReport,
+    Permissions.CreateUsers
 ];
 
 export const DEFAULT_PERMISSIONS_MAP = {
@@ -53,11 +67,23 @@ export const getDefaultPermissions = (role: string): Permissions[] => {
     return [];
 };
 
-export const getSafePermissionsToSave = (role: string, currentPermissions: Permissions[]): Permissions[] => {
-    if (role === ROLES.OWNER) {
-        return currentPermissions.filter(p => !EXCLUDED_OWNER_PERMISSIONS.includes(p));
+export const getSafePermissionsToSave = (
+    role: string,
+    currentPermissions: Permissions[],
+    userPlan: string
+): Permissions[] => {
+
+    let safePermissions = currentPermissions;
+
+    if (userPlan === PLANS.POS_BASIC) {
+        safePermissions = safePermissions.filter(p => BASIC_ALLOWED_PERMISSIONS.includes(p));
     }
-    return currentPermissions;
+
+    if (role === ROLES.OWNER) {
+        return safePermissions.filter(p => !EXCLUDED_OWNER_PERMISSIONS.includes(p));
+    }
+
+    return safePermissions;
 };
 
 const permissionGroups = {
@@ -140,6 +166,7 @@ const getUngroupedPermissions = (allPermissions: Permissions[]): Permissions[] =
     return allPermissions.filter(perm => !grouped.has(perm));
 };
 
+
 const ManagePermissionsPage: React.FC = () => {
     const [rolePermissions, setRolePermissions] = useState<RolePermissionsMap>({});
     const [loading, setLoading] = useState(true);
@@ -147,6 +174,8 @@ const ManagePermissionsPage: React.FC = () => {
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const navigate = useNavigate();
     const { currentUser } = useAuth();
+    const currentPlan = currentUser?.plan || PLANS.POS_BASIC;
+    const isBasicPlan = currentPlan === PLANS.POS_BASIC;
 
     const [isResetOpen, setIsResetOpen] = useState(false);
 
@@ -168,12 +197,14 @@ const ManagePermissionsPage: React.FC = () => {
 
     const [selectedRole, setSelectedRole] = useState<string>(VISIBLE_ROLES[0] || 'Manager');
 
+
     useEffect(() => {
         if (!currentUser?.companyId) {
             setLoading(false);
             return;
         }
         const companyId = currentUser.companyId;
+
 
         const fetchAndEnsurePermissions = async () => {
             try {
@@ -194,30 +225,19 @@ const ManagePermissionsPage: React.FC = () => {
                         }
 
                         if (role === ROLES.OWNER) {
-                            // Owners always get everything (minus exclusions)
-                            finalPermissions = getSafePermissionsToSave(role, Object.values(Permissions));
+                            finalPermissions = getSafePermissionsToSave(role, Object.values(Permissions), currentPlan);
                             shouldUpdateDB = true;
                         } else {
-                            // --- THE FIX STARTS HERE ---
                             const defaults = getDefaultPermissions(role);
-
-                            // Combine stored permissions with defaults. 
-                            // This ensures new permissions added to DEFAULT_PERMISSIONS_MAP 
-                            // appear automatically without a manual save.
                             finalPermissions = Array.from(new Set([...defaults, ...storedData]));
-
-                            // Optional: If you want to automatically save these new defaults 
-                            // back to Firestore immediately:
                             if (finalPermissions.length !== storedData.length) {
                                 shouldUpdateDB = true;
                             }
-                            // --- THE FIX ENDS HERE ---
                         }
                     } else {
                         console.warn(`No permissions for ${role}, using defaults.`);
-
                         const defaults = getDefaultPermissions(role);
-                        finalPermissions = getSafePermissionsToSave(role, defaults);
+                        finalPermissions = getSafePermissionsToSave(role, defaults, currentPlan);
                         shouldUpdateDB = true;
                     }
 
@@ -262,7 +282,7 @@ const ManagePermissionsPage: React.FC = () => {
             setSuccessMessage(null); setError(null);
 
             const rawPermissions = rolePermissions[role] || [];
-            const permissionsToSave = getSafePermissionsToSave(role, rawPermissions);
+            const permissionsToSave = getSafePermissionsToSave(role, rawPermissions, currentPlan);
 
             const docRef = doc(db, 'companies', currentUser.companyId, 'permissions', role);
             await setDoc(docRef, { allowedPermissions: permissionsToSave }, { merge: true });
@@ -340,20 +360,41 @@ const ManagePermissionsPage: React.FC = () => {
                             <fieldset key={group.title} className={`p-4 border border-gray-200 rounded-lg bg-gray-50/50 ${index > 0 ? 'pt-4' : ''}`}>
                                 <legend className="text-md font-bold text-gray-700 px-2 bg-white">{group.title}</legend>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
-                                    {group.permissions.map((permission) => (
-                                        <label key={permission} className="flex items-center space-x-3 p-2 rounded transition hover:bg-white hover:shadow-sm cursor-pointer">
-                                            <div className="relative flex items-center">
-                                                <input
-                                                    type="checkbox"
-                                                    className="peer h-5 w-5 appearance-none rounded border border-gray-300 transition-all checked:border-sky-500 checked:bg-sky-500 hover:shadow-sm"
-                                                    checked={rolePermissions[selectedRole]?.includes(permission) || false}
-                                                    onChange={(e) => handlePermissionChange(selectedRole, permission, e.target.checked)}
-                                                />
-                                                <svg className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white opacity-0 peer-checked:opacity-100" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" width="12" height="12"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                            </div>
-                                            <span className="text-sm text-gray-600 select-none font-medium">{permission}</span>
-                                        </label>
-                                    ))}
+                                    {group.permissions.map((permission) => {
+                                        const isLockedByPlan = isBasicPlan && !BASIC_ALLOWED_PERMISSIONS.includes(permission);
+
+                                        return (
+                                            <label
+                                                key={permission}
+                                                className={`flex items-center space-x-3 p-2 rounded transition 
+                ${isLockedByPlan ? 'opacity-60 cursor-not-allowed bg-gray-50' : 'hover:bg-white hover:shadow-sm cursor-pointer'}`
+                                                }
+                                                title={isLockedByPlan ? "Upgrade to Pro/Enterprise to unlock" : ""}
+                                            >
+                                                <div className="relative flex items-center">
+                                                    <input
+                                                        type="checkbox"
+                                                        disabled={isLockedByPlan}
+                                                        className="peer h-5 w-5 appearance-none rounded border border-gray-300 transition-all checked:border-sky-500 checked:bg-sky-500 hover:shadow-sm disabled:bg-gray-200 disabled:border-gray-300"
+                                                        checked={rolePermissions[selectedRole]?.includes(permission) || false}
+                                                        onChange={(e) => handlePermissionChange(selectedRole, permission, e.target.checked)}
+                                                    />
+                                                    <svg className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white opacity-0 peer-checked:opacity-100" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" width="12" height="12"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-sm text-gray-600 select-none font-medium">
+                                                        {permission}
+                                                    </span>
+                                                    {/* Visual Badge for basic users */}
+                                                    {isLockedByPlan && (
+                                                        <span className="text-[10px] font-bold text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded w-max mt-0.5 border border-orange-200">
+                                                            UPGRADE REQUIRED
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </label>
+                                        );
+                                    })}
                                 </div>
                             </fieldset>
                         ))}
@@ -361,17 +402,40 @@ const ManagePermissionsPage: React.FC = () => {
                             <fieldset className="p-4 border border-gray-200 rounded-lg bg-gray-50/50">
                                 <legend className="text-md font-bold text-gray-700 px-2 bg-white border border-gray-200 rounded shadow-sm">Other</legend>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
-                                    {ungroupedPermissions.map((permission) => (
-                                        <label key={permission} className="flex items-center space-x-3 p-2 rounded transition hover:bg-white hover:shadow-sm cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                className="h-5 w-5 rounded border-gray-300 text-sky-500 focus:ring-sky-500"
-                                                checked={rolePermissions[selectedRole]?.includes(permission) || false}
-                                                onChange={(e) => handlePermissionChange(selectedRole, permission, e.target.checked)}
-                                            />
-                                            <span className="text-sm text-gray-600 font-medium">{permission}</span>
-                                        </label>
-                                    ))}
+                                    {ungroupedPermissions.map((permission) => {
+                                        const isLockedByPlan = isBasicPlan && !BASIC_ALLOWED_PERMISSIONS.includes(permission);
+                                        return (
+                                            <label
+                                                key={permission}
+                                                className={`flex items-center space-x-3 p-2 rounded transition 
+                ${isLockedByPlan ? 'opacity-60 cursor-not-allowed bg-gray-50' : 'hover:bg-white hover:shadow-sm cursor-pointer'}`
+                                                }
+                                                title={isLockedByPlan ? "Upgrade to Pro/Enterprise to unlock" : ""}
+                                            >
+                                                <div className="relative flex items-center">
+                                                    <input
+                                                        type="checkbox"
+                                                        disabled={isLockedByPlan}
+                                                        className="peer h-5 w-5 appearance-none rounded border border-gray-300 transition-all checked:border-sky-500 checked:bg-sky-500 hover:shadow-sm disabled:bg-gray-200 disabled:border-gray-300"
+                                                        checked={rolePermissions[selectedRole]?.includes(permission) || false}
+                                                        onChange={(e) => handlePermissionChange(selectedRole, permission, e.target.checked)}
+                                                    />
+                                                    <svg className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white opacity-0 peer-checked:opacity-100" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" width="12" height="12"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-sm text-gray-600 font-medium">
+                                                        {permission}
+                                                    </span>
+                                                    {/* Visual Badge for basic users */}
+                                                    {isLockedByPlan && (
+                                                        <span className="text-[10px] font-bold text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded w-max mt-0.5 border border-orange-200">
+                                                            UPGRADE REQUIRED
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </label>
+                                        );
+                                    })}
                                 </div>
                             </fieldset>
                         )}

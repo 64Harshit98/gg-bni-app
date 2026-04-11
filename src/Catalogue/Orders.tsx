@@ -146,8 +146,8 @@ export const useOrdersData = (
         return query(ordersRef, orderBy('createdAt'));
     }, [
         companyId,
-        startDate?.getTime(),   
-        endDate?.getTime()      
+        startDate?.getTime(),
+        endDate?.getTime()
     ]);
 
     useEffect(() => {
@@ -2040,14 +2040,12 @@ const OrdersPage: React.FC = () => {
                                                     })}
                                                 />
 
-                                                {/* PHONE FIELD (Shipping) - Security Check Added */}
                                                 <input
                                                     type="text"
                                                     placeholder="Phone"
                                                     className="p-2 border border-slate-300 rounded-sm text-xs outline-none focus:border-blue-400"
                                                     value={editingOrder.shippingDetails?.phone || ''}
                                                     onChange={(e) => {
-                                                        // Sirf numbers allow karo aur max 10 digits
                                                         const val = e.target.value.replace(/\D/g, '').slice(0, 10);
                                                         setEditingOrder({
                                                             ...editingOrder,
@@ -2078,24 +2076,20 @@ const OrdersPage: React.FC = () => {
                                         <SearchableItemInput
                                             items={availableItems}
                                             onItemSelected={(selectedItem) => {
-                                                // Yahan ensure kar rahe hain ki item wahi add ho jiska ID ho
                                                 if (!selectedItem.id) return;
-
                                                 const newMrp = Number(selectedItem.mrp || 0);
                                                 const newSalesPrice = Number(selectedItem.salesPrice || 0);
-
                                                 let finalPrice = newSalesPrice > 0 ? newSalesPrice : newMrp;
-
-                                                const qty = selectedItem.moq && selectedItem.moq > 0
-                                                    ? selectedItem.moq
-                                                    : 1
-                                                const newItem: OrderItem = {
-                                                    id: crypto.randomUUID(), // unique for UI
-                                                    itemId: selectedItem.id, // original id (NEW FIELD),
+                                                const qty = selectedItem.moq && selectedItem.moq > 0 ? selectedItem.moq : 1;
+                                                const newItem: any = {
+                                                    ...selectedItem,
+                                                    id: crypto.randomUUID(),
+                                                    itemId: selectedItem.id,
+                                                    productId: selectedItem.id,
                                                     name: selectedItem.name,
+                                                    quantity: qty,
                                                     mrp: newMrp,
                                                     salesPrice: newSalesPrice,
-                                                    quantity: qty,
                                                     unitMultiplier: selectedItem.unitMultiplier ?? 1,
                                                     note: "",
                                                     itemGroupId: selectedItem.itemGroupId,
@@ -2107,11 +2101,9 @@ const OrdersPage: React.FC = () => {
                                                     finalPrice: finalPrice,
                                                     customPrice: finalPrice
                                                 };
+
                                                 const updatedItems = [newItem, ...(editingOrder.items || [])];
-                                                const newTotal = updatedItems.reduce((sum, i) => sum + ((i.customPrice ??
-                                                    (Number(i.salesPrice || 0) > 0
-                                                        ? Number(i.salesPrice)
-                                                        : Number(i.mrp))) * i.quantity), 0);
+                                                const newTotal = updatedItems.reduce((sum, i) => sum + ((i.customPrice ?? (Number(i.salesPrice || 0) > 0 ? Number(i.salesPrice) : Number(i.mrp))) * Number(i.quantity || 0)), 0);
                                                 setEditingOrder({ ...editingOrder, items: updatedItems, totalAmount: newTotal });
                                             }}
                                             placeholder="Search item to add..."
@@ -2126,7 +2118,7 @@ const OrdersPage: React.FC = () => {
                                         {/* Items List Container */}
                                         <div className="h-auto">
                                             <GenericCartList
-                                                items={(editingOrder.items || []).map(item => {
+                                                items={(editingOrder.items || []).map((item: any) => {
                                                     const salesPrice = Number(item.salesPrice || 0);
                                                     const mrp = Number(item.mrp || 0);
 
@@ -2137,6 +2129,7 @@ const OrdersPage: React.FC = () => {
                                                     return {
                                                         ...item,
                                                         id: String(item.id),
+                                                        productId: String(item.itemId || item.id),
                                                         itemGroupId: item.itemGroupId ? String(item.itemGroupId) : undefined,
                                                         isEditable: true,
                                                         unitPrice: finalPrice,
@@ -2157,24 +2150,10 @@ const OrdersPage: React.FC = () => {
                                                 }}
                                                 applyRounding={(amt) => amt}
                                                 setModal={() => { }}
-
-                                                // --- DRAWER TRIGGER HERE ---
-                                                onOpenEditDrawer={(item) => {
-                                                    // 1. Full product dhoondo sync data se
-                                                    const fullProduct = availableItems.find(i => String(i.id) === String(item.id));
-                                                    const mergedItem = {
-                                                        ...(fullProduct || {}),
-                                                        ...item,
-                                                        id: String(item.id),
-                                                        companyId: currentUser?.companyId,
-                                                        itemGroupId: fullProduct?.itemGroupId || (item as any).itemGroupId
-                                                    };
-
-                                                    // 3. Error fix karne ke liye 'as unknown as OrderItem' use karo
-                                                    setSelectedItemForEdit(mergedItem as unknown as OrderItem);
+                                                onOpenEditDrawer={(item: any) => {
+                                                    setSelectedItemForEdit(item);
                                                     setIsEditDrawerOpen(true);
                                                 }}
-
                                                 onDiscountChange={() => { }}
                                                 onCustomPriceChange={() => { }}
                                                 onCustomPriceBlur={() => { }}
@@ -2245,15 +2224,26 @@ const OrdersPage: React.FC = () => {
                             >
                                 Discard
                             </button>
-
                             <button
                                 onClick={async () => {
                                     if (!editingOrder || !currentUser?.companyId) return;
                                     try {
+                                        const totalAmt = Number(editingOrder.totalAmount || 0);
+                                        const paidAmt = Number(editingOrder.paidAmount || 0);
+
+                                        let updatedStatus = editingOrder.status;
+
+                                        if (updatedStatus === 'Paid' && totalAmt > paidAmt) {
+                                            updatedStatus = 'Completed';
+                                        } else if (updatedStatus === 'Completed' && totalAmt <= paidAmt && totalAmt > 0) {
+                                            updatedStatus = 'Paid';
+                                        }
+
                                         const OrderRef = doc(db, 'companies', currentUser.companyId, 'Orders', editingOrder.id);
                                         await updateDoc(OrderRef, {
                                             items: editingOrder.items,
-                                            totalAmount: editingOrder.totalAmount,
+                                            totalAmount: totalAmt,
+                                            status: updatedStatus,
                                             billingDetails: editingOrder.billingDetails,
                                             shippingDetails: editingOrder.shippingDetails,
                                             updatedAt: serverTimestamp()

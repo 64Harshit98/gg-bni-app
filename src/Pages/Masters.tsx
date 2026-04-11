@@ -41,10 +41,12 @@ const Masters = () => {
                 <span className="text-lg font-medium">Items Setting</span>
                 <span className="text-xl text-gray-500">→</span>
               </Link>
-              <Link to={ROUTES.PERMSETTING} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline">
-                <span className="text-lg font-medium">Permission Setting</span>
-                <span className="text-xl text-gray-500">→</span>
-              </Link>
+            </ShowWrapper>
+            <Link to={ROUTES.PERMSETTING} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline">
+              <span className="text-lg font-medium">Permission Setting</span>
+              <span className="text-xl text-gray-500">→</span>
+            </Link>
+            <ShowWrapper requiredPermission={Permissions.ViewPurchaseReport}>
               <Link to={ROUTES.BILLSETTING} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline">
                 <span className="text-lg font-medium">Bill Setting</span>
                 <span className="text-xl text-gray-500">→</span>

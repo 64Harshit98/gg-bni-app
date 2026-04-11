@@ -958,7 +958,7 @@ const PurchaseReturnPage: React.FC = () => {
                             items={newItemsReceived}
                             availableItems={availableItems}
                             basePriceKey="mrp"
-                            priceLabel="Cost"
+                            priceLabel="MRP"
                             settings={{
                               enableRounding: false,
                               roundingInterval: 1,

@@ -28,18 +28,18 @@ export interface TopItem {
 }
 
 export interface ChartDataPoint {
-    date: string;   
-    sales: number;  
-    bills: number;  
+    date: string;
+    sales: number;
+    bills: number;
 }
 
 export interface CatalogueDashboardData {
-    totalSalesAmount: number;     
-    totalSalesCount: number;        
-    chartData: ChartDataPoint[];    
-    topByQuantity: TopItem[];       
-    topByAmount: TopItem[];         
-    orderCounts: Record<string, number>; 
+    totalSalesAmount: number;
+    totalSalesCount: number;
+    chartData: ChartDataPoint[];
+    topByQuantity: TopItem[];
+    topByAmount: TopItem[];
+    orderCounts: Record<string, number>;
 }
 
 // ─── Business Name Hook ───────────────────────────────────────────────────────
@@ -58,8 +58,8 @@ const useBusinessName = (userId?: string, companyId?: string) => {
                 const docSnap = await getDoc(docRef);
                 setBusinessName(docSnap.exists() ? docSnap.data().businessName || 'Business' : 'Business');
             } catch {
-                setBusinessName('Business'); 
-                setBusinessName('Business'); 
+                setBusinessName('Business');
+                setBusinessName('Business');
             } finally {
                 setLoading(false);
             }
@@ -75,8 +75,7 @@ const useBusinessName = (userId?: string, companyId?: string) => {
 const HomePageContent: React.FC = () => {
     const location = useLocation();
     const { currentUser, loading: authLoading } = useAuth();
-    const { filters } = useFilter(); 
-    const { filters } = useFilter(); 
+    const { filters } = useFilter();
     const { businessName, loading: nameLoading } = useBusinessName(currentUser?.uid, currentUser?.companyId);
 
     const hasCataloguePermission = currentUser?.permissions?.includes(Permissions.ViewCatalogue);
@@ -163,12 +162,12 @@ const HomePageContent: React.FC = () => {
             setLoading(false);
         }
     }, [currentUser, filters]);
-    
+
     useEffect(() => { fetchData(); }, [fetchData]);
 
     useEffect(() => {
         const interval = setInterval(() => fetchData(true), CACHE_DURATION);
-        return () => clearInterval(interval); 
+        return () => clearInterval(interval);
     }, [fetchData]);
 
     // Manual refresh: bypass cache and fetch latest data immediately

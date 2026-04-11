@@ -4,7 +4,7 @@ import type { Item, ItemGroup } from '../constants/models';
 import { Modal } from '../constants/Modal';
 import { State } from '../enums';
 import { FiX, FiPackage, FiPlus } from 'react-icons/fi';
-import { Trash2, X } from 'lucide-react';
+import { Trash2, X, Send } from 'lucide-react';
 import { Spinner } from '../constants/Spinner';
 import { db } from '../lib/Firebase';
 import { addDoc, collection, serverTimestamp, doc, getDoc } from 'firebase/firestore';
@@ -105,6 +105,27 @@ const OrderingPage: React.FC = () => {
     const handleEdit = (group: any) => {
         setEditingId(group.id!);
         setTempName(group.name);
+    };
+
+    const handleShareCategory = async (group: ItemGroup) => {
+        if (!companyId || !group?.id) return;
+
+        const shareUrl = `${window.location.origin}/product/${companyId}/${group.id}`;
+
+        try {
+            if (navigator.share) {
+                await navigator.share({
+                    title: `${companyName} - ${group.name}`,
+                    text: `Check out this category from ${companyName}`,
+                    url: shareUrl,
+                });
+            } else {
+                await navigator.clipboard.writeText(shareUrl);
+                alert("Category link copied to clipboard!");
+            }
+        } catch (error) {
+            console.error("Error sharing category:", error);
+        }
     };
 
     const handleSaveEdit = async (id: string) => {
@@ -401,9 +422,22 @@ const OrderingPage: React.FC = () => {
                                         </div>
                                     ) : (
                                         <>
-                                            <h3 className="text-[14px] font-bold text-[#1A3B5D] mb-1.5leading-tight uppercase">
-                                                {group.name}
-                                            </h3>
+                                            <div className="flex items-center justify-between mb-1.5">
+                                                <h3 className="text-[14px] font-bold text-[#1A3B5D] uppercase leading-tight">
+                                                    {group.name}
+                                                </h3>
+
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleShareCategory(group);
+                                                    }}
+                                                    className="p-1.5 rounded-sm bg-[#F97316]/10 text-[#F97316] hover:bg-[#F97316] hover:text-white transition-all"
+                                                    title="Share Category"
+                                                >
+                                                    <Send size={14} />
+                                                </button>
+                                            </div>
 
                                             {/* Centered Item Count Badge UI */}
                                             <div className="flex items-center justify-center gap-1.5 bg-blue-50 px-2 py-0.5 rounded-sm border border-blue-100 w-fit mx-auto mb-2">

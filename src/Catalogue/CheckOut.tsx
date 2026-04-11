@@ -421,15 +421,16 @@ const CartPage: React.FC = () => {
 
                     return {
                         id: String(i.id),
+                        itemId: String(i.id),   
                         groupId: (i as any).itemGroupId || i.category,
                         name: i.name,
-                        quantity: i.quantity,
-                        mrp: mrp,
-                        salesPrice: salePrice,
+                        quantity: Number(i.quantity || 0),
+                        mrp: Number(mrp || 0),
+                        salesPrice: Number(salePrice || 0),
                         tax: Number(i.tax ?? 0),
                         unit: i.unit ?? "pcs",
-                        unitMultiplier: i.unitMultiplier ?? 1,
-                        finalPrice: salePrice * i.quantity,
+                        unitMultiplier: Number(i.unitMultiplier ?? 1),
+                        finalPrice: Number(salePrice || 0) * Number(i.quantity || 0),
                         note: i.note || '',
                         imageUrl: i.imageUrl || ""
                     };

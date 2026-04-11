@@ -37,7 +37,6 @@ import { storage } from '../lib/Firebase';
 import { TutorialStep } from '../Components/TutorialStep'; // ← same import as Home.tsx
 import { Permissions } from '../enums/permissions.enum';
 import ShowWrapper from '../context/ShowWrapper';
-import NotificationBell from "../Components/NotificationBell"
 
 // ─── Total tutorial steps for Journal ───────────────────────────────────────
 const TOTAL_STEPS = 6;
@@ -349,40 +348,11 @@ const Journal: React.FC = () => {
   const [tutorialStep, setTutorialStep] = useState(0);
 
   const next = (n: number) => setTutorialStep(n <= TOTAL_STEPS ? n : 0);
-  const skip = async () => {
-    if (!currentUser?.companyId) return;
-    try {
-      await setDoc(
-        doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial'),
-        { journalTutorialDone: true },
-        { merge: true }
-      );
-    } catch (e) {
-      console.error('Error saving journal tutorial:', e);
-    }
-    setTutorialStep(0);
-    window.dispatchEvent(new Event("journal_tutorial_done"));
-  };
+ const skip = () => {
+  completeTutorial(currentUser, 'journalTutorialDone', setTutorialStep);
+};
 
-  useEffect(() => {
-    const checkTutorial = async () => {
-      if (!currentUser?.companyId) return;
-      try {
-        const ref = doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial');
-        const snap = await getDoc(ref);
-        const done = snap.exists() && snap.data()?.journalTutorialDone;
-
-        if (!done) {
-          setTutorialStep(1);
-        }
-      } catch (e) {
-        console.error('Error fetching journal tutorial:', e);
-        setTutorialStep(1);
-      }
-    };
-
-    checkTutorial();
-  }, [currentUser]);
+  useTutorial(currentUser, setTutorialStep, 'journalTutorialDone');
 
   // ─── Autoscroll: whenever tutorialStep changes, scroll that element into view
   useEffect(() => {

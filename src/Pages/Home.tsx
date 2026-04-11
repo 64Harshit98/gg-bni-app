@@ -20,6 +20,8 @@ import { TutorialStep } from '../Components/TutorialStep';
 import ShinyText from '../Components/ShinyText';
 import NotificationBell from '../Components/NotificationBell';
 import { CACHE_DURATION } from '../lib/fetchDashboardData';
+import useTutorial from '../Catalogue/hooks/useTutorial';
+import { completeTutorial } from '../Catalogue/hooks/useCompleteTutorial';
 
 export interface SmartMetric { name: string; amount: number; quantity: number; }
 
@@ -117,18 +119,9 @@ const DashboardContent = () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   const next = (n: number) => setTutorialStep(n <= TOTAL_STEPS ? n : 0);
-  const skip = async () => {
-      if (!currentUser?.companyId) return;
-
-    await setDoc(
-      doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial'),
-      { dashboardTutorialDone: true },
-      { merge: true }
-    );
-  
-    setTutorialStep(0);
-      window.dispatchEvent(new Event("dashboard_tutorial_done"));
-    };
+  const skip = () => {
+    completeTutorial(currentUser, 'dashboardTutorialDone', setTutorialStep);
+  };
 
   const daysRemaining = useMemo(() => {
     const subData = (currentUser as any)?.subscription || (currentUser as any)?.Subscription;
@@ -272,6 +265,7 @@ const DashboardContent = () => {
     return new Date(data.lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }, [data]);
 
+  useTutorial(currentUser, setTutorialStep, 'dashboardTutorialDone');
 
   useEffect(() => {
     const checkTutorial = async () => {

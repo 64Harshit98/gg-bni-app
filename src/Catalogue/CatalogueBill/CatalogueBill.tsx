@@ -95,6 +95,23 @@ export const CatalogueBill = async (
   // ================= HEADER =================
   const drawHeader = () => {
     const y = margin;
+    const now = new Date();
+    const generatedAt = now.toLocaleString('en-IN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.text(
+      `Bill generated on ${generatedAt}`,
+      pageWidth - margin,
+      y + 2,
+      { align: "right" }
+    );
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(20);

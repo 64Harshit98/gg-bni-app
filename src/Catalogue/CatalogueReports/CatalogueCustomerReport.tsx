@@ -146,6 +146,42 @@ const CatalogueCustomerReport: React.FC = () => {
       doc.setFontSize(16);
       doc.text('Customer Report', 14, 15);
 
+      // ===== CLEAN GENERATION TAG =====
+      const generatedAt = new Date().toLocaleString();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 14;
+      const y = 10;
+
+      const tagText = `Genrated by SELLAR • ${generatedAt}`;
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+
+      const textWidth = doc.getTextWidth(tagText);
+      const paddingX = 2;
+
+      const boxWidth = textWidth + paddingX * 2;
+      const boxHeight = 5;
+
+      const boxX = pageWidth - margin - boxWidth;
+      const boxY = y + 1;
+
+      // light gray background
+      doc.setFillColor(245, 245, 245);
+      doc.rect(boxX, boxY, boxWidth, boxHeight, "F");
+
+      // text
+      doc.setTextColor(80, 80, 80);
+      doc.text(
+        tagText,
+        boxX + paddingX,
+        boxY + 3.5
+      );
+
+      // reset styles
+      doc.setTextColor(0, 0, 0);
+      doc.setFont("helvetica", "bold");
+
       autoTable(doc, {
         startY: 22,
         head: [['Customer', 'Bills', 'Sales', 'Due']],

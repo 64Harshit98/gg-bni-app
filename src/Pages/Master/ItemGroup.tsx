@@ -24,6 +24,7 @@ const ItemGroupPage: React.FC = () => {
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editingGroupName, setEditingGroupName] = useState<string>('');
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+  const [deleteTargetGroup, setDeleteTargetGroup] = useState<ItemGroup | null>(null);
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -236,30 +237,61 @@ const ItemGroupPage: React.FC = () => {
 
   const handleDeleteItemGroup = async (groupToDelete: ItemGroup) => {
     if (!dbOperations) return;
-    const groupId = groupToDelete.id ?? null;
 
-
-    if (groupId && groupCounts[groupId] > 0) {
-      setError(`Cannot delete group. It contains ${groupCounts[groupId]} items.`);
-      setConfirmingDeleteId(null);
-      return;
-    }
-
-    if (confirmingDeleteId !== groupId) {
-      setConfirmingDeleteId(groupId);
+    const groupId = groupToDelete.id;
+    if (!groupId) {
+      setError("Cannot delete Uncategorized group.");
       return;
     }
 
     setError(null);
+
     try {
+      // 1. Get all items
+      const allItems = await dbOperations.syncItems();
+
+      // 2. Filter items belonging to this group
+      const itemsToMove = allItems.filter(item => item.itemGroupId === groupId);
+
+      // 3. Ensure Uncategorized group exists
+      let groups = await dbOperations.getItemGroups();
+      let uncategorized = groups.find(
+        g => g.name.toLowerCase().trim() === "uncategorized"
+      );
+
+      if (!uncategorized) {
+        await dbOperations.createItemGroup({
+          name: "Uncategorized",
+          description: "Default system category"
+        });
+
+        groups = await dbOperations.getItemGroups();
+        uncategorized = groups.find(
+          g => g.name.toLowerCase().trim() === "uncategorized"
+        );
+      }
+
+      // 4. Move items to Uncategorized
+      if (uncategorized?.id) {
+        for (const item of itemsToMove) {
+          await dbOperations.updateItem(item.id!, {
+            itemGroupId: uncategorized.id
+          });
+        }
+      }
+
+      // 5. Delete group
       await dbOperations.deleteItemGroupIfUnused(groupToDelete);
-      setConfirmingDeleteId(null);
+
+      showSuccessMessage(
+        `Group deleted & ${itemsToMove.length} item(s) moved to Uncategorized`
+      );
+
       await fetchAndSyncGroups();
-      showSuccessMessage(`Group "${groupToDelete.name}" deleted.`);
+
     } catch (err: any) {
       console.error('Error deleting item group:', err);
       setError(err.message || 'Failed to delete group.');
-      setConfirmingDeleteId(null);
     }
   };
   const renderHeader = () => (
@@ -316,12 +348,18 @@ const ItemGroupPage: React.FC = () => {
                           {count} {count === 1 ? 'item' : 'items'}
                         </span>
                       </div>
-                      <div className="flex gap-2 flex-shrink-0">
-                        <button onClick={() => handleEditClick(group)} className="text-gray-500 hover:text-blue-600" aria-label={`Edit ${group.name}`}><EditIcon /></button>
-                        <button onClick={() => handleDeleteItemGroup(group)} className={`transition-colors p-1 rounded ${confirmingDeleteId === group.id ? 'bg-red-500 text-white' : 'text-gray-500 hover:text-red-600'}`} aria-label={`Delete ${group.name}`}>
-                          {confirmingDeleteId === group.id ? <span className="text-xs font-bold px-1">Confirm?</span> : <DeleteIcon />}
-                        </button>
-                      </div>
+                      {group.name.toLowerCase().trim() !== "uncategorized" && (
+                        <div className="flex gap-2 flex-shrink-0">
+                          <button onClick={() => handleEditClick(group)} className="text-gray-500 hover:text-blue-600" aria-label={`Edit ${group.name}`}><EditIcon /></button>
+                          <button
+                            onClick={() => setDeleteTargetGroup(group)}
+                            className="transition-colors p-1 rounded text-gray-500 hover:text-red-600"
+                            aria-label={`Delete ${group.name}`}
+                          >
+                            <DeleteIcon />
+                          </button>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -330,6 +368,42 @@ const ItemGroupPage: React.FC = () => {
           </div>
         )}
       </div>
+      {deleteTargetGroup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg shadow-lg w-[90%] max-w-md p-6">
+            
+            <h2 className="text-lg font-semibold text-gray-800 mb-2">
+              Delete "{deleteTargetGroup.name}"?
+            </h2>
+
+            <p className="text-sm text-gray-600 mb-6">
+              {deleteTargetGroup.id && groupCounts[deleteTargetGroup.id] > 0
+                ? `All ${groupCounts[deleteTargetGroup.id]} item(s) will be moved to "Uncategorized".`
+                : "This group has no items."}
+            </p>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setDeleteTargetGroup(null)}
+                className="px-4 py-2 text-sm rounded-md bg-gray-200 hover:bg-gray-300"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={async () => {
+                  await handleDeleteItemGroup(deleteTargetGroup);
+                  setDeleteTargetGroup(null);
+                }}
+                className="px-4 py-2 text-sm rounded-md bg-red-500 text-white hover:bg-red-600"
+              >
+                Delete
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </main>
   );
 };

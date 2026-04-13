@@ -127,8 +127,47 @@ const ItemReport: React.FC = () => {
   const downloadAsPdf = () => {
     try {
       const doc = new jsPDF('l', 'mm', 'a4');
+
+      // ===== CLEAN GENERATION TAG =====
+      const now = new Date();
+      const generatedAt = now.toLocaleString('en-IN', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 14;
+
+      const tagText = `Generated using SELLAR • ${generatedAt}`;
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+
+      const textWidth = doc.getTextWidth(tagText);
+      const paddingX = 2;
+
+      const boxWidth = textWidth + paddingX * 2;
+      const boxHeight = 5;
+
+      const boxX = pageWidth - margin - boxWidth;
+      const boxY = 10;
+
+      // light gray background
+      doc.setFillColor(245, 245, 245);
+      doc.rect(boxX, boxY, boxWidth, boxHeight, "F");
+
+      // text
+      doc.setTextColor(80, 80, 80);
+      doc.text(tagText, boxX + paddingX, boxY + 3.5);
+
+      // reset styles
+      doc.setTextColor(0, 0, 0);
+
       doc.setFontSize(14);
-      doc.text('Detailed Item Report', 14, 15);
+      doc.text('Detailed Item Report', 14, 18);
       doc.setFontSize(10);
       doc.text(
         `Total Items: ${summary.totalItems} | Avg Margin: ${Math.round(summary.averageMarginPercentage)}%`,

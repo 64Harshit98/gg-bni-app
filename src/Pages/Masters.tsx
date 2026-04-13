@@ -21,9 +21,9 @@ const Masters = () => {
         </button>
         <h1 className="text-2xl font-bold text-gray-800 m-0 flex-grow text-center">Settings</h1>
       </div>
-      <div className="flex-grow p-6 overflow-y-auto bg-gray-100 box-border">
+      <div className="flex-grow p-4 overflow-y-auto bg-gray-100">
         {isDefaultMastersView ? (
-          <>
+          <div className="grid grid-cols-2 gap-3">
             <Link to={ROUTES.SALESETTING} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline">
               <span className="text-lg font-medium">Sales Setting</span>
               <span className="text-xl text-gray-500">→</span>
@@ -51,8 +51,15 @@ const Masters = () => {
                 <span className="text-lg font-medium">Bill Setting</span>
                 <span className="text-xl text-gray-500">→</span>
               </Link>
+              {/* <Link
+                to={ROUTES.BARCODESETTING}
+                className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
+              >
+                <span className="text-lg font-medium">Barcode / Label Setting</span>
+                <span className="text-xl text-gray-500">→</span>
+              </Link> */}
             </ShowWrapper>
-          </>
+          </div>
         ) : (
           <div className="bg-white p-6 rounded-xl shadow-md mt-6 min-h-[200px] flex justify-center items-center text-gray-500 italic">
             <Outlet />

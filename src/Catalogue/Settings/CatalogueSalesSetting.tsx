@@ -10,6 +10,8 @@ import { Spinner } from '../../constants/Spinner';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
 import { useAuth } from '../../context/auth-context';
+//import { Cata_Permissions } from '../enum/cata_permissions.enum';
+//import CataShowWrapper from '../../context/CataShowWrapper';
 import { InfoTooltip } from '../../Components/InfoToolTip';
 
 export interface CatalogueSalesSettings {
@@ -64,6 +66,57 @@ export const getDefaultCatalogueSalesSettings = (companyId: string): CatalogueSa
   enableItemWiseDiscount: false
 });
 
+interface CardProps {
+  title: string;
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}
+ 
+const SettingsCard: React.FC<CardProps> = ({ title, children, action }) => (
+  <section className="bg-white rounded-sm border border-gray-200 shadow-sm p-5 md:p-6 space-y-5 transition-shadow">
+    <div className="flex items-center justify-between gap-3">
+      <h2 className="text-base md:text-lg font-semibold text-gray-800">{title}</h2>
+      {action}
+    </div>
+    {children}
+  </section>
+);
+ 
+interface ToggleRowProps {
+  id: string;
+  label: string;
+  description: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  tooltip?: string;
+  disabled?: boolean;
+}
+ 
+const ToggleRow: React.FC<ToggleRowProps> = ({
+  id, label, description, checked, onChange, tooltip, disabled = false
+}) => (
+  <div className={`flex items-start justify-between gap-4 rounded-sm bg-gray-50/60 border border-gray-100 p-3.5 md:p-4 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+    <div className="min-w-0">
+      <div className="flex items-center gap-2">
+        <label htmlFor={id} className="text-sm font-semibold text-gray-800 leading-5">{label}</label>
+        <InfoTooltip text={tooltip || description} />
+      </div>
+      <p className="hidden md:block text-xs text-gray-500 mt-1 leading-relaxed">{description}</p>
+    </div>
+    <label htmlFor={id} className="relative inline-flex cursor-pointer items-center">
+      <input
+        id={id}
+        type="checkbox"
+        className="peer sr-only"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span className="h-6 w-11 rounded-full bg-gray-300 transition peer-checked:bg-[#F97316]" />
+      <span className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white transition peer-checked:translate-x-5" />
+    </label>
+  </div>
+);
 const CatalogueSalesSettings: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
@@ -89,20 +142,14 @@ const CatalogueSalesSettings: React.FC = () => {
         const docSnap = await getDoc(settingsDocRef);
         const defaultSettings = getDefaultCatalogueSalesSettings(companyId);
 
-        if (docSnap.exists()) {
-          const savedData = docSnap.data();
-          const mergedSettings = {
-            ...defaultSettings,
-            ...savedData
-          };
-          setSettings(mergedSettings as CatalogueSalesSettings);
+         if (docSnap.exists()) {
+          setSettings({ ...defaultSettings, ...docSnap.data() } as CatalogueSalesSettings);
         } else {
-          console.log(`Creating default sales settings...`);
           await setDoc(settingsDocRef, defaultSettings);
           setSettings(defaultSettings);
         }
       } catch (err) {
-        console.error('Failed to fetch/create sales settings:', err);
+        console.error('Failed to fetch/create catalogue sales settings:', err);
         setModal({ message: 'Failed to load settings.', type: State.ERROR });
       } finally {
         setIsLoading(false);
@@ -123,18 +170,17 @@ const CatalogueSalesSettings: React.FC = () => {
     setIsSaving(true);
     try {
       const companyId = currentUser.companyId;
-      const docToUpdateRef = doc(db, 'companies', companyId, 'settings', 'catalogue-sales-settings');
+       const docRef = doc(db, 'companies', companyId, 'settings', 'catalogue-sales-settings');
 
-      const settingsToSave = {
+      await setDoc(docRef, {
         ...settings,
-        companyId: companyId,
-        settingType: 'cataloguesales',
+        companyId,
+        settingType: 'catalogueSales',
         updatedAt: new Date()
-      };
+      }, { merge: true });
+ 
 
-      await setDoc(docToUpdateRef, settingsToSave, { merge: true });
-
-      setModal({ message: 'Settings saved successfully!', type: State.SUCCESS });
+       setModal({ message: 'Settings saved successfully!', type: State.SUCCESS });
     } catch (err) {
       console.error('Failed to save settings:', err);
       setModal({ message: 'Failed to save settings. Please try again.', type: State.ERROR });
@@ -143,24 +189,19 @@ const CatalogueSalesSettings: React.FC = () => {
     }
   };
 
-  const handleChange = (field: keyof CatalogueSalesSettings, value: any) => {
+  const handleChange = (field: keyof CatalogueSalesSettings, value: string | number | boolean) => {
     if (!settings) return;
 
     const numericFields: (keyof CatalogueSalesSettings)[] = [
       'defaultCartQuantity',
       'minimumOrderValue',
-      'currentVoucherNumber'
+      'currentVoucherNumber',
+       'roundingInterval',
     ];
 
     if (numericFields.includes(field)) {
-      let numValue = parseFloat(value);
-
-      if (isNaN(numValue)) numValue = 0;
-
-      //  minimum 0 lock
-      numValue = Math.max(0, numValue);
-
-      setSettings({ ...settings, [field]: numValue });
+      const numValue = parseFloat(String(value));
+      setSettings({ ...settings, [field]: isNaN(numValue) ? 0 : Math.max(0, numValue) });
     } else {
       setSettings({ ...settings, [field]: value });
     }
@@ -196,227 +237,189 @@ const CatalogueSalesSettings: React.FC = () => {
         <div className="w-6"></div>
       </div>
 
-      <main className="flex-grow p-4 bg-gray-50 w-full overflow-y-auto box-border pb-30">
-        <form onSubmit={handleSave} className="max-w-3xl mx-auto">
-          {/* Card 1 */}
-          <div className="bg-white rounded-lg p-6 shadow-md mb-2">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">
-              Visibility
-            </h2>
-
-            <div className="flex items-center mb-4">
-              <input
-                type="checkbox"
+       {/* Main content */}
+      <main className="flex-grow min-h-0 p-3 sm:p-4 md:p-5 bg-gray-50 w-full overflow-y-auto box-border pb-44 md:pb-24">
+        <form onSubmit={handleSave} className="max-w-5xl mx-auto space-y-5">
+ 
+          {/* ── Visibility ──────────────────────────────────────────────────── */}
+          <SettingsCard title="Visibility">
+              <ToggleRow
+                id="allow-negative-inventory"
+                label="Allow Negative Inventory"
+                description="Allow orders even when stock is zero."
                 checked={settings.allowNegativeInventory}
-                onChange={(e) =>
-                  handleCheckboxChange(
-                    'allowNegativeInventory',
-                    e.target.checked
-                  )
-                }
-                className="w-4 h-4 accent-[#F97316]"
+                onChange={(checked) => handleCheckboxChange('allowNegativeInventory', checked)}
+                tooltip="Permit catalogue orders for items with no recorded stock."
               />
-              <label className="ml-2 text-sm">
-                Allow Negative Inventory
-              </label>
-            </div>
-            {/* <div className="flex items-center">
-              <input
-                type="checkbox"
-                checked={settings.enableOutOfStockNotification}
-                onChange={(e) =>
-                  handleCheckboxChange(
-                    'enableOutOfStockNotification',
-                    e.target.checked
-                  )
-                }
-                className="w-4 h-4 accent-[#F97316]"
-              />
-              <label className="ml-2 text-sm">
-                Enable Notify me button when item is out of stock
-              </label>
-            </div> */}
-
-            {/* <div className="flex items-center mt-4">
-              <input
-                type="checkbox"
-                checked={settings.requireApproval}
-                onChange={(e) =>
-                  handleCheckboxChange(
-                    'requireApproval',
-                    e.target.checked
-                  )
-                }
-                className="w-4 h-4 accent-[#F97316]"
-              />
-              <label className="ml-2 text-sm">
-                Require Customer Approval Before Ordering
-              </label>
-            </div> */}
-
-            <div className="flex items-center mt-4">
-              <input
-                type="checkbox"
-                checked={settings.hidePrice}
-                onChange={(e) =>
-                  handleCheckboxChange(
-                    'hidePrice',
-                    e.target.checked
-                  )
-                }
-                className="w-4 h-4 accent-[#F97316]"
-              />
-              <label className="ml-2 text-sm">
-                Hide Price from Customers
-              </label>
-            </div>
-          </div>
-
-          {/* Pricing & Tax */}
-
-          <div className="bg-white rounded-lg p-6 shadow-md mb-2">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">Pricing & Tax</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div>
-                <label htmlFor="gst-scheme" className="block text-gray-700 text-sm font-medium mb-1">GST Scheme</label>
-                <select
-                  id="gst-scheme"
-                  value={settings.gstScheme || 'none'}
-                  onChange={(e) => handleChange('gstScheme', e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#F97316] focus:border-[#F97316]"
-                >
-                  <option value="none">None (Tax Disabled)</option>
-                  <option value="regular">Regular GST</option>
-                  <option value="composition">Composition GST</option>
-                </select>
+ 
+            <ToggleRow
+              id="hide-price"
+              label="Hide Price from Customers"
+              description="Prices will not be visible on the catalogue."
+              checked={settings.hidePrice ?? false}
+              onChange={(checked) => handleCheckboxChange('hidePrice', checked)}
+              tooltip="Completely hides item prices on the customer-facing catalogue."
+            />
+          </SettingsCard>
+ 
+          {/* ── Pricing & Tax ───────────────────────────────────────────────── */}
+          <SettingsCard title="Pricing & Tax">
+            <div className="space-y-3">
+ 
+              {/* GST Scheme */}
+              <div className="rounded-sm bg-gray-50 border border-gray-100 p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <p className="text-sm font-semibold text-gray-800 leading-5">GST Scheme</p>
+                  <InfoTooltip text="Select the applicable GST tax scheme for your business." />
+                </div>
+                <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+                  {[
+                    { label: 'None', value: 'none' },
+                    { label: 'Regular GST', value: 'regular' },
+                    { label: 'Composition', value: 'composition' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => handleChange('gstScheme', opt.value)}
+                      className={`min-w-0 min-h-[42px] px-2 py-2 rounded-sm text-[11px] sm:text-sm font-semibold border leading-tight text-center whitespace-normal break-words ${
+                        settings.gstScheme === opt.value
+                          ? 'bg-[#F97316] text-white border-[#F97316]'
+                          : 'bg-white text-gray-700 border-gray-300'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-
-            {settings.gstScheme === 'regular' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
-                <div>
-                  <label htmlFor="tax-type" className="block text-gray-700 text-sm font-medium mb-1">Tax Calculation (for Regular GST)</label>
+ 
+              {/* Tax Calculation — only for Regular GST */}
+              {settings.gstScheme === 'regular' && (
+                <div className="rounded-sm bg-gray-50 border border-gray-100 p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <p className="text-sm font-semibold text-gray-800 leading-5">Tax Calculation</p>
+                    <InfoTooltip text="Choose if your item prices include or exclude GST." />
+                  </div>
                   <select
-                    id="tax-type"
                     value={settings.taxType || 'exclusive'}
                     onChange={(e) => handleChange('taxType', e.target.value)}
-                    className="w-full p-3 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#F97316] focus:border-[#F97316]"
+                    className="w-full p-2.5 text-sm border border-gray-300 rounded-sm bg-white"
                   >
                     <option value="exclusive">Tax Exclusive (Sales Price excludes GST)</option>
                     <option value="inclusive">Tax Inclusive (Sales Price includes GST)</option>
                   </select>
                 </div>
-              </div>
-            )}
-            <div className="flex items-center mb-2">
-              <input type="checkbox" id="enable-rounding" checked={settings.enableRounding ?? false} onChange={(e) => handleCheckboxChange('enableRounding', e.target.checked)} className="w-4 h-4 accent-[#F97316] rounded focus:ring-[#F97316]" />
-              <label htmlFor="enable-rounding" className="ml-2 text-gray-700 text-sm font-medium">Enable Rounding Off</label>
+              )}
+ 
+                <ToggleRow
+                  id="enable-rounding"
+                  label="Enable Rounding Off"
+                  description="Automatically round item net prices in the order."
+                  checked={settings.enableRounding ?? false}
+                  onChange={(checked) => handleCheckboxChange('enableRounding', checked)}
+                  tooltip="Round order totals to the selected precision."
+                />
+ 
+                {settings.enableRounding && (
+                  <div className="rounded-sm bg-gray-50 border border-gray-100 p-3">
+                    <p className="text-xs font-semibold text-gray-700 mb-2">Rounding Precision</p>
+                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                      {[0.01, 0.1, 0.5, 1, 5, 10].map((value) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => handleChange('roundingInterval', value)}
+                          className={`px-2 py-1.5 rounded-sm border text-xs font-semibold ${
+                            Number(settings.roundingInterval ?? 1) === value
+                              ? 'bg-[#F97316] text-white border-[#F97316]'
+                              : 'bg-white text-gray-700 border-gray-300'
+                          }`}
+                        >
+                          {value.toFixed(2)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
             </div>
-            {settings.enableRounding && (
-              <div className="ml-6 mt-2 mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-4">
+          </SettingsCard>
+ 
+          {/* ── Order Rules & Voucher in a 2-col grid ──────────────────────── */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+ 
+            {/* Order Rules */}
+            <SettingsCard title="Order Rules">
+              <div className="rounded-sm bg-gray-50 border border-gray-100 p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <label htmlFor="min-order" className="text-sm font-semibold text-gray-800">
+                    Minimum Order Value (₹)
+                  </label>
+                  <InfoTooltip text="Customer cannot place an order below this amount." />
+                </div>
+                <input
+                  id="min-order"
+                  type="number"
+                  min="0"
+                  value={settings.minimumOrderValue === 0 ? '' : settings.minimumOrderValue}
+                  onChange={(e) => handleChange('minimumOrderValue', e.target.value)}
+                  className="w-full p-2.5 text-sm border border-gray-300 rounded-sm focus:ring-[#F97316] focus:border-[#F97316] outline-none mt-2"
+                  placeholder="0 (no minimum)"
+                />
+                <p className="text-xs text-gray-500 mt-1.5">Leave blank or 0 to disable minimum order.</p>
+              </div>
+            </SettingsCard>
+ 
+            {/* Voucher Numbering */}
+            <SettingsCard title="Voucher Numbering">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="rounding-interval" className="block text-gray-700 text-xs font-bold mb-1 uppercase">Rounding Interval</label>
-                  <select
-                    id="rounding-interval"
-                    value={settings.roundingInterval ?? 1}
-                    onChange={(e) => handleChange('roundingInterval', e.target.value)}
-                    className="w-full p-2 border border-gray-300 rounded bg-white text-sm"
-                  >
-                    <option value="0.01">0.01 (Precise)</option>
-                    <option value="0.1">0.10</option>
-                    <option value="0.5">0.50</option>
-                    <option value="1">1.00 (Nearest Rupee)</option>
-                    <option value="5">5.00</option>
-                    <option value="10">10.00</option>
-                    <option value="50">50.00</option>
-                    <option value="100">100.00</option>
-                  </select>
+                  <div className="flex items-center mb-1 gap-2">
+                    <label htmlFor="voucher-prefix" className="text-sm font-medium text-gray-700">
+                      Voucher Prefix
+                    </label>
+                    <InfoTooltip text="Letters added before the order number (e.g., ORD-1)." />
+                  </div>
+                  <input
+                    type="text"
+                    id="voucher-prefix"
+                    value={settings.voucherPrefix || ''}
+                    onChange={(e) => handleChange('voucherPrefix', e.target.value)}
+                    className="w-full p-2.5 text-sm border border-gray-300 rounded-sm focus:ring-[#F97316] focus:border-[#F97316] outline-none"
+                    placeholder="e.g., ORD-"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center mb-1 gap-2">
+                    <label htmlFor="current-number" className="text-sm font-medium text-gray-700">
+                      Next Voucher Number
+                    </label>
+                    <InfoTooltip text="Sequence number for the next generated order." />
+                  </div>
+                  <input
+                    type="number"
+                    id="current-number"
+                    value={settings.currentVoucherNumber ?? 1}
+                    onChange={(e) => handleChange('currentVoucherNumber', e.target.value)}
+                    className="w-full p-2.5 text-sm border border-gray-300 rounded-sm focus:ring-[#F97316] focus:border-[#F97316] outline-none"
+                    min="1"
+                    step="1"
+                  />
                 </div>
               </div>
-            )}
-
-            <div className="flex items-center mb-4">
-              <input type="checkbox" id="item-discount" checked={settings.enableItemWiseDiscount ?? false} onChange={(e) => handleCheckboxChange('enableItemWiseDiscount', e.target.checked)} className="w-4 h-4 accent-[#F97316] rounded focus:ring-[#F97316]"/>
-              <label htmlFor="item-discount" className="ml-2 mr-2 text-gray-700 text-sm font-medium">
-                Enable Item-wise Discount
-              </label>
-              <InfoTooltip text="Allow discounts to be applied to individual cart items." />
-            </div>
-
+            </SettingsCard>
           </div>
-
-          {/* Card 2 — Minimum Order Value */}
-          <div className="bg-white rounded-lg p-6 shadow-md mb-2">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">
-              Order Rules
-            </h2>
-
-            <label className="block text-sm mb-2">
-              Minimum Order Value (₹)
-            </label>
-
-            <input
-              type="number"
-              min="0"
-              value={settings.minimumOrderValue === 0 ? '' : settings.minimumOrderValue}
-              onChange={(e) =>
-                handleChange('minimumOrderValue', e.target.value)
-              }
-              className="w-full p-3 border rounded-lg"
-              placeholder="Enter minimum order value"
-            />
-
-            <p className="text-xs text-gray-500 mt-2">
-              Customer cannot place order below this amount.
-            </p>
-          </div>
-
-          {/* Card 3 — Voucher Numbering & Options */}
-          <div className="bg-white rounded-lg p-6 shadow-md mb-2">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">
-              Voucher Numbering & Options
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-gray-700 text-sm font-medium mb-1">
-                  Voucher Prefix
-                </label>
-                <input
-                  type="text"
-                  value={settings.voucherPrefix || ''}
-                  onChange={(e) =>
-                    handleChange('voucherPrefix', e.target.value)
-                  }
-                  className="w-full p-3 border border-gray-300 rounded-lg"
-                  placeholder="e.g., SLS-"
-                />
-              </div>
-
-              <div>
-                <label className="block text-gray-700 text-sm font-medium mb-1">
-                  Next Voucher Number
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={settings.currentVoucherNumber ?? 1}
-                  onChange={(e) =>
-                    handleChange('currentVoucherNumber', e.target.value)
-                  }
-                  className="w-full p-3 border border-gray-300 rounded-lg"
-                />
-              </div>
-            </div>
-          </div>
+ 
         </form>
       </main>
-
-      <div className="fixed bottom-15 left-0 right-0 p-4 bg-transparent shadow-md">
-        <div className="max-w-3xl mx-auto flex justify-center">
+ 
+      {/* Sticky save bar */}
+      <div className="fixed inset-x-0 bottom-16 md:bottom-0 z-40 bg-transparent px-4 pb-2 md:p-4 pointer-events-none">
+        <div className="max-w-2xl mx-auto flex justify-center gap-4 pointer-events-auto">
           <button
             onClick={handleSave}
             disabled={isSaving || isLoading}
-            className="w-auto min-w-[150px] flex items-center justify-center bg-[#F97316] text-white font-bold py-3 px-6 rounded-sm hover:bg-orange-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed shadow-lg"
+            className="w-auto min-w-[150px] flex items-center justify-center bg-[#F97316] text-white font-bold py-3 px-6 rounded-sm hover:bg-[#F97316] transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed shadow-lg"
           >
             {isSaving ? <Spinner /> : 'Save Settings'}
           </button>
@@ -425,5 +428,5 @@ const CatalogueSalesSettings: React.FC = () => {
     </div>
   );
 };
-
+ 
 export default CatalogueSalesSettings;

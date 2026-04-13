@@ -181,8 +181,8 @@ const Account: React.FC = () => {
         </div>
       </div>
 
-      {/* Step 1 — Profile photo + edit */}
-      <div ref={profileRef} className="flex flex-col items-center pb-4">
+      {/* Step 1 — Profile photo + edit */ }
+      <div ref={profileRef} className="flex flex-col items-center py-3 pb-4">
         <TutorialStep
           step={1}
           currentStep={tutorialStep}
@@ -191,11 +191,19 @@ const Account: React.FC = () => {
           onSkip={skip}
         >
           <div className="relative mb-2">
-            <img
-              className="w-32 h-32 rounded-full object-cover border border-white shadow-lg bg-white"
-              src={profileData.profilePicture || "https://github.com/shadcn.png"}
-              alt="Profile"
-            />
+            {profileData.profilePicture ? (
+              <img
+                className="w-32 h-32 rounded-full object-cover border border-white shadow-lg bg-white"
+                src={profileData.profilePicture}
+                alt="Profile"
+              />
+            ) : (
+              <div className="w-32 h-32 rounded-full border border-white shadow-lg bg-gray-200 flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-16 h-16 text-gray-400">
+                  <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z" clipRule="evenodd" />
+                </svg>
+              </div>
+            )}
             <div className="absolute top-0 left-0 right-0 bottom-0 border-2 border-green-500 rounded-full animate-pulse"></div>
             <button
               onClick={handleEditProfile}
@@ -335,15 +343,15 @@ const Account: React.FC = () => {
 
 
           <div ref={logoutRef} className="mt-2 flex justify-center">
-              <button onClick={handleLogout} className="rounded-sm bg-red-500 py-3 px-8 font-semibold text-white transition hover:bg-red-600">
-                Logout
-              </button>
-            
+            <button onClick={handleLogout} className="rounded-sm bg-red-500 py-3 px-8 font-semibold text-white transition hover:bg-red-600">
+              Logout
+            </button>
+
           </div>
 
         </div>
       </div>
-    </div>
+    </div >
   );
 };
 

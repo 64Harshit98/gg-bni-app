@@ -16,6 +16,7 @@ interface ProfileData {
   panNumber: string;
   accountType: string;
   profilePicture?: string;
+  companyLogo?: string;
   businessName: string;
   businessType: string;
   businessCategory: string;
@@ -235,12 +236,28 @@ const EditProfilePage: React.FC = () => {
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     setFormData(profile);
     if (profile.profilePicture) {
       setPreviewUrl(profile.profilePicture);
     }
+    if (profile.companyLogo) {
+      setLogoPreviewUrl(profile.companyLogo);
+    }
   }, [profile]);
+
+  useEffect(() => {
+    if (!logoPreviewUrl && formData.companyLogo) {
+      setLogoPreviewUrl(formData.companyLogo);
+    }
+    if (!previewUrl && formData.profilePicture) {
+      setPreviewUrl(formData.profilePicture);
+    }
+  }, [formData]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -270,7 +287,13 @@ const EditProfilePage: React.FC = () => {
       }
     }
   };
-
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setLogoFile(file);
+      setLogoPreviewUrl(URL.createObjectURL(file));
+    }
+  };
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -324,8 +347,16 @@ const EditProfilePage: React.FC = () => {
         await uploadBytes(storageRef, compressedBlob);
         finalPhotoUrl = await getDownloadURL(storageRef);
       }
+      let finalLogoUrl = formData.companyLogo;
+      if (logoFile && currentUser?.companyId) {
+        const logoPath = `companies/${currentUser.companyId}/branding/company_logo.jpg`;
+        const logoRef = ref(storage, logoPath);
+        const compressedLogo = await compressImage(logoFile);
+        await uploadBytes(logoRef, compressedLogo);
+        finalLogoUrl = await getDownloadURL(logoRef);
+      }
 
-      await saveData({ ...formData, profilePicture: finalPhotoUrl });
+      await saveData({ ...formData, profilePicture: finalPhotoUrl, companyLogo: finalLogoUrl });
 
       setSubmitSuccess("Profile updated successfully!");
       setTimeout(() => setSubmitSuccess(null), 3000);
@@ -380,34 +411,91 @@ const EditProfilePage: React.FC = () => {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-2">
 
-          {/* ── AVATAR — compact centered ── */}
-          <div className="flex flex-col items-center py-0">
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              className="relative cursor-pointer inline-block"
-            >
-              <img
-                src={previewUrl || 'https://github.com/shadcn.png'}
-                alt="Profile"
-                className="w-20 h-20 rounded-full object-cover border-3 border-white shadow-md shadow-sky-200 block"
-              />
-              <div className="absolute bottom-0.5 right-0.5 w-5 h-5 rounded-full bg-sky-500 border-2 border-white flex items-center justify-center text-white">
-                <FiCamera size={9} />
+          {/* ── IDENTITY BANNER: Avatar + Company Logo side by side ── */}
+          <div className="bg-white rounded-sm border border-slate-100 shadow-sm px-5 py-2 flex items-center gap-6">
+
+            {/* Profile Avatar */}
+            <div className="flex flex-col items-center gap-1.5 shrink-0">
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="relative cursor-pointer"
+              >
+                {previewUrl ? (
+                  <img
+                    src={previewUrl}
+                    alt="Profile"
+                    className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-md shadow-sky-200 block"
+                  />
+                ) : (
+                  <div className="w-16 h-16 rounded-full border-2 border-white shadow-md shadow-sky-200 bg-gray-200 flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-9 h-9 text-gray-400">
+                      <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                )}
+                <div className="absolute bottom-0 right-0 w-5 h-5 rounded-full bg-sky-500 border-2 border-white flex items-center justify-center text-white">
+                  <FiCamera size={8} />
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png, image/jpeg, image/jpg"
+                  className="hidden"
+                  aria-label="Upload profile photo"
+                  onChange={handleImageChange}
+                />
               </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/png, image/jpeg, image/jpg"
-                className="hidden"
-                onChange={handleImageChange}
-              />
+              <span className="text-[10px] text-slate-400 font-medium">Profile Photo</span>
             </div>
+
+            {/* Divider */}
+            <div className="w-px self-stretch bg-slate-100" />
+
+            {/* Company Logo */}
+            <div className="flex items-center gap-4 flex-1">
+              <div
+                onClick={() => logoInputRef.current?.click()}
+                className="relative cursor-pointer shrink-0"
+              >
+                {logoPreviewUrl ? (
+                  <img
+                    src={logoPreviewUrl}
+                    alt="Company Logo"
+                    className="w-14 h-14 rounded-sm object-contain border border-slate-200 bg-slate-50 p-1.5 shadow-sm"
+                  />
+                ) : (
+                  <div className="w-14 h-14 rounded-sm border-2 border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center text-slate-300 gap-0.5">
+                    <FiCamera size={14} />
+                    <span className="text-[8px] font-bold tracking-wider">LOGO</span>
+                  </div>
+                )}
+                <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-sky-500 border-[1.5px] border-white flex items-center justify-center text-white">
+                  <FiCamera size={7} />
+                </div>
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/png, image/jpeg, image/jpg, image/svg+xml"
+                  className="hidden"
+                  aria-label="Upload company logo" 
+                  onChange={handleLogoChange}
+                />
+              </div>
+              <div>
+                <p className="text-[12px] font-semibold text-slate-700 m-0">Company Logo</p>
+                <p className="text-[11px] text-slate-400 m-0 mt-0.5 leading-relaxed">
+                  Appears on invoices, reports & PDFs.<br />
+                  PNG or JPG recommended.
+                </p>
+              </div>
+            </div>
+
           </div>
 
           {/* ── 2 × 2 CARD GRID ── */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
 
             {/* Card 1 — Personal Information */}
             <SectionCard title="Personal Information" icon="">

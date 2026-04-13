@@ -81,5 +81,6 @@ export const ROUTES = {
   SUPER_ADMIN:'/super-admin/companies',
   SUPPORT_TICKET:'/super-admin/support',
   APP_LEADS:'/leads',
-  WEBSITE_QUERY:'/super-admin/website-leads'
+  WEBSITE_QUERY:'/super-admin/website-leads',
+  CATA_ADDITIONAL_SERVICES: 'additional-services',
 };

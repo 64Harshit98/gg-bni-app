@@ -19,6 +19,8 @@ interface AppUser {
     phoneNumber?: string;
     role?: string;
     companyId?: string;
+    photoURL?: string;
+    profilePicture?: string;
 }
 
 // EditFormData now correctly includes 'name'
@@ -27,6 +29,30 @@ type EditFormData = {
     phoneNumber?: string;
     role?: string;
 };
+const getInitials = (name?: string): string => {
+    if (!name) return '?';
+    return name
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2);
+};
+
+const AVATAR_COLORS: { bg: string; text: string }[] = [
+    { bg: 'bg-blue-100',   text: 'text-blue-700'   },
+    { bg: 'bg-green-100',  text: 'text-green-700'  },
+    { bg: 'bg-blue-100', text: 'text-blue-700' },
+    { bg: 'bg-amber-100',  text: 'text-amber-700'  },
+    { bg: 'bg-pink-100',   text: 'text-pink-700'   },
+    { bg: 'bg-teal-100',   text: 'text-teal-700'   },
+];
+
+const avatarColor = (uid: string) =>
+    AVATAR_COLORS[
+        uid.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) %
+        AVATAR_COLORS.length
+    ];
 
 const ManageUsersPage: React.FC = () => {
     const navigate = useNavigate();
@@ -85,6 +111,9 @@ const ManageUsersPage: React.FC = () => {
                         phoneNumber: data.phoneNumber || '',
                         role: data.role || '',
                         companyId: data.companyId || '',
+                        photoURL: data.photoURL || '',
+                        // ← Pick up the field saved by EditProfilePage
+                        profilePicture: data.profilePicture || '',
                     } as AppUser);
                 });
                 setUsers(fetchedUsers);
@@ -234,105 +263,116 @@ const ManageUsersPage: React.FC = () => {
             </div>
 
 
-            <main className="flex-grow p-2 overflow-y-auto">
+           <main className="flex-grow p-3 overflow-y-auto">
                 {users.length === 0 ? (
                     <div className="text-center py-10 text-gray-500">No users found for this company.</div>
                 ) : (
-                    <div className="space-y-2">
-                        {users.map((user) => (
-                            <div key={user.uid} className="bg-white rounded-sm shadow border p-2">
-                                {editingUserId === user.uid ? (
-                                    <div className="space-y-3">
-                                        <div>
-                                            <label htmlFor={`name-${user.uid}`} className="block text-xs font-medium text-gray-500 mb-1">Name</label>
-                                            <input
-                                                type="text"
-                                                id={`name-${user.uid}`}
-                                                name="name"
-                                                value={editFormData.name || ''}
-                                                onChange={handleInputChange}
-                                                className="w-full p-2 border border-gray-300 rounded text-sm"
-                                            />
+                    /* ── CHANGED: grid instead of space-y-2 list ── */
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                        {users.map((user) => {
+                            const { bg, text } = avatarColor(user.uid);   // ← NEW
+const avatarSrc = user.profilePicture || user.photoURL || '';
+                            return (
+                                <div key={user.uid} className="bg-white rounded-sm shadow border p-3 flex flex-col items-center">
+
+                                    {editingUserId === user.uid ? (
+                                        /* ── Edit form: logic unchanged, styling matches original ── */
+                                        <div className="space-y-3 w-full">
+                                            <div>
+                                                <label className="block text-xs font-medium text-gray-500 mb-1">Name</label>
+                                                <input type="text" name="name" value={editFormData.name || ''} onChange={handleInputChange}
+                                                    className="w-full p-2 border border-gray-300 rounded text-sm" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-gray-500 mb-1">Phone Number</label>
+                                                <input type="tel" name="phoneNumber" value={editFormData.phoneNumber || ''} onChange={handleInputChange}
+                                                    className="w-full p-2 border border-gray-300 rounded text-sm" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-gray-500 mb-1">Role</label>
+                                                {user.role === ROLES.OWNER ? (
+                                                    <input type="text" value={user.role || 'OWNER'} readOnly
+                                                        className="w-full p-2 border border-gray-300 rounded text-sm bg-gray-200 cursor-not-allowed" />
+                                                ) : (
+                                                    <select name="role" value={editFormData.role || ''} onChange={handleInputChange}
+                                                        className="w-full p-2 border border-gray-300 rounded text-sm bg-white">
+                                                        <option value="" disabled>Select Role</option>
+                                                        {availableRoles.map(role => (
+                                                            <option key={role} value={role}>
+                                                                {role.charAt(0).toUpperCase() + role.slice(1)}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                )}
+                                            </div>
+                                            <p className="text-xs text-gray-500">Email: {user.email || 'N/A'} (Not editable)</p>
+                                            <div className="flex justify-end gap-2 mt-2">
+                                                <CustomButton onClick={handleCancelEdit} variant={Variant.Transparent}>Cancel</CustomButton>
+                                                <CustomButton onClick={handleSaveEdit} variant={Variant.Save} disabled={isSaving}>
+                                                    {isSaving ? <Spinner /> : 'Save'}
+                                                </CustomButton>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <label htmlFor={`phoneNumber-${user.uid}`} className="block text-xs font-medium text-gray-500 mb-1">Phone Number</label>
-                                            <input
-                                                type="tel"
-                                                id={`phoneNumber-${user.uid}`}
-                                                name="phoneNumber"
-                                                value={editFormData.phoneNumber || ''}
-                                                onChange={handleInputChange}
-                                                className="w-full p-2 border border-gray-300 rounded text-sm"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label htmlFor={`role-${user.uid}`} className="block text-xs font-medium text-gray-500 mb-1">Role</label>
-                                            {/* --- DROPDOWN FIELD --- */}
-                                            {/* If the current user being edited is the OWNER, lock the role */}
-                                            {user.role === ROLES.OWNER ? (
-                                                <input
-                                                    type="text"
-                                                    value={user.role || 'OWNER'}
-                                                    readOnly
-                                                    className="w-full p-2 border border-gray-300 rounded text-sm bg-gray-200 cursor-not-allowed"
+                                     ) : (
+                                        <>
+                                            {/* Avatar — uses profilePicture first, then photoURL, then initials */}
+                                            {avatarSrc ? (
+                                                <img
+                                                    src={avatarSrc}
+                                                    alt={user.name}
+                                                    className="w-12 h-12 rounded-full object-cover mb-1.5 border border-gray-200"
                                                 />
                                             ) : (
-                                                <select
-                                                    id={`role-${user.uid}`}
-                                                    name="role"
-                                                    value={editFormData.role || ''}
-                                                    onChange={handleInputChange}
-                                                    className="w-full p-2 border border-gray-300 rounded text-sm bg-white"
-                                                >
-                                                    <option value="" disabled>Select Role</option>
-                                                    {availableRoles.map(role => (
-                                                        <option key={role} value={role}>{role.charAt(0).toUpperCase() + role.slice(1)}</option>
-                                                    ))}
-                                                </select>
+                                                <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-1.5 text-base font-semibold ${bg} ${text}`}>
+                                                    {getInitials(user.name)}
+                                                </div>
                                             )}
-                                        </div>
-                                        <p className="text-xs text-gray-500">Email: {user.email || 'N/A'} (Not editable)</p>
-                                        <div className="flex justify-end gap-2 mt-2">
-                                            <CustomButton onClick={handleCancelEdit} variant={Variant.Transparent} >Cancel</CustomButton>
-                                            <CustomButton onClick={handleSaveEdit} variant={Variant.Save} disabled={isSaving}>
-                                                {isSaving ? <Spinner /> : 'Save'}
-                                            </CustomButton>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="flex justify-between items-center p-2">
-                                        <div>
-                                            <p className="font-semibold text-gray-900">{user.name || 'No Name Provided'}</p>
-                                            <p className="text-sm text-gray-600">{user.email || 'No Email'}</p>
-                                            <p className="text-sm text-gray-600">Phone: {user.phoneNumber || 'Not Provided'}</p>
-                                            <p className="text-xs text-gray-500 mt-1">Role: {user.role || 'Not Assigned'}</p>
-                                        </div>
-                                        <div className="flex gap-2">
-                                            <button
-                                                onClick={() => handleEditClick(user)}
-                                                className='flex p-2 justify-right bg-white text-black border border-gray-300 hover:bg-gray-100 border-2 rounded-sm '
-                                            >
-                                                Edit
-                                            </button>
-                                            {user.role !== ROLES.OWNER && (
+ 
+                                            {/* Name */}
+                                            <p className="font-semibold text-gray-900 text-xs text-center leading-tight truncate w-full">
+                                                {user.name || 'No Name'}
+                                            </p>
+ 
+                                            {/* Role badge */}
+                                            <span className={`mt-1 text-[10px] px-1.5 py-0.5 rounded-sm font-medium
+                                                ${user.role === ROLES.OWNER
+                                                    ? 'bg-blue-100 text-blue-700'
+                                                    : 'bg-gray-100 text-gray-600'}`}>
+                                                {user.role || 'No role'}
+                                            </span>
+ 
+                                            {/* Contact */}
+                                            <div className="mt-1.5 w-full border-t border-gray-100 pt-1.5 space-y-0.5">
+                                                <p className="text-[10px] text-gray-500 truncate text-center">{user.email || '—'}</p>
+                                                <p className="text-[10px] text-gray-400 text-center">{user.phoneNumber || 'No phone'}</p>
+                                            </div>
+ 
+                                            {/* Actions */}
+                                            <div className="flex gap-1.5 mt-2 w-full">
                                                 <button
-                                                    onClick={() => handleDeleteUser(user)}
-                                                    className='flex p-2 justify-right bg-white text-red-600 border border-red-300 hover:bg-red-50 hover:text-red-700 border-2 rounded-sm'
-                                                    disabled={isSaving}
-                                                >
-                                                    Delete
+                                                    onClick={() => handleEditClick(user)}
+                                                    className="flex-1 py-1 text-[10px] bg-white text-black border-2 border-gray-300 hover:bg-gray-100 rounded-sm">
+                                                    Edit
                                                 </button>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        ))}
+                                                {user.role !== ROLES.OWNER && (
+                                                    <button
+                                                        onClick={() => handleDeleteUser(user)}
+                                                        disabled={isSaving}
+                                                        className="flex-1 py-1 text-[10px] bg-white text-blue-600 border-2 border-blue-300 hover:bg-blue-50 hover:text-blue-700 rounded-sm">
+                                                        Delete
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 )}
             </main>
         </div>
     );
 };
-
+ 
 export default ManageUsersPage;

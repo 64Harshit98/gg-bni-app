@@ -683,8 +683,8 @@ const Journal: React.FC = () => {
       const { botMasterToken, whatsappNumber } = businessSnap.data() || {};
 
       if (!botMasterToken || !whatsappNumber) {
-        setModal({ message: "Company WhatsApp is not linked. Please setup WhatsApp first.", type: State.ERROR });
         setSendingPdf(false);
+        navigate(ROUTES.WHATSAPP_PLAN);
         return;
       }
 

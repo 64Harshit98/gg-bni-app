@@ -75,7 +75,18 @@ const WhatsAppSubscriptionPage: React.FC = () => {
         <div className="min-h-screen bg-gray-100 font-sans">
 
             {/* --- SECTION 1: HEADER (Scrolls Away) --- */}
-            <div className="pt-4 pb-6 px-4 text-center max-w-2xl mx-auto">
+            <div className="pt-4 pb-6 px-4 text-center max-w-2xl mx-auto relative">
+
+                <button
+                    onClick={() => navigate(-1)}
+                    className="absolute top-0 right-4 w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-full transition-colors"
+                    aria-label="Go back"
+                >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M18 6L6 18M6 6l12 12" />
+                    </svg>
+                </button>
+
                 <h2 className="text-base font-semibold text-emerald-600 tracking-wide uppercase">WhatsApp Marketing</h2>
                 <p className="mt-2 text-3xl leading-8 font-extrabold tracking-tight text-gray-900 sm:text-4xl">
                     Choose Your Message Plan

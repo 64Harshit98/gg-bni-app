@@ -15,6 +15,7 @@ import { OrderBarChartReport } from '../Components/OrderSalesGraph';
 import { IconChevronDown } from '../constants/Icons';
 import { FiRefreshCw, FiLoader } from 'react-icons/fi';
 import { fetchDashboardData, CACHE_DURATION } from '../lib/fetchDashboardData';
+import ShinyText from '../Components/ShinyText';
 import type { WithCacheMeta } from '../lib/fetchDashboardData';
 
 
@@ -77,6 +78,25 @@ const HomePageContent: React.FC = () => {
     const { currentUser, loading: authLoading } = useAuth();
     const { filters } = useFilter();
     const { businessName, loading: nameLoading } = useBusinessName(currentUser?.uid, currentUser?.companyId);
+
+    // Expiry date state and effect
+    const [expiryDate, setExpiryDate] = useState<any>(null);
+
+    useEffect(() => {
+        const fetchExpiry = async () => {
+            if (!currentUser?.companyId) return;
+            try {
+                const ref = doc(db, 'companies', currentUser.companyId);
+                const snap = await getDoc(ref);
+                if (snap.exists()) {
+                    setExpiryDate(snap.data().expiryDate);
+                }
+            } catch (e) {
+                console.error('Error fetching expiry date:', e);
+            }
+        };
+        fetchExpiry();
+    }, [currentUser?.companyId]);
 
     const hasCataloguePermission = currentUser?.permissions?.includes(Permissions.ViewCatalogue);
     const [isDataVisible, setIsDataVisible] = useState<boolean>(false);
@@ -173,6 +193,25 @@ const HomePageContent: React.FC = () => {
     // Manual refresh: bypass cache and fetch latest data immediately
     const handleRefresh = () => fetchData(true);
 
+    // Helper functions for expiry
+    const isExpiringSoon = (expiry: any) => {
+        if (!expiry) return false;
+        const d = expiry.toDate ? expiry.toDate() : new Date(expiry);
+        const diff = d.getTime() - new Date().getTime();
+        return diff > 0 && diff <= 7 * 24 * 60 * 60 * 1000;
+    };
+
+    const getDaysLeft = (expiry: any) => {
+        if (!expiry) return null;
+        const d = expiry.toDate ? expiry.toDate() : new Date(expiry);
+        const diff = d.getTime() - new Date().getTime();
+        if (diff <= 0) return 0;
+        return Math.ceil(diff / (1000 * 60 * 60 * 24));
+    };
+
+    const soon = isExpiringSoon(expiryDate);
+    const daysLeft = getDaysLeft(expiryDate);
+
     // Format the last-updated timestamp for display in the header
     const formattedLastUpdated = useMemo(() => {
         if (!data?.lastUpdated) return 'Never';
@@ -181,6 +220,24 @@ const HomePageContent: React.FC = () => {
 
     return (
         <div className="flex min-h-screen w-full flex-col bg-gray-100 mb-16">
+
+            {soon && (
+              <div className="w-full text-center py-2 text-sm font-bold text-white shadow-sm transition-colors duration-300 bg-orange-400">
+                <ShinyText
+                  text={`⚠ Subscription expires ${daysLeft} day${daysLeft === 1 ? '' : 's'}.`}
+                  speed={4}
+                  delay={0}
+                  color="#000000"
+                  shineColor="#ffffff"
+                  spread={100}
+                  direction="left"
+                  yoyo={false}
+                  pauseOnHover={false}
+                  disabled={false}
+                />
+                 <Link to="/subscription" className="text-black ml-2 underline hover:text-gray-100">Renew Now</Link>
+              </div>
+            )}
 
             {/* ── Header ──────────────────────────────────────────────────── */}
             <header className="flex flex-shrink-0 items-center justify-between border-b border-slate-300 bg-gray-100 p-2">

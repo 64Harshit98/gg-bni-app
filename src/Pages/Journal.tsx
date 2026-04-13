@@ -596,9 +596,9 @@ const Journal: React.FC = () => {
     return {
       gstScheme: salesSettings?.gstScheme || '',
       taxType: invoice.taxType || salesSettings?.taxType || '',
-      companyName: businessInfo?.name || 'Your Company',
-      companyAddress: businessInfo?.address || 'Your Address',
-      companyContact: businessInfo?.phoneNumber || 'Your Phone',
+      companyName: businessInfo?.name || '',
+      companyAddress: businessInfo?.address || '',
+      companyContact: businessInfo?.phoneNumber || '',
       companyEmail: businessInfo?.email || '',
       signatureBase64: billSettings.signatureBase64 || '',
       companyGstin: billSettings.companyGstin || businessInfo?.gstin || '',
@@ -920,6 +920,13 @@ const Journal: React.FC = () => {
         // If the tutorial is completed via last step (step 6), persist in Firestore as well
         // (If there are any localStorage.setItem("journal_tutorial_done", "true") calls, replace below)
 
+        // --- Button visibility logic ---
+        const hasProPermission = (currentUser as any)?.permissions?.includes(Permissions.HiddenProFeatures);
+        const visibleButtonsCount =
+          (invoice.status === 'Unpaid' ? 1 : 0) +
+          (invoice.status === 'Paid' ? 1 : 0) +
+          (hasProPermission ? (invoice.type === 'Credit' ? 3 : 2) : 0);
+
         return (
           <CustomCard key={invoice.id} onClick={() => handleInvoiceClick(invoice.id)} className="cursor-pointer transition-shadow hover:shadow-md">
             <div className="flex justify-between items-end w-full -mt-5 relative pointer-events-none">
@@ -991,7 +998,17 @@ const Journal: React.FC = () => {
                         <div className="flex-1 pr-4">
                           <p className="font-medium">{item.name}</p>
                           <p className="text-xs text-slate-400 flex items-center gap-1">
-                            <span>MRP: {item.mrp.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}</span>
+                            <span>
+                              {item.mrp > 0
+                                ? `MRP: ${item.mrp.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}`
+                                : `Selling Price: ${
+                                    (
+                                      item.effectiveUnitPrice ||
+                                      (item.quantity > 0 ? item.finalPrice / item.quantity : 0)
+                                    ).toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })
+                                  }`
+                              }
+                            </span>
                             <span className="text-slate-400">|</span>
                             <span className="text-slate-400 font-medium">
                               Net: {netUnitPrice.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}
@@ -1053,7 +1070,9 @@ const Journal: React.FC = () => {
                   </div>
                 )}
 
-                <div className="flex justify-between gap-2 mt-2 pt-4 border-t border-slate-200">
+                <div className={`flex gap-2 mt-2 pt-4 border-t border-slate-200 ${
+                  visibleButtonsCount === 1 ? 'justify-center' : 'justify-between'
+                }`}>
                   {invoice.status === 'Unpaid' && (<button onClick={(e) => { e.stopPropagation(); openPaymentModal(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-emerald-500 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors">Settle</button>)}
                   {invoice.status === 'Paid' && (<button onClick={(e) => { e.stopPropagation(); promptDeleteInvoice(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors">Delete</button>)}
                   <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>

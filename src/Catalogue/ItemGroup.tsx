@@ -23,7 +23,7 @@ const ItemGroupPage: React.FC = () => {
     const [groupCounts, setGroupCounts] = useState<Record<string, number>>({});
     const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
     const [editingGroupName, setEditingGroupName] = useState<string>('');
-    const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+    const [deleteTargetGroup, setDeleteTargetGroup] = useState<ItemGroup | null>(null);
 
     const isActive = (path: string) => location.pathname === path;
 
@@ -351,12 +351,18 @@ const ItemGroupPage: React.FC = () => {
                                                         {count} {count === 1 ? 'item' : 'items'}
                                                     </span>
                                                 </div>
-                                                <div className="flex gap-2 flex-shrink-0">
-                                                    <button onClick={() => handleEditClick(group)} className="text-gray-500 hover:text-[#F97316]" aria-label={`Edit ${group.name}`}><EditIcon /></button>
-                                                    <button onClick={() => handleDeleteItemGroup(group)} className={`transition-colors p-1 rounded ${confirmingDeleteId === group.id ? 'bg-red-500 text-white' : 'text-gray-500 hover:text-red-600'}`} aria-label={`Delete ${group.name}`}>
-                                                        {confirmingDeleteId === group.id ? <span className="text-xs font-bold px-1">Confirm?</span> : <DeleteIcon />}
-                                                    </button>
-                                                </div>
+                                                {group.name.toLowerCase().trim() !== "uncategorized" && (
+                                                    <div className="flex gap-2 flex-shrink-0">
+                                                        <button onClick={() => handleEditClick(group)} className="text-gray-500 hover:text-[#F97316]" aria-label={`Edit ${group.name}`}><EditIcon /></button>
+                                                        <button
+                                                            onClick={() => setDeleteTargetGroup(group)}
+                                                            className="transition-colors p-1 rounded text-gray-500 hover:text-red-600"
+                                                            aria-label={`Delete ${group.name}`}
+                                                        >
+                                                            <DeleteIcon />
+                                                        </button>
+                                                    </div>
+                                                )}
                                             </>
                                         )}
                                     </div>
@@ -366,6 +372,43 @@ const ItemGroupPage: React.FC = () => {
                     )}
                 </div>
             </main>
+        {/* Delete confirmation modal */}
+        {deleteTargetGroup && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-white rounded-lg shadow-lg w-[90%] max-w-md p-6">
+              
+              <h2 className="text-lg font-semibold text-gray-800 mb-2">
+                Delete "{deleteTargetGroup.name}"?
+              </h2>
+
+              <p className="text-sm text-gray-600 mb-6">
+                {deleteTargetGroup.id && groupCounts[deleteTargetGroup.id] > 0
+                  ? `All ${groupCounts[deleteTargetGroup.id]} item(s) will be moved to "Uncategorized".`
+                  : "This group has no items."}
+              </p>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setDeleteTargetGroup(null)}
+                  className="px-4 py-2 text-sm rounded-md bg-gray-200 hover:bg-gray-300"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  onClick={async () => {
+                    await handleDeleteItemGroup(deleteTargetGroup);
+                    setDeleteTargetGroup(null);
+                  }}
+                  className="px-4 py-2 text-sm rounded-md bg-orange-400 text-white hover:bg-orange-500"
+                >
+                  Delete
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
         </div>
     );
 };

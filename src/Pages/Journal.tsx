@@ -139,6 +139,7 @@ interface PdfData {
   items: any[];
   terms: string;
   finalAmount: number;
+  isEstimate?: boolean;
   bankDetails: {
     accountName: string;
     accountNumber: string;

@@ -334,7 +334,7 @@ const ItemGroupPage: React.FC = () => {
                             {itemGroups.map((group) => {
                                 const count = group.id ? (groupCounts[group.id] || 0) : 0;
                                 return (
-                                    <div key={group.id} className="flex items-center justify-between p-3 bg-white rounded-sm shadow-sm border" onMouseLeave={() => setConfirmingDeleteId(null)}>
+                                    <div key={group.id} className="flex items-center justify-between p-3 bg-white rounded-sm shadow-sm border">
                                         {editingGroupId === group.id ? (
                                             <div className="flex flex-col w-full gap-2">
                                                 <input type="text" value={editingGroupName} onChange={(e) => setEditingGroupName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSaveEdit(group)} autoFocus className="w-full p-2 border border-[#F97316] rounded-md" />

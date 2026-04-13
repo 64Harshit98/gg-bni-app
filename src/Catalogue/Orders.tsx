@@ -27,6 +27,8 @@ import {
 import { useAuth } from '../context/auth-context';
 //import CataShowWrapper from '../context/CataShowWrapper';
 //import { Cata_Permissions } from './enum/cata_permissions.enum';
+//import CataShowWrapper from '../context/CataShowWrapper';
+//import { Cata_Permissions } from './enum/cata_permissions.enum';
 import { CustomCard } from '../Components/CustomCard';
 import { Spinner } from '../constants/Spinner';
 import { Modal, PaymentModal } from '../constants/Modal';

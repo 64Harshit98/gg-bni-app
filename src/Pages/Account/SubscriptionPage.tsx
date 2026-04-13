@@ -196,6 +196,7 @@ const SubscriptionPage: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'pos' | 'catalogue' | 'both'>('pos');
     const [isDetailsOpen] = useState(true);
     const [selectedTooltip, setSelectedTooltip] = useState<string | null>(null);
+    const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number } | null>(null);
 
     const subData = (currentUser as any)?.subscription || (currentUser as any)?.Subscription;
     const currentPack = subData?.pack || PLANS.POS_BASIC;
@@ -320,34 +321,41 @@ const SubscriptionPage: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="bg-white rounded-sm shadow-xl border border-gray-200 max-w-5xl mx-auto overflow-visible">
-                    <div className="relative">
+                <div className="bg-white rounded-sm shadow-xl border border-gray-200 max-w-5xl mx-auto ">
+                    <div className="overflow-x-auto">
                         {/* Changed table-fixed to auto-layout to prevent truncation */}
-                        <table className="w-full border-collapse">
-                            <thead className="sticky top-16 z-30 shadow-sm">
+                        <table className="w-full border-collapse table-fixed ">
+                            <thead className="sticky top-0 z-30 shadow-sm ">
                                 <tr>
                                     {/* Increased width for Features column */}
-                                    <th className="p-4 text-left w-1/2 bg-gray-50 border-b border-gray-200 align-bottom">
+                                    <th className="p-2 sm:p-4 text-left w-1/3 bg-gray-50 border-b border-gray-200 align-bottom">
                                         <span className="text-gray-500 font-medium text-xs sm:text-sm uppercase tracking-wider">Features</span>
                                     </th>
                                     {currentTiers.map(tier => (
                                         <th
                                             key={tier.id}
-                                            className={`p-4 text-center border-b border-gray-200 relative ${tier.recommended ? 'bg-yellow-50' : 'bg-white'}`}
+                                            className={`pt-6 pb-4 px-4 text-center border-b border-gray-200 relative ${tier.recommended ? 'bg-yellow-50' : 'bg-white'}`}
                                         >
                                             {tier.recommended && (
-                                                <span className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-yellow-400 text-yellow-900 text-[9px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wide shadow-sm whitespace-nowrap z-10">
+                                                <span className="absolute top-2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-yellow-400 text-yellow-900 text-[9px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wide whitespace-nowrap">
                                                     {activeTab === 'catalogue' ? 'Best Seller' : 'Recommended'}
                                                 </span>
                                             )}
-                                            <h3 className="text-sm sm:text-lg font-bold text-gray-900 truncate">{tier.name}</h3>
+                                            <h3 className="text-sm sm:text-lg font-bold text-gray-900 leading-tight">
+                                                {tier.name.split('(')[0].trim()}
+                                                {tier.name.includes('(') && (
+                                                    <span className="block text-xs sm:text-sm font-semibold text-gray-500">
+                                                        ({tier.name.split('(')[1]}
+                                                    </span>
+                                                )}
+                                            </h3>
                                             <div className="mt-1 sm:mt-2">
                                                 {tier.originalPrice && (
-                                                    <span className="text-sm sm:text-base text-gray-400 line-through mr-2 font-medium">
+                                                    <span className="text-xs sm:text-base text-gray-400 line-through mr-1 font-medium">
                                                         {tier.originalPrice.yearly}
                                                     </span>
                                                 )}
-                                                <span className="text-xl sm:text-3xl font-extrabold text-gray-900">
+                                                <span className="text-base sm:text-3xl font-extrabold text-gray-900 break-all">
                                                     {tier.price.yearly}
                                                 </span>
                                                 <span className="text-xs text-gray-500 block font-medium">
@@ -374,7 +382,7 @@ const SubscriptionPage: React.FC = () => {
                             <tbody className="divide-y divide-gray-100">
                                 {allFeatures.map((feature, idx) => (
                                     <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                                        <td className="p-3 text-xs sm:text-sm font-medium text-gray-700 pl-4 sm:pl-8">
+                                        <td className="p-2 sm:p-3 text-xs sm:text-sm font-medium text-gray-700 pl-2 sm:pl-6">
                                             <div className="flex items-center gap-2">
                                                 {/* Removed truncate class to show full text */}
                                                 <span className="whitespace-normal leading-tight">{feature}</span>
@@ -383,7 +391,14 @@ const SubscriptionPage: React.FC = () => {
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                setSelectedTooltip(selectedTooltip === feature ? null : feature);
+                                                                if (selectedTooltip === feature) {
+                                                                    setSelectedTooltip(null);
+                                                                    setTooltipPos(null);
+                                                                } else {
+                                                                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                                                    setTooltipPos({ top: rect.top, left: rect.right + 8 });
+                                                                    setSelectedTooltip(feature);
+                                                                }
                                                             }}
                                                             className="text-gray-400 hover:text-blue-500 transition-colors focus:outline-none"
                                                         >
@@ -391,15 +406,6 @@ const SubscriptionPage: React.FC = () => {
                                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                                             </svg>
                                                         </button>
-                                                        {selectedTooltip === feature && (
-                                                            <div
-                                                                className="absolute left-full ml-2 top-1/2 -translate-y-1/2 w-48 p-2 bg-gray-900 text-white text-[10px] leading-tight rounded-md shadow-lg z-50 animate-in fade-in zoom-in duration-200"
-                                                                onClick={(e) => e.stopPropagation()}
-                                                            >
-                                                                {FEATURE_DESCRIPTIONS[feature]}
-                                                                <div className="absolute top-1/2 -left-1 -translate-y-1/2 w-2 h-2 bg-gray-900 rotate-45"></div>
-                                                            </div>
-                                                        )}
                                                     </div>
                                                 )}
                                             </div>
@@ -454,6 +460,16 @@ const SubscriptionPage: React.FC = () => {
                             OK
                         </button>
                     </div>
+                </div>
+
+            )}
+            {selectedTooltip && tooltipPos && (
+                <div
+                    style={{ position: 'fixed', top: tooltipPos.top - 10, left: tooltipPos.left, zIndex: 9999 }}
+                    className="w-48 p-2 bg-gray-900 text-white text-[10px] leading-tight rounded-md shadow-lg"
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    {FEATURE_DESCRIPTIONS[selectedTooltip]}
                 </div>
             )}
         </div>

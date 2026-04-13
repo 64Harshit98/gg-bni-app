@@ -210,7 +210,7 @@ const HomePageContent: React.FC = () => {
     };
 
     const soon = isExpiringSoon(expiryDate);
-    const daysLeft = getDaysLeft(expiryDate)-1;
+    const daysLeft = (getDaysLeft(expiryDate) ?? 0) - 1;
 
     // Format the last-updated timestamp for display in the header
     const formattedLastUpdated = useMemo(() => {

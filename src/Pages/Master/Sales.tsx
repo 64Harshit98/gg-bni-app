@@ -29,8 +29,6 @@ import { getFirestoreOperations } from '../../lib/ItemsFirebase';
 import { botMasterService } from '../Additional/Whatsapp/WhatsappApi';
 import { PLAN_ALLOWED_FEATURES } from '../Settings/SalesSetting';
 
-
-
 export interface SalesItem extends OriginalSalesItem {
     isEditable: boolean;
     customPrice?: number | string;
@@ -1234,24 +1232,24 @@ const Sales: React.FC = () => {
         };
     };
 
-    const handleSendWhatsapp = async (invoice: any) => {
-        if (!invoice.partyNumber) {
-            setModal({ message: "Customer phone number is missing.", type: State.ERROR });
+   const handleSendWhatsapp = async (invoice: any) => {
+    if (!invoice.partyNumber) {
+        setModal({ message: "Customer phone number is missing.", type: State.ERROR });
+        return;
+    }
+    setSendingPdf(true);
+    try {
+        if (!currentUser?.companyId || !currentUser?.uid) throw new Error("User context missing.");
+
+        const businessDocRef = doc(db, 'companies', currentUser.companyId, 'business_info', currentUser.companyId);
+        const businessSnap = await getDoc(businessDocRef);
+        const { botMasterToken, whatsappNumber } = businessSnap.data() || {};
+
+         if (!botMasterToken || !whatsappNumber) {
+            setSendingPdf(false);
+            navigate(ROUTES.WHATSAPP_PLAN);
             return;
         }
-        setSendingPdf(true);
-        try {
-            if (!currentUser?.companyId || !currentUser?.uid) throw new Error("User context missing.");
-
-            const businessDocRef = doc(db, 'companies', currentUser.companyId, 'business_info', currentUser.companyId);
-            const businessSnap = await getDoc(businessDocRef);
-            const { botMasterToken, whatsappNumber } = businessSnap.data() || {};
-
-            if (!botMasterToken || !whatsappNumber) {
-                setModal({ message: "Company WhatsApp is not linked. Please setup WhatsApp first.", type: State.ERROR });
-                setSendingPdf(false);
-                return;
-            }
 
             const dataForPdf = await preparePdfData(invoice);
             if (!dataForPdf) throw new Error("Failed to prepare invoice data.");

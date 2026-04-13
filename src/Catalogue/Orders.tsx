@@ -25,6 +25,8 @@ import {
     serverTimestamp
 } from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
+//import CataShowWrapper from '../context/CataShowWrapper';
+//import { Cata_Permissions } from './enum/cata_permissions.enum';
 import { CustomCard } from '../Components/CustomCard';
 import { Spinner } from '../constants/Spinner';
 import { Modal, PaymentModal } from '../constants/Modal';
@@ -325,7 +327,7 @@ const OrdersPage: React.FC = () => {
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
     const [isUpdatingStatus, setIsUpdatingStatus] = useState<string | null>(null);
     const [selectedOrderForAction, setSelectedOrderForAction] = useState<Order | null>(null);
-    const [_isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+    const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
     const [pdfLoadingOrderId, setPdfLoadingOrderId] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'billing' | 'shipping'>('billing');
     const [paymentFilter, setPaymentFilter] = useState<'paid' | 'unpaid'>('unpaid');
@@ -716,8 +718,8 @@ const OrdersPage: React.FC = () => {
         setSelectedItemForEdit(null);
     };
 
-    const handleShareBill = async (Order: Order) => {
-        setIsGeneratingPdf(true);
+     const handleShareBill = async (Order: Order) => {
+         setIsGeneratingPdf(true);
 
         try {
             const rawBillData = {
@@ -1127,7 +1129,7 @@ const OrdersPage: React.FC = () => {
                                 autoFocus
                             />
                         ) : (
-                            <h1 className="text-xl font-bold text-slate-800">Orders</h1>
+                            <h1 className="text-3xl font-bold text-slate-800">Orders</h1>
                         )}
 
                         {/* Date Filter - Just below Header */}
@@ -1140,30 +1142,32 @@ const OrdersPage: React.FC = () => {
 
                     {/* Right: Filter Icon */}
                     <div className="w-10 flex justify-end">
-                        <div className="relative" ref={filterRef}>
-                            <button onClick={() => setIsFilterOpen(!isFilterOpen)} className="text-slate-500 hover:text-slate-800 cursor-pointer">
-                                <IconFilter />
-                            </button>
+                        {/* //<CataShowWrapper permission={Cata_Permissions.ViewFilterbutton}> */}
+                            <div className="relative" ref={filterRef}>
+                                <button onClick={() => setIsFilterOpen(!isFilterOpen)} className="text-slate-500 hover:text-slate-800 cursor-pointer">
+                                    <IconFilter />
+                                </button>
 
-                            {isFilterOpen && (
-                                <div className="absolute top-full right-0 mt-3 w-64 bg-white rounded-sm shadow-lg z-[1000] border p-3">
-                                    <ul className="py-1 border-b mb-2">
-                                        {dateFilters.map((filter) => (
-                                            <li key={filter.value}>
-                                                <button onClick={() => handleDateFilterSelect(filter.value)} className={`w-full text-left px-4 py-2 text-sm ${activeDateFilter === filter.value ? 'bg-orange-50 text-[#F97316] font-bold' : 'text-slate-700'} hover:bg-slate-50`}>{filter.label}</button>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                    {activeDateFilter === 'custom' && (
-                                        <div className="space-y-2 mt-2">
-                                            <input type="date" className="text-xs p-1.5 border rounded w-full" onChange={(e) => setCustomDateRange({ ...customDateRange, start: e.target.value })} />
-                                            <input type="date" className="text-xs p-1.5 border rounded w-full" onChange={(e) => setCustomDateRange({ ...customDateRange, end: e.target.value })} />
-                                            <button onClick={handleApplyCustomDate} className="w-full bg-orange-500 text-white py-1.5 rounded text-xs font-bold mt-2">Apply Filter</button>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
+                                {isFilterOpen && (
+                                    <div className="absolute top-full right-0 mt-3 w-64 bg-white rounded-sm shadow-lg z-[1000] border p-3">
+                                        <ul className="py-1 border-b mb-2">
+                                            {dateFilters.map((filter) => (
+                                                <li key={filter.value}>
+                                                    <button onClick={() => handleDateFilterSelect(filter.value)} className={`w-full text-left px-4 py-2 text-sm ${activeDateFilter === filter.value ? 'bg-orange-50 text-orange-600 font-bold' : 'text-slate-700'} hover:bg-slate-50`}>{filter.label}</button>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                        {activeDateFilter === 'custom' && (
+                                            <div className="space-y-2 mt-2">
+                                                <input type="date" className="text-xs p-1.5 border rounded w-full" onChange={(e) => setCustomDateRange({ ...customDateRange, start: e.target.value })} />
+                                                <input type="date" className="text-xs p-1.5 border rounded w-full" onChange={(e) => setCustomDateRange({ ...customDateRange, end: e.target.value })} />
+                                                <button onClick={handleApplyCustomDate} className="w-full bg-orange-500 text-white py-1.5 rounded text-xs font-bold mt-2">Apply Filter</button>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        {/* </CataShowWrapper> */}
                     </div>
                 </div>
             </div>
@@ -1624,18 +1628,18 @@ const OrdersPage: React.FC = () => {
                                                                 )}
 
                                                                 {/* RETURN – PAID + UNPAID dono me */}
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        navigate(
-                                                                            `${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`,
-                                                                            { state: { selectedOrder: Order.orderId } }
-                                                                        );
-                                                                    }}
-                                                                    className="py-2.5 bg-sky-500 text-white text-xs font-bold rounded-sm"
-                                                                >
-                                                                    Return
-                                                                </button>
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            navigate(
+                                                                                `${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`,
+                                                                                { state: { selectedOrder: Order.orderId } }
+                                                                            );
+                                                                        }}
+                                                                        className="py-2.5 bg-sky-500 text-white text-xs font-bold rounded-sm"
+                                                                    >
+                                                                        Return
+                                                                    </button>
 
                                                                 {/* PRINT */}
                                                                 <button
@@ -1753,12 +1757,8 @@ const OrdersPage: React.FC = () => {
                         <div className="flex flex-col gap-3">
                             <button
                                 onClick={() => {
-                                    const order = selectedOrderForAction;
                                     setSelectedOrderForAction(null);
-
-                                    setTimeout(() => {
-                                        handleShareBill(order);
-                                    }, 50);
+                                    navigate(ROUTES.WHATSAPP_PLAN || '/whatsapp-plans');
                                 }}
                                 className="w-full bg-[#25D366] text-white py-2.5 rounded-sm font-bold"
                             >
@@ -1911,15 +1911,15 @@ const OrdersPage: React.FC = () => {
             })()}
 
             {editingOrder && (
-                <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-2 md:p-4">
-                    <div className="bg-white rounded-sm w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
-                        {/* Header */}
-                        <div className="px-5 py-3 border-b flex justify-between items-center bg-slate-50">
-                            <div className="flex items-center gap-4">
-                                <div>
-                                    <h3 className="text-sm font-bold text-slate-800 leading-tight">Edit Order</h3>
-                                    <p className="text-[10px] text-[#F97316] font-bold uppercase tracking-tighter">{editingOrder.orderId}</p>
-                                </div>
+                    <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-2 md:p-4">
+                        <div className="bg-white rounded-sm w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+                            {/* Header */}
+                            <div className="px-5 py-3 border-b flex justify-between items-center bg-slate-50">
+                                <div className="flex items-center gap-4">
+                                    <div>
+                                        <h3 className="text-sm font-bold text-slate-800 leading-tight">Edit Order</h3>
+                                        <p className="text-[10px] text-orange-600 font-bold uppercase tracking-tighter">{editingOrder.orderId}</p>
+                                    </div>
 
                                 {/* Divider aur Total Amount */}
                                 <div className="h-8 w-[1px] bg-gray-500 mx-2"></div>
@@ -1929,131 +1929,131 @@ const OrdersPage: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* Close Button */}
-                            <button
-                                onClick={() => setEditingOrder(null)}
-                                className="p-1.5 hover:bg-gray-200 rounded-sm transition-colors"
-                            >
-                                <FiX size={20} />
-                            </button>
-                        </div>
+                                {/* Close Button */}
+                                <button
+                                    onClick={() => setEditingOrder(null)}
+                                    className="p-1.5 hover:bg-gray-200 rounded-sm transition-colors"
+                                >
+                                    <FiX size={20} />
+                                </button>
+                            </div>
 
-                        <div className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar">
-                            <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
-                                {/* LEFT SIDE: ADDRESSES */}
-                                <div className="space-y-4">
-                                    <div className="flex sm:hidden p-1 bg-slate-100 rounded-sm mb-2">
-                                        <button
-                                            onClick={() => setActiveTab('billing')}
-                                            className={`flex-1 py-2 text-xs font-bold rounded-sm transition-all ${activeTab === 'billing' ? 'bg-white text-[#F97316] shadow-sm' : 'text-slate-500'}`}
-                                        >
-                                            Billing
-                                        </button>
-                                        <button
-                                            onClick={() => setActiveTab('shipping')}
-                                            className={`flex-1 py-2 text-xs font-bold rounded-sm transition-all ${activeTab === 'shipping' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}
-                                        >
-                                            Shipping
-                                        </button>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {/* Billing Address Section */}
-                                        <div className={`p-4 rounded-sm border border-slate-200 bg-orange-50/30 space-y-3 ${activeTab === 'billing' ? 'block' : 'hidden sm:block'}`}>
-                                            <div className="flex justify-between items-center">
-                                                <h4 className="text-[11px] font-black text-[#F97316] uppercase tracking-widest flex items-center gap-2">
-                                                    <span className="w-1.5 h-1.5 bg-[#F97316] rounded-sm"></span> Billing Address
-                                                </h4>
-
-                                                <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                                                    <input
-                                                        type="checkbox"
-                                                        id="sameAsBilling"
-                                                        className="w-3.5 h-3.5 accent-[#F97316] rounded-sm cursor-pointer"
-                                                        onChange={(e) => {
-                                                            if (e.target.checked) {
-                                                                setEditingOrder({
-                                                                    ...editingOrder,
-                                                                    shippingDetails: { ...editingOrder.billingDetails }
-                                                                });
-                                                            }
-                                                        }}
-                                                    />
-                                                    <span className="text-[9px] font-bold text-slate-500 uppercase">Same for Shipping</span>
-                                                </label>
-                                            </div>
-
-                                            <div className="grid grid-cols-2 gap-2">
-                                                {/* NAME FIELD */}
-                                                <input
-                                                    type="text"
-                                                    placeholder="Name"
-                                                    className="p-2 border border-slate-300 rounded-sm text-xs outline-none focus:border-[#F97316]"
-                                                    value={editingOrder.billingDetails?.name || ''}
-                                                    onChange={(e) => {
-                                                        const val = e.target.value;
-                                                        const isSame = (document.getElementById('sameAsBilling') as HTMLInputElement)?.checked;
-                                                        setEditingOrder({
-                                                            ...editingOrder,
-                                                            billingDetails: { ...editingOrder.billingDetails!, name: val },
-                                                            ...(isSame && { shippingDetails: { ...editingOrder.shippingDetails!, name: val } })
-                                                        });
-                                                    }}
-                                                />
-
-                                                {/* PHONE FIELD (Billing) - Security Check Added */}
-                                                <input
-                                                    type="text"
-                                                    placeholder="Phone"
-                                                    className="p-2 border border-slate-300 rounded-sm text-xs outline-none focus:border-orange-400"
-                                                    value={editingOrder.billingDetails?.phone || ''}
-                                                    onChange={(e) => {
-                                                        // Sirf numbers allow karo aur max 10 digits
-                                                        const val = e.target.value.replace(/\D/g, '').slice(0, 10);
-                                                        const isSame = (document.getElementById('sameAsBilling') as HTMLInputElement)?.checked;
-
-                                                        setEditingOrder({
-                                                            ...editingOrder,
-                                                            billingDetails: { ...editingOrder.billingDetails!, phone: val },
-                                                            ...(isSame && { shippingDetails: { ...editingOrder.shippingDetails!, phone: val } })
-                                                        });
-                                                    }}
-                                                />
-
-                                                {/* ADDRESS FIELD */}
-                                                <textarea
-                                                    placeholder="Address"
-                                                    className="col-span-2 p-2 border border-slate-300 rounded-sm text-xs h-16 resize-none outline-none focus:border-orange-400"
-                                                    value={editingOrder.billingDetails?.address || ''}
-                                                    onChange={(e) => {
-                                                        const val = e.target.value;
-                                                        const isSame = (document.getElementById('sameAsBilling') as HTMLInputElement)?.checked;
-                                                        setEditingOrder({
-                                                            ...editingOrder,
-                                                            billingDetails: { ...editingOrder.billingDetails!, address: val },
-                                                            ...(isSame && { shippingDetails: { ...editingOrder.shippingDetails!, address: val } })
-                                                        });
-                                                    }}
-                                                />
-                                            </div>
+                            <div className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar">
+                                <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
+                                    {/* LEFT SIDE: ADDRESSES */}
+                                    <div className="space-y-4">
+                                        <div className="flex sm:hidden p-1 bg-slate-100 rounded-sm mb-2">
+                                            <button
+                                                onClick={() => setActiveTab('billing')}
+                                                className={`flex-1 py-2 text-xs font-bold rounded-sm transition-all ${activeTab === 'billing' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-500'}`}
+                                            >
+                                                Billing
+                                            </button>
+                                            <button
+                                                onClick={() => setActiveTab('shipping')}
+                                                className={`flex-1 py-2 text-xs font-bold rounded-sm transition-all ${activeTab === 'shipping' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}
+                                            >
+                                                Shipping
+                                            </button>
                                         </div>
 
-                                        {/* Shipping Address Section */}
-                                        <div className={`p-4 rounded-sm border border-slate-200 bg-blue-50/30 space-y-3 ${activeTab === 'shipping' ? 'block' : 'hidden sm:block'}`}>
-                                            <h4 className="text-[11px] font-black text-blue-600 uppercase tracking-widest flex items-center gap-2">
-                                                <span className="w-1.5 h-1.5 bg-blue-600 rounded-sm"></span> Shipping Address
-                                            </h4>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <input
-                                                    type="text"
-                                                    placeholder="Name"
-                                                    className="p-2 border border-slate-300 rounded-sm text-xs outline-none focus:border-blue-400"
-                                                    value={editingOrder.shippingDetails?.name || ''}
-                                                    onChange={(e) => setEditingOrder({
-                                                        ...editingOrder,
-                                                        shippingDetails: { ...editingOrder.shippingDetails!, name: e.target.value }
-                                                    })}
-                                                />
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {/* Billing Address Section */}
+                                            <div className={`p-4 rounded-sm border border-slate-200 bg-orange-50/30 space-y-3 ${activeTab === 'billing' ? 'block' : 'hidden sm:block'}`}>
+                                                <div className="flex justify-between items-center">
+                                                    <h4 className="text-[11px] font-black text-orange-600 uppercase tracking-widest flex items-center gap-2">
+                                                        <span className="w-1.5 h-1.5 bg-orange-600 rounded-sm"></span> Billing Address
+                                                    </h4>
+
+                                                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                                                        <input
+                                                            type="checkbox"
+                                                            id="sameAsBilling"
+                                                            className="w-3.5 h-3.5 accent-orange-600 rounded-sm cursor-pointer"
+                                                            onChange={(e) => {
+                                                                if (e.target.checked) {
+                                                                    setEditingOrder({
+                                                                        ...editingOrder,
+                                                                        shippingDetails: { ...editingOrder.billingDetails }
+                                                                    });
+                                                                }
+                                                            }}
+                                                        />
+                                                        <span className="text-[9px] font-bold text-slate-500 uppercase">Same for Shipping</span>
+                                                    </label>
+                                                </div>
+
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    {/* NAME FIELD */}
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Name"
+                                                        className="p-2 border border-slate-300 rounded-sm text-xs outline-none focus:border-orange-400"
+                                                        value={editingOrder.billingDetails?.name || ''}
+                                                        onChange={(e) => {
+                                                            const val = e.target.value;
+                                                            const isSame = (document.getElementById('sameAsBilling') as HTMLInputElement)?.checked;
+                                                            setEditingOrder({
+                                                                ...editingOrder,
+                                                                billingDetails: { ...editingOrder.billingDetails!, name: val },
+                                                                ...(isSame && { shippingDetails: { ...editingOrder.shippingDetails!, name: val } })
+                                                            });
+                                                        }}
+                                                    />
+
+                                                    {/* PHONE FIELD (Billing) - Security Check Added */}
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Phone"
+                                                        className="p-2 border border-slate-300 rounded-sm text-xs outline-none focus:border-orange-400"
+                                                        value={editingOrder.billingDetails?.phone || ''}
+                                                        onChange={(e) => {
+                                                            // Sirf numbers allow karo aur max 10 digits
+                                                            const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                                                            const isSame = (document.getElementById('sameAsBilling') as HTMLInputElement)?.checked;
+
+                                                            setEditingOrder({
+                                                                ...editingOrder,
+                                                                billingDetails: { ...editingOrder.billingDetails!, phone: val },
+                                                                ...(isSame && { shippingDetails: { ...editingOrder.shippingDetails!, phone: val } })
+                                                            });
+                                                        }}
+                                                    />
+
+                                                    {/* ADDRESS FIELD */}
+                                                    <textarea
+                                                        placeholder="Address"
+                                                        className="col-span-2 p-2 border border-slate-300 rounded-sm text-xs h-16 resize-none outline-none focus:border-orange-400"
+                                                        value={editingOrder.billingDetails?.address || ''}
+                                                        onChange={(e) => {
+                                                            const val = e.target.value;
+                                                            const isSame = (document.getElementById('sameAsBilling') as HTMLInputElement)?.checked;
+                                                            setEditingOrder({
+                                                                ...editingOrder,
+                                                                billingDetails: { ...editingOrder.billingDetails!, address: val },
+                                                                ...(isSame && { shippingDetails: { ...editingOrder.shippingDetails!, address: val } })
+                                                            });
+                                                        }}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* Shipping Address Section */}
+                                            <div className={`p-4 rounded-sm border border-slate-200 bg-blue-50/30 space-y-3 ${activeTab === 'shipping' ? 'block' : 'hidden sm:block'}`}>
+                                                <h4 className="text-[11px] font-black text-blue-600 uppercase tracking-widest flex items-center gap-2">
+                                                    <span className="w-1.5 h-1.5 bg-blue-600 rounded-sm"></span> Shipping Address
+                                                </h4>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Name"
+                                                        className="p-2 border border-slate-300 rounded-sm text-xs outline-none focus:border-blue-400"
+                                                        value={editingOrder.shippingDetails?.name || ''}
+                                                        onChange={(e) => setEditingOrder({
+                                                            ...editingOrder,
+                                                            shippingDetails: { ...editingOrder.shippingDetails!, name: e.target.value }
+                                                        })}
+                                                    />
 
                                                 <input
                                                     type="text"
@@ -2069,19 +2069,19 @@ const OrdersPage: React.FC = () => {
                                                     }}
                                                 />
 
-                                                <textarea
-                                                    placeholder="Address"
-                                                    className="col-span-2 p-2 border border-slate-300 rounded-sm text-xs h-16 resize-none outline-none focus:border-blue-400"
-                                                    value={editingOrder.shippingDetails?.address || ''}
-                                                    onChange={(e) => setEditingOrder({
-                                                        ...editingOrder,
-                                                        shippingDetails: { ...editingOrder.shippingDetails!, address: e.target.value }
-                                                    })}
-                                                />
+                                                    <textarea
+                                                        placeholder="Address"
+                                                        className="col-span-2 p-2 border border-slate-300 rounded-sm text-xs h-16 resize-none outline-none focus:border-blue-400"
+                                                        value={editingOrder.shippingDetails?.address || ''}
+                                                        onChange={(e) => setEditingOrder({
+                                                            ...editingOrder,
+                                                            shippingDetails: { ...editingOrder.shippingDetails!, address: e.target.value }
+                                                        })}
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
 
                                 {/* RIGHT SIDE: ITEMS & TOTAL */}
                                 <div className="flex flex-col w-full space-y-2">
@@ -2125,10 +2125,10 @@ const OrdersPage: React.FC = () => {
                                         />
                                     </div>
 
-                                    <div className="h-fit self-start w-full p-2 rounded-sm border border-slate-200 bg-slate-50 flex flex-col">
-                                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">
-                                            Items ({editingOrder.items?.length})
-                                        </h4>
+                                        <div className="h-fit self-start w-full p-2 rounded-sm border border-slate-200 bg-slate-50 flex flex-col">
+                                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">
+                                                Items ({editingOrder.items?.length})
+                                            </h4>
 
                                         {/* Items List Container */}
                                         <div className="h-auto">

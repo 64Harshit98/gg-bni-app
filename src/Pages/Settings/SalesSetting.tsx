@@ -107,17 +107,18 @@ const SettingsCard: React.FC<CardProps> = ({ title, children, action }) => (
     </section>
 );
 
-interface ToggleRowProps {
+export interface ToggleRowProps {
     id: string;
     label: string;
     description: string;
     checked: boolean;
     onChange: (checked: boolean) => void;
     tooltip?: string;
+    disabled?: boolean;
 }
 
-const ToggleRow: React.FC<ToggleRowProps> = ({ id, label, description, checked, onChange, tooltip }) => (
-    <div className="flex items-start justify-between gap-4 rounded-sm bg-gray-50/60 border border-gray-100 p-3.5 md:p-4">
+export const ToggleRow: React.FC<ToggleRowProps> = ({ id, label, description, checked, onChange, tooltip, disabled = false,  }) => (
+    <div className={`flex items-start justify-between gap-4 rounded-sm bg-gray-50/60 border border-gray-100 p-3.5 md:p-4 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
         <div className="min-w-0">
             <div className="flex items-center gap-2">
                 <label htmlFor={id} className="text-sm font-semibold text-gray-800 leading-5">{label}</label>
@@ -352,7 +353,7 @@ const SalesSettingsPage: React.FC = () => {
                                     />
                                 }
                             >
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div className="grid grid-cols-2 gap-3">
                                     {/* List View */}
                                     <div
                                         onClick={() => handleChange('salesViewType', 'list')}

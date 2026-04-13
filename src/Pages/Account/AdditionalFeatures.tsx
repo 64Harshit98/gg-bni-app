@@ -31,6 +31,20 @@ const SERVICES: ServiceItem[] = [
         description: 'Track stock levels, manage items, and adjust pricing.',
         route: '/inventory',
         isLocked: true,
+    },
+    {
+        id: 'label-design',
+        title: 'Label Design',
+        description: 'Custom label design for your products. ₹1,100 per design.',
+        route: '/label-design',
+        isLocked: true,
+    },
+    {
+        id: 'bill-design',
+        title: 'Bill Design',
+        description: 'Custom bill design for your business. ₹1,100 per design.',
+        route: '/bill-design',
+        isLocked: true,
     }
 ];
 
@@ -145,8 +159,8 @@ const AdditionalServices: React.FC = () => {
                         >
                             <div className="flex items-center justify-between py-2">
                                 <div className="flex-1 pr-4">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <h3 className="text-lg font-semibold text-slate-800">{service.title}</h3>
+                                    <div className="flex items-center gap-1 mb-1 min-w-0 flex-wrap">
+                                        <h3 className="text-lg font-semibold text-slate-800 whitespace-nowrap">{service.title}</h3>
 
                                         {/* Standard Badge */}
                                         {service.badge && !effectivelyLocked && (
@@ -157,7 +171,7 @@ const AdditionalServices: React.FC = () => {
 
                                         {/* 5. Dynamic Locked Badges */}
                                         {effectivelyLocked && (
-                                            <span className="bg-sky-200 text-gray-600 text-[10px] font-bold px-2 py-0.5 rounded-xs uppercase tracking-wide border border-gray-300">
+                                            <span className="bg-sky-200 text-gray-600 text-[10px] font-bold px-1 py-0.5 rounded-xs uppercase tracking-wide border border-gray-300">
                                                 {isDeviceLocked ? 'PLEASE SETUP ON DESKTOP' : 'Coming Soon'}
                                             </span>
                                         )}

@@ -239,11 +239,25 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   let totalTaxAmt = 0;
   let grossTotal = 0;
 
+  // --- Determine price column header ---
+  const hasZeroMrp = data.items.some(item => !item.listPrice || item.listPrice === 0);
+  const priceHeader = hasZeroMrp ? 'Sales Price' : 'MRP';
+
   const taxBreakdown: Record<string, { taxable: number, cgst: number, sgst: number }> = {};
 
   const tableBody = data.items.map(item => {
     const qty = Number(item.quantity) || 0;
-    const mrp = Number(item.listPrice) || 0;
+    let mrp = Number(item.listPrice) || 0;
+
+    if (mrp === 0) {
+      const salesPrice = Number((item as any).price || (item as any).rate || 0);
+
+      if (salesPrice > 0) {
+        mrp = salesPrice;
+      } else if (qty > 0) {
+        mrp = Number(item.amount || 0) / qty;
+      }
+    }
 
     // --- DETERMINE ROW TOTAL & DISCOUNT ---
     let rowTotal = 0;
@@ -332,7 +346,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
 
   autoTable(doc, {
     startY: cursorY,
-    head: [['S.N.', 'Items', 'HSN', 'Qty', 'Unit', 'MRP', 'Discount', 'Subtotal', 'CGST', 'CGST Amt', 'SGST', 'SGST Amt', 'Amount']],
+    head: [['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Subtotal', 'CGST', 'CGST Amt', 'SGST', 'SGST Amt', 'Amount']],
     body: tableBody,
     theme: 'grid',
     styles: {

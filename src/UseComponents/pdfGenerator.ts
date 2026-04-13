@@ -101,11 +101,34 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     ? data.taxType.toUpperCase()
     : 'EXCLUSIVE';
 
+  const isEstimate = (data as any).isEstimate === true;
+  console.log(isEstimate)
+
   const drawBox = (y: number, h: number) => {
     doc.rect(startX, y, contentWidth, h);
   };
 
   let cursorY = margin;
+
+  // --- GENERATED TIMESTAMP (TOP RIGHT) ---
+  const y = margin - 2;
+  const now = new Date();
+  const generatedAt = now.toLocaleString('en-IN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  doc.text(
+    `Bill generated on ${generatedAt}`,
+    pageWidth - margin,
+    y,
+    { align: "right" }
+  );
 
   // --- 1. HEADER SECTION ---
   const headerHeight = 25;
@@ -121,9 +144,11 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
 
-  const title = (safeScheme === 'COMPOSITION' || safeScheme === 'NONE')
-    ? 'BILL OF SUPPLY'
-    : 'TAX INVOICE';
+  const title = isEstimate
+    ? 'ESTIMATE'
+    : (safeScheme === 'COMPOSITION' || safeScheme === 'NONE')
+      ? 'BILL OF SUPPLY'
+      : 'TAX INVOICE';
   doc.text(title, pageWidth / 2, cursorY + 5, { align: 'center' });
 
   doc.setFontSize(8);
@@ -170,42 +195,29 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     doc.text(schemeInfo, (pageWidth / 2) + 2, cursorY + 10);
   }
   doc.setFont('helvetica', 'normal');
-  doc.text(`Vehicle No.      : ${data.invoice.roNumber || ''}`, (pageWidth / 2) + 2, cursorY + 15);
+  //doc.text(`Vehicle No.      : ${data.invoice.roNumber || ''}`, (pageWidth / 2) + 2, cursorY + 15);
 
   cursorY += metaHeight;
 
   // --- 3. PARTIES SECTION ---
   const billName = data.billTo.name;
-  const billAddr = doc.splitTextToSize(data.billTo.address, (contentWidth / 2) - 5);
+  const billAddr = doc.splitTextToSize(data.billTo.address, contentWidth - 10);
   const billPhone = `Phone.No.  : ${data.billTo.phone || ''}`;
   const billEmail = `E Mail  : ${data.billTo.email || ''}`;
   const billGst = `GST No. : ${data.billTo.gstin || ''}`;
-
-  // --- REPLACE shipAddr LOGIC ---
-  const shipName = data.shipTo?.name || '';
-  const shipAddr = doc.splitTextToSize(data.shipTo?.address || '', (contentWidth / 2) - 5);
-  const shipPhone = `Phone.No.  : ${data.shipTo?.phone || ''}`;
-  const shipEmail = `E Mail  :`; // Usually empty for shipping unless strictly needed
-  const shipGst = `GST No. : ${data.shipTo?.gstin || ''}`;
   const lineHeight = 5;
   const padding = 10;
   const fixedLines = 5;
   const billLines = fixedLines + billAddr.length;
-  const shipLines = fixedLines + shipAddr.length;
-  const partyHeight = (Math.max(billLines, shipLines) * lineHeight) + padding;
+  const partyHeight = (billLines * lineHeight) + padding;
 
   drawBox(cursorY, partyHeight);
-  doc.line(pageWidth / 2, cursorY, pageWidth / 2, cursorY + partyHeight);
 
   const headerY = cursorY + 5;
   doc.setFont('helvetica', 'bold');
   doc.text('Billed to :', startX + 2, headerY);
   const billedToWidth = doc.getTextWidth('Billed to :');
   doc.line(startX + 2, headerY + 1, startX + 2 + billedToWidth, headerY + 1);
-
-  doc.text('Shipped to :', (pageWidth / 2) + 2, headerY);
-  const shippedToWidth = doc.getTextWidth('Shipped to :');
-  doc.line((pageWidth / 2) + 2, headerY + 1, (pageWidth / 2) + 2 + shippedToWidth, headerY + 1);
   doc.setFont('helvetica', 'normal');
 
   let currentY = headerY + 6;
@@ -218,18 +230,6 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   doc.text(billEmail, startX + 2, currentY);
   currentY += lineHeight;
   doc.text(billGst, startX + 2, currentY);
-
-  currentY = headerY + 6;
-  const midX = (pageWidth / 2) + 2;
-  doc.text(shipName, midX, currentY);
-  currentY += lineHeight;
-  doc.text(shipAddr, midX, currentY);
-  currentY += (shipAddr.length * lineHeight);
-  doc.text(shipPhone, midX, currentY);
-  currentY += lineHeight;
-  doc.text(shipEmail, midX, currentY);
-  currentY += lineHeight;
-  doc.text(shipGst, midX, currentY);
 
   cursorY += partyHeight;
 
@@ -279,7 +279,9 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     }
 
     // --- TAX RATE ---
-    let effectiveTaxRate = Number(item.gstPercent || item.taxRate || 0);
+    let effectiveTaxRate = isEstimate
+      ? 0
+      : Number(item.gstPercent || item.taxRate || 0);
 
     if (safeScheme === 'COMPOSITION' || safeScheme === 'NONE') {
       effectiveTaxRate = 0;
@@ -290,7 +292,12 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     let taxAmt = 0;
     let netAmount = 0;
 
-    if (safeScheme === 'NONE' || safeScheme === 'COMPOSITION') {
+    if (isEstimate) {
+      netAmount = rowTotal;
+      taxableValue = rowTotal;
+      taxAmt = 0;
+    }
+    else if (safeScheme === 'NONE' || safeScheme === 'COMPOSITION') {
       netAmount = rowTotal;
       taxableValue = rowTotal;
       taxAmt = 0;
@@ -317,21 +324,32 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
       taxBreakdown[rateKey].sgst += (taxAmt / 2);
     }
 
-    return [
-      item.sno,
-      item.name,
-      item.hsn,
-      qty,
-      item.unit || 'PCS',
-      mrp.toFixed(2),
-      displayDiscount.toFixed(2),
-      taxableValue.toFixed(2),
-      `${(effectiveTaxRate / 2)}%`,
-      (taxAmt / 2).toFixed(2),
-      `${(effectiveTaxRate / 2)}%`,
-      (taxAmt / 2).toFixed(2),
-      netAmount.toFixed(2)
-    ];
+    return isEstimate
+      ? [
+          item.sno,
+          item.name,
+          item.hsn,
+          qty,
+          item.unit || 'PCS',
+          mrp.toFixed(2),
+          displayDiscount.toFixed(2),
+          netAmount.toFixed(2)
+        ]
+      : [
+          item.sno,
+          item.name,
+          item.hsn,
+          qty,
+          item.unit || 'PCS',
+          mrp.toFixed(2),
+          displayDiscount.toFixed(2),
+          taxableValue.toFixed(2),
+          `${(effectiveTaxRate / 2)}%`,
+          (taxAmt / 2).toFixed(2),
+          `${(effectiveTaxRate / 2)}%`,
+          (taxAmt / 2).toFixed(2),
+          netAmount.toFixed(2)
+        ];
   });
 
   // --- UPDATED GRAND TOTAL CALCULATION ---
@@ -346,7 +364,10 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
 
   autoTable(doc, {
     startY: cursorY,
-    head: [['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Subtotal', 'CGST', 'CGST Amt', 'SGST', 'SGST Amt', 'Amount']],
+    head: [isEstimate
+      ? ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Amount']
+      : ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Subtotal', 'CGST', 'CGST Amt', 'SGST', 'SGST Amt', 'Amount']
+    ],
     body: tableBody,
     theme: 'grid',
     styles: {
@@ -457,45 +478,47 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   }
 
   // 3. TAX TABLE
-  const taxHeaders = [['Tax Rate', 'Taxable Amt.', 'CGST', 'SGST', 'Total Tax']];
-  const taxBody = Object.keys(taxBreakdown).map(rate => {
-    const d = taxBreakdown[rate];
-    return [`${rate}%`, d.taxable.toFixed(2), d.cgst.toFixed(2), d.sgst.toFixed(2), (d.cgst + d.sgst).toFixed(2)];
-  });
+  if (!isEstimate) {
+    const taxHeaders = [['Tax Rate', 'Taxable Amt.', 'CGST', 'SGST', 'Total Tax']];
+    const taxBody = Object.keys(taxBreakdown).map(rate => {
+      const d = taxBreakdown[rate];
+      return [`${rate}%`, d.taxable.toFixed(2), d.cgst.toFixed(2), d.sgst.toFixed(2), (d.cgst + d.sgst).toFixed(2)];
+    });
 
-  taxBody.push(['TOTAL', totalTaxable.toFixed(2), (totalTaxAmt / 2).toFixed(2), (totalTaxAmt / 2).toFixed(2), totalTaxAmt.toFixed(2)]);
+    taxBody.push(['TOTAL', totalTaxable.toFixed(2), (totalTaxAmt / 2).toFixed(2), (totalTaxAmt / 2).toFixed(2), totalTaxAmt.toFixed(2)]);
 
-  autoTable(doc, {
-    startY: finalY + 2,
-    head: taxHeaders,
-    body: taxBody,
-    theme: 'grid',
-    styles: {
-      fontSize: 8,
-      cellPadding: 1,
-      textColor: textColor,
-      lineColor: lineColor,
-      lineWidth: 0.1,
-      halign: 'right'
-    },
-    headStyles: {
-      fillColor: [255, 255, 255],
-      textColor: textColor,
-      fontStyle: 'bold',
-      halign: 'right',
-      lineColor: lineColor,
-      lineWidth: 0.1
-    },
-    columnStyles: {
-      0: { halign: 'left' }
-    },
-    tableWidth: contentWidth / 2,
-    margin: { left: startX },
-  });
+    autoTable(doc, {
+      startY: finalY + 2,
+      head: taxHeaders,
+      body: taxBody,
+      theme: 'grid',
+      styles: {
+        fontSize: 8,
+        cellPadding: 1,
+        textColor: textColor,
+        lineColor: lineColor,
+        lineWidth: 0.1,
+        halign: 'right'
+      },
+      headStyles: {
+        fillColor: [255, 255, 255],
+        textColor: textColor,
+        fontStyle: 'bold',
+        halign: 'right',
+        lineColor: lineColor,
+        lineWidth: 0.1
+      },
+      columnStyles: {
+        0: { halign: 'left' }
+      },
+      tableWidth: contentWidth / 2,
+      margin: { left: startX },
+    });
 
-  // @ts-ignore
-  let taxTableEnd = doc.lastAutoTable.finalY;
-  finalY = Math.max(taxTableEnd + 2, finalY + 25);
+    // @ts-ignore
+    let taxTableEnd = doc.lastAutoTable.finalY;
+    finalY = Math.max(taxTableEnd + 2, finalY + 25);
+  }
 
   // 4. AMOUNT IN WORDS
   const wordsH = 8;
@@ -507,71 +530,75 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   finalY += wordsH;
  
   // 5. BANK DETAILS
-  const bankH = 10;
-  doc.rect(startX, finalY, contentWidth, bankH);
-  doc.setFont('helvetica', 'bold');
-  doc.text('BANK DETAIL :', startX + 2, finalY + 4);
-  const bdWidth = doc.getTextWidth('BANK DETAIL :');
-  doc.line(startX + 2, finalY + 4.5, startX + 2 + bdWidth, finalY + 4.5);
-  doc.setFont('helvetica', 'bold');
-  const bankText = `Bank name : ${data.bankDetails?.bankName || ''} , A/C NO. ${data.bankDetails?.accountNumber || ''}`;
-  doc.text(bankText, startX + 35, finalY + 4);
-  doc.text(`IFSC Code ${data.bankDetails?.ifsc || ''}`, startX + 35, finalY + 8);
-  finalY += bankH;
+  if (!isEstimate) {
+    const bankH = 10;
+    doc.rect(startX, finalY, contentWidth, bankH);
+    doc.setFont('helvetica', 'bold');
+    doc.text('BANK DETAIL :', startX + 2, finalY + 4);
+    const bdWidth = doc.getTextWidth('BANK DETAIL :');
+    doc.line(startX + 2, finalY + 4.5, startX + 2 + bdWidth, finalY + 4.5);
+    doc.setFont('helvetica', 'bold');
+    const bankText = `Bank name : ${data.bankDetails?.bankName || ''} , A/C NO. ${data.bankDetails?.accountNumber || ''}`;
+    doc.text(bankText, startX + 35, finalY + 4);
+    doc.text(`IFSC Code ${data.bankDetails?.ifsc || ''}`, startX + 35, finalY + 8);
+    finalY += bankH;
+  }
 
   // 6. FOOTER
-  const footerH = 35;
-  if (finalY + footerH > pageHeight - margin) {
-    doc.addPage();
-    finalY = margin;
-  }
-  const termsWidth = contentWidth * 0.50;
-  const receiverWidth = contentWidth * 0.25;
-  const authWidth = contentWidth * 0.25;
-
-  const termsX = startX;
-  const receiverX = startX + termsWidth;
-  const authX = startX + termsWidth + receiverWidth;
-
-  doc.rect(termsX, finalY, termsWidth, footerH);
-  doc.rect(receiverX, finalY, receiverWidth, footerH);
-  doc.rect(authX, finalY, authWidth, footerH);
-
-  let termY = finalY + 4;
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Terms & Condition', termsX + 2, termY);
-  const tcWidth = doc.getTextWidth('Terms & Condition');
-  doc.line(termsX + 2, termY + 1, termsX + 2 + tcWidth, termY + 1);
-
-  termY += 4;
-  doc.setFont('helvetica', 'normal');
-  doc.text('E. & O. E.', termsX + 2, termY);
-  termY += 4;
-  const termLines = doc.splitTextToSize(data.terms, termsWidth - 5);
-  doc.text(termLines, termsX + 2, termY);
-
-  doc.setFont('helvetica', 'bold');
-  doc.text("Receiver's Signature :", receiverX + 2, finalY + 4);
-
-  const authCenter = authX + (authWidth / 2);
-  doc.setFontSize(7);
-  doc.text(`for ${data.companyName}`, authCenter, finalY + 4, { align: 'center' });
-
-  if (data.signatureBase64) {
-    const imgWidth = 35;
-    const imgHeight = 15;
-    const imgX = authCenter - (imgWidth / 2);
-    const imgY = finalY + 8;
-    try {
-      doc.addImage(data.signatureBase64, 'PNG', imgX, imgY, imgWidth, imgHeight);
-    } catch (e) {
-      console.error("Error adding signature", e);
+  if (!isEstimate) {
+    const footerH = 35;
+    if (finalY + footerH > pageHeight - margin) {
+      doc.addPage();
+      finalY = margin;
     }
-  }
+    const termsWidth = contentWidth * 0.50;
+    const receiverWidth = contentWidth * 0.25;
+    const authWidth = contentWidth * 0.25;
 
-  doc.setFontSize(8);
-  doc.text("Authorised Signatory", authCenter, finalY + footerH - 2, { align: 'center' });
+    const termsX = startX;
+    const receiverX = startX + termsWidth;
+    const authX = startX + termsWidth + receiverWidth;
+
+    doc.rect(termsX, finalY, termsWidth, footerH);
+    doc.rect(receiverX, finalY, receiverWidth, footerH);
+    doc.rect(authX, finalY, authWidth, footerH);
+
+    let termY = finalY + 4;
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Terms & Condition', termsX + 2, termY);
+    const tcWidth = doc.getTextWidth('Terms & Condition');
+    doc.line(termsX + 2, termY + 1, termsX + 2 + tcWidth, termY + 1);
+
+    termY += 4;
+    doc.setFont('helvetica', 'normal');
+    doc.text('E. & O. E.', termsX + 2, termY);
+    termY += 4;
+    const termLines = doc.splitTextToSize(data.terms, termsWidth - 5);
+    doc.text(termLines, termsX + 2, termY);
+
+    doc.setFont('helvetica', 'bold');
+    doc.text("Receiver's Signature :", receiverX + 2, finalY + 4);
+
+    const authCenter = authX + (authWidth / 2);
+    doc.setFontSize(7);
+    doc.text(`for ${data.companyName}`, authCenter, finalY + 4, { align: 'center' });
+
+    if (data.signatureBase64) {
+      const imgWidth = 35;
+      const imgHeight = 15;
+      const imgX = authCenter - (imgWidth / 2);
+      const imgY = finalY + 8;
+      try {
+        doc.addImage(data.signatureBase64, 'PNG', imgX, imgY, imgWidth, imgHeight);
+      } catch (e) {
+        console.error("Error adding signature", e);
+      }
+    }
+
+    doc.setFontSize(8);
+    doc.text("Authorised Signatory", authCenter, finalY + footerH - 2, { align: 'center' });
+  }
 
   // 7. BRANDING FOOTER
   const brandingHeight = 15;

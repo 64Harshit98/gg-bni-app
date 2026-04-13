@@ -349,6 +349,9 @@ const Journal: React.FC = () => {
   // ─── Tutorial state (mirrors Home.tsx pattern) ────────────────────────────
   const [tutorialStep, setTutorialStep] = useState(0);
 
+  // Bill type toggle for action modal
+  const [billType, setBillType] = useState<'estimate' | 'bill'>('estimate');
+
   const next = (n: number) => setTutorialStep(n <= TOTAL_STEPS ? n : 0);
   const skip = () => {
     completeTutorial(currentUser, 'journalTutorialDone', setTutorialStep);
@@ -633,6 +636,7 @@ const Journal: React.FC = () => {
       items: populatedItems,
       terms: billSettings.termsAndConditions || 'Goods once sold will not be taken back.',
       finalAmount: invoice.amount,
+      isEstimate: (invoice as any).isEstimate || false,
       bankDetails: {
         accountName: billSettings.accountName || businessInfo?.accountHolderName,
         accountNumber: billSettings.accountNumber || businessInfo?.accountNumber,
@@ -653,7 +657,10 @@ const Journal: React.FC = () => {
     }
 
     try {
-      const dataForPdf = await preparePdfData(invoice);
+      const dataForPdf = await preparePdfData({
+        ...invoice,
+        isEstimate: billType === 'estimate'
+      } as any);
       if (dataForPdf) {
         await generatePdf(dataForPdf, action);
       } else {
@@ -688,7 +695,10 @@ const Journal: React.FC = () => {
         return;
       }
 
-      const dataForPdf = await preparePdfData(invoice);
+      const dataForPdf = await preparePdfData({
+        ...invoice,
+        isEstimate: billType === 'estimate'
+      } as any);
       if (!dataForPdf) throw new Error("Failed to prepare invoice data.");
       const pdfBlob = await generatePdfBlob(dataForPdf);
 
@@ -1127,21 +1137,52 @@ const Journal: React.FC = () => {
                 <IconClose />
               </button>
             </div>
+            {/* Bill type toggle */}
+            <div className="flex mb-4 bg-slate-100 rounded-sm p-1">
+              {['estimate', 'bill'].map((type) => (
+                <button
+                  key={type}
+                  onClick={() => setBillType(type as any)}
+                  className={`flex-1 py-2 text-xs font-bold uppercase rounded-sm transition-all ${
+                    billType === type
+                      ? 'bg-white text-[#F97316] shadow-sm'
+                      : 'text-slate-500'
+                  }`}
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
             <p className="text-gray-600 mb-6">Choose how you want to provide the bill.</p>
             <div className="flex flex-col gap-3">
               {invoiceToPrint.type === 'Credit' ? (
                 <>
                   <button
-                    onClick={() => handleSendWhatsapp(invoiceToPrint)}
+                    onClick={() => handleSendWhatsapp({
+                      ...invoiceToPrint,
+                      isEstimate: billType === 'estimate'
+                    } as any)}
                     disabled={sendingPdf}
                     className="w-full bg-green-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
                   </button>
-                  <button onClick={() => handlePdfAction(invoiceToPrint, ACTION.DOWNLOAD)} className="w-full bg-blue-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2">
+                  <button
+                    onClick={() => handlePdfAction({
+                      ...invoiceToPrint,
+                      isEstimate: billType === 'estimate'
+                    } as any, ACTION.DOWNLOAD)}
+                    className="w-full bg-blue-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                  >
                     <IconDownload /> Download PDF
                   </button>
-                  <button onClick={() => handlePdfAction(invoiceToPrint, ACTION.PRINT)} className="w-full bg-white text-gray-700 border border-gray-300 py-2.5 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
+                  <button
+                    onClick={() => handlePdfAction({
+                      ...invoiceToPrint,
+                      isEstimate: billType === 'estimate'
+                    } as any, ACTION.PRINT)}
+                    className="w-full bg-white text-gray-700 border border-gray-300 py-2.5 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+                  >
                     <IconPrint /> Print Directly
                   </button>
                   <button onClick={() => handleShowQr(invoiceToPrint)} className="w-full bg-gray-900 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2">

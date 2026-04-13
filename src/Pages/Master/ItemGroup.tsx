@@ -23,7 +23,6 @@ const ItemGroupPage: React.FC = () => {
   const [groupCounts, setGroupCounts] = useState<Record<string, number>>({});
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editingGroupName, setEditingGroupName] = useState<string>('');
-  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [deleteTargetGroup, setDeleteTargetGroup] = useState<ItemGroup | null>(null);
 
   const isActive = (path: string) => location.pathname === path;
@@ -331,7 +330,7 @@ const ItemGroupPage: React.FC = () => {
             {itemGroups.map((group) => {
               const count = group.id ? (groupCounts[group.id] || 0) : 0;
               return (
-                <div key={group.id} className="flex items-center justify-between p-3 bg-white rounded-sm shadow-sm border" onMouseLeave={() => setConfirmingDeleteId(null)}>
+                <div key={group.id} className="flex items-center justify-between p-3 bg-white rounded-sm shadow-sm border">
                   {editingGroupId === group.id ? (
                     <div className="flex flex-col w-full gap-2">
                       <input type="text" value={editingGroupName} onChange={(e) => setEditingGroupName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSaveEdit(group)} autoFocus className="w-full p-2 border border-blue-500 rounded-md" />

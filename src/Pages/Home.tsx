@@ -94,27 +94,19 @@ const DashboardContent = () => {
   const location = useLocation();
 
   // ─── Refs for autoscroll ──────────────────────────────────────────────────
-  // Index matches the step number (index 0 unused, steps are 1-based)
   const tutorialRefs = useRef<(HTMLElement | null)[]>([]);
-  const mainRef = useRef<HTMLElement | null>(null); // ref to the <main> scrollable container
+  const mainRef = useRef<HTMLElement | null>(null);
 
   const setTutorialRef = (index: number) => (el: HTMLElement | null) => {
     tutorialRefs.current[index] = el;
   };
 
-  // Autoscroll: whenever tutorialStep changes, scroll inside <main> to that element
   useEffect(() => {
     if (tutorialStep === 0) return;
-
     const el = tutorialRefs.current[tutorialStep];
     if (!el) return;
-
     if (tutorialStep <= 2) return;
-
-    el.scrollIntoView({
-      behavior: 'smooth',
-      block: 'center',
-    });
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [tutorialStep]);
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -237,7 +229,7 @@ const DashboardContent = () => {
       let percentageChange = 0;
       if (prevTotalSales > 0) percentageChange = ((currentTotalSales - prevTotalSales) / prevTotalSales) * 100;
       else if (currentTotalSales > 0) percentageChange = 100;
-      
+
       const chartData = [];
       const itr = new Date(prevStart);
       while (itr <= end) {
@@ -270,17 +262,11 @@ const DashboardContent = () => {
   useEffect(() => {
     const checkTutorial = async () => {
       if (!currentUser?.companyId) return;
-
       const docRef = doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial');
       const snap = await getDoc(docRef);
-
       const done = snap.exists() && snap.data()?.dashboardTutorialDone;
-
-      if (!done) {
-        setTutorialStep(1);
-      }
+      if (!done) setTutorialStep(1);
     };
-
     checkTutorial();
   }, [currentUser]);
 
@@ -326,7 +312,6 @@ const DashboardContent = () => {
 
         {/* Step 2 — Eye / hide button and Notification Bell */}
         <div className="flex items-center gap-3 justify-end">
-          {/* Notification Bell */}
           <div className="relative border border-slate-300 rounded-sm p-2 bg-gray-100 shadow-sm">
             <NotificationBell />
           </div>
@@ -341,7 +326,6 @@ const DashboardContent = () => {
         </div>
       </header>
 
-      {/* ── SCROLLABLE MAIN ── ref attached so we can scroll inside it */}
       <main ref={mainRef} className="flex-grow overflow-y-auto p-2 sm:p-2 relative">
         <ShowWrapper requiredPermission={Permissions.ViewHidebutton}>
           <div className="flex justify-center gap-2">
@@ -368,10 +352,12 @@ const DashboardContent = () => {
           ) : (
             <>
               <div className="space-y-2 pb-30">
-                <div className="grid grid-cols-1 md:grid-cols-10 md:grid-rows-2 gap-2 items-stretch">
+
+                {/* ── ROW 1: Sales Card + Daily Performance Bar Chart ── */}
+                <div className="grid grid-cols-1 md:grid-cols-10 gap-2 items-stretch md:[direction:ltr]">
                   {/* Step 4 — Sales Card */}
                   <TutorialStep step={4} currentStep={tutorialStep} text="This is your Sales Card. It shows total sales and overall performance for the selected period." onNext={() => next(5)} onSkip={skip}>
-                    <div ref={setTutorialRef(4)} className="order-1 h-full min-h-0 md:col-span-4 md:row-start-1 md:row-end-2">
+                    <div ref={setTutorialRef(4)} className="order-1 h-full min-h-0 md:col-span-4 md:order-1">
                       <ShowWrapper requiredPermission={Permissions.ViewSalescard}>
                         <div className="h-full min-h-0 [&>*]:h-full">
                           <SalesCard isDataVisible={isDataVisible} totalSales={Math.ceil(data?.totalSales || 0)} percentageChange={data?.percentageChange || 0} />
@@ -382,7 +368,7 @@ const DashboardContent = () => {
 
                   {/* Step 5 — Daily Performance Bar Chart */}
                   <TutorialStep step={5} currentStep={tutorialStep} text="This bar chart shows your daily sales performance over the selected date range." onNext={() => next(6)} onSkip={skip}>
-                    <div ref={setTutorialRef(5)} className="order-2 h-full min-h-0 md:order-none md:col-start-5 md:col-end-11 md:row-start-1 md:row-end-3">
+                    <div ref={setTutorialRef(5)} className="order-2 h-full min-h-0 md:col-span-6 md:order-2">
                       <ShowWrapper requiredPermission={Permissions.ViewSalesbarchart}>
                         <div className="h-full min-h-0 [&>*]:h-full">
                           <SalesBarChartReport isDataVisible={isDataVisible} data={data?.salesByDate || []} />
@@ -390,63 +376,64 @@ const DashboardContent = () => {
                       </ShowWrapper>
                     </div>
                   </TutorialStep>
-
-                  {/* Step 6 — Payment Methods */}
-                  <TutorialStep step={6} currentStep={tutorialStep} text="This chart breaks down sales by payment method — cash, card, UPI, etc." onNext={() => next(7)} onSkip={skip}>
-                    <div ref={setTutorialRef(6)} className="order-3 h-full min-h-0 md:order-none md:col-span-4 md:row-start-2 md:row-end-3">
-                      <ShowWrapper requiredPermission={Permissions.ViewPaymentmethods}>
-                        <div className="h-full min-h-0 [&>*]:h-full">
-                          <PaymentChart isDataVisible={isDataVisible} data={data?.paymentMethods || []} />
-                        </div>
-                      </ShowWrapper>
-                    </div>
-                  </TutorialStep>
                 </div>
 
+                {/* ── ROW 2: Top 5 Items, Top Salesperson, Top Customers ── */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 items-stretch">
-                  {/* Step 7 — Top 5 Items */}
-                  <TutorialStep step={7} currentStep={tutorialStep} text="See your top 5 best-selling items by revenue for the selected period." onNext={() => next(8)} onSkip={skip}>
-                    <div ref={setTutorialRef(7)} className="h-full [&>*]:h-full">
+                  {/* Step 6 — Top 5 Items */}
+                  <TutorialStep step={6} currentStep={tutorialStep} text="See your top 5 best-selling items by revenue for the selected period." onNext={() => next(7)} onSkip={skip}>
+                    <div ref={setTutorialRef(6)} className="h-full [&>*]:h-full">
                       <ShowWrapper requiredPermission={Permissions.ViewTopSoldItems}>
                         <TopSoldItemsCard isDataVisible={isDataVisible} items={data?.topItems || []} />
                       </ShowWrapper>
                     </div>
                   </TutorialStep>
 
-                  {/* Step 8 — Top Salesperson */}
-                  <TutorialStep step={8} currentStep={tutorialStep} text="Track your top 5 performing salespeople ranked by total sales amount." onNext={() => next(9)} onSkip={skip}>
-                    <div ref={setTutorialRef(8)} className="h-full [&>*]:h-full">
+                  {/* Step 7 — Top Salesperson */}
+                  <TutorialStep step={7} currentStep={tutorialStep} text="Track your top 5 performing salespeople ranked by total sales amount." onNext={() => next(8)} onSkip={skip}>
+                    <div ref={setTutorialRef(7)} className="h-full [&>*]:h-full">
                       <ShowWrapper requiredPermission={Permissions.ViewTopSalesperson}>
                         <TopSalespersonCard isDataVisible={isDataVisible} salesmen={data?.topSalesmen || []} />
                       </ShowWrapper>
                     </div>
                   </TutorialStep>
 
-                  {/* Step 9 — Top Customers */}
-                  <TutorialStep
-                    step={9}
-                    currentStep={tutorialStep}
-                    isLast={window.innerWidth >= 768}
-                    text="Your top 5 customers by purchase value. Great for identifying your most loyal buyers."
-                    onNext={async () => {
-                      if (!currentUser?.companyId) return;
-                      await setDoc(
-                        doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial'),
-                        { dashboardTutorialDone: true },
-                        { merge: true }
-                      );
-                      setTutorialStep(0);
-                      window.dispatchEvent(new Event("dashboard_tutorial_done"));
-                    }}
-                    onSkip={skip}
-                  >
-                    <div ref={setTutorialRef(9)} className="h-full [&>*]:h-full">
+                  {/* Step 8 — Top Customers */}
+                  <TutorialStep step={8} currentStep={tutorialStep} text="Your top 5 customers by purchase value. Great for identifying your most loyal buyers." onNext={() => next(9)} onSkip={skip}>
+                    <div ref={setTutorialRef(8)} className="h-full [&>*]:h-full">
                       <ShowWrapper requiredPermission={Permissions.ViewTopCustomers}>
                         <TopEntitiesList isDataVisible={isDataVisible} titleOverride="Top Customers" items={data?.topCustomers || []} />
                       </ShowWrapper>
                     </div>
                   </TutorialStep>
                 </div>
+
+                {/* ── ROW 3: Payment Methods (full width) ── */}
+                <TutorialStep
+                  step={9}
+                  currentStep={tutorialStep}
+                  isLast={window.innerWidth >= 768}
+                  text="This chart breaks down sales by payment method — cash, card, UPI, etc."
+                  onNext={async () => {
+                    if (!currentUser?.companyId) return;
+                    await setDoc(
+                      doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial'),
+                      { dashboardTutorialDone: true },
+                      { merge: true }
+                    );
+                    setTutorialStep(0);
+                    window.dispatchEvent(new Event("dashboard_tutorial_done"));
+                  }}
+                  onSkip={skip}
+                >
+                  <div ref={setTutorialRef(9)} className="grid grid-cols-1 md:grid-cols-10 gap-2">
+                    <div className="md:col-span-4">
+                      <ShowWrapper requiredPermission={Permissions.ViewPaymentmethods}>
+                        <PaymentChart isDataVisible={isDataVisible} data={data?.paymentMethods || []} />
+                      </ShowWrapper>
+                    </div>
+                  </div>
+                </TutorialStep>
 
                 <ShowWrapper requiredPermission={Permissions.ViewAttendance}><AttendancePage /></ShowWrapper>
               </div>

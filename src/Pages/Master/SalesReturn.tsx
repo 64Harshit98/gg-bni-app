@@ -28,6 +28,7 @@ import { useSalesSettings } from '../../context/SettingsContext';
 import { ReturnListItem } from '../../Components/ReturnListItem';
 import { GenericCartList } from '../../Components/CartItem';
 import { applyRounding, type SalesItem } from './Sales';
+import { ItemEditDrawer } from '../../Components/ItemDrawer';
 
 interface SalesData {
   id: string;
@@ -103,7 +104,6 @@ const SalesReturnPage: React.FC = () => {
 
   const [salesList, setSalesList] = useState<SalesData[]>([]);
   const [selectedSale, setSelectedSale] = useState<SalesData | null>(null);
-  console.log(selectedSale)
   const [searchSaleQuery, setSearchSaleQuery] = useState<string>('');
 
   const [isSalesDropdownOpen, setIsSalesDropdownOpen] = useState<boolean>(false);
@@ -120,6 +120,9 @@ const SalesReturnPage: React.FC = () => {
   const [scannerPurpose, setScannerPurpose] = useState<'sale' | 'item' | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
+  const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
+  const [isItemDrawerOpen, setIsItemDrawerOpen] = useState(false);
+
   const isActive = (path: string) => location.pathname === path;
 
   const [isDiscountLocked, setIsDiscountLocked] = useState(true);
@@ -127,6 +130,43 @@ const SalesReturnPage: React.FC = () => {
   const [isPriceLocked, setIsPriceLocked] = useState(true);
   const [priceInfo, setPriceInfo] = useState<string | null>(null);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
+
+  const handleOpenEditDrawer = (item: Item) => {
+  // item.id here is the cart UUID, so find the real item from availableItems
+  const realItem = availableItems.find(
+    (a) => a.id === (item as any).originalItemId || a.id === (item as any).productId || a.id === item.id
+  );
+  if (!realItem) {
+    setModal({ message: 'Original item not found in inventory.', type: State.ERROR });
+    return;
+  }
+  setSelectedItemForEdit(realItem);
+  setIsItemDrawerOpen(true);
+};
+
+const handleCloseEditDrawer = () => {
+  setIsItemDrawerOpen(false);
+  setTimeout(() => setSelectedItemForEdit(null), 300);
+};
+
+const handleSaveSuccess = (updatedItemData: Partial<Item>) => {
+  // Update availableItems
+  setAvailableItems(prev =>
+    prev.map(item =>
+      item.id === selectedItemForEdit?.id
+        ? { ...item, ...updatedItemData, id: item.id } as Item
+        : item
+    )
+  );
+  // Also update exchangeItems if the edited item is in the exchange cart
+  setExchangeItems(prev =>
+    prev.map(item =>
+      item.originalItemId === selectedItemForEdit?.id
+        ? { ...item, name: updatedItemData.name ?? item.name, mrp: updatedItemData.mrp ?? item.mrp }
+        : item
+    )
+  );
+};
 
   useEffect(() => {
     if (salesSettings) {
@@ -446,6 +486,7 @@ const SalesReturnPage: React.FC = () => {
   const mappedExchangeItems: SalesItem[] = useMemo(() => {
     return exchangeItems.map(item => ({
       id: item.id,
+      productId: item.originalItemId,
       name: item.name,
       mrp: item.mrp,
       quantity: item.quantity,
@@ -883,7 +924,7 @@ const SalesReturnPage: React.FC = () => {
                               applyRounding={applyRounding}
                               State={State}
                               setModal={setModal}
-                              onOpenEditDrawer={() => { }}
+                              onOpenEditDrawer={handleOpenEditDrawer}
                               onDeleteItem={(id) => handleRemoveFromList(setExchangeItems, id)}
                               onDiscountChange={handleDiscountChange}
                               onCustomPriceChange={handleCustomPriceChange}
@@ -1002,6 +1043,14 @@ const SalesReturnPage: React.FC = () => {
         initialPartyName={partyName}
         initialPartyNumber={partyNumber}
       />
+
+      <ItemEditDrawer
+        item={selectedItemForEdit}
+        isOpen={isItemDrawerOpen}
+        onClose={handleCloseEditDrawer}
+        onSaveSuccess={handleSaveSuccess}
+      />
+
     </div>
   );
 };

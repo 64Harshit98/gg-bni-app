@@ -689,49 +689,49 @@ const Sales: React.FC = () => {
     };
 
     // Update physical keyboard listener to use the cursor too
-    useEffect(() => {
-        if (!isCalculatorView) return;
-        const handleKeyDown = (e: KeyboardEvent) => {
+    // useEffect(() => {
+    //     if (!isCalculatorView) return;
+    //     const handleKeyDown = (e: KeyboardEvent) => {
 
-            // 1. If the input IS focused natively, prevent double-typing but catch action keys
-            if (document.activeElement === displayRef.current) {
-                if (e.key === 'Enter' || e.key === '=') {
-                    e.preventDefault();
-                    handleCheckoutClick();
-                } else if (e.key.toLowerCase() === 'c' || e.key === 'Escape') {
-                    e.preventDefault();
-                    if (calcInput === '') {
-                        if (items.length > 0 && window.confirm("Are you sure you want to clear the bill?")) setItems([]);
-                    } else {
-                        setCalcInput('');
-                    }
-                }
-                return; // Stop here so native onChange can handle the physical number typing
-            }
+    //         // 1. If the input IS focused natively, prevent double-typing but catch action keys
+    //         if (document.activeElement === displayRef.current) {
+    //             if (e.key === 'Enter' || e.key === '=') {
+    //                 e.preventDefault();
+    //                 handleCheckoutClick();
+    //             } else if (e.key.toLowerCase() === 'c' || e.key === 'Escape') {
+    //                 e.preventDefault();
+    //                 if (calcInput === '') {
+    //                     if (items.length > 0 && window.confirm("Are you sure you want to clear the bill?")) setItems([]);
+    //                 } else {
+    //                     setCalcInput('');
+    //                 }
+    //             }
+    //             return; // Stop here so native onChange can handle the physical number typing
+    //         }
 
-            // 2. If the input IS NOT focused (Global typing fallback)
-            const key = e.key;
-            if (/^[0-9*.\-+]$/.test(key)) {
-                e.preventDefault();
-                insertAtCursor(key);
-            } else if (key === 'Enter' || key === '=') {
-                e.preventDefault();
-                handleCheckoutClick();
-            } else if (key === 'Backspace') {
-                e.preventDefault();
-                deleteAtCursor();
-            } else if (key.toLowerCase() === 'c' || key === 'Escape') {
-                e.preventDefault();
-                if (calcInput === '') {
-                    if (items.length > 0 && window.confirm("Are you sure you want to clear the bill?")) setItems([]);
-                } else {
-                    setCalcInput('');
-                }
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isCalculatorView, calcInput, items.length]);
+    //         // 2. If the input IS NOT focused (Global typing fallback)
+    //         const key = e.key;
+    //         if (/^[0-9*.\-+]$/.test(key)) {
+    //             e.preventDefault();
+    //             insertAtCursor(key);
+    //         } else if (key === 'Enter' || key === '=') {
+    //             e.preventDefault();
+    //             handleCheckoutClick();
+    //         } else if (key === 'Backspace') {
+    //             e.preventDefault();
+    //             deleteAtCursor();
+    //         } else if (key.toLowerCase() === 'c' || key === 'Escape') {
+    //             e.preventDefault();
+    //             if (calcInput === '') {
+    //                 if (items.length > 0 && window.confirm("Are you sure you want to clear the bill?")) setItems([]);
+    //             } else {
+    //                 setCalcInput('');
+    //             }
+    //         }
+    //     };
+    //     window.addEventListener('keydown', handleKeyDown);
+    //     return () => window.removeEventListener('keydown', handleKeyDown);
+    // }, [isCalculatorView, calcInput, items.length]);
 
     const handleCheckoutClick = () => {
         if (calcInput.trim()) {

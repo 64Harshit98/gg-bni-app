@@ -26,6 +26,12 @@ const SERVICES: ServiceItem[] = [
         route: ROUTES.WHATSAPP_PLAN,
     },
     {
+        id: 'payment-gateway',
+        title: 'Payment Gateway',
+        description: 'Integrate payment gateway with bank account details and EMI information.',
+        route: ROUTES.PAYMENT_GATEWAY, 
+    },
+    {
         id: 'inventory',
         title: 'Inventory Management',
         description: 'Track stock levels, manage items, and adjust pricing.',
@@ -91,10 +97,41 @@ const AdditionalServices: React.FC = () => {
             setIsChecking(false);
         }
     };
+const handlePaymentGatewayClick = async (route: string) => {
+        if (!currentUser) {
+            navigate(route);
+            return;
+        }
 
+        setIsChecking(true);
+        try {
+            const companyId = (currentUser as any).companyId || currentUser.uid;
+            const paymentDocRef = doc(db, 'companies', companyId, 'payment_gateway', companyId);
+            const paymentDoc = await getDoc(paymentDocRef);
+
+            if (paymentDoc.exists()) {
+                const data = paymentDoc.data();
+                
+                // Check if payment gateway is already configured
+                if (data.accountNumber && data.name) {
+                    // Navigate to a different route if already configured (e.g., dashboard)
+                    navigate('/payment-gateway/dashboard'); // Or wherever you want to redirect
+                    return;
+                }
+            }
+            navigate(route);
+        } catch (err) {
+            console.error("Payment Gateway check failed:", err);
+            navigate(route);
+        } finally {
+            setIsChecking(false);
+        }
+    };
     const handleNavigate = (service: ServiceItem) => {
         if (service.id === 'Whatsapp') {
             handleWhatsappClick(service.route);
+            } else if (service.id === 'payment-gateway') {
+            handlePaymentGatewayClick(service.route);
         } else {
             navigate(service.route);
         }

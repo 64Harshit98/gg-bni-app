@@ -226,7 +226,12 @@ const OrdersReturnPage: React.FC = () => {
         const query = (searchSaleQuery || "").toLowerCase();
         const orderId = (order?.orderId || "").toLowerCase();
         const userName = (order?.userName || "").toLowerCase();
-        return orderId.includes(query) || userName.includes(query);
+        const phone = String(order?.billingDetails?.phone || "").toLowerCase();
+        return (
+          orderId.includes(query) ||
+          userName.includes(query) ||
+          phone.includes(query)
+        );
       });
 
   }, [salesList, searchSaleQuery]);
@@ -501,23 +506,37 @@ const OrdersReturnPage: React.FC = () => {
   };
 
   const handleCustomPriceBlur = (id: string) => {
-    setExchangeItems(prev => prev.map(item => {
-      if (item.id === id && item.customPrice !== undefined) {
-        const num = parseFloat(String(item.customPrice));
-        if (!isNaN(num)) {
-          const newAmount = num * item.quantity;
-          return {
-            ...item,
-            unitPrice: num,
-            basePrice: num,
-            amount: newAmount,
-            customPrice: undefined
-          };
+    setExchangeItems(prev =>
+      prev.map(item => {
+        if (item.id === id && item.customPrice !== undefined) {
+          const num = parseFloat(String(item.customPrice));
+
+          if (!isNaN(num)) {
+            const mrp = Number(item.mrp || 0);
+
+            // Auto-calculate discount based on Net Price
+            let discount = 0;
+            if (mrp > 0) {
+              discount = ((mrp - num) / mrp) * 100;
+            }
+
+            const newAmount = num * item.quantity;
+
+            return {
+              ...item,
+              unitPrice: Number(num.toFixed(2)),
+              basePrice: mrp,
+              discount: Number(discount.toFixed(2)),
+              amount: Number(newAmount.toFixed(2)),
+              customPrice: undefined
+            };
+          }
+
+          return { ...item, customPrice: undefined };
         }
-        return { ...item, customPrice: undefined };
-      }
-      return item;
-    }));
+        return item;
+      })
+    );
   };
 
   const addExchangeItem = (itemToAdd: Item) => {
@@ -1015,7 +1034,7 @@ const OrdersReturnPage: React.FC = () => {
         type: State.SUCCESS,
         message: 'Return processed successfully!'
       });
-      setTimeout(() => navigate(`${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`), 1500);
+      setTimeout(() => navigate(ROUTES.ORDERDETAILS), 1500);
     } catch (err: any) {
       console.error(err);
       setModal({
@@ -1176,7 +1195,31 @@ const OrdersReturnPage: React.FC = () => {
             <div className="relative" ref={salesDropdownRef}>
               <label htmlFor="search-sale" className="block text-sm font-medium mb-1 text-gray-700">Search Original Sale</label>
               <div className="flex gap-2">
-                <input id="search-sale" type="text" value={searchSaleQuery} onChange={(e) => { setSearchSaleQuery(e.target.value); setIsSalesDropdownOpen(true); }} onFocus={() => setIsSalesDropdownOpen(true)} placeholder={selectedSale ? `(${selectedSale.orderId})` : "Invoice or Name..."} className="flex-grow p-2 border rounded-sm focus:ring-2 focus:ring-[#F97316] outline-none" autoComplete="off" readOnly={!!selectedSale} />
+                <input
+                  id="search-sale"
+                  type="text"
+                  value={searchSaleQuery}
+                  onChange={(e) => {
+                    let value = e.target.value;
+
+                    // Agar input sirf numbers hai, toh use 10 digits tak limit karo
+                    if (/^\d*$/.test(value)) {
+                      value = value.slice(0, 10);
+                    }
+
+                    setSearchSaleQuery(value);
+                    setIsSalesDropdownOpen(true);
+                  }}
+                  onFocus={() => setIsSalesDropdownOpen(true)}
+                  placeholder={
+                    selectedSale
+                      ? `(${selectedSale.orderId})`
+                      : "Invoice, Name or Phone..."
+                  }
+                  className="flex-grow p-2 border rounded-sm focus:ring-2 focus:ring-[#F97316] outline-none"
+                  autoComplete="off"
+                  readOnly={!!selectedSale}
+                />
                 {selectedSale && (<button onClick={handleClear} className=" px-3 bg-gray-200 text-gray-700 font-semibold rounded-sm whitespace-nowrap hover:bg-gray-300">Clear</button>)}
               </div>
               {isSalesDropdownOpen && !selectedSale && (
@@ -1383,6 +1426,7 @@ const OrdersReturnPage: React.FC = () => {
                         isOpen={isItemDrawerOpen}
                         onClose={handleCloseEditDrawer}
                         onSaveSuccess={handleSaveSuccess}
+                        isCatalogue={true}
                       />
                     )}
                   </>

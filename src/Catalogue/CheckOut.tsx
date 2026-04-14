@@ -398,6 +398,13 @@ const CartPage: React.FC = () => {
             setShowAlert(true);
             return;
         }
+        const isValidGST = (gst?: string) =>
+                    !gst || gst.length === 15;
+
+        if (!isValidGST(billing.gstin) || !isValidGST(shipping.gstin)) {
+                alert("GSTIN must be exactly 15 characters.");
+                return;
+            }
         setIsPlacing(true);
         try {
             // 4. GENERATE INVOICE (Atomic Transaction)
@@ -879,7 +886,12 @@ const CartPage: React.FC = () => {
                                                 </label>
                                                 <input
                                                     value={billing.gstin || ''}
-                                                    onChange={(e) => setBilling({ ...billing, gstin: e.target.value })}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value.toUpperCase();
+                                                        if (val.length <= 15) {
+                                                            setBilling({ ...billing, gstin: val });
+                                                        }
+                                                    }}
                                                     type="text"
                                                     className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold outline-none"
                                                     placeholder="Enter GSTIN"
@@ -968,7 +980,12 @@ const CartPage: React.FC = () => {
                                                 </label>
                                                 <input
                                                     value={shipping.gstin || ''}
-                                                    onChange={(e) => setShipping({ ...shipping, gstin: e.target.value })}
+                                                    onChange={(e) => {
+                                                            const val = e.target.value.toUpperCase();
+                                                            if (val.length <= 15) {
+                                                            setShipping({ ...shipping, gstin: val });
+                                                          }
+                                                        }}
                                                     type="text"
                                                     className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold outline-none"
                                                     placeholder="Enter GSTIN"

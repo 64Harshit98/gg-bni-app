@@ -62,6 +62,14 @@ const Reports = () => {
                             <span className="text-lg font-medium">Item Report</span>
                             <span className="text-xl text-gray-500">→</span>
                         </Link>
+                        <Link
+                            to={`${ROUTES.CHOME}/${ROUTES.CATALOGUE_PARTY_LEDGER}`}
+                            className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
+                        >
+                            <span className="text-lg font-medium">Party Ledger</span>
+                            <span className="text-xl text-gray-500">→</span>
+                        </Link>
+
                         {/* <Link
                             to={`${ROUTES.CHOME}/${ROUTES.CATALOGUE_USER_REPORT}`} // Example
                             className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"

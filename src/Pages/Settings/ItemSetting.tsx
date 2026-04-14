@@ -7,6 +7,7 @@ import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
 import { useAuth } from '../../context/auth-context';
 import { ResetSettingsButton } from '../../Components/ResetSettingsButton';
+import { ToggleRow } from './SalesSetting';
 
 export interface ItemSettings {
     companyId?: string;
@@ -145,73 +146,69 @@ const ItemSettingsPage: React.FC = () => {
                             <br /><span className="text-xs text-red-500 font-medium">* Name, MRP/Sale Price, and Barcode are strictly required by the system and cannot be disabled.</span>
                         </p>
 
-                        <div className="space-y-3 mt-4">
-                            {/* ADDED: Require Category Checkbox */}
-                            <div className="flex items-center">
-                                <input type="checkbox" id="req-category"
-                                    checked={settings.requireCategory}
-                                    onChange={(e) => handleCheckboxChange('requireCategory', e.target.checked)}
-                                    className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
-                                <label htmlFor="req-category" className="ml-2 text-sm font-medium text-gray-700">Require Category</label>
-                            </div>
-                            <div className="flex items-center">
-                                <input type="checkbox" id="req-purchasePrice"
-                                    checked={settings.requirePurchasePrice}
-                                    onChange={(e) => handleCheckboxChange('requirePurchasePrice', e.target.checked)}
-                                    className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
-                                <label htmlFor="req-purchasePrice" className="ml-2 text-sm font-medium text-gray-700">Require Purchase Price</label>
-                            </div>
-
-                            <div className="flex items-center">
-                                <input type="checkbox" id="req-discount"
-                                    checked={settings.requireDiscount}
-                                    onChange={(e) => handleCheckboxChange('requireDiscount', e.target.checked)}
-                                    className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
-                                <label htmlFor="req-discount" className="ml-2 text-sm font-medium text-gray-700">Require Discount (%)</label>
-                            </div>
-                            <div className="flex items-center">
-                                <input type="checkbox" id="req-tax"
-                                    checked={settings.requireTax}
-                                    onChange={(e) => handleCheckboxChange('requireTax', e.target.checked)}
-                                    className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
-                                <label htmlFor="req-tax" className="ml-2 text-sm font-medium text-gray-700">Require Tax (%)</label>
-                            </div>
-                            <div className="flex items-center">
-                                <input type="checkbox" id="req-stock"
-                                    checked={settings.requireStock}
-                                    onChange={(e) => handleCheckboxChange('requireStock', e.target.checked)}
-                                    className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
-                                <label htmlFor="req-stock" className="ml-2 text-sm font-medium text-gray-700">Require Stock</label>
-                            </div>
-
-                            <div className="flex items-center">
-                                <input type="checkbox" id="req-restock"
-                                    checked={settings.requireRestockQuantity}
-                                    onChange={(e) => handleCheckboxChange('requireRestockQuantity', e.target.checked)}
-                                    className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
-                                <label htmlFor="req-restock" className="ml-2 text-sm font-medium text-gray-700">Require Restock Quantity</label>
-                            </div>
-
-                            <div className="flex items-center">
-                                <input type="checkbox" id="req-unit"
-                                    checked={settings.requireUnit}
-                                    onChange={(e) => handleCheckboxChange('requireUnit', e.target.checked)}
-                                    className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
-                                <label htmlFor="req-unit" className="ml-2 text-sm font-medium text-gray-700">Require Unit (e.g., kg, pcs)</label>
-                            </div>
+                        <div className="space-y-1 mt-3">
+                            <ToggleRow
+                                id="req-category"
+                                label="Require Category"
+                                description="Category must be selected when adding an item."
+                                checked={settings.requireCategory}
+                                onChange={(checked) => handleCheckboxChange('requireCategory', checked)}
+                            />
+                            <ToggleRow
+                                id="req-purchasePrice"
+                                label="Require Purchase Price"
+                                description="Purchase price must be filled when adding an item."
+                                checked={settings.requirePurchasePrice}
+                                onChange={(checked) => handleCheckboxChange('requirePurchasePrice', checked)}
+                            />
+                            <ToggleRow
+                                id="req-discount"
+                                label="Require Discount (%)"
+                                description="Discount field must be filled when adding an item."
+                                checked={settings.requireDiscount}
+                                onChange={(checked) => handleCheckboxChange('requireDiscount', checked)}
+                            />
+                            <ToggleRow
+                                id="req-tax"
+                                label="Require Tax (%)"
+                                description="Tax field must be filled when adding an item."
+                                checked={settings.requireTax}
+                                onChange={(checked) => handleCheckboxChange('requireTax', checked)}
+                            />
+                            <ToggleRow
+                                id="req-stock"
+                                label="Require Stock"
+                                description="Stock quantity must be entered when adding an item."
+                                checked={settings.requireStock}
+                                onChange={(checked) => handleCheckboxChange('requireStock', checked)}
+                            />
+                            <ToggleRow
+                                id="req-restock"
+                                label="Require Restock Quantity"
+                                description="Restock quantity must be set when adding an item."
+                                checked={settings.requireRestockQuantity}
+                                onChange={(checked) => handleCheckboxChange('requireRestockQuantity', checked)}
+                            />
+                            <ToggleRow
+                                id="req-unit"
+                                label="Require Unit (e.g., kg, pcs)"
+                                description="Unit of measurement must be specified when adding an item."
+                                checked={settings.requireUnit}
+                                onChange={(checked) => handleCheckboxChange('requireUnit', checked)}
+                            />
                         </div>
                     </div>
 
                     <div>
                         <h2 className="text-base font-semibold text-gray-700 mb-3 border-b pb-2 pt-4">Barcode Automation</h2>
-                        <div className="flex items-center mt-3">
-                            <input type="checkbox" id="auto-barcode"
-                                checked={settings.autoGenerateBarcode}
-                                onChange={(e) => handleCheckboxChange('autoGenerateBarcode', e.target.checked)}
-                                className="w-4 h-4 text-sky-500 rounded focus:ring-sky-500" />
-                            <label htmlFor="auto-barcode" className="ml-2 text-sm font-medium text-gray-700">Automatically Generate Barcode if Empty</label>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1 pl-6">If checked, a unique barcode will be generated when adding an item if the barcode field is left blank.</p>
+                        <ToggleRow
+                            id="auto-barcode"
+                            label="Automatically Generate Barcode if Empty"
+                            description="A unique barcode will be generated when adding an item if the barcode field is left blank."
+                            checked={settings.autoGenerateBarcode}
+                            onChange={(checked) => handleCheckboxChange('autoGenerateBarcode', checked)}
+                            tooltip="Auto-generates a unique barcode when the barcode field is left empty during item creation."
+                        />
                     </div>
                     <div className="flex gap-4 mt-6">
                         <button

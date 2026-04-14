@@ -11,6 +11,7 @@ import { Spinner } from '../../constants/Spinner';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
 import { useAuth } from '../../context/auth-context';
+import { ToggleRow } from '../Settings/CatalogueSalesSetting';
 export interface ItemSettings {
     companyId?: string;
     settingType: 'item';
@@ -59,7 +60,7 @@ const CatalogueItemSetting: React.FC = () => {
 
             try {
                 const docSnap = await getDoc(settingsDocRef);
-                
+
                 if (docSnap.exists()) {
                     setSettings(docSnap.data() as ItemSettings);
                 } else {
@@ -128,95 +129,88 @@ const CatalogueItemSetting: React.FC = () => {
                 <div className="w-6"></div>
             </div>
 
-            <main className="flex-grow p-4 bg-gray-50 w-full overflow-y-auto box-border">
-                <form onSubmit={handleSave} className="bg-white rounded-sm p-4 shadow-md max-w-3xl mx-auto space-y-6">
+            <main className="flex-grow min-h-0 p-3 sm:p-4 md:p-5 bg-gray-50 w-full overflow-y-auto box-border pb-44 md:pb-24">
+                <form onSubmit={handleSave} className="max-w-3xl mx-auto space-y-3">
 
-                    <div>
-                        <h2 className="text-base font-semibold text-gray-700 mb-3 border-b pb-2">Required Fields</h2>
-                        <p className="text-sm text-gray-500 mb-3">
+                    {/* Required Fields */}
+                    <section className="bg-white rounded-sm border border-gray-200 shadow-sm p-5 md:p-6 space-y-3">
+                        <h2 className="text-base md:text-lg font-semibold text-gray-800">Required Fields</h2>
+                        <p className="text-sm text-gray-500 -mt-2">
                             Select which fields must be filled when adding a single item.
                             (Name, MRP, Stock Amount, and Category are always required).
                         </p>
-
-                        <div className="space-y-2">
-                            <div className="flex items-center">
-                                <input type="checkbox" id="req-purchasePrice"
-                                    checked={settings.requirePurchasePrice}
-                                    onChange={(e) => handleCheckboxChange('requirePurchasePrice', e.target.checked)}
-                                    className="w-4 h-4 accent-[#F97316] rounded focus:ring-[#F97316]" />
-                                <label htmlFor="req-purchasePrice" className="ml-2 text-sm font-medium text-gray-700">Require Purchase Price</label>
-                            </div>
-                            <div className="flex items-center">
-                                <input
-                                    type="checkbox"
-                                    id="req-sale-discount"
-                                    checked={settings.requireSaleDiscount}
-                                    onChange={(e) => handleCheckboxChange('requireSaleDiscount', e.target.checked)}
-                                    className="w-4 h-4 accent-[#F97316] rounded focus:ring-[#F97316]"
-                                />
-                                <label htmlFor="req-sale-discount" className="ml-2 text-sm font-medium text-gray-700">
-                                    Require Sale Discount (%)
-                                </label>
-                            </div>
-                            <div className="flex items-center">
-                                <input
-                                    type="checkbox"
-                                    id="req-purchase-discount"
-                                    checked={settings.requirePurchaseDiscount}
-                                    onChange={(e) => handleCheckboxChange('requirePurchaseDiscount', e.target.checked)}
-                                    className="w-4 h-4 accent-[#F97316] rounded focus:ring-[#F97316]"
-                                />
-                                <label htmlFor="req-purchase-discount" className="ml-2 text-sm font-medium text-gray-700">
-                                    Require Purchase Discount (%)
-                                </label>
-                            </div>
-                            <div className="flex items-center">
-                                <input type="checkbox" id="req-tax"
-                                    checked={settings.requireTax}
-                                    onChange={(e) => handleCheckboxChange('requireTax', e.target.checked)}
-                                    className="w-4 h-4 accent-[#F97316] rounded focus:ring-[#F97316]" />
-                                <label htmlFor="req-tax" className="ml-2 text-sm font-medium text-gray-700">Require Tax (%)</label>
-                            </div>
-
-                            <div className="flex items-center">
-                                <input type="checkbox" id="req-barcode"
-                                    checked={settings.requireBarcode}
-                                    onChange={(e) => handleCheckboxChange('requireBarcode', e.target.checked)}
-                                    className="w-4 h-4 accent-[#F97316] rounded focus:ring-[#F97316]" />
-                                <label htmlFor="req-barcode" className="ml-2 text-sm font-medium text-gray-700">Require Barcode</label>
-                            </div>
-
-                            <div className="flex items-center">
-                                <input type="checkbox" id="req-restock"
-                                    checked={settings.requireRestockQuantity}
-                                    onChange={(e) => handleCheckboxChange('requireRestockQuantity', e.target.checked)}
-                                    className="w-4 h-4 accent-[#F97316] rounded focus:ring-[#F97316]" />
-                                <label htmlFor="req-restock" className="ml-2 text-sm font-medium text-gray-700">Require Restock Quantity</label>
-                            </div>
+                        <div className="space-y-1">
+                            <ToggleRow
+                                id="req-purchasePrice"
+                                label="Require Purchase Price"
+                                description="Purchase price must be filled when adding an item."
+                                checked={settings.requirePurchasePrice}
+                                onChange={(checked) => handleCheckboxChange('requirePurchasePrice', checked)}
+                            />
+                            <ToggleRow
+                                id="req-sale-discount"
+                                label="Require Sale Discount (%)"
+                                description="Sale discount percentage must be filled when adding an item."
+                                checked={settings.requireSaleDiscount}
+                                onChange={(checked) => handleCheckboxChange('requireSaleDiscount', checked)}
+                            />
+                            <ToggleRow
+                                id="req-purchase-discount"
+                                label="Require Purchase Discount (%)"
+                                description="Purchase discount percentage must be filled when adding an item."
+                                checked={settings.requirePurchaseDiscount}
+                                onChange={(checked) => handleCheckboxChange('requirePurchaseDiscount', checked)}
+                            />
+                            <ToggleRow
+                                id="req-tax"
+                                label="Require Tax (%)"
+                                description="Tax percentage must be filled when adding an item."
+                                checked={settings.requireTax}
+                                onChange={(checked) => handleCheckboxChange('requireTax', checked)}
+                            />
+                            <ToggleRow
+                                id="req-barcode"
+                                label="Require Barcode"
+                                description="Barcode must be filled when adding an item."
+                                checked={settings.requireBarcode}
+                                onChange={(checked) => handleCheckboxChange('requireBarcode', checked)}
+                            />
+                            <ToggleRow
+                                id="req-restock"
+                                label="Require Restock Quantity"
+                                description="Restock quantity must be filled when adding an item."
+                                checked={settings.requireRestockQuantity}
+                                onChange={(checked) => handleCheckboxChange('requireRestockQuantity', checked)}
+                            />
                         </div>
-                    </div>
+                    </section>
 
-                    <div>
-                        <h2 className="text-base font-semibold text-gray-700 mb-3 border-b pb-2 pt-4">Barcode Handling</h2>
-                        <div className="flex items-center">
-                            <input type="checkbox" id="auto-barcode"
-                                checked={settings.autoGenerateBarcode}
-                                onChange={(e) => handleCheckboxChange('autoGenerateBarcode', e.target.checked)}
-                                className="w-4 h-4 accent-[#F97316] rounded focus:ring-[#F97316]" />
-                            <label htmlFor="auto-barcode" className="ml-2 text-sm font-medium text-gray-700">Automatically Generate Barcode if Empty</label>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1 pl-6">If checked, a unique barcode will be generated when adding an item if the barcode field is left blank.</p>
-                    </div>
+                    {/* Barcode Handling */}
+                    <section className="bg-white rounded-sm border border-gray-200 shadow-sm p-5 md:p-6 space-y-5">
+                        <h2 className="text-base md:text-lg font-semibold text-gray-800">Barcode Handling</h2>
+                        <ToggleRow
+                            id="auto-barcode"
+                            label="Auto-Generate Barcode if Empty"
+                            description="A unique barcode will be generated when adding an item if the barcode field is left blank."
+                            checked={settings.autoGenerateBarcode}
+                            onChange={(checked) => handleCheckboxChange('autoGenerateBarcode', checked)}
+                        />
+                    </section>
 
-                    <button
-                        type="submit"
-                        disabled={isSaving || isLoading}
-                        className="w-full mt-6 flex items-center justify-center bg-[#F97316] text-white font-bold py-3 px-4 rounded-sm hover:bg-orange-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
-                    >
-                        {isSaving ? <Spinner /> : 'Save Item Settings'}
-                    </button>
                 </form>
             </main>
+            {/* Sticky save bar */}
+            <div className="fixed inset-x-0 bottom-16 md:bottom-0 z-40 bg-transparent px-4 pb-2 md:p-4 pointer-events-none">
+                <div className="max-w-2xl mx-auto flex justify-center gap-4 pointer-events-auto">
+                    <button
+                        onClick={handleSave}
+                        disabled={isSaving || isLoading}
+                        className="w-auto min-w-[150px] flex items-center justify-center bg-[#F97316] text-white font-bold py-3 px-6 rounded-sm hover:bg-[#F97316] transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed shadow-lg"
+                    >
+                        {isSaving ? <Spinner /> : 'Save Settings'}
+                    </button>
+                </div>
+            </div>
         </div>
     );
 };

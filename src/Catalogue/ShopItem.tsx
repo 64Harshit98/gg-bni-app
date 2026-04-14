@@ -107,17 +107,36 @@ const MyShop: React.FC = () => {
 
     // Sync selectedCategory when groupId changes from URL
 
+    const generateSlug = (name: string) => {
+        return name
+            .toLowerCase()
+            .trim()
+            .replace(/\s+/g, "-")
+            .replace(/[^a-z0-9-]/g, "");
+    };
+
+
+    const resolvedGroupId = useMemo(() => {
+        if (!groupId || allItemGroups.length === 0) return groupId;
+
+        const matchedGroup = allItemGroups.find(
+            (group) => generateSlug(group.name) === groupId
+        );
+
+        return matchedGroup?.id || groupId; // fallback for old ID links
+    }, [groupId, allItemGroups]);
+
     const uncategorizedGroup = allItemGroups.find(
         g => g.name.toLowerCase().trim() === "uncategorized"
     );
 
-    const isUncategorized = groupId === uncategorizedGroup?.id;
+    const isUncategorized = (resolvedGroupId || selectedCategory) === uncategorizedGroup?.id;
 
     useEffect(() => {
-        if (groupId) {
-            setSelectedCategory(groupId);
+        if (resolvedGroupId) {
+            setSelectedCategory(resolvedGroupId);
         }
-    }, [groupId]);
+    }, [resolvedGroupId]);
 
     useEffect(() => {
         setSearchQuery("");
@@ -141,7 +160,18 @@ const MyShop: React.FC = () => {
     const handleShareItem = async (item: Item) => {
         if (!companyId || !item?.itemGroupId || !item?.id) return;
 
-        const shareUrl = `${window.location.origin}/product/${companyId}/${item.itemGroupId}?itemId=${item.id}`;
+        // Find the category
+        const group = allItemGroups.find(
+            (g) => g.id === item.itemGroupId
+        );
+
+        // Generate slug from category name
+        const categorySlug = group
+            ? generateSlug(group.name)
+            : item.itemGroupId; // fallback for safety
+
+        // Create SEO-friendly share URL
+        const shareUrl = `${window.location.origin}/product/${companyId}/${categorySlug}?itemId=${item.id}`;
 
         try {
             if (navigator.share) {
@@ -205,7 +235,7 @@ const MyShop: React.FC = () => {
         setIsAllLive(newState);
 
         try {
-            const activeCat = groupId || selectedCategory;
+            const activeCat = resolvedGroupId || selectedCategory;
 
             const itemsToUpdate = allItems.filter(item =>
                 activeCat === 'All' || item.itemGroupId === activeCat
@@ -232,37 +262,9 @@ const MyShop: React.FC = () => {
     };
 
     const currentCategoryName = useMemo(() => {
-        const group = allItemGroups.find(g => g.id === groupId);
+        const group = allItemGroups.find(g => g.id === resolvedGroupId);
         return group ? group.name : 'Catalogue';
-    }, [allItemGroups, groupId]);
-
-    useEffect(() => {
-        if (!highlightItemId) return;
-
-        // Reset highlight so same item can be highlighted again
-        setHighlightedId(null);
-
-        const timer = setTimeout(() => {
-            setHighlightedId(highlightItemId);
-
-            const element = document.getElementById(highlightItemId);
-            if (element) {
-                element.scrollIntoView({
-                    behavior: "smooth",
-                    block: "center",
-                });
-            }
-        }, 150);
-
-        const removeTimer = setTimeout(() => {
-            setHighlightedId(null);
-        }, 2500);
-
-        return () => {
-            clearTimeout(timer);
-            clearTimeout(removeTimer);
-        };
-    }, [highlightItemId, highlightTrigger]);
+    }, [allItemGroups, resolvedGroupId]);
 
     useEffect(() => {
         if (!Array.isArray(allItems) || allItems.length === 0) {
@@ -270,7 +272,7 @@ const MyShop: React.FC = () => {
             return;
         }
 
-        const activeCat = groupId || selectedCategory;
+        const activeCat = resolvedGroupId || selectedCategory;
 
         const filtered = allItems.filter(item =>
             activeCat === 'All' || item.itemGroupId === activeCat
@@ -376,19 +378,22 @@ const MyShop: React.FC = () => {
 
     // 3. Updated Filter logic with safety checks
     const filteredItems = useMemo(() => {
-        const activeCat = groupId || selectedCategory;
+        const activeCat = resolvedGroupId || selectedCategory;
 
         const result = allItems.filter(item => {
             if (!item) return false;
 
-            //  hide unlisted items in LIVE view
             const isSearching = searchQuery.trim().length > 0;
 
+            // Hide unlisted items only in view mode
             if (isViewMode && !item.isListed && !isSearching) {
                 return false;
             }
 
-            const groupExists = allItemGroups.some(g => g.id === item.itemGroupId);
+            const groupExists = allItemGroups.some(
+                g => g.id === item.itemGroupId
+            );
+
             const uncategorizedGroup = allItemGroups.find(
                 g => g.name.toLowerCase().trim() === "uncategorized"
             );
@@ -396,12 +401,17 @@ const MyShop: React.FC = () => {
             const finalGroupId = groupExists
                 ? item.itemGroupId
                 : uncategorizedGroup?.id;
-            const matchesCategory = activeCat === 'All' || finalGroupId === activeCat;
+
+            const matchesCategory =
+                activeCat === 'All' ||
+                finalGroupId === activeCat ||
+                isSearching;
 
             const itemName = item.name?.toLowerCase() || "";
             const matchesSearch =
                 itemName.includes(searchQuery.toLowerCase()) ||
-                (item.barcode && item.barcode.includes(searchQuery));
+                (item.barcode &&
+                    item.barcode.includes(searchQuery));
 
             return matchesCategory && matchesSearch;
         });
@@ -415,7 +425,56 @@ const MyShop: React.FC = () => {
             if (sortOrder === 'Price: High-Low') return (b.mrp || 0) - (a.mrp || 0);
             return 0;
         });
-    }, [allItems, selectedCategory, searchQuery, isViewMode, sortOrder, groupId, catalogueSettings]);
+    }, [
+        allItems,
+        selectedCategory,
+        searchQuery,
+        isViewMode,
+        sortOrder,
+        resolvedGroupId,
+        allItemGroups
+    ]);
+
+    useEffect(() => {
+        if (!highlightItemId || filteredItems.length === 0) return;
+
+        const itemIndex = filteredItems.findIndex(
+            (item) => String(item.id) === String(highlightItemId)
+        );
+
+        // Ensure the item is rendered (handles lazy loading)
+        if (itemIndex !== -1) {
+            setItemsToRenderCount((prev) =>
+                Math.max(prev, itemIndex + 1)
+            );
+        }
+
+        const timer = setTimeout(() => {
+            setHighlightedId(highlightItemId);
+
+            const element = document.getElementById(highlightItemId);
+            element?.scrollIntoView({
+                behavior: "smooth",
+                block: "center",
+            });
+
+            // Remove highlight after animation
+            setTimeout(() => {
+                setHighlightedId(null);
+            }, 3000);
+
+            // Clear navigation state to prevent repeated highlights
+            navigate(location.pathname, { replace: true, state: {} });
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, [
+        highlightItemId,
+        highlightTrigger,
+        filteredItems,
+        navigate,
+        location.pathname
+    ]);
 
     const itemsToDisplay = useMemo(() => filteredItems.slice(0, itemsToRenderCount), [filteredItems, itemsToRenderCount]);
     const hasMoreItems = useMemo(() => itemsToRenderCount < filteredItems.length, [itemsToRenderCount, filteredItems.length]);
@@ -510,12 +569,12 @@ const MyShop: React.FC = () => {
                     </div>
 
                     {/* Center Animated Title */}
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden">
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none overflow-hidden">
 
                         {/* Company Name - Default */}
                         <span
                             className={`absolute transition-all duration-500 ease-in-out transform ${isScrolled
-                                ? "-translate-y-full opacity-0 scale-95"
+                                ? "-translate-y-6 opacity-0 scale-95"
                                 : "translate-y-0 opacity-100 scale-100"
                                 } text-xs md:text-lg font-black text-[#1A3B5D] uppercase tracking-tighter whitespace-nowrap`}
                         >
@@ -526,11 +585,18 @@ const MyShop: React.FC = () => {
                         <span
                             className={`absolute transition-all duration-500 ease-in-out transform ${isScrolled
                                 ? "translate-y-0 opacity-100 scale-100"
-                                : "translate-y-full opacity-0 scale-95"
+                                : "translate-y-6 opacity-0 scale-95"
                                 } text-xs md:text-lg font-black text-[#1A3B5D] uppercase tracking-tighter whitespace-nowrap`}
                         >
                             {currentCategoryName}
                         </span>
+
+                        {/* Company Name Below Category (Mobile Only) */}
+                        {isScrolled && (
+                            <span className="md:hidden text-[10px] font-semibold text-gray-500 uppercase tracking-wide mt-6">
+                                {companyName}
+                            </span>
+                        )}
                     </div>
 
                     {/* Right Spacer for Balance */}
@@ -559,8 +625,24 @@ const MyShop: React.FC = () => {
 
                             setSearchQuery("");
 
+                            const group = allItemGroups.find(
+                                g => g.id === item.itemGroupId
+                            );
+
+                            // Find Uncategorized group
+                            const uncategorizedGroup = allItemGroups.find(
+                                g => g.name.toLowerCase().trim() === "uncategorized"
+                            );
+
+                            // Generate correct slug
+                            const slug = group
+                                ? generateSlug(group.name)
+                                : uncategorizedGroup
+                                    ? generateSlug(uncategorizedGroup.name)
+                                    : "uncategorized";
+
                             navigate(
-                                `/catalogue-home/my-shop/${item.itemGroupId}`,
+                                `/catalogue-home/my-shop/${slug}`,
                                 {
                                     state: {
                                         highlightItemId: item.id,
@@ -665,16 +747,18 @@ const MyShop: React.FC = () => {
                                             {item.name}
                                         </h3>
 
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleShareItem(item);
-                                            }}
-                                            className="p-1 rounded-sm bg-[#F97316]/10 text-[#F97316] hover:bg-[#F97316] hover:text-white transition-all"
-                                            title="Share Product"
-                                        >
-                                            <Send size={12} />
-                                        </button>
+                                        {!isUncategorized && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleShareItem(item);
+                                                }}
+                                                className="p-1 rounded-sm bg-[#F97316]/10 text-[#F97316] hover:bg-[#F97316] hover:text-white transition-all"
+                                                title="Share Product"
+                                            >
+                                                <Send size={12} />
+                                            </button>
+                                        )}
                                     </div>
                                     <div className="flex items-center justify-between w-full">
                                         <div className="flex items-center gap-2 w-full">

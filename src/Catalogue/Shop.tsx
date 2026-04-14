@@ -107,10 +107,19 @@ const OrderingPage: React.FC = () => {
         setTempName(group.name);
     };
 
+    const generateSlug = (name: string) => {
+        return name
+            .toLowerCase()
+            .trim()
+            .replace(/\s+/g, "-")       // Replace spaces with hyphens
+            .replace(/[^a-z0-9-]/g, ""); // Remove special characters
+    };
+
     const handleShareCategory = async (group: ItemGroup) => {
         if (!companyId || !group?.id) return;
 
-        const shareUrl = `${window.location.origin}/product/${companyId}/${group.id}`;
+        const categorySlug = generateSlug(group.name);
+        const shareUrl = `${window.location.origin}/product/${companyId}/${categorySlug}`;
 
         try {
             if (navigator.share) {
@@ -256,8 +265,22 @@ const OrderingPage: React.FC = () => {
                     placeholder="Search products..."
                     onItemSelected={(item) => {
                         if (!item.id) return;
+                        const group = itemGroups.find(g => g.id === item.itemGroupId);
+
+                        // Find Uncategorized group
+                        const uncategorizedGroup = itemGroups.find(
+                            g => g.name.toLowerCase().trim() === "uncategorized"
+                        );
+
+                        // Generate correct slug
+                        const slug = group
+                            ? generateSlug(group.name)
+                            : uncategorizedGroup
+                                ? generateSlug(uncategorizedGroup.name)
+                                : "uncategorized";
+
                         navigate(
-                            `/catalogue-home/my-shop/${item.itemGroupId}`,
+                            `/catalogue-home/my-shop/${slug}`,
                             {
                                 state: {
                                     highlightItemId: item.id,
@@ -309,7 +332,8 @@ const OrderingPage: React.FC = () => {
                 {/* --- PRODUCT GRID --- */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1">
                     {filteredItems.map(group => {
-                        // Count calculation based on existing _items state
+
+                        const isUncategorized = group.name.toLowerCase().trim() === "uncategorized";
                         const itemCount = items.filter(item => {
                             const groupExists = itemGroups.some(g => g.id === item.itemGroupId);
 
@@ -329,7 +353,8 @@ const OrderingPage: React.FC = () => {
                                 id={group.id}
                                 key={group.id}
                                 onClick={() => {
-                                    navigate(`/catalogue-home/my-shop/${group.id}`)
+                                    const slug = generateSlug(group.name);
+                                    navigate(`/catalogue-home/my-shop/${slug}`);
                                 }}
                                 className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col transition-all group cursor-pointer active:scale-95 ${highlightedId === group.id ? 'ring-2 ring-[#F97316] shadow-lg scale-[1.02]' : 'border-gray-100'}`}>
                                 {/* --- IMAGE SECTION WITH TOP BADGE --- */}
@@ -427,16 +452,18 @@ const OrderingPage: React.FC = () => {
                                                     {group.name}
                                                 </h3>
 
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleShareCategory(group);
-                                                    }}
-                                                    className="p-1.5 rounded-sm bg-[#F97316]/10 text-[#F97316] hover:bg-[#F97316] hover:text-white transition-all"
-                                                    title="Share Category"
-                                                >
-                                                    <Send size={14} />
-                                                </button>
+                                                {!isUncategorized && (
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleShareCategory(group);
+                                                        }}
+                                                        className="p-1.5 rounded-sm bg-[#F97316]/10 text-[#F97316] hover:bg-[#F97316] hover:text-white transition-all"
+                                                        title="Share Category"
+                                                    >
+                                                        <Send size={14} />
+                                                    </button>
+                                                )}
                                             </div>
 
                                             {/* Centered Item Count Badge UI */}

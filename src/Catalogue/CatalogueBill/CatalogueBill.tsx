@@ -931,6 +931,11 @@ const convertNumberToWords = (amount: number): string => {
 
 export const prepareCatalogueBillData = async (invoiceData: any) => {
 
+  if (!invoiceData?.companyId) {
+    console.error("Company ID is missing in prepareCatalogueBillData:", invoiceData);
+    throw new Error("Company ID is required to generate the catalogue bill.");
+  }
+
   let billSettings: any = {};
 
   try {

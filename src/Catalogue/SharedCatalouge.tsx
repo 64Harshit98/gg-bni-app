@@ -15,6 +15,14 @@ import { db } from "../lib/Firebase";
 const SharedCataloguePage: React.FC = () => {
     const { companyId: pathId, } = useParams<{ companyId: string }>();
 
+    const generateSlug = (name: string) => {
+        return name
+            .toLowerCase()
+            .trim()
+            .replace(/\s+/g, "-")       // Replace spaces with hyphens
+            .replace(/[^a-z0-9-]/g, ""); // Remove special characters
+    };
+
     // 2. Get the subdomain
     const hostname = window.location.hostname;
     const parts = hostname.split('.');
@@ -260,8 +268,11 @@ const SharedCataloguePage: React.FC = () => {
                         hideUncategorized={true}
                         onItemSelected={(item: any) => {
                             setSearchQuery(item.name);
+                            const group = itemGroups.find(g => g.id === item.itemGroupId);
+                            const slug = group ? generateSlug(group.name) : item.itemGroupId;
+
                             navigate(
-                                `/product/${effectiveCompanyId}/${item.itemGroupId}`,
+                                `/product/${effectiveCompanyId}/${slug}`,
                                 { state: { highlightItemId: item.id } }
                             );
                         }}
@@ -315,7 +326,10 @@ const SharedCataloguePage: React.FC = () => {
                         return (
                             <div
                                 key={group.id}
-                                onClick={() => navigate(`/product/${effectiveCompanyId}/${group.id}`)}
+                                onClick={() => {
+                                    const slug = generateSlug(group.name);
+                                    navigate(`/product/${effectiveCompanyId}/${slug}`);
+                                }}
                                 className="bg-white rounded-sm overflow-hidden shadow-sm border border-gray-100 flex flex-col transition-all group cursor-pointer active:scale-95"
                             >
                                 <div className="aspect-square bg-[#F8FAFC] relative overflow-hidden">

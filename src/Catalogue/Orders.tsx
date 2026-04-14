@@ -44,6 +44,7 @@ export interface OrderItem {
     name: string;
     quantity: number;
     mrp: number;
+    discount?: number;
     note: string;
     tax?: number;
     itemGroupId?: string;
@@ -336,6 +337,7 @@ const OrdersPage: React.FC = () => {
     const [editingOrder, setEditingOrder] = useState<Order | null>(null);
     const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
     const [showQrModal, setShowQrModal] = useState<Order | null>(null);
+    const [enableItemWiseDiscount, setEnableItemWiseDiscount] = useState(false);
     const [dateRange, setDateRange] = useState<{ start: Date | null, end: Date | null }>(() => {
 
         if (location.state?.startDate && location.state?.endDate) {
@@ -464,6 +466,134 @@ const OrdersPage: React.FC = () => {
         }, 0);
     }, [editingOrder?.items]);
 
+    const handleNetPriceChange = (id: string, value: string) => {
+        if (!editingOrder) return;
+
+        const newNetPrice = Number(value) || 0;
+
+        const updatedItems = editingOrder.items?.map((item) => {
+            if (item.id !== id) return item;
+
+            const mrp = Number(item.mrp || 0);
+
+            let discount = 0;
+            if (mrp > 0) {
+                discount = ((mrp - newNetPrice) / mrp) * 100;
+            }
+
+            return {
+                ...item,
+                customPrice: Number(newNetPrice.toFixed(2)),
+                discount: Number(discount.toFixed(2)),
+            };
+        });
+
+        setEditingOrder({
+            ...editingOrder,
+            items: updatedItems,
+        });
+    };
+
+    const mappedOrderItems = (editingOrder?.items || []).map((item) => {
+        const mrp = Number(item.mrp || 0);
+        const salePrice = Number(item.salesPrice || 0);
+        let discount = Number(item.discount || 0);
+        let netPrice = Number(item.customPrice ?? 0);
+
+        // Case 1: Agar custom price manually set hai
+        if (netPrice > 0) {
+            discount = mrp > 0
+                ? ((mrp - netPrice) / mrp) * 100
+                : 0;
+        }
+        // Case 2: Agar sale price diya hai par discount nahi hai
+        else if (salePrice > 0 && discount === 0) {
+            netPrice = salePrice;
+            discount = mrp > 0
+                ? ((mrp - salePrice) / mrp) * 100
+                : 0;
+        }
+        // Case 3: Agar discount diya hai par sale price nahi hai
+        else if (discount > 0 && mrp > 0) {
+            netPrice = mrp * (1 - discount / 100);
+        }
+        // Case 4: Default fallback
+        else {
+            netPrice = salePrice > 0 ? salePrice : mrp;
+        }
+
+        return {
+            ...item,
+            productId: item.itemId || item.id,
+            isEditable: true,
+            discount: Number(discount.toFixed(2)),
+            customPrice: Number(netPrice.toFixed(2)),
+            unitMultiplier: 1, // MOQ-based quantity ke liye
+        };
+    });
+
+    const handleQuantityChange = (id: string, newQuantity: number) => {
+        if (!editingOrder) return;
+
+        const updatedItems = editingOrder.items?.map((item) => {
+            if (item.id !== id) return item;
+
+            const moq = Number(item.moq && item.moq > 0 ? item.moq : 1);
+            let qty = Number(newQuantity);
+
+            if (isNaN(qty) || qty < moq) {
+                qty = moq;
+            }
+
+            return {
+                ...item,
+                quantity: qty,
+            };
+        });
+
+        setEditingOrder({
+            ...editingOrder,
+            items: updatedItems || [],
+        });
+    };
+
+    const handleDiscountChange = (id: string, value: number | string) => {
+        if (!editingOrder) return;
+
+        const discountValue =
+            typeof value === "string" ? parseFloat(value) || 0 : value;
+
+        const updatedItems = editingOrder.items?.map((item) => {
+            if (item.id !== id) return item;
+
+            const mrp = Number(item.mrp || 0);
+            const netPrice = mrp * (1 - discountValue / 100);
+
+            return {
+                ...item,
+                discount: Number(discountValue.toFixed(2)),
+                customPrice: Number(netPrice.toFixed(2)),
+            };
+        });
+
+        setEditingOrder({
+            ...editingOrder,
+            items: updatedItems,
+        });
+    };
+    const handleDeleteItem = (id: string) => {
+        if (!editingOrder) return;
+
+        const updatedItems = editingOrder.items?.filter(
+            (item) => item.id !== id
+        );
+
+        setEditingOrder({
+            ...editingOrder,
+            items: updatedItems,
+        });
+    };
+
     useEffect(() => {
         if (!editingOrder || !currentUser?.companyId) return;
 
@@ -512,6 +642,35 @@ const OrdersPage: React.FC = () => {
         };
 
         fetchBillSettings();
+    }, [currentUser?.companyId]);
+
+    useEffect(() => {
+        const fetchSalesSettings = async () => {
+            if (!currentUser?.companyId) return;
+
+            try {
+                const settingsRef = doc(
+                    db,
+                    "companies",
+                    currentUser.companyId,
+                    "settings",
+                    "catalogue-sales-settings"
+                );
+
+                const snap = await getDoc(settingsRef);
+
+                if (snap.exists()) {
+                    const data = snap.data();
+                    setEnableItemWiseDiscount(
+                        data.enableItemWiseDiscount ?? false
+                    );
+                }
+            } catch (error) {
+                console.error("Error fetching sales settings:", error);
+            }
+        };
+
+        fetchSalesSettings();
     }, [currentUser?.companyId]);
 
     useEffect(() => {
@@ -754,7 +913,7 @@ const OrdersPage: React.FC = () => {
                 grandTotal: Order.totalAmount,
             };
 
-            // ✅ FIX: Bill type ke basis par Estimate ya Bill generate hoga
+            //  FIX: Bill type ke basis par Estimate ya Bill generate hoga
             const preparedData = await prepareCatalogueBillData({
                 ...rawBillData,
                 isEstimate: billType === "estimate",
@@ -961,7 +1120,7 @@ const OrdersPage: React.FC = () => {
             await deleteDoc(orderRef);
 
             setModal({
-                message: "Order deleted & stock restored successfully",
+                message: "Order deleted successfully",
                 type: State.SUCCESS,
             });
         } catch (error) {
@@ -1487,7 +1646,6 @@ const OrdersPage: React.FC = () => {
                                                                                 (Number(item.salesPrice || 0) > 0
                                                                                     ? Number(item.salesPrice)
                                                                                     : Number(item.mrp)))
-                                                                            / (item.moq || 1)
                                                                         )} per {item.unit || "pcs"}
                                                                     </p>
                                                                 </div>
@@ -1798,7 +1956,11 @@ const OrdersPage: React.FC = () => {
                             >
                                 Print Directly
                             </button>
-                            <button onClick={() => setShowQrModal(selectedOrderForAction)} className="w-full bg-gray-900 text-white py-2.5 rounded-sm font-bold">Generate QR Code</button>
+                            <button onClick={() => {
+                                setShowQrModal(selectedOrderForAction);
+                                setSelectedOrderForAction(null);
+                            }
+                            } className="w-full bg-gray-900 text-white py-2.5 rounded-sm font-bold">Generate QR Code</button>
                         </div>
                     </div>
                 </div>
@@ -1806,10 +1968,26 @@ const OrdersPage: React.FC = () => {
 
             {showQrModal && (
                 <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-                    <div className="bg-white rounded-sm p-6 w-full max-w-sm flex flex-col items-center relative">
-                        <button onClick={() => setShowQrModal(null)} className="absolute top-4 right-4 text-gray-400"><FiX size={24} /></button>
-                        <div className="bg-white p-2 border rounded-sm mb-4"><QRCode value={`${window.location.origin}/download-bill/${currentUser?.companyId}/${showQrModal.id}`} size={200} /></div>
-                        <button onClick={() => setShowQrModal(null)} className="w-full bg-blue-600 text-white py-3 rounded-sm font-semibold">Close</button>
+                    <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm flex flex-col items-center animate-in fade-in zoom-in duration-300 relative">
+                        <button onClick={() => setShowQrModal(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+                            <FiX size={24} />
+                        </button>
+                        <h3 className="text-xl font-bold text-gray-800 mb-1">Download Bill</h3>
+                        <p className="text-sm text-gray-500 mb-4">Invoice #{showQrModal.orderId}</p>
+                        <div className="bg-white p-2 border-2 border-gray-100 rounded-lg shadow-inner mb-4">
+                            <QRCode
+                                value={`${window.location.origin}/download-bill/${currentUser?.companyId}/${showQrModal.id}`}
+                                size={200}
+                                viewBox={`0 0 256 256`}
+                            />
+                        </div>
+                        <p className="text-center text-sm text-gray-600 mb-4">Scan to download PDF</p>
+                        <button
+                            onClick={() => setShowQrModal(null)}
+                            className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+                        >
+                            Close
+                        </button>
                     </div>
                 </div>
             )}
@@ -2135,86 +2313,30 @@ const OrdersPage: React.FC = () => {
                                         {/* Items List Container */}
                                         <div className="h-auto">
                                             <GenericCartList
-                                                items={(editingOrder.items || []).map((item: any) => {
-                                                    const salesPrice = Number(item.salesPrice || 0);
-                                                    const mrp = Number(item.mrp || 0);
-
-                                                    const finalPrice =
-                                                        item.customPrice ??
-                                                        (salesPrice > 0 ? salesPrice : mrp);
-
-                                                    return {
-                                                        ...item,
-                                                        id: String(item.id),
-                                                        productId: String(item.itemId || item.id),
-                                                        itemGroupId: item.itemGroupId ? String(item.itemGroupId) : undefined,
-                                                        isEditable: true,
-                                                        unitPrice: finalPrice,
-                                                        customPrice: item.customPrice
-                                                    };
-                                                })}
+                                                items={mappedOrderItems}
                                                 availableItems={availableItems}
                                                 basePriceKey="mrp"
                                                 priceLabel="MRP"
-                                                State={State}
                                                 settings={{
                                                     enableRounding: false,
                                                     roundingInterval: 1,
-                                                    enableItemWiseDiscount: false,
-                                                    lockDiscount: true,
+                                                    enableItemWiseDiscount: enableItemWiseDiscount,
+                                                    lockDiscount: false,
                                                     lockPrice: false,
-                                                    hideMrp: false
+                                                    hideMrp: false,
                                                 }}
-                                                applyRounding={(amt) => amt}
-                                                setModal={() => { }}
-                                                onOpenEditDrawer={(item: any) => {
+                                                applyRounding={(amount) => amount}
+                                                State={State}
+                                                setModal={setModal}
+                                                onOpenEditDrawer={(item) => {
                                                     setSelectedItemForEdit(item);
                                                     setIsEditDrawerOpen(true);
                                                 }}
-                                                onDiscountChange={() => { }}
-                                                onCustomPriceChange={() => { }}
+                                                onDeleteItem={handleDeleteItem}
+                                                onDiscountChange={handleDiscountChange}
+                                                onCustomPriceChange={handleNetPriceChange}
                                                 onCustomPriceBlur={() => { }}
-                                                onDiscountClick={() => { }}
-                                                onPriceClick={() => { }}
-                                                onDeleteItem={(itemId) => {
-                                                    const updatedItems = editingOrder.items?.filter(i => String(i.id) !== String(itemId)) || [];
-                                                    const newTotal = updatedItems.reduce((sum, i) => sum + (i.mrp * i.quantity), 0);
-                                                    setEditingOrder({ ...editingOrder, items: updatedItems, totalAmount: newTotal });
-                                                }}
-                                                onQuantityChange={(id, newQuantity) => {
-                                                    if (!editingOrder) return;
-
-                                                    const updatedItems = (editingOrder.items || []).map(item => {
-                                                        if (item.id !== id) return item;
-
-                                                        const moq = item.moq && item.moq > 0 ? item.moq : 1;
-                                                        const currentQty = item.quantity || moq;
-
-                                                        let finalQty = newQuantity;
-
-                                                        if (newQuantity > currentQty + 1) {
-                                                            finalQty = currentQty + 1;
-                                                        }
-
-                                                        if (newQuantity < currentQty - 1) {
-                                                            finalQty = currentQty - 1;
-                                                        }
-
-                                                        if (finalQty < moq) {
-                                                            finalQty = moq;
-                                                        }
-
-                                                        return {
-                                                            ...item,
-                                                            quantity: finalQty
-                                                        };
-                                                    });
-
-                                                    setEditingOrder(prev => prev ? {
-                                                        ...prev,
-                                                        items: updatedItems
-                                                    } : prev);
-                                                }}
+                                                onQuantityChange={handleQuantityChange}
                                             />
                                         </div>
 

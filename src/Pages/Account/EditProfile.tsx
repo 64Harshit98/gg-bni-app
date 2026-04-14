@@ -371,6 +371,10 @@ const EditProfilePage: React.FC = () => {
       setSubmitError('PAN number must be exactly 10 characters.');
       return;
     }
+    if (formData.gstin && formData.gstin.length !== 15) {
+  setSubmitError('GSTIN must be exactly 15 characters.');
+  return;
+}
 
     setIsSubmitting(true);
 
@@ -596,7 +600,17 @@ const EditProfilePage: React.FC = () => {
                 <FloatingLabelInput type="text" name="businessName" value={formData.businessName || ''} onChange={handleInputChange} label="Business Name" />
                 <FloatingLabelInput type="text" name="businessType" value={formData.businessType || ''} onChange={handleInputChange} label="Business Type" />
                 <FloatingLabelInput type="text" name="businessCategory" value={formData.businessCategory || ''} onChange={handleInputChange} label="Category" />
-                <FloatingLabelInput type="text" name="gstin" value={formData.gstin || ''} onChange={handleInputChange} label="GSTIN" />
+                <FloatingLabelInput
+                        type="text"
+                        name="gstin"
+                        value={formData.gstin || ''}
+                        onChange={(e) => {
+                            const val = e.target.value.toUpperCase();
+                            if (val.length <= 15) {
+                            setFormData(prev => ({ ...prev, gstin: val }));
+                          } 
+                        }}
+                      label="GSTIN"/>
                 <FloatingLabelInput type="text" name="panNumber" value={formData.panNumber || ''} onChange={handleInputChange} label="PAN Number" />
                 <FloatingLabelInput type="text" name="msmeUdyamNumber" value={formData.msmeUdyamNumber || ''} onChange={handleInputChange} label="MSME No." />
               </div>

@@ -331,6 +331,15 @@ const EditProfilePage: React.FC = () => {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
+
+    if (name === 'gstin') {
+      const upper = value.toUpperCase();
+      if (upper.length <= 15) {
+        setFormData(prev => ({ ...prev, gstin: upper }));
+      }
+      return;
+    }
+
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
@@ -393,6 +402,10 @@ const EditProfilePage: React.FC = () => {
     }
     if (formData.panNumber && formData.panNumber.length !== 10) {
       setSubmitError('PAN number must be exactly 10 digits.');
+      return;
+    }
+    if (formData.gstin && formData.gstin.length !== 15) {
+      setSubmitError('GSTIN must be exactly 15 characters.');
       return;
     }
 

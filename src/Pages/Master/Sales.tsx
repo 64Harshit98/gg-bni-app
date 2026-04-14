@@ -113,7 +113,7 @@ const Sales: React.FC = () => {
     }, [rawSettings, currentUser?.Subscription?.pack]);
     const invoiceToEdit = location.state?.invoiceData;
     const isEditMode = location.state?.isEditMode === true && !!invoiceToEdit;
-
+    const [sortOrder, setSortOrder] = useState<'az' | 'za' | 'price_asc' | 'price_desc'>('az');
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
     const [savedBillData, setSavedBillData] = useState<{ id: string, number: string, invoiceData?: any } | null>(null);
     const [sendingPdf, setSendingPdf] = useState(false);
@@ -162,6 +162,7 @@ const Sales: React.FC = () => {
     const [settingsDocId, setSettingsDocId] = useState<string | null>(null);
 
     const [selectedCategory, setSelectedCategory] = useState<string>('All');
+    const [listSelectedCategory] = useState<string>('All');
     const [gridSearchQuery, setGridSearchQuery] = useState<string>('');
     const [itemGroupMap, setItemGroupMap] = useState<Record<string, string>>({});
     const [isFooterExpanded, setIsFooterExpanded] = useState(false);
@@ -371,14 +372,33 @@ const Sales: React.FC = () => {
             const matchesSearch = gridSearchQuery === '' || item.name.toLowerCase().includes(gridSearchQuery.toLowerCase()) || item.barcode?.includes(gridSearchQuery);
             return matchesCategory && matchesSearch;
         });
-        return filtered.sort((a, b) => {
+
+        // Cart-priority sort first (items in cart bubble up)
+        const cartPrioritized = [...filtered].sort((a, b) => {
             const aInCart = items.some(i => i.productId === a.id);
             const bInCart = items.some(i => i.productId === b.id);
             if (aInCart && !bInCart) return -1;
             if (!aInCart && bInCart) return 1;
             return 0;
         });
-    }, [availableItems, selectedCategory, gridSearchQuery, items]);
+
+        // Then apply user-selected sort within each group (in-cart / not-in-cart)
+        const sortFn = (a: Item, b: Item) => {
+            switch (sortOrder) {
+                case 'az': return a.name.localeCompare(b.name);
+                case 'za': return b.name.localeCompare(a.name);
+                case 'price_asc': return (a.salesPrice || a.mrp || 0) - (b.salesPrice || b.mrp || 0);
+                case 'price_desc': return (b.salesPrice || b.mrp || 0) - (a.salesPrice || a.mrp || 0);
+                default: return 0;
+            }
+        };
+
+        // Sort in-cart and out-of-cart groups separately to preserve cart-priority
+        const inCart = cartPrioritized.filter(i => items.some(c => c.productId === i.id));
+        const outCart = cartPrioritized.filter(i => !items.some(c => c.productId === i.id));
+        return [...inCart.sort(sortFn), ...outCart.sort(sortFn)];
+
+    }, [availableItems, selectedCategory, gridSearchQuery, items, sortOrder]);
 
     const gstSchemeDisplay = salesSettings?.gstScheme;
 
@@ -869,7 +889,10 @@ const Sales: React.FC = () => {
             return cartItem;
         }));
     };
-    const displayItems = useMemo(() => { return items; }, [items]);
+    const displayItems = useMemo(() => {
+        if (listSelectedCategory === 'All') return items;
+        return items.filter(item => (item.itemGroupId || 'Others') === listSelectedCategory);
+    }, [items, listSelectedCategory]);
 
     const handleProceedToPayment = () => {
         if (items.length === 0) { setModal({ message: 'Please add at least one item.', type: State.INFO }); return; }
@@ -1042,8 +1065,8 @@ const Sales: React.FC = () => {
                 const prefix = settingsDoc.exists() ? (settingsDoc.data().voucherPrefix || 'INV') : 'INV';
                 const nextNumber = counterDoc.exists() ? (counterDoc.data().currentNumber || 1) : 1;
                 const finalInvNo = isInvoiceNumberManuallyEdited.current
-                                    ? invoiceNumber  // Use what the user typed
-                                    : `${prefix}-${nextNumber}`;
+                    ? invoiceNumber  // Use what the user typed
+                    : `${prefix}-${nextNumber}`;
 
                 // 3. Assign the "Database Truth" number to the sale
                 saleData.createdAt = customDate;
@@ -1060,7 +1083,7 @@ const Sales: React.FC = () => {
                 // 5. Increment the Counter
                 if (!isInvoiceNumberManuallyEdited.current) {
                     transaction.set(counterRef, { currentNumber: nextNumber + 1 }, { merge: true });
-}
+                }
 
                 // Result returned to the UI
                 return { id: newSaleRef.id, number: finalInvNo };
@@ -1232,24 +1255,24 @@ const Sales: React.FC = () => {
         };
     };
 
-   const handleSendWhatsapp = async (invoice: any) => {
-    if (!invoice.partyNumber) {
-        setModal({ message: "Customer phone number is missing.", type: State.ERROR });
-        return;
-    }
-    setSendingPdf(true);
-    try {
-        if (!currentUser?.companyId || !currentUser?.uid) throw new Error("User context missing.");
-
-        const businessDocRef = doc(db, 'companies', currentUser.companyId, 'business_info', currentUser.companyId);
-        const businessSnap = await getDoc(businessDocRef);
-        const { botMasterToken, whatsappNumber } = businessSnap.data() || {};
-
-         if (!botMasterToken || !whatsappNumber) {
-            setSendingPdf(false);
-            navigate(ROUTES.WHATSAPP_PLAN);
+    const handleSendWhatsapp = async (invoice: any) => {
+        if (!invoice.partyNumber) {
+            setModal({ message: "Customer phone number is missing.", type: State.ERROR });
             return;
         }
+        setSendingPdf(true);
+        try {
+            if (!currentUser?.companyId || !currentUser?.uid) throw new Error("User context missing.");
+
+            const businessDocRef = doc(db, 'companies', currentUser.companyId, 'business_info', currentUser.companyId);
+            const businessSnap = await getDoc(businessDocRef);
+            const { botMasterToken, whatsappNumber } = businessSnap.data() || {};
+
+            if (!botMasterToken || !whatsappNumber) {
+                setSendingPdf(false);
+                navigate(ROUTES.WHATSAPP_PLAN);
+                return;
+            }
 
             const dataForPdf = await preparePdfData(invoice);
             if (!dataForPdf) throw new Error("Failed to prepare invoice data.");
@@ -1314,11 +1337,10 @@ const Sales: React.FC = () => {
                             value={activeTaxMode}
                             onChange={(e) => setActiveTaxMode(e.target.value as any)}
                             disabled={(salesSettings?.gstScheme !== 'regular')}
-                            className={`appearance-none border border-gray-300 pr-8 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium transition-all ${
-                                isLocked
-                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                    : 'bg-gray-50 hover:border-blue-400 text-gray-700 cursor-pointer'
-                            }`}
+                            className={`appearance-none border border-gray-300 pr-8 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium transition-all ${isLocked
+                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                : 'bg-gray-50 hover:border-blue-400 text-gray-700 cursor-pointer'
+                                }`}
                         >
                             <option value="exclusive">Tax Exclusive</option>
                             <option value="inclusive">Tax Inclusive</option>
@@ -1342,11 +1364,10 @@ const Sales: React.FC = () => {
                             value={activeTaxMode}
                             onChange={(e) => setActiveTaxMode(e.target.value as any)}
                             disabled={(salesSettings?.gstScheme !== 'regular')}
-                            className={`appearance-none w-full bg-white border border-gray-300 px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium transition-all shadow-sm md:px-4 md:py-2.5 md:text-[15px] md:rounded-xl ${
-                                isLocked
-                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                    : 'hover:border-blue-400 text-gray-700 cursor-pointer'
-                            }`}
+                            className={`appearance-none w-full bg-white border border-gray-300 px-3 py-2 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium transition-all shadow-sm md:px-4 md:py-2.5 md:text-[15px] md:rounded-sm ${isLocked
+                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                : 'hover:border-blue-400 text-gray-700 cursor-pointer'
+                                }`}
                         >
                             <option value="exclusive">Tax Exclusive</option>
                             <option value="inclusive">Tax Inclusive</option>
@@ -1385,9 +1406,10 @@ const Sales: React.FC = () => {
                         <input
                             type="text"
                             value={invoiceNumber}
-                            onChange={(e) => { 
+                            onChange={(e) => {
                                 isInvoiceNumberManuallyEdited.current = true;
-                                setInvoiceNumber(e.target.value)}}
+                                setInvoiceNumber(e.target.value)
+                            }}
                             className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-24 text-sm outline-none transition-colors"
                         />
                         <span className="text-[9px] text-gray-400 uppercase tracking-wide mt-0.5">INV NO</span>
@@ -1467,15 +1489,25 @@ const Sales: React.FC = () => {
                                 </div>
                             )}
                             <div className="p-3 bg-white flex gap-2 items-center">
-                                <div className="flex-grow">
-                                    <SearchableItemInput
-                                        label="" placeholder="Search items by name or barcode..."
-                                        items={availableItems} onItemSelected={handleItemSelected}
-                                        isLoading={pageIsLoading} error={error}
-                                        onAddItem={(query) => navigate(ROUTES.ITEM_ADD, { state: { prefillName: query } })}
+                                <div className="flex-grow relative">
+                                    <input
+                                        type="text"
+                                        value={gridSearchQuery}
+                                        onChange={(e) => setGridSearchQuery(e.target.value)}
+                                        placeholder="Search items by name or barcode..."
+                                        className="w-full border border-gray-300 rounded-sm px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-8"
+                                        autoComplete="off"
                                     />
+                                    {gridSearchQuery && (
+                                        <button
+                                            onClick={() => setGridSearchQuery('')}
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                        >
+                                            <FiX size={14} />
+                                        </button>
+                                    )}
                                 </div>
-                                <button onClick={() => setIsScannerOpen(true)} className="bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition-colors" title="Scan Barcode">
+                                <button onClick={() => setIsScannerOpen(true)} className="bg-blue-600 text-white p-3 rounded-sm hover:bg-blue-700 transition-colors" title="Scan Barcode">
                                     <IconScanCircle width={22} height={22} />
                                 </button>
                             </div>
@@ -1488,7 +1520,27 @@ const Sales: React.FC = () => {
                                 ))}
                             </div>
                         </div>
-
+                        {/* Sort Bar */}
+                        <div className="flex gap-1.5 items-center px-3 py-2 bg-white border-b border-gray-200 overflow-x-auto flex-shrink-0">
+                            <span className="text-xs text-gray-400 font-medium uppercase tracking-wide whitespace-nowrap flex-shrink-0">Sort:</span>
+                            {([
+                                { value: 'az', label: 'A → Z' },
+                                { value: 'za', label: 'Z → A' },
+                                { value: 'price_asc', label: 'Price ↑' },
+                                { value: 'price_desc', label: 'Price ↓' },
+                            ] as const).map(opt => (
+                                <button
+                                    key={opt.value}
+                                    onClick={() => setSortOrder(opt.value)}
+                                    className={`px-2.5 py-1 rounded-sm text-xs whitespace-nowrap border transition flex-shrink-0 ${sortOrder === opt.value
+                                        ? 'bg-blue-600 text-white border-blue-600'
+                                        : 'bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200'
+                                        }`}
+                                >
+                                    {opt.label}
+                                </button>
+                            ))}
+                        </div>
                         {/* Card grid — fills remaining height, scrollable */}
                         <div className="flex-1 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-5 bg-gray-100 pb-20"
                             style={{ gridAutoRows: 'auto', alignContent: 'start', gap: '14px', padding: '8px 14px' }}>
@@ -1620,14 +1672,14 @@ const Sales: React.FC = () => {
                                                                     e.stopPropagation();
                                                                     addItemToCart(item);
                                                                 }}
-                                                                className="w-full h-[26px] rounded-md text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 transition-colors"
+                                                                className="w-full h-[26px] rounded-sm text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 transition-colors"
                                                             >
                                                                 + Add
                                                             </button>
                                                         </>
                                                     ) : (
                                                         <div
-                                                            className="flex items-center border border-gray-200 rounded-md overflow-hidden bg-white w-full"
+                                                            className="flex items-center border border-gray-200 rounded-sm overflow-hidden bg-white w-full"
                                                         >
                                                             <button
                                                                 onClick={(e) => {
@@ -1730,7 +1782,7 @@ const Sales: React.FC = () => {
                                                 {!isSelected ? (
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); addItemToCart(item); }}
-                                                        className="w-full py-1.5 rounded-md text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 transition-colors"
+                                                        className="w-full py-1.5 rounded-sm text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 transition-colors"
                                                     >
                                                         + Add
                                                     </button>
@@ -1745,7 +1797,7 @@ const Sales: React.FC = () => {
                                                         </div>
 
                                                         {/* Quantity RIGHT */}
-                                                        <div className="flex items-center border border-gray-200 rounded-md overflow-hidden bg-white flex-shrink-0">
+                                                        <div className="flex items-center border border-gray-200 rounded-sm overflow-hidden bg-white flex-shrink-0">
                                                             <button
                                                                 onClick={(e) => { e.stopPropagation(); if (quantity > 1) handleQuantityChange(lastAddedCartItem.id, quantity - 1); else handleDeleteItem(lastAddedCartItem.id); }}
                                                                 className="w-6 h-7 flex items-center justify-center bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-colors"
@@ -1987,7 +2039,17 @@ const Sales: React.FC = () => {
                     <div className="flex-shrink-0 p-2 bg-white border-b pb-3 mb-2 rounded-sm md:mb-0 md:border-r border-gray-200">
                         <div className="flex gap-4 items-end w-full">
                             <div className="flex-grow">
-                                <SearchableItemInput label="Search Item" placeholder="Search by name or barcode..." items={availableItems} onItemSelected={handleItemSelected} isLoading={pageIsLoading} error={error} onAddItem={(query) => navigate(ROUTES.ITEM_ADD, { state: { prefillName: query } })} />
+                                <SearchableItemInput
+                                    label="Search Item"
+                                    placeholder="Search by name or barcode..."
+                                    items={availableItems}
+                                    onItemSelected={handleItemSelected}
+                                    isLoading={pageIsLoading}
+                                    error={error}
+                                    onAddItem={(query) => navigate(ROUTES.ITEM_ADD, { state: { prefillName: query } })}
+                                    categories={categories}
+                                    itemGroupMap={itemGroupMap}
+                                />
                             </div>
                             <button onClick={() => setIsScannerOpen(true)} className='bg-transparent text-gray-700 p-3 border border-gray-700 rounded-sm font-semibold transition hover:bg-gray-800' title="Scan Barcode">
                                 <IconScanCircle width={20} height={20} />

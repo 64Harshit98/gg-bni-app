@@ -82,7 +82,7 @@ const SettingsCard: React.FC<CardProps> = ({ title, children, action }) => (
   </section>
 );
  
-interface ToggleRowProps {
+export interface ToggleRowProps {
   id: string;
   label: string;
   description: string;
@@ -92,7 +92,7 @@ interface ToggleRowProps {
   disabled?: boolean;
 }
  
-const ToggleRow: React.FC<ToggleRowProps> = ({
+export const ToggleRow: React.FC<ToggleRowProps> = ({
   id, label, description, checked, onChange, tooltip, disabled = false
 }) => (
   <div className={`flex items-start justify-between gap-4 rounded-sm bg-gray-50/60 border border-gray-100 p-3.5 md:p-4 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>

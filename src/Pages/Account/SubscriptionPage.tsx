@@ -211,7 +211,7 @@ const SubscriptionPage: React.FC = () => {
     const currentTiers = activeTab === 'pos' ? POS_TIERS : activeTab === 'catalogue' ? CATALOGUE_TIERS : BOTH_TIERS;
 
     const [isContactModalOpen, setIsContactModalOpen] = useState(false);
-    const [selectedPlan, setSelectedPlan] = useState('');
+    const [selectedPlan] = useState('');
 
     const allFeatures = useMemo(() => {
         if (activeTab === 'pos') {
@@ -356,8 +356,15 @@ const SubscriptionPage: React.FC = () => {
                                             </div>
                                             <button
                                                 onClick={() => {
-                                                    setSelectedPlan(tier.name);
-                                                    setIsContactModalOpen(true);
+                                                    navigate('/payment-gateway', {
+                                                        state: {
+                                                            planName: tier.name,
+                                                            planId: tier.id,
+                                                            price: tier.price.yearly,
+                                                            originalPrice: tier.originalPrice?.yearly,
+                                                            billingCycle: 'yearly',
+                                                        }
+                                                    });
                                                 }}
                                                 className={`mt-3 w-full py-1.5 rounded-sm text-xs sm:text-sm font-bold transition-colors ${tier.recommended
                                                     ? activeTab === 'pos' ? 'bg-gray-900 text-white hover:bg-gray-800' : activeTab === 'catalogue' ? 'bg-sky-600 text-white hover:bg-sky-700' : 'bg-yellow-400 text-black hover:bg-yellow-500'

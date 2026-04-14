@@ -19,9 +19,20 @@ import { runTransaction } from 'firebase/firestore';
 
 const ITEMS_PER_BATCH_RENDER = 24;
 
+const generateSlug = (name: string) => {
+    return name
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, "-")
+        .replace(/[^a-z0-9-]/g, "");
+};
+
 const SharedProduct: React.FC = () => {
     const navigate = useNavigate();
-    const { companyId: pathId, groupId } = useParams<{ companyId: string, groupId: string }>();
+    const { companyId: pathId, groupId: groupSlug } = useParams<{
+        companyId: string;
+        groupId: string;
+    }>();
 
     const hostname = window.location.hostname;
     const parts = hostname.split('.');
@@ -82,6 +93,16 @@ const SharedProduct: React.FC = () => {
     const approvalEnabled = catalogueSettings?.requireApproval === true;
     const hidePriceEnabled = catalogueSettings?.hidePrice === true;
     const cartCount = useMemo(() => cart.reduce((acc, curr) => acc + curr.quantity, 0), [cart]);
+
+    const resolvedGroupId = useMemo(() => {
+        if (!groupSlug || allItemGroups.length === 0) return groupSlug;
+
+        const matchedGroup = allItemGroups.find(
+            (group) => generateSlug(group.name) === groupSlug
+        );
+
+        return matchedGroup?.id || groupSlug; // fallback for old ID-based links
+    }, [groupSlug, allItemGroups]);
 
     const cartTotal = useMemo(() => {
         return cart.reduce((acc, curr) => {
@@ -270,35 +291,6 @@ const SharedProduct: React.FC = () => {
             return () => clearTimeout(t);
         }
     }, [showNotifySuccess]);
-
-    useEffect(() => {
-        const params = new URLSearchParams(location.search);
-        const itemIdFromQuery = params.get("itemId");
-
-        const itemIdToHighlight =
-            highlightItemId || itemIdFromQuery;
-
-        if (!itemIdToHighlight || allItems.length === 0) return;
-
-        // Highlight item
-        setActiveHighlight(itemIdToHighlight);
-
-        // Auto-scroll after rendering
-        setTimeout(() => {
-            const element = document.getElementById(itemIdToHighlight);
-            element?.scrollIntoView({
-                behavior: "smooth",
-                block: "center",
-            });
-        }, 400);
-
-        // Remove highlight after 3 seconds
-        const timer = setTimeout(() => {
-            setActiveHighlight(null);
-        }, 3000);
-
-        return () => clearTimeout(timer);
-    }, [location.search, highlightItemId, highlightTrigger, allItems]);
 
     const addToCart = useCallback((item: Item) => {
         //  SINGLE SOURCE OF TRUTH
@@ -580,7 +572,7 @@ const SharedProduct: React.FC = () => {
 
     useEffect(() => {
         // 1. Remove !currentUser from the guard so public users can pass
-        if (authLoading || !effectiveCompanyId || !groupId) return;
+        if (authLoading || !effectiveCompanyId || !resolvedGroupId) return;
 
         const fetchData = async () => {
             try {
@@ -639,7 +631,7 @@ const SharedProduct: React.FC = () => {
 
         // 7. Dependency array: Remove currentUser and dbOperations 
         // to prevent re-triggering when auth state changes
-    }, [authLoading, effectiveCompanyId, groupId]);
+    }, [authLoading, effectiveCompanyId, resolvedGroupId]);
 
     useEffect(() => {
         if (!effectiveCompanyId) return;
@@ -719,9 +711,19 @@ const SharedProduct: React.FC = () => {
 
     const filteredItems = useMemo(() => {
         const result = allItems.filter(item => {
-            //  hide unlisted items (LIVE RULE)
+            // Hide unlisted items
             if (!item.isListed) return false;
-            const matchesGroup = item.itemGroupId === groupId;
+
+            // Hide out-of-stock items if setting is enabled
+            if (
+                catalogueSettings?.hideOutOfStock &&
+                (item.stock || 0) <= 0
+            ) {
+                return false;
+            }
+
+            const matchesGroup = item.itemGroupId === resolvedGroupId;
+
             return (
                 matchesGroup &&
                 item.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -735,12 +737,69 @@ const SharedProduct: React.FC = () => {
             if (sortOrder === 'Price: High-Low') return (b.mrp || 0) - (a.mrp || 0);
             return 0;
         });
-    }, [allItems, searchQuery, sortOrder, groupId, catalogueSettings]);
+    }, [allItems, searchQuery, sortOrder, resolvedGroupId, catalogueSettings]);
+
+    
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const itemIdFromQuery = params.get("itemId");
+
+        const itemIdToHighlight =
+            highlightItemId || itemIdFromQuery;
+
+        if (!itemIdToHighlight || allItems.length === 0) return;
+
+        // Find index of the item in filtered list
+        const itemIndex = filteredItems.findIndex(
+            (item) => String(item.id) === String(itemIdToHighlight)
+        );
+
+        // Ensure the item is rendered (handles lazy loading)
+        if (itemIndex !== -1) {
+            setItemsToRenderCount((prev) =>
+                Math.max(prev, itemIndex + 1)
+            );
+        }
+
+        // Highlight the item
+        setActiveHighlight(itemIdToHighlight);
+
+        // Scroll after rendering
+        const scrollTimeout = setTimeout(() => {
+            const element = document.getElementById(itemIdToHighlight);
+            element?.scrollIntoView({
+                behavior: "smooth",
+                block: "center",
+            });
+        }, 300);
+
+        // Remove highlight after 3 seconds
+        const highlightTimeout = setTimeout(() => {
+            setActiveHighlight(null);
+            if (itemIdFromQuery) {
+                navigate(location.pathname, { replace: true });
+            }
+        }, 3000);
+
+        return () => {
+            clearTimeout(scrollTimeout);
+            clearTimeout(highlightTimeout);
+        };
+    }, [
+        location.search,
+        highlightItemId,
+        highlightTrigger,
+        allItems,
+        filteredItems,
+        navigate,
+        location.pathname
+    ]);
+
 
     const currentCategoryName = useMemo(() => {
-        const group = allItemGroups.find(g => g.id === groupId);
+        const group = allItemGroups.find(g => g.id === resolvedGroupId);
         return group ? group.name : 'Catalogue';
-    }, [allItemGroups, groupId]);
+    }, [allItemGroups, resolvedGroupId]);
 
     const itemsToDisplay = useMemo(() => filteredItems.slice(0, itemsToRenderCount), [filteredItems, itemsToRenderCount]);
     const hasMoreItems = useMemo(() => itemsToRenderCount < filteredItems.length, [itemsToRenderCount, filteredItems.length]);
@@ -769,7 +828,7 @@ const SharedProduct: React.FC = () => {
 
     useEffect(() => {
         setSearchQuery("")
-    }, [groupId])
+    }, [resolvedGroupId])
 
     const handleOpenDetailDrawer = (item: Item) => {
         setSelectedItemForDetails(item);
@@ -835,7 +894,7 @@ const SharedProduct: React.FC = () => {
                         </button>
 
                         <span
-                            className={`transition-all duration-500 ease-in-out transform ${isScrolled
+                            className={`hidden md:block transition-all duration-500 ease-in-out transform ${isScrolled
                                 ? "opacity-100 translate-x-0"
                                 : "opacity-0 -translate-x-4"
                                 } text-[10px] md:text-xs font-semibold text-gray-500 uppercase whitespace-nowrap`}
@@ -845,9 +904,9 @@ const SharedProduct: React.FC = () => {
                     </div>
 
                     {/* Company Name */}
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
 
-                        {/* Company Name - Default */}
+                        {/* Company Name - Default (Desktop & Mobile Top) */}
                         <span
                             className={`absolute transition-all duration-500 ease-in-out transform ${isScrolled
                                 ? "-translate-y-6 opacity-0 scale-95"
@@ -862,11 +921,17 @@ const SharedProduct: React.FC = () => {
                             className={`absolute transition-all duration-500 ease-in-out transform ${isScrolled
                                 ? "translate-y-0 opacity-100 scale-100"
                                 : "translate-y-6 opacity-0 scale-95"
-                                } text-base md:text-lg font-extrabold text-[#1A3B5D] uppercase tracking-tight whitespace-nowrap`}
+                                } text-base md:text-lg font-extrabold text-[#F97316] uppercase tracking-tight whitespace-nowrap`}
                         >
                             {currentCategoryName}
                         </span>
 
+                        {/* Company Name Below Category (Mobile Only) */}
+                        {isScrolled && (
+                            <span className="md:hidden text-[10px] font-semibold text-gray-500 uppercase tracking-wide mt-8">
+                                {companyName}
+                            </span>
+                        )}
                     </div>
 
                     {/* Cart Button - Right Side */}
@@ -930,12 +995,15 @@ const SharedProduct: React.FC = () => {
                         hideUncategorized={true}
                         onItemSelected={(item: any) => {
                             setSearchQuery("");
+                            const group = allItemGroups.find(g => g.id === item.itemGroupId);
+                            const slug = group ? generateSlug(group.name) : item.itemGroupId;
+
                             navigate(
-                                `/product/${effectiveCompanyId}/${item.itemGroupId}`,
+                                `/product/${effectiveCompanyId}/${slug}`,
                                 {
                                     state: {
                                         highlightItemId: item.id,
-                                        trigger: Date.now() // unique value to force re-trigger
+                                        trigger: Date.now()
                                     }
                                 }
                             );
@@ -1022,7 +1090,7 @@ const SharedProduct: React.FC = () => {
                                 {/* CONTENT */}
                                 <div className="p-3 flex flex-col flex-1">
                                     <h3 className="text-[12px] font-black text-[#1A3B5D] mb-1 uppercase leading-tight">
-                                        {item.name}
+                                        {item.name.slice(0, 50)}
                                     </h3>
 
                                     {/* PRICE */}

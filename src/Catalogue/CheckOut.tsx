@@ -421,7 +421,7 @@ const CartPage: React.FC = () => {
 
                     return {
                         id: String(i.id),
-                        itemId: String(i.id),   
+                        itemId: String(i.id),
                         groupId: (i as any).itemGroupId || i.category,
                         name: i.name,
                         quantity: Number(i.quantity || 0),
@@ -470,29 +470,49 @@ const CartPage: React.FC = () => {
             // 8. GENERATE PDF BILL
             try {
                 const rawBillData = {
-                    effectiveCompanyId,
-                    specialInstruction: specialInstruction || "", billTo: {
-                        name: billing.name,
-                        phone: billing.phone,
-                        address: billing.address,
+                    companyId: effectiveCompanyId,
+                    isEstimate: false,
+                    specialInstruction: specialInstruction || "",
+
+                    customer: {
+                        billing: {
+                            name: billing.name,
+                            phone: billing.phone,
+                            address: billing.address,
+                            gstin: billing.gstin || "",
+                        },
+                        shipping: {
+                            name: isSameAsShipping ? billing.name : shipping.name,
+                            phone: isSameAsShipping ? billing.phone : shipping.phone,
+                            address: isSameAsShipping ? billing.address : shipping.address,
+                            gstin: isSameAsShipping
+                                ? billing.gstin || ""
+                                : shipping.gstin || "",
+                        },
                     },
-                    invoice: {
-                        number: orderInvoiceNumber,
-                        date: new Date().toLocaleDateString(),
+
+                    order: {
+                        orderId: orderInvoiceNumber,
+                        date: new Date().toLocaleString(),
                     },
+
                     items: cartItems.map((item, index) => ({
                         sno: index + 1,
                         name: item.name,
-                        quantity: item.quantity,
-                        unit: "PCS",
-                        gstPercent: item.tax || 0,
-                        discountAmount: 0,
-                        mrp: item.mrp,
-                        price: item.salesPrice,
-                        total: item.salesPrice * item.quantity,
+                        qty: item.quantity, 
+                        mrp: Number(item.mrp || 0),
+                        price: Number(item.salesPrice || 0),
+                        salesPrice: Number(item.salesPrice || 0),
+                        tax: Number(item.tax || 0),
+                        unit: item.unit || "pcs",
+                        unitMultiplier: Number(item.unitMultiplier || 1),
+                        total: Number(item.salesPrice || 0) * Number(item.quantity || 0),
+                        imageBase64: item.imageUrl || "",
                     })),
+
+                    grandTotal: totalPay,
                 };
-                const preparedData = await prepareCatalogueBillData(rawBillData as any);
+                const preparedData = await prepareCatalogueBillData(rawBillData);
                 await CatalogueBill(preparedData, ACTION.BLOB);
             } catch (e) {
                 console.error("PDF generation failed", e);

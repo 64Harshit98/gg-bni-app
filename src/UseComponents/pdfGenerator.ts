@@ -152,19 +152,25 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   doc.text(title, pageWidth / 2, cursorY + 5, { align: 'center' });
 
   doc.setFontSize(8);
-  doc.text(`Msme No ${data.msmeNumber || ''}`, endX - 2, cursorY + 5, { align: 'right' });
+  if (!isEstimate) {
+    doc.text(`Msme No ${data.msmeNumber || ''}`, endX - 2, cursorY + 5, { align: 'right' });
+  }
 
   doc.setFontSize(16);
   doc.text(data.companyName.toUpperCase(), pageWidth / 2, cursorY + 11, { align: 'center' });
 
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  const addressLines = doc.splitTextToSize(data.companyAddress, contentWidth - 50);
-  doc.text(addressLines, pageWidth / 2, cursorY + 16, { align: 'center' });
+  if (!isEstimate) {
+    const addressLines = doc.splitTextToSize(data.companyAddress, contentWidth - 50);
+    doc.text(addressLines, pageWidth / 2, cursorY + 16, { align: 'center' });
+  }
 
-  doc.text(`Phone : ${data.companyContact}`, pageWidth / 2, cursorY + 20, { align: 'center' });
+  if (!isEstimate) {
+    doc.text(`Phone : ${data.companyContact}`, pageWidth / 2, cursorY + 20, { align: 'center' });
+  }
 
-  if (safeScheme !== 'NONE') {
+  if (!isEstimate && safeScheme !== 'NONE') {
     doc.setFont('helvetica', 'bold');
     const gstText = `GSTIN : ${data.companyGstin || ''}  (${safeScheme})`;
     doc.text(gstText, pageWidth / 2, cursorY + 24, { align: 'center' });
@@ -185,7 +191,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   const posVal = data.billTo.address.split(',').pop()?.trim() || '';
   doc.text(`Place of Supply : ${posVal}`, (pageWidth / 2) + 2, cursorY + 5);
 
-  if (safeScheme !== 'NONE') {
+  if (!isEstimate && safeScheme !== 'NONE') {
     let schemeInfo = `GST Type: ${safeScheme}`;
     if (safeScheme === 'REGULAR') {
       schemeInfo += ` (${safeTaxType})`;

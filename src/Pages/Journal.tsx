@@ -1012,7 +1012,7 @@ const Journal: React.FC = () => {
                             <span>
                               {item.mrp > 0
                                 ? `MRP: ${item.mrp.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}`
-                                : `Selling Price: ${
+                                : `Sales Price: ${
                                     (
                                       item.effectiveUnitPrice ||
                                       (item.quantity > 0 ? item.finalPrice / item.quantity : 0)
@@ -1027,7 +1027,22 @@ const Journal: React.FC = () => {
                           </p>
                         </div>
                         <div className="text-right">
-                          <p className="font-semibold">{item.finalPrice.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</p>
+                          {(() => {
+                            const netUnitPrice =
+                              item.taxableAmount && item.quantity > 0
+                                ? item.taxableAmount / item.quantity
+                                : item.effectiveUnitPrice
+                                  ? item.effectiveUnitPrice
+                                  : (item.quantity > 0 ? item.finalPrice / item.quantity : 0);
+
+                            const baseAmount = netUnitPrice * item.quantity;
+
+                            return (
+                              <p className="font-semibold">
+                                {baseAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+                              </p>
+                            );
+                          })()}
                           <p className="text-xs text-slate-400">Qty: {item.quantity}</p>
                         </div>
                       </div>

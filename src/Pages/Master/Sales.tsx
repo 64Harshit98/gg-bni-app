@@ -373,16 +373,6 @@ const Sales: React.FC = () => {
             return matchesCategory && matchesSearch;
         });
 
-        // Cart-priority sort first (items in cart bubble up)
-        const cartPrioritized = [...filtered].sort((a, b) => {
-            const aInCart = items.some(i => i.productId === a.id);
-            const bInCart = items.some(i => i.productId === b.id);
-            if (aInCart && !bInCart) return -1;
-            if (!aInCart && bInCart) return 1;
-            return 0;
-        });
-
-        // Then apply user-selected sort within each group (in-cart / not-in-cart)
         const sortFn = (a: Item, b: Item) => {
             switch (sortOrder) {
                 case 'az': return a.name.localeCompare(b.name);
@@ -393,10 +383,7 @@ const Sales: React.FC = () => {
             }
         };
 
-        // Sort in-cart and out-of-cart groups separately to preserve cart-priority
-        const inCart = cartPrioritized.filter(i => items.some(c => c.productId === i.id));
-        const outCart = cartPrioritized.filter(i => !items.some(c => c.productId === i.id));
-        return [...inCart.sort(sortFn), ...outCart.sort(sortFn)];
+        return [...filtered].sort(sortFn);
 
     }, [availableItems, selectedCategory, gridSearchQuery, items, sortOrder]);
 
@@ -1565,8 +1552,12 @@ const Sales: React.FC = () => {
                                     return (
                                         <div
                                             key={item.id}
-                                            className={`bg-white rounded-sm flex flex-col w-full overflow-visible transition-all duration-200 relative group
-                                        ${isSelected
+                                            onClick={() => {
+                                                if (isSelected) handleQuantityChange(lastAddedCartItem.id, quantity + 1);
+                                                else addItemToCart(item);
+                                            }}
+                                            className={`bg-white rounded-sm flex flex-col w-full overflow-visible transition-all duration-200 relative group cursor-pointer
+${isSelected
                                                     ? 'border-2 border-blue-400 shadow-md ring-1 ring-blue-100'
                                                     : 'border border-gray-100 hover:shadow-md hover:border-gray-200'}`}
                                             style={{ margin: '0 2px' }}
@@ -1641,7 +1632,7 @@ const Sales: React.FC = () => {
                                                 </div>
 
                                                 {/* Fixed bottom section — always same height regardless of name */}
-                                                <div className="mt-auto flex flex-col gap-1 pt-1 border-t border-gray-50" onClick={(e) => e.stopPropagation()}>
+                                                <div className="mt-auto flex flex-col gap-1 pt-1 border-t border-gray-50">
 
                                                     {/* Row 1: Price + MRP */}
                                                     <div className="flex items-baseline gap-1">
@@ -1777,7 +1768,7 @@ const Sales: React.FC = () => {
 
                                             {/* Bottom - pinned, same height for all cards */}
                                             {/* Bottom - pinned, same height for all cards */}
-                                            <div className="mt-auto pt-2 flex items-center justify-between gap-2 min-w-0 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                                            <div className="mt-auto pt-2 flex items-center justify-between gap-2 min-w-0 overflow-hidden">
 
                                                 {!isSelected ? (
                                                     <button

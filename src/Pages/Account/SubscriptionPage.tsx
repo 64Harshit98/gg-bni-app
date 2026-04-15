@@ -1,4 +1,30 @@
 import React, { useState, useMemo, useEffect } from 'react';
+// --- Support Number ---
+const SUPPORT_NUMBER = '9818815838';
+// --- Improved Modal Component ---
+const SupportModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open, onClose }) => {
+    if (!open) return null;
+    // No scroll lock: allow background to remain scrollable even when modal is open
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div className="absolute inset-0 bg-white/30 backdrop-blur-sm transition-opacity" aria-hidden="true" />
+            <div className="relative bg-white rounded-xl shadow-2xl p-6 max-w-xs w-full text-center border border-gray-200 animate-in fade-in zoom-in duration-200">
+                <button className="absolute top-2 right-2 text-gray-400 hover:text-gray-700 text-xl" onClick={onClose} aria-label="Close">&times;</button>
+                <h2 className="text-xl font-bold mb-2 text-gray-900">Contact Admin</h2>
+                <p className="mb-4 text-gray-600">Please contact admin on this number for plan activation:</p>
+                <div className="mb-4">
+                    <span className="font-mono text-2xl text-sky-600 tracking-wide">{SUPPORT_NUMBER}</span>
+                </div>
+                <a
+                    href={`tel:${SUPPORT_NUMBER}`}
+                    className="inline-block w-full bg-sky-600 text-white px-4 py-2 rounded-md font-bold hover:bg-sky-700 transition text-base shadow-sm"
+                >
+                    Call
+                </a>
+            </div>
+        </div>
+    );
+};
 import { useAuth } from '../../context/auth-context';
 import { PLANS } from '../../enums';
 import { useNavigate } from 'react-router-dom';
@@ -67,7 +93,10 @@ const FEATURE_DESCRIPTIONS: Record<string, string> = {
     'Receive Orders': 'Accept and manage incoming customer orders from your catalogue.',
     'Online Payments': 'Collect payments digitally through your catalogue store.',
     'Custom Domain': 'Use your own branded domain name for your online catalogue.',
-    'Order Analytics': 'Detailed breakdown of order trends, volumes, and performance.'
+    'Order Analytics': 'Detailed breakdown of order trends, volumes, and performance.',
+    'Complete Setup & Onboarding': 'Initial onboarding support to configure your business and billing setup.',
+    'Guided Training Sessions': 'Live guided sessions to train staff on daily billing operations.',
+
 
 };
 
@@ -84,6 +113,8 @@ const BASIC_FEATURES = [
     'Amount vs Quantity in Boards',
     'Transaction filter & search',
     'Automated business card making',
+    'Complete Setup & Onboarding',
+    'Guided Training Sessions'
 ];
 
 const PRO_FEATURES = [
@@ -189,6 +220,15 @@ const BOTH_TIERS = [
     }
 ];
 
+const FEATURE_VALUE_OVERRIDES: Record<string, Record<string, string>> = {
+    'Guided Training Sessions': {
+        [PLANS.POS_BASIC]: '2 Sessions',
+        [PLANS.POS_PRO]: '4 Sessions',
+        pro: '4 Sessions',
+        enterprise: '4 Sessions',
+    },
+};
+
 const SubscriptionPage: React.FC = () => {
     const { currentUser } = useAuth();
     const navigate = useNavigate();
@@ -196,6 +236,7 @@ const SubscriptionPage: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'pos' | 'catalogue' | 'both'>('pos');
     const [isDetailsOpen] = useState(true);
     const [selectedTooltip, setSelectedTooltip] = useState<string | null>(null);
+    const [showSupportModal, setShowSupportModal] = useState(false);
 
     const subData = (currentUser as any)?.subscription || (currentUser as any)?.Subscription;
     const currentPack = subData?.pack || PLANS.POS_BASIC;
@@ -399,10 +440,15 @@ const SubscriptionPage: React.FC = () => {
                                             </div>
                                         </td>
                                         {currentTiers.map(tier => {
+                                            const overrideValue = FEATURE_VALUE_OVERRIDES[feature]?.[tier.id];
                                             const hasFeature = tier.features.includes(feature);
                                             return (
                                                 <td key={tier.id} className="p-3 text-center">
-                                                    {hasFeature ? (
+                                                    {overrideValue ? (
+                                                        <span className="text-xs sm:text-sm font-semibold text-slate-700 whitespace-nowrap">
+                                                            {overrideValue}
+                                                        </span>
+                                                    ) : hasFeature ? (
                                                         <div className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-100 text-green-600">
                                                             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
@@ -425,6 +471,8 @@ const SubscriptionPage: React.FC = () => {
                     </div>
                 </div>
             </div>
+            {/* Support Modal for Choose button */}
+            <SupportModal open={showSupportModal} onClose={() => setShowSupportModal(false)} />
         </div>
     );
 };

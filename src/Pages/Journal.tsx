@@ -224,6 +224,7 @@ const useJournalData = (companyId?: string) => {
             taxType: item.taxType || '',
             taxAmount: Number(item.taxAmount) || 0,
             taxableAmount: Number(item.taxableAmount) || 0,
+            isCustomAmount: item.isCustomAmount === true || item.itemGroupId === 'calculator' || item.unit === 'Bill' || false
           };
         });
 
@@ -338,7 +339,6 @@ const Journal: React.FC = () => {
   const [showCustomPicker, setShowCustomPicker] = useState(false);
 
   const { salesSettings } = useSalesSettings();
-
   const [pdfGenerating, setPdfGenerating] = useState<string | null>(null);
   const [invoiceToPrint, setInvoiceToPrint] = useState<Invoice | null>(null);
   const [showQrModal, setShowQrModal] = useState<Invoice | null>(null);
@@ -476,7 +476,8 @@ const Journal: React.FC = () => {
       .filter((invoice) => {
         if (activeDateFilter === 'all') return true;
         const invoiceDate = invoice.createdAt;
-        const daysAgo = (date: Date, days: number) => new Date(date.getFullYear(), date.getMonth(), date.getDate() - days);
+        const daysAgo = (date: Date, days: number) =>
+          new Date(date.getFullYear(), date.getMonth(), date.getDate() - days);
         switch (activeDateFilter) {
           case 'today': return invoiceDate >= today;
           case 'yesterday': return invoiceDate >= daysAgo(today, 1) && invoiceDate < today;
@@ -515,14 +516,13 @@ const Journal: React.FC = () => {
     const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' };
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const formatDate = (date: Date) => date.toLocaleDateString('en-IN', options);
-
+    const fmt = (date: Date) => date.toLocaleDateString('en-IN', options);
     switch (activeDateFilter) {
-      case 'today': return `Today, ${formatDate(today)}`;
-      case 'yesterday': return `Yesterday, ${formatDate(new Date(today.setDate(today.getDate() - 1)))}`;
-      case 'last7': return `${formatDate(new Date(today.setDate(today.getDate() - 6)))} - ${formatDate(now)}`;
-      case 'last15': return `${formatDate(new Date(today.setDate(today.getDate() - 14)))} - ${formatDate(now)}`;
-      case 'last30': return `${formatDate(new Date(today.setDate(today.getDate() - 29)))} - ${formatDate(now)}`;
+      case 'today': return `Today, ${fmt(today)}`;
+      case 'yesterday': return `Yesterday, ${fmt(new Date(today.setDate(today.getDate() - 1)))}`;
+      case 'last7': return `${fmt(new Date(today.setDate(today.getDate() - 6)))} - ${fmt(now)}`;
+      case 'last15': return `${fmt(new Date(today.setDate(today.getDate() - 14)))} - ${fmt(now)}`;
+      case 'last30': return `${fmt(new Date(today.setDate(today.getDate() - 29)))} - ${fmt(now)}`;
       case 'custom':
         if (customStartDate && customEndDate) {
           return `${new Date(customStartDate).toLocaleDateString('en-IN', options)} - ${new Date(customEndDate).toLocaleDateString('en-IN', options)}`;
@@ -552,22 +552,17 @@ const Journal: React.FC = () => {
 
   const preparePdfData = async (invoice: Invoice): Promise<PdfData | null> => {
     if (!currentUser?.companyId) return null;
-
     const dbOps = getFirestoreOperations(currentUser.companyId);
     const isPurchase = invoice.type === 'Debit';
-
     const [businessInfo, fetchedItems, billSettingsSnap] = await Promise.all([
       dbOps.getBusinessInfo(),
       dbOps.syncItems(),
       getDoc(doc(db, 'companies', currentUser.companyId, 'settings', 'bill'))
     ]);
-
     const billSettings = billSettingsSnap.exists() ? billSettingsSnap.data() : {};
-
     const populatedItems = (invoice.items || []).map((item: any, index: number) => {
       const fullItem = fetchedItems.find((fi: any) => fi.id === item.id);
       const finalTaxRate = item.taxRate || item.tax || item.gstPercent || fullItem?.tax || 0;
-
       let itemAmount = 0;
       if (item.effectiveUnitPrice && item.effectiveUnitPrice > 0) {
         itemAmount = item.effectiveUnitPrice * item.quantity;
@@ -576,7 +571,6 @@ const Journal: React.FC = () => {
       } else {
         itemAmount = item.mrp * item.quantity;
       }
-
       return {
         sno: index + 1,
         name: item.name,
@@ -585,14 +579,15 @@ const Journal: React.FC = () => {
         listPrice: isPurchase ? (item.purchasePrice || item.mrp) : item.mrp,
         gstPercent: finalTaxRate,
         hsn: fullItem?.hsnSac || item.hsnSac || "N/A",
-        discountAmount: isPurchase ? (item.purchasediscount || item.discount || item.manualDiscount || 0) : (item.discount || item.manualDiscount || 0),
+        discountAmount: isPurchase
+          ? (item.purchasediscount || item.discount || item.manualDiscount || 0)
+          : (item.discount || item.manualDiscount || 0),
         amount: itemAmount,
         taxType: item.taxType,
         taxAmount: item.taxAmount,
         taxableAmount: item.taxableAmount
       };
     });
-
     return {
       gstScheme: salesSettings?.gstScheme || '',
       taxType: invoice.taxType || salesSettings?.taxType || '',
@@ -645,13 +640,11 @@ const Journal: React.FC = () => {
   const handlePdfAction = async (invoice: Invoice, action: ACTION.DOWNLOAD | ACTION.PRINT) => {
     setInvoiceToPrint(null);
     setPdfGenerating(invoice.id);
-
     if (!currentUser?.companyId) {
       setModal({ message: 'User company ID missing.', type: State.ERROR });
       setPdfGenerating(null);
       return;
     }
-
     try {
       const dataForPdf = await preparePdfData(invoice);
       if (dataForPdf) {
@@ -672,19 +665,54 @@ const Journal: React.FC = () => {
       setModal({ message: "Customer phone number is missing.", type: State.ERROR });
       return;
     }
-
     setSendingPdf(true);
-
     try {
       if (!currentUser?.companyId || !currentUser?.uid) throw new Error("User context missing.");
 
       const businessDocRef = doc(db, 'companies', currentUser.companyId, 'business_info', currentUser.companyId);
       const businessSnap = await getDoc(businessDocRef);
       const { botMasterToken, whatsappNumber } = businessSnap.data() || {};
+      let formattedSenderId = String(whatsappNumber || '').replace(/\D/g, '');
+      if (formattedSenderId.length === 10) formattedSenderId = `91${formattedSenderId}`;
 
-      if (!botMasterToken || !whatsappNumber) {
-        setModal({ message: "Company WhatsApp is not linked. Please setup WhatsApp first.", type: State.ERROR });
-        setSendingPdf(false);
+      if (!botMasterToken || !formattedSenderId) {
+        navigate(ROUTES.WHATSAPP_PLAN);
+        return;
+      }
+
+      let isWhatsappConnected = false;
+      try {
+        const meResponse = await botMasterService.getMe(botMasterToken, formattedSenderId);
+        const hasSession = meResponse?.success && Array.isArray(meResponse?.data?.sessions) && meResponse.data.sessions.length > 0;
+        if (!hasSession) {
+          navigate(ROUTES.WHATSAPP_PLAN);
+          return;
+        }
+
+        try {
+          const qrRes = await botMasterService.getQrCode(botMasterToken, formattedSenderId);
+          if (
+            qrRes?.error?.data?.state === 'ALREADY_CONNECTED' ||
+            qrRes?.message?.toLowerCase?.().includes('already connected')
+          ) {
+            isWhatsappConnected = true;
+          }
+        } catch (qrErr: any) {
+          const errData = qrErr?.response?.data;
+          if (
+            errData?.error?.data?.state === 'ALREADY_CONNECTED' ||
+            errData?.error?.message?.toLowerCase?.().includes('already connected') ||
+            errData?.message?.toLowerCase?.().includes('already connected')
+          ) {
+            isWhatsappConnected = true;
+          }
+        }
+      } catch {
+        isWhatsappConnected = false;
+      }
+
+      if (!isWhatsappConnected) {
+        navigate(ROUTES.WHATSAPP_PLAN);
         return;
       }
 
@@ -700,38 +728,20 @@ const Journal: React.FC = () => {
       const fileUrl = await getDownloadURL(storageRef);
 
       const message = `Hello ${invoice.partyName},\n\nHere is your invoice #${invoice.invoiceNumber}.\nAmount: ${invoice.amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}\n\nThank you!`;
-
-      const response = await botMasterService.sendPdfFromUrl(
-        botMasterToken,
-        whatsappNumber,
-        invoice.partyNumber,
-        message,
-        fileUrl,
-        cleanName
-      );
-
+      const response = await botMasterService.sendPdfFromUrl(botMasterToken, formattedSenderId, invoice.partyNumber, message, fileUrl, cleanName);
       let isSuccess = false;
-      if (isSuccess) {
-        setModal({ message: "Invoice sent! Cleaning up...", type: State.SUCCESS });
-        setTimeout(async () => {
-          try {
-            await deleteObject(storageRef);
-          } catch (error) {
-            console.warn("Could not auto-delete temp file:", error);
-          }
-        }, 60000);
-        setInvoiceToPrint(null);
-      }
       if (Array.isArray(response) && response.length > 0) {
         const res = response[0];
         if (res.status === 'sent' || res.status === 'delivered') isSuccess = true;
       } else if (response.status === 'sent' || response.status === 'success' || response.status === 200) {
         isSuccess = true;
       }
-
       if (isSuccess) {
         setModal({ message: "Invoice PDF sent via WhatsApp!", type: State.SUCCESS });
         setInvoiceToPrint(null);
+        setTimeout(async () => {
+          try { await deleteObject(storageRef); } catch (e) { console.warn("Could not auto-delete:", e); }
+        }, 60000);
       } else {
         throw new Error("API reported failure.");
       }
@@ -762,7 +772,6 @@ const Journal: React.FC = () => {
     const companyId = currentUser.companyId;
     const collectionName = invoiceToDelete.type === 'Credit' ? 'sales' : 'purchases';
     const invoiceDocRef = doc(db, 'companies', companyId, collectionName, invoiceToDelete.id);
-
     try {
       await runTransaction(db, async (transaction) => {
         for (const item of invoiceToDelete.items!) {
@@ -821,23 +830,18 @@ const Journal: React.FC = () => {
     if (!currentUser?.companyId) {
       throw new Error("No company ID found. Cannot settle payment.");
     }
-
     const companyId = currentUser.companyId;
     const collectionName = invoice.type === 'Credit' ? 'sales' : 'purchases';
     const docRef = doc(db, 'companies', companyId, collectionName, invoice.id);
-
     await runTransaction(db, async (transaction) => {
       const sfDoc = await transaction.get(docRef);
       if (!sfDoc.exists()) throw new Error("Document does not exist!");
-
       const data = sfDoc.data() as DocumentData;
       const currentPaymentMethods = data.paymentMethods || {};
       const currentDue = currentPaymentMethods.due || 0;
       const currentMethodTotal = currentPaymentMethods[method] || 0;
-
       const newDue = currentDue - amount;
       if (newDue < 0) throw new Error('Payment exceeds due amount.');
-
       const newPaymentMethods = {
         ...currentPaymentMethods,
         [method]: currentMethodTotal + amount,
@@ -845,8 +849,7 @@ const Journal: React.FC = () => {
       };
 
       const paymentRecord = {
-        amount,
-        method,
+        amount, method,
         date: new Date().toISOString(),
         timestamp: Date.now(),
         chequeNumber: method === 'PDC' ? (chequeNumber || '') : '',
@@ -854,7 +857,6 @@ const Journal: React.FC = () => {
       };
 
       const currentHistory = data.paymentHistory || [];
-
       transaction.update(docRef, {
         paymentMethods: newPaymentMethods,
         paymentHistory: [...currentHistory, paymentRecord]
@@ -894,9 +896,7 @@ const Journal: React.FC = () => {
       mrp: Number(item.mrp),
       barcode: item.barcode || '',
     }));
-    navigate(ROUTES.PRINTQR, {
-      state: { prefilledItems: cleanItems }
-    });
+    navigate(ROUTES.PRINTQR, { state: { prefilledItems: cleanItems } });
   };
 
   const totalUnpaidAmount = useMemo(() => {
@@ -922,48 +922,60 @@ const Journal: React.FC = () => {
 
         return (
           <CustomCard key={invoice.id} onClick={() => handleInvoiceClick(invoice.id)} className="cursor-pointer transition-shadow hover:shadow-md">
+
+            {/* Badges row */}
             <div className="flex justify-between items-end w-full -mt-5 relative pointer-events-none">
               <div className="flex justify-start gap-1 flex-wrap max-w-[50%] pointer-events-auto">
-                {invoice.returnHistory && invoice.returnHistory.length > 0 && (
+                {invoice.returnHistory && invoice.returnHistory.length > 0 &&
                   invoice.returnHistory.map((historyItem: any, index: number) => (
-                    <span
-                      key={`return-${index}`}
-                      className="text-[8px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider bg-orange-50 text-orange-600 border-orange-200 whitespace-nowrap"
-                    >
+                    <span key={`return-${index}`} className="text-[8px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider bg-orange-50 text-orange-600 border-orange-200 whitespace-nowrap">
                       {historyItem.modeOfReturn || 'Return'}
                     </span>
                   ))
-                )}
+                }
               </div>
               <div className="flex justify-end gap-1 flex-wrap max-w-[50%] text-right pointer-events-auto">
                 {activeModes.map(([mode]) => (
-                  <span
-                    key={mode}
-                    className="text-[8px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider bg-blue-50 text-blue-600 border-blue-100 whitespace-nowrap"
-                  >
+                  <span key={mode} className="text-[8px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider bg-blue-50 text-blue-600 border-blue-100 whitespace-nowrap">
                     {mode === 'upi' ? 'UPI' : mode.replace(/_/g, ' ')}
                   </span>
                 ))}
               </div>
             </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-base font-semibold text-slate-800">{invoice.invoiceNumber}</p>
-                <p className="text-sm text-slate-500 mt-1">{invoice.partyName}</p>
+
+            {/* Invoice header — stacked left, stacked right */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-col min-w-0">
+                <p className="text-base font-semibold text-slate-800 whitespace-nowrap">{invoice.invoiceNumber}</p>
+                <div className="flex items-center gap-2 min-w-0">
+                  <p className="text-sm text-slate-500 truncate leading-5">
+                    {invoice.partyName || 'Walk-in Customer'}
+                  </p>
+                  <span className="h-3.5 w-px bg-slate-300 flex-shrink-0" aria-hidden="true"></span>
+                  <p className="text-sm text-slate-400 whitespace-nowrap leading-5">
+                    {invoice.partyNumber && invoice.partyNumber.trim() ? invoice.partyNumber : 'N/A'}
+                  </p>
+                </div>
               </div>
-              <div className="flex items-center space-x-3">
-                <div className="text-right">
+              <div className="flex items-start gap-2 flex-shrink-0">
+                <div className="flex flex-col items-end">
                   {invoice.status === 'Unpaid' && invoice.dueAmount && invoice.dueAmount > 0 ? (
                     <>
-                      <p className="text-lg font-bold text-red-600">{invoice.dueAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</p>
-                      <p className="text-xs text-slate-400">Total: {invoice.amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</p>
+                      <p className="text-lg font-bold text-red-600 whitespace-nowrap">
+                        {invoice.dueAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        Total: {invoice.amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+                      </p>
                     </>
                   ) : (
-                    <p className="text-lg font-bold text-slate-800">{invoice.amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</p>
+                    <p className="text-lg font-bold text-slate-800 whitespace-nowrap">
+                      {invoice.amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+                    </p>
                   )}
-                  <p className="text-xs text-slate-500">{invoice.time}</p>
+                  <p className="text-xs text-slate-500 whitespace-nowrap">{invoice.time}</p>
                 </div>
-                <IconChevronDown className={`w-5 h-5 text-slate-400 transition-transform duration-200 flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />
+                <IconChevronDown className={`w-5 h-5 text-slate-400 transition-transform duration-200 flex-shrink-0 mt-1 ${isExpanded ? 'rotate-180' : ''}`} />
               </div>
             </div>
 
@@ -977,38 +989,46 @@ const Journal: React.FC = () => {
                     <span className="bg-white px-2 text-xs font-bold text-slate-400 uppercase tracking-widest">Items</span>
                   </div>
                 </div>
-                <div className="space-y-2 text-sm">
-                  {(invoice.items && invoice.items.length > 0) ? invoice.items.map((item, index) => {
-                    const netUnitPrice =
-                      item.taxableAmount && item.quantity > 0
-                        ? item.taxableAmount / item.quantity
-                        : item.effectiveUnitPrice
-                          ? item.effectiveUnitPrice
-                          : (item.quantity > 0 ? (item.finalPrice / item.quantity) : 0);
 
-                    return (
-                      <div key={index} className="flex justify-between items-center text-slate-700 mb-3">
-                        <div className="flex-1 pr-4">
-                          <p className="font-medium">{item.name}</p>
-                          <p className="text-xs text-slate-400 flex items-center gap-1">
-                            <span>MRP: {item.mrp.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}</span>
-                            <span className="text-slate-400">|</span>
-                            <span className="text-slate-400 font-medium">
-                              Net: {netUnitPrice.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}
-                            </span>
-                          </p>
+                <div className="space-y-2 text-sm">
+                  {invoice.items && invoice.items.length > 0 ? (
+                    invoice.items.map((item, index) => {
+                      const netUnitPrice =
+                        item.taxableAmount && item.quantity > 0
+                          ? item.taxableAmount / item.quantity
+                          : item.effectiveUnitPrice
+                            ? item.effectiveUnitPrice
+                            : item.quantity > 0
+                              ? item.finalPrice / item.quantity
+                              : 0;
+
+                      return (
+                        <div key={index} className="flex justify-between items-center text-slate-700 mb-3">
+                          <div className="flex-1 pr-4">
+                            <p className="font-medium">{item.name}</p>
+                            <p className="text-xs text-slate-400 flex items-center gap-1">
+                              <span>MRP: {item.mrp.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}</span>
+                              <span className="text-slate-400">|</span>
+                              <span className="text-slate-400 font-medium">
+                                Net: {netUnitPrice.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}
+                              </span>
+                            </p>
+                          </div>
+                          <div className="flex flex-col items-end whitespace-nowrap">
+                            <p className="font-semibold">{item.finalPrice.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</p>
+                            <p className="text-xs text-slate-400 mt-0.5">Qty: {item.quantity}</p>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <p className="font-semibold">{item.finalPrice.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</p>
-                          <p className="text-xs text-slate-400">Qty: {item.quantity}</p>
-                        </div>
-                      </div>
-                    );
-                  }) : <p className="text-xs text-slate-400">No item details available.</p>}
+                      );
+                    })
+                  ) : (
+                    <p className="text-xs text-slate-400">No item details available.</p>
+                  )}
                 </div>
 
+
                 {invoice.manualDiscount && invoice.manualDiscount > 0 ? (
-                  <div className="flex justify-between items-center mt-3 pt-1.5 border-t border-line border-slate-200">
+                  <div className="flex justify-between items-center mt-3 pt-1.5 border-t border-slate-200">
                     <p className="text-xs font-medium text-slate-400">Bill Discount</p>
                     <p className="text-xs font-semibold text-red-400">
                       - {invoice.manualDiscount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
@@ -1025,7 +1045,6 @@ const Journal: React.FC = () => {
                   </div>
                 ) : null}
 
-                {/* --- NEW: EXTRA EXPENSE ROW --- */}
                 {invoice.extraExpenseAmount && invoice.extraExpenseAmount > 0 ? (
                   <div className="flex justify-between items-center mt-1 pt-1.5 border-t border-slate-200">
                     <p className="text-xs font-medium text-slate-400">{invoice.extraExpenseName || 'Extra Expense'}</p>
@@ -1053,36 +1072,55 @@ const Journal: React.FC = () => {
                   </div>
                 )}
 
-                <div className="flex justify-between gap-2 mt-2 pt-4 border-t border-slate-200">
-                  {invoice.status === 'Unpaid' && (<button onClick={(e) => { e.stopPropagation(); openPaymentModal(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-emerald-500 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors">Settle</button>)}
-                  {invoice.status === 'Paid' && (<button onClick={(e) => { e.stopPropagation(); promptDeleteInvoice(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors">Delete</button>)}
-                  <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-                    <button onClick={(e) => { e.stopPropagation(); handleEditInvoice(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-gray-400 rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors">Edit</button>
-                  </ShowWrapper>
+                {/* Buttons */}
+                <div className="mt-2 pt-4 border-t border-slate-200">
+                  <div className="grid grid-cols-4 gap-2">
+                    {/* Delete — only for Paid, hidden for Unpaid (show Settle instead) */}
+                    {invoice.status === 'Unpaid' ? (
+                      <button
+                        className="py-2.5 text-sm font-semibold rounded-sm transition-colors bg-emerald-500 text-white hover:bg-emerald-600"
+                        onClick={(e) => { e.stopPropagation(); openPaymentModal(invoice); }}
+                      >
+                        Settle
+                      </button>
+                    ) : (
+                      <button
+                        className="py-2.5 text-sm font-semibold rounded-sm transition-colors bg-red-500 text-white hover:bg-red-600"
+                        onClick={(e) => { e.stopPropagation(); promptDeleteInvoice(invoice); }}
+                      >
+                        Delete
+                      </button>
+                    )}
 
-                  {invoice.type === 'Credit' && (
-                    <>
-                      <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-                        <button onClick={(e) => { e.stopPropagation(); handleSalesReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-sky-500 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">Return</button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }}
-                          disabled={pdfGenerating === invoice.id}
-                          className="px-4 py-2 text-sm font-medium text-white bg-black rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {pdfGenerating === invoice.id ? <Spinner /> : 'Print'}
-                        </button>
-                      </ShowWrapper>
-                    </>
-                  )}
+                    <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+                      <button
+                        className="py-2.5 text-sm font-semibold rounded-sm transition-colors bg-green-500 text-white hover:bg-green-600"
+                        onClick={(e) => { e.stopPropagation(); handleEditInvoice(invoice); }}
+                      >
+                        Edit
+                      </button>
+                    </ShowWrapper>
 
-                  {invoice.type === 'Debit' && (
-                    <>
-                      <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-                        <button onClick={(e) => { e.stopPropagation(); handlePurchaseReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-sky-500 rounded-lg hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-colors">Return</button>
-                        <button onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-black rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center gap-2">Print</button>
-                      </ShowWrapper>
-                    </>
-                  )}
+                    <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+                      <button
+                        className="py-2.5 text-sm font-semibold rounded-sm transition-colors bg-blue-500 text-white hover:bg-blue-600 border border-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                        style={{ opacity: 1, visibility: 'visible' }}
+                        onClick={(e) => { e.stopPropagation(); invoice.type === 'Credit' ? handleSalesReturn(invoice) : handlePurchaseReturn(invoice); }}
+                      >
+                        Return
+                      </button>
+                    </ShowWrapper>
+
+                    <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+                      <button
+                        className="py-2.5 text-sm font-semibold rounded-sm transition-colors bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                        onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }}
+                        disabled={pdfGenerating === invoice.id}
+                      >
+                        {pdfGenerating === invoice.id ? <Spinner /> : 'Print'}
+                      </button>
+                    </ShowWrapper>
+                  </div>
                 </div>
               </div>
             )}
@@ -1104,19 +1142,13 @@ const Journal: React.FC = () => {
           <div className="bg-white rounded-lg p-6 w-full max-w-sm mx-4 shadow-xl animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-gray-800">Select Action</h3>
-              <button onClick={() => setInvoiceToPrint(null)} className="text-gray-500 hover:text-gray-700">
-                <IconClose />
-              </button>
+              <button onClick={() => setInvoiceToPrint(null)} className="text-gray-500 hover:text-gray-700"><IconClose /></button>
             </div>
             <p className="text-gray-600 mb-6">Choose how you want to provide the bill.</p>
             <div className="flex flex-col gap-3">
               {invoiceToPrint.type === 'Credit' ? (
                 <>
-                  <button
-                    onClick={() => handleSendWhatsapp(invoiceToPrint)}
-                    disabled={sendingPdf}
-                    className="w-full bg-green-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                  >
+                  <button onClick={() => handleSendWhatsapp(invoiceToPrint)} disabled={sendingPdf} className="w-full bg-green-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
                     {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
                   </button>
                   <button onClick={() => handlePdfAction(invoiceToPrint, ACTION.DOWNLOAD)} className="w-full bg-blue-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2">
@@ -1159,11 +1191,7 @@ const Journal: React.FC = () => {
             <h3 className="text-xl font-bold text-gray-800 mb-1">Download Bill</h3>
             <p className="text-sm text-gray-500 mb-4">Invoice #{showQrModal.invoiceNumber}</p>
             <div className="bg-white p-2 border-2 border-gray-100 rounded-lg shadow-inner mb-4">
-              <QRCode
-                value={`${window.location.origin}/download-bill/${currentUser?.companyId}/${showQrModal.id}`}
-                size={200}
-                viewBox={`0 0 256 256`}
-              />
+              <QRCode value={`${window.location.origin}/download-bill/${currentUser?.companyId}/${showQrModal.id}`} size={200} viewBox={`0 0 256 256`} />
             </div>
             <p className="text-center text-sm text-gray-600 mb-4">Scan to download PDF</p>
             <button

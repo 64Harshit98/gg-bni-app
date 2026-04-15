@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth, useDatabase } from '../../context/auth-context';
@@ -17,6 +18,8 @@ import { useSalesSettings } from '../../context/SettingsContext';
 import { Spinner } from '../../constants/Spinner';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
 import { GenericCartList } from '../../Components/CartItem';
+import BarcodeLinkModal from '../../Components/BarcodeLinkModal';
+import StructuredPageLoader from '../../Components/StructuredPageLoader';
 import { FiTrash2, FiX, FiChevronDown, FiEdit, FiCamera, FiDelete } from 'react-icons/fi';
 import { GenericBillFooter } from '../../Components/Footer';
 import { IconScanCircle } from '../../constants/Icons';
@@ -28,6 +31,7 @@ import { generatePdfBlob } from '../../UseComponents/pdfGenerator';
 import { getFirestoreOperations } from '../../lib/ItemsFirebase';
 import { botMasterService } from '../Additional/Whatsapp/WhatsappApi';
 import { PLAN_ALLOWED_FEATURES } from '../Settings/SalesSetting';
+
 
 
 
@@ -64,15 +68,35 @@ interface CalcKey {
 }
 
 const calcKeys: CalcKey[][] = [
-    // Standard buttons explicitly set to col-span-2 (since it's an 8-column grid)
-    [{ label: '1', value: '1', type: 'number', colClass: 'col-span-2' }, { label: '2', value: '2', type: 'number', colClass: 'col-span-2' }, { label: '3', value: '3', type: 'number', colClass: 'col-span-2' }, { label: 'Del', value: 'Backspace', type: 'function', icon: FiDelete, colClass: 'col-span-2' }],
-    [{ label: '4', value: '4', type: 'number', colClass: 'col-span-2' }, { label: '5', value: '5', type: 'number', colClass: 'col-span-2' }, { label: '6', value: '6', type: 'number', colClass: 'col-span-2' }, { label: '.', value: '.', type: 'number', colClass: 'col-span-2' }],
-    [{ label: '7', value: '7', type: 'number', colClass: 'col-span-2' }, { label: '8', value: '8', type: 'number', colClass: 'col-span-2' }, { label: '9', value: '9', type: 'number', colClass: 'col-span-2' }, { label: 'X', value: '*', type: 'operator', colClass: 'col-span-2' }],
-
-    // Bottom Row: '00' takes 2 columns, '0' takes 3, '+' takes 3. Total = 8 columns.
-    [{ label: '00', value: '00', type: 'number', colClass: 'col-span-2' }, { label: '0', value: '0', type: 'number', colClass: 'col-span-3' }, { label: '+', value: '+', type: 'operator', colClass: 'col-span-3' }]
+    // Standard buttons take equal width in a 12-column grid.
+    [
+        { label: '1', value: '1', type: 'number', colClass: 'col-span-3' },
+        { label: '2', value: '2', type: 'number', colClass: 'col-span-3' },
+        { label: '3', value: '3', type: 'number', colClass: 'col-span-3' },
+        { label: 'Del', value: 'Backspace', type: 'function', icon: FiDelete, colClass: 'col-span-3' }
+    ],
+    [
+        { label: '4', value: '4', type: 'number', colClass: 'col-span-3' },
+        { label: '5', value: '5', type: 'number', colClass: 'col-span-3' },
+        { label: '6', value: '6', type: 'number', colClass: 'col-span-3' },
+        { label: '.', value: '.', type: 'number', colClass: 'col-span-3' }
+    ],
+    [
+        { label: '7', value: '7', type: 'number', colClass: 'col-span-3' },
+        { label: '8', value: '8', type: 'number', colClass: 'col-span-3' },
+        { label: '9', value: '9', type: 'number', colClass: 'col-span-3' },
+        { label: 'X', value: '*', type: 'operator', colClass: 'col-span-3' }
+    ],
+    [
+        { label: '00', value: '00', type: 'number', colClass: 'col-span-6' },
+        { label: '-', value: '-', type: 'operator', colClass: 'col-span-3' },
+        { label: '%', value: '%', type: 'operator', colClass: 'col-span-3' }
+    ],
+    [
+        { label: '0', value: '0', type: 'number', colClass: 'col-span-6' },
+        { label: '+', value: '+', type: 'operator', colClass: 'col-span-6' }
+    ]
 ];
-
 
 export const applyRounding = (amount: number, isRoundingEnabled: boolean, interval: number = 1): number => {
     if (!isRoundingEnabled || !interval || interval <= 0) {
@@ -88,6 +112,7 @@ const toCurrency = (num: number) => {
 
 
 const Sales: React.FC = () => {
+    throw new Error('Manual test error from Sales.tsx');
     const navigate = useNavigate();
     const location = useLocation();
     const { currentUser, loading: authLoading, hasPermission } = useAuth();
@@ -114,7 +139,7 @@ const Sales: React.FC = () => {
         };
     }, [rawSettings, currentUser?.Subscription?.pack]);
     const invoiceToEdit = location.state?.invoiceData;
-    const isEditMode = location.state?.isEditMode === true && !!invoiceToEdit;
+    const isEditMode = location.state?.isEditMode === true && !!invoiceToEdit && Array.isArray(invoiceToEdit?.items);
 
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
     const [savedBillData, setSavedBillData] = useState<{ id: string, number: string, invoiceData?: any } | null>(null);
@@ -149,9 +174,13 @@ const Sales: React.FC = () => {
 
     const [availableItems, setAvailableItems] = useState<Item[]>([]);
     const [pageIsLoading, setPageIsLoading] = useState<boolean>(true);
+    const [loadingStep, setLoadingStep] = useState<number>(1);
     const [error, setError] = useState<string | null>(null);
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
     const [isScannerOpen, setIsScannerOpen] = useState(false);
+    const [barcodeToLink, setBarcodeToLink] = useState<string | null>(null);
+    const [isBarcodeLinkModalOpen, setIsBarcodeLinkModalOpen] = useState(false);
+    const [isLinkingBarcode, setIsLinkingBarcode] = useState(false);
     const longPressTimer = useRef<NodeJS.Timeout | null>(null);
 
     const [isDiscountLocked, setIsDiscountLocked] = useState(true);
@@ -246,6 +275,7 @@ const Sales: React.FC = () => {
         findSettingsDocId();
 
         if (authLoading || !currentUser || !dbOperations || loadingSettings) {
+            setLoadingStep(1);
             setPageIsLoading(authLoading || loadingSettings);
             return;
         }
@@ -274,6 +304,7 @@ const Sales: React.FC = () => {
         const fetchData = async () => {
             try {
                 setPageIsLoading(true);
+                setLoadingStep(2);
                 setError(null);
                 const fetchedItems = await dbOperations.syncItems();
                 setAvailableItems(fetchedItems);
@@ -283,9 +314,11 @@ const Sales: React.FC = () => {
                     setInvoiceNumber(invoiceToEdit.invoiceNumber);
                 }
 
+                setLoadingStep(3);
                 const fetchedWorkers = await dbOperations.getWorkers();
                 setWorkers(fetchedWorkers);
                 let groupMap: Record<string, string> = {};
+                setLoadingStep(4);
                 if (currentUser?.companyId) {
                     try {
                         const groupsRef = collection(db, 'companies', currentUser.companyId, 'itemGroups');
@@ -563,32 +596,104 @@ const Sales: React.FC = () => {
         // Fallback for mobile HTTP testing
         return 'id-' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
     };
-    // Parses the entire string on the screen to calculate live totals and generate items
+    const formatCalcNumber = (value: number): string => {
+        const rounded = parseFloat(value.toFixed(2));
+        if (Number.isNaN(rounded)) return '0';
+        return Number.isInteger(rounded) ? String(rounded) : String(rounded);
+    };
+
+    const evaluateMultiplication = (expression: string): number | null => {
+        const parts = expression.split('*').map(part => part.trim()).filter(Boolean);
+        if (parts.length === 0) return null;
+
+        let result = 1;
+        for (const part of parts) {
+            const isPercent = part.endsWith('%');
+            const raw = isPercent ? part.slice(0, -1) : part;
+            const parsed = parseFloat(raw);
+            if (Number.isNaN(parsed) || parsed < 0) return null;
+            result *= isPercent ? parsed / 100 : parsed;
+        }
+        return result;
+    };
+
+    // Inside one '+' segment, '-' works as subtraction and "x%" means percentage deduction of running value.
+    const evaluateSegment = (segment: string): number | null => {
+        const cleaned = segment.replace(/\s+/g, '');
+        if (!cleaned) return null;
+
+        const minusParts = cleaned.split('-');
+        const firstValue = evaluateMultiplication(minusParts[0] || '');
+        if (firstValue === null) return null;
+
+        let running = firstValue;
+        for (let i = 1; i < minusParts.length; i += 1) {
+            const token = minusParts[i]?.trim();
+            if (!token) continue;
+
+            // "100-5%" => subtract 5% of current running value
+            if (/^\d+(\.\d+)?%$/.test(token)) {
+                const pct = parseFloat(token.slice(0, -1));
+                running -= (running * pct) / 100;
+                continue;
+            }
+
+            const subtractValue = evaluateMultiplication(token);
+            if (subtractValue === null) return null;
+            running -= subtractValue;
+        }
+
+        return parseFloat(running.toFixed(2));
+    };
+
+    const applyPlusSeparator = () => {
+        setCalcInput(prev => {
+            const cleaned = prev.replace(/\s+/g, '');
+            if (!cleaned) return prev;
+            if (cleaned.endsWith('+')) return cleaned;
+
+            const segments = cleaned.split('+');
+            const currentSegment = segments[segments.length - 1] || '';
+            const evaluatedSegment = evaluateSegment(currentSegment);
+
+            if (evaluatedSegment === null) {
+                return `${cleaned}+`;
+            }
+
+            const safeValue = Math.max(0, evaluatedSegment);
+            segments[segments.length - 1] = formatCalcNumber(safeValue);
+            return `${segments.join('+')}+`;
+        });
+
+        setTimeout(() => {
+            const input = displayRef.current;
+            if (!input) return;
+            input.focus();
+            const end = input.value.length;
+            input.setSelectionRange(end, end);
+        }, 0);
+    };
+
+    // Parses calculator expression by '+' separators
     const parseFullEquation = (equation: string): { items: SalesItem[], total: number } => {
-        if (!equation.trim()) return { items: [], total: 0 };
-        const segments = equation.split('+');
+        const cleanedEquation = equation.replace(/\s+/g, '');
+        if (!cleanedEquation) return { items: [], total: 0 };
+
+        const segments = cleanedEquation.split('+').map(segment => segment.trim()).filter(Boolean);
         const newItems: SalesItem[] = [];
         let grandTotal = 0;
 
         segments.forEach((segment) => {
-            if (!segment.trim()) return;
-            const multiplicationParts = segment.split('*');
-            let segmentSubtotal = 1;
-            let hasValidNumber = false;
+            const evaluatedValue = evaluateSegment(segment);
+            if (evaluatedValue === null) return;
+            const segmentSubtotal = Math.max(0, evaluatedValue);
+            if (segmentSubtotal > 0) {
+                const segmentLabel = segment.includes('*') ? segment.replace(/\*/g, ' x ') : segment;
 
-            multiplicationParts.forEach(numStr => {
-                const num = parseFloat(numStr);
-                if (!isNaN(num) && num > 0) {
-                    segmentSubtotal *= num;
-                    hasValidNumber = true;
-                }
-            });
-
-            if (hasValidNumber && segmentSubtotal > 0) {
                 newItems.push({
-                    id: generateSafeId(), // <--- UPDATED HERE
-                    productId: `${generateSafeId()}`, // <--- UPDATED HERE
-                    name: segment.includes('*') ? segment.replace('*', ' x ') : segment,
+                    id: generateSafeId(),
+                    productId: `${generateSafeId()}`,
+                    name: segmentLabel,
                     mrp: segmentSubtotal,
                     salesPrice: segmentSubtotal,
                     customPrice: segmentSubtotal,
@@ -607,9 +712,11 @@ const Sales: React.FC = () => {
                     packetSize: 1,
                     isCustomAmount: true
                 });
+
                 grandTotal += segmentSubtotal;
             }
         });
+
         return { items: newItems, total: grandTotal };
     };
 
@@ -632,8 +739,11 @@ const Sales: React.FC = () => {
                 }
             }
         } else {
-            // Operator (+, *) or Number
-            insertAtCursor(value); // <-- UPDATED
+            if (value === '+') {
+                applyPlusSeparator();
+            } else {
+                insertAtCursor(value);
+            }
         }
     };
 
@@ -644,7 +754,10 @@ const Sales: React.FC = () => {
 
             // 1. If the input IS focused natively, prevent double-typing but catch action keys
             if (document.activeElement === displayRef.current) {
-                if (e.key === 'Enter' || e.key === '=') {
+                if (e.key === '+') {
+                    e.preventDefault();
+                    applyPlusSeparator();
+                } else if (e.key === 'Enter' || e.key === '=') {
                     e.preventDefault();
                     handleCheckoutClick();
                 } else if (e.key.toLowerCase() === 'c' || e.key === 'Escape') {
@@ -660,7 +773,10 @@ const Sales: React.FC = () => {
 
             // 2. If the input IS NOT focused (Global typing fallback)
             const key = e.key;
-            if (/^[0-9*.\-+]$/.test(key)) {
+            if (key === '+') {
+                e.preventDefault();
+                applyPlusSeparator();
+            } else if (/^[0-9*.\-%]$/.test(key)) {
                 e.preventDefault();
                 insertAtCursor(key);
             } else if (key === 'Enter' || key === '=') {
@@ -704,29 +820,6 @@ const Sales: React.FC = () => {
             }
         }, 10);
     };
-
-    useEffect(() => {
-        if (!isCalculatorView) return;
-        const handleKeyDown = (e: KeyboardEvent) => {
-            const key = e.key;
-            if (/^[0-9*.\-+]$/.test(key)) {
-                setCalcInput(prev => prev + key);
-            } else if (key === 'Enter' || key === '=') {
-                e.preventDefault();
-                handleCheckoutClick();
-            } else if (key === 'Backspace') {
-                setCalcInput(prev => prev.slice(0, -1));
-            } else if (key.toLowerCase() === 'c' || key === 'Escape') {
-                if (calcInput === '') {
-                    if (items.length > 0 && window.confirm("Are you sure you want to clear the bill?")) setItems([]);
-                } else {
-                    setCalcInput('');
-                }
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isCalculatorView, calcInput, items.length]);
 
     const addItemToCart = (itemToAdd: Item) => {
         if (!itemToAdd || !itemToAdd.id) {
@@ -787,6 +880,38 @@ const Sales: React.FC = () => {
     const handleItemSelected = (selectedItem: Item | null) => {
         if (selectedItem) { addItemToCart(selectedItem); setGridSearchQuery(''); }
     };
+    const closeBarcodeLinkModal = () => {
+        setIsBarcodeLinkModalOpen(false);
+        setBarcodeToLink(null);
+    };
+    const handleLinkScannedBarcode = async (selectedItem: Item) => {
+        if (!barcodeToLink || !dbOperations) return;
+        if (!selectedItem.id) {
+            setModal({ message: 'Selected item is invalid. Please try another item.', type: State.ERROR });
+            return;
+        }
+
+        setIsLinkingBarcode(true);
+        try {
+            await dbOperations.updateItem(selectedItem.id, { barcode: barcodeToLink });
+            const updatedItem: Item = { ...selectedItem, barcode: barcodeToLink };
+
+            setAvailableItems(prev => {
+                const exists = prev.some(item => item.id === selectedItem.id);
+                if (!exists) return [...prev, updatedItem];
+                return prev.map(item => item.id === selectedItem.id ? { ...item, barcode: barcodeToLink } : item);
+            });
+
+            addItemToCart(updatedItem);
+            closeBarcodeLinkModal();
+            setModal({ message: `Barcode linked to "${selectedItem.name}".`, type: State.SUCCESS });
+        } catch (err) {
+            console.error('Failed to link barcode:', err);
+            setModal({ message: 'Failed to link barcode. Please try again.', type: State.ERROR });
+        } finally {
+            setIsLinkingBarcode(false);
+        }
+    };
     const handleBarcodeScanned = async (barcode: string) => {
         setIsScannerOpen(false);
         if (!dbOperations) return;
@@ -811,10 +936,16 @@ const Sales: React.FC = () => {
                     return exists ? prev : [...prev, itemToAdd!];
                 });
             } else {
-                setModal({
-                    message: `Item not found for barcode: "${cleanBarcode}"`,
-                    type: State.ERROR
-                });
+                const hasAnyItemWithoutBarcode = availableItems.some(item => !(item.barcode || '').trim());
+                if (!hasAnyItemWithoutBarcode) {
+                    setModal({
+                        message: `Item not found for barcode: "${cleanBarcode}"`,
+                        type: State.ERROR
+                    });
+                    return;
+                }
+                setBarcodeToLink(cleanBarcode);
+                setIsBarcodeLinkModalOpen(true);
             }
         } catch (e) {
             console.error(e);
@@ -1246,10 +1377,47 @@ const Sales: React.FC = () => {
             const businessDocRef = doc(db, 'companies', currentUser.companyId, 'business_info', currentUser.companyId);
             const businessSnap = await getDoc(businessDocRef);
             const { botMasterToken, whatsappNumber } = businessSnap.data() || {};
+            let formattedSenderId = String(whatsappNumber || '').replace(/\D/g, '');
+            if (formattedSenderId.length === 10) formattedSenderId = `91${formattedSenderId}`;
 
-            if (!botMasterToken || !whatsappNumber) {
-                setModal({ message: "Company WhatsApp is not linked. Please setup WhatsApp first.", type: State.ERROR });
-                setSendingPdf(false);
+            if (!botMasterToken || !formattedSenderId) {
+                navigate(ROUTES.WHATSAPP_PLAN);
+                return;
+            }
+
+            let isWhatsappConnected = false;
+            try {
+                const meResponse = await botMasterService.getMe(botMasterToken, formattedSenderId);
+                const hasSession = meResponse?.success && Array.isArray(meResponse?.data?.sessions) && meResponse.data.sessions.length > 0;
+                if (!hasSession) {
+                    navigate(ROUTES.WHATSAPP_PLAN);
+                    return;
+                }
+
+                try {
+                    const qrRes = await botMasterService.getQrCode(botMasterToken, formattedSenderId);
+                    if (
+                        qrRes?.error?.data?.state === 'ALREADY_CONNECTED' ||
+                        qrRes?.message?.toLowerCase?.().includes('already connected')
+                    ) {
+                        isWhatsappConnected = true;
+                    }
+                } catch (qrErr: any) {
+                    const errData = qrErr?.response?.data;
+                    if (
+                        errData?.error?.data?.state === 'ALREADY_CONNECTED' ||
+                        errData?.error?.message?.toLowerCase?.().includes('already connected') ||
+                        errData?.message?.toLowerCase?.().includes('already connected')
+                    ) {
+                        isWhatsappConnected = true;
+                    }
+                }
+            } catch {
+                isWhatsappConnected = false;
+            }
+
+            if (!isWhatsappConnected) {
+                navigate(ROUTES.WHATSAPP_PLAN);
                 return;
             }
 
@@ -1265,7 +1433,7 @@ const Sales: React.FC = () => {
             const fileUrl = await getDownloadURL(storageRef);
             const message = `Hello ${invoice.partyName},\n\nHere is your invoice #${invoice.invoiceNumber}.\nAmount: ${invoice.amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}\n\nThank you!`;
 
-            const response = await botMasterService.sendPdfFromUrl(botMasterToken, whatsappNumber, invoice.partyNumber, message, fileUrl, cleanName);
+            const response = await botMasterService.sendPdfFromUrl(botMasterToken, formattedSenderId, invoice.partyNumber, message, fileUrl, cleanName);
 
             let isSuccess = false;
             if (Array.isArray(response) && response.length > 0) {
@@ -1298,7 +1466,17 @@ const Sales: React.FC = () => {
     };
     const handleCloseQrModal = () => { setSavedBillData(null); };
 
-    if (pageIsLoading) return <div className="flex items-center justify-center h-screen"><Spinner /> <p className="ml-2">Loading...</p></div>;
+    if (pageIsLoading) {
+        const progressByStep = [16, 45, 76, 94];
+        const mappedProgress = progressByStep[Math.min(Math.max(loadingStep - 1, 0), progressByStep.length - 1)];
+        return (
+            <StructuredPageLoader
+                progress={mappedProgress}
+                activeStep={loadingStep}
+                minimal={true}
+            />
+        );
+    }
     if (error) return <div className="flex flex-col items-center justify-center h-screen text-red-600"><p>{error}</p><button onClick={() => navigate(-1)} className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Go Back</button></div>;
 
     // --- Render Tax Toggle (DROPDOWN) ---
@@ -1440,8 +1618,16 @@ const Sales: React.FC = () => {
     if (isCardView) {
         return (
             <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden pb-0">
-                {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+                {modal && <Modal message={modal!.message} onClose={() => setModal(null)} type={modal!.type} />}
                 <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
+                <BarcodeLinkModal
+                    isOpen={isBarcodeLinkModalOpen}
+                    barcode={barcodeToLink}
+                    items={availableItems}
+                    isLinking={isLinkingBarcode}
+                    onClose={closeBarcodeLinkModal}
+                    onLink={handleLinkScannedBarcode}
+                />
                 {renderHeader()}
 
                 <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
@@ -1778,7 +1964,8 @@ const Sales: React.FC = () => {
                                 taxLabel={`Tax (${activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})`}
                                 actionLabel={isEditMode ? 'Update Invoice' : 'Proceed to Pay'}
                                 onActionClick={handleProceedToPayment}
-                                disableAction={items.length === 0}>
+                                disableAction={items.length === 0}
+                            >
                                 {renderTaxToggle()}
                             </GenericBillFooter>
                         </div>
@@ -1827,13 +2014,13 @@ const Sales: React.FC = () => {
                         <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm flex flex-col items-center animate-in fade-in zoom-in duration-300">
                             <button onClick={handleCloseQrModal} className="self-end text-gray-400 hover:text-gray-600 mb-2"><FiX size={24} /></button>
                             <h3 className="text-xl font-bold text-gray-800 mb-1">Bill Saved!</h3>
-                            <p className="text-sm text-gray-500 mb-4">Invoice #{savedBillData.number}</p>
+                            <p className="text-sm text-gray-500 mb-4">Invoice #{savedBillData!.number}</p>
                             <div className="bg-white p-2 border-2 border-gray-100 rounded-lg shadow-inner mb-4">
-                                <QRCode value={`${window.location.origin}/download-bill/${currentUser?.companyId}/${savedBillData.id}`} size={200} viewBox="0 0 256 256" />
+                                <QRCode value={`${window.location.origin}/download-bill/${currentUser?.companyId}/${savedBillData!.id}`} size={200} viewBox="0 0 256 256" />
                             </div>
                             <p className="text-center text-sm text-gray-600 mb-4">Ask customer to scan this QR code to download their bill.</p>
-                            {savedBillData.invoiceData?.partyNumber ? (
-                                <button onClick={() => handleSendWhatsapp(savedBillData.invoiceData)} disabled={sendingPdf}
+                            {savedBillData!.invoiceData?.partyNumber ? (
+                                <button onClick={() => handleSendWhatsapp(savedBillData!.invoiceData)} disabled={sendingPdf}
                                     className="w-full bg-green-500 text-white py-3 rounded-lg font-semibold hover:bg-green-600 transition-colors flex items-center justify-center gap-2 mb-3 disabled:opacity-50">
                                     {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
                                 </button>
@@ -1852,7 +2039,7 @@ const Sales: React.FC = () => {
         return (
             // fixed inset-0 completely disables page scrolling
             <div className="fixed inset-0 flex flex-col bg-transparent w-full overflow-hidden">
-                {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+                {modal && <Modal message={modal!.message} onClose={() => setModal(null)} type={modal!.type} />}
 
                 {/* Top Navigation */}
                 <div className="shrink-0 bg-white border-b border-gray-200">
@@ -1864,8 +2051,8 @@ const Sales: React.FC = () => {
                 </div>
 
                 {/* Main Calculator Area */}
-                <div className="flex-1 flex flex-col items-center p-1 sm:p-4 min-h-0 w-full">
-                    <div className="w-full max-w-sm mx-auto flex flex-col h-full">
+                <div className="flex-1 flex flex-col items-center justify-center p-1 sm:p-4 min-h-0 w-full">
+                    <div className="w-full max-w-sm mx-auto flex flex-col h-full justify-center">
 
                         {/* Live Summary Totals (Moved Above Calculator) */}
                         <div className="flex justify-between items-end px-2 py-1 shrink-0">
@@ -1888,18 +2075,19 @@ const Sales: React.FC = () => {
                                 placeholder="0"
                                 onChange={(e) => {
                                     // Sanitizes native physical typing to only allow math chars
-                                    const val = e.target.value.replace(/[^0-9*.\-+]/g, '');
+                                    const val = e.target.value.replace(/[^0-9*.\-+%]/g, '');
                                     setCalcInput(val);
                                 }}
                                 className="text-4xl sm:text-5xl font-light text-gray-800 tracking-wide w-full text-right bg-transparent border-none outline-none m-0 p-0 overflow-x-auto caret-indigo-600"
                             />
                         </div>
 
-                        <div className="grid grid-cols-8 sm:gap-2 flex-1 min-h-0 w-full">
+                        <div className="grid grid-cols-12 sm:gap-2 flex-1 min-h-0 w-full content-center">
                             {calcKeys.flat().map((key) => {
                                 const { label, icon: Icon, colClass, type, value } = key;
                                 const isFunction = type === 'function';
                                 const isOperator = type === 'operator';
+                                const isSecondaryOperator = value === '-' || value === '%';
                                 const isBackspace = value === 'Backspace';
 
                                 return (
@@ -1917,9 +2105,13 @@ const Sales: React.FC = () => {
                                         onPointerLeave={isBackspace ? () => handlePointerLeave(key) : undefined}
                                         className={`h-full w-full flex items-center justify-center text-2xl sm:text-3xl font-medium transition-all active:scale-95 border select-none
         ${isFunction ? 'bg-red-50 border-red-300 text-red-500 hover:bg-red-100' :
-                                                isOperator ? 'bg-indigo-50 border-indigo-300 text-indigo-600 hover:bg-indigo-100' :
+                                                isOperator
+                                                    ? (isSecondaryOperator
+                                                        ? 'bg-indigo-50/70 border-indigo-200 text-indigo-500 hover:bg-indigo-100'
+                                                        : 'bg-indigo-50 border-indigo-300 text-indigo-600 hover:bg-indigo-100')
+                                                    :
                                                     'bg-white shadow-sm border-gray-300 text-gray-800 hover:bg-gray-50'}
-        ${colClass || 'col-span-2'}`}
+        ${colClass || 'col-span-3'}`}
                                     >
                                         {Icon ? <Icon size={28} /> : label}
                                     </button>
@@ -1944,7 +2136,7 @@ const Sales: React.FC = () => {
 
                 {/* Modals & Drawers */}
                 <PaymentDrawer
-                    mode='calculator'
+                    mode='sale'
                     isOpen={isDrawerOpen}
                     onClose={() => {
                         setIsDrawerOpen(false);
@@ -1954,7 +2146,6 @@ const Sales: React.FC = () => {
                             setStagedCalcInput('');
                         }
                     }}
-                    enableCustomerDetails={salesSettings?.enableCustomerInfoToggle ?? false}
                     subtotal={subtotal}
                     billTotal={amountToPayNow}
                     onPaymentComplete={handleSavePayment}
@@ -1977,8 +2168,16 @@ const Sales: React.FC = () => {
 
     return (
         <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden pb-2">
-            {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+            {modal && <Modal message={modal!.message} onClose={() => setModal(null)} type={modal!.type} />}
             <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
+            <BarcodeLinkModal
+                isOpen={isBarcodeLinkModalOpen}
+                barcode={barcodeToLink}
+                items={availableItems}
+                isLinking={isLinkingBarcode}
+                onClose={closeBarcodeLinkModal}
+                onLink={handleLinkScannedBarcode}
+            />
 
             {renderHeader()}
 
@@ -2142,7 +2341,7 @@ const Sales: React.FC = () => {
                             <FiX size={24} />
                         </button>
                         <h3 className="text-xl font-bold text-gray-800 mb-1">Bill Saved!</h3>
-                        <p className="text-sm text-gray-500 mb-4">Invoice #{savedBillData.number}</p>
+                        <p className="text-sm text-gray-500 mb-4">Invoice #{savedBillData!.number}</p>
 
                         <div className="bg-white p-2 border-2 border-gray-100 rounded-lg shadow-inner mb-4">
                             <QRCode
@@ -2157,9 +2356,9 @@ const Sales: React.FC = () => {
                         </p>
 
                         {/* --- NEW WHATSAPP BUTTON --- */}
-                        {savedBillData.invoiceData?.partyNumber ? (
+                        {savedBillData!.invoiceData?.partyNumber ? (
                             <button
-                                onClick={() => handleSendWhatsapp(savedBillData.invoiceData)}
+                                onClick={() => handleSendWhatsapp(savedBillData!.invoiceData)}
                                 disabled={sendingPdf}
                                 className="w-full bg-green-500 text-white py-3 rounded-lg font-semibold hover:bg-green-600 transition-colors flex items-center justify-center gap-2 mb-3 disabled:opacity-50"
                             >

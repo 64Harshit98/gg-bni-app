@@ -307,7 +307,7 @@ const ItemAdd: React.FC = () => {
 
             setSuccess(`Item "${itemName}" added!`);
             resetForm();
-            setTimeout(() => setSuccess(null), 3000);
+            setTimeout(() => setSuccess(null), 30000);
         } catch (err: any) {
             setError('Failed to add item.');
             setModal({ message: err.message, type: State.ERROR });

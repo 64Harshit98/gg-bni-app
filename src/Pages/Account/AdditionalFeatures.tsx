@@ -1,13 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../../lib/Firebase';
-import { useAuth } from '../../context/auth-context';
-import { botMasterService } from '../Additional/Whatsapp/WhatsappApi';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { CustomCard } from '../../Components/CustomCard';
 import { IconChevronDown } from '../../constants/Icons';
-import { ROUTES } from '../../constants/routes.constants';
 import { IconClose } from '../../constants/Icons';
+import { ROUTES } from '../../constants/routes.constants';
+import { Modal } from '../../constants/Modal';
+import { State } from '../../enums';
 
 interface ServiceItem {
     id: string;
@@ -31,13 +29,33 @@ const SERVICES: ServiceItem[] = [
         description: 'Track stock levels, manage items, and adjust pricing.',
         route: '/inventory',
         isLocked: true,
+    },
+    {
+        id: 'labelDesign',
+        title: 'Add Label Design',
+        description: 'Get custom-designed labels for your products (one-time charge).',
+        route: '',
+        isLocked: true,
+    },
+    {
+        id: 'billDesign',
+        title: 'Add Bill Design',
+        description: 'Get professionally designed bills for your business (one-time charge).',
+        route: '',
+        isLocked: true,
     }
 ];
 
-const AdditionalServices: React.FC = () => {
+
+interface AdditionalServicesProps {
+    hideLabelDesign?: boolean;
+}
+
+
+const AdditionalServices: React.FC<AdditionalServicesProps> = ({ hideLabelDesign }) => {
     const navigate = useNavigate();
-    const { currentUser } = useAuth();
-    const [isChecking, setIsChecking] = useState(false);
+    const location = useLocation();
+    const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
 
     // 1. State to track if the user is on a mobile/tablet device
     const [isMobileDevice, setIsMobileDevice] = useState(false);
@@ -53,55 +71,26 @@ const AdditionalServices: React.FC = () => {
         checkDevice();
     }, []);
 
-    const handleWhatsappClick = async (route: string) => {
-        if (!currentUser) {
-            navigate(route);
-            return;
-        }
-
-        setIsChecking(true);
-        try {
-            const companyId = (currentUser as any).companyId || currentUser.uid;
-            const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
-            const businessDoc = await getDoc(businessDocRef);
-
-            if (businessDoc.exists()) {
-                const data = businessDoc.data();
-                const token = data.botMasterToken;
-                const phone = data.whatsappNumber;
-
-                if (token && phone) {
-                    const response = await botMasterService.getMe(token, phone);
-
-                    if (response.success && response.data?.sessions?.length > 0) {
-                        const activeSession = response.data.sessions.find((s: any) => s.active === true);
-
-                        if (activeSession) {
-                            navigate(ROUTES.WHATSAPP_LANDING);
-                            return;
-                        }
-                    }
-                }
-            }
-            navigate(route);
-        } catch (err) {
-            console.error("WhatsApp check failed:", err);
-            navigate(route);
-        } finally {
-            setIsChecking(false);
-        }
-    };
+    // Auto-hide labelDesign if in catalogue module
+    const isCatalogue = location.pathname.startsWith('/catalogue-home');
+    const effectiveHideLabelDesign = hideLabelDesign ?? isCatalogue;
 
     const handleNavigate = (service: ServiceItem) => {
-        if (service.id === 'Whatsapp') {
-            handleWhatsappClick(service.route);
-        } else {
-            navigate(service.route);
+        if (!service.route) {
+            setModal({ message: 'This service is coming soon.', type: State.INFO });
+            return;
         }
+        navigate(service.route);
     };
+
+    // Filter out labelDesign if effectiveHideLabelDesign is true
+    const filteredServices = effectiveHideLabelDesign
+        ? SERVICES.filter(service => service.id !== 'labelDesign')
+        : SERVICES;
 
     return (
         <div className="flex h-screen w-full flex-col overflow-hidden bg-gray-100 mb-10">
+            {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
             {/* Header */}
             <div className="z-30 bg-white border-b border-gray-100 pb-6 pt-6 px-6 shadow-sm flex-none">
                 <div className="flex items-start gap-4">
@@ -126,7 +115,7 @@ const AdditionalServices: React.FC = () => {
 
             {/* List */}
             <div className="flex-1 overflow-y-auto bg-slate-100 space-y-3 pt-4 pb-24 px-2">
-                {SERVICES.map((service) => {
+                {filteredServices.map((service) => {
                     // 3. Dynamically determine if the item is locked
                     const isDeviceLocked = service.id === 'Whatsapp' && isMobileDevice;
                     const effectivelyLocked = service.isLocked || isDeviceLocked;
@@ -134,7 +123,6 @@ const AdditionalServices: React.FC = () => {
                     return (
                         <CustomCard
                             key={service.id}
-                            // 4. Use effectivelyLocked to prevent clicks
                             onClick={() => {
                                 if (!effectivelyLocked) handleNavigate(service);
                             }}
@@ -143,40 +131,31 @@ const AdditionalServices: React.FC = () => {
                                 : 'cursor-pointer hover:shadow-md active:scale-[0.99]'
                                 }`}
                         >
-                            <div className="flex items-center justify-between py-2">
-                                <div className="flex-1 pr-4">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <h3 className="text-lg font-semibold text-slate-800">{service.title}</h3>
-
-                                        {/* Standard Badge */}
+                            <div className="flex items-center justify-between py-1.5">
+                                <div className="flex-1 pr-2">
+                                    <div className="flex items-center gap-1 mb-0.5">
+                                        <h3 className="text-base font-semibold text-slate-800">{service.title}</h3>
                                         {service.badge && !effectivelyLocked && (
-                                            <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">
+                                            <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-1 rounded-full uppercase tracking-wide">
                                                 {service.badge}
                                             </span>
                                         )}
-
-                                        {/* 5. Dynamic Locked Badges */}
                                         {effectivelyLocked && (
-                                            <span className="bg-sky-200 text-gray-600 text-[10px] font-bold px-2 py-0.5 rounded-xs uppercase tracking-wide border border-gray-300">
+                                            <span className="bg-sky-200 text-gray-600 text-[9px] font-bold px-1.5 py-0.5 rounded-xs uppercase tracking-wide border border-gray-300">
                                                 {isDeviceLocked ? 'PLEASE SETUP ON DESKTOP' : 'Coming Soon'}
                                             </span>
                                         )}
                                     </div>
-                                    <p className="text-sm text-slate-500">
-                                        {isChecking && service.id === 'Whatsapp' ? 'Checking connection status...' : service.description}
+                                    <p className="text-xs text-slate-500">
+                                        {service.description}
                                     </p>
                                 </div>
-
                                 <div className="flex items-center">
                                     <button
-                                        className={`w-10 h-10 flex items-center justify-center rounded-full bg-slate-50 ${effectivelyLocked ? 'text-gray-300' : 'text-slate-400'}`}
+                                        className={`w-8 h-8 flex items-center justify-center rounded-full bg-slate-50 ${effectivelyLocked ? 'text-gray-300' : 'text-slate-400'}`}
                                         disabled={effectivelyLocked}
                                     >
-                                        {isChecking && service.id === 'Whatsapp' ? (
-                                            <div className="h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                                        ) : (
-                                            !effectivelyLocked && <IconChevronDown className="w-5 h-5 -rotate-90" />
-                                        )}
+                                        {!effectivelyLocked && <IconChevronDown className="w-4 h-4 -rotate-90" />}
                                     </button>
                                 </div>
                             </div>

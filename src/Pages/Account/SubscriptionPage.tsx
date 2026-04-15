@@ -67,7 +67,10 @@ const FEATURE_DESCRIPTIONS: Record<string, string> = {
     'Receive Orders': 'Accept and manage incoming customer orders from your catalogue.',
     'Online Payments': 'Collect payments digitally through your catalogue store.',
     'Custom Domain': 'Use your own branded domain name for your online catalogue.',
-    'Order Analytics': 'Detailed breakdown of order trends, volumes, and performance.'
+    'Order Analytics': 'Detailed breakdown of order trends, volumes, and performance.',
+    'Complete Setup & Onboarding': 'Initial onboarding support to configure your business and billing setup.',
+    'Guided Training Sessions': 'Live guided sessions to train staff on daily billing operations.',
+
 
 };
 
@@ -84,6 +87,8 @@ const BASIC_FEATURES = [
     'Amount vs Quantity in Boards',
     'Transaction filter & search',
     'Automated business card making',
+    'Complete Setup & Onboarding',
+    'Guided Training Sessions'
 ];
 
 const PRO_FEATURES = [
@@ -188,6 +193,15 @@ const BOTH_TIERS = [
         recommended: true,
     }
 ];
+
+const FEATURE_VALUE_OVERRIDES: Record<string, Record<string, string>> = {
+    'Guided Training Sessions': {
+        [PLANS.POS_BASIC]: '2 Sessions',
+        [PLANS.POS_PRO]: '4 Sessions',
+        pro: '4 Sessions',
+        enterprise: '4 Sessions',
+    },
+};
 
 const SubscriptionPage: React.FC = () => {
     const { currentUser } = useAuth();
@@ -405,10 +419,15 @@ const SubscriptionPage: React.FC = () => {
                                             </div>
                                         </td>
                                         {currentTiers.map(tier => {
+                                            const overrideValue = FEATURE_VALUE_OVERRIDES[feature]?.[tier.id];
                                             const hasFeature = tier.features.includes(feature);
                                             return (
                                                 <td key={tier.id} className="p-3 text-center">
-                                                    {hasFeature ? (
+                                                    {overrideValue ? (
+                                                        <span className="text-xs sm:text-sm font-semibold text-slate-700 whitespace-nowrap">
+                                                            {overrideValue}
+                                                        </span>
+                                                    ) : hasFeature ? (
                                                         <div className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-100 text-green-600">
                                                             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />

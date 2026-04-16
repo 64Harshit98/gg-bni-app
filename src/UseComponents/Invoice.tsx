@@ -19,6 +19,7 @@ export interface InvoiceProps {
   companyEmail: string;
   companyContact: string;
   companyGstin: string;
+  companyLogoBase64?: string; 
 
   // Financials
   subtotal: number;

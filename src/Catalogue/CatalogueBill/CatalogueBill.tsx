@@ -2,6 +2,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../lib/Firebase";
+import { resolveCompanyLogoBase64 } from "../hooks/useCompanyLogo";
 
 export interface CatalogueInvoiceData {
   companyId?: string;
@@ -95,7 +96,19 @@ export const CatalogueBill = async (
   // ================= HEADER =================
   const drawHeader = () => {
     const y = margin;
-    const now = new Date();
+    // ===== LOGO (top-left) =====
+    const logoSize = 10;
+    const logoX = pageWidth - margin - logoSize;
+    const logoY = y;
+
+    if (data.logoBase64 && data.logoBase64.startsWith("data:image")) {
+      try {
+        const format = data.logoBase64.includes("png") ? "PNG" : "JPEG";
+        doc.addImage(data.logoBase64, format, logoX, logoY, logoSize, logoSize);
+      } catch (e) {
+        console.error("Logo render error:", e);
+      }
+    }    const now = new Date();
     const generatedAt = now.toLocaleString('en-IN', {
       day: '2-digit',
       month: '2-digit',
@@ -116,13 +129,14 @@ export const CatalogueBill = async (
     doc.setFont("helvetica", "bold");
     doc.setFontSize(20);
 
+   const textAreaWidth = pageWidth - (margin * 2) - logoSize - 4;
     doc.text(
       isEstimate
         ? "ESTIMATE"
         : (data.companyName || "COMPANY NAME").toUpperCase(),
-      pageWidth / 2,
+      margin + textAreaWidth / 2,
       y + 5,
-      { align: "center" }
+      { align: "center", maxWidth: textAreaWidth }
     );
 
     let dividerY = y + 10; // default for estimate
@@ -133,8 +147,8 @@ export const CatalogueBill = async (
 
       const addressLines = doc.splitTextToSize(
         data.companyAddress || "",
-        pageWidth - 40
-      );
+        pageWidth - (margin * 2) - logoSize - 6
+);
 
       doc.text(addressLines, pageWidth / 2, y + 11, { align: "center" });
 
@@ -1063,9 +1077,18 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
       console.error("Catalogue company fetch error:", err);
     }
   }
+  let logoBase64 = invoiceData.companyLogoBase64 || "";
+  if (!logoBase64 && invoiceData.companyId) {
+    try {
+      logoBase64 = await resolveCompanyLogoBase64(invoiceData.companyId) || "";
+    } catch (err) {
+      console.error("Logo fetch error:", err);
+    }
+  }
 
   return {
     ...invoiceData,
+    logoBase64,
 
     companyName: companyData.name || "",
     companyAddress: companyData.address || "",

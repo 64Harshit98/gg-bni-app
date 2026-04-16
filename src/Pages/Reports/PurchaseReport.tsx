@@ -19,9 +19,12 @@ import { IconClose } from '../../constants/Icons';
 import { getPurchaseColumns } from '../../constants/TableColoumns';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
+import { useAuth } from '../../context/auth-context';
+import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 
 const PurchaseReport: React.FC = () => {
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
 
   const {
     isListVisible,
@@ -160,15 +163,36 @@ const PurchaseReport: React.FC = () => {
         totalItemsPurchased,
         averagePurchaseValue,
       },
-      
+
     };
   }, [appliedFilters, purchases, sortConfig]);
 
   /* ---------- PDF DOWNLOAD ---------- */
-  const downloadAsPdf = () => {
+  const downloadAsPdf = async () => {
     if (!appliedFilters) return;
 
     const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+
+    try {
+      const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
+      if (base64Logo) {
+        const img = new Image();
+        img.src = base64Logo;
+        await new Promise<void>((resolve) => {
+          img.onload = () => {
+            const logoWidth = 20;
+            const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
+            const logoX = pageWidth - logoWidth - 14;
+            doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
+            resolve();
+          };
+          img.onerror = () => resolve();
+        });
+      }
+    } catch {
+      // Continue without logo
+    }
 
     // ===== CLEAN GENERATION TAG =====
     const now = new Date();
@@ -243,9 +267,9 @@ const PurchaseReport: React.FC = () => {
           '',
         ],
       ],
-      theme:'grid',
+      theme: 'grid',
       headStyles: { fillColor: [41, 128, 185] },
-      footStyles: { fontStyle: 'bold' , fillColor: [41, 128, 185]},
+      footStyles: { fontStyle: 'bold', fillColor: [41, 128, 185] },
     });
 
     doc.save(`purchase_report_${formatDateForInput(new Date())}.pdf`);
@@ -400,7 +424,7 @@ const PurchaseReport: React.FC = () => {
       {/* REPORT DETAILS */}
       <div className="bg-white p-3 rounded-sm shadow-md mb-2 flex flex-col md:flex-row md:justify-between md:items-center gap-1">
         <h2 className="text-lg font-semibold text-gray-700 text-center md:text-left w-full md:w-auto">Report Details</h2>
-        <div className="flex items-stretch gap-3 ">          
+        <div className="flex items-stretch gap-3 ">
           <button
             onClick={() => setIsListVisible(!isListVisible)}
             className="flex-1 md:flex-none px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition"

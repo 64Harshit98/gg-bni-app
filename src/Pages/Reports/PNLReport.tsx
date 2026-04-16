@@ -15,6 +15,8 @@ import { formatDate } from './PNLReportComponents/pnlReport.utils';
 import { handleDatePresetChange } from './PNLReportComponents/pnlReport.utils';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
+import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import { useAuth } from '../../context/auth-context';
 
 const PnlReportPage: React.FC = () => {
   const {
@@ -143,8 +145,9 @@ const PnlReportPage: React.FC = () => {
   };
 
   /* ---------- PDF DOWNLOAD (UNCHANGED) ---------- */
-  const downloadAsPdf = () => {
+  const downloadAsPdf = async () => {
     const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
 
     // ===== CLEAN GENERATION TAG =====
     const now = new Date();
@@ -186,6 +189,26 @@ const PnlReportPage: React.FC = () => {
 
     const { totalRevenue, totalCost, grossProfit, grossProfitPercentage } =
       pnlSummary;
+
+    try {
+      const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
+      if (base64Logo) {
+        const img = new Image();
+        img.src = base64Logo;
+        await new Promise<void>((resolve) => {
+          img.onload = () => {
+            const logoWidth = 20;
+            const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
+            const logoX = pageWidth - logoWidth - 14;
+            doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
+            resolve();
+          };
+          img.onerror = () => resolve();
+        });
+      }
+    } catch {
+      // Continue without logo
+    }
 
     doc.setFontSize(18);
     doc.text('Profit & Loss Report', 14, 20);

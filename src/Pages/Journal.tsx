@@ -31,7 +31,7 @@ import { useSalesSettings } from '../context/SettingsContext';
 import { IconChevronDown, IconClose, IconFilter, IconSearch, IconDownload, IconPrint, IconScanCircle } from '../constants/Icons';
 import QRCode from 'react-qr-code';
 import { FiX, FiSend } from 'react-icons/fi';
-import { botMasterService } from '../Pages/Additional/Whatsapp/WhatsappApi';
+import { botMasterService } from './Additional/Whatsapp/WhatsappApi';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { storage } from '../lib/Firebase';
 import { TutorialStep } from '../Components/TutorialStep'; // ← same import as Home.tsx
@@ -40,6 +40,7 @@ import ShowWrapper from '../context/ShowWrapper';
 import NotificationBell from "../Components/NotificationBell"
 import useTutorial from '../Catalogue/hooks/useTutorial';
 import { completeTutorial } from '../Catalogue/hooks/useCompleteTutorial';
+import { resolveCompanyLogoBase64 } from '../Catalogue/hooks/useCompanyLogo';
 // ─── Total tutorial steps for Journal ───────────────────────────────────────
 const TOTAL_STEPS = 6;
 
@@ -109,6 +110,7 @@ interface PdfData {
   companyAddress: string;
   companyContact: string;
   companyEmail: string;
+  companyLogoBase64?: string;
   signatureBase64: string;
   companyGstin: string;
   msmeNumber: string;
@@ -560,13 +562,15 @@ const Journal: React.FC = () => {
     const dbOps = getFirestoreOperations(currentUser.companyId);
     const isPurchase = invoice.type === 'Debit';
 
-    const [businessInfo, fetchedItems, billSettingsSnap] = await Promise.all([
+    const [businessInfo, fetchedItems, billSettingsSnap, companyLogoBase64] = await Promise.all([
       dbOps.getBusinessInfo(),
       dbOps.syncItems(),
-      getDoc(doc(db, 'companies', currentUser.companyId, 'settings', 'bill'))
+      getDoc(doc(db, 'companies', currentUser.companyId, 'settings', 'bill')),
+      resolveCompanyLogoBase64(currentUser.companyId),
     ]);
 
     const billSettings = billSettingsSnap.exists() ? billSettingsSnap.data() : {};
+
 
     const populatedItems = (invoice.items || []).map((item: any, index: number) => {
       const fullItem = fetchedItems.find((fi: any) => fi.id === item.id);
@@ -604,6 +608,7 @@ const Journal: React.FC = () => {
       companyAddress: businessInfo?.address || '',
       companyContact: businessInfo?.phoneNumber || '',
       companyEmail: businessInfo?.email || '',
+      companyLogoBase64: companyLogoBase64 || undefined,
       signatureBase64: billSettings.signatureBase64 || '',
       companyGstin: billSettings.companyGstin || businessInfo?.gstin || '',
       msmeNumber: billSettings.msmeNumber || '',

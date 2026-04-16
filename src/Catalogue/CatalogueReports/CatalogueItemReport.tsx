@@ -13,6 +13,10 @@ import { IconClose } from '../../constants/Icons';
 import { getItemColumns } from '../../constants/TableColoumns';
 import DownloadChoiceModal from '../../Pages/Reports/ItemReportComponents/DownloadChoiceModal';
 import FilterSelect from '../../Pages/Reports/ItemReportComponents/FilterSelect';
+//import CataShowWrapper from '../../context/CataShowWrapper';
+//import { Cata_Permissions } from '../enum/cata_permissions.enum';
+import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import { useAuth } from '../../context/auth-context';
 
 // Import your Modal and State
 import { Modal } from '../../constants/Modal'; // Adjust path to where you saved the Modal code
@@ -23,6 +27,7 @@ const UNASSIGNED_GROUP_NAME = 'Uncategorized';
 
 const CatalogueItemReport: React.FC = () => {
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
   const {
     items,
     appliedItemGroupId,
@@ -124,9 +129,31 @@ const CatalogueItemReport: React.FC = () => {
     };
   };
 
-  const downloadAsPdf = () => {
+  const downloadAsPdf = async  () => {
     try {
       const doc = new jsPDF('l', 'mm', 'a4');
+      const pageWidth = doc.internal.pageSize.getWidth();
+
+    // Embed company logo
+    try {
+      const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
+      if (base64Logo) {
+        const img = new Image();
+        img.src = base64Logo;
+        await new Promise<void>((resolve) => {
+          img.onload = () => {
+            const logoWidth = 15;
+            const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
+            const logoX = pageWidth - logoWidth - 14;
+            doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
+            resolve();
+          };
+          img.onerror = () => resolve();
+        });
+      }
+    } catch {
+      // Continue without logo
+    }
       // ===== CLEAN GENERATION TAG =====
       const now = new Date();
       const generatedAt = now.toLocaleString('en-IN', {

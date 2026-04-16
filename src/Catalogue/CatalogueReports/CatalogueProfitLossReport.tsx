@@ -14,8 +14,11 @@ import { formatDate } from '../../Pages/Reports/PNLReportComponents/pnlReport.ut
 import { handleDatePresetChange } from '../../Pages/Reports/PNLReportComponents/pnlReport.utils';
 import DownloadChoiceModal from '../../Pages/Reports/ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
+//import CataShowWrapper from '../../context/CataShowWrapper';
+//import { Cata_Permissions } from '../enum/cata_permissions.enum';
+import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 
-const CatalogueProfitLossReport: React.FC = () => { 
+const CatalogueProfitLossReport: React.FC = () => {
   const {
     navigate,
     currentUser,
@@ -151,8 +154,10 @@ const CatalogueProfitLossReport: React.FC = () => {
   }, [appliedFilters]);
 
   /* ---------- PDF DOWNLOAD (UNCHANGED) ---------- */
-  const downloadAsPdf = () => {
+  const downloadAsPdf = async () => {
+   try {
     const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
     // ===== CLEAN GENERATION TAG =====
     const now = new Date();
     const generatedAt = now.toLocaleString('en-IN', {
@@ -193,6 +198,28 @@ const CatalogueProfitLossReport: React.FC = () => {
 
     const { totalRevenue, totalCost, grossProfit, grossProfitPercentage } =
       pnlSummary;
+
+    // Embed company logo (same as Item Report)
+    try {
+      const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
+      if (base64Logo) {
+        const img = new Image();
+        img.src = base64Logo;
+        await new Promise<void>((resolve) => {
+          img.onload = () => {
+            const logoWidth = 15;
+            const logoHeight =
+              (img.naturalHeight / img.naturalWidth) * logoWidth;
+            const logoX = pageWidth - logoWidth - 14;
+            doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
+            resolve();
+          };
+          img.onerror = () => resolve();
+        });
+      }
+    } catch {
+      // Continue without logo
+    }
 
     doc.setFontSize(18);
     doc.text('Profit & Loss Report', 14, 20);
@@ -239,7 +266,21 @@ const CatalogueProfitLossReport: React.FC = () => {
     });
 
     doc.save(`PNL-Report-${startDate}-to-${endDate}.pdf`);
+ setIsDownloadModalOpen(false);
+      setFeedbackModal({
+        isOpen: true,
+        type: State.SUCCESS,
+        message: 'PDF downloaded successfully!',
+      });
+    } catch (error) {
+      setFeedbackModal({
+        isOpen: true,
+        type: State.ERROR,
+        message: 'Failed to generate PDF file.',
+      });
+    }
   };
+
 
   /* ---------- EXCEL DOWNLOAD (NEW) ---------- */
   const downloadAsExcel = () => {
@@ -407,22 +448,22 @@ const CatalogueProfitLossReport: React.FC = () => {
           >
             {isListVisible ? 'Hide List' : 'Show List'}
           </button>
-          <button
-            onClick={() => {
-              if (filteredTransactions.length === 0) {
-                setFeedbackModal({
-                  isOpen: true,
-                  type: State.INFO,
-                  message: 'No data available to download.',
-                });
-              } else {
-                setIsDownloadModalOpen(true);
-              }
-            }}
-            className="px-4 py-2 bg-[#F97316] text-white font-semibold rounded-md"
-          >
-            Download Report
-          </button>
+            <button
+              onClick={() => {
+                if (filteredTransactions.length === 0) {
+                  setFeedbackModal({
+                    isOpen: true,
+                    type: State.INFO,
+                    message: 'No data available to download.',
+                  });
+                } else {
+                  setIsDownloadModalOpen(true);
+                }
+              }}
+              className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md"
+            >
+              Download Report
+            </button>
         </div>
       </div>
 

@@ -590,18 +590,20 @@ const SalesSettingsPage: React.FC = () => {
                                     <ToggleRow id="allow-negative" label="Allow Negative Inventory Billing" description="Allow billing items even when stock is zero." checked={settings.allowNegativeStock ?? false} onChange={(checked) => handleCheckboxChange('allowNegativeStock', checked)} tooltip="Allow selling items even if recorded stock is zero." />
                                     <ToggleRow id="allow-due" label="Allow Due Billing" description="Allow partial or no payment billing (credit)." checked={settings.allowDueBilling ?? false} onChange={(checked) => handleCheckboxChange('allowDueBilling', checked)} tooltip="Allow finalizing sales with pending amount." />
                                 </SettingsCard>
-
-                                <SettingsCard title="Additional Checkout Fields">
-                                    <ToggleRow id="enable-shipping" label="Enable Shipping Details" description="Allow shipping address and GST capture." checked={settings.enableShippingDetails ?? false} onChange={(checked) => handleCheckboxChange('enableShippingDetails', checked)} tooltip="Allow capturing separate shipping address and GST for customers." />
-                                    <ToggleRow id="enable-expense" label="Enable Extra Expense" description="Allow additional charges like freight/packing." checked={settings.enableExtraExpense ?? false} onChange={(checked) => handleCheckboxChange('enableExtraExpense', checked)} tooltip="Add extra charge to final bill." />
-                                    <ToggleRow id="enable-narration" label="Enable Narration / Remarks" description="Allow adding custom note in invoice." checked={settings.enableNarration ?? false} onChange={(checked) => handleCheckboxChange('enableNarration', checked)} tooltip="Allow custom remarks on invoice." />
-                                </SettingsCard>
                             </div>
                         </div>
                     </ShowWrapper>
 
-                    {/* Required Fields (Outside ShowWrapper to display for all plans) */}
+                    {/* Additional + Required Fields side-by-side on desktop */}
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                        <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+                            <SettingsCard title="Additional Checkout Fields">
+                                <ToggleRow id="enable-shipping" label="Enable Shipping Details" description="Allow shipping address and GST capture." checked={settings.enableShippingDetails ?? false} onChange={(checked) => handleCheckboxChange('enableShippingDetails', checked)} tooltip="Allow capturing separate shipping address and GST for customers." />
+                                <ToggleRow id="enable-expense" label="Enable Extra Expense" description="Allow additional charges like freight/packing." checked={settings.enableExtraExpense ?? false} onChange={(checked) => handleCheckboxChange('enableExtraExpense', checked)} tooltip="Add extra charge to final bill." />
+                                <ToggleRow id="enable-narration" label="Enable Narration / Remarks" description="Allow adding custom note in invoice." checked={settings.enableNarration ?? false} onChange={(checked) => handleCheckboxChange('enableNarration', checked)} tooltip="Allow custom remarks on invoice." />
+                            </SettingsCard>
+                        </ShowWrapper>
+
                         <SettingsCard title="Required Fields">
                             <ToggleRow
                                 id="req-customer-info"

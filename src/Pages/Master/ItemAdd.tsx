@@ -53,6 +53,7 @@ const ItemAdd: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
+  const [showOverwritePrompt, setShowOverwritePrompt] = useState(false);
 
   // --- UPLOAD STATE ---
   const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -62,6 +63,27 @@ const ItemAdd: React.FC = () => {
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const successBannerRef = useRef<HTMLDivElement>(null);
+  const overwritePromptResolverRef = useRef<((choice: boolean) => void) | null>(null);
+
+  const requestBulkOverwriteChoice = (): Promise<boolean> => {
+    return new Promise((resolve) => {
+      overwritePromptResolverRef.current = resolve;
+      setShowOverwritePrompt(true);
+    });
+  };
+
+  const handleConfirmOverwrite = () => {
+    overwritePromptResolverRef.current?.(true);
+    overwritePromptResolverRef.current = null;
+    setShowOverwritePrompt(false);
+  };
+
+  const handleCancelOverwrite = () => {
+    overwritePromptResolverRef.current?.(false);
+    overwritePromptResolverRef.current = null;
+    setShowOverwritePrompt(false);
+  };
 
   useEffect(() => {
     setPageIsLoading(authLoading || loadingItemSettings || !dbOperations);
@@ -265,7 +287,10 @@ const ItemAdd: React.FC = () => {
 
       setSuccess(`Item "${itemName}" added!`);
       resetForm();
-      setTimeout(() => setSuccess(null), 3000);
+      requestAnimationFrame(() => {
+        successBannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      setTimeout(() => setSuccess(null), 30000);
     } catch (err: any) {
       setError('Failed to add item.');
       setModal({ message: err.message, type: State.ERROR });
@@ -298,6 +323,8 @@ const ItemAdd: React.FC = () => {
         let createdCount = 0;
         let updatedCount = 0;
         let failedCount = 0;
+        let skippedCount = 0;
+        let shouldOverwriteExisting: boolean | null = null;
 
         const totalItems = rawJson.length;
         setUploadProgress({ current: 0, total: totalItems });
@@ -412,7 +439,18 @@ const ItemAdd: React.FC = () => {
             const itemsRef = collection(db, 'companies', currentUser.companyId, 'items');
             const q = query(itemsRef, where('barcode', '==', rowBarcode), limit(1));
             const snapshot = await getDocs(q);
-            if (!snapshot.empty) isUpdate = true;
+            if (!snapshot.empty) {
+              if (shouldOverwriteExisting === null) {
+                shouldOverwriteExisting = await requestBulkOverwriteChoice();
+              }
+
+              if (!shouldOverwriteExisting) {
+                skippedCount++;
+                continue;
+              }
+
+              isUpdate = true;
+            }
 
             await dbOperations.createItem(itemData, rowBarcode);
 
@@ -433,7 +471,7 @@ const ItemAdd: React.FC = () => {
             type: State.ERROR
           });
         } else {
-          setSuccess(`Imported: ${createdCount} New, ${updatedCount} Updated.`);
+          setSuccess(`Imported: ${createdCount} New, ${updatedCount} Updated${skippedCount > 0 ? `, ${skippedCount} Skipped` : ''}.`);
         }
 
         setTimeout(() => setSuccess(null), 5000);
@@ -508,6 +546,15 @@ const ItemAdd: React.FC = () => {
     <div className="flex flex-col h-screen w-full bg-gray-100 font-poppins text-gray-800 relative">
       <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+      {showOverwritePrompt && (
+        <Modal
+          message="Some items already exist. Do you want to overwrite existing items?"
+          onClose={handleCancelOverwrite}
+          onConfirm={handleConfirmOverwrite}
+          showConfirmButton={true}
+          type={State.INFO}
+        />
+      )}
 
       {/* --- PROGRESS MODAL --- */}
       {uploadProgress && (
@@ -536,7 +583,7 @@ const ItemAdd: React.FC = () => {
         <div className="flex-1 w-full md:w-[65%] bg-gray-100 md:bg-gray-50 md:border-r border-gray-200 pt-28 pb-24 px-2 md:pt-6 md:px-6 md:pb-6 overflow-y-auto">
 
           {error && <div className="mb-4 text-center p-3 bg-red-100 text-red-700 rounded-sm">{error}</div>}
-          {success && <div className="mb-4 text-center p-3 bg-green-100 text-green-700 rounded-sm">{success}</div>}
+          {success && <div ref={successBannerRef} className="mb-4 text-center p-3 bg-green-100 text-green-700 rounded-sm">{success}</div>}
 
           {/* MOBILE BULK IMPORT */}
           <div className="md:hidden bg-white p-2 rounded-sm shadow-md mb-4">

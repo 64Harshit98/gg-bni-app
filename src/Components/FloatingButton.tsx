@@ -15,7 +15,17 @@ const FloatingButton: React.FC<IFloatingButtonProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
-  const isCatalogue = location.pathname.includes('catalogue');
+  const pathname = location.pathname.toLowerCase();
+
+  const catalogueRoutes = [
+    '/catalogue',
+    '/order-details',
+    '/accounts',
+  ];
+
+  const isCatalogue = catalogueRoutes.some((route) =>
+    pathname.startsWith(route)
+  );
 
   const bgClass = isCatalogue ? 'bg-[#F97316] hover:bg-orange-600' : 'bg-sky-500 hover:bg-sky-600';
 

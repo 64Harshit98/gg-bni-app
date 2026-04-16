@@ -77,7 +77,10 @@ const SharedProduct: React.FC = () => {
     const [showNotifySuccess, setShowNotifySuccess] = useState(false);
     const [notifiedItems, setNotifiedItems] = useState<Record<string, boolean>>({});
     const [isScrolled, setIsScrolled] = useState(false);
+    const [isSearchSticky, setIsSearchSticky] = useState(false);
     const cartIconRef = useRef<HTMLButtonElement | null>(null);
+    const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     const getUserKey = () => {
         let key = localStorage.getItem('guest_uid');
@@ -291,6 +294,22 @@ const SharedProduct: React.FC = () => {
             return () => clearTimeout(t);
         }
     }, [showNotifySuccess]);
+
+    useEffect(() => {
+        const handleScroll = () => {
+            // Header ki approximate height
+            const stickyTriggerPoint = 110;
+
+            if (window.scrollY > stickyTriggerPoint) {
+                setIsSearchSticky(true);
+            } else {
+                setIsSearchSticky(false);
+            }
+        };
+
+        window.addEventListener("scroll", handleScroll);
+        return () => window.removeEventListener("scroll", handleScroll);
+    }, []);
 
     const addToCart = useCallback((item: Item) => {
         //  SINGLE SOURCE OF TRUTH
@@ -739,7 +758,7 @@ const SharedProduct: React.FC = () => {
         });
     }, [allItems, searchQuery, sortOrder, resolvedGroupId, catalogueSettings]);
 
-    
+
     useEffect(() => {
         const params = new URLSearchParams(location.search);
         const itemIdFromQuery = params.get("itemId");
@@ -747,54 +766,73 @@ const SharedProduct: React.FC = () => {
         const itemIdToHighlight =
             highlightItemId || itemIdFromQuery;
 
-        if (!itemIdToHighlight || allItems.length === 0) return;
+        if (!itemIdToHighlight || filteredItems.length === 0) return;
 
-        // Find index of the item in filtered list
+        const isSharedLink = Boolean(itemIdFromQuery);
+        const triggerKey = highlightTrigger || "default";
+        const sessionKey = `highlight_${itemIdToHighlight}_${triggerKey}`;
+
+        // Prevent repeat highlight
+        if (sessionStorage.getItem(sessionKey)) return;
+
+        sessionStorage.setItem(sessionKey, "true");
+
+        // Ensure item is rendered (for lazy loading)
         const itemIndex = filteredItems.findIndex(
             (item) => String(item.id) === String(itemIdToHighlight)
         );
 
-        // Ensure the item is rendered (handles lazy loading)
         if (itemIndex !== -1) {
-            setItemsToRenderCount((prev) =>
+            setItemsToRenderCount(prev =>
                 Math.max(prev, itemIndex + 1)
             );
         }
 
-        // Highlight the item
+        // Clear previous timers
+        if (highlightTimeoutRef.current) {
+            clearTimeout(highlightTimeoutRef.current);
+        }
+        if (scrollTimeoutRef.current) {
+            clearTimeout(scrollTimeoutRef.current);
+        }
+
+        // Apply highlight
         setActiveHighlight(itemIdToHighlight);
 
-        // Scroll after rendering
-        const scrollTimeout = setTimeout(() => {
+        // Smooth scroll after DOM render
+        scrollTimeoutRef.current = setTimeout(() => {
             const element = document.getElementById(itemIdToHighlight);
             element?.scrollIntoView({
                 behavior: "smooth",
                 block: "center",
             });
-        }, 300);
+        }, 200);
 
-        // Remove highlight after 3 seconds
-        const highlightTimeout = setTimeout(() => {
+        // Remove highlight smoothly
+        highlightTimeoutRef.current = setTimeout(() => {
             setActiveHighlight(null);
-            if (itemIdFromQuery) {
+
+            if (isSharedLink) {
                 navigate(location.pathname, { replace: true });
             }
-        }, 3000);
+        }, 1200);
 
         return () => {
-            clearTimeout(scrollTimeout);
-            clearTimeout(highlightTimeout);
+            if (highlightTimeoutRef.current) {
+                clearTimeout(highlightTimeoutRef.current);
+            }
+            if (scrollTimeoutRef.current) {
+                clearTimeout(scrollTimeoutRef.current);
+            }
         };
     }, [
-        location.search,
         highlightItemId,
         highlightTrigger,
-        allItems,
-        filteredItems,
+        location.search,
+        filteredItems.length,
         navigate,
         location.pathname
     ]);
-
 
     const currentCategoryName = useMemo(() => {
         const group = allItemGroups.find(g => g.id === resolvedGroupId);
@@ -874,7 +912,7 @@ const SharedProduct: React.FC = () => {
                     <div className="flex items-center gap-2">
                         <button
                             onClick={() => navigate(`/catalogue/${currentUser?.companyId}`)}
-                            className="p-2 rounded-sm border border-slate-400 hover:bg-slate-200 transition-colors text-slate-700"
+                            className="p-2 rounded-sm hover:bg-slate-200 transition-colors text-slate-700"
                             title="Back"
                         >
                             <svg
@@ -988,27 +1026,38 @@ const SharedProduct: React.FC = () => {
                         {currentCategoryName}
                     </h1>
                 </div>
-                <div className="relative group md:max-w-md md:mx-auto w-full">
-                    <SearchBar
-                        items={allItems}
-                        itemGroups={allItemGroups}
-                        hideUncategorized={true}
-                        onItemSelected={(item: any) => {
-                            setSearchQuery("");
-                            const group = allItemGroups.find(g => g.id === item.itemGroupId);
-                            const slug = group ? generateSlug(group.name) : item.itemGroupId;
 
-                            navigate(
-                                `/product/${effectiveCompanyId}/${slug}`,
-                                {
+                <div
+                    className={`flex justify-center transition-all duration-300 ${isSearchSticky
+                            ? "sticky top-[60px] z-50"
+                            : "relative"
+                        }`}
+                >
+                    <div className="relative group md:max-w-md w-full">
+                        <SearchBar
+                            items={allItems}
+                            itemGroups={allItemGroups}
+                            hideUncategorized={true}
+                            hideOutOfStock={catalogueSettings?.hideOutOfStock ?? false}
+                            onItemSelected={(item: any) => {
+                                setSearchQuery("");
+                                setActiveHighlight(null);
+                                const group = allItemGroups.find(
+                                    g => g.id === item.itemGroupId
+                                );
+                                const slug = group
+                                    ? generateSlug(group.name)
+                                    : item.itemGroupId;
+
+                                navigate(`/${effectiveCompanyId}/${slug}`, {
                                     state: {
                                         highlightItemId: item.id,
-                                        trigger: Date.now()
-                                    }
-                                }
-                            );
-                        }}
-                    />
+                                        trigger: Date.now(),
+                                    },
+                                });
+                            }}
+                        />
+                    </div>
                 </div>
 
                 <div className="max-w-7xl mx-auto px-1 flex items-center justify-between relative">

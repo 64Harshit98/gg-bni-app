@@ -5,6 +5,7 @@ import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../../context/auth-context';
 import { State } from '../../enums';
 import { Modal } from '../../constants/Modal';
+import { IconClose } from '../../constants/Icons';
 import { useNavigate } from 'react-router';
 
 // --- Interfaces ---
@@ -36,7 +37,6 @@ const BillSettings: React.FC = () => {
     const { currentUser } = useAuth();
     const navigate = useNavigate();
     const sigPadRef = useRef<any>(null);
-
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
@@ -196,7 +196,13 @@ const BillSettings: React.FC = () => {
         <div className="min-h-screen bg-gray-50 pb-24 relative">
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
-            <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+            <div className="flex items-center bg-white border-b border-gray-200 sticky top-0 z-10">
+                <button
+                    onClick={() => navigate(-1)}
+                    className="ml-4 flex items-center gap-2 text-gray-500 hover:text-gray-900 transition-colors"
+                >
+                    <IconClose />
+                </button>
                 <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
                     <h1 className="text-2xl font-bold text-gray-900">Invoice Configuration</h1>
                     <p className="text-sm text-gray-500 mt-1">Manage details printed on your bills.</p>
@@ -421,6 +427,7 @@ const BillSettings: React.FC = () => {
                 >
                     {isSaving ? 'Saving...' : 'Save Changes'}
                 </button>
+
             </div>
         </div>
     );

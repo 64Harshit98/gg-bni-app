@@ -28,10 +28,6 @@ const UserSetting = lazy(() => import('../Pages/Settings/UserSettings'));
 const ItemSetting = lazy(() => import('../Pages/Settings/ItemSetting'));
 const BillSettings = lazy(() => import('../Pages/Settings/BillSetting'));
 const SupportPage = lazy(() => import('../Pages/Account/SupportPage'));
-const WADetails = lazy(() => import('../Pages/Additional/Whatsapp/WADetails'));
-const WAVerification = lazy(() => import('../Pages/Additional/Whatsapp/WAVerification'));
-const WALanding = lazy(() => import('../Pages/Additional/Whatsapp/WALanding'));
-const WAPlan = lazy(() => import('../Pages/Additional/Whatsapp/WAPlan'));
 const AdditionalServices = lazy(() => import('../Pages/Account/AdditionalFeatures'));
 const ItemReports = lazy(() => import('../Pages/Reports/Items'));
 const RestockReportPage = lazy(() => import('../Pages/Reports/RestockReport'));
@@ -69,6 +65,7 @@ const Catasupport = lazy(() => import('../Catalogue/CatalogueSupport/CatalogueSu
 const CatlogueItems = lazy(() => import('../Catalogue/CatalogueReports/CatalogueItems')); // catalogue items
 const CatlogueManageItems = lazy(() => import('../Catalogue/CatalogueReports/CatalogueManageItems'));
 const CatlogueSoldReport = lazy(() => import('../Catalogue/CatalogueReports/CatalogueSoldReport'));
+const CatalogueAdditionalServices = lazy(() => import('../Catalogue/CatalogueAdditionalServices'));
 
 export interface AppRoute {
     path?: string;
@@ -118,10 +115,6 @@ export const AppRegistry: AppModule[] = [
             { path: ROUTES.ITEMSETTING, component: ItemSetting, permission: null },
             { path: ROUTES.BILLSETTING, component: BillSettings, permission: null },
             { path: ROUTES.SUPPORT_PAGE, component: SupportPage, permission: null },
-            { path: ROUTES.WHATSAPP_DETAILS, component: WADetails, permission: Permissions.ViewItemReport },
-            { path: ROUTES.WHATSAPP_VERIFICATION, component: WAVerification, permission: Permissions.ViewItemReport },
-            { path: ROUTES.WHATSAPP_LANDING, component: WALanding, permission: Permissions.ViewItemReport },
-            { path: ROUTES.WHATSAPP_PLAN, component: WAPlan, permission: Permissions.ViewItemReport },
             { path: ROUTES.ADDITIONAL_FEATURES, component: AdditionalServices, permission: Permissions.ViewItemReport },
 
             { path: ROUTES.ITEM_REPORTS, component: ItemReports, permission: Permissions.ViewItemReport },
@@ -168,6 +161,7 @@ export const AppRegistry: AppModule[] = [
             { path: `${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`, component: AddItem, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`, component: RequestPage, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_SUPPORT}`, component: Catasupport, permission: null },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATA_ADDITIONAL_SERVICES}`, component: CatalogueAdditionalServices, permission: null },
 
         ],
     }

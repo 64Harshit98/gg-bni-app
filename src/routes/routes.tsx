@@ -28,6 +28,10 @@ const WebsiteLeads = lazy(()=> import('../Pages/Account/WebsiteLeads'))
 const SuperAdminSupportTicket = lazy(()=> import('../Pages/Account/SuperAdminSupportTicket'))
 const LeadPage =lazy(() => import('../Pages/Account/LeadPage'))
 
+const WALanding = lazy(() => import('../Pages/Additional/Whatsapp/WALanding'));
+const WAPlan = lazy(() => import('../Pages/Additional/Whatsapp/WAPlan'));
+const WADetails = lazy(() => import('../Pages/Additional/Whatsapp/WADetails'));
+const WAVerification = lazy(() => import('../Pages/Additional/Whatsapp/WAVerification'));
 const getSubdomain = () => {
   const hostname = window.location.hostname;
   const parts = hostname.split('.');
@@ -93,9 +97,16 @@ const router = createBrowserRouter([
           { path: ROUTES.SUPER_ADMINHUB, element: <SuperAdminHub/>},
           { path: ROUTES.SUPPORT_TICKET, element: <SuperAdminSupportTicket/>},
           { path: ROUTES.WEBSITE_QUERY, element: <WebsiteLeads/>},
-          { path: ROUTES.APP_LEADS,element: <LeadPage/>}
-
-
+          { path: ROUTES.APP_LEADS,element: <LeadPage/>},
+          
+{
+        children: [
+          { path: ROUTES.WHATSAPP_LANDING, element: <WALanding />, handle: { isPublic: false } },
+          { path: ROUTES.WHATSAPP_PLAN, element: <WAPlan />, handle: { isPublic: false } },
+          { path: ROUTES.WHATSAPP_DETAILS, element: <WADetails />, handle: { isPublic: false } },
+          { path: ROUTES.WHATSAPP_VERIFICATION, element: <WAVerification />, handle: { isPublic: false } },
+        ],
+      },
         ],
       },
 

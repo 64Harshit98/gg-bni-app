@@ -19,7 +19,9 @@ import ReportDetails from '../../Pages/Reports/SalesReportComponents/ReportDetai
 import DownloadChoiceModal from '../../Pages/Reports/ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
 import { DatePreset } from '../../Catalogue/enum/datePreset.enum';
-
+//import { Cata_Permissions } from '../enum/cata_permissions.enum';
+//import CataShowWrapper from '../../context/CataShowWrapper';
+import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 // 1. Define the strictly 4-column structure
 export interface AggregatedItem {
     id: string;
@@ -313,11 +315,34 @@ const ItemsSoldReport: React.FC = () => {
     ], []);
 
     /* ---------- PDF DOWNLOAD ---------- */
-    const downloadAsPdf = () => {
+    const downloadAsPdf = async () => {
         if (!appliedFilters) return;
 
-        const doc = new jsPDF();
+        try {
+            const doc = new jsPDF();
+            const pageWidth = doc.internal.pageSize.getWidth();
 
+            // Embed company logo (same as PNL Report)
+            try {
+                const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
+                if (base64Logo) {
+                    const img = new Image();
+                    img.src = base64Logo;
+                    await new Promise<void>((resolve) => {
+                        img.onload = () => {
+                            const logoWidth = 15;
+                            const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
+                            const logoX = pageWidth - logoWidth - 14;
+                            doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
+                            resolve();
+                        };
+                        img.onerror = () => resolve();
+                    });
+                }
+            } catch {
+                // Continue without logo if it fails
+            }
+    
         // ===== CLEAN GENERATION TAG =====
         const now = new Date();
         const generatedAt = now.toLocaleString('en-IN', {
@@ -357,37 +382,41 @@ const ItemsSoldReport: React.FC = () => {
         doc.setTextColor(0, 0, 0);
 
         doc.setFontSize(18);
-        doc.text('Items Sold Report', 14, 20);
-        doc.setFontSize(11);
-        doc.setTextColor(100);
+            doc.text('Items Sold Report', 14, 20);
+            doc.setFontSize(11);
+            doc.setTextColor(100);
 
-        doc.text(
-            `Date Range: ${formatDate(appliedFilters.start)} to ${formatDate(appliedFilters.end)}`,
-            14,
-            29
-        );
+            doc.text(
+                `Date Range: ${formatDate(appliedFilters.start)} to ${formatDate(appliedFilters.end)}`,
+                14,
+                29
+            );
 
-        autoTable(doc, {
-            startY: 35,
-            head: [['Item Name', 'Category', 'Qty Sold', 'Total Value']],
-            body: aggregatedItems.map((item) => [
-                item.name,
-                item.itemGroup,
-                item.quantitySold,
-                `Rs.${Math.round(item.valueSold).toLocaleString('en-IN')}`,
-            ]),
-            foot: [
-                [
-                    'Total',
-                    '', // Mapped to Category column
-                    `${summary.totalQuantitySold}`, // Mapped to Qty Sold column
-                    `Rs.${Math.round(summary.totalValueSold).toLocaleString('en-IN')}`, // Mapped to Total Value column
+            autoTable(doc, {
+                startY: 35,
+                head: [['Item Name', 'Category', 'Qty Sold', 'Total Value']],
+                body: aggregatedItems.map((item) => [
+                    item.name,
+                    item.itemGroup,
+                    item.quantitySold,
+                    `Rs.${Math.round(item.valueSold).toLocaleString('en-IN')}`,
+                ]),
+                foot: [
+                    [
+                        'Total',
+                        '', // Mapped to Category column
+                        `${summary.totalQuantitySold}`, // Mapped to Qty Sold column
+                        `Rs.${Math.round(summary.totalValueSold).toLocaleString('en-IN')}`, // Mapped to Total Value column
+                    ],
                 ],
-            ],
-            footStyles: { fontStyle: 'bold' },
-        });
+                footStyles: { fontStyle: 'bold' },
+            });
 
-        doc.save(`items_sold_report_${formatDateForInput(new Date())}.pdf`);
+            doc.save(`items_sold_report_${formatDateForInput(new Date())}.pdf`);
+        } catch (error) {
+            console.error('Error generating PDF:', error);
+            // Optionally show an error message to the user
+        }
         setIsDownloadModalOpen(false);
     };
 
@@ -526,9 +555,8 @@ const ItemsSoldReport: React.FC = () => {
                 filteredSales={aggregatedItems as any}
                 isListVisible={isListVisible}
                 setIsListVisible={setIsListVisible}
-                isCatalogueMode = {true}
+                isCatalogueMode={true}
             />
-
             {/* DATA TABLE */}
             {isListVisible && (
                 <CustomTable<AggregatedItem>

@@ -12,6 +12,9 @@ import {
 import { useAuth } from '../../context/auth-context';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+//import CataShowWrapper from '../../context/CataShowWrapper';
+//import { Cata_Permissions } from '../enum/cata_permissions.enum';
 
 // --- Data Types (now from Order documents) ---
 interface OrderItem { // Renamed from SalesItem
@@ -376,9 +379,33 @@ const OrdersReport: React.FC = () => {
         };
     }, [sales, sortConfig]); // Removed appliedFilters from here
 
-    const downloadAsPdf = () => {
+    const downloadAsPdf = async () => {
         if (!appliedFilters) return;
+        try {
         const doc = new jsPDF();
+        const pageWidth = doc.internal.pageSize.getWidth();
+
+        // Embed company logo (same as PNL Report)
+        try {
+            const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
+            if (base64Logo) {
+                const img = new Image();
+                img.src = base64Logo;
+                await new Promise<void>((resolve) => {
+                    img.onload = () => {
+                        const logoWidth = 15;
+                        const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
+                        const logoX = pageWidth - logoWidth - 14;
+                        doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
+                        resolve();
+                    };
+                    img.onerror = () => resolve();
+                });
+            }
+        } catch {
+            // Continue without logo if it fails
+        }
+
 
         // ===== CLEAN GENERATION TAG =====
         const now = new Date();
@@ -441,7 +468,11 @@ const OrdersReport: React.FC = () => {
         });
 
         doc.save(`orders_report_${formatDateForInput(new Date())}.pdf`);
-    };
+    } catch (error) {
+        console.error('Error generating PDF:', error);
+        // Optionally show an error message to the user
+    }
+};
 
     if (isLoading || authLoading) return <div className="p-4 text-center">Loading...</div>;
     if (error) return <div className="p-4 text-center text-red-500">{error}</div>;
@@ -488,7 +519,8 @@ const OrdersReport: React.FC = () => {
                 <h2 className="text-lg font-semibold text-gray-700">Report Details</h2>
                 <div className="flex items-center space-x-3">
                     <button onClick={() => setIsListVisible(!isListVisible)} className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition">{isListVisible ? 'Hide List' : 'Show List'}</button>
-                    <button onClick={downloadAsPdf} disabled={filteredSales.length === 0} className="px-4 py-2 bg-[#F97316] text-white font-semibold rounded-md shadow-sm hover:bg-[#F97316] ">Download PDF</button>
+                     
+                    <button onClick={downloadAsPdf} disabled={filteredSales.length === 0} className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 ">Download PDF</button>
                 </div>
             </div>
 
@@ -497,4 +529,4 @@ const OrdersReport: React.FC = () => {
     );
 };
 
-export default OrdersReport; // Renamed export
+export default OrdersReport;

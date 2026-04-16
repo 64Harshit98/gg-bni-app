@@ -7,6 +7,8 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../../context/auth-context';
 import { FloatingLabelInput } from '../../Components/ui/FloatingLabelInput';
 import { FiCamera, FiCheck, FiX } from 'react-icons/fi';
+import { invalidateLogoCache } from '../../Catalogue/hooks/useCompanyLogo';
+import { logoCache } from '../../Catalogue/hooks/useCompanyLogo';
 
 // --- Data Types ---
 interface ProfileData {
@@ -33,6 +35,50 @@ interface ProfileData {
   ifscCode: string;
 }
 
+// --- UTILITY: Logo Compression (preserves transparency) ---
+const compressLogo = (file: File): Promise<Blob> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+
+    img.onload = () => {
+      const MAX_SIZE = 500;
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height) {
+        if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
+      } else {
+        if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error("Canvas context failed")); return; }
+
+      // ✅ Fill white background BEFORE drawing (fixes black bg on JPEG)
+      // OR use PNG to preserve transparency
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
+
+      canvas.toBlob(
+        (blob) => {
+          if (blob) { resolve(blob); } 
+          else { reject(new Error('Logo compression failed')); }
+          URL.revokeObjectURL(img.src);
+        },
+        'image/png',  // ✅ PNG keeps transparency (no black bg)
+        0.9
+      );
+    };
+
+    img.onerror = (error) => { URL.revokeObjectURL(img.src); reject(error); };
+  });
+};
 // --- UTILITY: Aggressive Image Compression ---
 const compressImage = (file: File): Promise<Blob> => {
   return new Promise((resolve, reject) => {
@@ -103,87 +149,88 @@ const useProfileData = (userId?: string, companyId?: string) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const fetchProfileData = async () => {
+    if (!userId || !companyId) return;
+    setLoading(true);
+    try {
+      const userDocRef = doc(db, 'companies', companyId, 'users', userId);
+      const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
+      const [userDocSnap, businessDocSnap] = await Promise.all([
+        getDoc(userDocRef),
+        getDoc(businessDocRef),
+      ]);
+      const userData = userDocSnap.exists() ? userDocSnap.data() : {};
+      const businessData = businessDocSnap.exists() ? businessDocSnap.data() : {};
+      setProfile({ ...userData, ...businessData });
+    } catch (err) {
+      console.error("Error fetching profile data:", err);
+      setError("Failed to load profile information.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!userId || !companyId) {
       setLoading(false);
       return;
     }
-
-    const fetchProfileData = async () => {
-      setLoading(true);
-      try {
-        const userDocRef = doc(db, 'companies', companyId, 'users', userId);
-        const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
-
-        const [userDocSnap, businessDocSnap] = await Promise.all([
-          getDoc(userDocRef),
-          getDoc(businessDocRef),
-        ]);
-
-        const userData = userDocSnap.exists() ? userDocSnap.data() : {};
-        const businessData = businessDocSnap.exists() ? businessDocSnap.data() : {};
-
-        setProfile({ ...userData, ...businessData });
-      } catch (err) {
-        console.error("Error fetching profile data:", err);
-        setError("Failed to load profile information.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchProfileData();
   }, [userId, companyId]);
 
-  const saveData = async (data: Partial<ProfileData>) => {
-    if (!userId || !companyId || !auth.currentUser) {
-      throw new Error("User or company is not authenticated.");
-    }
-
-    const { name, email, phone, profilePicture, panNumber, accountType, ...businessData } = data;
-
-    const userDocRef = doc(db, 'companies', companyId, 'users', userId);
-    const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
-
-    const promises = [];
-
-    const authUpdates: { displayName?: string; photoURL?: string } = {};
-    if (name && auth.currentUser.displayName !== name) authUpdates.displayName = name;
-    if (profilePicture && auth.currentUser.photoURL !== profilePicture) authUpdates.photoURL = profilePicture;
-
-    if (Object.keys(authUpdates).length > 0) {
-      promises.push(updateProfile(auth.currentUser, authUpdates));
-    }
-
-    // 2. User Doc Update (Sanitize data to ensure no undefined values)
-    const userUpdateData: Record<string, any> = {};
-    if (name) userUpdateData.name = name;
-    if (phone !== undefined) userUpdateData.phone = phone;
-    if (email !== undefined) userUpdateData.email = email;
-    if (panNumber !== undefined) userUpdateData.panNumber = panNumber;
-    if (accountType !== undefined) userUpdateData.accountType = accountType;
-    // Only include profilePicture if it is defined (avoid Firestore crash)
-    if (profilePicture !== undefined) userUpdateData.profilePicture = profilePicture;
-
-    if (Object.keys(userUpdateData).length > 0) {
-      promises.push(setDoc(userDocRef, userUpdateData, { merge: true }));
-    }
-
-    // 3. Business Info Update (Filter out undefined)
-    const cleanBusinessData = Object.fromEntries(
-      Object.entries(businessData).filter(([_, v]) => v !== undefined)
-    );
-
-    promises.push(setDoc(businessDocRef, {
-      ...cleanBusinessData,
-      ownerName: name,
-      updatedAt: serverTimestamp()
-    }, { merge: true }));
-
-    await Promise.all(promises);
+  const refetch = () => {
+    fetchProfileData(); // ✅ Now accessible
   };
 
-  return { profile, loading, error, saveData };
+const saveData = async (data: Partial<ProfileData>) => {
+  if (!userId || !companyId || !auth.currentUser) {
+    throw new Error("User or company is not authenticated.");
+  }
+
+  const { name, email, phone, profilePicture, panNumber, accountType, ...businessData } = data;
+
+  const userDocRef = doc(db, 'companies', companyId, 'users', userId);
+  const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
+
+  const promises = [];
+
+  const authUpdates: { displayName?: string; photoURL?: string } = {};
+  if (name && auth.currentUser.displayName !== name) authUpdates.displayName = name;
+  if (profilePicture && auth.currentUser.photoURL !== profilePicture) authUpdates.photoURL = profilePicture;
+
+  if (Object.keys(authUpdates).length > 0) {
+    promises.push(updateProfile(auth.currentUser, authUpdates));
+  }
+
+  // 2. User Doc Update (Sanitize data to ensure no undefined values)
+  const userUpdateData: Record<string, any> = {};
+  if (name) userUpdateData.name = name;
+  if (phone !== undefined) userUpdateData.phone = phone;
+  if (email !== undefined) userUpdateData.email = email;
+  if (panNumber !== undefined) userUpdateData.panNumber = panNumber;
+  if (accountType !== undefined) userUpdateData.accountType = accountType;
+  // Only include profilePicture if it is defined (avoid Firestore crash)
+  if (profilePicture !== undefined) userUpdateData.profilePicture = profilePicture;
+
+  if (Object.keys(userUpdateData).length > 0) {
+    promises.push(setDoc(userDocRef, userUpdateData, { merge: true }));
+  }
+
+  // 3. Business Info Update (Filter out undefined)
+  const cleanBusinessData = Object.fromEntries(
+    Object.entries(businessData).filter(([_, v]) => v !== undefined)
+  );
+
+  promises.push(setDoc(businessDocRef, {
+    ...cleanBusinessData,
+    ownerName: name,
+    updatedAt: serverTimestamp()
+  }, { merge: true }));
+
+  await Promise.all(promises);
+};
+
+return { profile, loading, error, saveData, refetch };
 };
 
 // ─── SectionCard ───────────────────────────────────────────────────────────
@@ -223,7 +270,7 @@ const LabeledField: React.FC<{
 const EditProfilePage: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
-  const { profile, loading: dataLoading, error: dataError, saveData } = useProfileData(currentUser?.uid, currentUser?.companyId);
+  const { profile, loading: dataLoading, error: dataError, saveData, refetch } = useProfileData(currentUser?.uid, currentUser?.companyId);
 
   const [formData, setFormData] = useState<Partial<ProfileData>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -240,24 +287,23 @@ const EditProfilePage: React.FC = () => {
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
+  const freshUploadRef = useRef<{ profilePicture?: string; companyLogo?: string }>({});
+
   useEffect(() => {
     setFormData(profile);
-    if (profile.profilePicture) {
+    // Only use profile's URLs if we don't have a freshly uploaded one
+    if (profile.profilePicture && !imageFile && !freshUploadRef.current.profilePicture) {
       setPreviewUrl(profile.profilePicture);
+    } else if (freshUploadRef.current.profilePicture) {
+      setPreviewUrl(freshUploadRef.current.profilePicture);
     }
-    if (profile.companyLogo) {
+    if (profile.companyLogo && !logoFile && !freshUploadRef.current.companyLogo) {
       setLogoPreviewUrl(profile.companyLogo);
+    } else if (freshUploadRef.current.companyLogo) {
+      setLogoPreviewUrl(freshUploadRef.current.companyLogo);
     }
   }, [profile]);
 
-  useEffect(() => {
-    if (!logoPreviewUrl && formData.companyLogo) {
-      setLogoPreviewUrl(formData.companyLogo);
-    }
-    if (!previewUrl && formData.profilePicture) {
-      setPreviewUrl(formData.profilePicture);
-    }
-  }, [formData]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -327,7 +373,6 @@ const EditProfilePage: React.FC = () => {
     }
 
     setIsSubmitting(true);
-    setIsSubmitting(true);
 
     try {
       let finalPhotoUrl = formData.profilePicture;
@@ -349,14 +394,24 @@ const EditProfilePage: React.FC = () => {
       }
       let finalLogoUrl = formData.companyLogo;
       if (logoFile && currentUser?.companyId) {
-        const logoPath = `companies/${currentUser.companyId}/branding/company_logo.jpg`;
+        invalidateLogoCache(currentUser.companyId);
+        const logoPath = `companies/${currentUser.companyId}/branding/company_logo.png`;
         const logoRef = ref(storage, logoPath);
-        const compressedLogo = await compressImage(logoFile);
+        const compressedLogo = await compressLogo(logoFile);
         await uploadBytes(logoRef, compressedLogo);
         finalLogoUrl = await getDownloadURL(logoRef);
+        logoCache[currentUser.companyId] = finalLogoUrl;
       }
 
       await saveData({ ...formData, profilePicture: finalPhotoUrl, companyLogo: finalLogoUrl });
+      refetch(); // Refresh data after save to ensure we have the latest from Firestore
+      setFormData(prev => ({ ...prev, profilePicture: finalPhotoUrl, companyLogo: finalLogoUrl }));
+      if (finalPhotoUrl) freshUploadRef.current.profilePicture = finalPhotoUrl;
+      if (finalLogoUrl) freshUploadRef.current.companyLogo = finalLogoUrl;
+      setLogoFile(null);
+      setImageFile(null);
+      if (finalLogoUrl) setLogoPreviewUrl(finalLogoUrl);
+      if (finalPhotoUrl) setPreviewUrl(finalPhotoUrl);
 
       setSubmitSuccess("Profile updated successfully!");
       setTimeout(() => setSubmitSuccess(null), 3000);
@@ -394,7 +449,6 @@ const EditProfilePage: React.FC = () => {
     : isSubmitting
       ? 'bg-sky-200'
       : 'bg-gradient-to-br from-sky-400 to-sky-600 shadow-sky-200/60';
-
   return (
     <div className="min-h-screen bg-slate-100">
       <div className="max-w-4xl mx-auto px-4 py-5 pb-24">
@@ -479,7 +533,7 @@ const EditProfilePage: React.FC = () => {
                   type="file"
                   accept="image/png, image/jpeg, image/jpg, image/svg+xml"
                   className="hidden"
-                  aria-label="Upload company logo" 
+                  aria-label="Upload company logo"
                   onChange={handleLogoChange}
                 />
               </div>

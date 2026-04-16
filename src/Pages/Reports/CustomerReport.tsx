@@ -14,6 +14,8 @@ import FilterSelect from './SalesReportComponents/FilterSelect';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { type CustomerRow } from './CustomerReportComponents/customerReport.utils';
 import useCustomerReport from './CustomerReportComponents/useCustomerReport';
+import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import { useAuth } from '../../context/auth-context';
 
 const CustomerReport: React.FC = () => {
   const {
@@ -160,9 +162,31 @@ const CustomerReport: React.FC = () => {
     }
   };
 
-  const downloadAsPdf = () => {
+  const downloadAsPdf = async () => {
     try {
       const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+
+      // Embed company logo
+    try {
+      const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
+      if (base64Logo) {
+        const img = new Image();
+        img.src = base64Logo;
+        await new Promise<void>((resolve) => {
+          img.onload = () => {
+            const logoWidth = 20;
+            const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
+            const logoX = pageWidth - logoWidth - 14;
+            doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
+            resolve();
+          };
+          img.onerror = () => resolve();
+        });
+      }
+    } catch {
+      // Continue without logo
+    }
 
       // ===== CLEAN GENERATION TAG =====
       const now = new Date();

@@ -290,16 +290,23 @@ const ItemAdd: React.FC = () => {
         const workbook = XLSX.read(data, { type: 'array' });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
-        const rawJson: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+        const rawJson: any[] = XLSX.utils.sheet_to_json(worksheet, {
+          defval: null,
+          range: 9
+        });
+console.log('Raw headers (first row):', Object.keys(rawJson[0]));
+console.log('First data row:', rawJson[1]);
+        // Skip the notes/hints row (row index 0 after range:9 = your notes row)
+        const dataJson = rawJson.slice(1); // skip first row which is the notes row
 
-        if (rawJson.length === 0) throw new Error("File empty.");
+        if (dataJson.length === 0) throw new Error("File empty.");
 
         let processedCount = 0;
         let createdCount = 0;
         let updatedCount = 0;
         let failedCount = 0;
 
-        const totalItems = rawJson.length;
+        const totalItems = dataJson.length;
         setUploadProgress({ current: 0, total: totalItems });
 
         // --- PREP CATEGORIES ---
@@ -308,18 +315,18 @@ const ItemAdd: React.FC = () => {
         currentGroups.forEach(g => groupMap.set(g.name.toLowerCase().trim(), g.id!));
 
         // --- PREP SEQUENTIAL BARCODES ---
-        const itemsNeedingBarcode = rawJson.filter((row: any) => !row.barcode && !row.Barcode).length;
+        const itemsNeedingBarcode = dataJson.filter((row: any) => !row.barcode && !row.Barcode).length;
         let nextSeqNumber = 0;
 
         if (itemsNeedingBarcode > 0) {
           nextSeqNumber = await reserveSequenceBlock(itemsNeedingBarcode);
         }
 
-        for (let i = 0; i < rawJson.length; i++) {
+        for (let i = 0; i < dataJson.length; i++) {
           await new Promise(resolve => setTimeout(resolve, 0));
           setUploadProgress({ current: i + 1, total: totalItems });
 
-          const rawRow = rawJson[i];
+          const rawRow = dataJson[i];
           const row: any = {};
 
           Object.keys(rawRow).forEach(k => {
@@ -354,7 +361,7 @@ const ItemAdd: React.FC = () => {
           }
 
           // --- BULK VALIDATION LOGIC ---
-          if (!row.name) {
+          if (!row.itemname) {
             failedCount++;
             continue;
           }
@@ -368,7 +375,7 @@ const ItemAdd: React.FC = () => {
             continue;
           }
 
-          let rowSaleDiscount = parseFloat(String(row.discount ?? row.salediscount ?? row.salesdiscount ?? row.saledisc ?? 0));
+          let rowSaleDiscount = parseFloat(String(row.salediscount ?? row.salediscount ?? row.salesdiscount ?? row.saledisc ?? 0));
           if (rowMRP > 0 && rowSale > 0) {
             rowSaleDiscount = 0;
           }
@@ -391,7 +398,7 @@ const ItemAdd: React.FC = () => {
             }
 
             const itemData: any = {
-              name: String(row.name).trim(),
+              name: String(row.itemname).trim(),
               mrp: rowMRP,
               salesPrice: rowSale,
               purchasePrice: rowPurchase,
@@ -456,37 +463,250 @@ const ItemAdd: React.FC = () => {
   };
 
   const handleDownloadSample = () => {
-    const sampleData = [
-      {
-        name: 'Sample Item',
-        mrp: 100,
-        salesPrice: 95,
-        purchasePrice: 80,
-        'Sale Discount': 0,
-        purchasediscount: 0,
-        tax: 0,
-        hsnCode: '080810',
-        itemGroupId: 'Sample Category',
-        stock: 50,
-        barcode: '1001',
-        restockQuantity: 10,
-      },
-    ];
-    const ws = XLSX.utils.json_to_sheet(sampleData);
-    const mandatoryCols = [0, 10];
-    mandatoryCols.forEach((colIndex) => {
-      const cellAddress = XLSX.utils.encode_col(colIndex) + "1";
-      if (ws[cellAddress]) {
-        ws[cellAddress].s = {
-          font: { bold: true, color: { rgb: "FF0000" } },
-          fill: { fgColor: { rgb: "FEE2E2" } },
-          alignment: { horizontal: "center" }
-        };
-      }
+
+    // ── Style helpers ─────────────────────────────────────────────────────────
+    const s = (font: any, fill?: any, alignment?: any, border?: any) => ({
+      font: { name: 'Arial', ...font },
+      fill: fill ?? {},
+      alignment: alignment ?? { horizontal: 'center', vertical: 'center', wrapText: true },
+      border: border ?? {},
     });
+
+    const solidFill = (rgb: string) => ({ patternType: 'solid', fgColor: { rgb } });
+
+    const thinBorder = (sides: ('top' | 'bottom' | 'left' | 'right')[]) => {
+      const b: any = {};
+      sides.forEach(side => { b[side] = { style: 'thin', color: { rgb: 'CBD5E1' } }; });
+      return b;
+    };
+
+    const allBorders = thinBorder(['top', 'bottom', 'left', 'right']);
+    const bblr = thinBorder(['bottom', 'left', 'right']);
+
+    // ── Column definitions ────────────────────────────────────────────────────
+    // type: R=Required  O=Optional  A=Auto-generated  L=Lookup
+    const COLS = [
+      { header: '★ Item Name', note: 'Full product name  e.g. Amul Butter 500g', type: 'R', width: 24, field: 'name' },
+      { header: '◆ Barcode', note: 'Leave blank → auto-generated', type: 'A', width: 16, field: 'barcode' },
+      { header: '● MRP', note: 'Max Retail Price (₹)  Required if Sale Price blank', type: 'O', width: 13, field: 'mrp' },
+      { header: '★ Sales Price', note: 'Selling price (₹)  Required if MRP blank', type: 'R', width: 14, field: 'salesPrice' },
+      { header: '● Purchase Price', note: 'Your cost price (₹)', type: 'O', width: 17, field: 'purchasePrice' },
+      { header: '● Sale Disc (%)', note: 'Default customer discount  e.g. 5', type: 'O', width: 14, field: 'Sale Discount' },
+      { header: '● Purchase Disc (%)', note: 'Supplier discount  e.g. 3', type: 'O', width: 16, field: 'purchasediscount' },
+      { header: '● Tax (%)', note: 'GST/VAT rate  e.g. 18', type: 'O', width: 10, field: 'tax' },
+      { header: '● HSN Code', note: '6-digit HSN / SAC code', type: 'O', width: 13, field: 'hsnCode' },
+      { header: '▲ Category', note: 'Group name – new category auto-created', type: 'L', width: 18, field: 'itemGroupId' },
+      { header: '● Stock', note: 'Opening stock quantity', type: 'O', width: 10, field: 'stock' },
+      { header: '● Restock Level', note: 'Alert when stock falls below this', type: 'O', width: 15, field: 'restockQuantity' },
+    ];
+
+    // type → { bg, textRgb }
+    const TYPE_STYLE: Record<string, { bg: string; txt: string }> = {
+      R: { bg: 'FEE2E2', txt: 'DC2626' },   // red  – required
+      O: { bg: 'DCFCE7', txt: '15803D' },   // green – optional
+      A: { bg: 'FEFCE8', txt: '92400E' },   // yellow – auto
+      L: { bg: 'E0F2FE', txt: '0369A1' },   // sky – lookup
+    };
+
+    // ── Build worksheet data (row arrays) ────────────────────────────────────
+    // We'll use aoa_to_sheet and then apply cell styles manually.
+
+    const colCount = COLS.length;
+
+    // Row layout (0-based):
+    // R0 = branding banner  R1 = subtitle  R2 = spacer
+    // R3 = LEGEND title     R4-R7 = legend items  R8 = spacer
+    // R9 = column headers   R10 = hint notes
+    // R11-R12 = sample data
+
+    const legendRows = [
+      { bg: 'FEE2E2', txt: 'DC2626', marker: '★  Required', desc: 'Must be filled in – item will be skipped if missing' },
+      { bg: 'DCFCE7', txt: '15803D', marker: '●  Optional', desc: 'Improves data quality; leave blank if not applicable' },
+      { bg: 'FEFCE8', txt: '92400E', marker: '◆  Auto-fill', desc: 'Leave blank → Sellar generates a sequential barcode' },
+      { bg: 'E0F2FE', txt: '0369A1', marker: '▲  Lookup', desc: 'Accepts text name; new categories created automatically' },
+    ];
+
+    // Barcode col (index 1):
+    //   Row 1 → blank string → Sellar assigns next sequential number (e.g. 1001)
+    //   Row 2 → explicit '1002' → user-supplied barcode
+    const sampleRows = [
+      ['Amul Butter 500g', '', 250, 240, 190, 0, 2, 5, '0402', 'Dairy', 50, 10],
+      ['Parle-G Biscuit', '1002', 10, 10, 7, 0, 0, 0, '', 'Snacks', 200, 20],
+    ];
+
+    // Build AOA (array of arrays) – just enough rows
+    const totalRows = 13;
+    const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
+
+    // R0: branding
+    aoa[0][0] = 'SELLAR  ·  Bulk Item Import Template';
+
+    // R1: subtitle
+    aoa[1][0] = 'Fill in the rows below and upload this file in Sellar → Items → Bulk Import.  Do NOT rename column headers.';
+
+    // R2: blank
+
+    // R3: legend title
+    aoa[3][0] = 'LEGEND';
+
+    // R4-R7: legend marker column A, description column B
+    legendRows.forEach((l, i) => {
+      aoa[4 + i][0] = l.marker;
+      aoa[4 + i][1] = l.desc;
+    });
+
+    // R8: blank
+
+    // R9: column headers
+    COLS.forEach((c, i) => { aoa[9][i] = c.header; });
+
+    // R10: notes
+    COLS.forEach((c, i) => { aoa[10][i] = c.note; });
+
+    // R11-R12: sample data
+    sampleRows.forEach((row, ri) => {
+      row.forEach((val, ci) => { aoa[11 + ri][ci] = val; });
+    });
+
+    // ── Create worksheet ──────────────────────────────────────────────────────
+    const ws: any = XLSX.utils.aoa_to_sheet(aoa);
+
+    // Set column widths
+    ws['!cols'] = COLS.map(c => ({ wch: c.width }));
+
+    // Set row heights (in points, xlsx-js-style uses hpt)
+    ws['!rows'] = [
+      { hpt: 34 },  // R0 banner
+      { hpt: 24 },  // R1 subtitle
+      { hpt: 8 },  // R2 spacer
+      { hpt: 20 },  // R3 legend title
+      { hpt: 18 },  // R4
+      { hpt: 18 },  // R5
+      { hpt: 18 },  // R6
+      { hpt: 18 },  // R7
+      { hpt: 8 },  // R8 spacer
+      { hpt: 30 },  // R9 headers
+      { hpt: 22 },  // R10 notes
+      { hpt: 18 },  // R11 sample1
+      { hpt: 18 },  // R12 sample2
+    ];
+
+    // ── Merges ────────────────────────────────────────────────────────────────
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },  // R0  banner
+      { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },  // R1  subtitle
+      { s: { r: 3, c: 0 }, e: { r: 3, c: colCount - 1 } },  // R3  LEGEND title
+      // Legend rows: col A = label (1 col), col B-D = description (merge 3 cols)
+      ...legendRows.map((_, i) => ({
+        s: { r: 4 + i, c: 1 }, e: { r: 4 + i, c: 3 }
+      })),
+    ];
+
+    // ── Helper: apply style to a cell address ────────────────────────────────
+    const style = (addr: string, st: any) => {
+      if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+      ws[addr].s = st;
+    };
+
+    // ── R0  Banner ────────────────────────────────────────────────────────────
+    style('A1', s(
+      { sz: 15, bold: true, color: { rgb: 'FFFFFF' } },
+      solidFill('0369A1'),
+      { horizontal: 'center', vertical: 'center' }
+    ));
+
+    // ── R1  Subtitle ──────────────────────────────────────────────────────────
+    style('A2', s(
+      { sz: 9, italic: true, color: { rgb: '475569' } },
+      solidFill('DBEAFE'),
+      { horizontal: 'center', vertical: 'center', wrapText: true }
+    ));
+
+    // ── R3  Legend title ──────────────────────────────────────────────────────
+    style('A4', s(
+      { sz: 10, bold: true, color: { rgb: '0369A1' } },
+      solidFill('E0F2FE'),
+      { horizontal: 'left', vertical: 'center' },
+      allBorders
+    ));
+
+    // ── R4-R7  Legend rows ────────────────────────────────────────────────────
+    legendRows.forEach((l, i) => {
+      const row = 5 + i;   // excel row (1-based)
+      style(`A${row}`, s(
+        { sz: 9, bold: true, color: { rgb: l.txt } },
+        solidFill(l.bg),
+        { horizontal: 'left', vertical: 'center' },
+        bblr
+      ));
+      style(`B${row}`, s(
+        { sz: 9, color: { rgb: '334155' } },
+        solidFill(l.bg),
+        { horizontal: 'left', vertical: 'center' },
+        bblr
+      ));
+      // Fill merged cells C-D same bg
+      ['C', 'D'].forEach(col => {
+        const addr = `${col}${row}`;
+        if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+        ws[addr].s = s({ sz: 9 }, solidFill(l.bg), {}, bblr);
+      });
+    });
+
+    // ── R9  Column headers ────────────────────────────────────────────────────
+    COLS.forEach((c, i) => {
+      const { bg, txt } = TYPE_STYLE[c.type];
+      const addr = XLSX.utils.encode_cell({ r: 9, c: i });
+      style(addr, s(
+        { sz: 9, bold: true, color: { rgb: txt } },
+        solidFill(bg),
+        { horizontal: 'center', vertical: 'center', wrapText: true },
+        allBorders
+      ));
+    });
+
+    // ── R10  Notes row ────────────────────────────────────────────────────────
+    COLS.forEach((_c, i) => {
+      const addr = XLSX.utils.encode_cell({ r: 10, c: i });
+      style(addr, s(
+        { sz: 7, italic: true, color: { rgb: '64748B' } },
+        solidFill('F8FAFC'),
+        { horizontal: 'center', vertical: 'center', wrapText: true },
+        bblr
+      ));
+    });
+
+    // ── R11-R12  Sample data rows ─────────────────────────────────────────────
+    // Barcode cell in row 1 is intentionally empty – show a placeholder hint via cell value
+    const BARCODE_COL = 1;
+    sampleRows.forEach((row, ri) => {
+      const altBg = ri % 2 === 1 ? 'F1F5F9' : 'FFFFFF';
+      // For row 0 barcode cell: inject a visual hint that won't break import
+      if (ri === 0) {
+        const bAddr = XLSX.utils.encode_cell({ r: 11, c: BARCODE_COL });
+        ws[bAddr] = { t: 's', v: '' };
+        ws[bAddr].s = s(
+          { sz: 8, italic: true, color: { rgb: '94A3B8' } },
+          solidFill(altBg),
+          { horizontal: 'center', vertical: 'center' },
+          bblr
+        );
+      }
+      row.forEach((_val, ci) => {
+        const addr = XLSX.utils.encode_cell({ r: 11 + ri, c: ci });
+        style(addr, s(
+          { sz: 9, color: { rgb: '1E293B' } },
+          solidFill(altBg),
+          { horizontal: 'center', vertical: 'center' },
+          bblr
+        ));
+      });
+    });
+
+    // ── Write workbook ────────────────────────────────────────────────────────
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Items');
-    XLSX.writeFile(wb, 'Sellar_Items_Sample.xlsx');
+    XLSX.writeFile(wb, 'Sellar_Items_Import_Template.xlsx');
   };
 
   const reqClasses = " after:content-['*'] after:ml-0.5 after:text-red-500";

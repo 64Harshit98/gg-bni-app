@@ -19,6 +19,7 @@ import { IconClose } from '../../constants/Icons';
 import ReportDetails from './SalesReportComponents/ReportDetails';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
+import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 
 // 1. Define the strictly 4-column structure
 export interface AggregatedItem {
@@ -240,10 +241,31 @@ const ItemsSoldReport: React.FC = () => {
     ], []);
 
     /* ---------- PDF DOWNLOAD ---------- */
-    const downloadAsPdf = () => {
+    const downloadAsPdf = async () => {
         if (!appliedFilters) return;
 
         const doc = new jsPDF();
+         const pageWidth = doc.internal.pageSize.getWidth();
+
+         try {
+    const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
+    if (base64Logo) {
+      const img = new Image();
+      img.src = base64Logo;
+      await new Promise<void>((resolve) => {
+        img.onload = () => {
+          const logoWidth = 20;
+          const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
+          const logoX = pageWidth - logoWidth - 14;
+          doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
+          resolve();
+        };
+        img.onerror = () => resolve();
+      });
+    }
+  } catch {
+    // Continue without logo
+  }
 
         // ===== CLEAN GENERATION TAG =====
         const now = new Date();

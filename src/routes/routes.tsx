@@ -129,11 +129,11 @@ const router = createBrowserRouter([
     children: subdomain
       ? [
         { index: true, element: <Catalogue />, handle: { isPublic: true } },
-        { path: 'product/:groupId', element: <SharedProduct />, handle: { isPublic: true } },
+        { path: ':groupId', element: <SharedProduct />, handle: { isPublic: true } },
         { path: 'checkout', element: <CartPage />, handle: { isPublic: true } },
       ]
       : [
-        { path: 'product/:companyId/:groupId', element: <SharedProduct />, handle: { isPublic: true } },
+        { path: ':companyId/:groupId', element: <SharedProduct />, handle: { isPublic: true } },
         { path: 'catalogue/:companyId', element: <Catalogue />, handle: { isPublic: true } },
         { path: 'checkout/:companyId', element: <CartPage />, handle: { isPublic: true } },
       ]

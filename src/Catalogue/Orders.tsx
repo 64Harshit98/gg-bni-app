@@ -331,7 +331,7 @@ const OrdersPage: React.FC = () => {
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
     const [isUpdatingStatus, setIsUpdatingStatus] = useState<string | null>(null);
     const [selectedOrderForAction, setSelectedOrderForAction] = useState<Order | null>(null);
-    const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+    // const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
     const [pdfLoadingOrderId, setPdfLoadingOrderId] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'billing' | 'shipping'>('billing');
     const [paymentFilter, setPaymentFilter] = useState<'paid' | 'unpaid'>('unpaid');
@@ -881,6 +881,8 @@ const OrdersPage: React.FC = () => {
         setSelectedItemForEdit(null);
     };
 
+    //  const handleShareBill = async (Order: Order) => {
+    //      setIsGeneratingPdf(true);
     const handleShareBill = async (Order: Order) => {
         setIsGeneratingPdf(true);
 
@@ -903,77 +905,77 @@ const OrdersPage: React.FC = () => {
                     const mrp = item.mrp || 0;
                     const salePrice = item.salesPrice || item.mrp || 0;
 
-                    return {
-                        sno: index + 1,
-                        name: item.name,
-                        qty: item.quantity,
-                        unitMultiplier: item.unitMultiplier ?? 1,
-                        mrp: mrp,
-                        price: salePrice,
-                        total: salePrice * item.quantity,
-                        imageBase64: item.imageBase64,
-                    };
-                }),
-                grandTotal: Order.totalAmount,
-            };
+    //                 return {
+    //                     sno: index + 1,
+    //                     name: item.name,
+    //                     qty: item.quantity,
+    //                     unitMultiplier: item.unitMultiplier ?? 1,
+    //                     mrp: mrp,
+    //                     price: salePrice,
+    //                     total: salePrice * item.quantity,
+    //                     imageBase64: item.imageBase64,
+    //                 };
+    //             }),
+    //             grandTotal: Order.totalAmount,
+    //         };
 
-            //  FIX: Bill type ke basis par Estimate ya Bill generate hoga
-            const preparedData = await prepareCatalogueBillData({
-                ...rawBillData,
-                isEstimate: billType === "estimate",
-            });
+    //         //  FIX: Bill type ke basis par Estimate ya Bill generate hoga
+    //         const preparedData = await prepareCatalogueBillData({
+    //             ...rawBillData,
+    //             isEstimate: billType === "estimate",
+    //         });
 
-            // Generate PDF as Blob
-            const pdfBlob = await CatalogueBill(preparedData, "blob");
-            if (!pdfBlob) throw new Error("PDF generation failed");
+    //         // Generate PDF as Blob
+    //         const pdfBlob = await CatalogueBill(preparedData, "blob");
+    //         if (!pdfBlob) throw new Error("PDF generation failed");
 
-            const fileName =
-                billType === "estimate"
-                    ? `Estimate_${Order.orderId}.pdf`
-                    : `Invoice_${Order.orderId}.pdf`;
+    //         const fileName =
+    //             billType === "estimate"
+    //                 ? `Estimate_${Order.orderId}.pdf`
+    //                 : `Invoice_${Order.orderId}.pdf`;
 
-            const file = new File([pdfBlob], fileName, {
-                type: "application/pdf",
-            });
+    //         const file = new File([pdfBlob], fileName, {
+    //             type: "application/pdf",
+    //         });
 
-            const title =
-                billType === "estimate"
-                    ? `Estimate #${Order.orderId}`
-                    : `Invoice #${Order.orderId}`;
+    //         const title =
+    //             billType === "estimate"
+    //                 ? `Estimate #${Order.orderId}`
+    //                 : `Invoice #${Order.orderId}`;
 
-            const text =
-                billType === "estimate"
-                    ? `Hi ${Order.userName}, your estimate is ready.`
-                    : `Hi ${Order.userName}, your invoice is ready.`;
+    //         const text =
+    //             billType === "estimate"
+    //                 ? `Hi ${Order.userName}, your estimate is ready.`
+    //                 : `Hi ${Order.userName}, your invoice is ready.`;
 
-            // Native Share
-            if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                await navigator.share({
-                    files: [file],
-                    title,
-                    text,
-                });
-            } else {
-                // WhatsApp fallback
-                const billUrl = `${window.location.origin}/download-bill/${currentUser?.companyId}/${Order.id}`;
+    //         // Native Share
+    //         if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    //             await navigator.share({
+    //                 files: [file],
+    //                 title,
+    //                 text,
+    //             });
+    //         } else {
+    //             // WhatsApp fallback
+    //             const billUrl = `${window.location.origin}/download-bill/${currentUser?.companyId}/${Order.id}`;
 
-                const message =
-                    `*${billType === "estimate" ? "Estimate" : "Invoice"} from ${companyInfo?.name}*%0A` +
-                    `Amount: ₹${Order.totalAmount}%0A` +
-                    `Download: ${billUrl}`;
+    //             const message =
+    //                 `*${billType === "estimate" ? "Estimate" : "Invoice"} from ${companyInfo?.name}*%0A` +
+    //                 `Amount: ₹${Order.totalAmount}%0A` +
+    //                 `Download: ${billUrl}`;
 
-                window.open(
-                    `https://wa.me/${Order.billingDetails?.phone?.replace(/\D/g, "")}?text=${message}`,
-                    "_blank"
-                );
-            }
-        } catch (err) {
-            console.error("Sharing error:", err);
-            alert("Sharing failed. Please use Download option.");
-        } finally {
-            setIsGeneratingPdf(false);
-        }
-    };
+    //             window.open(
+    //                 `https://wa.me/${Order.billingDetails?.phone?.replace(/\D/g, "")}?text=${message}`,
+    //                 "_blank"
+    //             );
+    //         }
+    //     } catch (err) {
+    //         console.error("Sharing error:", err);
+    //         alert("Sharing failed. Please use Download option.");
+    //     } finally {
+    //         setIsGeneratingPdf(false);
+    //     }
+    // };
 
     const statusCounts = useMemo(() => {
         return OrderStatuses.reduce((acc, status) => {

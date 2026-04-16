@@ -11,6 +11,7 @@ import SearchBar from './SearchBar.tsx';
 // import LeadPopUp from './PopUp.tsx';
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../lib/Firebase";
+import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting';
 
 const SharedCataloguePage: React.FC = () => {
     const { companyId: pathId, } = useParams<{ companyId: string }>();
@@ -59,6 +60,8 @@ const SharedCataloguePage: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [sortOrder, setSortOrder] = useState<'A-Z' | 'Z-A'>('A-Z');
     const [isSortOpen, setIsSortOpen] = useState(false);
+    const [isSearchSticky, setIsSearchSticky] = useState(false);
+    const [catalogueSettings, setCatalogueSettings] = useState<CatalogueSalesSettings | null>(null);
     const liveItems = useMemo(() => {
         return allItems.filter(item =>
             item.isListed &&
@@ -75,6 +78,22 @@ const SharedCataloguePage: React.FC = () => {
             return acc + price * curr.quantity;
         }, 0);
     }, [cart]);
+
+    useEffect(() => {
+        const handleScroll = () => {
+            // Header ki approximate height
+            const stickyTriggerPoint = 110;
+
+            if (window.scrollY > stickyTriggerPoint) {
+                setIsSearchSticky(true);
+            } else {
+                setIsSearchSticky(false);
+            }
+        };
+
+        window.addEventListener("scroll", handleScroll);
+        return () => window.removeEventListener("scroll", handleScroll);
+    }, []);
 
     useEffect(() => {
         if (!effectiveCompanyId) {
@@ -106,6 +125,23 @@ const SharedCataloguePage: React.FC = () => {
 
                 if (businessSnap.exists()) {
                     setSocialLinks(businessSnap.data());
+                }
+
+                // FETCH CATALOGUE SALES SETTINGS
+                const settingsRef = doc(
+                    db,
+                    "companies",
+                    effectiveCompanyId,
+                    "settings",
+                    "catalogue-sales-settings"
+                );
+
+                const settingsSnap = await getDoc(settingsRef);
+
+                if (settingsSnap.exists()) {
+                    setCatalogueSettings(
+                        settingsSnap.data() as CatalogueSalesSettings
+                    );
                 }
             } catch (err: any) {
                 setError(err.message || 'Failed to load catalogue.');
@@ -261,24 +297,28 @@ const SharedCataloguePage: React.FC = () => {
                 <div className='flex items-center justify-center mt-1'>
                     <h1 className="text-lg md:text-xl font-extrabold text-[#F97316] uppercase tracking-tighter">Categories</h1>
                 </div>
-                <div className="relative group max-w-md mx-auto w-full">
-                    <SearchBar
-                        items={liveItems}
-                        itemGroups={itemGroups}
-                        hideUncategorized={true}
-                        onItemSelected={(item: any) => {
-                            setSearchQuery(item.name);
-                            const group = itemGroups.find(g => g.id === item.itemGroupId);
-                            const slug = group ? generateSlug(group.name) : item.itemGroupId;
 
-                            navigate(
-                                `/product/${effectiveCompanyId}/${slug}`,
-                                { state: { highlightItemId: item.id } }
-                            );
-                        }}
-                    />
+                <div
+                    className={`flex justify-center transition-all duration-300 ${isSearchSticky ? "sticky top-[60px] z-50" : "relative"}`}>
+                    <div className="relative group max-w-md mx-auto w-full">
+                        <SearchBar
+                            items={liveItems}
+                            itemGroups={itemGroups}
+                            hideUncategorized={true}
+                            hideOutOfStock={catalogueSettings?.hideOutOfStock ?? false}
+                            onItemSelected={(item: any) => {
+                                setSearchQuery(item.name);
+                                const group = itemGroups.find(g => g.id === item.itemGroupId);
+                                const slug = group ? generateSlug(group.name) : item.itemGroupId;
+
+                                navigate(
+                                    `/${effectiveCompanyId}/${slug}`,
+                                    { state: { highlightItemId: item.id } }
+                                );
+                            }}
+                        />
+                    </div>
                 </div>
-
                 <div className="max-w-7xl mx-auto px-1 flex items-center justify-between relative">
                     <div className="flex items-center gap-2">
                         <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">
@@ -328,7 +368,7 @@ const SharedCataloguePage: React.FC = () => {
                                 key={group.id}
                                 onClick={() => {
                                     const slug = generateSlug(group.name);
-                                    navigate(`/product/${effectiveCompanyId}/${slug}`);
+                                    navigate(`/${effectiveCompanyId}/${slug}`);
                                 }}
                                 className="bg-white rounded-sm overflow-hidden shadow-sm border border-gray-100 flex flex-col transition-all group cursor-pointer active:scale-95"
                             >

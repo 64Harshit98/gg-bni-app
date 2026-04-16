@@ -112,7 +112,6 @@ const toCurrency = (num: number) => {
 
 
 const Sales: React.FC = () => {
-    throw new Error('Manual test error from Sales.tsx');
     const navigate = useNavigate();
     const location = useLocation();
     const { currentUser, loading: authLoading, hasPermission } = useAuth();

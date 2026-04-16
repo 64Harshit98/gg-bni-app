@@ -1107,17 +1107,17 @@ const Journal: React.FC = () => {
                   {invoice.status === 'Unpaid' && (<button onClick={(e) => { e.stopPropagation(); openPaymentModal(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-emerald-500 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors">Settle</button>)}
                   {invoice.status === 'Paid' && (<button onClick={(e) => { e.stopPropagation(); promptDeleteInvoice(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors">Delete</button>)}
                   <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-                    <button onClick={(e) => { e.stopPropagation(); handleEditInvoice(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-gray-400 rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors">Edit</button>
+                    <button onClick={(e) => { e.stopPropagation(); handleEditInvoice(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-gray-400 rounded-sm hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors">Edit</button>
                   </ShowWrapper>
 
                   {invoice.type === 'Credit' && (
                     <>
                       <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-                        <button onClick={(e) => { e.stopPropagation(); handleSalesReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-sky-500 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">Return</button>
+                        <button onClick={(e) => { e.stopPropagation(); handleSalesReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-sky-500 rounded-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">Return</button>
                         <button
                           onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }}
                           disabled={pdfGenerating === invoice.id}
-                          className="px-4 py-2 text-sm font-medium text-white bg-black rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-4 py-2 text-sm font-medium text-white bg-black rounded-sm hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {pdfGenerating === invoice.id ? <Spinner /> : 'Print'}
                         </button>
@@ -1128,8 +1128,8 @@ const Journal: React.FC = () => {
                   {invoice.type === 'Debit' && (
                     <>
                       <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-                        <button onClick={(e) => { e.stopPropagation(); handlePurchaseReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-sky-500 rounded-lg hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-colors">Return</button>
-                        <button onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-black rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center gap-2">Print</button>
+                        <button onClick={(e) => { e.stopPropagation(); handlePurchaseReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-sky-500 rounded-sm hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-colors">Return</button>
+                        <button onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-black rounded-sm hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center gap-2">Print</button>
                       </ShowWrapper>
                     </>
                   )}
@@ -1151,7 +1151,7 @@ const Journal: React.FC = () => {
       {/* ACTION SELECTION MODAL */}
       {invoiceToPrint && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setInvoiceToPrint(null)}>
-          <div className="bg-white rounded-lg p-6 w-full max-w-sm mx-4 shadow-xl animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-sm p-6 w-full max-w-sm mx-4 shadow-xl animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-gray-800">Select Action</h3>
               <button onClick={() => setInvoiceToPrint(null)} className="text-gray-500 hover:text-gray-700">
@@ -1184,7 +1184,7 @@ const Journal: React.FC = () => {
                       isEstimate: billType === 'estimate'
                     } as any)}
                     disabled={sendingPdf}
-                    className="w-full bg-green-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                    className="w-full bg-green-600 text-white py-2.5 px-4 rounded-sm font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
                   </button>
@@ -1206,13 +1206,13 @@ const Journal: React.FC = () => {
                   >
                     <IconPrint /> Print Directly
                   </button>
-                  <button onClick={() => handleShowQr(invoiceToPrint)} className="w-full bg-gray-900 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2">
+                  <button onClick={() => handleShowQr(invoiceToPrint)} className="w-full bg-gray-900 text-white py-2.5 px-4 rounded-sm font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2">
                     <IconScanCircle width={20} height={20} /> Generate QR Code
                   </button>
                 </>
               ) : (
                 <>
-                  <button onClick={() => handlePdfAction(invoiceToPrint, ACTION.DOWNLOAD)} className="w-full bg-blue-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 bg-sky-500 text-gray-300" disabled>
+                  <button onClick={() => handlePdfAction(invoiceToPrint, ACTION.DOWNLOAD)} className="w-full text-white py-2.5 px-4 rounded-sm font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 bg-sky-500" disabled>
                     <IconDownload /> Download PDF
                   </button>
                   <button
@@ -1220,7 +1220,7 @@ const Journal: React.FC = () => {
                       handlePrintQr(invoiceToPrint);
                       setInvoiceToPrint(null);
                     }}
-                    className="w-full bg-gray-900 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
+                    className="w-full bg-gray-900 text-white py-2.5 px-4 rounded-sm font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
                   >
                     <IconPrint /> Print QR
                   </button>
@@ -1239,7 +1239,7 @@ const Journal: React.FC = () => {
             </button>
             <h3 className="text-xl font-bold text-gray-800 mb-1">Download Bill</h3>
             <p className="text-sm text-gray-500 mb-4">Invoice #{showQrModal.invoiceNumber}</p>
-            <div className="bg-white p-2 border-2 border-gray-100 rounded-lg shadow-inner mb-4">
+            <div className="bg-white p-2 border-2 border-gray-100 rounded-sm shadow-inner mb-4">
               <QRCode
                 value={`${window.location.origin}/download-bill/${currentUser?.companyId}/${showQrModal.id}`}
                 size={200}
@@ -1249,7 +1249,7 @@ const Journal: React.FC = () => {
             <p className="text-center text-sm text-gray-600 mb-4">Scan to download PDF</p>
             <button
               onClick={() => setShowQrModal(null)}
-              className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+              className="w-full bg-sky-500 text-white py-3 rounded-sm font-semibold hover:bg-blue-700 transition-colors"
             >
               Close
             </button>
@@ -1365,7 +1365,7 @@ const Journal: React.FC = () => {
             </TutorialStep>
 
             {showCustomPicker && (
-              <div className="absolute top-full bg-white shadow-xl border border-gray-200 rounded-lg p-4 z-50 min-w-[300px] flex flex-col gap-4 animate-in fade-in zoom-in duration-200 cursor-default">
+              <div className="absolute top-full bg-white shadow-xl border border-gray-200 rounded-sm p-4 z-50 min-w-[300px] flex flex-col gap-4 animate-in fade-in zoom-in duration-200 cursor-default">
                 <div className="grid grid-cols-2 gap-2">
                   <div className="flex flex-col">
                     <label className="text-center text-xs font-semibold text-gray-500 mb-1">From</label>

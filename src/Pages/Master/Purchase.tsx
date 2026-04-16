@@ -1520,7 +1520,7 @@ const PurchasePage: React.FC = () => {
       />
 
       {showPrintQrModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm bg-black/20">
           <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm mx-4">
             <h3 className="text-lg font-bold text-gray-800">Purchase Saved!</h3>
             <p className="my-4 text-gray-600">Print barcodes/QR codes for the items?</p>

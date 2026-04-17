@@ -95,6 +95,7 @@ const CatalogueCustomerReport: React.FC = () => {
       totalCustomers,
       totalBills,
       totalDue,
+      totalSales,
       averageSalePerCustomer,
     };
   }, [customerRows, filteredSales]);
@@ -171,6 +172,7 @@ const CatalogueCustomerReport: React.FC = () => {
 
       doc.setFontSize(16);
       doc.text('Customer Report', 14, 15);
+      const pageHeight = doc.internal.pageSize.getHeight();
 
       // ===== CLEAN GENERATION TAG =====
       const generatedAt = new Date().toLocaleString();
@@ -207,20 +209,118 @@ const CatalogueCustomerReport: React.FC = () => {
       doc.setTextColor(0, 0, 0);
       doc.setFont("helvetica", "bold");
 
+      // --- 1. BRAND ACCENT BAR ---
+      // Uses the #F97316 orange from your UI
+      doc.setFillColor(249, 115, 22); 
+      doc.rect(0, 0, pageWidth, 6, 'F');
+
+      // --- 2. HEADER SECTION ---
+      doc.setFontSize(22);
+      doc.setTextColor(17, 24, 39); // gray-900
+      doc.setFont('helvetica', 'bold');
+      doc.text('Customer Report', 14, 24);
+
+      // Dynamic Subtitle with Date Range
+      doc.setFontSize(10);
+      doc.setTextColor(107, 114, 128); // gray-500
+      doc.setFont('helvetica', 'normal');
+      
+      const generationDate = new Date().toLocaleDateString('en-IN', {
+        year: 'numeric', month: 'short', day: 'numeric',
+      });
+      
+      let subtitleText = `Generated on: ${generationDate}`;
+      if (startDate && endDate) {
+        subtitleText += `   |   Period: ${startDate} to ${endDate}`;
+      }
+      doc.text(subtitleText, 14, 31);
+
+      // --- 3. AUTOTABLE GENERATION ---
       autoTable(doc, {
-        startY: 22,
-        head: [['Customer', 'Bills', 'Sales', 'Due']],
-        body: customerRows.map((c) => [
-          c.customerName,
-          c.totalBills,
-          `${c.totalSales.toLocaleString('en-IN')}`,
-          `${c.totalDue.toLocaleString('en-IN')}`,
-        ]),
-        theme: 'grid',
-        headStyles: { fillColor: [41, 128, 185] },
+        startY: 38,
+        head: [['CUSTOMER', 'PHONE', 'BILLS', 'SALES (Rs.)', 'DUE (Rs.)']],
+        body: customerRows.map((c) => {
+          const formattedName = c.customerName
+            ? c.customerName.charAt(0).toUpperCase() + c.customerName.slice(1).toLowerCase()
+            : 'N/A';
+
+          return [
+            formattedName,
+            c.customerNumber || 'N/A',
+            c.totalBills.toString(),
+            c.totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            c.totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          ];
+        }),
+        foot: [
+          [
+            'TOTAL',
+            '-',
+            metrics.totalBills.toString(),
+            metrics.totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            metrics.totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          ]
+        ],
+        theme: 'plain',
+        styles: {
+          font: 'helvetica',
+          cellPadding: 7,
+          fontSize: 10,
+          textColor: [55, 65, 81], // gray-700
+        },
+        headStyles: {
+          fillColor: [249, 250, 251], // gray-50
+          textColor: [17, 24, 39], // gray-900
+          fontStyle: 'bold',
+          halign: 'center',
+          lineWidth: { top: 1, bottom: 1 },
+          lineColor: [229, 231, 235], // gray-200
+        },
+        footStyles: {
+          fillColor: [255, 255, 255],
+          textColor: [17, 24, 39],
+          fontStyle: 'bold',
+          halign: 'right',
+          lineWidth: { top: 1, bottom: 2 }, // Thicker bottom line for totals
+          lineColor: [17, 24, 39],
+        },
+        alternateRowStyles: {
+          fillColor: [252, 252, 252], // Extremely subtle zebra striping
+        },
+        columnStyles: {
+          0: { halign: 'left', cellWidth: 'auto' },
+          1: { halign: 'center', cellWidth: 35 },
+          2: { halign: 'right', cellWidth: 25 },
+          3: { halign: 'right', cellWidth: 40 },
+          4: { halign: 'right', cellWidth: 40 },
+        },
+        // --- 4. CONDITIONAL FORMATTING ---
+        didParseCell: function (data) {
+          // Check body and foot rows for negative values in the 'Due' column
+          if ((data.section === 'body' || data.section === 'foot') && data.column.index === 4) {
+            const rawVal = parseFloat(String(data.cell.raw).replace(/,/g, ''));
+            if (rawVal < 0) {
+              data.cell.styles.textColor = [220, 38, 38]; // red-600
+              data.cell.styles.fontStyle = 'bold';
+            }
+          }
+        },
+        // --- 5. PAGINATION FOOTER ---
+        didDrawPage: function () {
+          const pageCount = doc.internal.getNumberOfPages();
+          doc.setFontSize(9);
+          doc.setTextColor(156, 163, 175); // gray-400
+          // Draw page number at the bottom right
+          doc.text(
+            `Page ${pageCount}`,
+            pageWidth - 14,
+            pageHeight - 10,
+            { align: 'right' }
+          );
+        },
       });
 
-      doc.save('customer_report.pdf');
+      doc.save(`Customer_Report_${new Date().toISOString().split('T')[0]}.pdf`);
 
       setIsDownloadModalOpen(false);
       setFeedbackModal({
@@ -228,7 +328,8 @@ const CatalogueCustomerReport: React.FC = () => {
         type: State.SUCCESS,
         message: 'PDF downloaded successfully!',
       });
-    } catch {
+    } catch (err) {
+      console.error('PDF Generation Error:', err);
       setFeedbackModal({
         isOpen: true,
         type: State.ERROR,

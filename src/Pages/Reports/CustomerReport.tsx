@@ -42,15 +42,6 @@ const CustomerReport: React.FC = () => {
     setEndDate,
   } = useCustomerReport();
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = String(date.getFullYear()).slice(-2); // only last 2 digits
-
-    return `${day}/${month}/${year}`;
-  };
 
   const { customerRows, summary } = useMemo(() => {
     if (!appliedFilters) {
@@ -162,12 +153,10 @@ const CustomerReport: React.FC = () => {
   };
 
   const downloadAsPdf = async () => {
-    try {
-      const doc = new jsPDF();
-      const pageWidth = doc.internal.pageSize.getWidth();
-
-      // Embed company logo
       try {
+        const doc = new jsPDF();
+        const pageWidth = doc.internal.pageSize.getWidth();
+         try {
         const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
         if (base64Logo) {
           const img = new Image();
@@ -186,80 +175,136 @@ const CustomerReport: React.FC = () => {
       } catch {
         // Continue without logo
       }
+        const pageHeight = doc.internal.pageSize.getHeight();
+  
+        // --- 1. BRAND ACCENT BAR ---
+        // Uses the #F97316 orange from your UI
+        doc.setFillColor(37, 99, 235); // blue-600 
+        doc.rect(0, 0, pageWidth, 6, 'F');
+  
+        // --- 2. HEADER SECTION ---
+        doc.setFontSize(22);
+        doc.setTextColor(17, 24, 39); // gray-900
+        doc.setFont('helvetica', 'bold');
+        doc.text('Customer Report', 14, 24);
+  
+        // Dynamic Subtitle with Date Range
+        doc.setFontSize(10);
+        doc.setTextColor(107, 114, 128); // gray-500
+        doc.setFont('helvetica', 'normal');
+        
+        const generationDate = new Date().toLocaleDateString('en-IN', {
+          year: 'numeric', month: 'short', day: 'numeric',
+        });
+        
+        let subtitleText = `Generated on: ${generationDate}`;
+        if (startDate && endDate) {
+          subtitleText += `   |   Period: ${startDate} to ${endDate}`;
+        }
+        doc.text(subtitleText, 14, 31);
+  
+        // --- 3. AUTOTABLE GENERATION ---
+        autoTable(doc, {
+          startY: 38,
+          head: [['CUSTOMER', 'PHONE', 'BILLS', 'SALES (Rs.)', 'DUE (Rs.)']],
+          body: customerRows.map((c) => {
+            const formattedName = c.customerName
+              ? c.customerName.charAt(0).toUpperCase() + c.customerName.slice(1).toLowerCase()
+              : 'N/A';
 
-      // ===== CLEAN GENERATION TAG =====
-      const now = new Date();
-      const generatedAt = now.toLocaleString('en-IN', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-
-      const margin = 14;
-
-      const tagText = `Generated using SELLAR • ${generatedAt}`;
-
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(8);
-
-      const textWidth = doc.getTextWidth(tagText);
-      const paddingX = 2;
-
-      const boxWidth = textWidth + paddingX * 2;
-      const boxHeight = 5;
-
-      const boxX = pageWidth - margin - boxWidth;
-      const boxY = 10;
-
-      // light gray background
-      doc.setFillColor(245, 245, 245);
-      doc.rect(boxX, boxY, boxWidth, boxHeight, "F");
-
-      // text
-      doc.setTextColor(80, 80, 80);
-      doc.text(tagText, boxX + paddingX, boxY + 3.5);
-
-      // reset styles
-      doc.setTextColor(0, 0, 0);
-
-      doc.setFontSize(18);
-      doc.text('Customer Report', 14, 20);
-
-      doc.setFontSize(11);
-      doc.setTextColor(100);
-
-      const start = appliedFilters?.start ? formatDate(appliedFilters.start) : 'All Time';
-      const end = appliedFilters?.end ? formatDate(appliedFilters.end) : 'All Time';
-      doc.text(`Date Range: ${start} to ${end}`, 14, 29);
-
-      autoTable(doc, {
-        startY: 35,
-        head: [['Customer', 'Bills', 'Sales', 'Due']],
-        body: customerRows.map((c) => [
-          c.customerName,
-          c.totalBills,
-          `Rs. ${c.totalSales.toLocaleString('en-IN')}`,
-          `Rs. ${c.totalDue.toLocaleString('en-IN')}`,
-        ]),
-        foot: [[
-          'Total',
-          '',
-          `Rs. ${summary.totalSales.toLocaleString('en-IN')}`,
-          `Rs. ${summary.totalDue.toLocaleString('en-IN')}`,
-        ]],
-        theme: 'grid',
-        headStyles: { fillColor: [41, 128, 185] },
-        footStyles: { fontStyle: 'bold', fillColor: [41, 128, 185] },
-      });
-      doc.save('customer_report.pdf');
-      setIsDownloadModalOpen(false);
-      setFeedbackModal({ isOpen: true, type: State.SUCCESS, message: 'PDF downloaded successfully!' });
-    } catch {
-      setFeedbackModal({ isOpen: true, type: State.ERROR, message: 'Failed to generate PDF.' });
-    }
-  };
+            return [
+              formattedName,
+              c.customerNumber || 'N/A',
+              c.totalBills.toString(),
+              c.totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+              c.totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            ];
+          }),
+          foot: [
+            [
+              'TOTAL',
+              '-',
+              summary.totalBills.toString(),
+              summary.totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+              summary.totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            ]
+          ],
+          theme: 'plain',
+          styles: {
+            font: 'helvetica',
+            cellPadding: 7,
+            fontSize: 10,
+            textColor: [55, 65, 81], // gray-700
+          },
+          headStyles: {
+            fillColor: [249, 250, 251], // gray-50
+            textColor: [17, 24, 39], // gray-900
+            fontStyle: 'bold',
+            halign: 'center',
+            lineWidth: { top: 1, bottom: 1 },
+            lineColor: [229, 231, 235], // gray-200
+          },
+          footStyles: {
+            fillColor: [255, 255, 255],
+            textColor: [17, 24, 39],
+            fontStyle: 'bold',
+            halign: 'right',
+            lineWidth: { top: 1, bottom: 2 }, // Thicker bottom line for totals
+            lineColor: [17, 24, 39],
+          },
+          alternateRowStyles: {
+            fillColor: [252, 252, 252], // Extremely subtle zebra striping
+          },
+          columnStyles: {
+            0: { halign: 'left', cellWidth: 'auto' },
+            1: { halign: 'center', cellWidth: 35 },
+            2: { halign: 'right', cellWidth: 25 },
+            3: { halign: 'right', cellWidth: 40 },
+            4: { halign: 'right', cellWidth: 40 },
+          },
+          // --- 4. CONDITIONAL FORMATTING ---
+          didParseCell: function (data) {
+            // Check body and foot rows for negative values in the 'Due' column
+            if ((data.section === 'body' || data.section === 'foot') && data.column.index === 4) {
+              const rawVal = parseFloat(String(data.cell.raw).replace(/,/g, ''));
+              if (rawVal < 0) {
+                data.cell.styles.textColor = [220, 38, 38]; // red-600
+                data.cell.styles.fontStyle = 'bold';
+              }
+            }
+          },
+          // --- 5. PAGINATION FOOTER ---
+          didDrawPage: function () {
+            const pageCount = doc.internal.getNumberOfPages();
+            doc.setFontSize(9);
+            doc.setTextColor(156, 163, 175); // gray-400
+            // Draw page number at the bottom right
+            doc.text(
+              `Page ${pageCount}`,
+              pageWidth - 14,
+              pageHeight - 10,
+              { align: 'right' }
+            );
+          },
+        });
+  
+        doc.save(`Customer_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+  
+        setIsDownloadModalOpen(false);
+        setFeedbackModal({
+          isOpen: true,
+          type: State.SUCCESS,
+          message: 'PDF downloaded successfully!',
+        });
+      } catch (err) {
+        console.error('PDF Generation Error:', err);
+        setFeedbackModal({
+          isOpen: true,
+          type: State.ERROR,
+          message: 'Failed to generate PDF.',
+        });
+      }
+    };
 
   /* ---------- TABLE COLUMNS ---------- */
   // FIX: Updated sortKey to match keys found in CustomerRow for strict type safety

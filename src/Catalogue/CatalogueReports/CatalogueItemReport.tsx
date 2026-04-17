@@ -131,6 +131,7 @@ const CatalogueItemReport: React.FC = () => {
 
   const downloadAsPdf = async () => {
     try {
+      // Initialize in Landscape mode ('l') for the detailed item report
       const doc = new jsPDF('l', 'mm', 'a4');
       const pageWidth = doc.internal.pageSize.getWidth();
 
@@ -192,40 +193,134 @@ const CatalogueItemReport: React.FC = () => {
       doc.setTextColor(0, 0, 0);
       doc.setFontSize(14);
       doc.text('Detailed Item Report', 14, 15);
+  
+      const pageHeight = doc.internal.pageSize.getHeight();
+
+      // --- 1. BRAND ACCENT BAR ---
+      // Uses the #F97316 orange from your UI
+      doc.setFillColor(249, 115, 22);
+      doc.rect(0, 0, pageWidth, 6, 'F');
+
+      // --- 2. HEADER SECTION ---
+      doc.setFontSize(22);
+      doc.setTextColor(17, 24, 39); // gray-900
+      doc.setFont('helvetica', 'bold');
+      doc.text('Detailed Item Report', 14, 24);
+
+      // Dynamic Subtitle with Date Range & Summary Stats
       doc.setFontSize(10);
-      doc.text(
-        `Total Items: ${summary.totalItems} | Avg Margin: ${Math.round(summary.averageMarginPercentage)}%`,
-        14,
-        22,
-      );
+      doc.setTextColor(107, 114, 128); // gray-500
+      doc.setFont('helvetica', 'normal');
 
-      const exportData = filteredItems.map(prepareExportData);
-      const headers = Object.keys(exportData[0] || {});
-      const body = exportData.map((obj) => Object.values(obj));
-
-      autoTable(doc, {
-        startY: 25,
-        head: [headers],
-        body: body,
-        theme: 'grid',
-        styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: [41, 128, 185] },
+      const generationDate = new Date().toLocaleDateString('en-IN', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
       });
 
-      doc.save('detailed_item_report.pdf');
+      // Combining your requested summary stats with the date/period formatting
+      let subtitleText = `Generated: ${generationDate}   |   Total Items: ${summary.totalItems}   |   Avg Margin: ${Math.round(summary.averageMarginPercentage)}%`;
+      doc.text(subtitleText, 14, 31);
 
-      // Close selection modal and show success modal
+      // --- 3. AUTOTABLE GENERATION ---
+      autoTable(doc, {
+        startY: 38,
+        // UPDATE THESE HEADERS TO MATCH YOUR EXACT ITEM DATA
+        head: [['ITEM NAME', 'CATEGORY', 'QTY SOLD', 'TOTAL SALES (Rs.)', 'MARGIN (%)']],
+        // DROP YOUR ITEM MAPPING LOGIC HERE
+        body: filteredItems.map((item) => {
+          return [
+            item.name || 'N/A',
+            getGroupName(item.itemGroupId),
+            (item.stock ?? 0).toString(),
+            (item.mrp ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            `${((item.mrp && item.purchasePrice) ? (((item.mrp - item.purchasePrice) / item.mrp) * 100) : 0).toFixed(2)}%`,
+          ];
+        }),
+        // OPTIONAL: ADD A TOTALS ROW AT THE BOTTOM IF NEEDED
+        foot: [
+          [
+            'TOTAL / AVERAGE',
+            '-',
+            summary.totalItems.toString(), // Assuming this is total qty
+            (summary.averageSalePrice ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            `${Math.round(summary.averageMarginPercentage)}%`,
+          ]
+        ],
+        theme: 'plain',
+        styles: {
+          font: 'helvetica',
+          cellPadding: 7,
+          fontSize: 10,
+          textColor: [55, 65, 81], // gray-700
+        },
+        headStyles: {
+          fillColor: [249, 250, 251], // gray-50
+          textColor: [17, 24, 39], // gray-900
+          fontStyle: 'bold',
+          halign: 'center',
+          lineWidth: { top: 1, bottom: 1 },
+          lineColor: [229, 231, 235], // gray-200
+        },
+        footStyles: {
+          fillColor: [255, 255, 255],
+          textColor: [17, 24, 39],
+          fontStyle: 'bold',
+          halign: 'right',
+          lineWidth: { top: 1, bottom: 2 }, // Thicker bottom line for totals
+          lineColor: [17, 24, 39],
+        },
+        alternateRowStyles: {
+          fillColor: [252, 252, 252], // Extremely subtle zebra striping
+        },
+        // Adjust column widths and alignments for landscape mode
+        columnStyles: {
+          0: { halign: 'left', cellWidth: 'auto' }, // Item Name
+          1: { halign: 'left', cellWidth: 40 },     // Category
+          2: { halign: 'right', cellWidth: 30 },    // Qty
+          3: { halign: 'right', cellWidth: 50 },    // Sales
+          4: { halign: 'right', cellWidth: 35 },    // Margin
+        },
+        // --- 4. CONDITIONAL FORMATTING ---
+        didParseCell: function (data) {
+          // Highlight negative margins in red (assuming Margin is column index 4)
+          if ((data.section === 'body' || data.section === 'foot') && data.column.index === 4) {
+            const rawVal = parseFloat(String(data.cell.raw).replace(/,/g, '').replace('%', ''));
+            if (rawVal < 0) {
+              data.cell.styles.textColor = [220, 38, 38]; // red-600
+              data.cell.styles.fontStyle = 'bold';
+            }
+          }
+        },
+        // --- 5. PAGINATION FOOTER ---
+        didDrawPage: function () {
+          const pageCount = doc.internal.getNumberOfPages();
+          doc.setFontSize(9);
+          doc.setTextColor(156, 163, 175); // gray-400
+          // Draw page number at the bottom right
+          doc.text(
+            `Page ${pageCount}`,
+            pageWidth - 14,
+            pageHeight - 10,
+            { align: 'right' }
+          );
+        },
+      });
+
+      doc.save(`Detailed_Item_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+
       setIsDownloadModalOpen(false);
       setFeedbackModal({
         isOpen: true,
         type: State.SUCCESS,
-        message: 'PDF downloaded successfully!',
+        message: 'Premium Item PDF downloaded successfully!',
       });
-    } catch (e) {
+    } catch (err) {
+      console.error('PDF Generation Error:', err);
       setFeedbackModal({
         isOpen: true,
         type: State.ERROR,
-        message: 'Failed to generate PDF.',
+        message: 'Failed to generate Item PDF.',
       });
     }
   };

@@ -205,9 +205,12 @@ const ItemAdd: React.FC = () => {
         }
         setError(null); setSuccess(null); setModal(null);
 
-        // --- 1. Basic Field Validation (Stock Removed from mandatory) ---
+        // --- 1. Basic Field Validation ---
         if (!itemName.trim() || !itemMRP.trim()) {
-            setModal({ message: 'Item Name and MRP are required.', type: State.ERROR });
+            setModal({
+                message: 'Item Name and MRP are required.',
+                type: State.ERROR
+            });
             return;
         }
 

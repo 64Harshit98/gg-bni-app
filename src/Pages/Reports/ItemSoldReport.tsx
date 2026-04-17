@@ -316,61 +316,88 @@ const downloadAsPdf = async () => {
         const subtitleText = `Generated on: ${generationDate}   |   Period: ${formatDate(appliedFilters.start)} to ${formatDate(appliedFilters.end)}`;
         doc.text(subtitleText, 14, 31);
 
-        // ===== TABLE =====
-        autoTable(doc, {
-            startY: 38,
-            head: [['ITEM NAME', 'CATEGORY', 'QTY SOLD', 'VALUE (Rs.)']],
-            body: aggregatedItems.map((item) => [
-                item.name,
-                item.itemGroup,
-                item.quantitySold.toString(),
-                Math.round(item.valueSold).toLocaleString('en-IN')
-            ]),
-            foot: [[
-                'TOTAL',
-                '-',
-                summary.totalQuantitySold.toString(),
-                Math.round(summary.totalValueSold).toLocaleString('en-IN')
-            ]],
-            theme: 'plain',
-            styles: {
-                font: 'helvetica',
-                cellPadding: 7,
-                fontSize: 10,
-                textColor: [55, 65, 81],
-            },
-            headStyles: {
-                fillColor: [249, 250, 251],
-                textColor: [17, 24, 39],
-                fontStyle: 'bold',
-                halign: 'center',
-                lineWidth: { top: 1, bottom: 1 },
-                lineColor: [229, 231, 235],
-            },
-            footStyles: {
-                fillColor: [255, 255, 255],
-                textColor: [17, 24, 39],
-                fontStyle: 'bold',
-                halign: 'right',
-                lineWidth: { top: 1, bottom: 2 },
-                lineColor: [17, 24, 39],
-            },
-            alternateRowStyles: {
-                fillColor: [252, 252, 252],
-            },
-            columnStyles: {
-                0: { halign: 'left', cellWidth: 'auto' },
-                1: { halign: 'left', cellWidth: 40 },
-                2: { halign: 'right', cellWidth: 30 },
-                3: { halign: 'right', cellWidth: 40 },
-            },
-            didDrawPage: function () {
-                const pageCount = doc.getNumberOfPages();
-                doc.setFontSize(9);
-                doc.setTextColor(156, 163, 175);
-                doc.text(`Page ${pageCount}`, pageWidth - 14, pageHeight - 10, { align: 'right' });
-            },
-        });
+      // --- 3. AUTOTABLE GENERATION ---
+      autoTable(doc, {
+        startY: 38,
+        head: [['ITEM NAME', 'CATEGORY', 'QTY SOLD', 'TOTAL VALUE (Rs.)']],
+        body: aggregatedItems.map((item) => {
+          const formattedName = item.name
+            ? item.name.charAt(0).toUpperCase() + item.name.slice(1).toLowerCase()
+            : 'N/A';
+
+          return [
+            formattedName,
+            item.itemGroup || 'N/A',
+            item.quantitySold.toString(),
+            item.valueSold.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          ];
+        }),
+        foot: [
+          [
+            'TOTAL',
+            '-',
+            summary.totalQuantitySold.toString(),
+            summary.totalValueSold.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          ]
+        ],
+        theme: 'plain',
+        styles: {
+          font: 'helvetica',
+          cellPadding: 7,
+          fontSize: 10,
+          textColor: [55, 65, 81], // gray-700
+        },
+        headStyles: {
+          fillColor: [249, 250, 251], // gray-50
+          textColor: [17, 24, 39], // gray-900
+          fontStyle: 'bold',
+          halign: 'center',
+          lineWidth: { top: 1, bottom: 1 },
+          lineColor: [229, 231, 235], // gray-200
+        },
+        footStyles: {
+          fillColor: [255, 255, 255],
+          textColor: [17, 24, 39],
+          fontStyle: 'bold',
+          halign: 'right', 
+          lineWidth: { top: 1, bottom: 2 },
+          lineColor: [17, 24, 39],
+        },
+        alternateRowStyles: {
+          fillColor: [252, 252, 252], 
+        },
+        columnStyles: {
+          0: { halign: 'left', cellWidth: 'auto' },
+          1: { halign: 'left', cellWidth: 45 },
+          2: { halign: 'right', cellWidth: 35 },
+          3: { halign: 'right', cellWidth: 50 },
+        },
+        // --- 4. CONDITIONAL FORMATTING ---
+        didParseCell: function (data) {
+          if ((data.section === 'body' || data.section === 'foot') && data.column.index === 3) {
+            const rawVal = parseFloat(String(data.cell.raw).replace(/,/g, ''));
+            if (rawVal < 0) {
+              data.cell.styles.textColor = [220, 38, 38]; // red-600
+              data.cell.styles.fontStyle = 'bold';
+            }
+          }
+          if (data.section === 'foot' && data.column.index === 0) {
+            data.cell.styles.halign = 'left';
+          }
+        },
+        // --- 5. PAGINATION FOOTER ---
+        didDrawPage: function () {
+          const pageCount = doc.getNumberOfPages();
+          doc.setFontSize(9);
+          doc.setTextColor(156, 163, 175); // gray-400
+          doc.text(
+            `Page ${pageCount}`,
+            pageWidth - 14,
+            pageHeight - 10,
+            { align: 'right' }
+          );
+        },
+      });
 
         doc.save(`items_sold_report_${formatDateForInput(new Date())}.pdf`);
 

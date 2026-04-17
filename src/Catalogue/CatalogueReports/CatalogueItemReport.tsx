@@ -192,7 +192,7 @@ const CatalogueItemReport: React.FC = () => {
       // reset styles
       doc.setTextColor(0, 0, 0);
       doc.setFontSize(14);
-      doc.text('Detailed Item Report', 14, 15);
+      
   
       const pageHeight = doc.internal.pageSize.getHeight();
 
@@ -313,7 +313,7 @@ const CatalogueItemReport: React.FC = () => {
       setFeedbackModal({
         isOpen: true,
         type: State.SUCCESS,
-        message: 'Premium Item PDF downloaded successfully!',
+        message: 'Item PDF downloaded successfully!',
       });
     } catch (err) {
       console.error('PDF Generation Error:', err);

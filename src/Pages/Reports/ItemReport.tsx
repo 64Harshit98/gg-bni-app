@@ -321,8 +321,8 @@ const ItemReport: React.FC = () => {
       setFeedbackModal({
         isOpen: true,
         type: State.ERROR,
-        message: e?.message === "No data available to export" 
-          ? 'No data available to export.' 
+        message: e?.message === "No data available to export"
+          ? 'No data available to export.'
           : 'Failed to generate PDF.',
       });
     }

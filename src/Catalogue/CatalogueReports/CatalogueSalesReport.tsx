@@ -382,97 +382,96 @@ const OrdersReport: React.FC = () => {
     const downloadAsPdf = async () => {
         if (!appliedFilters) return;
         try {
-        const doc = new jsPDF();
-        const pageWidth = doc.internal.pageSize.getWidth();
+            const doc = new jsPDF();
+            const pageWidth = doc.internal.pageSize.getWidth();
 
-        // Embed company logo (same as PNL Report)
-        try {
-            const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
-            if (base64Logo) {
-                const img = new Image();
-                img.src = base64Logo;
-                await new Promise<void>((resolve) => {
-                    img.onload = () => {
-                        const logoWidth = 15;
-                        const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
-                        const logoX = pageWidth - logoWidth - 14;
-                        doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
-                        resolve();
-                    };
-                    img.onerror = () => resolve();
-                });
+            // Embed company logo (same as PNL Report)
+            try {
+                const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
+                if (base64Logo) {
+                    const img = new Image();
+                    img.src = base64Logo;
+                    await new Promise<void>((resolve) => {
+                        img.onload = () => {
+                            const logoWidth = 15;
+                            const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
+                            const logoX = pageWidth - logoWidth - 14;
+                            doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
+                            resolve();
+                        };
+                        img.onerror = () => resolve();
+                    });
+                }
+            } catch {
+                // Continue without logo if it fails
             }
-        } catch {
-            // Continue without logo if it fails
+
+
+            // ===== CLEAN GENERATION TAG =====
+            const now = new Date();
+            const generatedAt = now.toLocaleString('en-IN', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            const margin = 14;
+
+            const tagText = `Generated using SELLAR • ${generatedAt}`;
+
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(8);
+
+            const textWidth = doc.getTextWidth(tagText);
+            const paddingX = 2;
+
+            const boxWidth = textWidth + paddingX * 2;
+            const boxHeight = 5;
+
+            const boxX = pageWidth - margin - boxWidth;
+            const boxY = 10;
+
+            // light gray background
+            doc.setFillColor(245, 245, 245);
+            doc.rect(boxX, boxY, boxWidth, boxHeight, "F");
+
+            // text
+            doc.setTextColor(80, 80, 80);
+            doc.text(tagText, boxX + paddingX, boxY + 3.5);
+
+            // reset styles
+            doc.setTextColor(0, 0, 0);
+
+            doc.setFontSize(18);
+            doc.text('Completed Orders Report', 14, 20);
+            doc.setFontSize(11);
+            doc.setTextColor(100);
+            doc.text(`Date Range: ${formatDate(appliedFilters.start)} to ${formatDate(appliedFilters.end)}`, 14, 29);
+
+            autoTable(doc, {
+                startY: 35,
+                head: [['Date', 'Order ID', 'Customer', 'Items', 'Amount']], // Headers changed
+                body: filteredSales.map((sale) => [
+                    formatDate(sale.createdAt),
+                    sale.invoiceNumber,
+                    sale.partyName,
+                    sale.items.reduce((sum, i) => sum + i.quantity, 0),
+                    `₹ ${sale.totalAmount.toLocaleString('en-IN')}`,
+                ]),
+                foot: [
+                    ['Total', '', '', `${summary.totalItemsSold}`, `₹ ${summary.totalSales.toLocaleString('en-IN')}`]
+                ],
+                footStyles: { fontStyle: 'bold' },
+            });
+
+            doc.save(`orders_report_${formatDateForInput(new Date())}.pdf`);
+        } catch (error) {
+            console.error('Error generating PDF:', error);
+            // Optionally show an error message to the user
         }
-
-
-        // ===== CLEAN GENERATION TAG =====
-        const now = new Date();
-        const generatedAt = now.toLocaleString('en-IN', {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit'
-        });
-
-        const pageWidth = doc.internal.pageSize.getWidth();
-        const margin = 14;
-
-        const tagText = `Generated using SELLAR • ${generatedAt}`;
-
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(8);
-
-        const textWidth = doc.getTextWidth(tagText);
-        const paddingX = 2;
-
-        const boxWidth = textWidth + paddingX * 2;
-        const boxHeight = 5;
-
-        const boxX = pageWidth - margin - boxWidth;
-        const boxY = 10;
-
-        // light gray background
-        doc.setFillColor(245, 245, 245);
-        doc.rect(boxX, boxY, boxWidth, boxHeight, "F");
-
-        // text
-        doc.setTextColor(80, 80, 80);
-        doc.text(tagText, boxX + paddingX, boxY + 3.5);
-
-        // reset styles
-        doc.setTextColor(0, 0, 0);
-
-        doc.setFontSize(18);
-        doc.text('Completed Orders Report', 14, 20);
-        doc.setFontSize(11);
-        doc.setTextColor(100);
-        doc.text(`Date Range: ${formatDate(appliedFilters.start)} to ${formatDate(appliedFilters.end)}`, 14, 29);
-
-        autoTable(doc, {
-            startY: 35,
-            head: [['Date', 'Order ID', 'Customer', 'Items', 'Amount']], // Headers changed
-            body: filteredSales.map((sale) => [
-                formatDate(sale.createdAt),
-                sale.invoiceNumber,
-                sale.partyName,
-                sale.items.reduce((sum, i) => sum + i.quantity, 0),
-                `₹ ${sale.totalAmount.toLocaleString('en-IN')}`,
-            ]),
-            foot: [
-                ['Total', '', '', `${summary.totalItemsSold}`, `₹ ${summary.totalSales.toLocaleString('en-IN')}`]
-            ],
-            footStyles: { fontStyle: 'bold' },
-        });
-
-        doc.save(`orders_report_${formatDateForInput(new Date())}.pdf`);
-    } catch (error) {
-        console.error('Error generating PDF:', error);
-        // Optionally show an error message to the user
-    }
-};
+    };
 
     if (isLoading || authLoading) return <div className="p-4 text-center">Loading...</div>;
     if (error) return <div className="p-4 text-center text-red-500">{error}</div>;
@@ -519,7 +518,7 @@ const OrdersReport: React.FC = () => {
                 <h2 className="text-lg font-semibold text-gray-700">Report Details</h2>
                 <div className="flex items-center space-x-3">
                     <button onClick={() => setIsListVisible(!isListVisible)} className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition">{isListVisible ? 'Hide List' : 'Show List'}</button>
-                     
+
                     <button onClick={downloadAsPdf} disabled={filteredSales.length === 0} className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 ">Download PDF</button>
                 </div>
             </div>

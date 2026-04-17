@@ -13,6 +13,7 @@ export interface BillSettingsData {
     upiId?: string;
     termsAndConditions: string;
     signatureBase64?: string;
+    printFormat?: 'A4' | 'THERMAL58';
 }
 
 interface BusinessInfoData {
@@ -59,7 +60,8 @@ const BillSettings: React.FC = () => {
     const [settings, setSettings] = useState<BillSettingsData>({
         upiId: '',
         termsAndConditions: '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
-        signatureBase64: ''
+        signatureBase64: '',
+        printFormat: 'A4'
     });
 
     const formatAddress = (addr: any): string => {
@@ -112,17 +114,17 @@ const BillSettings: React.FC = () => {
                     upiId: sData.upiId || bData.upiId || '',
                     termsAndConditions: sData.termsAndConditions || '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
                     signatureBase64: sData.signatureBase64 || '',
+                    printFormat: sData.printFormat || 'A4',
                 };
 
                 setSettings(loadedSettings);
 
-                // FIX: Load signature after component has mounted and canvas is ready
                 if (loadedSettings.signatureBase64) {
                     setTimeout(() => {
                         if (sigPadRef.current) {
                             sigPadRef.current.fromDataURL(loadedSettings.signatureBase64);
                         }
-                    }, 200); // Tiny delay to ensure canvas DOM is ready
+                    }, 200);
                 }
 
             } catch (error) {
@@ -154,13 +156,11 @@ const BillSettings: React.FC = () => {
         try {
             setIsSaving(true);
 
-            let currentSignature = settings.signatureBase64; // Keep old one if pad is empty?
+            let currentSignature = settings.signatureBase64;
 
-            // If the user drew something new, get the data URL
             if (sigPadRef.current && !sigPadRef.current.isEmpty()) {
                 currentSignature = sigPadRef.current.getCanvas().toDataURL('image/png');
             } else if (sigPadRef.current && sigPadRef.current.isEmpty()) {
-                // If they cleared it, set to empty
                 currentSignature = '';
             }
 
@@ -220,7 +220,7 @@ const BillSettings: React.FC = () => {
                                 Fetched from your{' '}
                                 <button
                                     type="button"
-                                   onClick={() => navigate('/edit-profile')}
+                                    onClick={() => navigate('/edit-profile')}
                                     className="text-blue-600 hover:underline text-xs bg-transparent border-0 cursor-pointer p-0 font-normal"
                                 >
                                     Business Profile
@@ -363,8 +363,50 @@ const BillSettings: React.FC = () => {
                     </div>
                 </div>
 
-                {/* ── SECTION 3: Digital Signature ── */}
-                <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden">
+                {/* --- NEW SECTION: Print Preferences --- */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+                        <h2 className="text-lg font-semibold text-gray-800">Print Preferences</h2>
+                        <p className="text-xs text-gray-500">Choose your default bill format.</p>
+                    </div>
+                    <div className="p-6">
+                        <div className="flex flex-col sm:flex-row gap-4">
+                            <label className={`flex-1 flex items-center p-4 border rounded-lg cursor-pointer transition-colors ${settings.printFormat === 'A4' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 hover:bg-gray-50'}`}>
+                                <input
+                                    type="radio"
+                                    name="printFormat"
+                                    value="A4"
+                                    checked={settings.printFormat === 'A4'}
+                                    onChange={handleChange}
+                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                />
+                                <div className="ml-3">
+                                    <span className="block text-sm font-medium text-gray-900">A4 Size</span>
+                                    <span className="block text-xs text-gray-500">Standard full-page invoice layout.</span>
+                                </div>
+                            </label>
+
+                            <label className={`flex-1 flex items-center p-4 border rounded-lg cursor-pointer transition-colors ${settings.printFormat === 'THERMAL58' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 hover:bg-gray-50'}`}>
+                                <input
+                                    type="radio"
+                                    name="printFormat"
+                                    value="THERMAL58"
+                                    checked={settings.printFormat === 'THERMAL58'}
+                                    onChange={handleChange}
+                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                />
+                                <div className="ml-3">
+                                    <span className="block text-sm font-medium text-gray-900">2-Inch Thermal</span>
+                                    <span className="block text-xs text-gray-500">58mm continuous receipt layout.</span>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                {/* ------------------------------------- */}
+
+                {/* SECTION 4: Digital Signature */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                     <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
                         <div>
                             <h2 className="text-lg font-semibold text-gray-800">Digital Signature</h2>
@@ -393,6 +435,9 @@ const BillSettings: React.FC = () => {
                                 SIGN HERE
                             </div>
                         </div>
+                        {settings.printFormat === 'THERMAL58' && (
+                            <p className="mt-2 text-xs text-amber-600 font-medium">Note: Signatures are not displayed on 2-Inch Thermal receipts to save space.</p>
+                        )}
                     </div>
                 </div>
 

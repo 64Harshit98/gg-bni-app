@@ -127,7 +127,7 @@ const ItemReport: React.FC = () => {
     };
   };
 
-  const downloadAsPdf = async() => {
+  const downloadAsPdf = async () => {
     try {
       const doc = new jsPDF('l', 'mm', 'a4');
       const pageWidth = doc.internal.pageSize.getWidth();
@@ -163,7 +163,6 @@ const ItemReport: React.FC = () => {
         minute: '2-digit'
       });
 
-      const pageWidth = doc.internal.pageSize.getWidth();
       const margin = 14;
 
       const tagText = `Generated using SELLAR • ${generatedAt}`;

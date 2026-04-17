@@ -104,6 +104,7 @@ interface Invoice {
 }
 
 interface PdfData {
+  printFormat?: 'A4' | 'THERMAL58';
   gstScheme: string;
   taxType: string;
   companyName: string;
@@ -576,8 +577,11 @@ const Journal: React.FC = () => {
       const fullItem = fetchedItems.find((fi: any) => fi.id === item.id);
       const finalTaxRate = item.taxRate || item.tax || item.gstPercent || fullItem?.tax || 0;
 
+      const resolvedTaxType = item.taxType || invoice.taxType || salesSettings?.taxType || '';
       let itemAmount = 0;
-      if (item.effectiveUnitPrice && item.effectiveUnitPrice > 0) {
+      if (resolvedTaxType === 'Exclusive' && item.taxableAmount) {
+        itemAmount = item.taxableAmount;
+      } else if (item.effectiveUnitPrice && item.effectiveUnitPrice > 0) {
         itemAmount = item.effectiveUnitPrice * item.quantity;
       } else if (item.finalPrice !== undefined && item.finalPrice !== null && item.finalPrice > 0) {
         itemAmount = item.finalPrice;
@@ -595,13 +599,14 @@ const Journal: React.FC = () => {
         hsn: fullItem?.hsnSac || item.hsnSac || "N/A",
         discountAmount: isPurchase ? (item.purchasediscount || item.discount || item.manualDiscount || 0) : (item.discount || item.manualDiscount || 0),
         amount: itemAmount,
-        taxType: item.taxType,
+        taxType: resolvedTaxType,
         taxAmount: item.taxAmount,
         taxableAmount: item.taxableAmount
       };
     });
 
     return {
+      printFormat: billSettings.printFormat || 'A4',
       gstScheme: salesSettings?.gstScheme || '',
       taxType: invoice.taxType || salesSettings?.taxType || '',
       companyName: businessInfo?.name || '',
@@ -1017,12 +1022,11 @@ const Journal: React.FC = () => {
                             <span>
                               {item.mrp > 0
                                 ? `MRP: ${item.mrp.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}`
-                                : `Sales Price: ${
-                                    (
-                                      item.effectiveUnitPrice ||
-                                      (item.quantity > 0 ? item.finalPrice / item.quantity : 0)
-                                    ).toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })
-                                  }`
+                                : `Sales Price: ${(
+                                  item.effectiveUnitPrice ||
+                                  (item.quantity > 0 ? item.finalPrice / item.quantity : 0)
+                                ).toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })
+                                }`
                               }
                             </span>
                             <span className="text-slate-400">|</span>
@@ -1101,9 +1105,8 @@ const Journal: React.FC = () => {
                   </div>
                 )}
 
-                <div className={`flex gap-2 mt-2 pt-4 border-t border-slate-200 ${
-                  visibleButtonsCount === 1 ? 'justify-center' : 'justify-between'
-                }`}>
+                <div className={`flex gap-2 mt-2 pt-4 border-t border-slate-200 ${visibleButtonsCount === 1 ? 'justify-center' : 'justify-between'
+                  }`}>
                   {invoice.status === 'Unpaid' && (<button onClick={(e) => { e.stopPropagation(); openPaymentModal(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-emerald-500 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors">Settle</button>)}
                   {invoice.status === 'Paid' && (<button onClick={(e) => { e.stopPropagation(); promptDeleteInvoice(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors">Delete</button>)}
                   <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
@@ -1164,11 +1167,10 @@ const Journal: React.FC = () => {
                 <button
                   key={type}
                   onClick={() => setBillType(type as any)}
-                  className={`flex-1 py-2 text-xs font-bold uppercase rounded-sm transition-all ${
-                    billType === type
+                  className={`flex-1 py-2 text-xs font-bold uppercase rounded-sm transition-all ${billType === type
                       ? 'bg-white text-[#F97316] shadow-sm'
                       : 'text-slate-500'
-                  }`}
+                    }`}
                 >
                   {type}
                 </button>

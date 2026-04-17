@@ -1,9 +1,62 @@
-const functions = require("firebase-functions");
-const admin = require("firebase-admin");
 const axios = require("axios");
 const cors = require("cors")({ origin: true }); // Allows your frontend to talk to this function
-admin.initializeApp();
+const functions = require("firebase-functions");
+const admin = require("firebase-admin");
+
+if (!admin.apps.length) {
+    admin.initializeApp();
+}
 const db = admin.firestore();
+
+exports.fetchInvoiceData = functions.https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "Must be logged in.");
+    }
+
+    const { companyId, orderId } = data;
+    if (!companyId || !orderId) {
+        throw new functions.https.HttpsError("invalid-argument", "Missing params.");
+    }
+
+    try {
+        const orderRef = db.collection("companies").doc(companyId).collection("Orders").doc(orderId);
+        const orderSnap = await orderRef.get();
+        if (!orderSnap.exists) throw new functions.https.HttpsError("not-found", "Order not found");
+        const orderData = orderSnap.data();
+
+        const processedItems = await Promise.all((orderData.items || []).map(async (item, index) => {
+            let base64Image = "";
+            if (item.imageUrl) {
+                try {
+                    const response = await fetch(item.imageUrl);
+                    const arrayBuffer = await response.arrayBuffer();
+                    const mimeType = item.imageUrl.includes('.png') ? 'image/png' : 'image/jpeg';
+                    base64Image = `data:${mimeType};base64,` + Buffer.from(arrayBuffer).toString('base64');
+                } catch (err) {
+                    console.error(`Image fetch failed for ${item.id}`);
+                }
+            }
+
+            return {
+                ...item,
+                sno: index + 1,
+                imageBase64: base64Image
+            };
+        }));
+
+        return {
+            success: true,
+            orderData: {
+                ...orderData,
+                items: processedItems
+            }
+        };
+
+    } catch (error) {
+        console.error("Data Fetch Error:", error);
+        throw new functions.https.HttpsError("internal", "Failed to fetch invoice data");
+    }
+});
 
 exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
     // 1. Verify the requester is authenticated

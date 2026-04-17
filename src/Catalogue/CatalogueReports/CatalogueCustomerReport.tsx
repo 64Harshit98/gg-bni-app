@@ -17,7 +17,6 @@ import useCustomerReport from '../hooks/useCustomerReport';
 //import CataShowWrapper from '../../context/CataShowWrapper';
 //import { Cata_Permissions } from '../enum/cata_permissions.enum';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
-import { useAuth } from '../../context/auth-context';
 
 const CatalogueCustomerReport: React.FC = () => {
   const {
@@ -149,33 +148,32 @@ const CatalogueCustomerReport: React.FC = () => {
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
 
-    // Embed company logo
-    try {
-      const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
-      if (base64Logo) {
-        const img = new Image();
-        img.src = base64Logo;
-        await new Promise<void>((resolve) => {
-          img.onload = () => {
-            const logoWidth = 13;
-            const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
-            const logoX = pageWidth - logoWidth - 14;
-            doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
-            resolve();
-          };
-          img.onerror = () => resolve();
-        });
+      // Embed company logo
+      try {
+        const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
+        if (base64Logo) {
+          const img = new Image();
+          img.src = base64Logo;
+          await new Promise<void>((resolve) => {
+            img.onload = () => {
+              const logoWidth = 13;
+              const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
+              const logoX = pageWidth - logoWidth - 14;
+              doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
+              resolve();
+            };
+            img.onerror = () => resolve();
+          });
+        }
+      } catch {
+        // Continue without logo
       }
-    } catch {
-      // Continue without logo
-    }
 
       doc.setFontSize(16);
       doc.text('Customer Report', 14, 15);
 
       // ===== CLEAN GENERATION TAG =====
       const generatedAt = new Date().toLocaleString();
-      const pageWidth = doc.internal.pageSize.getWidth();
       const margin = 14;
       const y = 10;
 
@@ -395,7 +393,7 @@ const CatalogueCustomerReport: React.FC = () => {
           >
             {isListVisible ? 'Hide List' : 'Show List'}
           </button>
-         
+
           <button
             onClick={() => {
               if (customerRows.length === 0) {
@@ -412,7 +410,7 @@ const CatalogueCustomerReport: React.FC = () => {
           >
             Download Report
           </button>
-          
+
         </div>
       </div>
 

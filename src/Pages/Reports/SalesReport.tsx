@@ -21,7 +21,7 @@ import ReportDetails from './SalesReportComponents/ReportDetails';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
-import { useAuth} from '../../context/auth-context';
+import { useAuth } from '../../context/auth-context';
 
 
 const SalesReport: React.FC = () => {
@@ -212,7 +212,6 @@ const SalesReport: React.FC = () => {
       minute: '2-digit'
     });
 
-    const pageWidth = doc.internal.pageSize.getWidth();
     const margin = 14;
 
     const tagText = `Generated using SELLAR • ${generatedAt}`;

@@ -160,39 +160,51 @@ const OrderingPage: React.FC = () => {
     // --- Memos ---
     const cartValue = useMemo(() => cart.reduce((acc, item) => acc + (item.mrp * item.quantity), 0), [cart]);
     const filteredItems = useMemo(() => {
-        const query = searchQuery.toLowerCase();
+        const validGroupIds = new Set(itemGroups.map(g => g.id));
+        const uncategorizedItems = items.filter(item =>
+            !item.itemGroupId || !validGroupIds.has(item.itemGroupId)
+        );
 
-        const result = itemGroups.filter(group => {
-            // Group name match
-            const matchesGroupName = group.name.toLowerCase().includes(query);
+        let displayedGroups = [...itemGroups];
+        if (uncategorizedItems.length > 0) {
+            displayedGroups.push({
+                id: 'uncategorized',
+                name: 'Uncategorized',
+                description: 'System default category'
+            } as ItemGroup);
+        }
 
-            // Items inside group match
-            const matchesInnerItems = items.some(item =>
-                item.itemGroupId === group.id &&
-                item.name.toLowerCase().includes(query)
-            );
+        const query = searchQuery.toLowerCase().trim();
+        if (query) {
+            displayedGroups = displayedGroups.filter(group => {
+                const groupItems = group.id === 'uncategorized'
+                    ? uncategorizedItems
+                    : items.filter(i => i.itemGroupId === group.id);
 
-            return matchesGroupName || matchesInnerItems;
-        });
+                const matchesGroupName = group.name.toLowerCase().includes(query);
+                const matchesInnerItems = groupItems.some(item =>
+                    item.name.toLowerCase().includes(query)
+                );
 
-        return [...result].sort((a, b) => {
+                return matchesGroupName || matchesInnerItems;
+            });
+        }
+
+        return displayedGroups.sort((a, b) => {
             if (sortOrder === 'A-Z') return a.name.localeCompare(b.name);
             return b.name.localeCompare(a.name);
         });
     }, [itemGroups, items, searchQuery, sortOrder]);
 
     const getGroupImages = (groupId: string): string[] => {
+        const validGroupIds = new Set(itemGroups.map(g => g.id));
+
         const imgs = items
             .filter(item => {
-                const groupExists = itemGroups.some(g => g.id === item.itemGroupId);
-                const uncategorizedGroup = itemGroups.find(
-                    g => g.name.toLowerCase().trim() === "uncategorized"
-                );
-
-                const finalGroupId = groupExists
-                    ? item.itemGroupId
-                    : uncategorizedGroup?.id;
-                return finalGroupId === groupId;
+                if (groupId === 'uncategorized') {
+                    return !item.itemGroupId || !validGroupIds.has(item.itemGroupId);
+                }
+                return item.itemGroupId === groupId;
             })
             .map(item => item.imageUrl)
             .filter(Boolean) as string[];
@@ -337,30 +349,23 @@ const OrderingPage: React.FC = () => {
                 {/* --- PRODUCT GRID --- */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1">
                     {filteredItems.map(group => {
-                        const isUncategorized = group.name.toLowerCase().trim() === "uncategorized";
-                        const itemCount = items.filter(item => {
-                            const groupExists = itemGroups.some(g => g.id === item.itemGroupId);
-
-                            const uncategorizedGroup = itemGroups.find(
-                                g => g.name.toLowerCase().trim() === "uncategorized"
-                            );
-
-                            const finalGroupId = groupExists
-                                ? item.itemGroupId
-                                : uncategorizedGroup?.id;
-
-                            return finalGroupId === group.id;
-                        }).length;
+                        const validGroupIds = new Set(itemGroups.map(g => g.id));
+                        const isVirtual = group.id === 'uncategorized';
+                        const itemCount = items.filter(item =>
+                            isVirtual
+                                ? (!item.itemGroupId || !validGroupIds.has(item.itemGroupId))
+                                : (item.itemGroupId === group.id)
+                        ).length;
                         const collageImages = getGroupImages(group.id!);
+
                         return (
                             <div
                                 id={group.id}
                                 key={group.id}
-                                onClick={() => {
-                                    const slug = generateSlug(group.name);
-                                    navigate(`/catalogue-home/my-shop/${slug}`);
-                                }}
-                                className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col transition-all group cursor-pointer active:scale-95 ${highlightedId === group.id ? 'ring-2 ring-[#F97316] shadow-lg scale-[1.02]' : 'border-gray-100'}`}>
+                                onClick={() => navigate(`/catalogue-home/my-shop/${group.id}`)}
+                                className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col transition-all group cursor-pointer active:scale-95 ${highlightedId === group.id ? 'ring-2 ring-[#F97316] shadow-lg scale-[1.02]' : 'border-gray-100'
+                                    } ${isVirtual ? 'border-dashed border-gray-300' : ''}`}
+                            >
                                 {/* --- IMAGE SECTION WITH TOP BADGE --- */}
                                 <div className="aspect-square bg-[#F8FAFC] relative overflow-hidden">
                                     {collageImages.length > 0 ? (
@@ -401,73 +406,72 @@ const OrderingPage: React.FC = () => {
                                                 type="text"
                                                 value={tempName}
                                                 onChange={(e) => setTempName(e.target.value)}
-                                                className="w-full bg-gray-50 border border-gray-100 rounded-sm py-1 px-2 text-[14px] font-bold outline-none"
+                                                className="w-full bg-gray-50 border border-gray-100 rounded-sm py-1 px-2 text-[14px] font-bold outline-none focus:ring-1 focus:ring-[#F97316]"
                                             />
                                             <div className="flex gap-1">
-                                                <button onClick={(e) => { e.stopPropagation(); handleSaveEdit(group.id!); }} className="flex-1 bg-[#F97316] text-white py-1.5 rounded-sm text-[12px] font-black uppercase">Save</button>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleSaveEdit(group.id!); }}
+                                                    className="flex-1 bg-[#F97316] text-white py-1.5 rounded-sm text-[12px] font-black uppercase hover:bg-[#ea580c] transition-colors"
+                                                >
+                                                    Save
+                                                </button>
                                                 <button
                                                     onClick={async (e) => {
                                                         e.stopPropagation();
 
                                                         if (window.confirm("Delete product group?") && dbOperations) {
                                                             try {
-                                                                // 1. find uncategorized group
-                                                                const uncategorizedGroup = itemGroups.find(
-                                                                    g => g.name.toLowerCase().trim() === "uncategorized"
-                                                                );
-
-                                                                // 2. get items of this group
                                                                 const itemsToUpdate = items.filter(
                                                                     item => item.itemGroupId === group.id
                                                                 );
 
-                                                                // 3. move items to uncategorized
                                                                 await Promise.all(
                                                                     itemsToUpdate.map(item =>
                                                                         dbOperations.updateItem(item.id!, {
-                                                                            itemGroupId: uncategorizedGroup?.id
+                                                                            itemGroupId: ""
                                                                         })
                                                                     )
                                                                 );
 
-                                                                // 4. delete group
                                                                 await dbOperations.deleteItemGroup(group.id!);
 
                                                                 setItemGroups(itemGroups.filter(p => p.id !== group.id));
                                                                 setModal({ message: 'Deleted successfully', type: State.SUCCESS });
-
                                                             } catch (err) {
                                                                 console.error(err);
                                                                 setModal({ message: 'Delete failed', type: State.ERROR });
                                                             }
                                                         }
                                                     }}
-                                                    className="p-3 bg-red-100 text-red-700 rounded-sm"
+                                                    className="p-3 bg-red-100 text-red-700 rounded-sm hover:bg-red-200 transition-colors"
                                                 >
                                                     <Trash2 size={12} />
                                                 </button>
-                                                <button onClick={(e) => { e.stopPropagation(); setEditingId(null); }} className="p-3 bg-gray-200 text-gray-500 rounded-sm"><X size={12} /></button>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); setEditingId(null); }}
+                                                    className="p-3 bg-gray-200 text-gray-500 rounded-sm hover:bg-gray-300 transition-colors"
+                                                >
+                                                    <X size={12} />
+                                                </button>
                                             </div>
                                         </div>
                                     ) : (
                                         <>
                                             <div className="flex items-center justify-between mb-1.5">
-                                                <h3 className="text-[14px] font-bold text-[#1A3B5D] uppercase leading-tight">
-                                                    {group.name}
+                                                <h3 className="text-[14px] font-bold text-[#1A3B5D] uppercase  leading-tight truncate">
+                                                    {isVirtual ? <i className="text-gray-500">{group.name}</i> : group.name}
                                                 </h3>
 
-                                                {!isUncategorized && (
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            handleShareCategory(group);
-                                                        }}
-                                                        className="p-1.5 rounded-sm bg-[#F97316]/10 text-[#F97316] hover:bg-[#F97316] hover:text-white transition-all"
-                                                        title="Share Category"
-                                                    >
-                                                        <Send size={14} />
-                                                    </button>
-                                                )}
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleShareCategory(group);
+                                                    }}
+                                                    className="p-1.5 rounded-sm bg-[#F97316]/10 text-[#F97316] hover:bg-[#F97316] hover:text-white transition-all"
+                                                    title="Share Category"
+                                                >
+                                                    <Send size={14} />
+                                                </button>
                                             </div>
 
                                             {/* Centered Item Count Badge UI */}
@@ -480,14 +484,22 @@ const OrderingPage: React.FC = () => {
                                                 </span>
                                             </div>
 
-                                            <div className="mt-auto w-full py-1.5 rounded-sm text-[12px] font-black uppercase text-center tracking-wider transition-all bg-[#F97316] text-white"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleEdit(group)
-                                                }}
-                                            >
-                                                Edit Group
-                                            </div>
+                                            {/* Actions Logic */}
+                                            {!isVirtual ? (
+                                                <div
+                                                    className="mt-auto w-full py-1.5 rounded-sm text-[12px] font-black uppercase text-center tracking-wider transition-all bg-[#F97316] text-white hover:bg-[#ea580c]"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleEdit(group);
+                                                    }}
+                                                >
+                                                    Edit Group
+                                                </div>
+                                            ) : (
+                                                <div className="mt-auto w-full py-1.5 rounded-sm text-[12px] font-black uppercase text-center tracking-wider bg-gray-100 text-gray-400 cursor-not-allowed">
+                                                    Default
+                                                </div>
+                                            )}
                                         </>
                                     )}
                                 </div>

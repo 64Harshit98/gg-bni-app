@@ -171,7 +171,7 @@ const MyShop: React.FC = () => {
             : item.itemGroupId; // fallback for safety
 
         // Create SEO-friendly share URL
-        const shareUrl = `${window.location.origin}/${companyId}/${categorySlug}?itemId=${item.id}`;
+        const shareUrl = `${window.location.origin}/product/${companyId}/${categorySlug}?itemId=${item.id}`;
 
         try {
             if (navigator.share) {
@@ -267,51 +267,6 @@ const MyShop: React.FC = () => {
     }, [allItemGroups, resolvedGroupId]);
 
     useEffect(() => {
-        const getScrollContainer = (): HTMLElement | null => {
-            return document.querySelector(
-                ".flex-1.overflow-y-auto.pb-20.md\\:pb-4.scroll-smooth"
-            ) as HTMLElement | null;
-        };
-
-        // Slight delay to ensure layout is mounted
-        const timer = setTimeout(() => {
-            const scrollContainer = getScrollContainer();
-
-            if (!scrollContainer) {
-                console.warn("Scroll container still not found");
-                return;
-            }
-
-            let ticking = false;
-
-            const handleScroll = () => {
-                if (!ticking) {
-                    window.requestAnimationFrame(() => {
-                        const scrollTop = scrollContainer.scrollTop;
-                        setIsScrolled(scrollTop > 50);
-                        ticking = false;
-                    });
-                    ticking = true;
-                }
-            };
-
-            scrollContainer.addEventListener("scroll", handleScroll, {
-                passive: true,
-            });
-
-            // Initial trigger
-            handleScroll();
-
-            // Cleanup
-            return () => {
-                scrollContainer.removeEventListener("scroll", handleScroll);
-            };
-        }, 300);
-
-        return () => clearTimeout(timer);
-    }, []);
-
-    useEffect(() => {
         if (!Array.isArray(allItems) || allItems.length === 0) {
             setIsAllLive(false);
             return;
@@ -330,6 +285,22 @@ const MyShop: React.FC = () => {
         setIsAllLive(allLive);
         setIsAllLive(allLive);
     }, [allItems]);
+
+    useEffect(() => {
+        const handleScroll = () => {
+            const scrollTop =
+                window.scrollY ||
+                document.documentElement.scrollTop ||
+                document.body.scrollTop;
+            console.log("Scroll Position:", scrollTop);
+            setIsScrolled(scrollTop > 50);
+        };
+
+        handleScroll(); // Initial check
+
+        window.addEventListener("scroll", handleScroll, { passive: true });
+        return () => window.removeEventListener("scroll", handleScroll);
+    }, []);
 
     useEffect(() => {
         if (authLoading || !currentUser || !dbOperations || !companyId) {
@@ -560,14 +531,14 @@ const MyShop: React.FC = () => {
     return (
         <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative">
             {/* --- HEADER SECTION --- */}
-            <header className="sticky top-0 z-[100] bg-white border-b border-gray-100 shadow-sm w-full">
-                <div className="max-w-7xl mx-auto px-4 h-[68px] relative flex items-center justify-between">
+            <header className="sticky top-0 z-[10] bg-white border-b border-gray-100 shadow-sm w-full">
+                <div className="max-w-7xl mx-auto px-4 py-3 relative flex items-center justify-between">
 
                     {/* Left Section - Back Button + Small Company Name */}
                     <div className="flex items-center gap-2">
                         <button
                             onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ORDER}`)}
-                            className="p-2 rounded-sm hover:bg-slate-200 transition-colors text-slate-700"
+                            className="p-2 rounded-sm border border-slate-400 hover:bg-slate-200 transition-colors text-slate-700"
                             title="Back"
                         >
                             <svg
@@ -588,7 +559,7 @@ const MyShop: React.FC = () => {
 
                         {/* Small Company Name on Scroll */}
                         <span
-                            className={`hidden md:inline-block transition-all duration-300 ease-out transform ${isScrolled
+                            className={`transition-all duration-500 ease-in-out transform ${isScrolled
                                 ? "opacity-100 translate-x-0"
                                 : "opacity-0 -translate-x-4"
                                 } text-[10px] md:text-xs font-semibold text-gray-500 uppercase whitespace-nowrap`}
@@ -598,31 +569,31 @@ const MyShop: React.FC = () => {
                     </div>
 
                     {/* Center Animated Title */}
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden">
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none overflow-hidden">
 
                         {/* Company Name - Default */}
                         <span
-                            className={`absolute transition-all duration-300 ease-out will-change-transform transform ${isScrolled
+                            className={`absolute transition-all duration-500 ease-in-out transform ${isScrolled
                                 ? "-translate-y-6 opacity-0 scale-95"
                                 : "translate-y-0 opacity-100 scale-100"
-                                } text-lg font-black text-[#1A3B5D] uppercase tracking-tighter whitespace-nowrap`}
+                                } text-xs md:text-lg font-black text-[#1A3B5D] uppercase tracking-tighter whitespace-nowrap`}
                         >
                             {companyName}
                         </span>
 
                         {/* Category Name - On Scroll */}
                         <span
-                            className={`absolute transition-all duration-300 ease-out will-change-transform transform ${isScrolled
+                            className={`absolute transition-all duration-500 ease-in-out transform ${isScrolled
                                 ? "translate-y-0 opacity-100 scale-100"
                                 : "translate-y-6 opacity-0 scale-95"
-                                } text-lg font-black text-[#F97316] uppercase tracking-tighter whitespace-nowrap`}
+                                } text-xs md:text-lg font-black text-[#1A3B5D] uppercase tracking-tighter whitespace-nowrap`}
                         >
                             {currentCategoryName}
                         </span>
 
                         {/* Company Name Below Category (Mobile Only) */}
                         {isScrolled && (
-                            <span className="md:hidden text-[12px] font-semibold text-gray-500 uppercase tracking-wide mt-10">
+                            <span className="md:hidden text-[10px] font-semibold text-gray-500 uppercase tracking-wide mt-6">
                                 {companyName}
                             </span>
                         )}
@@ -635,8 +606,8 @@ const MyShop: React.FC = () => {
 
             <main className="p-3 md:p-6 space-y-3 flex-1 max-w-7xl mx-auto w-full pb-24">
                 <div
-                    className={`flex items-center justify-center transition-all duration-300 ease-out ${isScrolled
-                        ? "opacity-0 -translate-y-6 h-0 overflow-hidden"
+                    className={`flex items-center justify-center transition-all duration-500 ${isScrolled
+                        ? "opacity-0 -translate-y-4 h-0 overflow-hidden"
                         : "opacity-100 translate-y-0"
                         }`}
                 >
@@ -644,51 +615,45 @@ const MyShop: React.FC = () => {
                         {currentCategoryName}
                     </h1>
                 </div>
+                <div className="relative group md:max-w-md md:mx-auto w-full">
+                    <SearchBar
+                        items={allItems}
+                        itemGroups={allItemGroups}
+                        placeholder="Search products..."
+                        onItemSelected={(item) => {
+                            if (!item.id) return;
 
-                {/*  Search Bar */}
-                <div
-                    className={`flex justify-center transition-all duration-300 ${isScrolled
-                        ? "sticky top-[70px] z-50 "
-                        : "relative"
-                        }`}
-                >
-                    <div className="relative group md:max-w-md md:mx-auto w-full">
-                        <SearchBar
-                            items={allItems}
-                            itemGroups={allItemGroups}
-                            placeholder="Search products..."
-                            onItemSelected={(item) => {
-                                if (!item.id) return;
+                            setSearchQuery("");
 
-                                setSearchQuery("");
+                            const group = allItemGroups.find(
+                                g => g.id === item.itemGroupId
+                            );
 
-                                const group = allItemGroups.find(
-                                    g => g.id === item.itemGroupId
-                                );
+                            // Find Uncategorized group
+                            const uncategorizedGroup = allItemGroups.find(
+                                g => g.name.toLowerCase().trim() === "uncategorized"
+                            );
 
-                                const uncategorizedGroup = allItemGroups.find(
-                                    g => g.name.toLowerCase().trim() === "uncategorized"
-                                );
+                            // Generate correct slug
+                            const slug = group
+                                ? generateSlug(group.name)
+                                : uncategorizedGroup
+                                    ? generateSlug(uncategorizedGroup.name)
+                                    : "uncategorized";
 
-                                const slug = group
-                                    ? generateSlug(group.name)
-                                    : uncategorizedGroup
-                                        ? generateSlug(uncategorizedGroup.name)
-                                        : "uncategorized";
-
-                                navigate(
-                                    `/catalogue-home/my-shop/${slug}`,
-                                    {
-                                        state: {
-                                            highlightItemId: item.id,
-                                            trigger: Date.now()
-                                        }
+                            navigate(
+                                `/catalogue-home/my-shop/${slug}`,
+                                {
+                                    state: {
+                                        highlightItemId: item.id,
+                                        trigger: Date.now()
                                     }
-                                );
-                            }}
-                        />
-                    </div>
+                                }
+                            );
+                        }}
+                    />
                 </div>
+
                 <div className="max-w-7xl mx-auto px-1 flex items-center justify-between relative">
 
                     <div className="flex items-center gap-2">
@@ -779,7 +744,7 @@ const MyShop: React.FC = () => {
                                 <div className="p-3 flex flex-col flex-1">
                                     <div className="flex items-start justify-between mb-1">
                                         <h3 className="text-[12px] font-black text-[#1A3B5D] uppercase leading-tight">
-                                            {item.name.slice(0, 30)}
+                                            {item.name}
                                         </h3>
 
                                         {!isUncategorized && (

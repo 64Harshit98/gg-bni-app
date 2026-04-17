@@ -119,7 +119,7 @@ const OrderingPage: React.FC = () => {
         if (!companyId || !group?.id) return;
 
         const categorySlug = generateSlug(group.name);
-        const shareUrl = `${window.location.origin}/${companyId}/${categorySlug}`;
+        const shareUrl = `${window.location.origin}/product/${companyId}/${categorySlug}`;
 
         try {
             if (navigator.share) {
@@ -258,43 +258,38 @@ const OrderingPage: React.FC = () => {
                 <div className='flex items-center justify-center'>
                     <h1 className="text-sm md:text-xl font-extrabold text-[#F97316] uppercase tracking-tighter">Categories</h1>
                 </div>
+                {/* --- SEARCH BAR --- */}
+                <SearchBar
+                    items={items}
+                    itemGroups={itemGroups}
+                    placeholder="Search products..."
+                    onItemSelected={(item) => {
+                        if (!item.id) return;
+                        const group = itemGroups.find(g => g.id === item.itemGroupId);
 
-                {/* --- STICKY SEARCH BAR --- */}
-                <div className="sticky top-[68px] z-50 flex justify-center">
-                    <div className="relative group max-w-md mx-auto w-full">
-                        <SearchBar
-                            items={items}
-                            itemGroups={itemGroups}
-                            placeholder="Search products..."
-                            onItemSelected={(item) => {
-                                if (!item.id) return;
-                                const group = itemGroups.find(
-                                    g => g.id === item.itemGroupId
-                                );
+                        // Find Uncategorized group
+                        const uncategorizedGroup = itemGroups.find(
+                            g => g.name.toLowerCase().trim() === "uncategorized"
+                        );
 
-                                const uncategorizedGroup = itemGroups.find(
-                                    g => g.name.toLowerCase().trim() === "uncategorized"
-                                );
+                        // Generate correct slug
+                        const slug = group
+                            ? generateSlug(group.name)
+                            : uncategorizedGroup
+                                ? generateSlug(uncategorizedGroup.name)
+                                : "uncategorized";
 
-                                const slug = group
-                                    ? generateSlug(group.name)
-                                    : uncategorizedGroup
-                                        ? generateSlug(uncategorizedGroup.name)
-                                        : "uncategorized";
-
-                                navigate(
-                                    `/catalogue-home/my-shop/${slug}`,
-                                    {
-                                        state: {
-                                            highlightItemId: item.id,
-                                            isUnlisted: !item.isListed
-                                        }
-                                    }
-                                );
-                            }}
-                        />
-                    </div>
-                </div>
+                        navigate(
+                            `/catalogue-home/my-shop/${slug}`,
+                            {
+                                state: {
+                                    highlightItemId: item.id,
+                                    isUnlisted: !item.isListed
+                                }
+                            }
+                        );
+                    }}
+                />
                 {/* --- CATALOGUE COUNT & FILTER --- */}
                 <div className="max-w-7xl mx-auto px-1 flex items-center justify-between relative">
                     <div className="flex items-center gap-2">
@@ -337,6 +332,7 @@ const OrderingPage: React.FC = () => {
                 {/* --- PRODUCT GRID --- */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1">
                     {filteredItems.map(group => {
+
                         const isUncategorized = group.name.toLowerCase().trim() === "uncategorized";
                         const itemCount = items.filter(item => {
                             const groupExists = itemGroups.some(g => g.id === item.itemGroupId);

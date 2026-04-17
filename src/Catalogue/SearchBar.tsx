@@ -11,7 +11,6 @@ interface SearchableItemInputProps {
   isLoading?: boolean;
   error?: string | null;
   hideUncategorized?: boolean;
-  hideOutOfStock?: boolean;
 }
 
 const THROTTLE_DELAY = 500;
@@ -23,7 +22,6 @@ const SearchBar: React.FC<SearchableItemInputProps> = ({
   placeholder = "Scan or search item...",
   isLoading = false,
   hideUncategorized = false,
-  hideOutOfStock = false,
   error = null
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -75,12 +73,6 @@ const SearchBar: React.FC<SearchableItemInputProps> = ({
     const searchTokens = trimmedQuery.split(/\s+/);
 
     const matches = items.filter(item => {
-
-      if (hideOutOfStock) {
-        const stock = Number(item.stock ?? 0);
-        if (stock <= 0) return false;
-      }
-
       const uncategorizedGroup = itemGroups.find(
         g => g.name.toLowerCase().trim() === "uncategorized"
       );
@@ -242,11 +234,11 @@ const SearchBar: React.FC<SearchableItemInputProps> = ({
                         <span className="text-sm font-medium text-gray-800 truncate">
                           {item.name}
                         </span>
-
-                        <span className="text-xs text-gray-400 font-mono mt-0.5">
-                          {categoryName}
-                        </span>
-
+                        
+                          <span className="text-xs text-gray-400 font-mono mt-0.5">
+                            {categoryName}
+                          </span>
+                       
                       </div>
 
                       {/* Right: Price & Stock Badge */}

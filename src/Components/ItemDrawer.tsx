@@ -520,35 +520,28 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                     />
                                 </div>
                             </div>
-                            {isCatalogue && (
-                                <div>
-                                    <label
-                                        htmlFor="edit-itemGroupId"
-                                        className="text-sm font-medium leading-none mb-1 block"
+                            <div>
+                                <label htmlFor="edit-itemGroupId" className="text-sm font-medium leading-none mb-1 block">Category</label>
+                                {loadingGroups ? (
+                                    <p className="text-xs text-gray-500">Loading categories...</p>
+                                ) : (
+                                    <select
+                                        id="edit-itemGroupId"
+                                        name="itemGroupId"
+                                        value={formData.itemGroupId || ''}
+                                        onChange={handleChange}
+                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        disabled={isSaving}
                                     >
-                                        Category
-                                    </label>
-                                    {loadingGroups ? (
-                                        <p className="text-xs text-gray-500">Loading categories...</p>
-                                    ) : (
-                                        <select
-                                            id="edit-itemGroupId"
-                                            name="itemGroupId"
-                                            value={formData.itemGroupId || ''}
-                                            onChange={handleChange}
-                                            className="flex h-10 w-full rounded-sm border border-gray-300 px-3 py-2 text-sm"
-                                            disabled={isSaving}
-                                        >
-                                            <option value="" disabled>Select a category</option>
-                                            {itemGroups.map((group) => (
-                                                <option key={group.id} value={group.id}>
-                                                    {group.name}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    )}
-                                </div>
-                            )}
+                                        <option value="" disabled>Select a category</option>
+                                        {itemGroups.map((group) => (
+                                            <option key={group.id} value={group.id}>
+                                                {group.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                )}
+                            </div>
                             <div>
                                 <label htmlFor="edit-unit" className="text-sm font-medium leading-none mb-1 block">Unit</label>
                                 <div className="flex gap-2">
@@ -637,7 +630,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                     htmlFor={`edit-isListed-${item?.id}`}
                                     className="text-sm font-medium text-gray-700 select-none cursor-pointer"
                                 >
-                                    {isCatalogue ? "List this item in Catalogue" : "List this item on Ordering Page"}
+                                    {isCatalogue ?"List this item in Catalogue" :"List this item on Ordering Page"}
                                 </label>
                             </div>
                         </>

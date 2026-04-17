@@ -38,7 +38,7 @@ export interface CatalogueSalesSettings {
   cartInsertionOrder?: 'top' | 'bottom';
   requireApproval: boolean;
   enableItemWiseDiscount?: boolean;
-  hideOutOfStock?: boolean;
+  hideOutOfStock?:boolean;
 }
 
 export const getDefaultCatalogueSalesSettings = (companyId: string): CatalogueSalesSettings => ({
@@ -65,7 +65,7 @@ export const getDefaultCatalogueSalesSettings = (companyId: string): CatalogueSa
   cartInsertionOrder: 'top',
   requireApproval: false,
   enableItemWiseDiscount: false,
-  hideOutOfStock: false
+  hideOutOfStock:false
 });
 
 interface CardProps {
@@ -73,7 +73,7 @@ interface CardProps {
   children: React.ReactNode;
   action?: React.ReactNode;
 }
-
+ 
 const SettingsCard: React.FC<CardProps> = ({ title, children, action }) => (
   <section className="bg-white rounded-sm border border-gray-200 shadow-sm p-5 md:p-6 space-y-5 transition-shadow">
     <div className="flex items-center justify-between gap-3">
@@ -83,7 +83,7 @@ const SettingsCard: React.FC<CardProps> = ({ title, children, action }) => (
     {children}
   </section>
 );
-
+ 
 export interface ToggleRowProps {
   id: string;
   label: string;
@@ -93,7 +93,7 @@ export interface ToggleRowProps {
   tooltip?: string;
   disabled?: boolean;
 }
-
+ 
 export const ToggleRow: React.FC<ToggleRowProps> = ({
   id, label, description, checked, onChange, tooltip, disabled = false
 }) => (
@@ -144,7 +144,7 @@ const CatalogueSalesSettings: React.FC = () => {
         const docSnap = await getDoc(settingsDocRef);
         const defaultSettings = getDefaultCatalogueSalesSettings(companyId);
 
-        if (docSnap.exists()) {
+         if (docSnap.exists()) {
           setSettings({ ...defaultSettings, ...docSnap.data() } as CatalogueSalesSettings);
         } else {
           await setDoc(settingsDocRef, defaultSettings);
@@ -172,7 +172,7 @@ const CatalogueSalesSettings: React.FC = () => {
     setIsSaving(true);
     try {
       const companyId = currentUser.companyId;
-      const docRef = doc(db, 'companies', companyId, 'settings', 'catalogue-sales-settings');
+       const docRef = doc(db, 'companies', companyId, 'settings', 'catalogue-sales-settings');
 
       await setDoc(docRef, {
         ...settings,
@@ -180,9 +180,9 @@ const CatalogueSalesSettings: React.FC = () => {
         settingType: 'catalogueSales',
         updatedAt: new Date()
       }, { merge: true });
+ 
 
-
-      setModal({ message: 'Settings saved successfully!', type: State.SUCCESS });
+       setModal({ message: 'Settings saved successfully!', type: State.SUCCESS });
     } catch (err) {
       console.error('Failed to save settings:', err);
       setModal({ message: 'Failed to save settings. Please try again.', type: State.ERROR });
@@ -198,7 +198,7 @@ const CatalogueSalesSettings: React.FC = () => {
       'defaultCartQuantity',
       'minimumOrderValue',
       'currentVoucherNumber',
-      'roundingInterval',
+       'roundingInterval',
     ];
 
     if (numericFields.includes(field)) {
@@ -239,40 +239,41 @@ const CatalogueSalesSettings: React.FC = () => {
         <div className="w-6"></div>
       </div>
 
-      {/* Main content */}
+       {/* Main content */}
       <main className="flex-grow min-h-0 p-3 sm:p-4 md:p-5 bg-gray-50 w-full overflow-y-auto box-border pb-44 md:pb-24">
         <form onSubmit={handleSave} className="max-w-5xl mx-auto space-y-5">
-
+ 
           {/* ── Visibility ──────────────────────────────────────────────────── */}
           <SettingsCard title="Visibility">
-            <div>
-              <div>
-                <ToggleRow
-                  id="allow-negative-inventory"
-                  label="Allow Negative Inventory"
-                  description="Allow orders even when stock is zero."
-                  checked={settings.allowNegativeInventory}
-                  onChange={(checked) => handleCheckboxChange('allowNegativeInventory', checked)}
-                  tooltip="Permit catalogue orders for items with no recorded stock."
-                />
-              </div>
-              <div className="flex items-center mb-4">
-                <input
-                  type="checkbox"
-                  checked={settings.hideOutOfStock}
-                  onChange={(e) =>
-                    handleCheckboxChange(
-                      'hideOutOfStock',
-                      e.target.checked
-                    )
-                  }
-                  className="w-4 h-4 accent-[#F97316]"
-                />
-                <label className="ml-2 text-sm">
-                  Hide Out of Stock Items
-                </label>
-              </div>
-              {/* <div className="flex items-center">
+              <ToggleRow
+                id="allow-negative-inventory"
+                label="Allow Negative Inventory"
+                description="Allow orders even when stock is zero."
+                checked={settings.allowNegativeInventory}
+                onChange={(checked) => handleCheckboxChange('allowNegativeInventory', checked)}
+                tooltip="Permit catalogue orders for items with no recorded stock."
+              />
+              <label className="ml-2 text-sm">
+                Allow Negative Inventory
+              </label>
+            </div>
+            <div className="flex items-center mb-4">
+              <input
+                type="checkbox"
+                checked={settings.hideOutOfStock}
+                onChange={(e) =>
+                  handleCheckboxChange(
+                    'hideOutOfStock',
+                    e.target.checked
+                  )
+                }
+                className="w-4 h-4 accent-[#F97316]"
+              />
+              <label className="ml-2 text-sm">
+                Hide Out of Stock Items
+              </label>
+            </div>
+            {/* <div className="flex items-center">
               <input
                 type="checkbox"
                 checked={settings.enableOutOfStockNotification}
@@ -289,7 +290,7 @@ const CatalogueSalesSettings: React.FC = () => {
               </label>
             </div> */}
 
-              {/* <div className="flex items-center mt-4">
+            {/* <div className="flex items-center mt-4">
               <input
                 type="checkbox"
                 checked={settings.requireApproval}
@@ -306,73 +307,72 @@ const CatalogueSalesSettings: React.FC = () => {
               </label>
             </div> */}
 
-              <div className="flex items-center mt-4">
-                <input
-                  type="checkbox"
-                  checked={settings.hidePrice}
-                  onChange={(e) =>
-                    handleCheckboxChange(
-                      'hidePrice',
-                      e.target.checked
-                    )
-                  }
-                  className="w-4 h-4 accent-[#F97316]"
-                />
-                <label className="ml-2 text-sm">
-                  Hide Price from Customers
-                </label>
+            <div className="flex items-center mt-4">
+              <input
+                type="checkbox"
+                checked={settings.hidePrice}
+                onChange={(e) =>
+                  handleCheckboxChange(
+                    'hidePrice',
+                    e.target.checked
+                  )
+                }
+                className="w-4 h-4 accent-[#F97316]"
+              />
+              <label className="ml-2 text-sm">
+                Hide Price from Customers
+              </label>
+            </div>
+          </div>
+
+          {/* Pricing & Tax */}
+
+          <div className="bg-white rounded-lg p-6 shadow-md mb-2">
+            <h2 className="text-lg font-semibold text-gray-800 mb-4">Pricing & Tax</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div>
+                <label htmlFor="gst-scheme" className="block text-gray-700 text-sm font-medium mb-1">GST Scheme</label>
+                <select
+                  id="gst-scheme"
+                  value={settings.gstScheme || 'none'}
+                  onChange={(e) => handleChange('gstScheme', e.target.value)}
+                  className="w-full p-3 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#F97316] focus:border-[#F97316]"
+                >
+                  <option value="none">None (Tax Disabled)</option>
+                  <option value="regular">Regular GST</option>
+                  <option value="composition">Composition GST</option>
+                </select>
               </div>
             </div>
 
-            {/* Pricing & Tax */}
-
-            <div className="bg-white rounded-lg p-6 shadow-md mb-2">
-              <h2 className="text-lg font-semibold text-gray-800 mb-4">Pricing & Tax</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            {settings.gstScheme === 'regular' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
                 <div>
-                  <label htmlFor="gst-scheme" className="block text-gray-700 text-sm font-medium mb-1">GST Scheme</label>
+                  <label htmlFor="tax-type" className="block text-gray-700 text-sm font-medium mb-1">Tax Calculation (for Regular GST)</label>
                   <select
-                    id="gst-scheme"
-                    value={settings.gstScheme || 'none'}
-                    onChange={(e) => handleChange('gstScheme', e.target.value)}
-                    className="w-full p-3 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#F97316] focus:border-[#F97316]"
+                    value={settings.taxType || 'exclusive'}
+                    onChange={(e) => handleChange('taxType', e.target.value)}
+                    className="w-full p-2.5 text-sm border border-gray-300 rounded-sm bg-white"
                   >
-                    <option value="none">None (Tax Disabled)</option>
-                    <option value="regular">Regular GST</option>
-                    <option value="composition">Composition GST</option>
+                    <option value="exclusive">Tax Exclusive (Sales Price excludes GST)</option>
+                    <option value="inclusive">Tax Inclusive (Sales Price includes GST)</option>
                   </select>
                 </div>
               </div>
-
-              {settings.gstScheme === 'regular' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
-                  <div>
-                    <label htmlFor="tax-type" className="block text-gray-700 text-sm font-medium mb-1">Tax Calculation (for Regular GST)</label>
-                    <select
-                      value={settings.taxType || 'exclusive'}
-                      onChange={(e) => handleChange('taxType', e.target.value)}
-                      className="w-full p-2.5 text-sm border border-gray-300 rounded-sm bg-white"
-                    >
-                      <option value="exclusive">Tax Exclusive (Sales Price excludes GST)</option>
-                      <option value="inclusive">Tax Inclusive (Sales Price includes GST)</option>
-                    </select>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex items-center mb-4">
-                <input type="checkbox" id="item-discount" checked={settings.enableItemWiseDiscount ?? false} onChange={(e) => handleCheckboxChange('enableItemWiseDiscount', e.target.checked)} className="w-4 h-4 accent-[#F97316] rounded focus:ring-[#F97316]" />
-                <label htmlFor="item-discount" className="ml-2 mr-2 text-gray-700 text-sm font-medium">
-                  Enable Item-wise Discount
-                </label>
-                <InfoTooltip text="Allow discounts to be applied to individual cart items." />
-              </div>
+            )}
+            
+            <div className="flex items-center mb-4">
+              <input type="checkbox" id="item-discount" checked={settings.enableItemWiseDiscount ?? false} onChange={(e) => handleCheckboxChange('enableItemWiseDiscount', e.target.checked)} className="w-4 h-4 accent-[#F97316] rounded focus:ring-[#F97316]"/>
+              <label htmlFor="item-discount" className="ml-2 mr-2 text-gray-700 text-sm font-medium">
+                Enable Item-wise Discount
+              </label>
+              <InfoTooltip text="Allow discounts to be applied to individual cart items." />
             </div>
           </SettingsCard>
-
+ 
           {/* ── Order Rules & Voucher in a 2-col grid ──────────────────────── */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-
+ 
             {/* Order Rules */}
             <SettingsCard title="Order Rules">
               <div className="rounded-sm bg-gray-50 border border-gray-100 p-3">
@@ -394,7 +394,7 @@ const CatalogueSalesSettings: React.FC = () => {
                 <p className="text-xs text-gray-500 mt-1.5">Leave blank or 0 to disable minimum order.</p>
               </div>
             </SettingsCard>
-
+ 
             {/* Voucher Numbering */}
             <SettingsCard title="Voucher Numbering">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -434,10 +434,10 @@ const CatalogueSalesSettings: React.FC = () => {
               </div>
             </SettingsCard>
           </div>
-
+ 
         </form>
       </main>
-
+ 
       {/* Sticky save bar */}
       <div className="fixed inset-x-0 bottom-16 md:bottom-0 z-40 bg-transparent px-4 pb-2 md:p-4 pointer-events-none">
         <div className="max-w-2xl mx-auto flex justify-center gap-4 pointer-events-auto">
@@ -453,5 +453,5 @@ const CatalogueSalesSettings: React.FC = () => {
     </div>
   );
 };
-
+ 
 export default CatalogueSalesSettings;

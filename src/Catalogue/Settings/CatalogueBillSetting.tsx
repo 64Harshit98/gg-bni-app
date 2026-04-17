@@ -5,8 +5,7 @@ import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../../context/auth-context';
 import { State } from '../../enums';
 import { Modal } from '../../constants/Modal';
-import { useNavigate } from 'react-router';
-import { IconClose } from '../../constants/Icons';
+import { useNavigate } from 'react-router'
 
 // --- Interface for Bill Specific Settings ---
 export interface BillSettingsData {
@@ -35,7 +34,7 @@ interface BusinessInfoData {
 
 const CatalogueBillSettings: React.FC = () => {
     const { currentUser } = useAuth();
-    const navigate = useNavigate();
+const navigate = useNavigate();
     // <--- 3. Ref to control the signature pad
     const sigPadRef = useRef<any>(null);
 
@@ -95,7 +94,7 @@ const CatalogueBillSettings: React.FC = () => {
                 const bData = businessSnap.exists() ? businessSnap.data() : {};
                 const sData = settingsSnap.exists() ? settingsSnap.data() : {};
 
-                setBusinessInfo({
+               setBusinessInfo({
                     companyName: bData.businessName || bData.name || 'Not Set',
                     address: formatAddress(bData),
                     phone: bData.phoneNumber || bData.phone || 'Not Set',
@@ -121,7 +120,7 @@ const CatalogueBillSettings: React.FC = () => {
                 setSettings(loadedSettings);
 
                 // FIX: Load signature after component has mounted and canvas is ready
-                if (loadedSettings.signatureBase64) {
+                 if (loadedSettings.signatureBase64) {
                     setTimeout(() => {
                         if (sigPadRef.current) {
                             sigPadRef.current.fromDataURL(
@@ -161,9 +160,9 @@ const CatalogueBillSettings: React.FC = () => {
 
         try {
             setIsSaving(true);
-
+ 
             let currentSignature = settings.signatureBase64;
-
+ 
             if (sigPadRef.current && !sigPadRef.current.isEmpty()) {
                 currentSignature = sigPadRef.current
                     .getCanvas()
@@ -171,7 +170,7 @@ const CatalogueBillSettings: React.FC = () => {
             } else if (sigPadRef.current && sigPadRef.current.isEmpty()) {
                 currentSignature = '';
             }
-
+ 
             const dataToSave = {
                 ...settings,
                 signatureBase64: currentSignature,
@@ -207,13 +206,7 @@ const CatalogueBillSettings: React.FC = () => {
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
             {/* --- Page Header --- */}
-            <div className="flex items-center bg-white border-b border-gray-200 sticky top-0 z-10">
-                <button
-                    onClick={() => navigate(-1)}
-                    className="ml-4 flex items-center gap-2 text-gray-500 hover:text-gray-900 transition-colors"
-                >
-                    <IconClose />
-                </button>
+            <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
                 <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
                     <h1 className="text-2xl font-bold text-gray-900">Invoice Configuration</h1>
                     <p className="text-sm text-gray-500 mt-1">Manage details printed on your bills.</p>
@@ -246,7 +239,7 @@ const CatalogueBillSettings: React.FC = () => {
                         </span>
                     </div>
                     <div className="p-5 space-y-6 opacity-80">
-
+ 
                         {/* Logo + Name + Address */}
                         <div className="flex flex-col sm:flex-row items-start gap-4">
                             {businessInfo.companyLogo ? (
@@ -279,7 +272,7 @@ const CatalogueBillSettings: React.FC = () => {
                                 </div>
                             </div>
                         </div>
-
+ 
                         {/* Contact */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
@@ -299,9 +292,9 @@ const CatalogueBillSettings: React.FC = () => {
                                 </div>
                             </div>
                         </div>
-
+ 
                         <div className="border-t border-gray-100" />
-
+ 
                         {/* Tax & Registration */}
                         <div>
                             <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3">
@@ -340,7 +333,7 @@ const CatalogueBillSettings: React.FC = () => {
                                 </div>
                             </div>
                         </div>
-
+ 
                         <div className="border-t border-gray-100" />
                         {/* Bank Details */}
                         <div>
@@ -390,10 +383,10 @@ const CatalogueBillSettings: React.FC = () => {
                                 </div>
                             </div>
                         </div>
-
+ 
                     </div>
                 </div>
-
+ 
                 {/* SECTION 2: UPI ID */}
                 <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden">
                     <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
@@ -418,7 +411,7 @@ const CatalogueBillSettings: React.FC = () => {
                         </div>
                     </div>
                 </div>
-
+ 
                 {/* SECTION 3: Digital Signature */}
                 <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden">
                     <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
@@ -455,7 +448,7 @@ const CatalogueBillSettings: React.FC = () => {
                         </div>
                     </div>
                 </div>
-
+ 
                 {/* SECTION 4: Terms & Conditions */}
                 <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden mb-20">
                     <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
@@ -476,9 +469,9 @@ const CatalogueBillSettings: React.FC = () => {
                         />
                     </div>
                 </div>
-
+ 
             </div>
-
+ 
             {/* Floating Save Button */}
             <div className="fixed bottom-0 left-0 right-0 p-4 bg-transparent pb-18 flex justify-end md:px-8">
                 <button
@@ -502,5 +495,6 @@ const CatalogueBillSettings: React.FC = () => {
         </div>
     );
 };
-
+ 
 export default CatalogueBillSettings;
+ 

@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 import { useAuth } from '../../context/auth-context';
-import { IconClose } from '../../constants/Icons';
-import { useNavigate } from 'react-router';
+
 interface Props {
   isDataVisible?: boolean;
   paymentData?: { name: string; amount: number; quantity: number }[];
@@ -14,7 +13,7 @@ function GallaHisaabTool({ isDataVisible = true, paymentData = [], cashAmount = 
   const [datePreset, setDatePreset] = useState('today');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const navigate = useNavigate();
+
   const { currentUser } = useAuth();
   const [fetchedCash, setFetchedCash] = useState(0);
   const [cashBreakdown, setCashBreakdown] = useState<{ received: number; returned: number }[]>([]);
@@ -37,7 +36,7 @@ function GallaHisaabTool({ isDataVisible = true, paymentData = [], cashAmount = 
       if (startDate && endDate) {
         const start = new Date(startDate);
         const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
+        end.setHours(23,59,59,999);
 
         q = query(
           salesRef,
@@ -158,22 +157,9 @@ function GallaHisaabTool({ isDataVisible = true, paymentData = [], cashAmount = 
 
   return (
     <div className="min-h-screen bg-gray-100 p-3 md:p-6">
-      <div className="relative flex items-center justify-center mb-4">
-
-        {/* Cross Button - Left Side */}
-        <button
-          onClick={() => navigate(-1)}
-          className="absolute left-0 text-gray-500 hover:text-gray-900 transition-colors"
-        >
-          <IconClose />
-        </button>
-
-        {/* Centered Heading */}
-        <h1 className="text-xl font-bold text-center md:text-2xl">
-          Galla Hisaab
-        </h1>
-
-      </div>
+      <h1 className="text-xl font-bold text-center mb-4 md:text-2xl">
+        Galla Hisaab
+      </h1>
 
       {/* FILTER CARD */}
       <div className="bg-white p-3 rounded-lg shadow-md md:p-5 md:rounded-xl">

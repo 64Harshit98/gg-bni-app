@@ -276,7 +276,7 @@ return (
       </div>
     </div>
 
-    <div className="flex-grow px-4 pb-0 overflow-y-auto">
+    <div className={`flex-grow px-4 pb-32 ${error ? 'overflow-y-auto' : 'overflow-hidden'}`}>
       <div className="flex justify-between items-center mb-3 mt-3">
         <h1 className="text-3xl font-bold">Business Details</h1>
         <button
@@ -287,8 +287,13 @@ return (
           Clear Form
         </button>
       </div>
-      <div className="bg-white p-3 space-y-2 pt-4 pb-4 w-[100%] mx-auto">
-        <form onSubmit={handleFinishSetup} className="flex flex-col space-y-4">
+      <div className="bg-white p-3 space-y-2 pt-4 pb-10 w-[100%] mx-auto">
+        <form onSubmit={handleFinishSetup} className="flex flex-col space-y-4 min-h-full">
+          {error && (
+            <div className="sticky top-0 z-50 bg-red-50 border border-red-200 text-red-600 text-sm text-center p-3 rounded-md font-medium shadow-sm">
+              {error}
+            </div>
+          )}
           <div className="flex flex-col space-y-4">
             <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
               <FiAtSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
@@ -498,11 +503,6 @@ return (
           </div>
 
           </div>
-          {error && (
-            <p className="text-red-500 text-sm text-center bg-red-50 p-2 rounded-sm animate-pulse">
-              {error}
-            </p>
-          )}
         </form>
       </div>
     </div>

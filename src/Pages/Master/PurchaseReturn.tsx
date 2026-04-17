@@ -526,62 +526,68 @@ const PurchaseReturnPage: React.FC = () => {
   };
 
   // --- UI CALCULATIONS (With Discount) ---
-  const { totalReturnValue, totalNewItemsValue, finalBalance, discountDeducted } = useMemo(() => {
-    const totalReturnGross = itemsToReturn.reduce((sum, item) => sum + item.amount, 0);
-    // --- TAX CALCULATION---
-    let returnTax = 0;
+  const { totalReturnValue, totalNewItemsValue, finalBalance, discountDeducted, returnTax } = useMemo(() => {
+  const totalReturnGross = itemsToReturn.reduce((sum, item) => sum + item.amount, 0);
+  
+  // --- TAX CALCULATION---
+  let returnTax = 0;
 
-    if (selectedPurchase) {
-      returnTax = selectedPurchase.items.reduce((sum: number, item: any) => {
-        const itemFinalPrice = Number(item.purchasePrice || item.finalPrice || 0);
-        const taxRate = Number(item.taxRate || item.tax || 0);
-        const taxType = item.taxType;
+  if (selectedPurchase) {
+    returnTax = selectedPurchase.items.reduce((sum: number, item: any) => {
+      const itemFinalPrice = Number(item.purchasePrice || item.finalPrice || 0);
+      const taxRate = Number(item.taxRate || item.tax || 0);
+      const taxType = item.taxType;
 
-        if (taxType === 'inclusive' && taxRate > 0) {
-          const itemTax = itemFinalPrice * (taxRate / 100);
-          return sum + itemTax;
-        }
-
-        return sum;
-      }, 0);
-
-      // proportional tax based on return ratio
-      const originalGross = selectedPurchase.items.reduce((sum, item) => {
-        const price = item.purchasePrice ?? (item.quantity ? item.quantity : 0);
-        return sum + (item.quantity * price);
-      }, 0);
-
-      if (originalGross > 0 && returnTax > 0) {
-        const ratio = totalReturnGross / originalGross;
-        returnTax = Math.round(returnTax * ratio * 100) / 100;
+      if (taxType === 'inclusive' && taxRate > 0) {
+        const itemTax = itemFinalPrice * (taxRate / 100);
+        return sum + itemTax;
       }
+
+      return sum;
+    }, 0);
+
+    // proportional tax based on return ratio
+    const originalGross = selectedPurchase.items.reduce((sum, item) => {
+      const price = item.purchasePrice ?? (item.quantity ? item.quantity : 0);
+      return sum + (item.quantity * price);
+    }, 0);
+
+    if (originalGross > 0 && returnTax > 0) {
+      const ratio = totalReturnGross / originalGross;
+      returnTax = Math.round(returnTax * ratio * 100) / 100;
     }
-    const totalNewItemsValue = newItemsReceived.reduce((sum, item) => sum + item.amount, 0);
+  }
+  
+  const totalNewItemsValue = newItemsReceived.reduce((sum, item) => sum + item.amount, 0);
 
-    let discountDeducted = 0;
+  let discountDeducted = 0;
 
-    if (selectedPurchase) {
-      // Calculate Original Bill Gross (Sum of Items)
-      const originalGross = selectedPurchase.items.reduce((sum, item) => {
-        const price = item.purchasePrice ?? (item.quantity ? item.quantity : 0);
-        return sum + (item.quantity * price);
-      }, 0);
+  if (selectedPurchase) {
+    const originalGross = selectedPurchase.items.reduce((sum, item) => {
+      const price = item.purchasePrice ?? (item.quantity ? item.quantity : 0);
+      return sum + (item.quantity * price);
+    }, 0);
 
-      const originalManualDiscount = Number(selectedPurchase.manualDiscount) || 0;
+    const originalManualDiscount = Number(selectedPurchase.manualDiscount) || 0;
 
-      // If there was a discount, calculate proportional deduction
-      if (originalGross > 0 && originalManualDiscount > 0) {
-        const ratio = totalReturnGross / originalGross;
-        discountDeducted = originalManualDiscount * ratio;
-        discountDeducted = Math.round(discountDeducted * 100) / 100;
-      }
+    if (originalGross > 0 && originalManualDiscount > 0) {
+      const ratio = totalReturnGross / originalGross;
+      discountDeducted = originalManualDiscount * ratio;
+      discountDeducted = Math.round(discountDeducted * 100) / 100;
     }
+  }
 
-    const netReturnValue = totalReturnGross - discountDeducted + returnTax;
-    const finalBalance = netReturnValue - totalNewItemsValue;
+  const netReturnValue = totalReturnGross - discountDeducted + returnTax;
+  const finalBalance = netReturnValue - totalNewItemsValue;
 
-    return { totalReturnValue: netReturnValue, totalNewItemsValue, finalBalance: Math.round(finalBalance), discountDeducted };
-  }, [itemsToReturn, newItemsReceived, selectedPurchase]);
+  return { 
+    totalReturnValue: netReturnValue, 
+    totalNewItemsValue, 
+    finalBalance: Math.round(finalBalance), 
+    discountDeducted,
+    returnTax  // ADDED THIS
+  };
+}, [itemsToReturn, newItemsReceived, selectedPurchase]);
 
 
   // --- SAVE LOGIC ---
@@ -877,8 +883,10 @@ const PurchaseReturnPage: React.FC = () => {
                     <input
                       type="text"
                       value={supplierNumber}
+                      maxLength={10}
                       onChange={(e) => {
-                        setSupplierNumber(e.target.value);
+                        const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                        setSupplierNumber(val);
                         setSupplierName('');
                         setIsPartyDropdownOpen(true);
                       }}

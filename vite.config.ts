@@ -14,20 +14,5 @@ export default defineConfig({
       '@': '/src',
     },
 
-  },
-  server: {
-    proxy: {
-      '/botmaster-api': {
-        target: 'https://api.botmastersender.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/botmaster-api/, ''),
-      },
-
-      '/firebase-image': {
-        target: 'https://firebasestorage.googleapis.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/firebase-image/, ''),
-      },
-    },
   }
 });

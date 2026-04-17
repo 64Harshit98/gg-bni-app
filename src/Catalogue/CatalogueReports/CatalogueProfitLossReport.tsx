@@ -155,118 +155,117 @@ const CatalogueProfitLossReport: React.FC = () => {
 
   /* ---------- PDF DOWNLOAD (UNCHANGED) ---------- */
   const downloadAsPdf = async () => {
-   try {
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    // ===== CLEAN GENERATION TAG =====
-    const now = new Date();
-    const generatedAt = now.toLocaleString('en-IN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const margin = 14;
-
-    const tagText = `Generated using SELLAR • ${generatedAt}`;
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8);
-
-    const textWidth = doc.getTextWidth(tagText);
-    const paddingX = 2;
-
-    const boxWidth = textWidth + paddingX * 2;
-    const boxHeight = 5;
-
-    const boxX = pageWidth - margin - boxWidth;
-    const boxY = 10;
-
-    // light gray background
-    doc.setFillColor(245, 245, 245);
-    doc.rect(boxX, boxY, boxWidth, boxHeight, "F");
-
-    // text
-    doc.setTextColor(80, 80, 80);
-    doc.text(tagText, boxX + paddingX, boxY + 3.5);
-
-    // reset styles
-    doc.setTextColor(0, 0, 0);
-
-    const { totalRevenue, totalCost, grossProfit, grossProfitPercentage } =
-      pnlSummary;
-
-    // Embed company logo (same as Item Report)
     try {
-      const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
-      if (base64Logo) {
-        const img = new Image();
-        img.src = base64Logo;
-        await new Promise<void>((resolve) => {
-          img.onload = () => {
-            const logoWidth = 15;
-            const logoHeight =
-              (img.naturalHeight / img.naturalWidth) * logoWidth;
-            const logoX = pageWidth - logoWidth - 14;
-            doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
-            resolve();
-          };
-          img.onerror = () => resolve();
-        });
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      // ===== CLEAN GENERATION TAG =====
+      const now = new Date();
+      const generatedAt = now.toLocaleString('en-IN', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+
+      const margin = 14;
+
+      const tagText = `Generated using SELLAR • ${generatedAt}`;
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+
+      const textWidth = doc.getTextWidth(tagText);
+      const paddingX = 2;
+
+      const boxWidth = textWidth + paddingX * 2;
+      const boxHeight = 5;
+
+      const boxX = pageWidth - margin - boxWidth;
+      const boxY = 10;
+
+      // light gray background
+      doc.setFillColor(245, 245, 245);
+      doc.rect(boxX, boxY, boxWidth, boxHeight, "F");
+
+      // text
+      doc.setTextColor(80, 80, 80);
+      doc.text(tagText, boxX + paddingX, boxY + 3.5);
+
+      // reset styles
+      doc.setTextColor(0, 0, 0);
+
+      const { totalRevenue, totalCost, grossProfit, grossProfitPercentage } =
+        pnlSummary;
+
+      // Embed company logo (same as Item Report)
+      try {
+        const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
+        if (base64Logo) {
+          const img = new Image();
+          img.src = base64Logo;
+          await new Promise<void>((resolve) => {
+            img.onload = () => {
+              const logoWidth = 15;
+              const logoHeight =
+                (img.naturalHeight / img.naturalWidth) * logoWidth;
+              const logoX = pageWidth - logoWidth - 14;
+              doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
+              resolve();
+            };
+            img.onerror = () => resolve();
+          });
+        }
+      } catch {
+        // Continue without logo
       }
-    } catch {
-      // Continue without logo
-    }
 
-    doc.setFontSize(18);
-    doc.text('Profit & Loss Report', 14, 20);
-    doc.setFontSize(11);
-    doc.setTextColor(100);
-    doc.text(selectedPeriodText, 14, 30);
+      doc.setFontSize(18);
+      doc.text('Profit & Loss Report', 14, 20);
+      doc.setFontSize(11);
+      doc.setTextColor(100);
+      doc.text(selectedPeriodText, 14, 30);
 
-    autoTable(doc, {
-      startY: 45,
-      body: [
-        [
-          'Total Sales:',
-          `₹${totalRevenue.toLocaleString('en-IN')}`,
-          'Gross Profit / Loss:',
-          `₹${grossProfit.toLocaleString('en-IN')}`,
+      autoTable(doc, {
+        startY: 45,
+        body: [
+          [
+            'Total Sales:',
+            `₹${totalRevenue.toLocaleString('en-IN')}`,
+            'Gross Profit / Loss:',
+            `₹${grossProfit.toLocaleString('en-IN')}`,
+          ],
+          [
+            'Total Cost:',
+            `₹${totalCost.toLocaleString('en-IN')}`,
+            'Gross Profit %:',
+            `${grossProfitPercentage.toFixed(2)}%`,
+          ],
         ],
-        [
-          'Total Cost:',
-          `₹${totalCost.toLocaleString('en-IN')}`,
-          'Gross Profit %:',
-          `${grossProfitPercentage.toFixed(2)}%`,
-        ],
-      ],
-      theme: 'plain',
-      styles: { fontSize: 10 },
-      columnStyles: {
-        0: { fontStyle: 'bold' },
-        2: { fontStyle: 'bold' },
-      },
-    });
+        theme: 'plain',
+        styles: { fontSize: 10 },
+        columnStyles: {
+          0: { fontStyle: 'bold' },
+          2: { fontStyle: 'bold' },
+        },
+      });
 
-    autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 10,
-      head: [['Date', 'Invoice', 'Sales', 'Cost', 'Profit']],
-      body: filteredTransactions.map((t) => [
-        formatDate(t.createdAt),
-        t.invoiceNumber,
-        `₹${t.totalAmount.toLocaleString('en-IN')}`,
-        `₹${(t.costOfGoodsSold || 0).toLocaleString('en-IN')}`,
-        `₹${(t.profit || 0).toLocaleString('en-IN')}`,
-      ]),
-      theme: 'striped',
-      headStyles: { fillColor: [41, 128, 185] },
-    });
+      autoTable(doc, {
+        startY: (doc as any).lastAutoTable.finalY + 10,
+        head: [['Date', 'Invoice', 'Sales', 'Cost', 'Profit']],
+        body: filteredTransactions.map((t) => [
+          formatDate(t.createdAt),
+          t.invoiceNumber,
+          `₹${t.totalAmount.toLocaleString('en-IN')}`,
+          `₹${(t.costOfGoodsSold || 0).toLocaleString('en-IN')}`,
+          `₹${(t.profit || 0).toLocaleString('en-IN')}`,
+        ]),
+        theme: 'striped',
+        headStyles: { fillColor: [41, 128, 185] },
+      });
 
-    doc.save(`PNL-Report-${startDate}-to-${endDate}.pdf`);
- setIsDownloadModalOpen(false);
+      doc.save(`PNL-Report-${startDate}-to-${endDate}.pdf`);
+      setIsDownloadModalOpen(false);
       setFeedbackModal({
         isOpen: true,
         type: State.SUCCESS,
@@ -448,22 +447,22 @@ const CatalogueProfitLossReport: React.FC = () => {
           >
             {isListVisible ? 'Hide List' : 'Show List'}
           </button>
-            <button
-              onClick={() => {
-                if (filteredTransactions.length === 0) {
-                  setFeedbackModal({
-                    isOpen: true,
-                    type: State.INFO,
-                    message: 'No data available to download.',
-                  });
-                } else {
-                  setIsDownloadModalOpen(true);
-                }
-              }}
-              className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md"
-            >
-              Download Report
-            </button>
+          <button
+            onClick={() => {
+              if (filteredTransactions.length === 0) {
+                setFeedbackModal({
+                  isOpen: true,
+                  type: State.INFO,
+                  message: 'No data available to download.',
+                });
+              } else {
+                setIsDownloadModalOpen(true);
+              }
+            }}
+            className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md"
+          >
+            Download Report
+          </button>
         </div>
       </div>
 

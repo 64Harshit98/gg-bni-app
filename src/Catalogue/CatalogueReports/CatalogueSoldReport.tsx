@@ -342,46 +342,45 @@ const ItemsSoldReport: React.FC = () => {
             } catch {
                 // Continue without logo if it fails
             }
-    
-        // ===== CLEAN GENERATION TAG =====
-        const now = new Date();
-        const generatedAt = now.toLocaleString('en-IN', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
 
-        const pageWidth = doc.internal.pageSize.getWidth();
-        const margin = 14;
+            // ===== CLEAN GENERATION TAG =====
+            const now = new Date();
+            const generatedAt = now.toLocaleString('en-IN', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
 
-        const tagText = `Generated using SELLAR • ${generatedAt}`;
+            const margin = 14;
 
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(8);
+            const tagText = `Generated using SELLAR • ${generatedAt}`;
 
-        const textWidth = doc.getTextWidth(tagText);
-        const paddingX = 2;
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(8);
 
-        const boxWidth = textWidth + paddingX * 2;
-        const boxHeight = 5;
+            const textWidth = doc.getTextWidth(tagText);
+            const paddingX = 2;
 
-        const boxX = pageWidth - margin - boxWidth;
-        const boxY = 10;
+            const boxWidth = textWidth + paddingX * 2;
+            const boxHeight = 5;
 
-        // light gray background
-        doc.setFillColor(245, 245, 245);
-        doc.rect(boxX, boxY, boxWidth, boxHeight, "F");
+            const boxX = pageWidth - margin - boxWidth;
+            const boxY = 10;
 
-        // text
-        doc.setTextColor(80, 80, 80);
-        doc.text(tagText, boxX + paddingX, boxY + 3.5);
+            // light gray background
+            doc.setFillColor(245, 245, 245);
+            doc.rect(boxX, boxY, boxWidth, boxHeight, "F");
 
-        // reset styles
-        doc.setTextColor(0, 0, 0);
+            // text
+            doc.setTextColor(80, 80, 80);
+            doc.text(tagText, boxX + paddingX, boxY + 3.5);
 
-        doc.setFontSize(18);
+            // reset styles
+            doc.setTextColor(0, 0, 0);
+
+            doc.setFontSize(18);
             doc.text('Items Sold Report', 14, 20);
             doc.setFontSize(11);
             doc.setTextColor(100);

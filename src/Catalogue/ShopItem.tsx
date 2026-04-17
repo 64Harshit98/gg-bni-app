@@ -8,14 +8,14 @@ import { FiStar, FiCheckSquare, FiLoader, FiPackage, FiPlus } from 'react-icons/
 import { ItemEditDrawer } from '../Components/ItemDrawer';
 import { ItemDetailDrawer } from '../Components/ItemDetails';
 import { Spinner } from '../constants/Spinner';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName';
 import { syncNotifyStock } from "../../src/Catalogue/utils/syncNotifyStock";
 import SearchBar from './SearchBar';
-import { useLocation } from 'react-router-dom';
 import { db } from '../lib/Firebase';
 import { doc, getDoc } from 'firebase/firestore';
+
 const StockIndicator: React.FC<{ stock: number }> = ({ stock }) => {
     let colorClass = 'text-green-600 bg-green-100';
     if (stock <= 10 && stock > 0) colorClass = 'text-yellow-600 bg-yellow-100';
@@ -64,16 +64,16 @@ const QuickListedToggle: React.FC<QuickListedToggleProps> = ({ itemId, isListed,
 const ITEMS_PER_BATCH_RENDER = 24;
 
 const MyShop: React.FC = () => {
-    const navigate = useNavigate()
+    const navigate = useNavigate();
     const location = useLocation();
     const highlightItemId = location.state?.highlightItemId;
     const highlightTrigger = location.state?.trigger;
-    // const isUnlisted = location.state?.isUnlisted;
     const { groupId } = useParams<{ groupId: string }>();
     const { currentUser, loading: authLoading } = useAuth();
     const companyId = currentUser?.companyId;
     const { businessName: companyName, loading: _nameLoading } = useBusinessName(companyId);
     const dbOperations = useDatabase();
+
     const [highlightedId, setHighlightedId] = useState<string | null>(null);
     const [allItems, setAllItems] = useState<Item[]>([]);
     const [selectedCategory, setSelectedCategory] = useState(groupId || 'All');
@@ -87,8 +87,10 @@ const MyShop: React.FC = () => {
     const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
     const [selectedItemForDetails, setSelectedItemForDetails] = useState<Item | null>(null);
     const [catalogueSettings, setCatalogueSettings] = useState<CatalogueSalesSettings | null>(null);
+
     const observerRef = useRef<IntersectionObserver | null>(null);
     const loadMoreRef = useRef<HTMLDivElement | null>(null);
+
     const [sortOrder, setSortOrder] = useState<'A-Z' | 'Z-A' | 'Price: Low-High' | 'Price: High-Low'>('A-Z');
     const [isSortOpen, setIsSortOpen] = useState(false);
     const isViewMode = false;
@@ -101,12 +103,6 @@ const MyShop: React.FC = () => {
     const [showUncategorizedWarning, setShowUncategorizedWarning] = useState(false);
     const [isScrolled, setIsScrolled] = useState(false);
 
-    // const liveItems = useMemo(() => {
-    //     return allItems.filter(item => item.isListed);
-    // }, [allItems]);
-
-    // Sync selectedCategory when groupId changes from URL
-
     const generateSlug = (name: string) => {
         return name
             .toLowerCase()
@@ -115,20 +111,17 @@ const MyShop: React.FC = () => {
             .replace(/[^a-z0-9-]/g, "");
     };
 
-
     const resolvedGroupId = useMemo(() => {
         if (!groupId || allItemGroups.length === 0) return groupId;
-
         const matchedGroup = allItemGroups.find(
             (group) => generateSlug(group.name) === groupId
         );
-
-        return matchedGroup?.id || groupId; // fallback for old ID links
+        return matchedGroup?.id || groupId;
     }, [groupId, allItemGroups]);
 
-    const uncategorizedGroup = allItemGroups.find(
+    const uncategorizedGroup = useMemo(() => allItemGroups.find(
         g => g.name.toLowerCase().trim() === "uncategorized"
-    );
+    ), [allItemGroups]);
 
     const isUncategorized = (resolvedGroupId || selectedCategory) === uncategorizedGroup?.id;
 
@@ -140,7 +133,7 @@ const MyShop: React.FC = () => {
 
     useEffect(() => {
         setSearchQuery("");
-    }, [groupId])
+    }, [groupId]);
 
     const addToCart = (item: Item, quantity: number = 1, isFromDrawer: boolean = false) => {
         setCart(prev => {
@@ -160,17 +153,8 @@ const MyShop: React.FC = () => {
     const handleShareItem = async (item: Item) => {
         if (!companyId || !item?.itemGroupId || !item?.id) return;
 
-        // Find the category
-        const group = allItemGroups.find(
-            (g) => g.id === item.itemGroupId
-        );
-
-        // Generate slug from category name
-        const categorySlug = group
-            ? generateSlug(group.name)
-            : item.itemGroupId; // fallback for safety
-
-        // Create SEO-friendly share URL
+        const group = allItemGroups.find((g) => g.id === item.itemGroupId);
+        const categorySlug = group ? generateSlug(group.name) : item.itemGroupId;
         const shareUrl = `${window.location.origin}/${companyId}/${categorySlug}?itemId=${item.id}`;
 
         try {
@@ -204,16 +188,12 @@ const MyShop: React.FC = () => {
 
     const cartTotal = useMemo(() =>
         cart.reduce((acc, curr) => {
-
             const basePrice = curr.item.salesPrice || curr.item.mrp || 0;
-            // const multiplier = (curr.item as any).unitMultiplier || 1;
-
-            const price = basePrice;
-
-            return acc + price * curr.quantity;
-
+            return acc + basePrice * curr.quantity;
         }, 0),
-        [cart]);
+        [cart]
+    );
+
     const cartCount = useMemo(() => cart.reduce((acc, curr) => acc + curr.quantity, 0), [cart]);
 
     const handleToggleAllLive = () => {
@@ -221,22 +201,18 @@ const MyShop: React.FC = () => {
             setShowUncategorizedWarning(true);
             return;
         }
-
-        const newState = !isAllLive;
-        setPendingLiveState(newState);
+        setPendingLiveState(!isAllLive);
         setShowConfirmPopup(true);
     };
 
     const confirmToggleAllLive = async () => {
         if (!dbOperations || pendingLiveState === null) return;
-
         const newState = pendingLiveState;
         setShowConfirmPopup(false);
         setIsAllLive(newState);
 
         try {
             const activeCat = resolvedGroupId || selectedCategory;
-
             const itemsToUpdate = allItems.filter(item =>
                 activeCat === 'All' || item.itemGroupId === activeCat
             );
@@ -273,17 +249,11 @@ const MyShop: React.FC = () => {
             ) as HTMLElement | null;
         };
 
-        // Slight delay to ensure layout is mounted
         const timer = setTimeout(() => {
             const scrollContainer = getScrollContainer();
-
-            if (!scrollContainer) {
-                console.warn("Scroll container still not found");
-                return;
-            }
+            if (!scrollContainer) return;
 
             let ticking = false;
-
             const handleScroll = () => {
                 if (!ticking) {
                     window.requestAnimationFrame(() => {
@@ -295,14 +265,9 @@ const MyShop: React.FC = () => {
                 }
             };
 
-            scrollContainer.addEventListener("scroll", handleScroll, {
-                passive: true,
-            });
-
-            // Initial trigger
+            scrollContainer.addEventListener("scroll", handleScroll, { passive: true });
             handleScroll();
 
-            // Cleanup
             return () => {
                 scrollContainer.removeEventListener("scroll", handleScroll);
             };
@@ -318,18 +283,13 @@ const MyShop: React.FC = () => {
         }
 
         const activeCat = resolvedGroupId || selectedCategory;
-
         const filtered = allItems.filter(item =>
             activeCat === 'All' || item.itemGroupId === activeCat
         );
 
-        const allLive =
-            filtered.length > 0 &&
-            filtered.every(item => item.isListed === true);
-
+        const allLive = filtered.length > 0 && filtered.every(item => item.isListed === true);
         setIsAllLive(allLive);
-        setIsAllLive(allLive);
-    }, [allItems]);
+    }, [allItems, resolvedGroupId, selectedCategory]);
 
     useEffect(() => {
         if (authLoading || !currentUser || !dbOperations || !companyId) {
@@ -345,10 +305,9 @@ const MyShop: React.FC = () => {
                 setError(null);
 
                 const fetchedItemGroups = await dbOperations.getItemGroups();
-                const fetchedItems = await dbOperations.syncItems(); // Force fresh data
+                const fetchedItems = await dbOperations.syncItems();
 
                 let groups = fetchedItemGroups || [];
-
                 setAllItemGroups(groups);
                 setAllItems(
                     (fetchedItems || []).map(item => ({
@@ -364,32 +323,14 @@ const MyShop: React.FC = () => {
                     setIsAllLive(false);
                 }
 
-                //  SAFE FIRESTORE CALL
-                const businessRef = doc(
-                    db,
-                    "companies",
-                    companyId,
-                    "business_info",
-                    companyId
-                );
-
+                const businessRef = doc(db, "companies", companyId, "business_info", companyId);
                 const businessSnap = await getDoc(businessRef);
-
                 if (businessSnap.exists()) {
                     setSocialLinks(businessSnap.data());
                 }
 
-                //  FETCH CATALOGUE SETTINGS
-                const settingsRef = doc(
-                    db,
-                    'companies',
-                    companyId,
-                    'settings',
-                    'catalogue-sales-settings'
-                );
-
+                const settingsRef = doc(db, 'companies', companyId, 'settings', 'catalogue-sales-settings');
                 const settingsSnap = await getDoc(settingsRef);
-
                 if (settingsSnap.exists()) {
                     setCatalogueSettings(settingsSnap.data() as CatalogueSalesSettings);
                 }
@@ -402,10 +343,8 @@ const MyShop: React.FC = () => {
         };
 
         fetchData();
-
     }, [authLoading, currentUser, dbOperations, companyId]);
 
-    // 3. Updated Filter logic with safety checks
     const filteredItems = useMemo(() => {
         const activeCat = resolvedGroupId || selectedCategory;
 
@@ -414,22 +353,12 @@ const MyShop: React.FC = () => {
 
             const isSearching = searchQuery.trim().length > 0;
 
-            // Hide unlisted items only in view mode
             if (isViewMode && !item.isListed && !isSearching) {
                 return false;
             }
 
-            const groupExists = allItemGroups.some(
-                g => g.id === item.itemGroupId
-            );
-
-            const uncategorizedGroup = allItemGroups.find(
-                g => g.name.toLowerCase().trim() === "uncategorized"
-            );
-
-            const finalGroupId = groupExists
-                ? item.itemGroupId
-                : uncategorizedGroup?.id;
+            const groupExists = allItemGroups.some(g => g.id === item.itemGroupId);
+            const finalGroupId = groupExists ? item.itemGroupId : uncategorizedGroup?.id;
 
             const matchesCategory =
                 activeCat === 'All' ||
@@ -439,8 +368,7 @@ const MyShop: React.FC = () => {
             const itemName = item.name?.toLowerCase() || "";
             const matchesSearch =
                 itemName.includes(searchQuery.toLowerCase()) ||
-                (item.barcode &&
-                    item.barcode.includes(searchQuery));
+                (item.barcode && item.barcode.includes(searchQuery));
 
             return matchesCategory && matchesSearch;
         });
@@ -461,7 +389,8 @@ const MyShop: React.FC = () => {
         isViewMode,
         sortOrder,
         resolvedGroupId,
-        allItemGroups
+        allItemGroups,
+        uncategorizedGroup
     ]);
 
     useEffect(() => {
@@ -471,11 +400,8 @@ const MyShop: React.FC = () => {
             (item) => String(item.id) === String(highlightItemId)
         );
 
-        // Ensure the item is rendered (handles lazy loading)
         if (itemIndex !== -1) {
-            setItemsToRenderCount((prev) =>
-                Math.max(prev, itemIndex + 1)
-            );
+            setItemsToRenderCount((prev) => Math.max(prev, itemIndex + 1));
         }
 
         const timer = setTimeout(() => {
@@ -487,12 +413,10 @@ const MyShop: React.FC = () => {
                 block: "center",
             });
 
-            // Remove highlight after animation
             setTimeout(() => {
                 setHighlightedId(null);
             }, 3000);
 
-            // Clear navigation state to prevent repeated highlights
             navigate(location.pathname, { replace: true, state: {} });
         }, 300);
 
@@ -540,12 +464,7 @@ const MyShop: React.FC = () => {
 
             if (updatedItem && companyId) {
                 const isNowInStock = (updatedItem.stock || 0) > 0;
-
-                await syncNotifyStock(
-                    companyId,
-                    updatedItem.id!,
-                    isNowInStock
-                );
+                await syncNotifyStock(companyId, updatedItem.id!, isNowInStock);
             }
             setAllItems(prev => prev.map(item => item.id === itemId ? { ...item, isListed: newState } as Item : item));
         } catch (err) {
@@ -563,7 +482,6 @@ const MyShop: React.FC = () => {
             <header className="sticky top-0 z-[100] bg-white border-b border-gray-100 shadow-sm w-full">
                 <div className="max-w-7xl mx-auto px-4 h-[68px] relative flex items-center justify-between">
 
-                    {/* Left Section - Back Button + Small Company Name */}
                     <div className="flex items-center gap-2">
                         <button
                             onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ORDER}`)}
@@ -586,7 +504,6 @@ const MyShop: React.FC = () => {
                             </svg>
                         </button>
 
-                        {/* Small Company Name on Scroll */}
                         <span
                             className={`hidden md:inline-block transition-all duration-300 ease-out transform ${isScrolled
                                 ? "opacity-100 translate-x-0"
@@ -597,10 +514,7 @@ const MyShop: React.FC = () => {
                         </span>
                     </div>
 
-                    {/* Center Animated Title */}
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden">
-
-                        {/* Company Name - Default */}
                         <span
                             className={`absolute transition-all duration-300 ease-out will-change-transform transform ${isScrolled
                                 ? "-translate-y-6 opacity-0 scale-95"
@@ -610,7 +524,6 @@ const MyShop: React.FC = () => {
                             {companyName}
                         </span>
 
-                        {/* Category Name - On Scroll */}
                         <span
                             className={`absolute transition-all duration-300 ease-out will-change-transform transform ${isScrolled
                                 ? "translate-y-0 opacity-100 scale-100"
@@ -620,7 +533,6 @@ const MyShop: React.FC = () => {
                             {currentCategoryName}
                         </span>
 
-                        {/* Company Name Below Category (Mobile Only) */}
                         {isScrolled && (
                             <span className="md:hidden text-[12px] font-semibold text-gray-500 uppercase tracking-wide mt-10">
                                 {companyName}
@@ -628,7 +540,6 @@ const MyShop: React.FC = () => {
                         )}
                     </div>
 
-                    {/* Right Spacer for Balance */}
                     <div className="w-10"></div>
                 </div>
             </header>
@@ -645,7 +556,6 @@ const MyShop: React.FC = () => {
                     </h1>
                 </div>
 
-                {/*  Search Bar */}
                 <div
                     className={`flex justify-center transition-all duration-300 ${isScrolled
                         ? "sticky top-[70px] z-50 "
@@ -659,15 +569,10 @@ const MyShop: React.FC = () => {
                             placeholder="Search products..."
                             onItemSelected={(item) => {
                                 if (!item.id) return;
-
                                 setSearchQuery("");
 
                                 const group = allItemGroups.find(
                                     g => g.id === item.itemGroupId
-                                );
-
-                                const uncategorizedGroup = allItemGroups.find(
-                                    g => g.name.toLowerCase().trim() === "uncategorized"
                                 );
 
                                 const slug = group
@@ -690,7 +595,6 @@ const MyShop: React.FC = () => {
                     </div>
                 </div>
                 <div className="max-w-7xl mx-auto px-1 flex items-center justify-between relative">
-
                     <div className="flex items-center gap-2">
                         <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Total Products:</span>
                         <span className="bg-[#F97316]/10 text-[#F97316] px-2.5 py-0.5 rounded-sm text-[10px] font-black">{filteredItems.length}</span>
@@ -737,9 +641,6 @@ const MyShop: React.FC = () => {
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1">
                     {itemsToDisplay.map((item) => {
-                        // const isOutOfStock = (item.stock || 0) <= 0;
-                        // const showNotifyButton = catalogueSettings?.enableOutOfStockNotification && isOutOfStock;
-                        // const disableAddToCart = !catalogueSettings?.enableOutOfStockNotification && isOutOfStock;
                         const basePrice = item.salesPrice || item.mrp;
                         const multiplier = (item as any).unitMultiplier || 1;
                         const salePrice = basePrice;
@@ -748,12 +649,13 @@ const MyShop: React.FC = () => {
                             item.salesPrice &&
                             item.mrp &&
                             item.salesPrice < item.mrp;
-                        //  discount logic
+
                         const hasDiscount = salePrice < mrp;
                         const discountPercent = mrp && hasDiscount ? Math.round(((mrp - salePrice) / mrp) * 100) : 0;
                         const showDiscountBadge =
                             catalogueSettings?.showDiscountBadge &&
                             hasDiscount;
+
                         return (
                             <div
                                 id={item.id}
@@ -937,42 +839,27 @@ const MyShop: React.FC = () => {
                         )
                     );
 
-                    // REAL STOCK SYNC
                     if (companyId && selectedItemForEdit) {
-                        const newStock =
-                            updated.stock ?? selectedItemForEdit.stock ?? 0;
-
+                        const newStock = updated.stock ?? selectedItemForEdit.stock ?? 0;
                         const isNowInStock = newStock > 0;
-
-                        await syncNotifyStock(
-                            companyId,
-                            selectedItemForEdit.id!,
-                            isNowInStock
-                        );
+                        await syncNotifyStock(companyId, selectedItemForEdit.id!, isNowInStock);
                     }
                 }}
             />
 
             {showUncategorizedWarning && (
                 <div className="fixed inset-0 z-[300] flex items-center justify-center">
-
-                    {/* BACKDROP */}
                     <div
                         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
                         onClick={() => setShowUncategorizedWarning(false)}
                     />
-
-                    {/* CARD */}
                     <div className="relative bg-white w-[90%] max-w-sm rounded-lg shadow-xl p-5 z-10 animate-in fade-in zoom-in duration-200">
-
                         <h2 className="text-sm font-black text-red-500 uppercase mb-2">
                             Warning
                         </h2>
-
                         <p className="text-sm font-bold text-gray-600 mb-4">
                             Please categorize the item first. You can only make it LIVE after assigning a category.
                         </p>
-
                         <button
                             onClick={() => setShowUncategorizedWarning(false)}
                             className="w-full bg-[#F97316] text-white py-2 rounded-sm text-xs font-black uppercase"
@@ -985,24 +872,17 @@ const MyShop: React.FC = () => {
 
             {showConfirmPopup && (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center">
-
-                    {/* BACKDROP */}
                     <div
                         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
                         onClick={() => setShowConfirmPopup(false)}
                     />
-
-                    {/* CARD */}
                     <div className="relative bg-white w-[90%] max-w-sm rounded-lg shadow-xl p-5 z-10 animate-in fade-in zoom-in duration-200">
-
                         <h2 className="text-sm font-black text-[#1A3B5D] uppercase mb-2">
                             Confirmation
                         </h2>
-
                         <p className="text-lg font-bold text-gray-600 mb-4">
                             Do you want to make all items {pendingLiveState ? "LIVE" : "UNLIVE"}?
                         </p>
-
                         <div className="flex gap-2">
                             <button
                                 onClick={confirmToggleAllLive}
@@ -1010,7 +890,6 @@ const MyShop: React.FC = () => {
                             >
                                 Yes
                             </button>
-
                             <button
                                 onClick={() => setShowConfirmPopup(false)}
                                 className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-sm text-xs font-black uppercase"
@@ -1031,6 +910,7 @@ const MyShop: React.FC = () => {
                 initialQuantity={cart.find(i => i.item.id === selectedItemForDetails?.id)?.quantity || 0}
                 onUpdateQuantity={updateQuantity}
             />
+
             <Footer
                 companyName={companyName}
                 instagram={socialLinks.instagram}

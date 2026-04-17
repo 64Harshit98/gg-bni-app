@@ -204,7 +204,6 @@ const PurchaseReport: React.FC = () => {
       minute: '2-digit'
     });
 
-    const pageWidth = doc.internal.pageSize.getWidth();
     const margin = 14;
 
     const tagText = `Generated using SELLAR • ${generatedAt}`;

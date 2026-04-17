@@ -12,7 +12,26 @@ import { Modal } from '../constants/Modal';
 import { useItemSettings } from '../context/SettingsContext';
 import { IconScanCircle } from '../constants/Icons';
 import { collection, query, where, getDocs, limit, doc, runTransaction, getDoc } from 'firebase/firestore';
-import { db } from '../lib/Firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'; // <-- NEW
+import { db, storage } from '../lib/Firebase'; // <-- NEW: Make sure storage is exported
+import imageCompression from 'browser-image-compression'; // <-- NEW
+
+const formatImageUrl = (url: string | null | undefined): string | null => {
+    if (!url) return null;
+    let cleanUrl = url.trim();
+    if (cleanUrl.includes('drive.google.com')) {
+        let fileId = null;
+        const matchFileD = cleanUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+        if (matchFileD) {
+            fileId = matchFileD[1];
+        } else {
+            const matchIdParam = cleanUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+            if (matchIdParam) fileId = matchIdParam[1];
+        }
+        if (fileId) return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`;
+    }
+    return cleanUrl;
+};
 
 const ItemAdd: React.FC = () => {
 
@@ -53,6 +72,7 @@ const ItemAdd: React.FC = () => {
     const [selectedCategory, setSelectedCategory] = useState<string>('');
     const [itemBarcode, setItemBarcode] = useState<string>('');
     const [hsnCode, setHsnCode] = useState<string>('');
+    const [imageUrl, setImageUrl] = useState<string>('');
     const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
     const [pageIsLoading, setPageIsLoading] = useState<boolean>(true);
@@ -60,13 +80,15 @@ const ItemAdd: React.FC = () => {
     const [success, setSuccess] = useState<string | null>(null);
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
     const [moq, setMoq] = useState<string>('1');
-
-    // --- UPLOAD STATE ---
+    const [imageFile, setImageFile] = useState<File | null>(null);
+    const [imagePreview, setImagePreview] = useState<string | null>(null);
+    const [isImageCompressing, setIsImageCompressing] = useState(false);
     const [isUploading, setIsUploading] = useState<boolean>(false);
     const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const [isSaving, setIsSaving] = useState<boolean>(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const imageInputRef = useRef<HTMLInputElement>(null); // NEW
     const [itemUnit, setItemUnit] = useState<string>('pcs');
     const [packetSize, setPacketSize] = useState<string>('');
 
@@ -76,18 +98,13 @@ const ItemAdd: React.FC = () => {
 
     const isActive = (path: string) => location.pathname === path;
 
-    // --- 1. Fetch Categories ---
     const fetchGroups = async () => {
         if (!dbOperations) return;
         try {
             setLoading(true);
             const groups = await dbOperations.getItemGroups();
             setItemGroups(groups);
-
-            if (groups.length === 0) {
-                setSelectedCategory('');
-            }
-
+            if (groups.length === 0) setSelectedCategory('');
         } catch (err) {
             console.error('Failed to fetch item groups:', err);
             setError('Failed to load item categories.');
@@ -96,13 +113,12 @@ const ItemAdd: React.FC = () => {
         }
     };
 
-    // --- 2. Fetch Suggested Barcode (Peek Logic) ---
     const fetchNextBarcode = async () => {
         if (!currentUser?.companyId) return;
         try {
             const counterRef = doc(db, 'companies', currentUser.companyId, 'counters', 'items');
             const snap = await getDoc(counterRef);
-            let nextSeq = 1001; // Default start
+            let nextSeq = 1001;
             if (snap.exists()) {
                 nextSeq = (snap.data().currentSequence || 1000) + 1;
             }
@@ -132,12 +148,38 @@ const ItemAdd: React.FC = () => {
         setRestockQuantity('');
         setHsnCode('');
         setSelectedCategory('');
+        setImageUrl('');
+        setImageFile(null);
+        setImagePreview(null);
         setMoq('1');
         setItemUnit('pcs');
         setPacketSize('');
+        if (imageInputRef.current) imageInputRef.current.value = '';
     };
 
-    // --- HELPER: Transactional Sequence for Bulk Uploads ---
+    const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsImageCompressing(true);
+        try {
+            const options = {
+                maxSizeMB: 0.5,
+                maxWidthOrHeight: 1024,
+                useWebWorker: true,
+            };
+            const compressedFile = await imageCompression(file, options);
+            setImageFile(compressedFile);
+            setImagePreview(URL.createObjectURL(compressedFile));
+        } catch (error) {
+            console.error('Error compressing image:', error);
+            setModal({ message: 'Failed to compress image.', type: State.ERROR });
+        } finally {
+            setIsImageCompressing(false);
+        }
+    };
+
+
     const reserveSequenceBlock = async (count: number): Promise<number> => {
         if (!currentUser?.companyId) throw new Error("No Company ID");
         const counterRef = doc(db, 'companies', currentUser.companyId, 'counters', 'items');
@@ -150,7 +192,7 @@ const ItemAdd: React.FC = () => {
                 }
                 const nextSeq = lastSeq + count;
                 transaction.set(counterRef, { currentSequence: nextSeq }, { merge: true });
-                return lastSeq + 1; // Return the first usable number
+                return lastSeq + 1;
             });
         } catch (e) {
             return Date.now();
@@ -163,66 +205,45 @@ const ItemAdd: React.FC = () => {
         }
         setError(null); setSuccess(null); setModal(null);
 
-        // --- 1. Basic Field Validation ---
-        if (!itemName.trim() || !itemAmount.trim() || !itemMRP.trim()) {
-            setModal({
-                message: 'Item Name, MRP, Stock Amount, and Category are required.',
-                type: State.ERROR
-            });
+        // --- 1. Basic Field Validation (Stock Removed from mandatory) ---
+        if (!itemName.trim() || !itemMRP.trim()) {
+            setModal({ message: 'Item Name and MRP are required.', type: State.ERROR });
             return;
         }
 
         if (itemSettings.requireBarcode && !itemBarcode.trim()) {
-            setModal({
-                message: 'Barcode is required.',
-                type: State.ERROR
-            });
-            return;
+            setModal({ message: 'Barcode is required.', type: State.ERROR }); return;
         }
 
         if (itemSettings.requireSaleDiscount && !itemDiscount.trim()) {
-            setModal({
-                message: 'Sale Discount is required.',
-                type: State.ERROR
-            });
-            return;
+            setModal({ message: 'Sale Discount is required.', type: State.ERROR }); return;
         }
 
         let finalBarcode = itemBarcode.trim();
 
-        // auto generate if allowed
         if (!finalBarcode && itemSettings.autoGenerateBarcode) {
             await fetchNextBarcode();
             finalBarcode = itemBarcode.trim();
         }
 
-
-
-        // fallback safety
-        if (!finalBarcode) {
-            finalBarcode = Date.now().toString();
-        }
+        if (!finalBarcode) finalBarcode = Date.now().toString();
 
         if (itemSettings.requirePurchasePrice && !itemPurchasePrice.trim()) {
-            setModal({ message: 'Purchase Price required.', type: State.ERROR });
-            return;
+            setModal({ message: 'Purchase Price required.', type: State.ERROR }); return;
         }
 
         if (itemSettings.requirePurchaseDiscount && !PurchaseDiscount.trim()) {
-            setModal({ message: 'Purchase Discount required.', type: State.ERROR });
-            return;
+            setModal({ message: 'Purchase Discount required.', type: State.ERROR }); return;
         }
 
         if (itemSettings.requireTax && !itemTax.trim()) {
-            setModal({ message: 'Tax required.', type: State.ERROR });
-            return;
+            setModal({ message: 'Tax required.', type: State.ERROR }); return;
         }
 
         if (itemSettings.requireRestockQuantity && !restockQuantity.trim()) {
-            setModal({ message: 'Restock quantity required.', type: State.ERROR });
-            return;
+            setModal({ message: 'Restock quantity required.', type: State.ERROR }); return;
         }
-        // --- 2. Price Logic Validation ---
+
         const mrpValue = parseFloat(itemMRP) || 0;
         const saleValue = parseFloat(itemSalesPrice) || 0;
         const purchaseValue = parseFloat(itemPurchasePrice) || 0;
@@ -231,45 +252,47 @@ const ItemAdd: React.FC = () => {
             setModal({ message: 'Please enter either MRP or Sales Price.', type: State.ERROR }); return;
         }
 
-        // --- 3. Discount Logic ---
         let finalSaleDiscount = parseFloat(itemDiscount) || 0;
         let finalPurchaseDiscount = parseFloat(PurchaseDiscount) || 0;
-        if (mrpValue > 0 && purchaseValue > 0) {
-            finalPurchaseDiscount = 0;
-        }
+        if (mrpValue > 0 && purchaseValue > 0) finalPurchaseDiscount = 0;
 
         setIsSaving(true);
-
-        // STEP 1: ensure uncategorized group exists
         const groups = await dbOperations.getItemGroups();
 
         try {
-            // Check for Duplicate Barcode
             const itemsRef = collection(db, 'companies', currentUser.companyId, 'items');
             const q = query(itemsRef, where('barcode', '==', finalBarcode), limit(1));
             const snapshot = await getDocs(q);
 
             if (!snapshot.empty) {
-                setModal({ message: `Barcode ${finalBarcode} already exists.`, type: State.ERROR });
-                setIsSaving(false);
-                return;
+                const existingDoc = snapshot.docs[0].data();
+                if (!existingDoc.isDeleted && !existingDoc.deleted) {
+                    setModal({ message: `Barcode ${finalBarcode} already exists in your active items.`, type: State.ERROR });
+                    setIsSaving(false);
+                    return;
+                }
             }
 
-            // find uncategorized group by NAME (not id)
-            const uncategorizedGroup = groups.find(
-                g => g.name.toLowerCase().trim() === "uncategorized"
-            );
-
-            // final group id
+            const uncategorizedGroup = groups.find(g => g.name.toLowerCase().trim() === "uncategorized");
             const finalGroupId = selectedCategory || uncategorizedGroup?.id || "";
-
             const customDocId = finalBarcode;
+
             let currentMultiplier = 1;
             if (itemUnit === 'box') currentMultiplier = 10;
             if (itemUnit === 'doz') currentMultiplier = 12;
             if (itemUnit === 'qt') currentMultiplier = 100;
             if (itemUnit === 'ton') currentMultiplier = 1000;
             if (itemUnit === 'pkt') currentMultiplier = parseInt(packetSize, 10) || 1;
+
+            let finalUploadedImageUrl = null;
+            if (imageFile) {
+                const storageRef = ref(storage, `companies/${currentUser.companyId}/items/${finalBarcode}_${Date.now()}`);
+                await uploadBytes(storageRef, imageFile);
+                finalUploadedImageUrl = await getDownloadURL(storageRef);
+            } else if (imageUrl.trim()) {
+                finalUploadedImageUrl = formatImageUrl(imageUrl); // Fallback to URL input
+            }
+
             const newItemData: any = {
                 name: itemName.trim(),
                 mrp: mrpValue,
@@ -288,11 +311,12 @@ const ItemAdd: React.FC = () => {
                 unit: itemUnit,
                 unitMultiplier: currentMultiplier,
                 packetSize: itemUnit === 'pkt' ? parseInt(packetSize, 10) : null,
+                imageUrl: finalUploadedImageUrl, // <-- SAVES FIREBASE URL OR FORMATTED LINK
+                isDeleted: false,
             };
 
             await dbOperations.createItem(newItemData, customDocId);
 
-            // Update Counter if numeric
             const barcodeNum = parseInt(finalBarcode, 10);
             if (!isNaN(barcodeNum)) {
                 const counterRef = doc(db, 'companies', currentUser.companyId, 'counters', 'items');
@@ -339,17 +363,15 @@ const ItemAdd: React.FC = () => {
                 let processedCount = 0;
                 let createdCount = 0;
                 let updatedCount = 0;
-                let failedCount = 0; // Simple counter for errors
+                let failedCount = 0;
 
                 const totalItems = rawJson.length;
                 setUploadProgress({ current: 0, total: totalItems });
 
-                // --- PREP CATEGORIES ---
                 let currentGroups = await dbOperations.getItemGroups();
                 const groupMap = new Map<string, string>();
                 currentGroups.forEach(g => groupMap.set(g.name.toLowerCase().trim(), g.id!));
 
-                // --- PREP SEQUENTIAL BARCODES ---
                 const itemsNeedingBarcode = rawJson.filter((row: any) => !row.barcode && !row.Barcode).length;
                 let nextSeqNumber = 0;
 
@@ -369,10 +391,7 @@ const ItemAdd: React.FC = () => {
                         row[cleanKey] = rawRow[k];
                     });
 
-                    const csvCategoryValue = String(
-                        row.itemgroupid || row.itemgroup || row.category || row.group || row.categoryname || "Uncategorized"
-                    ).trim();
-
+                    const csvCategoryValue = String(row.itemgroupid || row.itemgroup || row.category || row.group || row.categoryname || "Uncategorized").trim();
                     const categoryLower = csvCategoryValue.toLowerCase();
                     let targetGroupId = "";
 
@@ -380,56 +399,35 @@ const ItemAdd: React.FC = () => {
                         targetGroupId = groupMap.get(categoryLower)!;
                     } else {
                         try {
-                            const newGroupData: any = {
-                                name: csvCategoryValue,
-                                description: 'Auto-created via Bulk Import'
-                            };
-                            const newGroupId = await dbOperations.createItemGroup(newGroupData);
+                            const newGroupId = await dbOperations.createItemGroup({ name: csvCategoryValue, description: 'Auto-created via Bulk Import' });
                             if (newGroupId && typeof newGroupId === 'string') {
                                 groupMap.set(categoryLower, newGroupId);
                                 targetGroupId = newGroupId;
-                            } else {
-                                throw new Error("Created group did not return a valid ID");
-                            }
+                            } else throw new Error();
                         } catch (grpErr) {
                             if (selectedCategory) targetGroupId = selectedCategory;
                         }
                     }
 
-                    // --- BULK VALIDATION LOGIC ---
-                    // 1. Check Name
-                    if (!row.name) {
-                        failedCount++;
-                        continue;
-                    }
+                    if (!row.name) { failedCount++; continue; }
 
                     const rowMRP = parseFloat(String(row.mrp ?? row.MRP ?? 0));
                     const rowSale = parseFloat(String(row.salesprice ?? row.sellingprice ?? 0));
                     const rowPurchase = parseFloat(String(row.purchaseprice ?? row.purchasePrice ?? row.PurchasePrice ?? 0));
 
-                    // 2. Check Price (Either MRP or Sale Price required)
-                    if (rowMRP === 0 && rowSale === 0) {
-                        failedCount++;
-                        continue;
-                    }
+                    if (rowMRP === 0 && rowSale === 0) { failedCount++; continue; }
 
-                    // 3. Sale Discount Logic
                     let rowSaleDiscount = parseFloat(String(row.discount ?? row.salediscount ?? row.salesdiscount ?? row.saledisc ?? 0));
-                    if (rowMRP > 0 && rowSale > 0) {
-                        rowSaleDiscount = 0;
-                    }
+                    if (rowMRP > 0 && rowSale > 0) rowSaleDiscount = 0;
 
-                    // 4. Purchase Discount Logic
                     let rowPurchaseDiscount = parseFloat(String(row.purchasediscount ?? 0));
-                    if (rowMRP > 0 && rowPurchase > 0) {
-                        rowPurchaseDiscount = 0;
-                    }
+                    if (rowMRP > 0 && rowPurchase > 0) rowPurchaseDiscount = 0;
 
                     try {
                         const stockVal = parseInt(String(row.stock ?? row.amount ?? row.qty ?? row.quantity ?? 0), 10);
-
                         let rowBarcode = String(row.barcode || '').trim();
                         const rowHsn = String(row.hsn || row.hsncode || row.sac || row.hsnsac || '').trim();
+                        const rowImageUrl = String(row.imageurl ?? row.image ?? row.picture ?? row.link ?? '').trim();
 
                         if (!rowBarcode) {
                             rowBarcode = String(nextSeqNumber);
@@ -451,6 +449,8 @@ const ItemAdd: React.FC = () => {
                             barcode: rowBarcode,
                             restockQuantity: parseInt(String(row.restockquantity ?? 0), 10),
                             taxRate: parseFloat(String(row.tax ?? 0)),
+                            imageUrl: formatImageUrl(rowImageUrl) || null,
+                            isDeleted: false,
                         };
 
                         let isUpdate = false;
@@ -460,10 +460,7 @@ const ItemAdd: React.FC = () => {
                         if (!snapshot.empty) isUpdate = true;
 
                         await dbOperations.createItem(itemData, rowBarcode);
-
-                        if (isUpdate) updatedCount++;
-                        else createdCount++;
-
+                        if (isUpdate) updatedCount++; else createdCount++;
                         processedCount++;
                     } catch (e: any) {
                         failedCount++;
@@ -471,20 +468,14 @@ const ItemAdd: React.FC = () => {
                 }
 
                 await fetchGroups();
-
                 if (failedCount > 0) {
-                    setModal({
-                        message: `Error in ${failedCount} entries. Please check for missing required fields (Item Name, Sale Price, MRP, Stock, Barcode) or invalid data.`,
-                        type: State.ERROR
-                    });
+                    setModal({ message: `Error in ${failedCount} entries. Check required fields.`, type: State.ERROR });
                 } else {
                     setSuccess(`Imported: ${createdCount} New, ${updatedCount} Updated.`);
                 }
-
                 setTimeout(() => setSuccess(null), 5000);
 
             } catch (err: any) {
-                console.error(err);
                 setError("File processing failed.");
             } finally {
                 setIsUploading(false);
@@ -501,33 +492,18 @@ const ItemAdd: React.FC = () => {
     };
 
     const handleDownloadSample = () => {
-        const sampleData = [
-            {
-                name: 'Apple',
-                mrp: 100,
-                salesPrice: 95,
-                purchasePrice: 80,
-                'Sale Discount': 0,
-                purchasediscount: 0,
-                tax: 0,
-                hsnCode: '080810',
-                itemGroupId: 'Fruits',
-                stock: 50,
-                barcode: '1001',
-                restockQuantity: 10,
-                moq: 10,
-                imageUrl: "https/unsplash.com",
-            },
-        ];
+        const sampleData = [{
+            name: 'Apple', mrp: 100, salesPrice: 95, purchasePrice: 80, 'Sale Discount': 0, purchasediscount: 0,
+            tax: 0, hsnCode: '080810', itemGroupId: 'Fruits', stock: 50, barcode: '1001', restockQuantity: 10,
+            moq: 10, imageUrl: "https://images.unsplash.com/photo-1560806887-1e4cd0b6fac6",
+        }];
         const ws = XLSX.utils.json_to_sheet(sampleData);
-        const mandatoryCols = [0, 9, 10]; // Name, Stock, Barcode
+        const mandatoryCols = [0, 10];
         mandatoryCols.forEach((colIndex) => {
             const cellAddress = XLSX.utils.encode_col(colIndex) + "1";
             if (ws[cellAddress]) {
                 ws[cellAddress].s = {
-                    font: { bold: true, color: { rgb: "FF0000" } },
-                    fill: { fgColor: { rgb: "FEE2E2" } },
-                    alignment: { horizontal: "center" }
+                    font: { bold: true, color: { rgb: "FF0000" } }, fill: { fgColor: { rgb: "FEE2E2" } }, alignment: { horizontal: "center" }
                 };
             }
         });
@@ -555,21 +531,14 @@ const ItemAdd: React.FC = () => {
             <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
-            {/* --- PROGRESS MODAL --- */}
             {uploadProgress && (
                 <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center">
                     <div className="bg-white p-8 rounded-sm shadow-xl w-80 text-center">
                         <h3 className="text-lg font-bold mb-4 text-gray-800">Uploading Items...</h3>
                         <div className="w-full bg-gray-200 rounded-sm h-4 mb-2 overflow-hidden">
-                            <div
-                                className="bg-[#F97316] h-4 rounded-full transition-all duration-100"
-                                style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
-                            ></div>
+                            <div className="bg-[#F97316] h-4 rounded-full transition-all duration-100" style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}></div>
                         </div>
-                        <p className="text-sm text-gray-600 font-mono">
-                            {uploadProgress.current} / {uploadProgress.total} processed
-                        </p>
-                        <p className="text-xs text-gray-400 mt-2">Please do not close this window.</p>
+                        <p className="text-sm text-gray-600 font-mono">{uploadProgress.current} / {uploadProgress.total} processed</p>
                     </div>
                 </div>
             )}
@@ -601,8 +570,29 @@ const ItemAdd: React.FC = () => {
                     {/* SINGLE ITEM FORM */}
                     <div className="bg-white p-6 rounded-sm shadow-md md:mb-0 md:rounded-sm md:shadow-sm md:border md:border-gray-200 mb-10">
                         <h2 className="text-lg font-bold text-gray-800 mb-4 md:mb-6 md:border-b md:pb-2">Add a Single Item</h2>
-                        <div className="space-y-4">
 
+                        {/* --- NEW: IMAGE SELECTION UI --- */}
+                        <div className="mb-6 flex flex-col md:flex-row gap-4 items-start">
+                            <div className="w-32 h-32 flex-shrink-0 border-2 border-dashed border-gray-300 rounded-lg overflow-hidden bg-gray-50 flex items-center justify-center relative cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => imageInputRef.current?.click()}>
+                                {isImageCompressing ? (
+                                    <div className="flex flex-col items-center"><Spinner /><span className="text-[10px] mt-2 text-gray-500">Compressing...</span></div>
+                                ) : imagePreview ? (
+                                    <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                                ) : (
+                                    <span className="text-xs text-gray-400 text-center px-2">Click to add<br />Image</span>
+                                )}
+                                <input type="file" accept="image/*" ref={imageInputRef} onChange={handleImageChange} className="hidden" />
+                            </div>
+                            <div className="flex-1 w-full space-y-2">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-600 mb-1">Or paste Image URL</label>
+                                    <input type="text" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} disabled={!!imageFile} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316] outline-none disabled:bg-gray-100 disabled:text-gray-400" placeholder="https://example.com/image.jpg" />
+                                </div>
+                                {imageFile && <button onClick={() => { setImageFile(null); setImagePreview(null); if (imageInputRef.current) imageInputRef.current.value = ''; }} className="text-xs text-red-500 hover:underline">Remove Selected Image</button>}
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
                             <div>
                                 <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:ml-0.5 after:text-red-500">Item Name</label>
                                 <input type="text" value={itemName} onChange={(e) => setItemName(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316] outline-none" placeholder="e.g. Apple" />
@@ -629,115 +619,37 @@ const ItemAdd: React.FC = () => {
                                     <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">
                                         {`MRP (for ${getUnitLabel()})`}
                                     </label>
-                                    <input
-                                        type="number"
-                                        value={itemMRP}
-                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                        onChange={(e) => {
-                                            const newMRP = parseFloat(e.target.value) || 0;
-                                            const discount = parseFloat(itemDiscount) || 0;
-
-                                            setItemMRP(e.target.value);
-
-                                            if (discount > 0) {
-                                                const salePrice = newMRP - (newMRP * discount / 100);
-                                                setItemSalesPrice(String(Math.round(salePrice * 100) / 100));
-                                            }
-                                        }}
-                                        className="w-full p-3 border border-gray-300 rounded-md focus:ring-[#F97316]"
-                                        placeholder="0"
-                                    />
+                                    <input type="number" value={itemMRP} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => { const newMRP = parseFloat(e.target.value) || 0; const discount = parseFloat(itemDiscount) || 0; setItemMRP(e.target.value); if (discount > 0) { const salePrice = newMRP - (newMRP * discount / 100); setItemSalesPrice(String(Math.round(salePrice * 100) / 100)); } }} className="w-full p-3 border border-gray-300 rounded-md focus:ring-[#F97316]" placeholder="0" />
                                     <p className="text-[10px] text-gray-400">Required if Sale Price is empty</p>
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-600 mb-1">
-                                        MOQ
-                                    </label>
-                                    <input
-                                        type="number"
-                                        value={moq}
-                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                        onChange={(e) => setMoq(e.target.value)}
-                                        className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]"
-                                        placeholder="1"
-                                    />
+                                    <label className="block text-sm font-medium text-gray-600 mb-1">MOQ</label>
+                                    <input type="number" value={moq} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setMoq(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]" placeholder="1" />
                                     <p className="text-[10px] text-gray-400">Minimum Item Quantity</p>
                                 </div>
 
                                 <div>
                                     <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">{`Sales Price (for ${getUnitLabel()})`}</label>
-                                    <input
-                                        type="number"
-                                        value={itemSalesPrice}
-                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                        onChange={(e) => {
-                                            let value = e.target.value;
-
-                                            const mrp = parseFloat(itemMRP) || 0;
-                                            const num = parseFloat(value) || 0;
-
-                                            // HARD BLOCK
-                                            if (mrp > 0 && num > mrp) {
-                                                value = String(mrp);
-                                            }
-
-                                            setItemSalesPrice(value);
-                                        }}
-                                        className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]"
-                                        placeholder="0"
-                                    />
+                                    <input type="number" value={itemSalesPrice} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => { let value = e.target.value; const mrp = parseFloat(itemMRP) || 0; const num = parseFloat(value) || 0; if (mrp > 0 && num > mrp) { value = String(mrp); } setItemSalesPrice(value); }} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]" placeholder="0" />
                                     <p className="text-[10px] text-gray-400">Required if MRP is empty</p>
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-600 mb-1">Purchase Price
-                                        {itemSettings?.requirePurchasePrice && (
-                                            <span className="text-red-500 ml-0.5">*</span>
-                                        )}
-                                    </label>
+                                    <label className="block text-sm font-medium text-gray-600 mb-1">Purchase Price {itemSettings?.requirePurchasePrice && (<span className="text-red-500 ml-0.5">*</span>)}</label>
                                     <input type="number" value={itemPurchasePrice} onChange={(e) => setItemPurchasePrice(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]" placeholder="0" />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-600 mb-1">
-                                        Sale Disc (%)
-                                        {itemSettings?.requireSaleDiscount && (
-                                            <span className="text-red-500 ml-0.5">*</span>
-                                        )}
-                                    </label>
-                                    <input
-                                        type="number"
-                                        value={itemDiscount}
-                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                        onChange={(e) => {
-                                            const discount = parseFloat(e.target.value) || 0;
-                                            const mrp = parseFloat(itemMRP) || 0;
-
-                                            setItemDiscount(e.target.value);
-
-                                            if (mrp > 0 && discount > 0) {
-                                                const salePrice = mrp - (mrp * discount / 100);
-                                                setItemSalesPrice(String(Math.round(salePrice * 100) / 100));
-                                            }
-                                        }}
-                                        className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]"
-                                        placeholder="Enter discount"
-                                    />
+                                    <label className="block text-sm font-medium text-gray-600 mb-1">Sale Disc (%) {itemSettings?.requireSaleDiscount && (<span className="text-red-500 ml-0.5">*</span>)}</label>
+                                    <input type="number" value={itemDiscount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => { const discount = parseFloat(e.target.value) || 0; const mrp = parseFloat(itemMRP) || 0; setItemDiscount(e.target.value); if (mrp > 0 && discount > 0) { const salePrice = mrp - (mrp * discount / 100); setItemSalesPrice(String(Math.round(salePrice * 100) / 100)); } }} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]" placeholder="Enter discount" />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-600 mb-1">
-                                        Purchase Disc (%)
-                                        {itemSettings?.requirePurchaseDiscount && (
-                                            <span className="text-red-500 ml-0.5">*</span>
-                                        )}
-                                    </label>
+                                    <label className="block text-sm font-medium text-gray-600 mb-1">Purchase Disc (%) {itemSettings?.requirePurchaseDiscount && (<span className="text-red-500 ml-0.5">*</span>)}</label>
                                     <input type="number" value={PurchaseDiscount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setPurchaseDiscount(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]" placeholder="0" />
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-600 mb-1">Tax (%){itemSettings?.requireTax && (
-                                        <span className="text-red-500 ml-0.5">*</span>
-                                    )}</label>
+                                    <label className="block text-sm font-medium text-gray-600 mb-1">Tax (%){itemSettings?.requireTax && (<span className="text-red-500 ml-0.5">*</span>)}</label>
                                     <input type="number" value={itemTax} onChange={(e) => setItemTax(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]" placeholder="0" />
                                 </div>
 
@@ -746,88 +658,33 @@ const ItemAdd: React.FC = () => {
                                     <input type="text" value={hsnCode} onChange={(e) => setHsnCode(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]" placeholder="e.g. 123456" />
                                 </div>
 
+                                {/* Stock removed from mandatory UI */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">Stock</label>
+                                    <label className="block text-sm font-medium text-gray-600 mb-1">Stock</label>
                                     <input type="number" value={itemAmount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemAmount(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]" placeholder="0" />
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-600 mb-1">Restock Level{itemSettings?.requireRestockQuantity && (
-                                        <span className="text-red-500 ml-0.5">*</span>
-                                    )}</label>
+                                    <label className="block text-sm font-medium text-gray-600 mb-1">Restock Level{itemSettings?.requireRestockQuantity && (<span className="text-red-500 ml-0.5">*</span>)}</label>
                                     <input type="number" onWheel={(e) => (e.target as HTMLInputElement).blur()} value={restockQuantity} onChange={(e) => setRestockQuantity(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]" placeholder="0" />
                                 </div>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-600 mb-1">
-                                    Category
-                                </label>
-
-                                <select
-                                    value={selectedCategory}
-                                    onChange={(e) => {
-                                        if (e.target.value === 'ADD_NEW_GROUP') {
-                                            navigate(`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`);
-                                        } else {
-                                            setSelectedCategory(e.target.value);
-                                        }
-                                    }}
-                                    className="w-full p-3 border border-gray-300 rounded-sm bg-white focus:ring-[#F97316]"
-                                >
-
-                                    {/* Default */}
+                                <label className="block text-sm font-medium text-gray-600 mb-1">Category</label>
+                                <select value={selectedCategory} onChange={(e) => { if (e.target.value === 'ADD_NEW_GROUP') { navigate(`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`); } else { setSelectedCategory(e.target.value); } }} className="w-full p-3 border border-gray-300 rounded-sm bg-white focus:ring-[#F97316]">
                                     <option value="">uncategorized</option>
-
-                                    {/* Add Group */}
-                                    <option
-                                        value="ADD_NEW_GROUP"
-                                        className="font-semibold bg-gray-100"
-                                    >
-                                        + Add New Group
-                                    </option>
-
-                                    {/* Existing Groups */}
-                                    {itemGroups.map(g => (
-                                        <option key={g.id} value={g.id!}>
-                                            {g.name}
-                                        </option>
-                                    ))}
-
+                                    <option value="ADD_NEW_GROUP" className="font-semibold bg-gray-100">+ Add New Group</option>
+                                    {itemGroups.map(g => (<option key={g.id} value={g.id!}>{g.name}</option>))}
                                 </select>
                             </div>
 
-                            {/* UNIT */}
                             <div>
-                                <label className="block text-sm font-medium text-gray-600 mb-1">
-                                    Unit
-                                </label>
+                                <label className="block text-sm font-medium text-gray-600 mb-1">Unit</label>
                                 <div className="flex gap-2">
-                                    <select
-                                        value={itemUnit}
-                                        onChange={(e) => {
-                                            setItemUnit(e.target.value);
-                                            if (e.target.value !== 'pkt') setPacketSize('');
-                                        }}
-                                        className={`p-3 border border-gray-300 rounded-sm bg-white focus:ring-[#F97316] ${itemUnit === 'pkt' ? 'w-1/2' : 'w-full'
-                                            }`}
-                                    >
-                                        {UNIT_OPTIONS.map(unit => (
-                                            <option key={unit.value} value={unit.value}>
-                                                {unit.label}
-                                            </option>
-                                        ))}
+                                    <select value={itemUnit} onChange={(e) => { setItemUnit(e.target.value); if (e.target.value !== 'pkt') setPacketSize(''); }} className={`p-3 border border-gray-300 rounded-sm bg-white focus:ring-[#F97316] ${itemUnit === 'pkt' ? 'w-1/2' : 'w-full'}`}>
+                                        {UNIT_OPTIONS.map(unit => (<option key={unit.value} value={unit.value}>{unit.label}</option>))}
                                     </select>
-
-                                    {itemUnit === 'pkt' && (
-                                        <input
-                                            type="number"
-                                            value={packetSize}
-                                            onChange={(e) => setPacketSize(e.target.value)}
-                                            className="w-1/2 p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]"
-                                            placeholder="Qty per pkt"
-                                            min="1"
-                                        />
-                                    )}
+                                    {itemUnit === 'pkt' && (<input type="number" value={packetSize} onChange={(e) => setPacketSize(e.target.value)} className="w-1/2 p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]" placeholder="Qty per pkt" min="1" />)}
                                 </div>
                             </div>
                         </div>
@@ -835,31 +692,16 @@ const ItemAdd: React.FC = () => {
                 </div>
 
                 {/* RIGHT BLOCK DESKTOP VIEW */}
-
                 <div className="hidden md:flex w-[35%] flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
                     <div className="flex-1 p-6 flex flex-col">
-
                         <div className="bg-[#F97316]/10 rounded-xl p-5 border border-[#F97316]/20">
                             <h2 className="text-lg font-bold text-[#F97316] mb-2">Bulk Import</h2>
-                            <p className="text-sm text-[#F97316] mb-4">
-                                Upload Excel/CSV. Missing categories created automatically.
-                            </p>
-
+                            <p className="text-sm text-[#F97316] mb-4">Upload Excel/CSV. Missing categories created automatically.</p>
                             <div className="flex flex-col gap-3">
-                                <button
-                                    onClick={() => fileInputRef.current?.click()}
-                                    disabled={isUploading}
-                                    className="w-full bg-white text-[#F97316] border border-sky-200 py-3 px-4 rounded-lg font-semibold hover:bg-[#F97316]/10 disabled:bg-gray-100 flex items-center justify-center gap-2"
-                                >
+                                <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="w-full bg-white text-[#F97316] border border-sky-200 py-3 px-4 rounded-lg font-semibold hover:bg-[#F97316]/10 disabled:bg-gray-100 flex items-center justify-center gap-2">
                                     {isUploading ? <Spinner /> : 'Upload Excel File'}
                                 </button>
-
-                                <button
-                                    type="button"
-                                    onClick={handleDownloadSample}
-                                    disabled={isUploading}
-                                    className="text-sm text-[#F97316] hover:text-sky-700 underline text-center"
-                                >
+                                <button type="button" onClick={handleDownloadSample} disabled={isUploading} className="text-sm text-[#F97316] hover:text-sky-700 underline text-center">
                                     Download Sample Template
                                 </button>
                             </div>
@@ -868,19 +710,14 @@ const ItemAdd: React.FC = () => {
                         <div className="flex-grow"></div>
 
                         <div className="border-t border-gray-100 pb-10">
-                            <button
-                                onClick={handleAddItem}
-                                disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)}
-                                className="w-full bg-[#F97316] text-white py-4 px-6 rounded-xl text-lg font-bold hover:bg-[#ea580c] disabled:bg-gray-300 flex items-center justify-center gap-2"
-                            >
+                            <button onClick={handleAddItem} disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)} className="w-full bg-[#F97316] text-white py-4 px-6 rounded-xl text-lg font-bold hover:bg-[#ea580c] disabled:bg-gray-300 flex items-center justify-center gap-2">
                                 {isSaving ? <Spinner /> : 'Add Item'}
                             </button>
                         </div>
-
                     </div>
                 </div>
 
-                {/* --- MOBILE FIXED FOOTER (Button) --- */}
+                {/* --- MOBILE FIXED FOOTER --- */}
                 <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-gray-100 border-t border-gray-200 z-20 flex justify-center pb-20">
                     <button onClick={handleAddItem} disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)} className="w-full max-w-sm bg-[#F97316] text-white py-3 px-6 rounded-lg text-lg font-semibold hover:bg-[#F97316] disabled:bg-gray-400 flex items-center justify-center gap-2 shadow-md">
                         {isSaving ? <Spinner /> : 'Add Item'}

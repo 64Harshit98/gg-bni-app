@@ -37,8 +37,8 @@ import { FiSearch, FiX } from 'react-icons/fi';
 import { IconEdit, IconFilter } from '../constants/Icons';
 import type { Item } from '../constants/models';
 import { CatalogueBill, prepareCatalogueBillData } from './CatalogueBill/CatalogueBill'
-import { getCompressedBase64 } from "./utils/imageCache";
-import { resolveCompanyLogoBase64 } from './hooks/useCompanyLogo';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { app } from '../lib/Firebase';
 
 export interface OrderItem {
     id: string;
@@ -331,7 +331,6 @@ const OrdersPage: React.FC = () => {
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
     const [isUpdatingStatus, setIsUpdatingStatus] = useState<string | null>(null);
     const [selectedOrderForAction, setSelectedOrderForAction] = useState<Order | null>(null);
-    // const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
     const [pdfLoadingOrderId, setPdfLoadingOrderId] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'billing' | 'shipping'>('billing');
     const [paymentFilter, setPaymentFilter] = useState<'paid' | 'unpaid'>('unpaid');
@@ -727,69 +726,79 @@ const OrdersPage: React.FC = () => {
     const handlePdfAction = async (Order: Order, action: ACTION) => {
         console.log("FULL ORDER:", Order);
         setPdfLoadingOrderId(Order.id);
+
         try {
-            const companyLogoBase64 = await resolveCompanyLogoBase64(currentUser?.companyId || '');
+            const functions = getFunctions(app);
+            // Call our new data-gathering cloud function
+            const fetchInvoiceCall = httpsCallable(functions, 'fetchInvoiceData');
+
+            // 1. Get the safe data (with CORS-free images) from the server
+            const result = await fetchInvoiceCall({
+                companyId: currentUser?.companyId,
+                orderId: Order.id
+            });
+
+            const responseData = result.data as any;
+
+            if (!responseData.success) {
+                throw new Error("Failed to fetch order data from server");
+            }
+
+            const safeOrderData = responseData.orderData;
+
+            // 2. Construct the raw bill data using the safe server data
             const rawBillData = {
                 companyId: currentUser?.companyId,
-                companyLogoBase64: companyLogoBase64 || undefined,
+
                 companyName: companyInfo?.name || "",
                 companyAddress: companyInfo?.address || "",
                 companyPhone: companyInfo?.ownerPhoneNumber || "",
-                specialInstruction: Order.specialInstruction || "",
+                specialInstruction: safeOrderData.specialInstruction || Order.specialInstruction || "",
+
                 customer: {
                     billing: {
-                        name: Order.billingDetails?.name || Order.userName || "Customer",
-                        phone: Order.billingDetails?.phone || "",
-                        address: Order.billingDetails?.address || "",
-                        gstin: Order.billingDetails?.gstin || "",
+                        name: safeOrderData.billingDetails?.name || Order.billingDetails?.name || safeOrderData.userName || Order.userName || "Customer",
+                        phone: safeOrderData.billingDetails?.phone || Order.billingDetails?.phone || "",
+                        address: safeOrderData.billingDetails?.address || Order.billingDetails?.address || "",
+                        gstin: safeOrderData.billingDetails?.gstin || Order.billingDetails?.gstin || "",
                     },
                     shipping: {
-                        name: Order.shippingDetails?.name || Order.billingDetails?.name || "",
-                        phone: Order.shippingDetails?.phone || "",
-                        address: Order.shippingDetails?.address || "",
-                        gstin: Order.shippingDetails?.gstin || ""
+                        name: safeOrderData.shippingDetails?.name || Order.shippingDetails?.name || safeOrderData.billingDetails?.name || "",
+                        phone: safeOrderData.shippingDetails?.phone || Order.shippingDetails?.phone || "",
+                        address: safeOrderData.shippingDetails?.address || Order.shippingDetails?.address || "",
+                        gstin: safeOrderData.shippingDetails?.gstin || Order.shippingDetails?.gstin || ""
                     }
                 },
 
                 order: {
-                    orderId: Order.orderId,
-                    date: Order.time,
+                    orderId: safeOrderData.orderId || Order.orderId,
+                    date: Order.time, // Using your formatted time from the frontend
                 },
 
-                items: await Promise.all(
-                    (Order.items || []).map(async (item, index) => {
-                        let base64 = item.imageBase64;
+                // The items now have the imageBase64 safely attached by the server!
+                items: (safeOrderData.items || []).map((item: any, index: number) => {
+                    const mrp = item.mrp || 0;
+                    const salePrice = item.salesPrice || item.mrp || 0;
 
-                        if (!base64 && item.imageUrl) {
-                            const proxyUrl = item.imageUrl.replace(
-                                "https://firebasestorage.googleapis.com",
-                                "/firebase-image"
-                            );
+                    return {
+                        sno: index + 1,
+                        name: item.name,
+                        qty: item.quantity,
+                        unitMultiplier: item.unitMultiplier ?? 1,
+                        tax: item.tax ?? 0,
+                        mrp: mrp,
+                        price: salePrice,
+                        total: salePrice * item.quantity,
+                        imageBase64: item.imageBase64 || "", // The golden ticket!
+                    };
+                }),
 
-                            base64 = await getCompressedBase64(proxyUrl);
-                        }
-                        const mrp = item.mrp || 0;
-                        const salePrice = item.salesPrice || item.mrp || 0;
-
-                        return {
-                            sno: index + 1,
-                            name: item.name,
-                            qty: item.quantity,
-                            unitMultiplier: item.unitMultiplier ?? 1,
-                            tax: item.tax ?? 0,
-                            mrp: mrp,
-                            price: salePrice,
-                            total: salePrice * item.quantity,
-                            imageBase64: base64,
-                        };
-                    })
-                ),
-
-                grandTotal: Order.totalAmount,
+                grandTotal: safeOrderData.totalAmount || Order.totalAmount,
             };
 
             let preparedData;
 
+            // 3. Prepare the settings (using your existing frontend function)
             if (billType === 'estimate') {
                 preparedData = await prepareCatalogueBillData({
                     ...rawBillData,
@@ -802,6 +811,7 @@ const OrdersPage: React.FC = () => {
                 });
             }
 
+            // 4. Generate the PDF purely on the frontend!
             if (action === ACTION.PRINT) {
                 await CatalogueBill(preparedData, "print");
             }
@@ -813,11 +823,11 @@ const OrdersPage: React.FC = () => {
         } catch (err) {
             console.error("Catalogue bill error:", err);
             setModal({
-                message: "Bill generation failed",
+                message: "Bill generation failed. Check console.",
                 type: State.ERROR,
             });
         } finally {
-            //  spinner stop
+            // spinner stop
             setPdfLoadingOrderId(null);
         }
     };
@@ -881,101 +891,7 @@ const OrdersPage: React.FC = () => {
         setSelectedItemForEdit(null);
     };
 
-    //  const handleShareBill = async (Order: Order) => {
-    //      setIsGeneratingPdf(true);
-    const handleShareBill = async (Order: Order) => {
-        setIsGeneratingPdf(true);
 
-        try {
-            const companyLogoBase64 = await resolveCompanyLogoBase64(currentUser?.companyId || '');
-            const rawBillData = {
-                companyId: currentUser?.companyId,
-                companyLogoBase64: companyLogoBase64 || undefined,
-                specialInstruction: Order.specialInstruction || "",
-                customer: {
-                    name: Order.userName || "Customer",
-                    phone: Order.billingDetails?.phone || "",
-                    address: Order.billingDetails?.address || "",
-                },
-                order: {
-                    orderId: Order.orderId,
-                    date: Order.time,
-                },
-                items: (Order.items || []).map((item, index) => {
-                    const mrp = item.mrp || 0;
-                    const salePrice = item.salesPrice || item.mrp || 0;
-
-    //                 return {
-    //                     sno: index + 1,
-    //                     name: item.name,
-    //                     qty: item.quantity,
-    //                     unitMultiplier: item.unitMultiplier ?? 1,
-    //                     mrp: mrp,
-    //                     price: salePrice,
-    //                     total: salePrice * item.quantity,
-    //                     imageBase64: item.imageBase64,
-    //                 };
-    //             }),
-    //             grandTotal: Order.totalAmount,
-    //         };
-
-    //         //  FIX: Bill type ke basis par Estimate ya Bill generate hoga
-    //         const preparedData = await prepareCatalogueBillData({
-    //             ...rawBillData,
-    //             isEstimate: billType === "estimate",
-    //         });
-
-    //         // Generate PDF as Blob
-    //         const pdfBlob = await CatalogueBill(preparedData, "blob");
-    //         if (!pdfBlob) throw new Error("PDF generation failed");
-
-    //         const fileName =
-    //             billType === "estimate"
-    //                 ? `Estimate_${Order.orderId}.pdf`
-    //                 : `Invoice_${Order.orderId}.pdf`;
-
-    //         const file = new File([pdfBlob], fileName, {
-    //             type: "application/pdf",
-    //         });
-
-    //         const title =
-    //             billType === "estimate"
-    //                 ? `Estimate #${Order.orderId}`
-    //                 : `Invoice #${Order.orderId}`;
-
-    //         const text =
-    //             billType === "estimate"
-    //                 ? `Hi ${Order.userName}, your estimate is ready.`
-    //                 : `Hi ${Order.userName}, your invoice is ready.`;
-
-    //         // Native Share
-    //         if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    //             await navigator.share({
-    //                 files: [file],
-    //                 title,
-    //                 text,
-    //             });
-    //         } else {
-    //             // WhatsApp fallback
-    //             const billUrl = `${window.location.origin}/download-bill/${currentUser?.companyId}/${Order.id}`;
-
-    //             const message =
-    //                 `*${billType === "estimate" ? "Estimate" : "Invoice"} from ${companyInfo?.name}*%0A` +
-    //                 `Amount: ₹${Order.totalAmount}%0A` +
-    //                 `Download: ${billUrl}`;
-
-    //             window.open(
-    //                 `https://wa.me/${Order.billingDetails?.phone?.replace(/\D/g, "")}?text=${message}`,
-    //                 "_blank"
-    //             );
-    //         }
-    //     } catch (err) {
-    //         console.error("Sharing error:", err);
-    //         alert("Sharing failed. Please use Download option.");
-    //     } finally {
-    //         setIsGeneratingPdf(false);
-    //     }
-    // };
 
     const statusCounts = useMemo(() => {
         return OrderStatuses.reduce((acc, status) => {
@@ -2194,7 +2110,6 @@ const OrdersPage: React.FC = () => {
                                                     className="p-2 border border-slate-300 rounded-sm text-xs outline-none focus:border-orange-400"
                                                     value={editingOrder.billingDetails?.phone || ''}
                                                     onChange={(e) => {
-                                                        // Sirf numbers allow karo aur max 10 digits
                                                         const val = e.target.value.replace(/\D/g, '').slice(0, 10);
                                                         const isSame = (document.getElementById('sameAsBilling') as HTMLInputElement)?.checked;
 

@@ -1,7 +1,8 @@
 import { FiEdit, FiTrash2 } from 'react-icons/fi';
 import { useState, useEffect } from 'react';
 import type { Item } from '../constants/models';
-import { State } from '../enums';
+import { Permissions, State } from '../enums';
+import ShowWrapper from '../context/ShowWrapper';
 
 export interface CartItem extends Partial<Item> {
   id: string;
@@ -195,17 +196,18 @@ export const GenericCartList = <T extends CartItem>({
                         ₹{lineSubtotal.toLocaleString('en-IN')}
                       </span>
                     </div>
-                    <button
-                      onClick={() => {
-                        const originalItem = availableItems.find(a => a.id === item.productId || a.id === item.id);
-                        if (originalItem) onOpenEditDrawer(originalItem);
-                        else setModal({ message: "Original item not found.", type: State.ERROR });
-                      }}
-                      className="flex items-center justify-center w-[26px] h-[26px] text-gray-400 hover:text-blue-600 disabled:text-gray-200 disabled:cursor-not-allowed z-20"
-                    >
-                      <FiEdit size={14} />
-                    </button>
-
+                    <ShowWrapper requiredPermission={Permissions.ViewTransactions}>
+                      <button
+                        onClick={() => {
+                          const originalItem = availableItems.find(a => a.id === item.productId || a.id === item.id);
+                          if (originalItem) onOpenEditDrawer(originalItem);
+                          else setModal({ message: "Original item not found.", type: State.ERROR });
+                        }}
+                        className="flex items-center justify-center w-[26px] h-[26px] text-gray-400 hover:text-blue-600 disabled:text-gray-200 disabled:cursor-not-allowed z-20"
+                      >
+                        <FiEdit size={14} />
+                      </button>
+                    </ShowWrapper>
                   </div>
                 </div>
 
@@ -340,16 +342,19 @@ export const GenericCartList = <T extends CartItem>({
                   {item.unit && (
                     <span className="text-[11px] text-gray-400 flex-shrink-0">{item.unit}</span>
                   )}
-                  <button
-                    onClick={() => {
-                      const originalItem = availableItems.find(a => a.id === item.productId || a.id === item.id);
-                      if (originalItem) onOpenEditDrawer(originalItem);
-                      else setModal({ message: "Original item not found.", type: State.ERROR });
-                    }}
-                    className="text-gray-400 hover:text-blue-600 flex-shrink-0 ml-0.5"
-                  >
-                    <FiEdit size={16} />
-                  </button>
+                  <ShowWrapper requiredPermission={Permissions.ViewTransactions}>
+                    <button
+                      onClick={() => {
+                        const originalItem = availableItems.find(a => a.id === item.productId || a.id === item.id);
+                        if (originalItem) onOpenEditDrawer(originalItem);
+                        else setModal({ message: "Original item not found.", type: State.ERROR });
+                      }}
+                      className="text-gray-400 hover:text-blue-600 flex-shrink-0 ml-0.5"
+                    >
+                      <FiEdit size={16} />
+                    </button>
+                  </ShowWrapper>
+
                 </div>
 
                 {/* MRP — label above amount */}

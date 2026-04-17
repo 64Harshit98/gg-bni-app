@@ -137,28 +137,18 @@ const ItemGroupPage: React.FC = () => {
                 }
             }
             const counts: Record<string, number> = {};
+            let uncategorizedCount = 0;
 
             allItems.forEach(item => {
-                if (!item.itemGroupId) return;
-
-                let finalGroupId = item.itemGroupId;
-
-                // Logic to ensure we are counting by ID, even if the item still has a Name temporarily
-                if (!groupMapById.has(finalGroupId)) {
-                    const lowerName = finalGroupId.toLowerCase().trim();
-                    const group = groupMapByName.get(lowerName);
-                    if (group && group.id) {
-                        finalGroupId = group.id;
-                    }
-                }
-
-                // Increment count
-                if (finalGroupId) {
-                    counts[finalGroupId] = (counts[finalGroupId] || 0) + 1;
+                const groupId = item.itemGroupId;
+                if (groupId && groupMapById.has(groupId)) {
+                    counts[groupId] = (counts[groupId] || 0) + 1;
+                } else {
+                    uncategorizedCount++;
                 }
             });
 
-            setGroupCounts(counts);
+            setGroupCounts({ ...counts, "uncategorized": uncategorizedCount });
             // ----------------------
 
             // Final sort for display
@@ -236,83 +226,45 @@ const ItemGroupPage: React.FC = () => {
 
 
     const handleDeleteItemGroup = async (groupToDelete: ItemGroup) => {
-        if (!dbOperations) return;
-
-        const groupId = groupToDelete.id;
-
-        if (!groupId) {
-            setError("Cannot delete Uncategorized group.");
-            return;
-        }
+        if (!dbOperations || !groupToDelete.id) return;
 
         try {
-            // 1. Get all items
+            setLoading(true);
             const allItems = await dbOperations.syncItems();
+            const itemsToUncategorize = allItems.filter(i => i.itemGroupId === groupToDelete.id);
 
-            // 2. Find items of this group
-            const itemsToUpdate = allItems.filter(
-                item => item.itemGroupId === groupId
-            );
-
-            // ensure uncategorized exists before moving items
-            const groups = await dbOperations.getItemGroups();
-
-            let uncategorized = groups.find(
-                g => g.name.toLowerCase().trim() === "uncategorized"
-            );
-
-            if (!uncategorized) {
-                await dbOperations.createItemGroup({
-                    name: "Uncategorized",
-                    description: "Default system category"
-                });
-
-                const updatedGroups = await dbOperations.getItemGroups();
-                uncategorized = updatedGroups.find(
-                    g => g.name.toLowerCase().trim() === "uncategorized"
-                );
+            for (const item of itemsToUncategorize) {
+                await dbOperations.updateItem(item.id!, { itemGroupId: "" });
             }
 
-            // 3. Move items → uncategorized
-            for (const item of itemsToUpdate) {
-                await dbOperations.updateItem(item.id!, {
-                    itemGroupId: uncategorized?.id || ""
-                });
-            }
-
-            // 4. Delete group
             await dbOperations.deleteItemGroupIfUnused(groupToDelete);
 
-            showSuccessMessage(
-                `Group deleted & ${itemsToUpdate.length} items moved to Uncategorized`
-            );
-
+            showSuccessMessage(`Group deleted. ${itemsToUncategorize.length} items moved to Uncategorized.`);
             await fetchAndSyncGroups();
-
         } catch (err: any) {
             setError(err.message || "Delete failed");
+        } finally {
+            setLoading(false);
         }
     };
     return (
-        <div className="flex flex-col mb-10 bg-gray-100 w-full pt-24 sm:pt-24">
-
-            <div className="fixed top-0 left-0 right-0 z-10 p-4 bg-gray-100 border-b border-gray-300 flex flex-col">
-                <h1 className="text-2xl font-bold text-gray-800 text-center mb-4">Item Groups</h1>
-                <div className="flex items-center justify-center gap-6">
-                    <CustomButton variant={Variant.Transparent} onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`)} active={isActive(`${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`)}>Item Add</CustomButton>
-                    <CustomButton
-                        variant={Variant.Transparent}
-                        onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`)}
-                        active={isActive(`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`)}
-                    >
-                        Item Groups
-                    </CustomButton>
-                </div>
-            </div>
-
-            <main className="flex-grow p-4 bg-gray-100 w-full overflow-y-auto">
+        <div className="flex flex-col mb-10 bg-gray-100 w-full">
+            <main className="flex-grow bg-gray-100 w-full overflow-y-auto">
                 {error && <div className="mb-4 p-3 bg-red-100 text-red-800 rounded-sm text-sm font-semibold"><p>{error}</p></div>}
                 {successMessage && <div className="mb-4 p-3 bg-green-100 text-green-800 rounded-sm text-sm font-semibold"><p>{successMessage}</p></div>}
+                <div className="flex flex-col md:flex-row md:justify-between md:items-center bg-gray-100 md:bg-white border-b border-gray-300 shadow-sm flex-shrink-0 p-2 md:px-4 md:py-3 mb-2 md:mb-0">
+                    <h1 className="text-2xl font-bold text-gray-800 text-center md:text-left mb-2 md:mb-0">Item Groups</h1>
+                    <div className="flex items-center justify-center gap-6">
+                        <CustomButton variant={Variant.Transparent} onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`)} active={isActive(`${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`)}>Item Add</CustomButton>
+                        <CustomButton
+                            variant={Variant.Transparent}
+                            onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`)}
+                            active={isActive(`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`)}
+                        >
+                            Item Groups
+                        </CustomButton>
+                    </div>
+                </div>
 
                 <div className="p-4 sm:p-6 bg-white rounded-sm shadow-md">
                     <div className="flex flex-col gap-2 mb-6">
@@ -368,6 +320,14 @@ const ItemGroupPage: React.FC = () => {
                                     </div>
                                 )
                             })}
+                            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-sm shadow-sm border border-gray-300">
+                                <div className="flex items-center gap-2 overflow-hidden">
+                                    <span className="text-gray-600 font-bold">Uncategorized</span>
+                                    <span className="text-sm px-2 py-0.5 rounded-sm font-medium text-[#F97316]">
+                                        {groupCounts["uncategorized"] || 0} items
+                                    </span>
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>

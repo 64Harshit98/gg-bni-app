@@ -551,6 +551,10 @@ const EditProfilePage: React.FC = () => {
               </div>
               <div>
                 <p className="text-[12px] font-semibold text-slate-700 m-0">Company Logo</p>
+                <p className="text-[11px] text-slate-400 m-0 mt-0.5 leading-relaxed">
+                  Appears on invoices, reports & PDFs.<br />
+                  PNG or JPG recommended.
+                </p>
               </div>
             </div>
 
@@ -603,7 +607,7 @@ const EditProfilePage: React.FC = () => {
                 />
                 <FloatingLabelInput type="text" name="gstin" value={formData.gstin || ''} onChange={handleInputChange} label="GSTIN" />
                 <FloatingLabelInput type="text" name="panNumber" value={formData.panNumber || ''} onChange={handleInputChange} label="PAN Number" />
-                <FloatingLabelInput type="text" name="msmeUdyamNumber" value={formData.msmeUdyamNumber || ''} onChange={handleInputChange} label="MSME / Udyam No." />
+                <FloatingLabelInput type="text" name="msmeUdyamNumber" value={formData.msmeUdyamNumber || ''} onChange={handleInputChange} label="MSME No." />
               </div>
             </SectionCard>
 
@@ -649,7 +653,7 @@ const EditProfilePage: React.FC = () => {
             {/* Card 4 — Bank Details */}
             <SectionCard title="Bank Details" icon="">
               <div className="grid grid-cols-2 gap-4">
-                <FloatingLabelInput type="text" name="accountHolderName" value={formData.accountHolderName || ''} onChange={handleInputChange} label="Account Name" />
+                <FloatingLabelInput type="text" name="accountHolderName" value={formData.accountHolderName || ''} onChange={handleInputChange} label="Acc Holder Name" />
                 <FloatingLabelInput type="text" name="bankName" value={formData.bankName || ''} onChange={handleInputChange} label="Bank Name" />
                 <FloatingLabelInput type="text" name="ifscCode" value={formData.ifscCode || ''} onChange={handleInputChange} label="IFSC Code" />
                 <FloatingLabelInput type="text" name="accountNumber" value={formData.accountNumber || ''} onChange={handleInputChange} label="Account No." />

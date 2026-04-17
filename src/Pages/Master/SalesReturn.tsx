@@ -854,7 +854,21 @@ const handleSaveSuccess = (updatedItemData: Partial<Item>) => {
                     </div>
                     <div className="relative" ref={customerDropdownRef}>
                       <label className="block text-xs font-bold text-gray-500 uppercase">Party Number</label>
-                      <input type="text" value={partyNumber} onChange={(e) => { setPartyNumber(e.target.value); setPartyName(''); setIsCustomerDropdownOpen(true); }} onFocus={() => setIsCustomerDropdownOpen(true)} className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm" autoComplete="off" placeholder="Search customer by number or name..." />
+                      <input
+                        type="text"
+                        value={partyNumber}
+                        maxLength={10}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                          setPartyNumber(val);
+                          setPartyName('');
+                          setIsCustomerDropdownOpen(true);
+                        }}
+                        onFocus={() => setIsCustomerDropdownOpen(true)}
+                        className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm"
+                        autoComplete="off"
+                        placeholder="Search customer by number or name..."
+                      />
                       {isCustomerDropdownOpen && filteredCustomers.length > 0 && (
                         <div className="absolute top-full left-0 w-full z-20 mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto">
                           {filteredCustomers.map((customer) => (

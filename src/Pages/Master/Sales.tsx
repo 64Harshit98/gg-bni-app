@@ -959,8 +959,16 @@ const Sales: React.FC = () => {
         setIsSaving(true);
         if (!currentUser?.companyId) return;
 
-        if (salesSettings?.requireCustomerName && !completionData.partyName?.trim()) throw new Error("Customer Name is required.");
-        if (salesSettings?.requireCustomerMobile && !completionData.partyNumber?.trim()) throw new Error("Customer Mobile Number is required.");
+        if (salesSettings?.requireCustomerName && !completionData.partyName?.trim()) {
+            setModal({ message: "Customer Name is required.", type: State.ERROR });
+            setIsSaving(false);
+            return;
+        }
+        if (salesSettings?.requireCustomerMobile && !completionData.partyNumber?.trim()) {
+            setModal({ message: "Customer Mobile Number is required.", type: State.ERROR });
+            setIsSaving(false);
+            return;
+        }
 
         const companyId = currentUser.companyId;
         const salesman = salesSettings?.enableSalesmanSelection ? selectedWorker : workers.find(w => w.uid === currentUser.uid);

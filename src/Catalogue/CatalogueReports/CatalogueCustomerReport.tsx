@@ -171,7 +171,7 @@ const CatalogueCustomerReport: React.FC = () => {
       }
 
       doc.setFontSize(16);
-      doc.text('Customer Report', 14, 15);
+      
       const pageHeight = doc.internal.pageSize.getHeight();
 
       // ===== CLEAN GENERATION TAG =====

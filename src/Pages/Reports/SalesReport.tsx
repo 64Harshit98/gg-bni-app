@@ -20,13 +20,12 @@ import { getSalesColumns } from '../../constants/TableColoumns';
 import ReportDetails from './SalesReportComponents/ReportDetails';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
-import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import { useAuth } from '../../context/auth-context';
 
 
 const SalesReport: React.FC = () => {
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
+useAuth();
 
   const {
     setDatePreset,

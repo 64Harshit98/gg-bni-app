@@ -133,15 +133,26 @@ const PartyLedger: React.FC = () => {
                             <input type="date" value={customStartDate} onChange={(e) => { setCustomStartDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border border-gray-200 rounded-sm" />
                             <input type="date" value={customEndDate} onChange={(e) => { setCustomEndDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border border-gray-200 rounded-sm" />
                         </div>
-                        <FilterSelect value={partyTypeFilter} onChange={(e) => setPartyTypeFilter(e.target.value as any)}>
-                            <option value="all">All Parties</option>
-                            <option value="Customer">Customer</option>
-                            <option value="Supplier">Supplier</option>
-                        </FilterSelect>
                     </div>
                     <button onClick={handleApplyFilters} className="w-full mt-3 px-3 py-2 bg-blue-600 text-white text-sm font-semibold rounded-sm hover:bg-blue-700 transition-colors">
                         Apply
                     </button>
+                    <div className="flex justify-center mt-3">
+                        <div className="flex bg-gray-100 rounded-sm p-1 text-sm">
+                            <button
+                                onClick={() => setPartyTypeFilter('Customer')}
+                                className={`px-4 py-1.5 rounded-sm transition ${partyTypeFilter === 'Customer' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600'}`}
+                            >
+                                Customer
+                            </button>
+                            <button
+                                onClick={() => setPartyTypeFilter('Supplier')}
+                                className={`px-4 py-1.5 rounded-sm transition ${partyTypeFilter === 'Supplier' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600'}`}
+                            >
+                                Supplier
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
 
@@ -156,7 +167,7 @@ const PartyLedger: React.FC = () => {
                             <CustomCard
                                 key={party.partyName}
                                 onClick={() => setSelectedPartyName(party.partyName)}
-                                className="cursor-pointer transition-shadow hover:shadow-md bg-white"
+                                className="cursor-pointer transition-shadow hover:shadow-md p-3.5 bg-white"
                             >
                                 {/* Top Row: Badge and Total */}
                                 <div className="flex items-start justify-between mb-1.5">

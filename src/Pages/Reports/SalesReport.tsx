@@ -173,107 +173,153 @@ const SalesReport: React.FC = () => {
     };
   }, [appliedFilters, sales, sortConfig]);
 
-  /* ---------- PDF DOWNLOAD (UNCHANGED) ---------- */
-  const downloadAsPdf = async () => {
-    if (!appliedFilters) return;
+ const downloadAsPdf = () => {
+     if (!appliedFilters) return;
+ 
+     try {
+       const doc = new jsPDF();
+       const pageWidth = doc.internal.pageSize.getWidth();
+       const pageHeight = doc.internal.pageSize.getHeight();
+ 
+       // --- 1. BRAND ACCENT BAR ---
+       // Uses the #F97316 orange from your UI
+       doc.setFillColor(37, 99, 235); 
+       doc.rect(0, 0, pageWidth, 6, 'F');
+ 
+       // --- 2. HEADER SECTION ---
+       doc.setFontSize(22);
+       doc.setTextColor(17, 24, 39); // gray-900
+       doc.setFont('helvetica', 'bold');
+       doc.text('Completed Orders Report', 14, 24);
+ 
+       // Dynamic Subtitle with Date Range
+       doc.setFontSize(10);
+       doc.setTextColor(107, 114, 128); // gray-500
+       doc.setFont('helvetica', 'normal');
+       
+       const generationDate = new Date().toLocaleDateString('en-IN', {
+         year: 'numeric', month: 'short', day: 'numeric',
+       });
+       
+       const subtitleText = `Generated: ${generationDate}   |   Period: ${formatDate(appliedFilters.start)} to ${formatDate(appliedFilters.end)}`;
+       doc.text(subtitleText, 14, 31);
+ 
+       // --- 3. AUTOTABLE GENERATION ---
+       autoTable(doc, {
+         startY: 38,
+         head: [['DATE', 'CUSTOMER', 'ITEMS', 'AMOUNT (Rs.)']],
+         body: filteredSales.map((sale) => {
+           // Clean up customer name casing
+           const formattedCustomer = sale.partyName
+             ? sale.partyName.charAt(0).toUpperCase() + sale.partyName.slice(1).toLowerCase()
+             : 'N/A';
 
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
+           // Calculate total items
+           const totalItems = sale.items.reduce((sum, i) => sum + i.quantity, 0);
 
-    // --- Embed logo from cache/Firestore via existing hook ---
-    try {
-      const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
-      if (base64Logo) {
-        const img = new Image();
-        img.src = base64Logo;
-        await new Promise<void>((resolve) => {
-          img.onload = () => {
-            const logoWidth = 25;
-            const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
-            const logoX = pageWidth - logoWidth - 14; // right-aligned, 14pt margin
-            doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
-            resolve();
-          };
-          img.onerror = () => resolve(); // skip silently if load fails
-        });
-      }
-    } catch {
-      // Continue without logo
-    }
-
-
-    // ===== CLEAN GENERATION TAG =====
-    const now = new Date();
-    const generatedAt = now.toLocaleString('en-IN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-
-    const margin = 14;
-
-    const tagText = `Generated using SELLAR • ${generatedAt}`;
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8);
-
-    const textWidth = doc.getTextWidth(tagText);
-    const paddingX = 2;
-
-    const boxWidth = textWidth + paddingX * 2;
-    const boxHeight = 5;
-
-    const boxX = pageWidth - margin - boxWidth;
-    const boxY = 10;
-
-    // light gray background
-    doc.setFillColor(245, 245, 245);
-    doc.rect(boxX, boxY, boxWidth, boxHeight, "F");
-
-    // text
-    doc.setTextColor(80, 80, 80);
-    doc.text(tagText, boxX + paddingX, boxY + 3.5);
-
-    // reset styles
-    doc.setTextColor(0, 0, 0);
-
-    doc.setFontSize(18);
-    doc.text('Sales Report', 14, 20);
-    doc.setFontSize(11);
-    doc.setTextColor(100);
-
-    doc.text(
-      `Date Range: ${formatDate(appliedFilters.start)} to ${formatDate(
-        appliedFilters.end,
-      )}`,
-      14,
-      29,
-    );
-
-    autoTable(doc, {
-      startY: 35,
-      head: [['Date', 'Party Name', 'Items', 'Amount']],
-      body: filteredSales.map((sale) => [
-        formatDate(sale.createdAt),
-        sale.partyName,
-        sale.items.reduce((sum, i) => sum + i.quantity, 0),
-        `Rs ${sale.totalAmount.toLocaleString('en-IN')}`,
-      ]),
-      foot: [
-        [
-          'Total',
-          '',
-          `${summary.totalItemsSold}`,
-          `Rs ${summary.totalSales.toLocaleString('en-IN')}`,
-        ],
-      ],
-      footStyles: { fontStyle: 'bold' },
-    });
-
-    doc.save(`sales_report_${formatDateForInput(new Date())}.pdf`);
-  };
+           return [
+             formatDate(sale.createdAt),
+             formattedCustomer,
+             totalItems.toString(),
+             // Strict 2-decimal financial formatting
+             sale.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+           ];
+         }),
+         foot: [
+           [
+             'TOTAL',
+             '-',
+             summary.totalItemsSold.toString(),
+             summary.totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+           ]
+         ],
+         theme: 'plain',
+         styles: {
+           font: 'helvetica',
+           cellPadding: 7,
+           fontSize: 10,
+           textColor: [55, 65, 81], // gray-700
+         },
+         headStyles: {
+           fillColor: [249, 250, 251], // gray-50
+           textColor: [17, 24, 39], // gray-900
+           fontStyle: 'bold',
+           halign: 'left',
+           lineWidth: { top: 1, bottom: 1 },
+           lineColor: [229, 231, 235], // gray-200
+         },
+         footStyles: {
+           fillColor: [255, 255, 255],
+           textColor: [17, 24, 39], // gray-900
+           fontStyle: 'bold',
+           halign: 'left',
+           lineWidth: { top: 1, bottom: 2 }, // Thicker bottom line for totals
+           lineColor: [17, 24, 39],
+         },
+         alternateRowStyles: {
+           fillColor: [252, 252, 252], // Subtle zebra striping
+         },
+         columnStyles: {
+           0: { halign: 'left', cellWidth: 40 },   // DATE
+           1: { halign: 'left', cellWidth: 60 },   // CUSTOMER
+           2: { halign: 'left', cellWidth: 40 },   // ITEMS (aligned with header)
+           3: { halign: 'left', cellWidth: 50 },   // AMOUNT (shifted left)
+         },
+         // --- 4. CONDITIONAL FORMATTING & HEADER ALIGNMENT ---
+         didParseCell: function (data) {
+           // If the header row and CUSTOMER column, align left
+           if (data.section === 'head' && data.column.index === 1) {
+             data.cell.styles.halign = 'left';
+           }
+           // If the header row and ITEMS column, align left
+           if (data.section === 'head' && data.column.index === 2) {
+             data.cell.styles.halign = 'left';
+           }
+           // If the header row and AMOUNT column, align left
+           if (data.section === 'head' && data.column.index === 3) {
+             data.cell.styles.halign = 'left';
+           }
+           // Highlight negative amounts (e.g., refunds) in red
+           if ((data.section === 'body' || data.section === 'foot') && data.column.index === 3) {
+             const rawVal = parseFloat(String(data.cell.raw).replace(/,/g, ''));
+             if (rawVal < 0) {
+               data.cell.styles.textColor = [220, 38, 38]; // red-600
+               data.cell.styles.fontStyle = 'bold';
+             }
+           }
+           // Fix alignment for the "TOTAL" label in the footer
+           if (data.section === 'foot' && data.column.index === 0) {
+             data.cell.styles.halign = 'left';
+           }
+           // Ensure ITEMS and AMOUNT in TOTAL row align exactly like columns
+           if (data.section === 'foot' && data.column.index === 2) {
+             data.cell.styles.halign = 'left';
+           }
+           if (data.section === 'foot' && data.column.index === 3) {
+             data.cell.styles.halign = 'left';
+           }
+         },
+         // --- 5. PAGINATION FOOTER ---
+         didDrawPage: function () {
+           const pageCount = doc.getNumberOfPages();
+           doc.setFontSize(9);
+           doc.setTextColor(156, 163, 175); // gray-400
+           doc.text(
+             `Page ${pageCount}`,
+             pageWidth - 14,
+             pageHeight - 10,
+             { align: 'right' }
+           );
+         },
+       });
+ 
+       doc.save(`Orders_Report_${formatDateForInput(new Date())}.pdf`);
+       setIsDownloadModalOpen(false);
+ 
+     } catch (err) {
+       console.error('PDF Generation Error:', err);
+     }
+   };
 
   /* ---------- EXCEL DOWNLOAD (NEW) ---------- */
   const downloadAsExcel = () => {

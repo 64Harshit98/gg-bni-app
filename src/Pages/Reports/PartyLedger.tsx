@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import FilterSelect from './SalesReportComponents/FilterSelect';
 import { formatDate, formatDateForInput } from './SalesReportComponents/salesReport.utils';
@@ -21,6 +21,12 @@ const PartyLedger: React.FC = () => {
 
     const [expandedBillId, setExpandedBillId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const [partyTypeFilter, setPartyTypeFilter] = useState<'all' | 'Customer' | 'Supplier'>('all');
+
+    useEffect(() => {
+        // Set default to last 30 days (acts as last month)
+        handleDatePresetChange('last30');
+    }, []);
 
     const toggleBillExpansion = (billId: string) => {
         setExpandedBillId(prev => prev === billId ? null : billId);
@@ -68,14 +74,20 @@ const PartyLedger: React.FC = () => {
     };
 
     const filteredParties = useMemo(() => {
-        if (!searchQuery.trim()) return partySummaries;
-
         const lowerQuery = searchQuery.toLowerCase();
-        return partySummaries.filter(party =>
-            party.partyName.toLowerCase().includes(lowerQuery) ||
-            party.partyNumber.toLowerCase().includes(lowerQuery)
-        );
-    }, [searchQuery, partySummaries]);
+        return partySummaries.filter(party => {
+            const matchesSearch =
+                !searchQuery.trim() ||
+                party.partyName.toLowerCase().includes(lowerQuery) ||
+                party.partyNumber.toLowerCase().includes(lowerQuery);
+
+            const matchesType =
+                partyTypeFilter === 'all' ||
+                party.partyType === partyTypeFilter;
+
+            return matchesSearch && matchesType;
+        });
+    }, [searchQuery, partyTypeFilter, partySummaries]);
 
     if (isLoading || authLoading) return <div className="p-4 text-center">Loading Ledger...</div>;
     if (error) return <div className="p-4 text-center text-red-500">{error}</div>;
@@ -108,7 +120,7 @@ const PartyLedger: React.FC = () => {
                         />
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
                         <FilterSelect value={datePreset} onChange={(e) => handleDatePresetChange(e.target.value)}>
                             <option value="today">Today</option>
                             <option value="yesterday">Yesterday</option>
@@ -117,11 +129,15 @@ const PartyLedger: React.FC = () => {
                             <option value="thisMonth">This Month</option>
                             <option value="custom">Custom</option>
                         </FilterSelect>
-
                         <div className="grid grid-cols-2 gap-2 sm:gap-4">
                             <input type="date" value={customStartDate} onChange={(e) => { setCustomStartDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border border-gray-200 rounded-sm" />
                             <input type="date" value={customEndDate} onChange={(e) => { setCustomEndDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border border-gray-200 rounded-sm" />
                         </div>
+                        <FilterSelect value={partyTypeFilter} onChange={(e) => setPartyTypeFilter(e.target.value as any)}>
+                            <option value="all">All Parties</option>
+                            <option value="Customer">Customer</option>
+                            <option value="Supplier">Supplier</option>
+                        </FilterSelect>
                     </div>
                     <button onClick={handleApplyFilters} className="w-full mt-3 px-3 py-2 bg-blue-600 text-white text-sm font-semibold rounded-sm hover:bg-blue-700 transition-colors">
                         Apply
@@ -132,48 +148,46 @@ const PartyLedger: React.FC = () => {
             {/* MAIN VIEW */}
             {!selectedPartyName ? (
                 // VIEW 1: MASTER LIST (Unified List Container with Card-like row layouts)
-                <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden mt-2">
-                    <div className="flex flex-col">
-                        {filteredParties.length === 0 ? (
-                            <div className="p-6 text-center text-gray-500 bg-white">No parties found for this period.</div>
-                        ) : (
-                            filteredParties.map((party) => (
-                                <div
-                                    key={party.partyName}
-                                    onClick={() => setSelectedPartyName(party.partyName)}
-                                    className="p-4 border-b border-gray-300 last:border-b-0 hover:bg-blue-50 cursor-pointer transition-colors"
-                                >
-                                    {/* Top Row: Badge and Total */}
-                                    <div className="flex items-start justify-between mb-1.5">
-                                        <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider whitespace-nowrap ${party.partyType === 'Customer' ? 'bg-blue-50 text-blue-600 border-blue-200' :
-                                            party.partyType === 'Supplier' ? 'bg-purple-50 text-purple-600 border-purple-200' :
-                                                'bg-orange-50 text-orange-600 border-orange-200'
-                                            }`}>
-                                            {party.partyType}
-                                        </span>
-                                        <p className="text-xs text-slate-400">
-                                            Total: ₹{party.totalBilled.toLocaleString('en-IN')}
+                <div className="space-y-2 mt-2">
+                    {filteredParties.length === 0 ? (
+                        <div className="p-6 text-center text-gray-500 bg-white">No parties found for this period.</div>
+                    ) : (
+                        filteredParties.map((party) => (
+                            <CustomCard
+                                key={party.partyName}
+                                onClick={() => setSelectedPartyName(party.partyName)}
+                                className="cursor-pointer transition-shadow hover:shadow-md bg-white"
+                            >
+                                {/* Top Row: Badge and Total */}
+                                <div className="flex items-start justify-between mb-1.5">
+                                    <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider whitespace-nowrap ${party.partyType === 'Customer' ? 'bg-blue-50 text-blue-600 border-blue-200' :
+                                        party.partyType === 'Supplier' ? 'bg-purple-50 text-purple-600 border-purple-200' :
+                                            'bg-orange-50 text-orange-600 border-orange-200'
+                                        }`}>
+                                        {party.partyType}
+                                    </span>
+                                    <p className="text-xs text-slate-400">
+                                        Total: ₹{party.totalBilled.toLocaleString('en-IN')}
+                                    </p>
+                                </div>
+
+                                {/* Bottom Row: Name/Number and Pending Due */}
+                                <div className="flex items-end justify-between">
+                                    <div>
+                                        <p className="text-base font-semibold text-slate-800">{party.partyName}</p>
+                                        <p className="text-sm text-slate-500 mt-0.5">
+                                            {party.partyNumber || 'N/A'} <span className="mx-1 text-slate-300">•</span> {party.totalTransactions} Bills
                                         </p>
                                     </div>
-
-                                    {/* Bottom Row: Name/Number and Pending Due */}
-                                    <div className="flex items-end justify-between">
-                                        <div>
-                                            <p className="text-base font-semibold text-slate-800">{party.partyName}</p>
-                                            <p className="text-sm text-slate-500 mt-0.5">
-                                                {party.partyNumber || 'N/A'} <span className="mx-1 text-slate-300">•</span> {party.totalTransactions} Bills
-                                            </p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className={`text-lg font-bold ${party.totalDue > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                                                {party.totalDue > 0 ? 'Due: ' : ''}₹{party.totalDue.toLocaleString('en-IN')}
-                                            </p>
-                                        </div>
+                                    <div className="text-right">
+                                        <p className={`text-lg font-bold ${party.totalDue > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                            {party.totalDue > 0 ? 'Due: ' : ''}₹{party.totalDue.toLocaleString('en-IN')}
+                                        </p>
                                     </div>
                                 </div>
-                            ))
-                        )}
-                    </div>
+                            </CustomCard>
+                        ))
+                    )}
                 </div>
             ) : (
                 // VIEW 2: DETAILED LEDGER

@@ -267,7 +267,12 @@ const CustomerReport: React.FC = () => {
     {
       header: 'Customer',
       accessor: 'customerName',
-      className: 'py-3 text-center w-1/4 ',
+      className: 'py-3 text-center w-1/5',
+    },
+    {
+      header: 'Phone Number',
+      accessor: 'customerNumber',
+      className: 'py-3 text-center w-1/4',
     },
     {
       header: 'Bills',
@@ -284,7 +289,7 @@ const CustomerReport: React.FC = () => {
       header: 'Total Due',
       accessor: (row) => `₹${row.totalDue.toLocaleString('en-IN')}`,
       sortKey: 'totalDue',
-      className: 'py-3 text-center w-1/4',
+      className: 'py-3 text-center w-1/5',
     },
   ];
 

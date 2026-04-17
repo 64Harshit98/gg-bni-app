@@ -526,7 +526,7 @@ const PurchaseReturnPage: React.FC = () => {
   };
 
   // --- UI CALCULATIONS (With Discount) ---
-  const { totalReturnValue, totalNewItemsValue, finalBalance, discountDeducted, returnTax } = useMemo(() => {
+  const { totalReturnValue, totalNewItemsValue, finalBalance, discountDeducted } = useMemo(() => {
   const totalReturnGross = itemsToReturn.reduce((sum, item) => sum + item.amount, 0);
   
   // --- TAX CALCULATION---

@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, type ReactNode, useEffect } from 'react';
+import React, { createContext, useState, useContext, type ReactNode, useEffect, useCallback } from 'react';
 import {
     Menubar,
     MenubarContent,
@@ -9,8 +9,15 @@ import {
 } from "./ui/menubar";
 import { useLocation } from 'react-router-dom';
 
-const FormattedDateInput: React.FC<{ value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; }> = ({ value, onChange }) => {
+// 1. ADD THIS HELPER FUNCTION AT THE TOP
+// This offsets the UTC time by the user's local timezone so the date string is accurate to their clock
+const getLocalDateString = (date: Date = new Date()) => {
+    const offset = date.getTimezoneOffset() * 60000;
+    const localDate = new Date(date.getTime() - offset);
+    return localDate.toISOString().split('T')[0];
+};
 
+const FormattedDateInput: React.FC<{ value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; }> = ({ value, onChange }) => {
     const displayValue = value
         ? new Date(value + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
         : 'dd/mm/yyyy';
@@ -35,7 +42,6 @@ const FormattedDateInput: React.FC<{ value: string; onChange: (e: React.ChangeEv
     );
 };
 
-
 interface FilterState {
     startDate: string;
     endDate: string;
@@ -45,19 +51,38 @@ interface FilterState {
 interface FilterContextType {
     filters: FilterState;
     setFilters: React.Dispatch<React.SetStateAction<FilterState>>;
+    refreshDateFilters: () => void;
 }
 
 const FilterContext = createContext<FilterContextType | undefined>(undefined);
 
 export const FilterProvider = ({ children }: { children: ReactNode }) => {
+    // 2. UPDATE INITIAL STATE to use our new helper
     const [filters, setFilters] = useState<FilterState>({
-        startDate: new Date().toISOString().split('T')[0],
-        endDate: new Date().toISOString().split('T')[0],
+        startDate: getLocalDateString(),
+        endDate: getLocalDateString(),
         filterType: 'today',
     });
 
+    const refreshDateFilters = useCallback(() => {
+        setFilters((prev) => {
+            if (prev.filterType === 'today') {
+                // 3. UPDATE REFRESH LOGIC to use our new helper
+                const todayFormatted = getLocalDateString();
+                if (prev.startDate !== todayFormatted) {
+                    return {
+                        ...prev,
+                        startDate: todayFormatted,
+                        endDate: todayFormatted
+                    };
+                }
+            }
+            return prev;
+        });
+    }, []);
+
     return (
-        <FilterContext.Provider value={{ filters, setFilters }}>
+        <FilterContext.Provider value={{ filters, setFilters, refreshDateFilters }}>
             {children}
         </FilterContext.Provider>
     );
@@ -71,22 +96,21 @@ export const useFilter = (): FilterContextType => {
     return context;
 };
 
-
 export const FilterControls: React.FC = () => {
     const { filters, setFilters } = useFilter();
     const [localFilters, setLocalFilters] = useState<FilterState>(filters);
     const location = useLocation();
     const isCatalogue = location.pathname.includes('catalogue');
 
-    const primaryColor = isCatalogue ? '#F97316' : '#2563eb';   // orange : blue
+    const primaryColor = isCatalogue ? '#F97316' : '#2563eb';
     const primaryHover = isCatalogue ? '#ea580c' : '#1d4ed8';
 
     useEffect(() => {
         setLocalFilters(filters);
     }, [filters]);
 
-    const formatDate = (date: Date) => date.toISOString().split('T')[0];
-
+    // 4. UPDATE FORMATTER IN CONTROLS to use our new helper
+    const formatDate = (date: Date) => getLocalDateString(date);
 
     useEffect(() => {
         const today = new Date();
@@ -137,17 +161,17 @@ export const FilterControls: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <Menubar className="sm:col-span-2">
                         <MenubarMenu>
-                            <MenubarTrigger className="w-full justify-center">
+                            <MenubarTrigger className="w-full justify-center cursor-pointer">
                                 {presetLabels[localFilters.filterType]}
                                 <svg className="ml-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
                             </MenubarTrigger>
                             <MenubarContent>
-                                <MenubarItem onClick={() => handlePresetSelect('today')}>Today</MenubarItem>
-                                <MenubarItem onClick={() => handlePresetSelect('yesterday')}>Yesterday</MenubarItem>
-                                <MenubarItem onClick={() => handlePresetSelect('last7days')}>Last 7 Days</MenubarItem>
-                                <MenubarItem onClick={() => handlePresetSelect('last30days')}>Last 30 Days</MenubarItem>
+                                <MenubarItem onClick={() => handlePresetSelect('today')} className="cursor-pointer">Today</MenubarItem>
+                                <MenubarItem onClick={() => handlePresetSelect('yesterday')} className="cursor-pointer">Yesterday</MenubarItem>
+                                <MenubarItem onClick={() => handlePresetSelect('last7days')} className="cursor-pointer">Last 7 Days</MenubarItem>
+                                <MenubarItem onClick={() => handlePresetSelect('last30days')} className="cursor-pointer">Last 30 Days</MenubarItem>
                                 <MenubarSeparator />
-                                <MenubarItem onClick={() => handlePresetSelect('custom')}>Custom Range</MenubarItem>
+                                <MenubarItem onClick={() => handlePresetSelect('custom')} className="cursor-pointer">Custom Range</MenubarItem>
                             </MenubarContent>
                         </MenubarMenu>
                     </Menubar>
@@ -159,7 +183,7 @@ export const FilterControls: React.FC = () => {
                 <div>
                     <button
                         onClick={handleApply}
-                        className="w-full px-3 py-1 text-white font-semibold rounded-sm shadow-sm transition-colors" style={{backgroundColor: primaryColor}} onMouseOver={(e) => (e.currentTarget.style.backgroundColor = primaryHover)} onMouseOut={(e) => (e.currentTarget.style.backgroundColor = primaryColor)}
+                        className="w-full px-3 py-1 text-white font-semibold rounded-sm shadow-sm transition-colors cursor-pointer" style={{ backgroundColor: primaryColor }} onMouseOver={(e) => (e.currentTarget.style.backgroundColor = primaryHover)} onMouseOut={(e) => (e.currentTarget.style.backgroundColor = primaryColor)}
                     >
                         Apply
                     </button>

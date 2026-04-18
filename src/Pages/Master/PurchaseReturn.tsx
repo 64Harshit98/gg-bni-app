@@ -538,7 +538,7 @@ const PurchaseReturnPage: React.FC = () => {
       const taxRate = Number(item.taxRate || item.tax || 0);
       const taxType = item.taxType;
 
-      if (taxType === 'inclusive' && taxRate > 0) {
+      if (taxType === 'exclusive' && taxRate > 0) {
         const itemTax = itemFinalPrice * (taxRate / 100);
         return sum + itemTax;
       }

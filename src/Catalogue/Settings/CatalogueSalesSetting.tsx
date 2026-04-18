@@ -245,128 +245,84 @@ const CatalogueSalesSettings: React.FC = () => {
 
           {/* ── Visibility ──────────────────────────────────────────────────── */}
           <SettingsCard title="Visibility">
+            <ToggleRow
+              id="allow-negative-inventory"
+              label="Allow Negative Inventory"
+              description="Allow orders even when stock is zero."
+              checked={settings.allowNegativeInventory}
+              onChange={(checked) => handleCheckboxChange('allowNegativeInventory', checked)}
+              tooltip="Permit catalogue orders for items with no recorded stock."
+            />
+
             <div>
-              <div>
-                <ToggleRow
-                  id="allow-negative-inventory"
-                  label="Allow Negative Inventory"
-                  description="Allow orders even when stock is zero."
-                  checked={settings.allowNegativeInventory}
-                  onChange={(checked) => handleCheckboxChange('allowNegativeInventory', checked)}
-                  tooltip="Permit catalogue orders for items with no recorded stock."
-                />
-              </div>
-              <div className="flex items-center mb-4">
-                <input
-                  type="checkbox"
-                  checked={settings.hideOutOfStock}
-                  onChange={(e) =>
-                    handleCheckboxChange(
-                      'hideOutOfStock',
-                      e.target.checked
-                    )
-                  }
-                  className="w-4 h-4 accent-[#F97316]"
-                />
-                <label className="ml-2 text-sm">
-                  Hide Out of Stock Items
-                </label>
-              </div>
-              {/* <div className="flex items-center">
-              <input
-                type="checkbox"
-                checked={settings.enableOutOfStockNotification}
-                onChange={(e) =>
-                  handleCheckboxChange(
-                    'enableOutOfStockNotification',
-                    e.target.checked
-                  )
-                }
-                className="w-4 h-4 accent-[#F97316]"
+              <ToggleRow
+                id="Hide Out of Stock Items"
+                label="Hide Out of Stock Items"
+                description="Hide Out of Stock Items."
+                checked={settings.hideOutOfStock ?? false}
+                onChange={(checked) => handleCheckboxChange('hideOutOfStock', checked)}
+                tooltip="Hide Out Of Stock Items from Customers."
               />
-              <label className="ml-2 text-sm">
-                Enable Notify me button when item is out of stock
-              </label>
-            </div> */}
-
-              {/* <div className="flex items-center mt-4">
-              <input
-                type="checkbox"
-                checked={settings.requireApproval}
-                onChange={(e) =>
-                  handleCheckboxChange(
-                    'requireApproval',
-                    e.target.checked
-                  )
-                }
-                className="w-4 h-4 accent-[#F97316]"
-              />
-              <label className="ml-2 text-sm">
-                Require Customer Approval Before Ordering
-              </label>
-            </div> */}
-
-              <div className="flex items-center mt-4">
-                <input
-                  type="checkbox"
-                  checked={settings.hidePrice}
-                  onChange={(e) =>
-                    handleCheckboxChange(
-                      'hidePrice',
-                      e.target.checked
-                    )
-                  }
-                  className="w-4 h-4 accent-[#F97316]"
-                />
-                <label className="ml-2 text-sm">
-                  Hide Price from Customers
-                </label>
-              </div>
             </div>
 
-            {/* Pricing & Tax */}
+            <ToggleRow
+              id="hide-price"
+              label="Hide Price from Customers"
+              description="Prices will not be visible on the catalogue."
+              checked={settings.hidePrice ?? false}
+              onChange={(checked) => handleCheckboxChange('hidePrice', checked)}
+              tooltip="Completely hides item prices on the customer-facing catalogue."
+            />
+          </SettingsCard>
 
-            <div className="bg-white rounded-lg p-6 shadow-md mb-2">
-              <h2 className="text-lg font-semibold text-gray-800 mb-4">Pricing & Tax</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label htmlFor="gst-scheme" className="block text-gray-700 text-sm font-medium mb-1">GST Scheme</label>
+          {/* ── Pricing & Tax ───────────────────────────────────────────────── */}
+          <SettingsCard title="Pricing & Tax">
+            <div className="space-y-3">
+
+              {/* GST Scheme */}
+              <div className="rounded-sm bg-gray-50 border border-gray-100 p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <p className="text-sm font-semibold text-gray-800 leading-5">GST Scheme</p>
+                  <InfoTooltip text="Select the applicable GST tax scheme for your business." />
+                </div>
+                <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+                  {[
+                    { label: 'None', value: 'none' },
+                    { label: 'Regular GST', value: 'regular' },
+                    { label: 'Composition', value: 'composition' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => handleChange('gstScheme', opt.value)}
+                      className={`min-w-0 min-h-[42px] px-2 py-2 rounded-sm text-[11px] sm:text-sm font-semibold border leading-tight text-center whitespace-normal break-words ${settings.gstScheme === opt.value
+                        ? 'bg-[#F97316] text-white border-[#F97316]'
+                        : 'bg-white text-gray-700 border-gray-300'
+                        }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Tax Calculation — only for Regular GST */}
+              {settings.gstScheme === 'regular' && (
+                <div className="rounded-sm bg-gray-50 border border-gray-100 p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <p className="text-sm font-semibold text-gray-800 leading-5">Tax Calculation</p>
+                    <InfoTooltip text="Choose if your item prices include or exclude GST." />
+                  </div>
                   <select
-                    id="gst-scheme"
-                    value={settings.gstScheme || 'none'}
-                    onChange={(e) => handleChange('gstScheme', e.target.value)}
-                    className="w-full p-3 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#F97316] focus:border-[#F97316]"
+                    value={settings.taxType || 'exclusive'}
+                    onChange={(e) => handleChange('taxType', e.target.value)}
+                    className="w-full p-2.5 text-sm border border-gray-300 rounded-sm bg-white"
                   >
-                    <option value="none">None (Tax Disabled)</option>
-                    <option value="regular">Regular GST</option>
-                    <option value="composition">Composition GST</option>
+                    <option value="exclusive">Tax Exclusive (Sales Price excludes GST)</option>
+                    <option value="inclusive">Tax Inclusive (Sales Price includes GST)</option>
                   </select>
                 </div>
-              </div>
-
-              {settings.gstScheme === 'regular' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
-                  <div>
-                    <label htmlFor="tax-type" className="block text-gray-700 text-sm font-medium mb-1">Tax Calculation (for Regular GST)</label>
-                    <select
-                      value={settings.taxType || 'exclusive'}
-                      onChange={(e) => handleChange('taxType', e.target.value)}
-                      className="w-full p-2.5 text-sm border border-gray-300 rounded-sm bg-white"
-                    >
-                      <option value="exclusive">Tax Exclusive (Sales Price excludes GST)</option>
-                      <option value="inclusive">Tax Inclusive (Sales Price includes GST)</option>
-                    </select>
-                  </div>
-                </div>
               )}
-
-              <div className="flex items-center mb-4">
-                <input type="checkbox" id="item-discount" checked={settings.enableItemWiseDiscount ?? false} onChange={(e) => handleCheckboxChange('enableItemWiseDiscount', e.target.checked)} className="w-4 h-4 accent-[#F97316] rounded focus:ring-[#F97316]" />
-                <label htmlFor="item-discount" className="ml-2 mr-2 text-gray-700 text-sm font-medium">
-                  Enable Item-wise Discount
-                </label>
-                <InfoTooltip text="Allow discounts to be applied to individual cart items." />
-              </div>
             </div>
           </SettingsCard>
 

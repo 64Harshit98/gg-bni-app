@@ -4,7 +4,7 @@ import useItemReport from '../../Pages/Reports/ItemReportComponents/useItemRepor
 
 import FilterSelect from '../../Pages/Reports/ItemReportComponents/FilterSelect';
 import { Spinner } from '../../constants/Spinner';
-import { IconClose } from '../../constants/Icons';
+import { IconClose, IconSearch } from '../../constants/Icons';
 import { FiEdit2, FiTrash2 } from 'react-icons/fi';
 
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
@@ -29,8 +29,8 @@ const ManageItems: React.FC = () => {
   const navigate = useNavigate();
 
   const {
-    items ,
-    itemGroups ,
+    items,
+    itemGroups,
     itemGroupId,
     appliedItemGroupId,
     setItemGroupId,
@@ -51,11 +51,10 @@ const ManageItems: React.FC = () => {
   const [isConfirmingDeleteAll, setIsConfirmingDeleteAll] = useState(false);
   const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
   const [itemPendingDelete, setItemPendingDelete] = useState<Item | null>(null);
-  const [modal, setModal] = useState<{ message: string; type: State } | null>(
-    null,
-  );
-
+  const [modal, setModal] = useState<{ message: string; type: State } | null>(null,);
   const [sortOption, setSortOption] = useState<SortOption>('NAME_ASC');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
 
   /* -------------------- FILTER + SORT -------------------- */
   const filteredItems = useMemo(() => {
@@ -87,8 +86,28 @@ const ManageItems: React.FC = () => {
       }
     });
 
+    // SEARCH (ITEM NAME)
+    const trimmedQuery = searchQuery.toLowerCase().trim();
+
+    if (trimmedQuery) {
+      const searchTokens = trimmedQuery.split(/\s+/);
+
+      result = result.filter((item) => {
+        const name = item.name.toLowerCase();
+        const barcode = item.barcode?.toLowerCase() || '';
+
+        const matchesName = searchTokens.every(token =>
+          name.includes(token)
+        );
+
+        const matchesBarcode = barcode.includes(trimmedQuery);
+
+        return matchesName || matchesBarcode;
+      });
+    }
+
     return result;
-  }, [items, appliedItemGroupId, sortOption]);
+  }, [items, appliedItemGroupId, sortOption, searchQuery]);
 
   const applyFilters = () => {
     setAppliedItemGroupId(itemGroupId);
@@ -139,16 +158,53 @@ const ManageItems: React.FC = () => {
 
       {/* -------------------- HEADER -------------------- */}
       <div className="flex items-center justify-between bg-white border-b px-4 py-3 shadow-sm">
+
+        {/* LEFT (Search Icon) */}
+        <button onClick={() => setShowSearch(true)} className="p-2">
+          <IconSearch />
+        </button>
+
+        {/* TITLE */}
         <h1 className="text-xl font-bold text-gray-800 text-center flex-1">
           Manage Items
         </h1>
+
+        {/* RIGHT */}
         <button
           onClick={() => navigate(-1)}
           className="p-2 rounded-full bg-gray-200 hover:bg-gray-300"
         >
           <IconClose width={20} height={20} />
         </button>
+
       </div>
+
+      {showSearch && (
+        <div className="flex justify-center px-3 py-2 bg-white border-b">
+          <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-[#F97316]">
+
+            <input
+              type="text"
+              placeholder="Search item..."
+              className="flex-1 text-base p-2 outline-none bg-transparent text-center"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              autoFocus
+            />
+
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setShowSearch(false);
+              }}
+              className="p-1 text-gray-500 hover:text-black"
+            >
+              <IconClose />
+            </button>
+
+          </div>
+        </div>
+      )}
 
       {/* -------------------- FILTERS -------------------- */}
       <div className="bg-white p-3 border-b flex flex-col gap-4">
@@ -174,7 +230,7 @@ const ManageItems: React.FC = () => {
 
           <button
             onClick={applyFilters}
-            className="px-5 py-2 bg-[#F97316] hover:bg-orange-700 text-white rounded-md font-semibold transition"
+            className="px-5 py-2 bg-[#F97316] hover:bg-orange-700 text-white rounded-sm font-semibold transition"
           >
             Apply
           </button>
@@ -185,7 +241,7 @@ const ManageItems: React.FC = () => {
           {appliedItemGroupId && appliedItemGroupId !== UNASSIGNED_GROUP_NAME && (
             <button
               onClick={() => setIsConfirmingDeleteCategory(true)}
-              className="px-4 py-2 bg-red-100 text-red-700 rounded-md font-semibold hover:bg-red-200 transition text-sm"
+              className="px-4 py-2 bg-red-100 text-red-700 rounded-sm font-semibold hover:bg-red-200 transition text-sm"
             >
               Delete Category
             </button>
@@ -193,7 +249,7 @@ const ManageItems: React.FC = () => {
 
           <button
             onClick={() => setIsConfirmingDeleteAll(true)}
-            className="px-4 py-2 bg-red-600 text-white rounded-md font-semibold hover:bg-red-700 transition text-sm ml-auto"
+            className="px-4 py-2 bg-red-600 text-white rounded-sm font-semibold hover:bg-red-700 transition text-sm ml-auto"
           >
             Delete Inventory
           </button>
@@ -207,7 +263,7 @@ const ManageItems: React.FC = () => {
           <select
             value={sortOption}
             onChange={(e) => setSortOption(e.target.value as SortOption)}
-            className="px-3 py-1.5 rounded-md bg-slate-200 text-sm font-medium focus:outline-none"
+            className="px-3 py-1.5 rounded-sm bg-slate-200 text-sm font-medium focus:outline-none"
           >
             <option value="NAME_ASC">Name (A → Z)</option>
             <option value="NAME_DESC">Name (Z → A)</option>
@@ -221,7 +277,7 @@ const ManageItems: React.FC = () => {
 
           <button
             onClick={() => setIsListVisible(!isListVisible)}
-            className="px-4 py-1.5 bg-slate-200 rounded-md font-medium hover:bg-slate-300 transition"
+            className="px-4 py-1.5 bg-slate-200 rounded-sm font-medium hover:bg-slate-300 transition"
           >
             {isListVisible ? 'Hide List' : 'Show List'}
           </button>
@@ -259,7 +315,7 @@ const ManageItems: React.FC = () => {
                     </span>
 
                     <span
-                      className={`text-xs font-semibold px-2 py-0.5 rounded-md whitespace-nowrap ${getStockBadgeClasses(
+                      className={`text-xs font-semibold px-2 py-0.5 rounded-sm whitespace-nowrap ${getStockBadgeClasses(
                         stock,
                       )}`}
                     >

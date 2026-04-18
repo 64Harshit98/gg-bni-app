@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import useItemReport from '../../Pages/Reports/ItemReportComponents/useItemReport';
 import type { Item } from '../../constants/models';
 import { useNavigate } from 'react-router-dom';
@@ -9,7 +9,7 @@ import { Spinner } from '../../constants/Spinner';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
-import { IconClose } from '../../constants/Icons';
+import { IconClose, IconSearch } from '../../constants/Icons';
 import { getItemColumns } from '../../constants/TableColoumns';
 import DownloadChoiceModal from '../../Pages/Reports/ItemReportComponents/DownloadChoiceModal';
 import FilterSelect from '../../Pages/Reports/ItemReportComponents/FilterSelect';
@@ -17,6 +17,7 @@ import FilterSelect from '../../Pages/Reports/ItemReportComponents/FilterSelect'
 //import { Cata_Permissions } from '../enum/cata_permissions.enum';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import { useAuth } from '../../context/auth-context';
+
 
 // Import your Modal and State
 import { Modal } from '../../constants/Modal'; // Adjust path to where you saved the Modal code
@@ -28,6 +29,8 @@ const UNASSIGNED_GROUP_NAME = 'Uncategorized';
 const CatalogueItemReport: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
   const {
     items,
     appliedItemGroupId,
@@ -47,11 +50,28 @@ const CatalogueItemReport: React.FC = () => {
   } = useItemReport();
 
   const { filteredItems, summary } = useMemo(() => {
-    const newFilteredItems = items.filter((item) => {
+    let newFilteredItems = items.filter((item) => {
       if (!appliedItemGroupId) return true;
       const itemGroupName = item.itemGroupId || UNASSIGNED_GROUP_NAME;
       return itemGroupName === appliedItemGroupId;
     });
+
+    //  SEARCH 
+    const trimmedQuery = searchQuery.toLowerCase().trim();
+
+    if (trimmedQuery) {
+      const searchTokens = trimmedQuery.split(/\s+/);
+
+      newFilteredItems = newFilteredItems.filter((item) => {
+        const name = item.name?.toLowerCase() || '';
+        const barcode = item.barcode?.toLowerCase() || '';
+        const matchesName = searchTokens.every(token =>
+          name.includes(token)
+        );
+        const matchesBarcode = barcode.includes(trimmedQuery);
+        return matchesName || matchesBarcode;
+      });
+    }
 
     newFilteredItems.sort((a, b) => {
       const key = sortConfig.key;
@@ -99,7 +119,7 @@ const CatalogueItemReport: React.FC = () => {
         averageMarginPercentage,
       },
     };
-  }, [appliedItemGroupId, sortConfig, items]);
+  }, [appliedItemGroupId, sortConfig, items, searchQuery]);
 
   const handleApplyFilters = () => setAppliedItemGroupId(itemGroupId);
 
@@ -376,18 +396,55 @@ const CatalogueItemReport: React.FC = () => {
       />
 
       <div className="flex items-center justify-between pb-3 border-b mb-2">
+
+        {/* LEFT (Search Icon) */}
+        <button onClick={() => setShowSearch(true)} className="p-2">
+          <IconSearch />
+        </button>
+
+        {/* TITLE */}
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
           Item Report
         </h1>
+
+        {/* RIGHT */}
         <button
           onClick={() => navigate(-1)}
           className="rounded-full bg-gray-200 p-2 text-gray-900 hover:bg-gray-300"
         >
           <IconClose width={20} height={20} />
         </button>
+
       </div>
 
-      <div className="bg-white p-2 rounded-lg mb-2">
+      {showSearch && (
+        <div className="flex justify-center mb-2 px-2">
+          <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-[#F97316]">
+
+            <input
+              type="text"
+              placeholder="Search by Item Name..."
+              className="flex-1 text-base font-light p-2 outline-none bg-transparent text-center"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              autoFocus
+            />
+
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setShowSearch(false);
+              }}
+              className="p-1 text-gray-500 hover:text-black"
+            >
+              <IconClose />
+            </button>
+
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white p-2 rounded-sm mb-2">
         <h2 className="text-center font-semibold text-gray-700 mb-2">
           FILTERS
         </h2>
@@ -407,7 +464,7 @@ const CatalogueItemReport: React.FC = () => {
           </FilterSelect>
           <button
             onClick={handleApplyFilters}
-            className="px-6 py-2 bg-[#F97316] text-white font-semibold rounded-md shadow-sm hover:bg-[#F97316] transition"
+            className="px-6 py-2 bg-[#F97316] text-white font-semibold rounded-sm shadow-sm hover:bg-[#F97316] transition"
           >
             Apply
           </button>
@@ -447,12 +504,12 @@ const CatalogueItemReport: React.FC = () => {
         />
       </div>
 
-      <div className="bg-white p-4 rounded-lg flex flex-col md:flex-row justify-between items-center gap-4">
+      <div className="bg-white p-4 rounded-sm flex flex-col md:flex-row justify-between items-center gap-4">
         <h2 className="text-lg font-semibold text-gray-700">Report Details</h2>
         <div className="flex items-center space-x-3 w-full md:w-auto overflow-x-auto">
           <button
             onClick={() => setIsListVisible(!isListVisible)}
-            className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition whitespace-nowrap"
+            className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-sm hover:bg-slate-300 transition whitespace-nowrap"
           >
             {isListVisible ? 'Hide List' : 'Show List'}
           </button>
@@ -470,7 +527,7 @@ const CatalogueItemReport: React.FC = () => {
                 setIsDownloadModalOpen(true);
               }
             }}
-            className="bg-[#F97316] text-white font-semibold rounded-md py-2 px-4 shadow-sm hover:bg-[#F97316] whitespace-nowrap"
+            className="bg-[#F97316] text-white font-semibold rounded-sm py-2 px-4 shadow-sm hover:bg-[#F97316] whitespace-nowrap"
           >
             Download Report
           </button>

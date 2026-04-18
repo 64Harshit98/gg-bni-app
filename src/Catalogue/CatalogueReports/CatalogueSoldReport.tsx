@@ -14,7 +14,7 @@ import * as XLSX from 'xlsx';
 import { type TableColumn } from '../../Components/CustomTable';
 import { State } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
-import { IconClose } from '../../constants/Icons';
+import { IconClose, IconSearch } from '../../constants/Icons';
 import ReportDetails from '../../Pages/Reports/SalesReportComponents/ReportDetails';
 import DownloadChoiceModal from '../../Pages/Reports/ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
@@ -120,6 +120,8 @@ const ItemsSoldReport: React.FC = () => {
         key: keyof AggregatedItem;
         direction: 'asc' | 'desc';
     }>({ key: 'valueSold', direction: 'desc' });
+    const [searchQuery, setSearchQuery] = useState('');
+    const [showSearch, setShowSearch] = useState(false);
 
     /* ---------- DATE PRESET ---------- */
     const handleDatePresetChange = (preset: DatePreset) => {
@@ -259,22 +261,24 @@ const ItemsSoldReport: React.FC = () => {
                 });
         });
 
-        const itemsArray = Array.from(itemMap.values());
-        itemsArray.sort((a, b) => {
-            const key = sortConfig.key;
-            const direction = sortConfig.direction === 'asc' ? 1 : -1;
+        let itemsArray = Array.from(itemMap.values());
 
-            const valA = a[key];
-            const valB = b[key];
+        // SEARCH (ONLY ITEM NAME)
+        const trimmedQuery = searchQuery.toLowerCase().trim();
 
-            if (typeof valA === 'string' && typeof valB === 'string') {
-                return valA.localeCompare(valB) * direction;
-            }
-            if (typeof valA === 'number' && typeof valB === 'number') {
-                return (valA - valB) * direction;
-            }
-            return 0;
-        });
+        if (trimmedQuery) {
+            const searchTokens = trimmedQuery.split(/\s+/);
+
+            itemsArray = itemsArray.filter((item) => {
+                const name = item.name.toLowerCase();
+
+                const matchesName = searchTokens.every(token =>
+                    name.includes(token)
+                );
+
+                return matchesName;
+            });
+        }
 
         return {
             aggregatedItems: itemsArray,
@@ -284,7 +288,7 @@ const ItemsSoldReport: React.FC = () => {
                 uniqueItemCount: itemsArray.length,
             },
         };
-    }, [appliedFilters, sales, sortConfig, itemGroupMap]); // Added itemGroupMap dependency
+    }, [appliedFilters, sales, sortConfig, itemGroupMap, searchQuery]);// Added itemGroupMap dependency
 
     /* ---------- DEFINE TABLE COLUMNS ---------- */
     const tableColumns = useMemo<TableColumn<AggregatedItem>[]>(() => [
@@ -522,16 +526,53 @@ const ItemsSoldReport: React.FC = () => {
 
             {/* HEADER */}
             <div className="flex items-center justify-between pb-3 border-b mb-2">
+
+                {/* LEFT (Search Icon) */}
+                <button onClick={() => setShowSearch(true)} className="p-2">
+                    <IconSearch />
+                </button>
+
+                {/* TITLE */}
                 <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
                     Items Sold Report
                 </h1>
+
+                {/* RIGHT */}
                 <button onClick={() => navigate(-1)} className="p-2">
                     <IconClose width={20} height={20} />
                 </button>
+
             </div>
 
+            {showSearch && (
+                <div className="flex justify-center mb-2 px-2">
+                    <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-[#F97316]">
+
+                        <input
+                            type="text"
+                            placeholder="Search by Item Name..."
+                            className="flex-1 text-base font-light p-2 outline-none bg-transparent text-center"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            autoFocus
+                        />
+
+                        <button
+                            onClick={() => {
+                                setSearchQuery('');
+                                setShowSearch(false);
+                            }}
+                            className="p-1 text-gray-500 hover:text-black"
+                        >
+                            <IconClose />
+                        </button>
+
+                    </div>
+                </div>
+            )}
+
             {/* FILTERS */}
-            <div className="bg-white p-2 rounded-lg shadow-md mb-2">
+            <div className="bg-white p-2 rounded-sm shadow-md mb-2">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <FilterSelect
                         value={datePreset}
@@ -552,7 +593,7 @@ const ItemsSoldReport: React.FC = () => {
                                 setCustomStartDate(e.target.value);
                                 setDatePreset(DatePreset.CUSTOM);
                             }}
-                            className="w-full p-2 text-sm bg-gray-50 border rounded-md"
+                            className="w-full p-2 text-sm bg-gray-50 border rounded-sm"
                         />
                         <input
                             type="date"
@@ -561,14 +602,14 @@ const ItemsSoldReport: React.FC = () => {
                                 setCustomEndDate(e.target.value);
                                 setDatePreset(DatePreset.CUSTOM);
                             }}
-                            className="w-full p-2 text-sm bg-gray-50 border rounded-md"
+                            className="w-full p-2 text-sm bg-gray-50 border rounded-sm"
                         />
                     </div>
                 </div>
 
                 <button
                     onClick={handleApplyFilters}
-                    className="w-full mt-2 px-3 py-1 bg-[#F97316] text-white text-lg font-semibold rounded-lg hover:bg-orange-700"
+                    className="w-full mt-2 px-3 py-1 bg-[#F97316] text-white text-lg font-semibold rounded-sm hover:bg-orange-700"
                 >
                     Apply
                 </button>

@@ -34,21 +34,66 @@ const SharedProduct: React.FC = () => {
         groupId: string;
     }>();
 
+    // 1. Add states for subdomain resolution
+    const [resolvedCompanyId, setResolvedCompanyId] = useState<string | null>(null);
+    const [domainResolveError, setDomainResolveError] = useState(false);
+
+    // 2. Safely extract the subdomain
     const hostname = window.location.hostname;
     const parts = hostname.split('.');
+    const subdomain = useMemo(() => {
+        return (
+            parts.length >= 3 &&
+            !['www', 'app'].includes(parts[0].toLowerCase()) &&
+            !hostname.includes('localhost')
+        ) ? parts[0] : null;
+    }, [hostname, parts]);
 
-    const subdomain = (
-        parts.length >= 3 &&
-        !['www', 'app'].includes(parts[0].toLowerCase()) &&
-        !hostname.includes('localhost')
-    ) ? parts[0] : null;
+    // 3. Resolve the subdomain string into the true Firestore Document ID
+    useEffect(() => {
+        const resolveDomain = async () => {
+            if (subdomain) {
+                try {
+                    // Query the companies collection for the matching subdomain alias
+                    const companiesRef = collection(db, 'companies');
+                    const q = query(companiesRef, where('domainAliases', 'array-contains', subdomain));
+                    const snap = await getDocs(q);
 
-    const effectiveCompanyId = subdomain || pathId;
+                    if (!snap.empty) {
+                        const companyDoc = snap.docs[0];
+                        const data = companyDoc.data();
 
-    if (!effectiveCompanyId) {
-        return <div>Invalid catalogue link.</div>;
-    }
-    const { businessName: companyName } = useBusinessName(effectiveCompanyId);
+                        // Redirect logic: If they used an old link, push them to the new active one
+                        if (data.subdomain && data.subdomain !== subdomain) {
+                            window.location.replace(`https://${data.subdomain}.sellar.in`);
+                            return;
+                        }
+
+                        // Success: Set the actual Firestore ID
+                        setResolvedCompanyId(companyDoc.id);
+                    } else {
+                        // Subdomain does not exist in the database
+                        setDomainResolveError(true);
+                    }
+                } catch (error) {
+                    console.error("Error resolving subdomain:", error);
+                    setDomainResolveError(true);
+                }
+            } else if (pathId) {
+                // If visited via standard Firebase Hosting (/catalogue/:companyId)
+                setResolvedCompanyId(pathId);
+            } else {
+                setDomainResolveError(true);
+            }
+        };
+
+        resolveDomain();
+    }, [subdomain, pathId]);
+
+    // 4. Point the effective ID to the newly resolved state
+    const effectiveCompanyId = resolvedCompanyId;
+
+    const { businessName: companyName } = useBusinessName(effectiveCompanyId || "");
     const location = useLocation();
     const highlightItemId = location.state?.highlightItemId;
     const highlightTrigger = location.state?.trigger;
@@ -873,7 +918,17 @@ const SharedProduct: React.FC = () => {
         setIsDetailDrawerOpen(true);
     };
 
-    if (authLoading || (pageIsLoading && allItems.length === 0)) {
+    if (domainResolveError) {
+        return (
+            <div className="flex flex-col items-center justify-center h-screen bg-[#E9F0F7] text-[#1A3B5D]">
+                <h2 className="text-2xl font-black mb-2">Store Not Found</h2>
+                <p className="text-gray-500 text-sm">This catalogue link is invalid or has expired.</p>
+            </div>
+        );
+    }
+
+    // Keep the loading spinner until the domain resolves and data fetches
+    if (authLoading || !effectiveCompanyId || (pageIsLoading && allItems.length === 0)) {
         return <div className="flex items-center justify-center h-screen bg-[#E9F0F7]"><Spinner /></div>;
     }
 
@@ -911,7 +966,7 @@ const SharedProduct: React.FC = () => {
                     {/* Back Button - Left Side */}
                     <div className="flex items-center gap-2">
                         <button
-                            onClick={() => navigate(`/catalogue/${currentUser?.companyId}`)}
+                            onClick={() => navigate(subdomain ? '/' : `/catalogue/${effectiveCompanyId}`)}
                             className="p-2 rounded-sm hover:bg-slate-200 transition-colors text-slate-700"
                             title="Back"
                         >
@@ -976,7 +1031,13 @@ const SharedProduct: React.FC = () => {
                     <div className="absolute right-1 md:right-4 top-1/2 -translate-y-1/2">
                         <button
                             ref={cartIconRef}
-                            onClick={() => navigate(`/checkout/${effectiveCompanyId}`)}
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation(); // Forces the browser to ONLY click this button
+                                if (effectiveCompanyId) {
+                                    navigate(subdomain ? '/checkout' : `/checkout/${effectiveCompanyId}`);
+                                }
+                            }}
                             className="flex items-center justify-center gap-2 bg-[#F97316] text-white py-2 px-3 md:px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative"
                         >
                             <ShoppingCart size={16} />
@@ -1029,8 +1090,8 @@ const SharedProduct: React.FC = () => {
 
                 <div
                     className={`flex justify-center transition-all duration-300 ${isSearchSticky
-                            ? "sticky top-[60px] z-50"
-                            : "relative"
+                        ? "sticky top-[60px] z-50"
+                        : "relative"
                         }`}
                 >
                     <div className="relative group md:max-w-md w-full">
@@ -1049,12 +1110,15 @@ const SharedProduct: React.FC = () => {
                                     ? generateSlug(group.name)
                                     : item.itemGroupId;
 
-                                navigate(`/${effectiveCompanyId}/${slug}`, {
-                                    state: {
-                                        highlightItemId: item.id,
-                                        trigger: Date.now(),
-                                    },
-                                });
+                                navigate(
+                                    subdomain ? `/${slug}` : `/${effectiveCompanyId}/${slug}`,
+                                    {
+                                        state: {
+                                            highlightItemId: item.id,
+                                            trigger: Date.now(),
+                                        },
+                                    }
+                                );
                             }}
                         />
                     </div>
@@ -1221,10 +1285,10 @@ const SharedProduct: React.FC = () => {
                                         ) : (
                                             // CASE 2: normal add to cart (may be disabled)
                                             <button
-                                                // disabled={disableAddToCart}
+                                                disabled={disableAddToCart}
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    // if (disableAddToCart) return;
+                                                    if (disableAddToCart) return;
                                                     const card = e.currentTarget.closest(".group");
                                                     const img = card?.querySelector("img") as HTMLImageElement;
                                                     if (img) animateToCart(img);
@@ -1257,9 +1321,11 @@ const SharedProduct: React.FC = () => {
 
             {/* --- STICKY BOTTOM CART --- */}
             <div
-                onClick={() => {
+                onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation(); // Forces the browser to ONLY click this button
                     if (effectiveCompanyId) {
-                        navigate(`/checkout/${effectiveCompanyId}`);
+                        navigate(subdomain ? '/checkout' : `/checkout/${effectiveCompanyId}`);
                     }
                 }}
                 className="fixed bottom-0 left-0 w-full md:w-[50%] md:left-1/2 md:-translate-x-1/2 z-[1000] bg-[#F97316] text-white shadow-lg cursor-pointer active:scale-[0.98] transition-all"

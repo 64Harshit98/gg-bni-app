@@ -1,23 +1,48 @@
-import { Suspense, useEffect, useRef } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Suspense, useEffect, useRef, useState } from 'react'; // <-- Add useState
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'; // <-- Add useLocation
 import { Button } from '../Components/ui/button';
 import { FloatingButton } from '../Components/FloatingButton';
 import { ROUTES } from '../constants/routes.constants';
 import { CatItems } from '../routes/CatalougeRoutes';
 import { useAuth } from '../context/auth-context';
 import sellarLogo from '../assets/sellar-logo-heading.png';
-import { Share2 } from "lucide-react";
+import { Share2, Globe } from "lucide-react"; // <-- Add Globe icon
 import { useOrderSound } from '../Catalogue/hooks/useOrderSound';
 import { useConfirmedOrdersCount } from '../Catalogue/hooks/useConfirmedOrdersCount';
 import GlobalCatalogueModal from '../Components/CatalogueShareCard';
+
+// Add Firebase imports for fetching the subdomain
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../lib/Firebase';
+
 const CatalogueLayout = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const { currentUser } = useAuth();
     const scrollRef = useRef<HTMLDivElement>(null);
     useOrderSound(currentUser?.companyId);
     const confirmedCount = useConfirmedOrdersCount(currentUser?.companyId);
 
-    // 2. Scroll to top whenever the URL changes
+    // 1. New State for the Store Link (Fallback to old link just in case)
+    const [storeLink, setStoreLink] = useState(`${window.location.origin}/catalogue/${currentUser?.companyId}`);
+
+    // 2. Fetch the custom subdomain on load
+    useEffect(() => {
+        const fetchStoreLink = async () => {
+            if (!currentUser?.companyId) return;
+            try {
+                const docRef = doc(db, 'companies', currentUser.companyId);
+                const snap = await getDoc(docRef);
+                if (snap.exists() && snap.data().subdomain) {
+                    setStoreLink(`https://${snap.data().subdomain}.sellar.in`);
+                }
+            } catch (error) {
+                console.error("Error fetching store link:", error);
+            }
+        };
+        fetchStoreLink();
+    }, [currentUser]);
+
     useEffect(() => {
         if (scrollRef.current) {
             scrollRef.current.scrollTo(0, 0);
@@ -30,8 +55,11 @@ const CatalogueLayout = () => {
             : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent'
         }`;
 
+    // 3. Pass the dynamic link into the Custom Event!
     const handleShare = () => {
-        window.dispatchEvent(new Event("open-catalogue-share"));
+        window.dispatchEvent(new CustomEvent("open-catalogue-share", {
+            detail: { link: storeLink }
+        }));
     };
 
     const MobileActions = () => (
@@ -39,19 +67,17 @@ const CatalogueLayout = () => {
             <Button
                 variant="outline"
                 className="w-full mb-2 rounded bg-white"
-                onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ORDER}`)} // <-- Fixed
+                onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ORDER}`)}
             >
                 Edit Catalog
             </Button>
-
             <Button
                 variant="outline"
                 className="w-full mb-2 rounded bg-white"
-                onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`)} // <-- Fixed
+                onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`)}
             >
                 Add Item
             </Button>
-
             <Button
                 variant="outline"
                 className="w-full mb-2 rounded bg-white"
@@ -60,23 +86,16 @@ const CatalogueLayout = () => {
                 Orders Return
             </Button>
 
-            {/* {currentUser && (
+            {/* UNCOMMENTED AND UPDATED */}
+            {currentUser && (
                 <Button
                     variant="outline"
-                    className="w-full mb-2 rounded bg-white"
-                    onClick={() => navigate(`/catalogue/${currentUser.companyId}`)}
+                    className="w-full mb-2 rounded bg-orange-50 border-orange-200 text-orange-600 hover:bg-orange-100 font-bold"
+                    onClick={() => window.open(storeLink, '_blank')}
                 >
-                    Catalogue
+                    View Store
                 </Button>
-            )} */}
-
-            {/* <Button
-                variant="outline"
-                className="w-full mb-2 rounded bg-white"
-                onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`)} // <-- Fixed
-            >
-                Requests
-            </Button> */}
+            )}
         </>
     );
 
@@ -137,18 +156,15 @@ const CatalogueLayout = () => {
                         <span>Add Item</span>
                     </NavLink>
 
-                    {/* {currentUser && (
-                            <NavLink
-                                to={`/catalogue/${currentUser.companyId}`}
-                                end
-                                className={({ isActive }) =>
-                                    `w-full text-left ${sidebarLinkClass(isActive)}`
-                                }
-                            >
-                                <span className="text-lg">+</span>
-                                <span>Catalogue</span>
-                            </NavLink>
-                        )} */}
+                    {currentUser && (
+                        <button
+                            onClick={() => window.open(storeLink, '_blank')}
+                            className={`w-full text-left ${sidebarLinkClass(false)}`}
+                        >
+                            <span className="text-lg"><Globe size={18} /></span>
+                            <span>View Store</span>
+                        </button>
+                    )}
 
                     {/* <NavLink
                             to={`${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`}

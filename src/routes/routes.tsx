@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { createBrowserRouter, RouterProvider, ScrollRestoration } from 'react-router-dom';
+import { createBrowserRouter, Outlet, RouterProvider, ScrollRestoration } from 'react-router-dom';
 import MainLayout from '../app/MainLayout';
 import CatalogueLayout from '../app/CatalougeLayout';
 import { ROUTES } from '../constants/routes.constants';
@@ -24,9 +24,9 @@ const Catalogue = lazy(() => import('../Catalogue/SharedCatalouge'));
 const CartPage = lazy(() => import('../Catalogue/CheckOut'));
 const UnauthorizedPage = lazy(() => import('../Pages/Unauthorized'));
 const SuperAdminHub = lazy(() => import('../Pages/Account/SuperAdminHub'))
-const WebsiteLeads = lazy(()=> import('../Pages/Account/WebsiteLeads'))
-const SuperAdminSupportTicket = lazy(()=> import('../Pages/Account/SuperAdminSupportTicket'))
-const LeadPage =lazy(() => import('../Pages/Account/LeadPage'))
+const WebsiteLeads = lazy(() => import('../Pages/Account/WebsiteLeads'))
+const SuperAdminSupportTicket = lazy(() => import('../Pages/Account/SuperAdminSupportTicket'))
+const LeadPage = lazy(() => import('../Pages/Account/LeadPage'))
 
 const WALanding = lazy(() => import('../Pages/Additional/Whatsapp/WALanding'));
 const WAPlan = lazy(() => import('../Pages/Additional/Whatsapp/WAPlan'));
@@ -72,73 +72,79 @@ const generateDynamicRoutes = (layoutType: 'MAIN' | 'CATALOGUE') => {
   }));
 };
 
-const router = createBrowserRouter([
-  {
-    element: (
-      <>
-        <ScrollRestoration />
-        <PermissionWrapper />
-      </>
-    ),
-    errorElement: <GlobalError />,
-    children: [
-
-      // 2. PUBLIC/AUTH ROUTES (Standard pathing)
+const router = createBrowserRouter(
+  subdomain
+    ? [
       {
+        path: '/',
+        errorElement: <GlobalError />,
+        element: <>
+          <ScrollRestoration />
+          <Outlet />
+        </>,
         children: [
-          { path: ROUTES.LANDING, element: <Landing />, handle: { isPublic: true } },
-          { path: '/download-bill/:companyId/:invoiceId', element: <DownloadBill />, handle: { isPublic: true } },
-          { path: ROUTES.SIGNUP, element: <Signup />, handle: { isPublic: true } },
-          { path: ROUTES.BUSINESS_INFO, element: <BusInfo />, handle: { isPublic: true } },
-          { path: ROUTES.FORGOT_PASSWORD, element: <ForgotPasswordPage />, handle: { isPublic: true } },
-          { path: ROUTES.RESET_PASSWORD, element: <ResetPasswordPage />, handle: { isPublic: true } },
-          { path: ROUTES.SUPER_ADMIN, element: <SuperAdminCompanies /> },
-          { path: ROUTES.SUBSCRIPTION_PAGE, element: <SubscriptionPage />, handle: { isPublic: false } },
-          { path: ROUTES.SUPER_ADMINHUB, element: <SuperAdminHub/>},
-          { path: ROUTES.SUPPORT_TICKET, element: <SuperAdminSupportTicket/>},
-          { path: ROUTES.WEBSITE_QUERY, element: <WebsiteLeads/>},
-          { path: ROUTES.APP_LEADS,element: <LeadPage/>},
-          
-{
-        children: [
-          { path: ROUTES.WHATSAPP_LANDING, element: <WALanding />, handle: { isPublic: false } },
-          { path: ROUTES.WHATSAPP_PLAN, element: <WAPlan />, handle: { isPublic: false } },
-          { path: ROUTES.WHATSAPP_DETAILS, element: <WADetails />, handle: { isPublic: false } },
-          { path: ROUTES.WHATSAPP_VERIFICATION, element: <WAVerification />, handle: { isPublic: false } },
-        ],
-      },
-        ],
-      },
-
-      // 3. PRIVATE/PROTECTED ROUTES
+          { index: true, element: <Catalogue />, handle: { isPublic: true } },
+          { path: 'checkout', element: <CartPage />, handle: { isPublic: true } },
+          { path: ':groupId', element: <SharedProduct />, handle: { isPublic: true } },
+          { path: '*', element: <Catalogue /> }
+        ]
+      }
+    ]
+    : [
       {
-        element: <RequireSubscription />,
+        element: (
+          <>
+            <ScrollRestoration />
+            <PermissionWrapper />
+          </>
+        ),
+        errorElement: <GlobalError />,
         children: [
-          { element: <MainLayout />, children: generateDynamicRoutes('MAIN') },
-          { element: <CatalogueLayout />, children: generateDynamicRoutes('CATALOGUE') },
+          // 2. PUBLIC/AUTH ROUTES
+          {
+            children: [
+              { path: ROUTES.LANDING, element: <Landing />, handle: { isPublic: true } },
+              { path: '/download-bill/:companyId/:invoiceId', element: <DownloadBill />, handle: { isPublic: true } },
+              { path: ROUTES.SIGNUP, element: <Signup />, handle: { isPublic: true } },
+              { path: ROUTES.BUSINESS_INFO, element: <BusInfo />, handle: { isPublic: true } },
+              { path: ROUTES.FORGOT_PASSWORD, element: <ForgotPasswordPage />, handle: { isPublic: true } },
+              { path: ROUTES.RESET_PASSWORD, element: <ResetPasswordPage />, handle: { isPublic: true } },
+              { path: ROUTES.SUPER_ADMIN, element: <SuperAdminCompanies /> },
+              { path: ROUTES.SUBSCRIPTION_PAGE, element: <SubscriptionPage />, handle: { isPublic: false } },
+              { path: ROUTES.SUPER_ADMINHUB, element: <SuperAdminHub /> },
+              { path: ROUTES.SUPPORT_TICKET, element: <SuperAdminSupportTicket /> },
+              { path: ROUTES.WEBSITE_QUERY, element: <WebsiteLeads /> },
+              { path: ROUTES.APP_LEADS, element: <LeadPage /> },
+              {
+                children: [
+                  { path: ROUTES.WHATSAPP_LANDING, element: <WALanding />, handle: { isPublic: false } },
+                  { path: ROUTES.WHATSAPP_PLAN, element: <WAPlan />, handle: { isPublic: false } },
+                  { path: ROUTES.WHATSAPP_DETAILS, element: <WADetails />, handle: { isPublic: false } },
+                  { path: ROUTES.WHATSAPP_VERIFICATION, element: <WAVerification />, handle: { isPublic: false } },
+                ],
+              },
+            ],
+          },
+
+          // 3. PRIVATE/PROTECTED DASHBOARD ROUTES
+          {
+            element: <RequireSubscription />,
+            children: [
+              { element: <MainLayout />, children: generateDynamicRoutes('MAIN') },
+              { element: <CatalogueLayout />, children: generateDynamicRoutes('CATALOGUE') },
+            ],
+          },
+
+          // 4. LEGACY PUBLIC ROUTES (Keep these so old links still work)
+          { path: 'catalogue/:companyId', element: <Catalogue />, handle: { isPublic: true } },
+          { path: ':companyId/:groupId', element: <SharedProduct />, handle: { isPublic: true } },
+          { path: 'checkout/:companyId', element: <CartPage />, handle: { isPublic: true } },
+
+          { path: ROUTES.UNAUTHORIZED, element: <UnauthorizedPage /> },
         ],
-      },
-
-      // 4. LEGACY PUBLIC ROUTES (Keep these so old links still work)
-
-      { path: ROUTES.UNAUTHORIZED, element: <UnauthorizedPage /> },
-    ],
-  },
-  {
-    path: '/',
-    children: subdomain
-      ? [
-        { index: true, element: <Catalogue />, handle: { isPublic: true } },
-        { path: ':groupId', element: <SharedProduct />, handle: { isPublic: true } },
-        { path: 'checkout', element: <CartPage />, handle: { isPublic: true } },
-      ]
-      : [
-        { path: ':companyId/:groupId', element: <SharedProduct />, handle: { isPublic: true } },
-        { path: 'catalogue/:companyId', element: <Catalogue />, handle: { isPublic: true } },
-        { path: 'checkout/:companyId', element: <CartPage />, handle: { isPublic: true } },
-      ]
-  }
-]);
+      }
+    ]
+);
 
 
 const AppRouter: React.FC = () => {

@@ -216,12 +216,12 @@ exports.getPublicCatalogue = functions.https.onRequest(async (req, res) => {
     }
 });
 exports.registerCompanyAndUser = functions.https.onCall(async (data, context) => {
-    // 1. Destructure all incoming data (including referralCode)
-    const { email, password, name, phoneNumber, role, businessData, planDetails, referralCode } = data;
-
-    // ADD THIS TEMPORARILY:
-    console.log("=== REGISTRATION TRIGGERED ===");
-    console.log("Incoming Referral Code:", referralCode);
+    // 1. Destructure all incoming data (salesSettings completely removed)
+    const {
+        email, password, name, phoneNumber, role,
+        businessData,
+        planDetails
+    } = data;
 
     // 2. Basic Validation
     if (!email || !password || password.length < 6 || !name || !role) {
@@ -231,30 +231,7 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
     }
 
     try {
-        // 3. Verify Incoming Referral Code
-        let trialDays = 7;
-        let referrerData = null;
-
-        // Define your single master code for the 28-day trial
-        const MASTER_TRIAL_CODE = "SIGNMEUPBABY2026";
-
-        if (referralCode) {
-            const cleanInputCode = referralCode.trim().toUpperCase();
-
-            if (cleanInputCode === MASTER_TRIAL_CODE) {
-                // Scenario A: User entered the master trial extension code
-                trialDays = 28;
-            } else {
-                // Scenario B: User entered an Agent or Company code
-                const refDoc = await db.doc(`referrals/${cleanInputCode}`).get();
-                if (refDoc.exists) {
-                    referrerData = refDoc.data();
-                    // Trial remains 7 days, but referrer is tracked for future commission
-                }
-            }
-        }
-
-        // 4. Generate Company ID
+        // 3. Generate Company ID
         const counterRef = db.doc("CompanyID/counter");
         const newNumber = await db.runTransaction(async (t) => {
             const counterDoc = await t.get(counterRef);
@@ -270,55 +247,44 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
         const paddedNumber = String(newNumber).padStart(4, "0");
         const newCompanyId = `CMP-${paddedNumber}`;
 
-        // 5. Generate this company's own permanent referral code
-        const ownReferralCode = await generateUniqueReferralCode(name, phoneNumber);
-
-        // 6. Create Authentication User
+        // 4. Create Authentication User
         const userRecord = await admin.auth().createUser({
             email: email,
             password: password,
             displayName: name,
         });
 
-        // 7. Set Custom Claims
+        // 5. Set Custom Claims
         await admin.auth().setCustomUserClaims(userRecord.uid, {
             companyId: newCompanyId,
             role: role,
         });
 
-        // 8. Define Firestore Document References
+        // 6. Define Firestore Document References
         const companyRootRef = db.doc(`companies/${newCompanyId}`);
         const userDocRef = db.doc(`companies/${newCompanyId}/users/${userRecord.uid}`);
         const businessInfoRef = db.doc(`companies/${newCompanyId}/business_info/${newCompanyId}`);
-        const newReferralRef = db.doc(`referrals/${ownReferralCode}`);
 
-        // 9. Prepare Data Payloads
+        // 7. Prepare Data Payloads
         const trialDate = new Date();
-        trialDate.setDate(trialDate.getDate() + trialDays); // Uses dynamic trialDays (7 or 28)
+        trialDate.setDate(trialDate.getDate() + 7);
         trialDate.setUTCHours(18, 29, 59, 999); // Exactly 23:59:59 IST
 
-        // A. Root Data
+        // A. Root Data (Plan & Validity)
         const companyRootData = {
             name: businessData.businessName || name,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             ownerUID: userRecord.uid,
             ownerPhoneNumber: phoneNumber || '',
 
+            // Plan Info (Forced to 7-Day Trial)
             pack: "enterprise",
             validity: "active",
             expiryDate: admin.firestore.Timestamp.fromDate(trialDate),
-            isTrial: true,
-
-            // Referral Metadata
-            ownReferralCode: ownReferralCode,
-            referralDetails: referrerData ? {
-                codeUsed: referralCode.trim().toUpperCase(),
-                referrerId: referrerData.ownerId,
-                referrerType: referrerData.type,
-            } : null
+            isTrial: true
         };
 
-        // B. Business Info Data
+        // B. Business Info Data (Name, Address, etc.)
         const finalBusinessData = {
             ...businessData,
             companyId: newCompanyId,
@@ -336,36 +302,17 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
             companyId: newCompanyId,
         };
 
-        // D. Global Referral Document Payload (For the new company's code)
-        const referralPayload = {
-            ownerId: newCompanyId,
-            type: "company",
-            usageCount: 0,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
-        };
-
-        // 10. Execute Atomic Batch Write
+        // 8. Execute Atomic Batch Write
         const batch = db.batch();
         batch.set(companyRootRef, companyRootData);
         batch.set(userDocRef, userProfile);
         batch.set(businessInfoRef, finalBusinessData);
-        batch.set(newReferralRef, referralPayload);
 
-        // Optional: Increment usage count if an agent/company code was used
-        if (referrerData) {
-            const cleanInputCode = referralCode.trim().toUpperCase();
-            const referrerRef = db.doc(`referrals/${cleanInputCode}`);
-            batch.update(referrerRef, { usageCount: admin.firestore.FieldValue.increment(1) });
-        }
+        // Note: salesSettings batch write has been removed!
 
         await batch.commit();
 
-        return {
-            status: "success",
-            userId: userRecord.uid,
-            companyId: newCompanyId,
-            referralCode: ownReferralCode
-        };
+        return { status: "success", userId: userRecord.uid, companyId: newCompanyId };
 
     } catch (error) {
         console.error("Error in registerCompanyAndUser:", error);

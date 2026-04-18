@@ -27,6 +27,9 @@ const SuperAdminHub = lazy(() => import('../Pages/Account/SuperAdminHub'))
 const WebsiteLeads = lazy(() => import('../Pages/Account/WebsiteLeads'))
 const SuperAdminSupportTicket = lazy(() => import('../Pages/Account/SuperAdminSupportTicket'))
 const LeadPage = lazy(() => import('../Pages/Account/LeadPage'))
+const AgentSignup = lazy(() => import('../Pages/Auth/AgentSignup'))
+const PartnerDashboard = lazy(() => import('../Pages/PartnerDashboard'))
+const AgentDashboard = lazy(() => import('../Pages/Account/AgentDashboard'))
 
 const WALanding = lazy(() => import('../Pages/Additional/Whatsapp/WALanding'));
 const WAPlan = lazy(() => import('../Pages/Additional/Whatsapp/WAPlan'));
@@ -130,6 +133,39 @@ const router = createBrowserRouter(
                   { path: ROUTES.WHATSAPP_PLAN, element: <WAPlan />, handle: { isPublic: false } },
                   { path: ROUTES.WHATSAPP_DETAILS, element: <WADetails />, handle: { isPublic: false } },
                   { path: ROUTES.WHATSAPP_VERIFICATION, element: <WAVerification />, handle: { isPublic: false } },
+                ],
+              },
+              // 2. PUBLIC/AUTH ROUTES (Standard pathing)
+              {
+                children: [
+                  { path: ROUTES.LANDING, element: <Landing />, handle: { isPublic: true } },
+                  { path: '/download-bill/:companyId/:invoiceId', element: <DownloadBill />, handle: { isPublic: true } },
+                  { path: ROUTES.SIGNUP, element: <Signup />, handle: { isPublic: true } },
+                  { path: ROUTES.BUSINESS_INFO, element: <BusInfo />, handle: { isPublic: true } },
+                  { path: ROUTES.FORGOT_PASSWORD, element: <ForgotPasswordPage />, handle: { isPublic: true } },
+                  { path: ROUTES.RESET_PASSWORD, element: <ResetPasswordPage />, handle: { isPublic: true } },
+                  { path: ROUTES.SUPER_ADMIN, element: <SuperAdminCompanies /> },
+                  { path: ROUTES.SUBSCRIPTION_PAGE, element: <SubscriptionPage />, handle: { isPublic: false } },
+                  { path: ROUTES.SUPER_ADMINHUB, element: <SuperAdminHub /> },
+                  { path: ROUTES.SUPPORT_TICKET, element: <SuperAdminSupportTicket /> },
+                  { path: ROUTES.WEBSITE_QUERY, element: <WebsiteLeads /> },
+                  { path: ROUTES.APP_LEADS, element: <LeadPage /> },
+                  { path: ROUTES.AGENT_SIGNUP, element: <AgentSignup />, handle: { isPublic: true } },
+                  { path: ROUTES.PARTNER_DASHBOARD, element: <PartnerDashboard /> },
+                  { path: ROUTES.AGENT_DASHBOARD, element: <AgentDashboard /> },
+                  { path: ROUTES.SUPER_ADMINHUB, element: <SuperAdminHub /> },
+                  { path: ROUTES.SUPPORT_TICKET, element: <SuperAdminSupportTicket /> },
+                  { path: ROUTES.WEBSITE_QUERY, element: <WebsiteLeads /> },
+                  { path: ROUTES.APP_LEADS, element: <LeadPage /> },
+
+                  {
+                    children: [
+                      { path: ROUTES.WHATSAPP_LANDING, element: <WALanding />, handle: { isPublic: false } },
+                      { path: ROUTES.WHATSAPP_PLAN, element: <WAPlan />, handle: { isPublic: false } },
+                      { path: ROUTES.WHATSAPP_DETAILS, element: <WADetails />, handle: { isPublic: false } },
+                      { path: ROUTES.WHATSAPP_VERIFICATION, element: <WAVerification />, handle: { isPublic: false } },
+                    ],
+                  },
                 ],
               },
 

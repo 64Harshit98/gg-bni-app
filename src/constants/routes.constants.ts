@@ -77,12 +77,16 @@ export const ROUTES = {
   GALLA_HISAAB_TOOL: '/galla-hisaab-tool',
   CATA_REGISTER: 'catalogue-register',
   CATA_COMINGSOON: 'coming-soon',
-  CATA_SUPPORT:'support',
-  SUPER_ADMINHUB:'/super-admin',
-  SUPER_ADMIN:'/super-admin/companies',
-  SUPPORT_TICKET:'/super-admin/support',
-  APP_LEADS:'/leads',
-  WEBSITE_QUERY:'/super-admin/website-leads',
+  CATA_SUPPORT: 'support',
+  SUPER_ADMINHUB: '/super-admin',
+  SUPER_ADMIN: '/super-admin/companies',
+  SUPPORT_TICKET: '/super-admin/support',
+  APP_LEADS: '/leads',
+  WEBSITE_QUERY: '/super-admin/website-leads',
   CATA_ADDITIONAL_SERVICES: 'additional-services',
-  USER_REPORT:'/user-report',
+  USER_REPORT: '/user-report',
+  AGENT_SIGNUP: '/agent-signup',
+  PARTNER_DASHBOARD: '/partner-dashboard',
+  AGENT_DASHBOARD: '/agent-dashboard'
+
 };

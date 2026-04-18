@@ -19,12 +19,14 @@ export const hasPermission = (
     return userPermissions.includes(permissionToCheck);
 };
 // 2. Define all user roles
-export type Role = 'Owner' | 'Manager' | 'Salesman';
+export type Role = 'Owner' | 'Manager' | 'Salesman' | 'agent' | 'agency';
 
 export const Role = {
     Owner: 'Owner' as 'Owner',
     Manager: 'Manager' as 'Manager',
     Salesman: 'Salesman' as 'Salesman',
+    Agent: 'agent' as 'agent',
+    Agency: 'agency' as 'agency',
 };
 
 // KEEP THIS - It defines the shape of your user object
@@ -33,7 +35,8 @@ export interface User {
     name: string;
     role: Role;
     permissions: Permissions[];
-    companyId: string;
+    companyId?: string;
+    ownReferralCode?: string;
     Subscription?: {
         pack: string;
         isActive: boolean;

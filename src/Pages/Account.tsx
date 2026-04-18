@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/auth-context';
-import { logoutUser } from '../lib/AuthOperations';
+import { logoutUser, generateCompanyReferralCode } from '../lib/AuthOperations';
 import { db } from '../lib/Firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { ROUTES } from '../constants/routes.constants';
@@ -12,6 +12,7 @@ import NotificationBell from '../Components/NotificationBell';
 //import { useMemo } from 'react';
 import BusinessCard from '../Catalogue/BusinessCards/BusinessCard';
 import { TutorialStep } from '../Components/TutorialStep';
+import { FiCopy, FiCheck } from 'react-icons/fi';
 
 interface UserProfile {
   name: string;
@@ -24,9 +25,16 @@ const TOTAL_STEPS = 8;
 const Account: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser, loading: loadingAuth } = useAuth();
+
+  // Profile & Referral State
   const [profileData, setProfileData] = useState<UserProfile | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [companyReferralCode, setCompanyReferralCode] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  // Tutorial State
   const [tutorialStep, setTutorialStep] = useState(0);
 
   // Refs for auto-scroll targets
@@ -110,15 +118,39 @@ const Account: React.FC = () => {
   useEffect(() => {
     const fetchUserProfile = async () => {
       if (loadingAuth) return;
-      if (!currentUser) { setLoadingProfile(false); setError('No user is currently logged in.'); navigate(ROUTES.LANDING); return; }
-      if (!currentUser.companyId) { setLoadingProfile(false); setError('User is not associated with a company.'); return; }
+
+      if (!currentUser) {
+        setLoadingProfile(false);
+        setError('No user is currently logged in.');
+        navigate(ROUTES.LANDING);
+        return;
+      }
+
+      if (!currentUser.companyId) {
+        setLoadingProfile(false);
+        setError('User is not associated with a company.');
+        return;
+      }
+
       setLoadingProfile(true);
       setError(null);
+
       try {
         const userDocRef = doc(db, 'companies', currentUser.companyId, 'users', currentUser.uid);
         const userDocSnap = await getDoc(userDocRef);
-        if (userDocSnap.exists()) setProfileData(userDocSnap.data() as UserProfile);
-        else setError('User profile not found in Firestore.');
+
+        if (userDocSnap.exists()) {
+          setProfileData(userDocSnap.data() as UserProfile);
+
+          // Fetch existing referral code from company root doc
+          const companyDocRef = doc(db, 'companies', currentUser.companyId);
+          const companyDocSnap = await getDoc(companyDocRef);
+          if (companyDocSnap.exists()) {
+            setCompanyReferralCode(companyDocSnap.data().ownReferralCode || null);
+          }
+        } else {
+          setError('User profile not found in Firestore.');
+        }
       } catch (err) {
         console.error('Failed to fetch user profile:', err);
         setError('Failed to fetch user data. Please try again.');
@@ -150,28 +182,70 @@ const Account: React.FC = () => {
     checkTutorial();
   }, [currentUser]);
 
+  const handleCopy = () => {
+    if (companyReferralCode) {
+      navigator.clipboard.writeText(companyReferralCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleGenerateCode = async () => {
+    if (!currentUser?.companyId) return;
+    setIsGenerating(true);
+    try {
+      const newCode = await generateCompanyReferralCode(currentUser.companyId);
+      setCompanyReferralCode(newCode);
+    } catch (err) {
+      console.error("Failed to generate code:", err);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   const handleLogout = async () => {
-    try { await logoutUser(); navigate(ROUTES.LANDING); }
-    catch (err) { console.error('Logout failed:', err); }
+    try {
+      await logoutUser();
+      navigate(ROUTES.LANDING);
+    } catch (err) {
+      console.error('Logout failed:', err);
+    }
   };
 
   const handleEditProfile = () => navigate(`${ROUTES.EDIT_PROFILE}`);
 
   if (loadingAuth || loadingProfile) {
-    return <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 text-slate-500"><p>Loading profile data...</p></div>;
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 text-slate-500">
+        <p>Loading profile data...</p>
+      </div>
+    );
   }
+
   if (error) {
-    return <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 text-red-500"><p>{error}</p></div>;
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 text-red-500">
+        <p>{error}</p>
+      </div>
+    );
   }
+
   if (!profileData) {
-    return <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 text-red-500"><p>No profile data available.</p></div>;
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 text-red-500">
+        <p>No profile data available.</p>
+      </div>
+    );
   }
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-100">
       {showBadge && (
         <div className={`w-full text-center py-2 text-sm font-bold text-white shadow-sm transition-colors duration-300 ${isUrgent ? 'bg-red-300' : 'bg-amber-200'}`}>
-          <ShinyText text={`Subscription expires in ${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'}.`} speed={4} delay={0} color="#030303" shineColor="#faf5f5" spread={100} direction="left" yoyo={false} pauseOnHover={false} disabled={false} />
+          <ShinyText
+            text={`Subscription expires in ${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'}.`}
+            speed={4} delay={0} color="#030303" shineColor="#faf5f5" spread={100} direction="left" yoyo={false} pauseOnHover={false} disabled={false}
+          />
           <Link to="/subscription" className="text-black ml-2 underline hover:text-gray-100">Renew Now</Link>
         </div>
       )}
@@ -223,8 +297,34 @@ const Account: React.FC = () => {
             </button>
           </div>
         </TutorialStep>
+
         <h2 className="text-2xl font-semibold text-slate-900">{profileData.name}</h2>
         <p className="text-base text-gray-500">{profileData.email}</p>
+
+        {/* Referral Code Block from File 1 */}
+        <div className="mt-3 h-10 flex items-center justify-center">
+          {companyReferralCode ? (
+            <div className="flex items-center bg-white border border-gray-300 rounded-sm px-3 py-1.5 shadow-sm">
+              <span className="text-sm text-gray-500 mr-2">Ref Code:</span>
+              <span className="font-mono font-bold tracking-wider text-gray-800">{companyReferralCode}</span>
+              <button
+                onClick={handleCopy}
+                className="ml-3 text-gray-500 hover:text-black transition"
+                title="Copy Referral Code"
+              >
+                {copied ? <FiCheck className="text-green-500" size={18} /> : <FiCopy size={16} />}
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handleGenerateCode}
+              disabled={isGenerating}
+              className="text-sm text-blue-600 hover:underline disabled:text-gray-400"
+            >
+              {isGenerating ? 'Generating...' : 'Generate Referral Code'}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 bg-gray-100 p-2">
@@ -246,7 +346,6 @@ const Account: React.FC = () => {
 
           <div className="w-full grid grid-cols-2 gap-4 justify-center mt-2 space-y-2 flex-col">
             <ShowWrapper requiredPermission={Permissions.ViewReports}>
-
               {/* Step 3 — Reports */}
               <div ref={reportsRef}>
                 <TutorialStep
@@ -279,7 +378,6 @@ const Account: React.FC = () => {
                   </Link>
                 </TutorialStep>
               </div>
-
             </ShowWrapper>
 
             {/* Step 5 — Plans */}
@@ -314,12 +412,12 @@ const Account: React.FC = () => {
                 </Link>
               </TutorialStep>
             </div>
-
           </div>
 
           {/* Step 7 — Add Ons */}
           <div ref={addOnsRef} className="mt-4 mb-6 flex justify-center">
-            <ShowWrapper requiredPermission={Permissions.ViewReports}>
+            {/* Preserved ViewAddons permission from File 1 instead of ViewReports from File 2 */}
+            <ShowWrapper requiredPermission={Permissions.ViewAddons}>
               <TutorialStep
                 step={7}
                 currentStep={tutorialStep}
@@ -349,12 +447,11 @@ const Account: React.FC = () => {
             </ShowWrapper>
           </div>
 
-
+          {/* Logout Section */}
           <div ref={logoutRef} className="mt-2 flex justify-center">
             <button onClick={handleLogout} className="rounded-sm bg-red-500 py-3 px-8 font-semibold text-white transition hover:bg-red-600">
               Logout
             </button>
-
           </div>
 
         </div>

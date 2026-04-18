@@ -66,6 +66,7 @@ exports.fetchInvoiceData = functions.https.onCall(async (data, context) => {
     }
 });
 
+
 exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
     // 1. Verify the requester is authenticated
     if (!context.auth) {
@@ -215,6 +216,404 @@ exports.getPublicCatalogue = functions.https.onRequest(async (req, res) => {
         res.status(500).send("Internal Server Error");
     }
 });
+
+exports.autoAwardUserReferralCredit = functions.firestore
+    .document('companies/{newCompanyId}')
+    .onCreate(async (snap, context) => {
+        const newCompanyData = snap.data();
+        const referral = newCompanyData.referralDetails;
+
+        // 1. Did they use a referral code?
+        if (!referral || !referral.referrerId) return null;
+
+        try {
+            // 2. Check if the referrer is another COMPANY (not an Agent)
+            const referrerRef = db.collection('companies').doc(referral.referrerId);
+            const referrerSnap = await referrerRef.get();
+
+            // If the ID belongs to an Agent, stop here. The Agent Commission function handles that!
+            if (!referrerSnap.exists) return null;
+
+            // 3. It IS a company! Give them +1 Credit
+            await referrerRef.update({
+                referralCredits: admin.firestore.FieldValue.increment(1)
+            });
+
+            // 4. Create a "Receipt" in the new creditLedger collection
+            await db.collection('creditLedger').add({
+                referrerId: referral.referrerId,
+                referrerName: referrerSnap.data().name || 'Unknown User',
+                referredCompanyId: snap.id,
+                referredCompanyName: newCompanyData.name || 'New Business',
+                type: 'Earned', // 'Earned' means they got a credit. 'Claimed' means you gave them a free month.
+                date: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+            console.log(`Awarded 1 Credit to ${referrerSnap.data().name} for referring ${newCompanyData.name}`);
+            return true;
+
+        } catch (error) {
+            console.error("Error awarding user credit:", error);
+            return null;
+        }
+    });
+
+exports.autoCalculateCommissionOnExtension = functions.firestore
+    .document('companies/{companyId}')
+    .onUpdate(async (change, context) => {
+        const beforeData = change.before.data();
+        const afterData = change.after.data();
+
+        // 1. Did the expiry date actually increase?
+        const oldExpiry = beforeData.expiryDate?.toDate() || new Date(0);
+        const newExpiry = afterData.expiryDate?.toDate() || new Date(0);
+        if (newExpiry <= oldExpiry) return null;
+
+        // 2. Is the new expiry date >= 1 year after creation?
+        const createdAt = afterData.createdAt?.toDate();
+        if (!createdAt) return null;
+
+        const oneYearFromCreation = new Date(createdAt);
+        oneYearFromCreation.setDate(oneYearFromCreation.getDate() + 342);
+        if (newExpiry < oneYearFromCreation) return null;
+
+        // 3. Was this company referred by an Agent or Agency?
+        const referral = afterData.referralDetails;
+        if (!referral || !referral.referrerId) return null;
+
+        // 4. Cooldown Check to prevent double-paying
+        const lastPaid = afterData.lastCommissionPaidAt?.toDate() || new Date(0);
+        const timeSinceLastPay = new Date() - lastPaid;
+        if (timeSinceLastPay < 24 * 60 * 60 * 1000) return null;
+
+        try {
+            // 5. FETCH THE AGENT TO FIND THEIR TIER
+            const agentRef = db.doc(`agents/${referral.referrerId}`);
+            const agentSnap = await agentRef.get();
+            if (!agentSnap.exists) return null;
+
+            const agentData = agentSnap.data();
+            const tier = String(agentData.tier || 'bronze').toLowerCase(); // defaults to bronze
+
+            // 6. IS THIS A RENEWAL OR A FIRST TIME SALE?
+            // If they already have a lastCommissionPaidAt timestamp from the past, it's a renewal!
+            const isRenewal = !!beforeData.lastCommissionPaidAt;
+
+            // 7. GET THE PLAN PRICE
+            let planPrice = 0;
+            const pack = String(afterData.pack || "").toLowerCase();
+
+            if (pack === 'enterprise') planPrice = 7999;
+            else if (pack.includes('pro')) planPrice = 2999;
+            else if (pack.includes('basic')) planPrice = 1199;
+            else if (pack.includes('catalog')) planPrice = 4999;
+
+            // 8. APPLY THE COMMISSION RATES FROM YOUR TABLE
+            let commissionRate = 0;
+
+            if (isRenewal) {
+                // Renewal Rates: 10% | 15% | 20% | 25%
+                const renewalRates = { bronze: 0.10, silver: 0.15, gold: 0.20, platinum: 0.25 };
+                commissionRate = renewalRates[tier] || 0.10;
+            } else {
+                // Base Pack Rates: 30% | 40% | 50% | 60%
+                const baseRates = { bronze: 0.30, silver: 0.40, gold: 0.50, platinum: 0.60 };
+                commissionRate = baseRates[tier] || 0.30;
+            }
+
+            const commissionAmount = planPrice * commissionRate;
+
+            if (commissionAmount <= 0) return null;
+
+            // 9. UPDATE DATABASE
+            const companyRef = change.after.ref;
+            const newCommissionRef = db.collection('commissions').doc();
+            const batch = db.batch();
+
+            // Add money to Agent
+            batch.update(agentRef, {
+                unpaidBalance: admin.firestore.FieldValue.increment(commissionAmount),
+                totalEarned: admin.firestore.FieldValue.increment(commissionAmount)
+            });
+
+            // Tag the company
+            batch.update(companyRef, {
+                lastCommissionPaidAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+            // Save receipt
+            batch.set(newCommissionRef, {
+                agentId: referral.referrerId,
+                companyId: change.after.id,
+                companyName: afterData.name || 'Referred Business',
+                amount: commissionAmount,
+                type: isRenewal ? 'Renewal' : 'New Sale',
+                tierApplied: tier,
+                date: admin.firestore.FieldValue.serverTimestamp(),
+                status: 'pending'
+            });
+
+            await batch.commit();
+            console.log(`Paid ₹${commissionAmount} (${tier} tier, ${isRenewal ? 'Renewal' : 'New'}) to ${referral.referrerId}`);
+            return true;
+
+        } catch (error) {
+            console.error("Error auto-calculating commission:", error);
+            return null;
+        }
+    });
+
+exports.approveManualPayment = functions.https.onCall(async (data, context) => {
+    // 1. Security: Only an Admin should be able to call this!
+    // (Ensure you have a way to verify the caller is you/an admin)
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "Must be logged in.");
+    }
+
+    const { companyId, amountPaid, planDays } = data;
+
+    if (!companyId || amountPaid === undefined || !planDays) {
+        throw new functions.https.HttpsError("invalid-argument", "Missing payment details.");
+    }
+
+    try {
+        const companyRef = db.doc(`companies/${companyId}`);
+        const companySnap = await companyRef.get();
+
+        if (!companySnap.exists) {
+            throw new functions.https.HttpsError("not-found", "Company not found.");
+        }
+
+        const companyData = companySnap.data();
+        const batch = db.batch();
+
+        // --- 1. UPDATE THE PAYING COMPANY'S SUBSCRIPTION ---
+        // Calculate new expiry date (from today, or add to existing if not expired)
+        const currentExpiry = companyData.expiryDate?.toDate() || new Date();
+        const baseDate = currentExpiry > new Date() ? currentExpiry : new Date();
+
+        const newExpiryDate = new Date(baseDate);
+        newExpiryDate.setDate(newExpiryDate.getDate() + planDays);
+
+        batch.update(companyRef, {
+            expiryDate: admin.firestore.Timestamp.fromDate(newExpiryDate),
+            isTrial: false,
+            validity: "active"
+        });
+
+        // --- 2. CHECK FOR REFERRAL AND DISTRIBUTE REWARD ---
+        const referral = companyData.referralDetails;
+
+        // Only pay commission if they actually paid money and have a valid referrer
+        if (referral && referral.referrerId && amountPaid > 0) {
+
+            if (referral.referrerType === 'agent' || referral.referrerType === 'agency') {
+                // Calculate 10% Commission
+                const commissionAmount = amountPaid * 0.10;
+                const agentRef = db.doc(`agents/${referral.referrerId}`);
+
+                // Use FieldValue.increment to safely add to the existing balance
+                batch.update(agentRef, {
+                    unpaidBalance: admin.firestore.FieldValue.increment(commissionAmount),
+                    totalEarned: admin.firestore.FieldValue.increment(commissionAmount)
+                });
+
+            } else if (referral.referrerType === 'company') {
+                // Reward a referring company with 30 free days
+                const referrerCompanyRef = db.doc(`companies/${referral.referrerId}`);
+                const referrerSnap = await referrerCompanyRef.get();
+
+                if (referrerSnap.exists()) {
+                    const refData = referrerSnap.data();
+                    const refCurrentExpiry = refData.expiryDate?.toDate() || new Date();
+                    const refBaseDate = refCurrentExpiry > new Date() ? refCurrentExpiry : new Date();
+
+                    const refNewExpiry = new Date(refBaseDate);
+                    refNewExpiry.setDate(refNewExpiry.getDate() + 30); // 30 Days Free
+
+                    batch.update(referrerCompanyRef, {
+                        expiryDate: admin.firestore.Timestamp.fromDate(refNewExpiry)
+                    });
+                }
+            }
+        }
+
+        // Execute all database updates at the exact same time
+        await batch.commit();
+
+        return { status: "success", message: "Payment approved and rewards distributed." };
+
+    } catch (error) {
+        console.error("Error approving payment:", error);
+        throw new functions.https.HttpsError("internal", "Failed to process payment and rewards.");
+    }
+});
+
+exports.registerAgentProfile = functions.https.onCall(async (data, context) => {
+    const { email, password, name, phoneNumber, isAgency } = data;
+
+    if (!email || !password || !name) {
+        throw new functions.https.HttpsError("invalid-argument", "Missing required fields.");
+    }
+
+    try {
+        const role = isAgency ? "agency" : "agent";
+
+        // 1. Generate their permanent referral code
+        const ownReferralCode = await generateUniqueReferralCode(name, phoneNumber);
+
+        // 2. Create Auth User
+        const userRecord = await admin.auth().createUser({
+            email: email,
+            password: password,
+            displayName: name,
+        });
+
+        // 3. Set Custom Claims (Crucial for login routing)
+        await admin.auth().setCustomUserClaims(userRecord.uid, {
+            role: role,
+        });
+
+        // 4. Prepare Document Payloads
+        const agentRef = db.doc(`agents/${userRecord.uid}`);
+        const referralRef = db.doc(`referrals/${ownReferralCode}`);
+
+        const agentData = {
+            name: name,
+            email: email,
+            phoneNumber: phoneNumber || '',
+            role: role,
+            isAgency: isAgency,
+            ownReferralCode: ownReferralCode,
+            unpaidBalance: 0,
+            totalEarned: 0,
+            minPayoutLimit: 500, // Fixed ₹500 minimum limit
+            upiId: "", // Will be collected on first withdrawal
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        const referralData = {
+            ownerId: userRecord.uid,
+            type: role,
+            usageCount: 0,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+
+        // 5. Atomic Batch Write
+        const batch = db.batch();
+        batch.set(agentRef, agentData);
+        batch.set(referralRef, referralData);
+        await batch.commit();
+
+        return { status: "success", uid: userRecord.uid, role: role };
+
+    } catch (error) {
+        console.error("Error in registerAgentProfile:", error);
+        if (error.code === 'auth/email-already-exists') {
+            throw new functions.https.HttpsError("already-exists", "Email already in use.");
+        }
+        throw new functions.https.HttpsError("internal", "Registration failed.");
+    }
+});
+
+exports.generateMyReferralCode = functions.https.onCall(async (data, context) => {
+    // 1. Security: Ensure user is logged in
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "You must be logged in.");
+    }
+
+    const { companyId } = data;
+    if (!companyId) {
+        throw new functions.https.HttpsError("invalid-argument", "Company ID is required.");
+    }
+
+    try {
+        const companyRef = db.doc(`companies/${companyId}`);
+        const companySnap = await companyRef.get();
+
+        if (!companySnap.exists) {
+            throw new functions.https.HttpsError("not-found", "Company not found.");
+        }
+
+        const companyData = companySnap.data();
+
+        // 2. Prevent overwriting if they already have a code
+        if (companyData.ownReferralCode) {
+            return { status: "exists", referralCode: companyData.ownReferralCode };
+        }
+
+        // 3. Security: Ensure only the Owner can generate it
+        if (companyData.ownerUID !== context.auth.uid) {
+            throw new functions.https.HttpsError("permission-denied", "Only the owner can generate this code.");
+        }
+
+        // --- THE FIX: Fetch the Owner's Name from the users subcollection ---
+        const userRef = db.doc(`companies/${companyId}/users/${companyData.ownerUID}`);
+        const userSnap = await userRef.get();
+
+        // Default to "USER" just in case the document is missing, but grab the real name if it exists
+        const ownerName = userSnap.exists ? userSnap.data().name : "USER";
+        // ------------------------------------------------------------------
+
+        // 4. Generate the code using the OWNER'S name, not the company name
+        const ownReferralCode = await generateUniqueReferralCode(
+            ownerName,
+            companyData.ownerPhoneNumber
+        );
+
+        // 5. Save to the database via Batch
+        const newReferralRef = db.doc(`referrals/${ownReferralCode}`);
+        const batch = db.batch();
+
+        // Update the legacy company document
+        batch.update(companyRef, { ownReferralCode: ownReferralCode });
+
+        // Create the global referral document
+        batch.set(newReferralRef, {
+            ownerId: companyId,
+            type: "company",
+            usageCount: 0,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        await batch.commit();
+
+        return { status: "success", referralCode: ownReferralCode };
+
+    } catch (error) {
+        console.error("Error generating referral code:", error);
+        throw new functions.https.HttpsError("internal", "Could not generate code.");
+    }
+});
+// --- Helper function to generate the permanent code ---
+async function generateUniqueReferralCode(name, phoneNumber) {
+    // Clean inputs: Remove spaces/special characters
+    const cleanName = (name || "USER").replace(/[^a-zA-Z]/g, '').toUpperCase();
+    const cleanPhone = (phoneNumber || "0000").replace(/\D/g, '');
+
+    // Primary Logic: First 4 of Name (padded with X) + Last 4 of Phone
+    const prefix = cleanName.padEnd(4, 'X').substring(0, 4);
+    const suffixPrimary = cleanPhone.slice(-4).padStart(4, '0');
+
+    let code = `${prefix}${suffixPrimary}`;
+    let docRef = db.doc(`referrals/${code}`);
+    let docSnap = await docRef.get();
+
+    // If it's unique, return it immediately
+    if (!docSnap.exists) return code;
+
+    // Fallback Logic: First 4 of Name + First 4 of Phone
+    const suffixSecondary = cleanPhone.substring(0, 4).padEnd(4, '0');
+    code = `${prefix}${suffixSecondary}`;
+    docRef = db.doc(`referrals/${code}`);
+    docSnap = await docRef.get();
+
+    if (!docSnap.exists) return code;
+
+    // Ultimate Edge Case: Append random numbers if both are taken
+    return `${prefix}${Math.floor(1000 + Math.random() * 9000)}`;
+}
+
 exports.registerCompanyAndUser = functions.https.onCall(async (data, context) => {
     // 1. Destructure all incoming data (Add salesSettings back)
     const {

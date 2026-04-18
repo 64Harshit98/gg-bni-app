@@ -262,7 +262,7 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
             role: role,
         });
 
-        // 6. Define Firestore Document References
+        // 8. Define Firestore Document References
         const companyRootRef = db.doc(`companies/${newCompanyId}`);
         const userDocRef = db.doc(`companies/${newCompanyId}/users/${userRecord.uid}`);
         const businessInfoRef = db.doc(`companies/${newCompanyId}/business_info/${newCompanyId}`);
@@ -271,9 +271,9 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
         const salesSettingsRef = db.doc(`companies/${newCompanyId}/settings/sales-settings`);
         const catalogueSettingsRef = db.doc(`companies/${newCompanyId}/settings/catalogue-sales-settings`);
 
-        // 7. Prepare Data Payloads
+        // 9. Prepare Data Payloads
         const trialDate = new Date();
-        trialDate.setDate(trialDate.getDate() + 7);
+        trialDate.setDate(trialDate.getDate() + trialDays); // Uses dynamic trialDays (7 or 28)
         trialDate.setUTCHours(18, 29, 59, 999); // Exactly 23:59:59 IST
 
         // A. Root Data (Unchanged)
@@ -285,7 +285,15 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
             pack: "enterprise",
             validity: "active",
             expiryDate: admin.firestore.Timestamp.fromDate(trialDate),
-            isTrial: true
+            isTrial: true,
+
+            // Referral Metadata
+            ownReferralCode: ownReferralCode,
+            referralDetails: referrerData ? {
+                codeUsed: referralCode.trim().toUpperCase(),
+                referrerId: referrerData.ownerId,
+                referrerType: referrerData.type,
+            } : null
         };
 
         // B. Business Info Data (Unchanged)
@@ -377,7 +385,12 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
 
         await batch.commit();
 
-        return { status: "success", userId: userRecord.uid, companyId: newCompanyId };
+        return {
+            status: "success",
+            userId: userRecord.uid,
+            companyId: newCompanyId,
+            referralCode: ownReferralCode
+        };
 
     } catch (error) {
         console.error("Error in registerCompanyAndUser:", error);

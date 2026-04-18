@@ -18,7 +18,19 @@ service cloud.firestore {
 
     // --- Master Admin Access ---
     match /{document=**} {
+      allow read, write: if request.auth.uid == "6vwZ1HRqX7VSnh5KP4JW0TKeuZm2";
       allow read, write: if request.auth.uid == "1AKioGfop8PmHhry6uXOz8Rw6qT2";
+      }
+    match /agents/{userId} {
+      allow read, write, create, update: if request.auth != null && request.auth.uid == userId;
+    }
+    match /commissions/{commissionId} {
+      allow read: if request.auth != null && resource.data.agentId == request.auth.uid;
+    }
+
+    match /payoutRequests/{requestId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null && resource.data.agentId == request.auth.uid;
     }
 
     // --- Public Leads (Sign Up) ---
@@ -37,6 +49,7 @@ service cloud.firestore {
       // Default rule: Must be a member to read/update the company doc itself
       allow read: if true;
       allow update: if isCompanyMember(companyId);
+      allow read: if request.auth != null && resource.data.referralDetails.referrerId == request.auth.uid;
 
       // =========================================================
       // PUBLIC READ ACCESS (For QR Bill Download)

@@ -5,6 +5,7 @@ import { useAuth } from './auth-context';
 import { type SalesSettings, getDefaultSalesSettings } from '../Pages/Settings/SalesSetting';
 import { type PurchaseSettings, getDefaultPurchaseSettings } from '../Pages/Settings/Purchasesetting';
 import { type ItemSettings, getDefaultItemSettings } from '../Pages/Settings/ItemSetting';
+import { ROLES } from '../enums';
 import { type CatalogueSalesSettings, getDefaultCatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting';
 
 interface SettingsContextType {
@@ -65,6 +66,10 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
 
     // --- FETCH SALES SETTINGS ---
     useEffect(() => {
+        if (currentUser?.role === ROLES.AGENT || currentUser?.role === ROLES.AGENCY) {
+            return; // Stop fetching! Partners don't need POS settings.
+        }
+
         if (!currentUser?.companyId) {
             setLoadingSalesSettings(false);
             setSalesSettings(null);

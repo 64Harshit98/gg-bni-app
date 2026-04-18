@@ -2,7 +2,8 @@ import { useAuth } from './auth-context';
 import AccessDeniedPage from '../Pages/Unauthorized';
 import { Navigate, Outlet, useMatches } from 'react-router-dom';
 import { ROUTES } from '../constants/routes.constants';
-import { Permissions, PLANS } from '../enums'; // Make sure to import PLANS
+// ADD ROLES to your imports
+import { Permissions, PLANS, ROLES } from '../enums';
 
 interface RouteHandle {
     isPublic?: boolean;
@@ -18,11 +19,16 @@ const PermissionWrapper = () => {
     // --- THE SMART REDIRECT FOR PUBLIC PAGES (Like Login) ---
     if (routeConfig?.isPublic) {
         if (currentUser) {
-            // 1. Identify if they are a Catalogue-Only user
+            // 1. Intercept Partners (Agents/Agencies) First
+            if (currentUser.role === ROLES.AGENT || currentUser.role === ROLES.AGENCY) {
+                return <Navigate to={ROUTES.PARTNER_DASHBOARD || '/partner-dashboard'} replace />;
+            }
+
+            // 2. Identify if they are a Catalogue-Only user
             const isCatalogueOnly =
                 currentUser.plan === PLANS.CATALOGUE_PRO;
 
-            // 2. Sort them into the correct dashboard
+            // 3. Sort them into the correct business dashboard
             if (isCatalogueOnly) {
                 return <Navigate to={ROUTES.CHOME} replace />;
             } else {

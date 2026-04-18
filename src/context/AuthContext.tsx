@@ -3,7 +3,7 @@ import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/Firebase';
 import { AuthContext, DatabaseContext } from './auth-context';
-import { Permissions, PLANS } from '../enums';
+import { Permissions, PLANS, ROLES } from '../enums';
 import type { User } from '../Role/permission';
 import Loading from '../Pages/Loading/Loading';
 import { getFirestoreOperations } from '../lib/ItemsFirebase';
@@ -55,20 +55,88 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
 
         const idTokenResult = await firebaseUser.getIdTokenResult(true);
-        const companyId = idTokenResult.claims.companyId as string | undefined;
+        let companyId = idTokenResult.claims.companyId as string | undefined;
+        let userRole = idTokenResult.claims.role as ROLES;
 
-        if (!companyId) {
-          console.error("AUTH_ERROR: companyId missing from token claims.");
+        // 1. Trust the token claims first
+        let isPartner = userRole === ROLES.AGENT || userRole === ROLES.AGENCY;
+        let agentData: any = null;
+
+        // ========================================================
+        // 2. THE MAGIC FIX: Safe Fallback Check
+        // ========================================================
+        if (!isPartner) {
+          try {
+            // Check if they are secretly an agent missing custom claims
+            const fallbackAgentRef = doc(db, 'agents', firebaseUser.uid);
+            const fallbackAgentSnap = await getDoc(fallbackAgentRef);
+
+            if (fallbackAgentSnap.exists()) {
+              isPartner = true;
+              agentData = fallbackAgentSnap.data();
+              userRole = agentData.role || ROLES.AGENT;
+            }
+          } catch (fallbackError) {
+            // 🛑 SILENTLY IGNORE THIS ERROR! 🛑
+            // Standard Owners will get "Permission Denied" here because they 
+            // aren't allowed to read the agents collection. That is perfectly fine!
+            // We swallow the error so they can continue to the logic below.
+          }
+        }
+
+        // 3. Safely reject users with no clear home
+        if (!companyId && !isPartner) {
+          console.error("AUTH_ERROR: User lacks companyId and is not marked as a partner.");
           setAuthState({ status: 'unauthenticated', user: null });
           return;
         }
 
-        // Initialize missing settings silently
-        await initializeDefaults(companyId);
+        // ========================================================
+        // 4. PARTNER LOGIN FLOW
+        // ========================================================
+        if (isPartner) {
+          // If the fallback didn't grab the data, fetch it now to get their Name
+          if (!agentData) {
+            const agentDocRef = doc(db, 'agents', firebaseUser.uid);
+            const agentSnap = await getDoc(agentDocRef);
+            if (agentSnap.exists()) {
+              agentData = agentSnap.data();
+            } else {
+              console.error("AUTH_ERROR: Partner document missing from database.");
+              setAuthState({ status: 'unauthenticated', user: null });
+              return;
+            }
+          }
 
-        // Fetch user and company data
-        const companyDocRef = doc(db, 'companies', companyId);
-        const userDocRef = doc(db, 'companies', companyId, 'users', firebaseUser.uid);
+          const partnerUser: User = {
+            uid: firebaseUser.uid,
+            name: agentData.name || firebaseUser.displayName || 'Partner',
+            role: userRole,
+            // FIX: Give them a TRUTHY string so your layout wrappers don't crash!
+            companyId: "PARTNER_ACCOUNT",
+            plan: PLANS.POS_BASIC,
+            isFirstLogin: false,
+            permissions: [Permissions.ViewPartnerDashboard],
+            Subscription: {
+              pack: 'Partner',
+              isActive: true,
+              expiryDate: new Date('2099-01-01')
+            }
+          };
+
+          setDbOperations(null);
+          setAuthState({ status: 'authenticated', user: partnerUser });
+          return;
+        }
+
+        // ========================================================
+        // 5. EXISTING COMPANY LOGIC (Owners & Staff)
+        // ========================================================
+
+        await initializeDefaults(companyId!);
+
+        const companyDocRef = doc(db, 'companies', companyId!);
+        const userDocRef = doc(db, 'companies', companyId!, 'users', firebaseUser.uid);
 
         const [companyDoc, userDoc] = await Promise.all([
           getDoc(companyDocRef),
@@ -84,24 +152,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const cData = companyDoc.data();
         const uData = userDoc.data();
 
-        // --- 1. RESOLVE PLAN (TypeScript Safe) ---
+        // --- RESOLVE PLAN ---
         const rawPackFromDB = String(cData.pack || "").toLowerCase().trim();
-        let resolvedPlan: PLANS = PLANS.POS_BASIC; // Default fallback
+        let resolvedPlan: PLANS = PLANS.POS_BASIC;
 
         if (rawPackFromDB === 'enterprise') {
           resolvedPlan = PLANS.ENTERPRISE;
         } else if (rawPackFromDB.includes('pro')) {
           resolvedPlan = PLANS.POS_PRO;
         } else {
-          // Cast the result to the PLANS enum type to satisfy TypeScript
           resolvedPlan = normalizePlan(cData.pack) as PLANS;
         }
 
-        // --- 2. RESOLVE PERMISSIONS (Crash-Proof) ---
+        // --- RESOLVE PERMISSIONS ---
         let rolePermissions: Permissions[] = [];
 
         if (uData.role) {
-          const permDocRef = doc(db, 'companies', companyId, 'permissions', uData.role);
+          const permDocRef = doc(db, 'companies', companyId!, 'permissions', uData.role);
           const permSnap = await getDoc(permDocRef);
 
           let dbPerms: Permissions[] = [];
@@ -115,31 +182,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
           }
 
-          // --- NEW: AUTO-SYNC LOGIC ---
-          // This runs every time a user logs in. 
-          // It compares code-defaults with db-perms and updates DB if needed.
-          rolePermissions = await syncCompanyPermissions(companyId, uData.role, dbPerms);
-          // ----------------------------
+          rolePermissions = await syncCompanyPermissions(companyId!, uData.role, dbPerms);
         }
 
-        // Filter role permissions against what the Subscription Plan actually allows
         const packAllowed = getPackPermissions(resolvedPlan) || [];
         const finalPermissions = rolePermissions.filter(p => packAllowed.includes(p));
 
-        // --- 3. RESOLVE SUBSCRIPTION VALIDITY ---
         const rawExpiry = cData.expiryDate;
         const expiryDate = rawExpiry?.toDate ? rawExpiry.toDate() : new Date(rawExpiry);
         const isSubscriptionActive = cData.validity === 'active' && expiryDate > new Date();
 
-        // --- 4. ASSEMBLE USER OBJECT ---
+        // --- ASSEMBLE USER OBJECT ---
         const userData: User = {
           uid: firebaseUser.uid,
           name: uData.name || 'Anonymous',
           role: uData.role || 'Salesman',
-          companyId: companyId,
+          companyId: companyId!,
           plan: resolvedPlan,
           isFirstLogin: uData.isFirstLogin === true,
-          permissions: finalPermissions, // ONLY the allowed permissions are passed down!
+          permissions: finalPermissions,
           Subscription: {
             pack: String(resolvedPlan),
             isActive: isSubscriptionActive,
@@ -147,7 +208,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           }
         };
 
-        setDbOperations(getFirestoreOperations(companyId));
+        setDbOperations(getFirestoreOperations(companyId!));
         setAuthState({ status: 'authenticated', user: userData });
 
       } catch (error) {
@@ -158,11 +219,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     return () => unsubscribe();
   }, []);
-
   const authValue = useMemo(() => ({
-    currentUser: authState.user,
+    currentUser: authState.user as (User & { companyId: string }) | null,
     loading: authState.status === 'pending',
-    // Strictly checks if the exact permission string exists in the user's array
     hasPermission: (perm: Permissions) => {
       if (!authState.user || !Array.isArray(authState.user.permissions)) return false;
       return authState.user.permissions.includes(perm);

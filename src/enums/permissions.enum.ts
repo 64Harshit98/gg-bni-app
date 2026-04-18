@@ -51,4 +51,5 @@ export enum Permissions {
     SetPermissions = 'SetPermissions',
     HiddenProFeatures = 'HiddenProFeatures',
     ViewAddons = 'ViewAddons',
+    ViewPartnerDashboard = 'ViewPartnerDashboard',
 }

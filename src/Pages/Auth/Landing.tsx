@@ -1,10 +1,10 @@
-import React, { useState } from 'react'; // Added useEffect
+import React, { useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { ROUTES } from '../../constants/routes.constants';
 import { CustomButton } from '../../Components';
 import sellarLogo from '../../assets/sellar-logo-heading.png';
 import bgMain from '../../assets/bg-main.png';
-import { Variant, PLANS } from '../../enums'; // Added PLANS enum
+import { Variant, PLANS } from '../../enums';
 import { FloatingLabelInput } from '../../Components/ui/FloatingLabelInput';
 import { Spinner } from '../../constants/Spinner';
 import { loginUser } from '../../lib/AuthOperations';
@@ -18,7 +18,6 @@ const LoginPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
-  //const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -169,6 +168,19 @@ const LoginPage: React.FC = () => {
                 </Link>
               </div>
 
+              {/* --- NEW: Referral Signup Link (Mobile) --- */}
+              <div className="mt-4 text-center">
+                <p className="text-sm text-gray-600">
+                  Want to become an Agent ?{''}
+                  <Link
+                    to={ROUTES.AGENT_SIGNUP || '/agent-signup'}
+                    className="font-semibold text-blue-600 hover:underline"
+                  >
+                    Signup Now
+                  </Link>
+                </p>
+              </div>
+
             </form>
           </div>
         </div>
@@ -266,6 +278,20 @@ const LoginPage: React.FC = () => {
                         </CustomButton>
                       </Link>
                     </div>
+
+                    {/* --- NEW: Referral Signup Link (Desktop) --- */}
+                    <div className="mt-4 text-center">
+                      <p className="text-sm text-gray-600">
+                        Want to become an Agent ?{''}
+                        <Link
+                          to={ROUTES.AGENT_SIGNUP || '/agent-signup'}
+                          className="font-semibold text-blue-600 hover:underline"
+                        >
+                          Signup Now
+                        </Link>
+                      </p>
+                    </div>
+
                   </form>
                 </div>
 

@@ -6,7 +6,7 @@ import { FloatingLabelInput } from '../../Components/ui/FloatingLabelInput';
 import { Stepper } from '../../Components/Stepper';
 import { FloatingLabelSelect } from '../../Components/FloatingLabelSelect';
 import { Variant, PLANS, ROLES } from '../../enums';
-import { FiTag, FiHash, FiMapPin, FiMap, FiAtSign, FiHome, FiCheckCircle } from 'react-icons/fi';
+import { FiTag, FiHash, FiMapPin, FiMap, FiAtSign, FiHome, FiCheckCircle, FiGift } from 'react-icons/fi';
 import { Building2Icon, PinIcon, Scale } from 'lucide-react';
 import { Spinner } from '../../constants/Spinner';
 import bgMain from '../../assets/bg-main.png';
@@ -88,7 +88,8 @@ const BusinessInfoPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-
+  const [showReferral, setShowReferral] = useState(false);
+  const [referralCode, setReferralCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showLoadingScreen, setShowLoadingScreen] = useState(false);
@@ -236,6 +237,8 @@ const BusinessInfoPage: React.FC = () => {
     const finalBusinessType = formData.businessType === 'Other' ? formData.customBusinessType : formData.businessType;
     const finalBusinessCategory = formData.businessCategory === 'Other' ? formData.customBusinessCategory : formData.businessCategory;
     const finalGstin = formData.gstType === 'NA' ? '' : formData.gstin.toUpperCase();
+    const finalReferralCode = referralCode.trim().toUpperCase(); // Format code before sending
+
 
     try {
       // 1. Prepare Business Payload
@@ -294,7 +297,8 @@ const BusinessInfoPage: React.FC = () => {
         planPayload,
         salesSettingsPayload,
         catalogueSalesSettingsPayload,
-        [] // No initial staff
+        [], // No initial staff
+        finalReferralCode
       );
 
       // 5. Update Lead Status (Conversion Event)
@@ -323,7 +327,7 @@ const BusinessInfoPage: React.FC = () => {
       navigate(ROUTES.SIGNUP, { state: previousData });
     }
   };
-if (showLoadingScreen) return <RegistrationLoading />;
+  if (showLoadingScreen) return <RegistrationLoading />;
   return (
     <div className="flex h-screen overflow-hidden bg-gray-200">
       {/* Left visual (Figma style) */}
@@ -577,8 +581,45 @@ if (showLoadingScreen) return <RegistrationLoading />;
                     className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
                   />
                 </div>
+                <div className="pt-2 transition-all duration-300 ease-in-out">
+                  {!showReferral ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowReferral(true)}
+                      className="text-gray-600 font-medium text-sm hover:text-black flex items-center gap-2"
+                    >
+                      <FiGift className="text-gray-500" /> Have a referral code?
+                    </button>
+                  ) : (
+                    <div className="relative [&_label]:!left-[3rem] animate-fade-in">
+                      <FiGift className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+                      <FloatingLabelInput
+                        id="referralCode"
+                        label="Referral Code (Optional)"
+                        value={referralCode}
+                        onChange={(e) => setReferralCode(e.target.value.toUpperCase())} // Forces uppercase instantly
+                        className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowReferral(false);
+                          setReferralCode(''); // Clear if they close it
+                        }}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600 z-20"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </div>
 
               </div>
+              {error && (
+                <p className="text-red-500 text-sm text-center bg-red-50 p-2 rounded-sm animate-pulse">
+                  {error}
+                </p>
+              )}
             </form>
           </div>
         </div>

@@ -46,6 +46,7 @@ export const ROUTES = {
   CATALOGUE_PNL_REPORT: 'profit-loss',
   CATALOGUE_ITEM_REPORT: 'item',
   CATALOGUE_ITEMS: 'cata-item-reports',
+  CATALOGUE_PARTY_LEDGER: 'party-ledger',
   CATALOGUE_SOLD_REPORT: 'cata-sold-report',
   CATALOGUE_MANAGE_ITEMS: 'cata-manage-items',
   CATALOGUE_CUSTOMER_REPORT: 'customer-report',

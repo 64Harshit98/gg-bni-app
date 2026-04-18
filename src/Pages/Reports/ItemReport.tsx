@@ -127,8 +127,9 @@ const ItemReport: React.FC = () => {
     };
   };
 
-  const downloadAsPdf = async () => {
+ const downloadAsPdf = async () => {
     try {
+      // Landscape A4 for wide data tables
       const doc = new jsPDF('l', 'mm', 'a4');
       const pageWidth = doc.internal.pageSize.getWidth();
 
@@ -191,41 +192,138 @@ const ItemReport: React.FC = () => {
       doc.setTextColor(0, 0, 0);
 
       doc.setFontSize(14);
-      doc.text('Detailed Item Report', 14, 18);
+      
+      //const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+
+      // --- 1. BRAND ACCENT BAR ---
+      doc.setFillColor(37, 99, 235); // blue-600
+      doc.rect(0, 0, pageWidth, 6, 'F');
+
+      // --- 2. HEADER SECTION ---
+      doc.setFontSize(22);
+      doc.setTextColor(17, 24, 39); // gray-900
+      doc.setFont('helvetica', 'bold');
+      doc.text('Detailed Item Report', 14, 24);
+
+      // Dynamic Subtitle
       doc.setFontSize(10);
-      doc.text(
-        `Total Items: ${summary.totalItems} | Avg Margin: ${Math.round(summary.averageMarginPercentage)}%`,
-        14,
-        22,
-      );
+      doc.setTextColor(107, 114, 128); // gray-500
+      doc.setFont('helvetica', 'normal');
+      
+      const generationDate = new Date().toLocaleDateString('en-IN', {
+        year: 'numeric', month: 'short', day: 'numeric',
+      });
+      
+      const subtitleText = `Generated: ${generationDate}   |   Total Items: ${summary.totalItems}   |   Avg Margin: ${Math.round(summary.averageMarginPercentage)}%`;
+      doc.text(subtitleText, 14, 31);
+
+      // --- 3. DYNAMIC DATA PREPARATION ---
+      // Guard clause in case filteredItems is empty
+      if (!filteredItems || filteredItems.length === 0) {
+        throw new Error("No data available to export");
+      }
 
       const exportData = filteredItems.map(prepareExportData);
-      const headers = Object.keys(exportData[0] || {});
-      const body = exportData.map((obj) => Object.values(obj));
+      
+      // Helper to convert camelCase/snake_case keys to clean uppercase headers
+      // e.g. "totalSalesAmount" -> "TOTAL SALES AMOUNT"
+      const formatHeader = (str: string) => {
+        return str
+          .replace(/([A-Z])/g, ' $1')
+          .replace(/_/g, ' ')
+          .trim()
+          .toUpperCase();
+      };
 
+      const rawHeaders = Object.keys(exportData[0] || {});
+      const cleanHeaders = rawHeaders.map(formatHeader);
+      const body = exportData.map((obj) => Object.values(obj));
+      
+      const numericColumns = ['mrp', 'purchasePrice', 'discount', 'tax', 'stock', 'restockQuantity'];
+      const columnStyles: any = {};
+
+      rawHeaders.forEach((key, index) => {
+        if (numericColumns.includes(key)) {
+          columnStyles[index] = { halign: 'right' };
+        }
+      });
+
+      // --- 4. AUTOTABLE GENERATION ---
       autoTable(doc, {
-        startY: 25,
-        head: [headers],
+        startY: 38,
+        head: [cleanHeaders],
         body: body,
-        theme: 'grid',
-        styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: [41, 128, 185] },
+        columnStyles: columnStyles,
+        theme: 'plain',
+        styles: {
+          font: 'helvetica',
+          cellPadding: 6,
+          fontSize: 9, // Slightly smaller to fit dynamic columns in landscape
+          textColor: [55, 65, 81], // gray-700
+        },
+        headStyles: {
+          fillColor: [249, 250, 251], // gray-50
+          textColor: [17, 24, 39], // gray-900
+          fontStyle: 'bold',
+          lineWidth: { top: 1, bottom: 1 },
+          lineColor: [229, 231, 235], // gray-200
+        },
+        alternateRowStyles: {
+          fillColor: [252, 252, 252], // Subtle zebra striping
+        },
+        // --- 5. SMART CONDITIONAL FORMATTING ---
+        didParseCell: function (data) {
+          if (data.section === 'body') {
+            if (numericColumns.includes(rawHeaders[data.column.index])) {
+              data.cell.styles.halign = 'right';
+
+              const value = parseFloat(String(data.cell.raw ?? '0'));
+              if (!isNaN(value) && value < 0) {
+                data.cell.styles.textColor = [220, 38, 38];
+                data.cell.styles.fontStyle = 'bold';
+              }
+            }
+          }
+
+          if (data.section === 'head') {
+            if (numericColumns.includes(rawHeaders[data.column.index])) {
+              data.cell.styles.halign = 'right';
+            } else {
+              data.cell.styles.halign = 'left';
+            }
+          }
+        },
+        // --- 6. PAGINATION FOOTER ---
+        didDrawPage: function () {
+          const pageCount = doc.internal.getNumberOfPages();
+          doc.setFontSize(9);
+          doc.setTextColor(156, 163, 175); // gray-400
+          doc.text(
+            `Page ${pageCount}`,
+            pageWidth - 14,
+            pageHeight - 10,
+            { align: 'right' }
+          );
+        },
       });
 
       doc.save('detailed_item_report.pdf');
 
-      // Close selection modal and show success modal
       setIsDownloadModalOpen(false);
       setFeedbackModal({
         isOpen: true,
         type: State.SUCCESS,
         message: 'PDF downloaded successfully!',
       });
-    } catch (e) {
+    } catch (e: any) {
+      console.error('PDF Generation Error:', e);
       setFeedbackModal({
         isOpen: true,
         type: State.ERROR,
-        message: 'Failed to generate PDF.',
+        message: e?.message === "No data available to export"
+          ? 'No data available to export.'
+          : 'Failed to generate PDF.',
       });
     }
   };

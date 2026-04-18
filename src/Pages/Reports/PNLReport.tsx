@@ -145,50 +145,13 @@ const PnlReportPage: React.FC = () => {
 
   /* ---------- PDF DOWNLOAD (UNCHANGED) ---------- */
   const downloadAsPdf = async () => {
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-
-    // ===== CLEAN GENERATION TAG =====
-    const now = new Date();
-    const generatedAt = now.toLocaleString('en-IN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-
-    const margin = 14;
-
-    const tagText = `Generated using SELLAR • ${generatedAt}`;
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8);
-
-    const textWidth = doc.getTextWidth(tagText);
-    const paddingX = 2;
-
-    const boxWidth = textWidth + paddingX * 2;
-    const boxHeight = 5;
-
-    const boxX = pageWidth - margin - boxWidth;
-    const boxY = 10;
-
-    // light gray background
-    doc.setFillColor(245, 245, 245);
-    doc.rect(boxX, boxY, boxWidth, boxHeight, "F");
-
-    // text
-    doc.setTextColor(80, 80, 80);
-    doc.text(tagText, boxX + paddingX, boxY + 3.5);
-
-    // reset styles
-    doc.setTextColor(0, 0, 0);
-
-    const { totalRevenue, totalCost, grossProfit, grossProfitPercentage } =
-      pnlSummary;
-
     try {
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      
+      const { totalRevenue, totalCost, grossProfit, grossProfitPercentage } = pnlSummary;
+       try {
       const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
       if (base64Logo) {
         const img = new Image();
@@ -208,65 +171,161 @@ const PnlReportPage: React.FC = () => {
       // Continue without logo
     }
 
-    doc.setFontSize(18);
-    doc.text('Profit & Loss Report', 14, 20);
-    doc.setFontSize(11);
-    doc.setTextColor(100);
-    const start = appliedFilters?.start
-      ? formatDate(new Date(appliedFilters.start))
-      : 'All Time';
-    const end = appliedFilters?.end
-      ? formatDate(new Date(appliedFilters.end))
-      : 'All Time';
-    doc.text(`Date Range: ${start} to ${end}`, 14, 29);
+      // --- 1. BRAND ACCENT BAR ---
+      doc.setFillColor(37, 99, 235); // blue-600
+      doc.rect(0, 0, pageWidth, 6, 'F');
 
-    autoTable(doc, {
-      startY: 35,
-      body: [
-        [
-          'Total Sales:',
-          `Rs. ${totalRevenue.toLocaleString('en-IN')}`,
-          'Gross Profit / Loss:',
-          `Rs. ${grossProfit.toLocaleString('en-IN')}`,
+      // --- 2. HEADER SECTION ---
+      doc.setFontSize(22);
+      doc.setTextColor(17, 24, 39); // gray-900
+      doc.setFont('helvetica', 'bold');
+      doc.text('Profit & Loss Report', 14, 24);
+
+      // Dynamic Subtitle with Date Range
+      doc.setFontSize(10);
+      doc.setTextColor(107, 114, 128); // gray-500
+      doc.setFont('helvetica', 'normal');
+      
+      const generationDate = new Date().toLocaleDateString('en-IN', {
+        year: 'numeric', month: 'short', day: 'numeric',
+      });
+      
+      const start = appliedFilters?.start ? formatDate(new Date(appliedFilters.start)) : 'All Time';
+      const end = appliedFilters?.end ? formatDate(new Date(appliedFilters.end)) : 'All Time';
+      
+      const subtitleText = `Generated: ${generationDate}   |   Period: ${start} to ${end}`;
+      doc.text(subtitleText, 14, 31);
+
+      // --- 3. SUMMARY METRICS BLOCK ---
+      autoTable(doc, {
+        startY: 38,
+        body: [
+          [
+            'TOTAL SALES (Rs.)',
+            totalRevenue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            'GROSS PROFIT / LOSS (Rs.)',
+            grossProfit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          ],
+          [
+            'TOTAL COST (Rs.)',
+            totalCost.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            'GROSS MARGIN',
+            `${grossProfitPercentage.toFixed(2)}%`,
+          ],
         ],
-        [
-          'Total Cost:',
-          `Rs. ${totalCost.toLocaleString('en-IN')}`,
-          'Gross Profit %:',
-          `${grossProfitPercentage.toFixed(2)}%`,
-        ],
-      ],
-      theme: 'plain',
-      styles: { fontSize: 10 },
-      columnStyles: {
-        0: { fontStyle: 'bold' },
-        2: { fontStyle: 'bold' },
-      },
-    });
+        theme: 'plain',
+        styles: {
+          font: 'helvetica',
+          cellPadding: 4,
+          fontSize: 11,
+          textColor: [17, 24, 39], // gray-900
+        },
+        columnStyles: {
+          0: { fontStyle: 'bold', textColor: [107, 114, 128], cellWidth: 40 }, // Labels
+          1: { fontStyle: 'bold', halign: 'right', cellWidth: 40 },            // Values
+          2: { fontStyle: 'bold', textColor: [107, 114, 128], cellWidth: 55 }, // Labels
+          3: { fontStyle: 'bold', halign: 'right', cellWidth: 40 },            // Values
+        },
+        didParseCell: function (data) {
+          // Highlight negative Gross Profit or Margin in red
+          if ((data.row.index === 0 && data.column.index === 3) || 
+              (data.row.index === 1 && data.column.index === 3)) {
+            const rawVal = parseFloat(String(data.cell.raw).replace(/,/g, '').replace('%', ''));
+            if (rawVal < 0) {
+              data.cell.styles.textColor = [220, 38, 38]; // red-600
+            }
+          }
+        }
+      });
 
-    autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 5,
-      head: [['Date', 'Invoice', 'Sales', 'Cost', 'Profit']],
-      body: filteredTransactions.map((t) => [
-        formatDate(t.createdAt),
-        t.invoiceNumber,
-        `Rs. ${t.totalAmount.toLocaleString('en-IN')}`,
-        `Rs. ${(t.costOfGoodsSold || 0).toLocaleString('en-IN')}`,
-        `Rs. ${(t.profit || 0).toLocaleString('en-IN')}`,
-      ]),
-      foot: [[
-        'Total',
-        '',
-        `Rs. ${totalRevenue.toLocaleString('en-IN')}`,
-        `Rs. ${totalCost.toLocaleString('en-IN')}`,
-        `Rs. ${grossProfit.toLocaleString('en-IN')}`,
-      ]],
-      theme: 'grid',
-      footStyles: { fontStyle: 'bold', fillColor: [41, 128, 185] },
-      headStyles: { fillColor: [41, 128, 185] },
-    });
+      // --- 4. DETAILED TRANSACTIONS TABLE ---
+      autoTable(doc, {
+        startY: (doc as any).lastAutoTable.finalY + 12,
+        head: [['DATE', 'INVOICE', 'SALES (Rs.)', 'COST (Rs.)', 'PROFIT (Rs.)']],
+        body: filteredTransactions.map((t) => [
+          formatDate(t.createdAt),
+          t.invoiceNumber || 'N/A',
+          t.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          (t.costOfGoodsSold || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          (t.profit || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        ]),
+        foot: [[
+          'TOTAL',
+          '-',
+          totalRevenue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          totalCost.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          grossProfit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        ]],
+        theme: 'plain',
+        styles: {
+          font: 'helvetica',
+          cellPadding: 7,
+          fontSize: 10,
+          textColor: [55, 65, 81], // gray-700
+        },
+        headStyles: {
+          fillColor: [249, 250, 251], // gray-50
+          textColor: [17, 24, 39], // gray-900
+          fontStyle: 'bold',
+          halign: 'center',
+          lineWidth: { top: 1, bottom: 1 },
+          lineColor: [229, 231, 235], // gray-200
+        },
+        footStyles: {
+          fillColor: [255, 255, 255],
+          textColor: [17, 24, 39],
+          fontStyle: 'bold',
+          halign: 'right', // Right aligns the totals to match the data columns
+          lineWidth: { top: 1, bottom: 2 }, // Thicker bottom line for totals
+          lineColor: [17, 24, 39],
+        },
+        alternateRowStyles: {
+          fillColor: [252, 252, 252], // Subtle zebra striping
+        },
+        columnStyles: {
+          0: { halign: 'left', cellWidth: 35 },
+          1: { halign: 'left', cellWidth: 'auto' },
+          2: { halign: 'right', cellWidth: 35 },
+          3: { halign: 'right', cellWidth: 35 },
+          4: { halign: 'right', cellWidth: 35 },
+        },
+        // --- 5. CONDITIONAL FORMATTING ---
+        didParseCell: function (data) {
+          // Highlight negative values in the 'Profit' column for body and foot
+          if ((data.section === 'body' || data.section === 'foot') && data.column.index === 4) {
+            const rawVal = parseFloat(String(data.cell.raw).replace(/,/g, ''));
+            if (rawVal < 0) {
+              data.cell.styles.textColor = [220, 38, 38]; // red-600
+              data.cell.styles.fontStyle = 'bold';
+            }
+          }
+          // Fix alignment for the "TOTAL" label in the footer
+          if (data.section === 'foot' && data.column.index === 0) {
+            data.cell.styles.halign = 'left';
+          }
+        },
+        // --- 6. PAGINATION FOOTER ---
+        didDrawPage: function () {
+          const pageCount = doc.internal.getNumberOfPages();
+          doc.setFontSize(9);
+          doc.setTextColor(156, 163, 175); // gray-400
+          doc.text(
+            `Page ${pageCount}`,
+            pageWidth - 14,
+            pageHeight - 10,
+            { align: 'right' }
+          );
+        },
+      });
 
-    doc.save(`PNL-Report-${startDate}-to-${endDate}.pdf`);
+      // Safely naming the file based on the parsed dates
+      const safeStart = appliedFilters?.start ? startDate : 'All_Time';
+      const safeEnd = appliedFilters?.end ? endDate : 'All_Time';
+      doc.save(`PNL_Report_${safeStart}_to_${safeEnd}.pdf`);
+
+    } catch (err) {
+      console.error('PDF Generation Error:', err);
+    }
   };
 
   /* ---------- EXCEL DOWNLOAD (NEW) ---------- */

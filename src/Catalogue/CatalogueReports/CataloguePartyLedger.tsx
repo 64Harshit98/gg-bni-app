@@ -1,32 +1,79 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import FilterSelect from './SalesReportComponents/FilterSelect';
-import { formatDate, formatDateForInput } from './SalesReportComponents/salesReport.utils';
-import usePartyLedger, { type LedgerTransaction, type PaymentRecord } from './PartyLedger/usePartyLedger';
+import React, { useState, useMemo } from 'react';
+type PaymentRecord = {
+    date: string | number | Date;
+    method: string;
+    amount: number;
+};
 
+type LedgerTransaction = {
+    id: string;
+    invoiceNumber: string;
+    createdAt: Date;
+    totalAmount: number;
+    dueAmount: number;
+    type: string;
+    paymentHistory: PaymentRecord[];
+};
+import { useNavigate } from 'react-router-dom';
+import { formatDate, formatDateForInput } from '../../Pages/Reports/SalesReportComponents/salesReport.utils';
+import FilterSelect from '../../Pages/Reports/SalesReportComponents/FilterSelect';
+import { useAuth } from '../../context/auth-context';
 import { CustomCard } from '../../Components/CustomCard';
 import { IconClose, IconChevronDown } from '../../constants/Icons';
+import { db } from '../../lib/Firebase';
+import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
+
+const useOrdersData = (companyId?: string) => {
+    const [Orders, setOrders] = React.useState<any[]>([]);
+
+    React.useEffect(() => {
+        if (!companyId) return;
+
+        const ref = collection(db, 'companies', companyId, 'Orders');
+        const q = query(ref, orderBy('createdAt', 'desc'));
+
+        const unsub = onSnapshot(q, (snapshot) => {
+            const data = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+            setOrders(data);
+        });
+
+        return () => unsub();
+    }, [companyId]);
+
+    return { Orders };
+};
 
 const PartyLedger: React.FC = () => {
     const navigate = useNavigate();
-    const {
-        isLoading, authLoading, error,
-        datePreset, setDatePreset,
-        customStartDate, setCustomStartDate,
-        customEndDate, setCustomEndDate,
-        setAppliedFilters, partySummaries,
-        selectedPartyName, setSelectedPartyName,
-        selectedPartyLedger,
-    } = usePartyLedger();
+    const { currentUser } = useAuth();
+
+    const { Orders } = useOrdersData(
+        currentUser?.companyId
+    );
+    const [selectedPartyName, setSelectedPartyName] = useState<string | null>(null);
+    const [isLoading] = useState(false);
+    const [authLoading] = useState(false);
+    const [error] = useState<string | null>(null);
+
+    const [datePreset, setDatePreset] = useState('today');
+    const [customStartDate, setCustomStartDate] = useState('');
+    const [customEndDate, setCustomEndDate] = useState('');
 
     const [expandedBillId, setExpandedBillId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
-    const [partyTypeFilter, setPartyTypeFilter] = useState<'all' | 'Customer' | 'Supplier'>('all');
 
-    useEffect(() => {
-        // Set default to last 30 days (acts as last month)
-        handleDatePresetChange('last30');
-    }, []);
+const [appliedStartDate, setAppliedStartDate] = useState('');
+const [appliedEndDate, setAppliedEndDate] = useState('');
+
+React.useEffect(() => {
+    if (customStartDate && customEndDate && !appliedStartDate) {
+        setAppliedStartDate(customStartDate);
+        setAppliedEndDate(customEndDate);
+    }
+}, [customStartDate, customEndDate]);
 
     const toggleBillExpansion = (billId: string) => {
         setExpandedBillId(prev => prev === billId ? null : billId);
@@ -37,57 +84,136 @@ const PartyLedger: React.FC = () => {
         const start = new Date();
         const end = new Date();
 
-        switch (preset) {
-            case 'today':
-                break;
-            case 'yesterday':
-                start.setDate(start.getDate() - 1);
-                end.setDate(end.getDate() - 1);
-                break;
-            case 'last7':
-                start.setDate(start.getDate() - 6);
-                break;
-            case 'last30':
-                start.setDate(start.getDate() - 29);
-                break;
-            case 'thisMonth':
-                start.setDate(1);
-                end.setFullYear(end.getFullYear(), end.getMonth() + 1, 0);
-                break;
-            case 'custom':
-                return;
+    switch (preset) {
+    case 'today':
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+        break;
+
+    case 'yesterday':
+        start.setDate(start.getDate() - 1);
+        end.setDate(end.getDate() - 1);
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+        break;
+
+    case 'last7':
+        start.setDate(start.getDate() - 6);
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+        break;
+
+    case 'last30':
+        start.setDate(start.getDate() - 29);
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+        break;
+
+    case 'thisMonth':
+        start.setDate(1);
+        start.setHours(0, 0, 0, 0);
+        end.setFullYear(end.getFullYear(), end.getMonth() + 1, 0);
+        end.setHours(23, 59, 59, 999);
+        break;
+
+    case 'custom':
+        return;
         }
 
         setCustomStartDate(formatDateForInput(start));
         setCustomEndDate(formatDateForInput(end));
     };
 
-    const handleApplyFilters = () => {
-        const start = customStartDate ? new Date(customStartDate) : new Date(0);
-        start.setHours(0, 0, 0, 0);
-        const end = customEndDate ? new Date(customEndDate) : new Date();
-        end.setHours(23, 59, 59, 999);
 
-        setAppliedFilters({ start: start.getTime(), end: end.getTime() });
-        setSelectedPartyName(null);
-        setExpandedBillId(null);
-    };
+    const selectedPartyLedger = useMemo(() => {
+        if (!selectedPartyName) return null;
+
+        const transactions = Orders
+            .filter((order: any) => order.userName === selectedPartyName)
+            .map((order: any) => {
+                const total = Number(order.totalAmount || 0);
+                const paid = Number(order.paidAmount || 0);
+
+                return {
+                    id: order.id,
+                    invoiceNumber: order.orderId,
+                    createdAt: order.createdAt?.toDate ? order.createdAt.toDate() : new Date(),
+                    totalAmount: total,
+                    dueAmount: Math.max(0, total - paid),
+                    type: 'sale',
+                    paymentHistory: [] // can enhance later
+                };
+            });
+
+        const totalBilled = transactions.reduce((sum, t) => sum + t.totalAmount, 0);
+        const totalDue = transactions.reduce((sum, t) => sum + t.dueAmount, 0);
+
+        return {
+            transactions,
+            totalBilled,
+            totalDue
+        };
+    }, [selectedPartyName, Orders]);
 
     const filteredParties = useMemo(() => {
-        const lowerQuery = searchQuery.toLowerCase();
-        return partySummaries.filter(party => {
-            const matchesSearch =
-                !searchQuery.trim() ||
-                party.partyName.toLowerCase().includes(lowerQuery) ||
-                party.partyNumber.toLowerCase().includes(lowerQuery);
+        // Apply DATE FILTER first
+        let filteredOrders = Orders || [];
 
-            const matchesType =
-                partyTypeFilter === 'all' ||
-                party.partyType === partyTypeFilter;
+        if (appliedStartDate || appliedEndDate) {
+            const start = appliedStartDate ? new Date(appliedStartDate).setHours(0,0,0,0) : 0;
+            const end = appliedEndDate ? new Date(appliedEndDate).setHours(23,59,59,999) : Date.now();
 
-            return matchesSearch && matchesType;
+            filteredOrders = filteredOrders.filter((order: any) => {
+                const orderDate = order.createdAt?.toDate
+                    ? order.createdAt.toDate().getTime()
+                    : new Date(order.createdAt).getTime();
+
+                return orderDate >= start && orderDate <= end;
+            });
+        }
+
+        // convert Orders → party summaries
+        const map = new Map();
+
+        filteredOrders.forEach((order: any) => {
+            const name = order.userName || 'Unknown';
+            const number = order.userLoginPhone || '';
+
+            const key = `${name}-${number}`;
+
+            if (!map.has(key)) {
+                map.set(key, {
+                    partyName: name,
+                    partyNumber: number,
+                    totalBilled: 0,
+                    totalDue: 0,
+                    totalTransactions: 0,
+                    partyType: 'Customer'
+                });
+            }
+
+            const existing = map.get(key);
+
+            const total = Number(order.totalAmount || 0);
+            const paid = Number(order.paidAmount || 0);
+            const due = Math.max(0, total - paid);
+
+            existing.totalBilled += total;
+            existing.totalDue += due;
+            existing.totalTransactions += 1;
         });
-    }, [searchQuery, partyTypeFilter, partySummaries]);
+
+        const partyData = Array.from(map.values());
+
+        if (!searchQuery.trim()) return partyData;
+
+        const lowerQuery = searchQuery.toLowerCase();
+
+        return partyData.filter(party =>
+            party.partyName.toLowerCase().includes(lowerQuery) ||
+            party.partyNumber.toLowerCase().includes(lowerQuery)
+        );
+    }, [searchQuery, Orders, appliedStartDate, appliedEndDate]);
 
     if (isLoading || authLoading) return <div className="p-4 text-center">Loading Ledger...</div>;
     if (error) return <div className="p-4 text-center text-red-500">{error}</div>;
@@ -120,7 +246,7 @@ const PartyLedger: React.FC = () => {
                         />
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         <FilterSelect value={datePreset} onChange={(e) => handleDatePresetChange(e.target.value)}>
                             <option value="today">Today</option>
                             <option value="yesterday">Yesterday</option>
@@ -129,29 +255,26 @@ const PartyLedger: React.FC = () => {
                             <option value="thisMonth">This Month</option>
                             <option value="custom">Custom</option>
                         </FilterSelect>
+
                         <div className="grid grid-cols-2 gap-2 sm:gap-4">
                             <input type="date" value={customStartDate} onChange={(e) => { setCustomStartDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border border-gray-200 rounded-sm" />
                             <input type="date" value={customEndDate} onChange={(e) => { setCustomEndDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border border-gray-200 rounded-sm" />
                         </div>
                     </div>
-                    <button onClick={handleApplyFilters} className="w-full mt-3 px-3 py-2 bg-blue-600 text-white text-sm font-semibold rounded-sm hover:bg-blue-700 transition-colors">
-                        Apply
-                    </button>
-                    <div className="flex justify-center mt-3">
-                        <div className="flex bg-gray-100 rounded-sm p-1 text-sm">
-                            <button
-                                onClick={() => setPartyTypeFilter('Customer')}
-                                className={`px-4 py-1.5 rounded-sm transition ${partyTypeFilter === 'Customer' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600'}`}
-                            >
-                                Customer
-                            </button>
-                            <button
-                                onClick={() => setPartyTypeFilter('Supplier')}
-                                className={`px-4 py-1.5 rounded-sm transition ${partyTypeFilter === 'Supplier' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600'}`}
-                            >
-                                Supplier
-                            </button>
-                        </div>
+
+                    {/* APPLY BUTTON */}
+                    <div className="mt-3">
+                        <button
+                            onClick={() => {
+                                setAppliedStartDate(customStartDate);
+                                setAppliedEndDate(customEndDate);
+                                setSelectedPartyName(null);
+                                setExpandedBillId(null);
+                            }}
+                            className="w-full px-3 py-2 bg-blue-600 text-white text-sm font-semibold rounded-md hover:bg-blue-700 transition-colors"
+                        >
+                            Apply
+                        </button>
                     </div>
                 </div>
             )}
@@ -266,7 +389,7 @@ const PartyLedger: React.FC = () => {
                                         {/* LEFT ALIGNED INFO */}
                                         <div className="flex-1">
                                             <p className="text-base font-semibold text-slate-800">{txn.invoiceNumber || txn.id.slice(0, 8)}</p>
-                                            <p className="text-sm text-slate-500 mt-1">{formatDate(txn.createdAt)}</p>
+                                            <p className="text-sm text-slate-500 mt-1">{formatDate(txn.createdAt.getTime())}</p>
                                         </div>
 
                                         {/* CENTER SETTLED BADGE */}

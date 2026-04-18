@@ -192,9 +192,6 @@ const ItemAdd: React.FC = () => {
     if ((itemSettings as any).requireCategory && !selectedCategory) {
       setModal({ message: 'Category is required as per your settings.', type: State.ERROR }); return;
     }
-    if ((itemSettings as any).requireStock && !itemAmount.trim()) {
-      setModal({ message: 'Stock is required as per your settings.', type: State.ERROR }); return;
-    }
 
     // --- 3. Discount Logic ---
     let finalSaleDiscount = parseFloat(itemDiscount) || 0;
@@ -436,7 +433,7 @@ console.log('First data row:', rawJson[1]);
 
         if (failedCount > 0) {
           setModal({
-            message: `Error in ${failedCount} entries. Please check for missing required fields (Item Name, Sale Price, MRP, Stock, Barcode) or invalid data.`,
+            message: `Error in ${failedCount} entries. Please check for missing required fields (Item Name, Sale Price, MRP, Barcode) or invalid data.`,
             type: State.ERROR
           });
         } else {
@@ -890,8 +887,7 @@ console.log('First data row:', rawJson[1]);
                 </div>
                 <div>
                   <div className="flex items-center mb-1">
-                    {/* Make the required asterisk dynamic based on the new setting */}
-                    <label className={`text-sm font-medium text-gray-600 ${(itemSettings as any)?.requireStock ? reqClasses : ''} mr-2`}>
+                    <label className="text-sm font-medium text-gray-600 mr-2">
                       Stock
                     </label>
                     <InfoTooltip text="Current available quantity in your inventory." />

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { TableColumn } from '../../Components/CustomTable';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx';
 import { CustomCard } from '../../Components/CustomCard';
 import { CustomTable } from '../../Components/CustomTable';
 import { CardVariant } from '../../enums';
-import { IconClose } from '../../constants/Icons';
+import { IconClose, IconSearch } from '../../constants/Icons';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
 import { handleDatePresetChange } from '../../Pages/Reports/PNLReportComponents/pnlReport.utils';
@@ -17,6 +17,7 @@ import useCustomerReport from '../hooks/useCustomerReport';
 //import CataShowWrapper from '../../context/CataShowWrapper';
 //import { Cata_Permissions } from '../enum/cata_permissions.enum';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+
 
 const CatalogueCustomerReport: React.FC = () => {
   const {
@@ -55,6 +56,9 @@ const CatalogueCustomerReport: React.FC = () => {
     );
   }, [sales, appliedFilters]);
 
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
+
   /* ---------- CUSTOMER AGGREGATION ---------- */
   const customerRows: CustomerRow[] = useMemo(() => {
     const map = new Map<string, CustomerRow>();
@@ -79,15 +83,37 @@ const CatalogueCustomerReport: React.FC = () => {
       row.totalDue += sale.dueAmount || 0;
     });
 
-    return Array.from(map.values());
-  }, [filteredSales]);
+    let result = Array.from(map.values());
+
+    // 🔍 SEARCH FILTER
+    const trimmedQuery = searchQuery.toLowerCase().trim();
+
+    if (trimmedQuery) {
+      result = result.filter((c) =>
+        c.customerName.toLowerCase().includes(trimmedQuery) ||
+        c.customerNumber.toLowerCase().includes(trimmedQuery)
+      );
+    }
+
+    return result;
+  }, [filteredSales, searchQuery]);
 
   /* ---------- SUMMARY METRICS ---------- */
   const metrics = useMemo(() => {
     const totalCustomers = customerRows.length;
-    const totalBills = filteredSales.length;
+
+    const totalBills = customerRows.reduce(
+      (sum, c) => sum + c.totalBills,
+      0
+    );
+
     const totalDue = customerRows.reduce((sum, c) => sum + c.totalDue, 0);
-    const totalSales = filteredSales.reduce((sum, s) => sum + s.totalAmount, 0);
+
+    const totalSales = customerRows.reduce(
+      (sum, c) => sum + c.totalSales,
+      0
+    );
+
     const averageSalePerCustomer =
       totalCustomers > 0 ? totalSales / totalCustomers : 0;
 
@@ -98,7 +124,7 @@ const CatalogueCustomerReport: React.FC = () => {
       totalSales,
       averageSalePerCustomer,
     };
-  }, [customerRows, filteredSales]);
+  }, [customerRows]);
 
   const handleApplyFilters = () => {
     const start = new Date(startDate);
@@ -397,16 +423,53 @@ const CatalogueCustomerReport: React.FC = () => {
 
       {/* HEADER */}
       <div className="flex items-center justify-between pb-3 border-b mb-2">
+
+        {/* LEFT (Search Icon) */}
+        <button onClick={() => setShowSearch(true)} className="p-2">
+          <IconSearch />
+        </button>
+
+        {/* TITLE */}
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
           Customer Report
         </h1>
+
+        {/* RIGHT (Back Button) */}
         <button onClick={() => navigate(-1)} className="p-2">
           <IconClose width={20} height={20} />
         </button>
+
       </div>
 
+      {showSearch && (
+        <div className="flex justify-center mb-2 px-2">
+          <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-[#F97316]">
+
+            <input
+              type="text"
+              placeholder="Search by Customer..."
+              className="flex-1 text-base font-light p-2 outline-none bg-transparent text-center"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              autoFocus
+            />
+
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setShowSearch(false);
+              }}
+              className="p-1 text-gray-500 hover:text-black"
+            >
+              <IconClose />
+            </button>
+
+          </div>
+        </div>
+      )}
+
       {/* FILTERS */}
-      <div className="bg-white p-4 rounded-lg shadow-md mb-2">
+      <div className="bg-white p-4 rounded-sm shadow-md mb-2">
         <FilterSelect
           value={datePreset}
           onChange={(e) =>
@@ -433,7 +496,7 @@ const CatalogueCustomerReport: React.FC = () => {
               setStartDate(e.target.value);
               setDatePreset('custom');
             }}
-            className="w-full p-2 text-sm bg-gray-50 border rounded-md"
+            className="w-full p-2 text-sm bg-gray-50 border rounded-sm"
           />
           <input
             type="date"
@@ -442,13 +505,13 @@ const CatalogueCustomerReport: React.FC = () => {
               setEndDate(e.target.value);
               setDatePreset('custom');
             }}
-            className="w-full p-2 text-sm bg-gray-50 border rounded-md"
+            className="w-full p-2 text-sm bg-gray-50 border rounded-sm"
           />
         </div>
 
         <button
           onClick={handleApplyFilters}
-          className="w-full mt-2 px-3 py-1 bg-[#F97316] text-white text-lg font-semibold rounded-lg hover:bg-[#F97316]"
+          className="w-full mt-2 px-3 py-1 bg-[#F97316] text-white text-lg font-semibold rounded-sm hover:bg-[#F97316]"
         >
           Apply
         </button>
@@ -485,12 +548,12 @@ const CatalogueCustomerReport: React.FC = () => {
       </div>
 
       {/* REPORT DETAILS */}
-      <div className="bg-white p-4 rounded-lg flex justify-between items-center mt-2">
+      <div className="bg-white p-4 rounded-sm flex justify-between items-center mt-2">
         <h2 className="text-lg font-semibold text-gray-700">Report Details</h2>
         <div className="flex gap-2">
           <button
             onClick={() => setIsListVisible(!isListVisible)}
-            className="px-4 py-2 bg-slate-200 rounded-md font-semibold"
+            className="px-4 py-2 bg-slate-200 rounded-sm font-semibold"
           >
             {isListVisible ? 'Hide List' : 'Show List'}
           </button>
@@ -507,7 +570,7 @@ const CatalogueCustomerReport: React.FC = () => {
                 setIsDownloadModalOpen(true);
               }
             }}
-            className="px-4 py-2 bg-[#F97316] text-white rounded-md font-semibold"
+            className="px-4 py-2 bg-[#F97316] text-white rounded-sm font-semibold"
           >
             Download Report
           </button>

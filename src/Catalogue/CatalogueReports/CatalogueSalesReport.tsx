@@ -12,6 +12,8 @@ import {
 import { useAuth } from '../../context/auth-context';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { IconSearch, IconClose } from '../../constants/Icons';
+import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 //import CataShowWrapper from '../../context/CataShowWrapper';
 //import { Cata_Permissions } from '../enum/cata_permissions.enum';
 
@@ -52,7 +54,7 @@ const formatDateForInput = (date: Date): string => {
 
 // --- Reusable Components (Unchanged) ---
 const SummaryCard: React.FC<{ title: string; value: string; note?: string }> = ({ title, value, note }) => (
-    <div className="bg-white p-4 rounded-lg shadow-md text-center">
+    <div className="bg-white p-4 rounded-sm shadow-md text-center">
         <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">{title}</h3>
         <p className="text-2xl font-bold text-gray-900 mt-2">{value}</p>
         {note && <p className="text-xs text-gray-400 mt-1">{note}</p>}
@@ -70,7 +72,7 @@ const FilterSelect: React.FC<{
         <select
             value={value}
             onChange={onChange}
-            className="w-full p-2.5 text-sm text-center bg-gray-50 border border-gray-300 rounded-md focus:ring-[#F97316] focus:border-[#F97316]"
+            className="w-full p-2.5 text-sm text-center bg-gray-50 border border-gray-300 rounded-sm focus:ring-[#F97316] focus:border-[#F97316]"
         >
             {children}
         </select>
@@ -84,7 +86,7 @@ const RankCircle: React.FC<{ rank: number }> = ({ rank }) => (
 );
 
 const TopCustomersList: React.FC<{ customers: [string, number][] }> = ({ customers }) => (
-    <div className="bg-white p-6 rounded-lg shadow-md">
+    <div className="bg-white p-6 rounded-sm shadow-md">
         <h3 className="text-lg font-bold text-gray-800 mb-5">Top 5 Customers</h3>
         <div className="space-y-4">
             {customers.length > 0 ? customers.map(([name, total], index) => (
@@ -111,7 +113,7 @@ const PaymentChart: React.FC<{ data: { [key: string]: number } }> = ({ data }) =
 
     if (visibleData.length === 0) {
         return (
-            <div className="bg-white p-6 rounded-lg shadow-md">
+            <div className="bg-white p-6 rounded-sm shadow-md">
                 <h3 className="text-lg font-bold text-gray-800 mb-5">Payment Methods</h3>
                 <p className="text-sm text-center text-gray-500">No payment data for this period.</p>
             </div>
@@ -119,7 +121,7 @@ const PaymentChart: React.FC<{ data: { [key: string]: number } }> = ({ data }) =
     }
 
     return (
-        <div className="bg-white p-6 rounded-lg shadow-md">
+        <div className="bg-white p-6 rounded-sm shadow-md">
             <h3 className="text-lg font-bold text-gray-800 mb-5">Payment Methods</h3>
             <div className="space-y-4">
                 {visibleData.map(([method, value]) => (
@@ -172,7 +174,7 @@ const SalesListTable: React.FC<{
     };
 
     return (
-        <div className="bg-white p-2 rounded-lg shadow-md mt-2">
+        <div className="bg-white p-2 rounded-sm shadow-md mt-2">
             <div className="max-h-96 overflow-y-auto">
                 <table className="w-full text-sm text-center">
                     <thead className="text-xs text-slate-500 bg-slate-100 sticky top-0">
@@ -218,6 +220,8 @@ const OrdersReport: React.FC = () => {
     const [customEndDate, setCustomEndDate] = useState<string>('');
     const [appliedFilters, setAppliedFilters] = useState<{ start: number; end: number } | null>(null);
     const [isListVisible, setIsListVisible] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [showSearch, setShowSearch] = useState(false);
     const [sortConfig, setSortConfig] = useState<{ key: keyof OrderRecord; direction: 'asc' | 'desc' }>({ key: 'createdAt', direction: 'desc' });
 
     useEffect(() => {
@@ -326,6 +330,24 @@ const OrdersReport: React.FC = () => {
         // Date filtering is now done in the query, so 'sales' is already filtered.
         let newFilteredSales = [...sales];
 
+        const trimmedQuery = searchQuery.toLowerCase().trim();
+
+        if (trimmedQuery) {
+            const tokens = trimmedQuery.split(/\s+/);
+
+            newFilteredSales = newFilteredSales.filter((sale) => {
+                return tokens.every((token) => {
+                    return (
+                        sale.invoiceNumber?.toLowerCase().includes(token) ||
+                        sale.partyName?.toLowerCase().includes(token) ||
+                        sale.items?.some(item =>
+                            item.name?.toLowerCase().includes(token)
+                        )
+                    );
+                });
+            });
+        }
+
         newFilteredSales.sort((a, b) => {
             const key = sortConfig.key;
             const direction = sortConfig.direction === 'asc' ? 1 : -1;
@@ -376,7 +398,7 @@ const OrdersReport: React.FC = () => {
             topCustomers,
             paymentModes: paymentModesData,
         };
-    }, [sales, sortConfig]); // Removed appliedFilters from here
+    }, [sales, sortConfig, searchQuery]); // Removed appliedFilters from here
 
     const downloadAsPdf = async () => {
         if (!appliedFilters) return;
@@ -430,96 +452,32 @@ const OrdersReport: React.FC = () => {
 
             doc.setTextColor(0, 0, 0);
 
-            // ===== TABLE =====
+            doc.setFontSize(18);
+            doc.text('Completed Orders Report', 14, 20);
+            doc.setFontSize(11);
+            doc.setTextColor(100);
+            doc.text(`Date Range: ${formatDate(appliedFilters.start)} to ${formatDate(appliedFilters.end)}`, 14, 29);
+
             autoTable(doc, {
-                startY: 36,
-                head: [['DATE', 'ORDER ID', 'CUSTOMER', 'ITEMS', 'AMOUNT (Rs.)']],
-                body: filteredSales.map((sale) => {
-                    const formattedCustomer = sale.partyName
-                        ? sale.partyName.charAt(0).toUpperCase() + sale.partyName.slice(1).toLowerCase()
-                        : 'N/A';
-
-                    const totalItems = sale.items.reduce((sum, i) => sum + i.quantity, 0);
-
-                    return [
-                        formatDate(sale.createdAt),
-                        sale.invoiceNumber || 'N/A',
-                        formattedCustomer,
-                        totalItems.toString(),
-                        sale.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                    ];
-                }),
-                foot: [[
-                    'TOTAL',
-                    '-',
-                    '-',
-                    summary.totalItemsSold.toString(),
-                    summary.totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                ]],
-                theme: 'plain',
-                styles: {
-                    font: 'helvetica',
-                    cellPadding: 7,
-                    fontSize: 10,
-                    textColor: [55, 65, 81],
-                },
-                headStyles: {
-                    fillColor: [249, 250, 251],
-                    textColor: [17, 24, 39],
-                    fontStyle: 'bold',
-                    halign: 'center',
-                    lineWidth: { top: 1, bottom: 1 },
-                    lineColor: [229, 231, 235],
-                },
-                footStyles: {
-                    fillColor: [255, 255, 255],
-                    textColor: [17, 24, 39],
-                    fontStyle: 'bold',
-                    halign: 'right',
-                    lineWidth: { top: 1, bottom: 2 },
-                    lineColor: [17, 24, 39],
-                },
-                alternateRowStyles: {
-                    fillColor: [252, 252, 252],
-                },
-                columnStyles: {
-                    0: { halign: 'left', cellWidth: 30 },
-                    1: { halign: 'left', cellWidth: 35 },
-                    2: { halign: 'left', cellWidth: 'auto' },
-                    3: { halign: 'right', cellWidth: 25 },
-                    4: { halign: 'right', cellWidth: 40 },
-                },
-                didParseCell: function (data) {
-                    if ((data.section === 'body' || data.section === 'foot') && data.column.index === 4) {
-                        const rawVal = parseFloat(String(data.cell.raw).replace(/,/g, ''));
-                        if (rawVal < 0) {
-                            data.cell.styles.textColor = [220, 38, 38];
-                            data.cell.styles.fontStyle = 'bold';
-                        }
-                    }
-                    if (data.section === 'foot' && data.column.index === 0) {
-                        data.cell.styles.halign = 'left';
-                    }
-                },
-                didDrawPage: function () {
-                    const pageCount = doc.getNumberOfPages();
-                    const pageHeight = doc.internal.pageSize.getHeight();
-
-                    doc.setFontSize(9);
-                    doc.setTextColor(156, 163, 175);
-                    doc.text(
-                        `Page ${pageCount}`,
-                        pageWidth - 14,
-                        pageHeight - 10,
-                        { align: 'right' }
-                    );
-                },
+                startY: 35,
+                head: [['Date', 'Order ID', 'Customer', 'Items', 'Amount']], // Headers changed
+                body: filteredSales.map((sale) => [
+                    formatDate(sale.createdAt),
+                    sale.invoiceNumber,
+                    sale.partyName,
+                    sale.items.reduce((sum, i) => sum + i.quantity, 0),
+                    `₹ ${sale.totalAmount.toLocaleString('en-IN')}`,
+                ]),
+                foot: [
+                    ['Total', '', '', `${summary.totalItemsSold}`, `₹ ${summary.totalSales.toLocaleString('en-IN')}`]
+                ],
+                footStyles: { fontStyle: 'bold' },
             });
 
-            doc.save(`Orders_Report_${formatDateForInput(new Date())}.pdf`);
-
-        } catch (err) {
-            console.error('PDF Generation Error:', err);
+            doc.save(`orders_report_${formatDateForInput(new Date())}.pdf`);
+        } catch (error) {
+            console.error('Error generating PDF:', error);
+            // Optionally show an error message to the user
         }
     };
 
@@ -528,12 +486,64 @@ const OrdersReport: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-gray-100 p-2 pb-16">
+
             <div className="flex items-center justify-between pb-3 border-b mb-2">
-                <h1 className="flex-1 text-xl text-center font-bold text-gray-800">Orders Report (Completed)</h1>
-                <button onClick={() => navigate(-1)} className="p-2"> <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg></button>
+
+                {/* LEFT (Toggle Icon) */}
+                <button
+                    onClick={() => setShowSearch(true)}
+                    className="p-2"
+                >
+                    <IconSearch />
+                </button>
+
+                {/* TITLE */}
+                <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
+                    Orders Report (Completed)
+                </h1>
+
+                {/* RIGHT EMPTY (for balance) */}
+                <button
+                    onClick={() => navigate(-1)}
+                    className="rounded-full bg-gray-200 p-2 text-gray-900 hover:bg-gray-300"
+                >
+                    <IconClose width={20} height={20} />
+                </button>
+
             </div>
 
-            <div className="bg-white p-2 rounded-lg shadow-md mb-2">
+            {showSearch && (
+                <div className="flex justify-center mb-2 px-2">
+
+                    <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-[#F97316]">
+
+                        {/* INPUT */}
+                        <input
+                            type="text"
+                            placeholder="Search by Order ID, Customer..."
+                            className="flex-1 text-base font-light p-2 outline-none bg-transparent text-center"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            autoFocus
+                        />
+
+                        {/* ❌ CLOSE BUTTON (INPUT KE ANDAR RIGHT SIDE) */}
+                        <button
+                            onClick={() => {
+                                setSearchQuery('');
+                                setShowSearch(false);
+                            }}
+                            className="p-1 text-gray-500 hover:text-black"
+                        >
+                            <IconClose />
+                        </button>
+
+                    </div>
+
+                </div>
+            )}
+
+            <div className="bg-white p-2 rounded-sm shadow-md mb-2">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <FilterSelect value={datePreset} onChange={(e) => handleDatePresetChange(e.target.value)}>
                         <option value="today">Today</option>
@@ -543,11 +553,11 @@ const OrdersReport: React.FC = () => {
                         <option value="custom">Custom</option>
                     </FilterSelect>
                     <div className='grid grid-cols-2 sm:grid-cols-2 gap-4'>
-                        <input type="date" value={customStartDate} onChange={e => { setCustomStartDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border rounded-md" placeholder="Start Date" />
-                        <input type="date" value={customEndDate} onChange={e => { setCustomEndDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border rounded-md" placeholder="End Date" />
+                        <input type="date" value={customStartDate} onChange={e => { setCustomStartDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border rounded-sm" placeholder="Start Date" />
+                        <input type="date" value={customEndDate} onChange={e => { setCustomEndDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border rounded-sm" placeholder="End Date" />
                     </div>
                 </div>
-                <button onClick={handleApplyFilters} className="w-full mt-2 px-3 py-1 bg-[#F97316] text-white text-lg font-semibold rounded-lg shadow-sm hover:bg-[#F97316] transition">Apply</button>
+                <button onClick={handleApplyFilters} className="w-full mt-2 px-3 py-1 bg-[#F97316] text-white text-lg font-semibold rounded-sm shadow-sm hover:bg-[#F97316] transition">Apply</button>
             </div>
 
             <div className="grid grid-cols-2 gap-2 mb-2">
@@ -564,12 +574,12 @@ const OrdersReport: React.FC = () => {
                 <PaymentChart data={paymentModes} />
             </div>
 
-            <div className="bg-white p-4 rounded-lg shadow-md flex justify-between items-center">
+            <div className="bg-white p-4 rounded-sm shadow-md flex justify-between items-center">
                 <h2 className="text-lg font-semibold text-gray-700">Report Details</h2>
                 <div className="flex items-center space-x-3">
-                    <button onClick={() => setIsListVisible(!isListVisible)} className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition">{isListVisible ? 'Hide List' : 'Show List'}</button>
+                    <button onClick={() => setIsListVisible(!isListVisible)} className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-sm hover:bg-slate-300 transition">{isListVisible ? 'Hide List' : 'Show List'}</button>
 
-                    <button onClick={downloadAsPdf} disabled={filteredSales.length === 0} className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 ">Download PDF</button>
+                    <button onClick={downloadAsPdf} disabled={filteredSales.length === 0} className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-sm shadow-sm hover:bg-blue-700 ">Download PDF</button>
                 </div>
             </div>
 

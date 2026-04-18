@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant, State } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
-import { IconClose } from '../../constants/Icons';
+import { IconClose, IconSearch } from '../../constants/Icons';
 import { getPnlColumns } from '../../constants/TableColoumns';
 import FilterSelect from '../../Pages/Reports/ItemReportComponents/FilterSelect';
 import { usePnlReport, usePnlStates } from '../hooks/usePnlReport';
@@ -49,6 +49,8 @@ const CatalogueProfitLossReport: React.FC = () => {
     type: State.INFO,
     message: '',
   });
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
 
   /* ---------- FILTER + SUMMARY ---------- */
   const { pnlSummary, filteredTransactions } = useMemo(() => {
@@ -65,20 +67,37 @@ const CatalogueProfitLossReport: React.FC = () => {
         s.createdAt.getTime() <= endTimestamp,
     );
 
-    const totalRevenue = filteredSales.reduce(
+    // SEARCH FILTER
+    const trimmedQuery = searchQuery.toLowerCase().trim();
+
+    let searchedSales = filteredSales;
+
+    if (trimmedQuery) {
+      const tokens = trimmedQuery.split(/\s+/);
+
+      searchedSales = filteredSales.filter((s) =>
+        tokens.every((token) =>
+          s.invoiceNumber?.toLowerCase().includes(token)
+        )
+      );
+    }
+
+    const totalRevenue = searchedSales.reduce(
       (sum, sale) => sum + sale.totalAmount,
       0,
     );
-    const totalCostOfGoodsSold = filteredSales.reduce(
+
+    const totalCostOfGoodsSold = searchedSales.reduce(
       (sum, sale) => sum + (sale.costOfGoodsSold || 0),
       0,
     );
 
     const grossProfit = totalRevenue - totalCostOfGoodsSold;
+
     const grossProfitPercentage =
       totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
 
-    const salesTransactions: TransactionDetail[] = filteredSales.map((s) => ({
+    const salesTransactions: TransactionDetail[] = searchedSales.map((s) => ({
       ...s,
       type: 'Revenue' as const,
       profit: s.totalAmount - (s.costOfGoodsSold || 0),
@@ -111,7 +130,7 @@ const CatalogueProfitLossReport: React.FC = () => {
       },
       filteredTransactions: salesTransactions,
     };
-  }, [sales, appliedFilters, sortConfig]);
+  }, [sales, appliedFilters, sortConfig, searchQuery]);
 
   /* ---------- SORT ---------- */
   const handleSort = (key: keyof TransactionDetail) => {
@@ -191,93 +210,85 @@ const CatalogueProfitLossReport: React.FC = () => {
 
       const { totalRevenue, totalCost, grossProfit, grossProfitPercentage } = pnlSummary;
 
-      // ===== SUMMARY TABLE =====
+      // Embed company logo (same as Item Report)
+      try {
+        const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
+        if (base64Logo) {
+          const img = new Image();
+          img.src = base64Logo;
+          await new Promise<void>((resolve) => {
+            img.onload = () => {
+              const logoWidth = 15;
+              const logoHeight =
+                (img.naturalHeight / img.naturalWidth) * logoWidth;
+              const logoX = pageWidth - logoWidth - 14;
+              doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
+              resolve();
+            };
+            img.onerror = () => resolve();
+          });
+        }
+      } catch {
+        // Continue without logo
+      }
+
+      doc.setFontSize(18);
+      doc.text('Profit & Loss Report', 14, 20);
+      doc.setFontSize(11);
+      doc.setTextColor(100);
+      doc.text(selectedPeriodText, 14, 30);
+
       autoTable(doc, {
-        startY: 34,
+        startY: 45,
         body: [
           [
-            'TOTAL SALES',
-            totalRevenue.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
-            'GROSS PROFIT / LOSS',
-            grossProfit.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
+            'Total Sales:',
+            `₹${totalRevenue.toLocaleString('en-IN')}`,
+            'Gross Profit / Loss:',
+            `₹${grossProfit.toLocaleString('en-IN')}`,
           ],
           [
-            'TOTAL COST',
-            totalCost.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
-            'GROSS MARGIN',
+            'Total Cost:',
+            `₹${totalCost.toLocaleString('en-IN')}`,
+            'Gross Profit %:',
             `${grossProfitPercentage.toFixed(2)}%`,
           ],
         ],
         theme: 'plain',
-        styles: {
-          font: 'helvetica',
-          cellPadding: 4,
-          fontSize: 11,
-          textColor: [17, 24, 39],
-        },
+        styles: { fontSize: 10 },
         columnStyles: {
-          0: { fontStyle: 'bold', textColor: [107, 114, 128], cellWidth: 35 },
-          1: { fontStyle: 'bold', halign: 'right', cellWidth: 45 },
-          2: { fontStyle: 'bold', textColor: [107, 114, 128], cellWidth: 50 },
-          3: { fontStyle: 'bold', halign: 'right', cellWidth: 45 },
+          0: { fontStyle: 'bold' },
+          2: { fontStyle: 'bold' },
         },
       });
 
-      // ===== TRANSACTIONS TABLE =====
       autoTable(doc, {
         startY: (doc as any).lastAutoTable.finalY + 10,
-        head: [['DATE', 'INVOICE', 'SALES (Rs.)', 'COST (Rs.)', 'PROFIT (Rs.)']],
+        head: [['Date', 'Invoice', 'Sales', 'Cost', 'Profit']],
         body: filteredTransactions.map((t) => [
           formatDate(t.createdAt),
-          t.invoiceNumber || 'N/A',
-          t.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
-          (t.costOfGoodsSold || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }),
-          (t.profit || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }),
+          t.invoiceNumber,
+          `₹${t.totalAmount.toLocaleString('en-IN')}`,
+          `₹${(t.costOfGoodsSold || 0).toLocaleString('en-IN')}`,
+          `₹${(t.profit || 0).toLocaleString('en-IN')}`,
         ]),
-        theme: 'plain',
-        styles: {
-          font: 'helvetica',
-          cellPadding: 6,
-          fontSize: 10,
-          textColor: [55, 65, 81],
-        },
-        headStyles: {
-          fillColor: [249, 250, 251],
-          textColor: [17, 24, 39],
-          fontStyle: 'bold',
-          halign: 'center',
-        },
-        columnStyles: {
-          1: { halign: 'left', cellWidth: 50 },
-        },
-        didParseCell: function (data) {
-          if (data.section === 'body' && data.column.index === 4) {
-            const rawVal = parseFloat(String(data.cell.raw).replace(/,/g, ''));
-            if (rawVal < 0) {
-              data.cell.styles.textColor = [220, 38, 38];
-              data.cell.styles.fontStyle = 'bold';
-            }
-          }
-        },
-        didDrawPage: function () {
-          const pageCount = doc.internal.getNumberOfPages();
-          const pageHeight = doc.internal.pageSize.getHeight();
-
-          doc.setFontSize(9);
-          doc.setTextColor(156, 163, 175);
-          doc.text(
-            `Page ${pageCount}`,
-            pageWidth - 14,
-            pageHeight - 10,
-            { align: 'right' }
-          );
-        },
+        theme: 'striped',
+        headStyles: { fillColor: [41, 128, 185] },
       });
 
-      doc.save(`PNL_Report_${startDate}_to_${endDate}.pdf`);
-
-    } catch (err) {
-      console.error('PDF Generation Error:', err);
+      doc.save(`PNL-Report-${startDate}-to-${endDate}.pdf`);
+      setIsDownloadModalOpen(false);
+      setFeedbackModal({
+        isOpen: true,
+        type: State.SUCCESS,
+        message: 'PDF downloaded successfully!',
+      });
+    } catch (error) {
+      setFeedbackModal({
+        isOpen: true,
+        type: State.ERROR,
+        message: 'Failed to generate PDF file.',
+      });
     }
   };
 
@@ -344,16 +355,53 @@ const CatalogueProfitLossReport: React.FC = () => {
 
       {/* HEADER */}
       <div className="flex items-center justify-between pb-3 border-b mb-2">
+
+        {/* LEFT (Search Icon) */}
+        <button onClick={() => setShowSearch(true)} className="p-2">
+          <IconSearch />
+        </button>
+
+        {/* TITLE */}
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
           Profit & Loss Report
         </h1>
+
+        {/* RIGHT */}
         <button onClick={() => navigate(-1)} className="p-2">
           <IconClose width={20} height={20} />
         </button>
+
       </div>
 
+      {showSearch && (
+        <div className="flex justify-center mb-2 px-2">
+          <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-[#F97316]">
+
+            <input
+              type="text"
+              placeholder="Search by Invoice..."
+              className="flex-1 text-base font-light p-2 outline-none bg-transparent text-center"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              autoFocus
+            />
+
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setShowSearch(false);
+              }}
+              className="p-1 text-gray-500 hover:text-black"
+            >
+              <IconClose />
+            </button>
+
+          </div>
+        </div>
+      )}
+
       {/* FILTERS */}
-      <div className="bg-white p-4 rounded-lg shadow-md mb-2">
+      <div className="bg-white p-4 rounded-sm shadow-md mb-2">
         <FilterSelect
           label="Select Period"
           value={datePreset}
@@ -380,7 +428,7 @@ const CatalogueProfitLossReport: React.FC = () => {
               setStartDate(e.target.value);
               setDatePreset('custom');
             }}
-            className="w-full p-2 text-sm bg-gray-50 border rounded-md"
+            className="w-full p-2 text-sm bg-gray-50 border rounded-sm"
           />
           <input
             type="date"
@@ -389,13 +437,13 @@ const CatalogueProfitLossReport: React.FC = () => {
               setEndDate(e.target.value);
               setDatePreset('custom');
             }}
-            className="w-full p-2 text-sm bg-gray-50 border rounded-md"
+            className="w-full p-2 text-sm bg-gray-50 border rounded-sm"
           />
         </div>
 
         <button
           onClick={handleApplyFilters}
-          className="w-full mt-2 px-3 py-1 bg-[#F97316] text-white text-lg font-semibold rounded-lg hover:bg-[#F97316]"
+          className="w-full mt-2 px-3 py-1 bg-[#F97316] text-white text-lg font-semibold rounded-sm hover:bg-[#F97316]"
         >
           Apply
         </button>
@@ -438,12 +486,12 @@ const CatalogueProfitLossReport: React.FC = () => {
       </div>
 
       {/* DETAILS */}
-      <div className="bg-white p-4 rounded-lg shadow-md flex justify-between items-center mt-2">
+      <div className="bg-white p-4 rounded-sm shadow-md flex justify-between items-center mt-2">
         <h2 className="text-lg font-semibold text-gray-700">P&L Details</h2>
         <div className="flex gap-2">
           <button
             onClick={() => setIsListVisible(!isListVisible)}
-            className="px-4 py-2 bg-slate-200 font-semibold rounded-md"
+            className="px-4 py-2 bg-slate-200 font-semibold rounded-sm"
           >
             {isListVisible ? 'Hide List' : 'Show List'}
           </button>

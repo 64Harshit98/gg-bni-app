@@ -4,6 +4,7 @@ import { db } from '../../lib/Firebase';
 import {
   collection, getDocs, doc, setDoc, Timestamp, collectionGroup
 } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { PLANS } from '../../enums';
 import Loading from '../Loading/Loading';
 import { useAuth } from '../../context/auth-context';
@@ -11,7 +12,10 @@ import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
 
 // ─── Config ───────────────────────────────────────────────
-const SUPER_ADMIN_UID = "1AKioGfop8PmHhry6uXOz8Rw6qT2";
+const SUPER_ADMIN_UIDS = [
+  "6vwZ1HRqX7VSnh5KP4JW0TKeuZm2",
+  "1AKioGfop8PmHhry6uXOz8Rw6qT2"
+];
 const DEFAULT_DURATION_DAYS = 28;
 
 const addDays = (date: Date, days: number) => {
@@ -48,7 +52,7 @@ const SuperAdminCompanies: React.FC = () => {
   });
 
   // Access guard
-  if (currentUser?.uid !== SUPER_ADMIN_UID) {
+  if (!currentUser || !SUPER_ADMIN_UIDS.includes(currentUser.uid)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100">
         <div className="text-center">
@@ -59,6 +63,33 @@ const SuperAdminCompanies: React.FC = () => {
     );
   }
 
+  const handleDeleteCompany = async (companyId: string) => {
+    const confirmDelete = window.confirm(
+      "🛑 WARNING: This will permanently delete the company, ALL its data, and ALL its users from Firebase Authentication. This cannot be undone. Are you sure?"
+    );
+
+    if (!confirmDelete) return;
+
+    setLoading(true); // Reuse your loading state
+    try {
+      const functions = getFunctions();
+      const deleteCompanyData = httpsCallable(functions, 'deleteCompanyData');
+
+      const result = await deleteCompanyData({ companyId });
+      console.log((result.data as any).message);
+
+      // Remove the company from the local state
+      setCompanies(prev => prev.filter(c => c.id !== companyId));
+      setEditingId(null);
+      alert("Company and users successfully deleted.");
+
+    } catch (err: any) {
+      console.error(err);
+      alert(`Failed to delete company: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
   // ── Fetch ──────────────────────────────────────────────
   useEffect(() => {
     const fetchCompanies = async () => {
@@ -421,13 +452,21 @@ const SuperAdminCompanies: React.FC = () => {
                         </p>
                       </div>
                     </div>
+                    <div className="flex flex-col sm:flex-row gap-3 mt-4">
+                      <button
+                        onClick={handleSave}
+                        className="w-full sm:w-auto px-10 py-2 bg-blue-600 text-white text-sm font-semibold rounded-sm hover:bg-blue-700 transition-colors"
+                      >
+                        Save Changes
+                      </button>
 
-                    <button
-                      onClick={handleSave}
-                      className="w-full sm:w-auto px-10 py-2 bg-blue-600 text-white text-sm font-semibold rounded-sm hover:bg-blue-700 transition-colors"
-                    >
-                      Save Changes
-                    </button>
+                      <button
+                        onClick={() => handleDeleteCompany(company.id)}
+                        className="w-full sm:w-auto px-10 py-2 bg-red-600 text-white text-sm font-semibold rounded-sm hover:bg-red-700 transition-colors"
+                      >
+                        Delete Company & Users
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

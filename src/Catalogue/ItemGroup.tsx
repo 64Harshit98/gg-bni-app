@@ -248,23 +248,25 @@ const ItemGroupPage: React.FC = () => {
         }
     };
     return (
-        <div className="flex flex-col mb-10 bg-gray-100 w-full">
-            <main className="flex-grow bg-gray-100 w-full overflow-y-auto">
+        <div className="flex flex-col mb-10 bg-gray-100 w-full pt-24 sm:pt-24">
+
+            <div className="flex flex-col md:flex-row md:justify-between md:items-center bg-gray-100 md:bg-white border-b border-gray-300 shadow-sm flex-shrink-0 p-2 md:px-4 md:py-3 mb-2 md:mb-0">
+                <h1 className="text-2xl font-bold text-gray-800 text-center md:text-left mb-2 md:mb-0">Item Groups</h1>
+                <div className="flex items-center justify-center gap-6">
+                    <CustomButton variant={Variant.Transparent} onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`)} active={isActive(`${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`)}>Item Add</CustomButton>
+                    <CustomButton
+                        variant={Variant.Transparent}
+                        onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`)}
+                        active={isActive(`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`)}
+                    >
+                        Item Groups
+                    </CustomButton>
+                </div>
+            </div>
+
+            <main className="flex-grow p-4 bg-gray-100 w-full overflow-y-auto">
                 {error && <div className="mb-4 p-3 bg-red-100 text-red-800 rounded-sm text-sm font-semibold"><p>{error}</p></div>}
                 {successMessage && <div className="mb-4 p-3 bg-green-100 text-green-800 rounded-sm text-sm font-semibold"><p>{successMessage}</p></div>}
-                <div className="flex flex-col md:flex-row md:justify-between md:items-center bg-gray-100 md:bg-white border-b border-gray-300 shadow-sm flex-shrink-0 p-2 md:px-4 md:py-3 mb-2 md:mb-0">
-                    <h1 className="text-2xl font-bold text-gray-800 text-center md:text-left mb-2 md:mb-0">Item Groups</h1>
-                    <div className="flex items-center justify-center gap-6">
-                        <CustomButton variant={Variant.Transparent} onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`)} active={isActive(`${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`)}>Item Add</CustomButton>
-                        <CustomButton
-                            variant={Variant.Transparent}
-                            onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`)}
-                            active={isActive(`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`)}
-                        >
-                            Item Groups
-                        </CustomButton>
-                    </div>
-                </div>
 
                 <div className="p-4 sm:p-6 bg-white rounded-sm shadow-md">
                     <div className="flex flex-col gap-2 mb-6">
@@ -332,43 +334,43 @@ const ItemGroupPage: React.FC = () => {
                     )}
                 </div>
             </main>
-        {/* Delete confirmation modal */}
-        {deleteTargetGroup && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-            <div className="bg-white rounded-lg shadow-lg w-[90%] max-w-md p-6">
-              
-              <h2 className="text-lg font-semibold text-gray-800 mb-2">
-                Delete "{deleteTargetGroup.name}"?
-              </h2>
+            {/* Delete confirmation modal */}
+            {deleteTargetGroup && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                    <div className="bg-white rounded-lg shadow-lg w-[90%] max-w-md p-6">
 
-              <p className="text-sm text-gray-600 mb-6">
-                {deleteTargetGroup.id && groupCounts[deleteTargetGroup.id] > 0
-                  ? `All ${groupCounts[deleteTargetGroup.id]} item(s) will be moved to "Uncategorized".`
-                  : "This group has no items."}
-              </p>
+                        <h2 className="text-lg font-semibold text-gray-800 mb-2">
+                            Delete "{deleteTargetGroup.name}"?
+                        </h2>
 
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setDeleteTargetGroup(null)}
-                  className="px-4 py-2 text-sm rounded-md bg-gray-200 hover:bg-gray-300"
-                >
-                  Cancel
-                </button>
+                        <p className="text-sm text-gray-600 mb-6">
+                            {deleteTargetGroup.id && groupCounts[deleteTargetGroup.id] > 0
+                                ? `All ${groupCounts[deleteTargetGroup.id]} item(s) will be moved to "Uncategorized".`
+                                : "This group has no items."}
+                        </p>
 
-                <button
-                  onClick={async () => {
-                    await handleDeleteItemGroup(deleteTargetGroup);
-                    setDeleteTargetGroup(null);
-                  }}
-                  className="px-4 py-2 text-sm rounded-md bg-orange-400 text-white hover:bg-orange-500"
-                >
-                  Delete
-                </button>
-              </div>
+                        <div className="flex justify-end gap-3">
+                            <button
+                                onClick={() => setDeleteTargetGroup(null)}
+                                className="px-4 py-2 text-sm rounded-md bg-gray-200 hover:bg-gray-300"
+                            >
+                                Cancel
+                            </button>
 
-            </div>
-          </div>
-        )}
+                            <button
+                                onClick={async () => {
+                                    await handleDeleteItemGroup(deleteTargetGroup);
+                                    setDeleteTargetGroup(null);
+                                }}
+                                className="px-4 py-2 text-sm rounded-md bg-orange-400 text-white hover:bg-orange-500"
+                            >
+                                Delete
+                            </button>
+                        </div>
+
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

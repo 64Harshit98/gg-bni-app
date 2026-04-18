@@ -221,7 +221,7 @@ const Sales: React.FC = () => {
             longPressTimer.current = setTimeout(() => {
                 handleKeypadPress({ ...key, value: 'Clear' }); // Triggers the Clear logic after 1.5s
                 longPressTimer.current = null;
-            }, 1500);
+            }, 1000);
         }
     };
 

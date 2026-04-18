@@ -465,8 +465,8 @@ const SuperAdminCompanies: React.FC = () => {
                         onClick={() => handleDeleteCompany(company.id)}
                         disabled={deletingId === company.id}
                         className={`w-full sm:w-auto px-10 py-2 text-white text-sm font-semibold rounded-sm transition-colors flex items-center justify-center gap-2 ${deletingId === company.id
-                            ? 'bg-red-400 cursor-not-allowed'
-                            : 'bg-red-600 hover:bg-red-700'
+                          ? 'bg-red-400 cursor-not-allowed'
+                          : 'bg-red-600 hover:bg-red-700'
                           }`}
                       >
                         {deletingId === company.id ? (

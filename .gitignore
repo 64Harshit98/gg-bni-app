@@ -121,6 +121,7 @@ dist
 
 # Serverless directories
 .serverless/
+apphosting.yaml
 
 # FuseBox cache
 .fusebox/

@@ -1,5 +1,9 @@
 const axios = require("axios");
 const cors = require("cors")({ origin: true }); // Allows your frontend to talk to this function
+const SUPER_ADMIN_UIDS = [
+    "6vwZ1HRqX7VSnh5KP4JW0TKeuZm2",
+    "1AKioGfop8PmHhry6uXOz8Rw6qT2"
+];
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 
@@ -19,17 +23,20 @@ exports.fetchInvoiceData = functions.https.onCall(async (data, context) => {
     }
 
     try {
+        // 1. Fetch Order
         const orderRef = db.collection("companies").doc(companyId).collection("Orders").doc(orderId);
         const orderSnap = await orderRef.get();
         if (!orderSnap.exists) throw new functions.https.HttpsError("not-found", "Order not found");
         const orderData = orderSnap.data();
 
+        // 2. Fetch Images securely without CORS
         const processedItems = await Promise.all((orderData.items || []).map(async (item, index) => {
             let base64Image = "";
             if (item.imageUrl) {
                 try {
                     const response = await fetch(item.imageUrl);
                     const arrayBuffer = await response.arrayBuffer();
+                    // Detect PNG vs JPEG
                     const mimeType = item.imageUrl.includes('.png') ? 'image/png' : 'image/jpeg';
                     base64Image = `data:${mimeType};base64,` + Buffer.from(arrayBuffer).toString('base64');
                 } catch (err) {
@@ -40,10 +47,11 @@ exports.fetchInvoiceData = functions.https.onCall(async (data, context) => {
             return {
                 ...item,
                 sno: index + 1,
-                imageBase64: base64Image
+                imageBase64: base64Image // We attach the safe base64 string!
             };
         }));
 
+        // Return the clean data to the frontend
         return {
             success: true,
             orderData: {
@@ -83,6 +91,64 @@ exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
     } catch (error) {
         console.error("Error deleting user:", error);
         throw new functions.https.HttpsError('internal', 'Failed to delete user.');
+    }
+});
+
+
+exports.deleteCompanyData = functions.https.onCall(async (data, context) => {
+    // 1. Security Check: Check if the caller's UID is in the allowed array
+    if (!context.auth || !SUPER_ADMIN_UIDS.includes(context.auth.uid)) {
+        throw new functions.https.HttpsError(
+            'permission-denied',
+            'Only Super Admins can perform this action.'
+        );
+    }
+
+    const { companyId } = data;
+    if (!companyId) {
+        throw new functions.https.HttpsError(
+            'invalid-argument',
+            'The function must be called with a valid companyId.'
+        );
+    }
+
+    const db = admin.firestore();
+    const auth = admin.auth();
+
+    try {
+        // 2. Fetch all users in the company's subcollection
+        const usersSnapshot = await db.collection(`companies/${companyId}/users`).get();
+
+        // 3. Delete each user from Firebase Authentication
+        const deleteAuthPromises = [];
+        usersSnapshot.forEach((doc) => {
+            const uid = doc.id; // Assuming the user doc ID matches their Auth UID
+
+            // We catch individual errors so one missing Auth user doesn't crash the whole process
+            const deletePromise = auth.deleteUser(uid).catch((err) => {
+                console.warn(`Could not delete Auth user ${uid} (may already be deleted):`, err.message);
+            });
+            deleteAuthPromises.push(deletePromise);
+        });
+
+        await Promise.all(deleteAuthPromises);
+
+        // 4. Recursively delete the company document and ALL subcollections (users, settings, etc.)
+        const companyRef = db.doc(`companies/${companyId}`);
+        await db.recursiveDelete(companyRef);
+
+        return {
+            success: true,
+            message: `Company ${companyId} and ${deleteAuthPromises.length} associated user(s) successfully deleted.`
+        };
+
+    } catch (error) {
+        console.error("Error deleting company:", error);
+        throw new functions.https.HttpsError(
+            'internal',
+            'An error occurred while deleting the company.',
+            error
+        );
     }
 });
 
@@ -150,12 +216,12 @@ exports.getPublicCatalogue = functions.https.onRequest(async (req, res) => {
     }
 });
 exports.registerCompanyAndUser = functions.https.onCall(async (data, context) => {
-    // 1. Destructure all incoming data (salesSettings completely removed)
-    const {
-        email, password, name, phoneNumber, role,
-        businessData,
-        planDetails
-    } = data;
+    // 1. Destructure all incoming data (including referralCode)
+    const { email, password, name, phoneNumber, role, businessData, planDetails, referralCode } = data;
+
+    // ADD THIS TEMPORARILY:
+    console.log("=== REGISTRATION TRIGGERED ===");
+    console.log("Incoming Referral Code:", referralCode);
 
     // 2. Basic Validation
     if (!email || !password || password.length < 6 || !name || !role) {
@@ -165,7 +231,30 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
     }
 
     try {
-        // 3. Generate Company ID
+        // 3. Verify Incoming Referral Code
+        let trialDays = 7;
+        let referrerData = null;
+
+        // Define your single master code for the 28-day trial
+        const MASTER_TRIAL_CODE = "SIGNMEUPBABY2026";
+
+        if (referralCode) {
+            const cleanInputCode = referralCode.trim().toUpperCase();
+
+            if (cleanInputCode === MASTER_TRIAL_CODE) {
+                // Scenario A: User entered the master trial extension code
+                trialDays = 28;
+            } else {
+                // Scenario B: User entered an Agent or Company code
+                const refDoc = await db.doc(`referrals/${cleanInputCode}`).get();
+                if (refDoc.exists) {
+                    referrerData = refDoc.data();
+                    // Trial remains 7 days, but referrer is tracked for future commission
+                }
+            }
+        }
+
+        // 4. Generate Company ID
         const counterRef = db.doc("CompanyID/counter");
         const newNumber = await db.runTransaction(async (t) => {
             const counterDoc = await t.get(counterRef);
@@ -181,44 +270,55 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
         const paddedNumber = String(newNumber).padStart(4, "0");
         const newCompanyId = `CMP-${paddedNumber}`;
 
-        // 4. Create Authentication User
+        // 5. Generate this company's own permanent referral code
+        const ownReferralCode = await generateUniqueReferralCode(name, phoneNumber);
+
+        // 6. Create Authentication User
         const userRecord = await admin.auth().createUser({
             email: email,
             password: password,
             displayName: name,
         });
 
-        // 5. Set Custom Claims
+        // 7. Set Custom Claims
         await admin.auth().setCustomUserClaims(userRecord.uid, {
             companyId: newCompanyId,
             role: role,
         });
 
-        // 6. Define Firestore Document References
+        // 8. Define Firestore Document References
         const companyRootRef = db.doc(`companies/${newCompanyId}`);
         const userDocRef = db.doc(`companies/${newCompanyId}/users/${userRecord.uid}`);
         const businessInfoRef = db.doc(`companies/${newCompanyId}/business_info/${newCompanyId}`);
+        const newReferralRef = db.doc(`referrals/${ownReferralCode}`);
 
-        // 7. Prepare Data Payloads
+        // 9. Prepare Data Payloads
         const trialDate = new Date();
-        trialDate.setDate(trialDate.getDate() + 7);
+        trialDate.setDate(trialDate.getDate() + trialDays); // Uses dynamic trialDays (7 or 28)
         trialDate.setUTCHours(18, 29, 59, 999); // Exactly 23:59:59 IST
 
-        // A. Root Data (Plan & Validity)
+        // A. Root Data
         const companyRootData = {
             name: businessData.businessName || name,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             ownerUID: userRecord.uid,
             ownerPhoneNumber: phoneNumber || '',
 
-            // Plan Info (Forced to 7-Day Trial)
             pack: "enterprise",
             validity: "active",
             expiryDate: admin.firestore.Timestamp.fromDate(trialDate),
-            isTrial: true
+            isTrial: true,
+
+            // Referral Metadata
+            ownReferralCode: ownReferralCode,
+            referralDetails: referrerData ? {
+                codeUsed: referralCode.trim().toUpperCase(),
+                referrerId: referrerData.ownerId,
+                referrerType: referrerData.type,
+            } : null
         };
 
-        // B. Business Info Data (Name, Address, etc.)
+        // B. Business Info Data
         const finalBusinessData = {
             ...businessData,
             companyId: newCompanyId,
@@ -236,17 +336,36 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
             companyId: newCompanyId,
         };
 
-        // 8. Execute Atomic Batch Write
+        // D. Global Referral Document Payload (For the new company's code)
+        const referralPayload = {
+            ownerId: newCompanyId,
+            type: "company",
+            usageCount: 0,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+
+        // 10. Execute Atomic Batch Write
         const batch = db.batch();
         batch.set(companyRootRef, companyRootData);
         batch.set(userDocRef, userProfile);
         batch.set(businessInfoRef, finalBusinessData);
+        batch.set(newReferralRef, referralPayload);
 
-        // Note: salesSettings batch write has been removed!
+        // Optional: Increment usage count if an agent/company code was used
+        if (referrerData) {
+            const cleanInputCode = referralCode.trim().toUpperCase();
+            const referrerRef = db.doc(`referrals/${cleanInputCode}`);
+            batch.update(referrerRef, { usageCount: admin.firestore.FieldValue.increment(1) });
+        }
 
         await batch.commit();
 
-        return { status: "success", userId: userRecord.uid, companyId: newCompanyId };
+        return {
+            status: "success",
+            userId: userRecord.uid,
+            companyId: newCompanyId,
+            referralCode: ownReferralCode
+        };
 
     } catch (error) {
         console.error("Error in registerCompanyAndUser:", error);

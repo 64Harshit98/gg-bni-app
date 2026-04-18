@@ -302,23 +302,36 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     }
 
     // --- DETERMINE ROW TOTAL & DISCOUNT ---
+    const grossRowAmount = mrp * qty;
+    let calculatedDiscountAmount = 0;
     let rowTotal = 0;
-    let displayDiscount = 0;
+    const discountPercentage = Number(item.discountAmount) || 0;
 
-    if (item.amount !== undefined && item.amount !== null && Number(item.amount) > 0) {
+    // PRIORITY 1: Explicit 100% Free Items 
+    // (Bypasses the frontend bug where 'amount' comes in as the gross value instead of 0)
+    if (discountPercentage === 100) {
+      rowTotal = 0;
+      calculatedDiscountAmount = grossRowAmount;
+    }
+    // PRIORITY 2: Trust the exact final amount sent by the UI 
+    // (This perfectly preserves the UI's rounded numbers like 40 and 50)
+    else if (item.amount !== undefined && item.amount !== null && Number(item.amount) >= 0) {
       rowTotal = Number(item.amount);
-      displayDiscount = (mrp * qty) - rowTotal;
-      if (displayDiscount < 0) displayDiscount = 0;
-    } else {
-      const discAmt = Number(item.discountAmount) || 0;
-      displayDiscount = discAmt;
-      rowTotal = (mrp * qty) - discAmt;
+      calculatedDiscountAmount = grossRowAmount - rowTotal;
+    }
+    // PRIORITY 3: Fallback percentage calculation
+    else if (discountPercentage > 0) {
+      calculatedDiscountAmount = grossRowAmount * (discountPercentage / 100);
+      rowTotal = grossRowAmount - calculatedDiscountAmount;
+    }
+    // PRIORITY 4: No discount, no final amount
+    else {
+      rowTotal = grossRowAmount;
     }
 
-    // Explicit Discount Priority for Display
-    if (item.discountAmount !== undefined && Number(item.discountAmount) > 0) {
-      displayDiscount = Number(item.discountAmount);
-    }
+    // Final safety bounds to prevent negative numbers on edge cases
+    if (calculatedDiscountAmount < 0) calculatedDiscountAmount = 0;
+    if (rowTotal < 0) rowTotal = 0;
 
     // --- TAX RATE ---
     let effectiveTaxRate = isEstimate
@@ -371,32 +384,21 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
       taxBreakdown[rateKey].sgst += (taxAmt / 2);
     }
 
-    return isEstimate
-      ? [
-        item.sno,
-        item.name,
-        item.hsn,
-        qty,
-        item.unit || 'PCS',
-        mrp.toFixed(2),
-        displayDiscount.toFixed(2),
-        netAmount.toFixed(2)
-      ]
-      : [
-        item.sno,
-        item.name,
-        item.hsn,
-        qty,
-        item.unit || 'PCS',
-        mrp.toFixed(2),
-        displayDiscount.toFixed(2),
-        taxableValue.toFixed(2),
-        `${(effectiveTaxRate / 2)}%`,
-        (taxAmt / 2).toFixed(2),
-        `${(effectiveTaxRate / 2)}%`,
-        (taxAmt / 2).toFixed(2),
-        netAmount.toFixed(2)
-      ];
+    return [
+      item.sno,
+      item.name,
+      item.hsn,
+      qty,
+      item.unit || 'PCS',
+      mrp.toFixed(2),
+      calculatedDiscountAmount.toFixed(2), // <--- UPDATE THIS LINE
+      taxableValue.toFixed(2),
+      `${(effectiveTaxRate / 2)}%`,
+      (taxAmt / 2).toFixed(2),
+      `${(effectiveTaxRate / 2)}%`,
+      (taxAmt / 2).toFixed(2),
+      netAmount.toFixed(2)
+    ];
   });
 
   // --- UPDATED GRAND TOTAL CALCULATION ---
@@ -853,7 +855,8 @@ export const preparePdfData = async (invoiceData: any) => {
       gstRate: item.gstRate || item.tax || 0,
       quantity: item.quantity || 0,
       price: item.price || item.rate || 0,
-      amount: item.amount || 0,
+      amount: item.amount ?? undefined,
+      discountAmount: item.discountAmount ?? item.discount ?? 0,
       // Ensure these exist for items too
       taxType: item.taxType || 'exclusive'
     }))

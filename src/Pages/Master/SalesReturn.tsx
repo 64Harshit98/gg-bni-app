@@ -132,41 +132,41 @@ const SalesReturnPage: React.FC = () => {
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
 
   const handleOpenEditDrawer = (item: Item) => {
-  // item.id here is the cart UUID, so find the real item from availableItems
-  const realItem = availableItems.find(
-    (a) => a.id === (item as any).originalItemId || a.id === (item as any).productId || a.id === item.id
-  );
-  if (!realItem) {
-    setModal({ message: 'Original item not found in inventory.', type: State.ERROR });
-    return;
-  }
-  setSelectedItemForEdit(realItem);
-  setIsItemDrawerOpen(true);
-};
+    // item.id here is the cart UUID, so find the real item from availableItems
+    const realItem = availableItems.find(
+      (a) => a.id === (item as any).originalItemId || a.id === (item as any).productId || a.id === item.id
+    );
+    if (!realItem) {
+      setModal({ message: 'Original item not found in inventory.', type: State.ERROR });
+      return;
+    }
+    setSelectedItemForEdit(realItem);
+    setIsItemDrawerOpen(true);
+  };
 
-const handleCloseEditDrawer = () => {
-  setIsItemDrawerOpen(false);
-  setTimeout(() => setSelectedItemForEdit(null), 300);
-};
+  const handleCloseEditDrawer = () => {
+    setIsItemDrawerOpen(false);
+    setTimeout(() => setSelectedItemForEdit(null), 300);
+  };
 
-const handleSaveSuccess = (updatedItemData: Partial<Item>) => {
-  // Update availableItems
-  setAvailableItems(prev =>
-    prev.map(item =>
-      item.id === selectedItemForEdit?.id
-        ? { ...item, ...updatedItemData, id: item.id } as Item
-        : item
-    )
-  );
-  // Also update exchangeItems if the edited item is in the exchange cart
-  setExchangeItems(prev =>
-    prev.map(item =>
-      item.originalItemId === selectedItemForEdit?.id
-        ? { ...item, name: updatedItemData.name ?? item.name, mrp: updatedItemData.mrp ?? item.mrp }
-        : item
-    )
-  );
-};
+  const handleSaveSuccess = (updatedItemData: Partial<Item>) => {
+    // Update availableItems
+    setAvailableItems(prev =>
+      prev.map(item =>
+        item.id === selectedItemForEdit?.id
+          ? { ...item, ...updatedItemData, id: item.id } as Item
+          : item
+      )
+    );
+    // Also update exchangeItems if the edited item is in the exchange cart
+    setExchangeItems(prev =>
+      prev.map(item =>
+        item.originalItemId === selectedItemForEdit?.id
+          ? { ...item, name: updatedItemData.name ?? item.name, mrp: updatedItemData.mrp ?? item.mrp }
+          : item
+      )
+    );
+  };
 
   useEffect(() => {
     if (salesSettings) {
@@ -777,12 +777,12 @@ const handleSaveSuccess = (updatedItemData: Partial<Item>) => {
 
   const isDueSale = (selectedSale?.paymentMethods?.due ?? 0) > 0;
   useEffect(() => {
-  if (isDueSale) {
-    setModeOfReturn('Exchange'); 
-  }
-}, [isDueSale]);
+    if (isDueSale) {
+      setModeOfReturn('Exchange');
+    }
+  }, [isDueSale]);
   const handleProcessReturn = () => {
-    if(modeOfReturn === 'Exchange' && exchangeItems.length == 0) return setModal({ type: State.ERROR, message: 'No exchange items selected.' });
+    if (modeOfReturn === 'Exchange' && exchangeItems.length == 0) return setModal({ type: State.ERROR, message: 'No exchange items selected.' });
     if (itemsToReturn.length === 0 && exchangeItems.length === 0) return setModal({ type: State.ERROR, message: 'No items selected.' });
     if (modeOfReturn === 'Cash Refund' && finalBalance > 0) saveReturnTransaction();
     else if (finalBalance >= 0) saveReturnTransaction();
@@ -895,10 +895,10 @@ const handleSaveSuccess = (updatedItemData: Partial<Item>) => {
                 <div className="bg-white p-2 rounded-sm shadow-md mb-4 md:mb-0 border border-gray-200">
                   <div className="md:hidden mb-4">
                     <label className="block font-medium text-sm mb-1">Transaction Type</label>
-                    <select value={modeOfReturn} onChange={(e) =>{
+                    <select value={modeOfReturn} onChange={(e) => {
                       const value = e.target.value;
-                     setModeOfReturn(value)
-                     if(value !== 'Exchange')
+                      setModeOfReturn(value)
+                      if (value !== 'Exchange')
                         setExchangeItems([])
                     }}
                       className="w-full p-2 border rounded bg-white">
@@ -951,6 +951,12 @@ const handleSaveSuccess = (updatedItemData: Partial<Item>) => {
                               onPricePressEnd={handlePricePressEnd}
                               onPriceClick={handlePriceClick}
                             />
+                            <ItemEditDrawer
+                              item={selectedItemForEdit}
+                              isOpen={isItemDrawerOpen}
+                              onClose={handleCloseEditDrawer}
+                              onSaveSuccess={handleSaveSuccess}
+                            />
                           </div>
                         </div>
                       )}
@@ -993,9 +999,9 @@ const handleSaveSuccess = (updatedItemData: Partial<Item>) => {
                 <select value={modeOfReturn} onChange={(e) => {
                   const value = e.target.value;
                   setModeOfReturn(value)
-                   if(value !== 'Exchange')
-                        setExchangeItems([])
-                  }} className="w-full p-3 border border-gray-300 rounded-lg bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none">
+                  if (value !== 'Exchange')
+                    setExchangeItems([])
+                }} className="w-full p-3 border border-gray-300 rounded-lg bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none">
                   <option disabled={isDueSale} >Credit Note</option>
                   <option>Exchange</option>
                   <option>Cash Refund</option>

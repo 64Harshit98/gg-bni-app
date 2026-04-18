@@ -13,7 +13,6 @@ import { useAuth } from '../../context/auth-context';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { IconSearch, IconClose } from '../../constants/Icons';
-import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 //import CataShowWrapper from '../../context/CataShowWrapper';
 //import { Cata_Permissions } from '../enum/cata_permissions.enum';
 

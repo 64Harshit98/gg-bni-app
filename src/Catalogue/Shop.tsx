@@ -13,6 +13,7 @@ import { useNavigate } from 'react-router';
 import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName';
 import SearchBar from './SearchBar';
+import SubdomainClaimModal from '../Components/SubDomainModal';
 const OrderingPage: React.FC = () => {
     // --- States ---
     const navigate = useNavigate()
@@ -39,6 +40,8 @@ const OrderingPage: React.FC = () => {
     // --- YOUR NEW STATES ---
     const [editingId, setEditingId] = useState<string | null>(null);
     const [tempName, setTempName] = useState('');
+    const [isSubdomainModalOpen, setIsSubdomainModalOpen] = useState(false); // <-- NEW STATE
+
 
     // --- Fetch Data ---
     useEffect(() => {
@@ -253,6 +256,15 @@ const OrderingPage: React.FC = () => {
         <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative">
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
+            {/* --- UPDATED ONBOARDING MODAL --- */}
+            {companyId && (
+                <SubdomainClaimModal
+                    companyId={companyId}
+                    forceOpen={isSubdomainModalOpen}
+                    onClose={() => setIsSubdomainModalOpen(false)}
+                />
+            )}
+
             {/* --- FIXED HEADER SECTION --- */}
             <header className="sticky top-0 z-[100] bg-white border-b border-gray-100 shadow-sm w-full">
                 <div className="max-w-7xl mx-auto px-4 py-8 relative flex items-center justify-between">
@@ -262,8 +274,16 @@ const OrderingPage: React.FC = () => {
                         {companyName}
                     </h1>
 
-                    {/* Right Spacer for Perfect Center Alignment */}
-                    <div className="w-6"></div>
+                    {/* Left Spacer (Optional, to keep title centered if needed) */}
+                    <div className="w-24"></div>
+
+                    {/* Right Section - Setup Link Button */}
+                    <button
+                        onClick={() => setIsSubdomainModalOpen(true)}
+                        className="bg-blue-50 text-blue-600 px-3 py-2 rounded-sm text-[10px] font-black uppercase tracking-wider border border-blue-100 hover:bg-blue-100 transition-colors z-10"
+                    >
+                        Store Link
+                    </button>
                 </div>
             </header>
             <main className="p-4 space-y-4 flex-1 max-w-7xl mx-auto w-full pb-20">

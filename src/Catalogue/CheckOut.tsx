@@ -1,13 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ChevronLeft, Trash2, Check, ChevronUp, X } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Footer from './Footer';
-import { doc, getDoc, setDoc, serverTimestamp, deleteDoc, collection, onSnapshot, query, where } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, deleteDoc, collection, onSnapshot, query, where, increment, updateDoc, runTransaction, getDocs } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 import { FiPackage } from 'react-icons/fi';
 import { useAuth } from '../context/auth-context';
-import { increment, updateDoc } from "firebase/firestore";
-import { runTransaction } from "firebase/firestore";
 import LeadPopUp from './PopUp';
 // import { getCompressedBase64 } from './utils/imageCache';
 import { CatalogueBill, prepareCatalogueBillData } from './CatalogueBill/CatalogueBill'
@@ -76,27 +74,72 @@ const useBusinessName = (effectiveCompanyId?: string) => {
 const CartPage: React.FC = () => {
     const { currentUser } = useAuth();
     const navigate = useNavigate();
+    const { companyId: pathId } = useParams<{ companyId: string }>();
+
     const [step, setStep] = useState<number>(1);
     const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
     const [isPlacing, setIsPlacing] = useState(false);
-    const { companyId: pathId } = useParams<{ companyId: string }>();
     const [showAlert, setShowAlert] = useState(false);
 
-    // 2. Get the subdomain
+    // 1. States for subdomain resolution
+    const [resolvedCompanyId, setResolvedCompanyId] = useState<string | null>(null);
+    const [domainResolveError, setDomainResolveError] = useState(false);
+    const [isResolvingDomain, setIsResolvingDomain] = useState(true);
+
+    // 2. Safely extract the subdomain
     const hostname = window.location.hostname;
     const parts = hostname.split('.');
 
-    // Explicitly ignore 'app' and 'www'
-    const subdomain = (
-        parts.length >= 3 &&
-        !['www', 'app'].includes(parts[0].toLowerCase()) &&
-        !hostname.includes('localhost')
-    ) ? parts[0] : null;
+    const subdomain = useMemo(() => {
+        return (
+            parts.length >= 3 &&
+            !['www', 'app'].includes(parts[0].toLowerCase()) &&
+            !hostname.includes('localhost')
+        ) ? parts[0] : null;
+    }, [hostname, parts]);
 
-    // 3. Use whichever one exists
-    // If subdomain is null (because we are on app.sellar.in), it falls back to pathId
-    const effectiveCompanyId = subdomain || pathId;
-    const { businessName: companyName } = useBusinessName(effectiveCompanyId);
+    // 3. Resolve the subdomain string into the true Firestore Document ID
+    useEffect(() => {
+        const resolveDomain = async () => {
+            if (subdomain) {
+                try {
+                    const companiesRef = collection(db, 'companies');
+                    const q = query(companiesRef, where('domainAliases', 'array-contains', subdomain));
+                    const snap = await getDocs(q);
+
+                    if (!snap.empty) {
+                        const companyDoc = snap.docs[0];
+                        const data = companyDoc.data();
+
+                        // Redirect logic: Preserve the pathname so they stay on the Cart page!
+                        if (data.subdomain && data.subdomain !== subdomain) {
+                            window.location.replace(`https://${data.subdomain}.sellar.in${window.location.pathname}`);
+                            return;
+                        }
+
+                        setResolvedCompanyId(companyDoc.id);
+                    } else {
+                        setDomainResolveError(true);
+                    }
+                } catch (error) {
+                    console.error("Error resolving subdomain:", error);
+                    setDomainResolveError(true);
+                }
+            } else if (pathId) {
+                setResolvedCompanyId(pathId);
+            } else {
+                setDomainResolveError(true);
+            }
+            setIsResolvingDomain(false);
+        };
+
+        resolveDomain();
+    }, [subdomain, pathId]);
+
+    // 4. Point the effective ID to the newly resolved state
+    const effectiveCompanyId = resolvedCompanyId;
+
+    const { businessName: companyName } = useBusinessName(effectiveCompanyId || "");
     const [salesSettings, setSalesSettings] = useState<CatalogueSalesSettings | null>(null);
     const [shipping, setShipping] = useState<Address>({ name: '', phone: '', city: '', state: '', address: '', gstin: '' });
     const [billing, setBilling] = useState<Address>({ name: '', phone: '', city: '', state: '', address: '', gstin: '' });
@@ -399,12 +442,12 @@ const CartPage: React.FC = () => {
             return;
         }
         const isValidGST = (gst?: string) =>
-                    !gst || gst.length === 15;
+            !gst || gst.length === 15;
 
         if (!isValidGST(billing.gstin) || !isValidGST(shipping.gstin)) {
-                alert("GSTIN must be exactly 15 characters.");
-                return;
-            }
+            alert("GSTIN must be exactly 15 characters.");
+            return;
+        }
         setIsPlacing(true);
         try {
             // 4. GENERATE INVOICE (Atomic Transaction)
@@ -506,7 +549,7 @@ const CartPage: React.FC = () => {
                     items: cartItems.map((item, index) => ({
                         sno: index + 1,
                         name: item.name,
-                        qty: item.quantity, 
+                        qty: item.quantity,
                         mrp: Number(item.mrp || 0),
                         price: Number(item.salesPrice || 0),
                         salesPrice: Number(item.salesPrice || 0),
@@ -590,12 +633,28 @@ const CartPage: React.FC = () => {
             setIsDrawerOpen(false);
         }
     };
+    if (domainResolveError) {
+        return (
+            <div className="flex flex-col items-center justify-center h-screen bg-[#E9F0F7] text-[#1A3B5D]">
+                <h2 className="text-2xl font-black mb-2">Store Not Found</h2>
+                <p className="text-gray-500 text-sm">This checkout link is invalid or has expired.</p>
+            </div>
+        );
+    }
+
+    if (isResolvingDomain) {
+        return (
+            <div className="flex items-center justify-center h-screen bg-[#E9F0F7]">
+                <span className="font-bold text-[#1A3B5D]">Loading Checkout...</span>
+            </div>
+        );
+    }
 
     return (
         <>
             <div className="bg-gray-50 min-h-screen font-sans text-[#1A3B5D] flex flex-col">
                 {salesSettings?.requireApproval && (
-                    <LeadPopUp companyId={effectiveCompanyId} companyName={companyName} />
+                    <LeadPopUp companyId={effectiveCompanyId || ""} companyName={companyName} />
                 )}
 
                 {showAlert && (
@@ -651,7 +710,7 @@ const CartPage: React.FC = () => {
                             {/* buttons */}
                             <div className="flex gap-3 mt-6">
                                 <button
-                                    onClick={() => navigate(`/catalogue/${effectiveCompanyId}`)}
+                                    onClick={() => navigate(subdomain ? '/' : `/catalogue/${effectiveCompanyId}`)}
                                     className="flex-1 py-3 bg-gray-100 text-[#1A3B5D] text-xs font-black rounded-sm"
                                 >
                                     Continue Shopping
@@ -981,11 +1040,11 @@ const CartPage: React.FC = () => {
                                                 <input
                                                     value={shipping.gstin || ''}
                                                     onChange={(e) => {
-                                                            const val = e.target.value.toUpperCase();
-                                                            if (val.length <= 15) {
+                                                        const val = e.target.value.toUpperCase();
+                                                        if (val.length <= 15) {
                                                             setShipping({ ...shipping, gstin: val });
-                                                          }
-                                                        }}
+                                                        }
+                                                    }}
                                                     type="text"
                                                     className="w-full bg-gray-50 border border-gray-100 rounded-sm p-2 text-[12px] font-bold outline-none"
                                                     placeholder="Enter GSTIN"

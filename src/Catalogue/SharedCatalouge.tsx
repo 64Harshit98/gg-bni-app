@@ -9,47 +9,85 @@ import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName.tsx';
 import SearchBar from './SearchBar.tsx';
 // import LeadPopUp from './PopUp.tsx';
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "../lib/Firebase";
 import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting';
 
 const SharedCataloguePage: React.FC = () => {
-    const { companyId: pathId, } = useParams<{ companyId: string }>();
+    const { companyId: pathId } = useParams<{ companyId: string }>();
+    const navigate = useNavigate();
+
+    // 1. States for subdomain resolution
+    const [resolvedCompanyId, setResolvedCompanyId] = useState<string | null>(null);
+    const [domainResolveError, setDomainResolveError] = useState(false);
 
     const generateSlug = (name: string) => {
         return name
             .toLowerCase()
             .trim()
-            .replace(/\s+/g, "-")       // Replace spaces with hyphens
-            .replace(/[^a-z0-9-]/g, ""); // Remove special characters
+            .replace(/\s+/g, "-")
+            .replace(/[^a-z0-9-]/g, "");
     };
 
-    // 2. Get the subdomain
+    // 2. Safely extract the subdomain
     const hostname = window.location.hostname;
     const parts = hostname.split('.');
 
     // Explicitly ignore 'app' and 'www'
-    const subdomain = (
-        parts.length >= 3 &&
-        !['www', 'app'].includes(parts[0].toLowerCase()) &&
-        !hostname.includes('localhost')
-    ) ? parts[0] : null;
+    const subdomain = useMemo(() => {
+        return (
+            parts.length >= 3 &&
+            !['www', 'app'].includes(parts[0].toLowerCase()) &&
+            !hostname.includes('localhost')
+        ) ? parts[0] : null;
+    }, [hostname, parts]);
 
-    // 3. Use whichever one exists
-    // If subdomain is null (because we are on app.sellar.in), it falls back to pathId
-    const effectiveCompanyId = subdomain || pathId;
+    // 3. Resolve the subdomain string into the true Firestore Document ID
+    useEffect(() => {
+        const resolveDomain = async () => {
+            if (subdomain) {
+                try {
+                    // Query the companies collection for the matching subdomain alias
+                    const companiesRef = collection(db, 'companies');
+                    const q = query(companiesRef, where('domainAliases', 'array-contains', subdomain));
+                    const snap = await getDocs(q);
 
-    // 4. IMPORTANT: Replace your check
-    // If your code has something like: if (!companyId) return <div>Invalid link</div>;
-    // Change it to:
-    if (!effectiveCompanyId) {
-        return <div>Invalid catalogue link.</div>;
-    }
-    const navigate = useNavigate();
+                    if (!snap.empty) {
+                        const companyDoc = snap.docs[0];
+                        const data = companyDoc.data();
+
+                        // Redirect logic: If they used an old link, push them to the new active one
+                        if (data.subdomain && data.subdomain !== subdomain) {
+                            window.location.replace(`https://${data.subdomain}.sellar.in`);
+                            return;
+                        }
+
+                        // Success: Set the actual Firestore ID
+                        setResolvedCompanyId(companyDoc.id);
+                    } else {
+                        // Subdomain does not exist in the database
+                        setDomainResolveError(true);
+                    }
+                } catch (error) {
+                    console.error("Error resolving subdomain:", error);
+                    setDomainResolveError(true);
+                }
+            } else if (pathId) {
+                // If visited via standard Firebase Hosting (/catalogue/:companyId)
+                setResolvedCompanyId(pathId);
+            } else {
+                setDomainResolveError(true);
+            }
+        };
+
+        resolveDomain();
+    }, [subdomain, pathId]);
+
+    // 4. Point the effective ID to the newly resolved state
+    const effectiveCompanyId = resolvedCompanyId;
 
     // Hooks
-    const { businessName: companyName, loading: nameLoading } = useBusinessName(effectiveCompanyId);
-
+    const { businessName: companyName, loading: nameLoading } = useBusinessName(effectiveCompanyId || "");
     // States
     const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
     const [socialLinks, setSocialLinks] = useState<any>({});
@@ -242,9 +280,22 @@ const SharedCataloguePage: React.FC = () => {
 
     }, [itemGroups, allItems, searchQuery, sortOrder]);
 
-    // Added nameLoading to the main loading check
-    if (isLoading || nameLoading) {
-        return <div className="flex items-center justify-center h-screen bg-[#E9F0F7]"><Spinner /> <span className="ml-2 font-bold text-[#1A3B5D]">Loading...</span></div>;
+    if (domainResolveError) {
+        return (
+            <div className="flex flex-col items-center justify-center h-screen bg-[#E9F0F7] text-[#1A3B5D]">
+                <h2 className="text-2xl font-black mb-2">Store Not Found</h2>
+                <p className="text-gray-500 text-sm">This catalogue link is invalid or has expired.</p>
+            </div>
+        );
+    }
+
+    // Wait until the domain is fully resolved AND the data finishes loading
+    if (!effectiveCompanyId || isLoading || nameLoading) {
+        return (
+            <div className="flex items-center justify-center h-screen bg-[#E9F0F7]">
+                <Spinner /> <span className="ml-2 font-bold text-[#1A3B5D]">Loading Store...</span>
+            </div>
+        );
     }
 
     if (error) {
@@ -254,7 +305,6 @@ const SharedCataloguePage: React.FC = () => {
             </div>
         );
     }
-
 
     return (
         <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative">
@@ -272,11 +322,11 @@ const SharedCataloguePage: React.FC = () => {
 
                     {/* Right Section - Cart Button */}
                     <button
-                        onClick={() => {
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation(); // Forces the browser to ONLY click this button
                             if (effectiveCompanyId) {
-                                navigate(`/checkout/${effectiveCompanyId}`);
-                            } else {
-                                console.error("Company ID missing!");
+                                navigate(subdomain ? '/checkout' : `/checkout/${effectiveCompanyId}`);
                             }
                         }}
                         className="flex items-center justify-center gap-2 bg-[#F97316] text-white py-2 px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative cursor-pointer"
@@ -312,7 +362,7 @@ const SharedCataloguePage: React.FC = () => {
                                 const slug = group ? generateSlug(group.name) : item.itemGroupId;
 
                                 navigate(
-                                    `/${effectiveCompanyId}/${slug}`,
+                                    subdomain ? `/${slug}` : `/${effectiveCompanyId}/${slug}`,
                                     { state: { highlightItemId: item.id } }
                                 );
                             }}
@@ -368,7 +418,7 @@ const SharedCataloguePage: React.FC = () => {
                                 key={group.id}
                                 onClick={() => {
                                     const slug = generateSlug(group.name);
-                                    navigate(`/${effectiveCompanyId}/${slug}`);
+                                    navigate(subdomain ? `/${slug}` : `/${effectiveCompanyId}/${slug}`);
                                 }}
                                 className="bg-white rounded-sm overflow-hidden shadow-sm border border-gray-100 flex flex-col transition-all group cursor-pointer active:scale-95"
                             >
@@ -442,9 +492,11 @@ const SharedCataloguePage: React.FC = () => {
 
             {/* --- STICKY BOTTOM CART --- */}
             <div
-                onClick={() => {
+                onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation(); // Forces the browser to ONLY click this button
                     if (effectiveCompanyId) {
-                        navigate(`/checkout/${effectiveCompanyId}`);
+                        navigate(subdomain ? '/checkout' : `/checkout/${effectiveCompanyId}`);
                     }
                 }}
                 className="fixed bottom-0 left-0 w-full md:w-[50%] md:left-1/2 md:-translate-x-1/2 z-[9999] bg-[#F97316] text-white shadow-lg cursor-pointer active:scale-[0.98] transition-all"

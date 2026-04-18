@@ -119,11 +119,7 @@ const MyShop: React.FC = () => {
         return matchedGroup?.id || groupId;
     }, [groupId, allItemGroups]);
 
-    const uncategorizedGroup = useMemo(() => allItemGroups.find(
-        g => g.name.toLowerCase().trim() === "uncategorized"
-    ), [allItemGroups]);
-
-    const isUncategorized = (resolvedGroupId || selectedCategory) === uncategorizedGroup?.id;
+    const isUncategorized = (resolvedGroupId || selectedCategory) === 'uncategorized';
 
     useEffect(() => {
         if (resolvedGroupId) {
@@ -238,6 +234,9 @@ const MyShop: React.FC = () => {
     };
 
     const currentCategoryName = useMemo(() => {
+        if (resolvedGroupId === 'uncategorized') return 'Uncategorized';
+        if (resolvedGroupId === 'All' || !resolvedGroupId) return 'All Products';
+
         const group = allItemGroups.find(g => g.id === resolvedGroupId);
         return group ? group.name : 'Catalogue';
     }, [allItemGroups, resolvedGroupId]);
@@ -347,6 +346,7 @@ const MyShop: React.FC = () => {
 
     const filteredItems = useMemo(() => {
         const activeCat = resolvedGroupId || selectedCategory;
+        const validGroupIds = new Set(allItemGroups.map(g => g.id)); // For fast checking
 
         const result = allItems.filter(item => {
             if (!item) return false;
@@ -357,16 +357,24 @@ const MyShop: React.FC = () => {
                 return false;
             }
 
-            const groupExists = allItemGroups.some(g => g.id === item.itemGroupId);
-            const finalGroupId = groupExists ? item.itemGroupId : uncategorizedGroup?.id;
+            // --- VIRTUAL CATEGORY LOGIC ---
+            let matchesCategory = false;
 
-            const matchesCategory =
-                activeCat === 'All' ||
-                finalGroupId === activeCat ||
-                isSearching;
+            if (isSearching) {
+                // If user is searching, ignore the category filter
+                matchesCategory = true;
+            } else if (activeCat === 'All') {
+                matchesCategory = true;
+            } else if (activeCat === 'uncategorized') {
+                // Show item if it has no group ID OR its group ID doesn't exist in DB anymore
+                matchesCategory = !item.itemGroupId || !validGroupIds.has(item.itemGroupId);
+            } else {
+                // Standard category match
+                matchesCategory = item.itemGroupId === activeCat;
+            }
 
             const itemName = item.name?.toLowerCase() || "";
-            const matchesSearch =
+            const matchesSearch = !isSearching ||
                 itemName.includes(searchQuery.toLowerCase()) ||
                 (item.barcode && item.barcode.includes(searchQuery));
 
@@ -389,8 +397,7 @@ const MyShop: React.FC = () => {
         isViewMode,
         sortOrder,
         resolvedGroupId,
-        allItemGroups,
-        uncategorizedGroup
+        allItemGroups
     ]);
 
     useEffect(() => {
@@ -575,11 +582,10 @@ const MyShop: React.FC = () => {
                                     g => g.id === item.itemGroupId
                                 );
 
+                                // Navigate to the group slug, or 'uncategorized' if it has no valid group
                                 const slug = group
                                     ? generateSlug(group.name)
-                                    : uncategorizedGroup
-                                        ? generateSlug(uncategorizedGroup.name)
-                                        : "uncategorized";
+                                    : "uncategorized";
 
                                 navigate(
                                     `/catalogue-home/my-shop/${slug}`,

@@ -35,7 +35,7 @@ service cloud.firestore {
     match /companies/{companyId} {
       
       // Default rule: Must be a member to read/update the company doc itself
-      allow read: if isCompanyMember(companyId);
+      allow read: if true;
       allow update: if isCompanyMember(companyId);
 
       // =========================================================

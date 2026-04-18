@@ -14,6 +14,7 @@ import { formatDate } from '../../Pages/Reports/PNLReportComponents/pnlReport.ut
 import { handleDatePresetChange } from '../../Pages/Reports/PNLReportComponents/pnlReport.utils';
 import DownloadChoiceModal from '../../Pages/Reports/ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
+import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 //import CataShowWrapper from '../../context/CataShowWrapper';
 //import { Cata_Permissions } from '../enum/cata_permissions.enum';
 
@@ -236,7 +237,6 @@ const CatalogueProfitLossReport: React.FC = () => {
       doc.text('Profit & Loss Report', 14, 20);
       doc.setFontSize(11);
       doc.setTextColor(100);
-      doc.text(selectedPeriodText, 14, 30);
 
       autoTable(doc, {
         startY: 45,

@@ -61,30 +61,31 @@ const GlobalCatalogueModal = () => {
                     </button>
 
                     <button
-                        className="w-full py-3 bg-[#F97316] text-white rounded-sm text-sm font-bold uppercase tracking-wider active:scale-95 transition-all shadow-md"
-                        onClick={async () => {
-                            // 4. Share the dynamic URL
-                            if (navigator.share) {
-                                try {
-                                    await navigator.share({
-                                        title: "Check out my store",
-                                        url: shareUrl,
-                                    });
-                                    return;
-                                } catch (err) {
-                                    console.log("Share cancelled");
-                                }
-                            }
+    className="w-full py-3 bg-[#F97316] text-white rounded-sm text-sm font-bold uppercase tracking-wider active:scale-95 transition-all shadow-md"
+    onClick={async () => {
+        if (navigator.share) {
+            // Close modal FIRST so backdrop click can't interfere
+            try {
+                await navigator.share({
+                    title: "Check out my store",
+                    url: shareUrl,
+                });
+            } catch (err) {
+                // User cancelled — do nothing, no WhatsApp fallback
+                console.log("Share cancelled");
+            }
+            return; // Always return after native share attempt
+        }
 
-                            // Fallback to WhatsApp
-                            window.open(
-                                `https://wa.me/?text=${encodeURIComponent("Check out my store: " + shareUrl)}`,
-                                "_blank"
-                            );
-                        }}
-                    >
-                        Share Link
-                    </button>
+        // Only reaches here if navigator.share is unavailable (desktop)
+        window.open(
+            `https://wa.me/?text=${encodeURIComponent("Check out my store: " + shareUrl)}`,
+            "_blank"
+        );
+    }}
+>
+    Share Link
+</button>
                 </div>
             </div>
         </div>

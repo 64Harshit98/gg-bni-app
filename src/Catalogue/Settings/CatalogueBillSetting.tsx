@@ -58,6 +58,8 @@ const CatalogueBillSettings: React.FC = () => {
         companyLogo: '',
     });
 
+    console.log(businessInfo)
+
     const [settings, setSettings] = useState<BillSettingsData>({
         upiId: '',
         termsAndConditions: '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
@@ -83,23 +85,27 @@ const CatalogueBillSettings: React.FC = () => {
             try {
                 setIsLoading(true);
                 const companyId = currentUser.companyId;
+                const userId = currentUser.uid;
 
                 const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
                 const settingsDocRef = doc(db, 'companies', companyId, 'settings', 'bill');
+                const userDocRef = doc(db, 'companies', companyId, 'users', userId);
 
-                const [businessSnap, settingsSnap] = await Promise.all([
+                const [businessSnap, settingsSnap, userSnap] = await Promise.all([
                     getDoc(businessDocRef),
-                    getDoc(settingsDocRef)
+                    getDoc(settingsDocRef),
+                    getDoc(userDocRef)
                 ]);
 
                 const bData = businessSnap.exists() ? businessSnap.data() : {};
                 const sData = settingsSnap.exists() ? settingsSnap.data() : {};
+                const uData = userSnap.exists() ? userSnap.data() : {};
 
                 setBusinessInfo({
                     companyName: bData.businessName || bData.name || 'Not Set',
                     address: formatAddress(bData),
                     phone: bData.phoneNumber || bData.phone || 'Not Set',
-                    email: bData.email || 'Not Set',
+                    email: uData.email || bData.email || 'Not Set',
                     gstin: bData.gstin || '',
                     panNumber: bData.panNumber || '',
                     msmeNumber:

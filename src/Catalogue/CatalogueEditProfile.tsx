@@ -396,8 +396,8 @@ const EditProfilePage: React.FC = () => {
       setSubmitError('Phone number must be exactly 10 digits.');
       return;
     }
-    if (formData.msmeUdyamNumber && formData.msmeUdyamNumber.length !== 12) {
-      setSubmitError('MSME/Udyam number must be exactly 12 digits.');
+    if (formData.msmeUdyamNumber && formData.msmeUdyamNumber.length !== 19) {
+      setSubmitError('MSME/Udyam number must be exactly 19 digits.');
       return;
     }
     if (formData.panNumber && formData.panNumber.length !== 10) {
@@ -709,7 +709,13 @@ const EditProfilePage: React.FC = () => {
           {/* ── Error banner ── */}
           {submitError && (
             <div className="bg-red-50 border border-red-200 rounded-sm px-4 py-2.5 flex items-center gap-2">
-              <FiX size={14} className="text-red-500 shrink-0" />
+              <button
+                type="button"
+                onClick={() => setSubmitError(null)}
+                className="text-red-500 shrink-0 cursor-pointer"
+              >
+                <FiX size={14} />
+              </button>
               <p className="text-red-500 text-sm m-0">{submitError}</p>
             </div>
           )}

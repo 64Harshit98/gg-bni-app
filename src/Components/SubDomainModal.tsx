@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs, doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
-import { Loader2, CheckCircle, AlertCircle, X } from 'lucide-react';
+import { Loader2, CheckCircle, AlertCircle, X, Copy, Check } from 'lucide-react';
 
 interface SubdomainClaimModalProps {
     companyId: string;
@@ -12,6 +12,7 @@ interface SubdomainClaimModalProps {
 export default function SubdomainClaimModal({ companyId, forceOpen, onClose }: SubdomainClaimModalProps) {
     const [isVisible, setIsVisible] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [copied, setCopied] = useState(false);
 
     const [prefix, setPrefix] = useState('');
     const [suffix, setSuffix] = useState('shop'); // 'shop' or 'catalog'
@@ -164,6 +165,27 @@ export default function SubdomainClaimModal({ companyId, forceOpen, onClose }: S
                     <p className="text-sm text-gray-500 mt-2">
                         This is the unique URL you will share with your customers.
                     </p>
+                    {existingSubdomain && (
+                        <div className="flex items-center justify-between bg-gray-100 border border-gray-200 rounded-sm px-3 py-2 mb-4">
+                            <span className="text-xs font-bold text-gray-600 truncate">
+                                https://{existingSubdomain}.sellar.in
+                            </span>
+                            <button
+                                onClick={() => {
+                                    navigator.clipboard.writeText(`https://${existingSubdomain}.sellar.in`);
+                                    setCopied(true);
+                                    setTimeout(() => setCopied(false), 2000);
+                                }}
+                                className="ml-2 p-1 text-gray-500 hover:text-gray-800"
+                            >
+                                {copied ? (
+                                    <Check size={16} className="text-green-600" />
+                                ) : (
+                                    <Copy size={16} />
+                                )}
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 <div className="mb-6">

@@ -6,6 +6,27 @@ import { updateProfile } from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../../context/auth-context';
 import { FloatingLabelInput } from '../../Components/ui/FloatingLabelInput';
+
+// Add FloatingLabelSelect import (assumed location, adjust if needed)
+import { FloatingLabelSelect } from '../../Components/FloatingLabelSelect';
+// Example options, replace with real data as needed
+const businessTypeOptions = [
+  { value: '', label: 'Select type' },
+  { value: 'Private Limited', label: 'Private Limited' },
+  { value: 'Partnership', label: 'Partnership' },
+  { value: 'Sole Proprietor', label: 'Sole Proprietor' },
+  { value: 'LLP', label: 'LLP' },
+  { value: 'Other', label: 'Other' },
+];
+
+const businessCategoryOptions = [
+  { value: '', label: 'Select category' },
+  { value: 'Retail', label: 'Retail' },
+  { value: 'Wholesale', label: 'Wholesale' },
+  { value: 'Manufacturing', label: 'Manufacturing' },
+  { value: 'Services', label: 'Services' },
+  { value: 'Other', label: 'Other' },
+];
 import { FiCamera, FiCheck, FiX } from 'react-icons/fi';
 import { invalidateLogoCache } from '../../Catalogue/hooks/useCompanyLogo';
 import { logoCache } from '../../Catalogue/hooks/useCompanyLogo';
@@ -363,8 +384,8 @@ const EditProfilePage: React.FC = () => {
       setSubmitError('Phone number must be exactly 10 digits.');
       return;
     }
-    if (formData.msmeUdyamNumber && formData.msmeUdyamNumber.length !== 12) {
-      setSubmitError('MSME/Udyam number must be exactly 12 digits.');
+    if (formData.msmeUdyamNumber && formData.msmeUdyamNumber.length !== 19) {
+      setSubmitError('MSME/Udyam number must be exactly 19 digits.');
       return;
     }
     if (formData.panNumber && formData.panNumber.length !== 10) {
@@ -598,8 +619,24 @@ const EditProfilePage: React.FC = () => {
             <SectionCard title="Business Information" icon="">
               <div className="grid grid-cols-2 gap-4">
                 <FloatingLabelInput type="text" name="businessName" value={formData.businessName || ''} onChange={handleInputChange} label="Business Name" />
-                <FloatingLabelInput type="text" name="businessType" value={formData.businessType || ''} onChange={handleInputChange} label="Business Type" />
-                <FloatingLabelInput type="text" name="businessCategory" value={formData.businessCategory || ''} onChange={handleInputChange} label="Category" />
+                <FloatingLabelSelect
+                  id="businessType"
+                  label="Business Type"
+                  value={formData.businessType || ''}
+                  onChange={(e) =>
+                    setFormData(prev => ({ ...prev, businessType: e.target.value }))
+                  }
+                  options={businessTypeOptions}
+                />
+                <FloatingLabelSelect
+                  id="businessCategory"
+                  label="Category"
+                  value={formData.businessCategory || ''}
+                  onChange={(e) =>
+                    setFormData(prev => ({ ...prev, businessCategory: e.target.value }))
+                  }
+                  options={businessCategoryOptions}
+                />
                 <FloatingLabelInput
                         type="text"
                         name="gstin"
@@ -642,7 +679,13 @@ const EditProfilePage: React.FC = () => {
           {/* ── Error banner ── */}
           {submitError && (
             <div className="bg-red-50 border border-red-200 rounded-sm px-4 py-2.5 flex items-center gap-2">
-              <FiX size={14} className="text-red-500 shrink-0" />
+              <button
+                type="button"
+                onClick={() => setSubmitError(null)}
+                className="text-red-500 shrink-0 cursor-pointer"
+              >
+                <FiX size={14} />
+              </button>
               <p className="text-red-500 text-sm m-0">{submitError}</p>
             </div>
           )}

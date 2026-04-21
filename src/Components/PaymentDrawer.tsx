@@ -132,6 +132,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const [partyGST, setPartyGST] = useState('');
     const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
     const [discount, setDiscount] = useState(0);
+    const [discountPercent, setDiscountPercent] = useState(0);
     const [partyCredit, setPartyCredit] = useState(0);
     const [partyDebit, setPartyDebit] = useState(0);
     const [useCredit, setUseCredit] = useState(false);
@@ -211,6 +212,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
 
         setIsSubmitting(false);
         setDiscount(initialDiscount || 0);
+        setDiscountPercent(billTotal > 0 ? parseFloat((((initialDiscount || 0) / billTotal) * 100).toFixed(2)) : 0)
         setIsDiscountLocked(true);
         setPartyCredit(0);
         setUseCredit(false);
@@ -511,7 +513,17 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const handleDiscountPressStart = () => longPressTimer.current = setTimeout(() => setIsDiscountLocked(false), 500);
     const handleDiscountPressEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
     const handleDiscountClick = () => { if (isDiscountLocked) { setDiscountInfo("Cannot edit"); setTimeout(() => setDiscountInfo(null), 3000); } };
-    const handleDiscountChange = (e: React.ChangeEvent<HTMLInputElement>) => { setDiscount(parseFloat(e.target.value) || 0); };
+    const handleDiscountAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const amt = parseFloat(e.target.value) || 0;
+        setDiscount(amt);
+        setDiscountPercent(billTotal > 0 ? parseFloat(((amt / billTotal) * 100).toFixed(2)) : 0);
+    };
+
+    const handleDiscountPercentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const pct = parseFloat(e.target.value) || 0;
+        setDiscountPercent(pct);
+        setDiscount(parseFloat(((pct / 100) * billTotal).toFixed(2)));
+    };
 
     // --- RENDER HELPERS ---
     const renderSuggestions = () => {
@@ -727,25 +739,76 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 {/* Footer Totals */}
                 <div className="p-4 bg-white border-t border-gray-200 rounded-b-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-20">
                     {!isCalculator && (
-                        <>
-                            <div className="flex justify-between items-center mb-2 text-sm text-gray-500">
-                                <span>Qty: <strong className="text-gray-800">{totalQuantity}</strong></span>
-                                <div className="flex items-center gap-2">
-                                    <span>Subtotal:</span>
-                                    <span className="font-medium text-gray-800">₹{subtotal.toFixed(2)}</span>
-                                </div>
+
+                        <div className="flex justify-between items-center mb-2 text-sm text-gray-500">
+                            <span>Qty: <strong className="text-gray-800">{totalQuantity}</strong></span>
+                            <div className="flex items-center gap-2">
+                                <span>Subtotal:</span>
+                                <span className="font-medium text-gray-800">₹{subtotal.toFixed(2)}</span>
+                            </div>
+                        </div>
+                    )}
+                    {/* AFTER: Two synced inputs — % and ₹ — both locked by default */}
+                    <div
+                        className="flex justify-between items-center mb-2 text-sm"
+                        onMouseDown={handleDiscountPressStart}
+                        onMouseUp={handleDiscountPressEnd}
+                        onMouseLeave={handleDiscountPressEnd}
+                        onTouchStart={handleDiscountPressStart}
+                        onTouchEnd={handleDiscountPressEnd}
+                        onClick={handleDiscountClick}
+                    >
+                        <div className="flex items-center gap-2">
+                            <span className={`text-gray-500 ${isDiscountLocked ? '' : 'text-blue-600 font-semibold'}`}>
+                                Bill Discount
+                            </span>
+                            {isDiscountLocked
+                                ? <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                                </svg>
+                                : null
+                            }
+                            {discountInfo && (
+                                <span className="text-xs text-red-500 bg-red-50 px-1 rounded animate-pulse">
+                                    {discountInfo}
+                                </span>
+                            )}
+                        </div>
+
+                        {/* Twin inputs */}
+                        <div className="flex items-center gap-1">
+                            {/* Percent input */}
+                            <div className="relative flex items-center">
+                                <input
+                                    type="number"
+                                    placeholder="0"
+                                    value={discountPercent || ''}
+                                    onChange={handleDiscountPercentChange}
+                                    readOnly={isDiscountLocked}
+                                    className={`w-14 text-center bg-red-100 rounded-sm text-red-800 focus:outline-none pr-4 ${isDiscountLocked ? 'cursor-not-allowed' : 'border-b border-blue-300 font-semibold'
+                                        }`}
+                                />
+                                <span className="absolute right-1 text-xs text-red-400 font-bold pointer-events-none">%</span>
                             </div>
 
-                            <div className="flex justify-between items-center mb-2 text-sm" onMouseDown={handleDiscountPressStart} onMouseUp={handleDiscountPressEnd} onMouseLeave={handleDiscountPressEnd} onTouchStart={handleDiscountPressStart} onTouchEnd={handleDiscountPressEnd} onClick={handleDiscountClick}>
-                                <div className="flex items-center gap-2">
-                                    <span className={`text-gray-500 ${isDiscountLocked ? '' : 'text-blue-600 font-semibold'}`}>Bill Discount (₹)</span>
-                                    {isDiscountLocked && <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>}
-                                    {discountInfo && <span className="text-xs text-red-500 bg-red-50 px-1 rounded animate-pulse">{discountInfo}</span>}
-                                </div>
-                                <input id="discount" type="number" placeholder="0" value={discount || ''} onChange={handleDiscountChange} readOnly={isDiscountLocked} className={`w-20 text-center bg-red-100 rounded-sm text-red-800 focus:outline-none ${isDiscountLocked ? 'cursor-not-allowed' : 'border-b border-blue-300 font-semibold'}`} />
+                            <span className="text-gray-300 text-xs">|</span>
+
+                            {/* Amount input */}
+                            <div className="relative flex items-center">
+                                <span className="absolute left-1 text-xs text-red-400 font-bold pointer-events-none">₹</span>
+                                <input
+                                    id="discount"
+                                    type="number"
+                                    placeholder="0"
+                                    value={discount || ''}
+                                    onChange={handleDiscountAmountChange}
+                                    readOnly={isDiscountLocked}
+                                    className={`w-16 text-center bg-red-100 rounded-sm text-red-800 focus:outline-none pl-4 ${isDiscountLocked ? 'cursor-not-allowed' : 'border-b border-blue-300 font-semibold'
+                                        }`}
+                                />
                             </div>
-                        </>
-                    )}
+                        </div>
+                    </div>
 
                     <div className="flex justify-between items-center mb-1.5 min-h-[24px]">
                         <div className="flex-1 flex justify-start">

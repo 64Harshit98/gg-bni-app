@@ -17,6 +17,7 @@ import { useSalesSettings } from '../../context/SettingsContext';
 import { Spinner } from '../../constants/Spinner';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
 import { GenericCartList } from '../../Components/CartItem';
+import BarcodeLinkModal from '../../Components/BarcodeLinkModal';
 import { FiTrash2, FiX, FiChevronDown, FiEdit, FiCamera, FiDelete } from 'react-icons/fi';
 import { GenericBillFooter } from '../../Components/Footer';
 import { IconScanCircle } from '../../constants/Icons';
@@ -142,6 +143,9 @@ const Sales: React.FC = () => {
     }, [rawSettings, currentUser?.Subscription?.pack]);
     const invoiceToEdit = location.state?.invoiceData;
     const isEditMode = location.state?.isEditMode === true && !!invoiceToEdit;
+    const [barcodeToLink, setBarcodeToLink] = useState<string | null>(null);
+    const [isBarcodeLinkModalOpen, setIsBarcodeLinkModalOpen] = useState(false);
+    const [isLinkingBarcode, setIsLinkingBarcode] = useState(false);
     const [sortOrder, setSortOrder] = useState<'az' | 'za' | 'price_asc' | 'price_desc'>('az');
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
     const [savedBillData, setSavedBillData] = useState<{ id: string, number: string, invoiceData?: any } | null>(null);
@@ -150,14 +154,22 @@ const Sales: React.FC = () => {
     const [invoiceNumber, setInvoiceNumber] = useState<string>('');
     const isInvoiceNumberManuallyEdited = useRef(false);
     const [invoiceDate, setInvoiceDate] = useState<string>(() => {
+        // In edit mode, use the original invoice's date
+        if (location.state?.isEditMode === true && location.state?.invoiceData?.createdAt) {
+            const original = new Date(location.state.invoiceData.createdAt);
+            if (!isNaN(original.getTime())) {
+                const yyyy = original.getFullYear();
+                const mm = String(original.getMonth() + 1).padStart(2, '0');
+                const dd = String(original.getDate()).padStart(2, '0');
+                return `${yyyy}-${mm}-${dd}`;
+            }
+        }
         const today = new Date();
         const yyyy = today.getFullYear();
         const mm = String(today.getMonth() + 1).padStart(2, '0');
         const dd = String(today.getDate()).padStart(2, '0');
-        return `${yyyy}-${mm}-${dd}`; // Native date inputs require YYYY-MM-DD
+        return `${yyyy}-${mm}-${dd}`;
     });
-
-
 
     const [items, setItems] = useState<SalesItem[]>(() => {
         if (isEditMode) return [];
@@ -843,6 +855,36 @@ const Sales: React.FC = () => {
     const handleItemSelected = (selectedItem: Item | null) => {
         if (selectedItem) { addItemToCart(selectedItem); setGridSearchQuery(''); }
     };
+    const closeBarcodeLinkModal = () => {
+        setIsBarcodeLinkModalOpen(false);
+        setBarcodeToLink(null);
+    };
+
+    const handleLinkScannedBarcode = async (selectedItem: Item) => {
+        if (!barcodeToLink || !dbOperations) return;
+        if (!selectedItem.id) {
+            setModal({ message: 'Selected item is invalid. Please try another item.', type: State.ERROR });
+            return;
+        }
+        setIsLinkingBarcode(true);
+        try {
+            await dbOperations.updateItem(selectedItem.id, { barcode: barcodeToLink });
+            const updatedItem: Item = { ...selectedItem, barcode: barcodeToLink };
+            setAvailableItems(prev => {
+                const exists = prev.some(item => item.id === selectedItem.id);
+                if (!exists) return [...prev, updatedItem];
+                return prev.map(item => item.id === selectedItem.id ? { ...item, barcode: barcodeToLink } : item);
+            });
+            addItemToCart(updatedItem);
+            closeBarcodeLinkModal();
+            setModal({ message: `Barcode linked to "${selectedItem.name}".`, type: State.SUCCESS });
+        } catch (err) {
+            console.error('Failed to link barcode:', err);
+            setModal({ message: 'Failed to link barcode. Please try again.', type: State.ERROR });
+        } finally {
+            setIsLinkingBarcode(false);
+        }
+    };
     const handleBarcodeScanned = async (barcode: string) => {
         setIsScannerOpen(false);
         if (!dbOperations) return;
@@ -867,10 +909,16 @@ const Sales: React.FC = () => {
                     return exists ? prev : [...prev, itemToAdd!];
                 });
             } else {
-                setModal({
-                    message: `Item not found for barcode: "${cleanBarcode}"`,
-                    type: State.ERROR
-                });
+                const hasAnyItemWithoutBarcode = availableItems.some(item => !(item.barcode || '').trim());
+                if (!hasAnyItemWithoutBarcode) {
+                    setModal({
+                        message: `Item not found for barcode: "${cleanBarcode}"`,
+                        type: State.ERROR
+                    });
+                    return;
+                }
+                setBarcodeToLink(cleanBarcode);
+                setIsBarcodeLinkModalOpen(true);
             }
         } catch (e) {
             console.error(e);
@@ -990,24 +1038,32 @@ const Sales: React.FC = () => {
 
                 if (parts.length === 3) {
                     const year = parseInt(parts[0], 10);
-                    const month = parseInt(parts[1], 10) - 1; // Months are 0-indexed in JS
+                    const month = parseInt(parts[1], 10) - 1;
                     const day = parseInt(parts[2], 10);
 
-                    // 1. Get the exact current time right now (e.g., 2:45:30 PM)
-                    const finalDate = new Date();
+                    if (isEditMode && invoiceToEdit?.createdAt) {
+                        // In edit mode: restore the original timestamp exactly,
+                        // but allow the date portion to reflect any user change.
+                        const originalDate = new Date(invoiceToEdit.createdAt);
+                        if (!isNaN(originalDate.getTime())) {
+                            originalDate.setFullYear(year);
+                            originalDate.setMonth(month);
+                            originalDate.setDate(day);
+                            return originalDate; // keeps original HH:MM:SS
+                        }
+                    }
 
-                    // 2. Inject ONLY the Year, Month, and Day from the calendar input
+                    // New invoice: use selected date + current time
+                    const finalDate = new Date();
                     finalDate.setFullYear(year);
                     finalDate.setMonth(month);
                     finalDate.setDate(day);
-
-                    // Result: The user's selected date + the exact current time!
                     return finalDate;
                 }
             } catch (e) {
                 console.error("Date parsing error", e);
             }
-            return new Date(); // Safe fallback
+            return new Date();
         };
 
         const formatItemsForDB = (itemsToFormat: SalesItem[]) => {
@@ -1508,8 +1564,15 @@ const Sales: React.FC = () => {
             <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden pb-0">
                 {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
                 <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
+                <BarcodeLinkModal
+                    isOpen={isBarcodeLinkModalOpen}
+                    barcode={barcodeToLink}
+                    items={availableItems}
+                    isLinking={isLinkingBarcode}
+                    onClose={closeBarcodeLinkModal}
+                    onLink={handleLinkScannedBarcode}
+                />
                 {renderHeader()}
-
                 <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
 
                     {/* LEFT PANEL */}
@@ -1595,8 +1658,20 @@ const Sales: React.FC = () => {
                                 const lastAddedCartItem = matchingCartItems[matchingCartItems.length - 1];
                                 const isSelected = matchingCartItems.length > 0;
                                 const quantity = matchingCartItems.reduce((sum, i) => sum + i.quantity, 0);
+                                const isRoundingEnabled = salesSettings?.enableRounding ?? true;
+                                const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
+                                const allowItemDiscount = salesSettings?.enableItemWiseDiscount ?? true;
+                                const mrp = Number(item.mrp || 0);
+                                const itemSalesPrice = Number(item.salesPrice || 0);
+                                const presetDiscount = Number(item.discount || 0);
+                                let defaultPrice = mrp;
+                                if (itemSalesPrice > 0) {
+                                    defaultPrice = itemSalesPrice;
+                                } else if (presetDiscount > 0 && allowItemDiscount) {
+                                    defaultPrice = mrp * (1 - (presetDiscount / 100));
+                                }
+                                defaultPrice = applyRounding(defaultPrice, isRoundingEnabled, roundingInterval);
                                 const sp = lastAddedCartItem?.customPrice ?? item.salesPrice ?? item.mrp ?? 0;
-                                const mrp = item.mrp || 0;
                                 const lineSubtotal = Math.round((Number(sp) * quantity) * 100) / 100;
                                 const discPct = !hideMrp && mrp > 0 && Number(sp) < mrp
                                     ? Math.round(((mrp - Number(sp)) / mrp) * 100) : 0;
@@ -1919,6 +1994,7 @@ ${isSelected
                     initialDiscount={invoiceToEdit?.manualDiscount}
                     requireCustomerName={salesSettings?.requireCustomerName}
                     requireCustomerMobile={salesSettings?.requireCustomerMobile}
+                    allowDueBilling={salesSettings?.allowDueBilling ?? false}
                 />
                 <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
 
@@ -2061,7 +2137,7 @@ ${isSelected
                     enableShippingDetails={false}
                     enableExtraExpense={false}
                     enableNarration={false}
-                    allowDueBilling={false}
+                    allowDueBilling={salesSettings?.allowDueBilling ?? false}
                     requireCustomerName={false}
                     requireCustomerMobile={false}
                     isPartyNameEditable={true}
@@ -2079,7 +2155,14 @@ ${isSelected
         <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden pb-2">
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
             <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
-
+            <BarcodeLinkModal
+                isOpen={isBarcodeLinkModalOpen}
+                barcode={barcodeToLink}
+                items={availableItems}
+                isLinking={isLinkingBarcode}
+                onClose={closeBarcodeLinkModal}
+                onLink={handleLinkScannedBarcode}
+            />
             {renderHeader()}
 
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
@@ -2224,7 +2307,7 @@ ${isSelected
                 totalTax={taxAmount}
                 onPaymentComplete={handleSavePayment}
                 initialDiscount={invoiceToEdit?.manualDiscount}
-                allowDueBilling={salesSettings?.allowDueBilling}
+                allowDueBilling={salesSettings?.allowDueBilling ?? false}
                 isPartyNameEditable={!isEditMode}
                 initialPartyName={isEditMode ? invoiceToEdit?.partyName : ''}
                 initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : ''}

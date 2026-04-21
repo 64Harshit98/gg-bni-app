@@ -57,6 +57,52 @@ export const DEFAULT_PERMISSIONS_MAP = {
     ),
 };
 
+
+const PERMISSION_DESCRIPTIONS: Partial<Record<Permissions, string>> = {
+    [Permissions.ViewDashboard]: 'Access to the main dashboard overview and summary stats.',
+    [Permissions.ViewCatalogue]: 'Browse the full product catalogue.',
+    [Permissions.ViewFilter]: 'Use date and category filters on dashboard widgets.',
+    [Permissions.ViewHidebutton]: 'Toggle visibility of sensitive data on dashboard cards.',
+    [Permissions.ViewTopSalesperson]: 'See the top-performing salesperson widget.',
+    [Permissions.ViewAttendance]: 'View staff check-in/check-out attendance records.',
+    [Permissions.ViewSalescard]: 'See the today\'s sales summary card on dashboard.',
+    [Permissions.ViewSalesbarchart]: 'See the sales bar chart on the dashboard.',
+    [Permissions.Viewrestockcard]: 'See the low-stock/restock alert card on dashboard.',
+    [Permissions.ViewTopSoldItems]: 'See the best-selling items widget on dashboard.',
+    [Permissions.ViewTopCustomers]: 'See the top customers widget on dashboard.',
+    [Permissions.CreateSales]: 'Process new sales transactions at the POS.',
+    [Permissions.CreateSalesReturn]: 'Process refunds and returns on sales.',
+    [Permissions.ViewTransactions]: 'Browse the full transaction history log.',
+    [Permissions.ViewPaymentmethods]: 'View and select payment types during checkout.',
+    [Permissions.ViewSalesReport]: 'Access the detailed sales report page.',
+    [Permissions.ViewPNLReport]: 'Access the profit & loss report — contains sensitive financial data.',
+    [Permissions.ViewPurchaseReport]: 'Access the purchase history report.',
+    [Permissions.ViewItemReport]: 'Access per-item sales and stock reports.',
+    [Permissions.CreatePurchase]: 'Create new purchase/stock-in orders from suppliers.',
+    [Permissions.CreatePurchaseReturn]: 'Process returns on supplier purchases.',
+    [Permissions.ManageItems]: 'Add, edit, and delete inventory items.',
+    [Permissions.ManageItemGroup]: 'Create and manage item categories and groups.',
+    [Permissions.PrintQR]: 'Print QR code labels for inventory items.',
+    [Permissions.ViewAccount]: 'Access to the account/profile page.',
+    [Permissions.ManageEditProfile]: 'Update own profile details such as name and photo.',
+    [Permissions.SetPermissions]: 'Configure role-based permissions — high privilege action.',
+    [Permissions.ManageUsers]: 'Add, edit, or deactivate staff user accounts.',
+    [Permissions.CreateUsers]: 'Invite and create new staff accounts.',
+    [Permissions.HiddenProFeatures]: 'Unlocks all advanced Pro-tier features across the app.',
+    [Permissions.ViewReports]: 'Access the reports section in the navigation.',
+    [Permissions.ViewFilterbutton]:        'Use date and category filters on dashboard widgets.',
+    [Permissions.ViewPurchaseTransactions]:'View the purchase-side transaction history.',
+    [Permissions.ViewEditReturn]:          'View and edit processed return entries.',
+    [Permissions.ViewDownloadPDF]:         'Download transaction receipts and reports as PDF.',
+    [Permissions.SalesmanwiseBilling]:     'Assign a specific salesperson to each sale at billing.',
+    [Permissions.ItemwiseDiscount]:        'Apply different discount rates per item in a sale.',
+    [Permissions.PurchaseTaxtype]:         'Choose the tax type applied on purchase entries.',
+    [Permissions.ViewAddons]:              'Access and manage addon/plugin features.',
+    [Permissions.ChangeViewtype]:          'Switch between list and grid view on item screens.',
+    [Permissions.RoundingOff]:             'Automatically round off the final bill amount.',
+    [Permissions.LockDiscountPrice]:       'Prevent cashiers from manually editing discounted prices.',
+    [Permissions.AllowDueBilling]:         'Allow saving a sale with a pending/due payment.',
+};
 export const getDefaultPermissions = (role: string): Permissions[] => {
     // @ts-ignore - allows string indexing if ROLES enum types mismatch slightly
     if (DEFAULT_PERMISSIONS_MAP[role]) {
@@ -91,7 +137,6 @@ const permissionGroups = {
         title: 'Dashboard & General',
         permissions: [
             Permissions.ViewDashboard,
-            Permissions.ViewCatalogue,
             Permissions.ViewFilter,
             Permissions.ViewHidebutton,
             Permissions.ViewTopSalesperson,
@@ -105,10 +150,11 @@ const permissionGroups = {
         ],
     },
     sales: {
-        title: 'Sales & Reports',
+        title: 'Sales',
         permissions: [
             Permissions.CreateSales,
             Permissions.CreateSalesReturn,
+            Permissions.SalesmanwiseBilling,       
         ],
     },
     purchases: {
@@ -129,6 +175,7 @@ const permissionGroups = {
     reports: {
         title: 'Reports',
         permissions: [
+            Permissions.ViewReports,
             Permissions.ViewSalesReport,
             Permissions.ViewPNLReport,
             Permissions.ViewPurchaseReport,
@@ -142,30 +189,56 @@ const permissionGroups = {
             Permissions.ManageUsers,
         ],
     },
-    admin: {
-        title: 'Adder',
-        permissions: [
-            Permissions.ViewTransactions,
-            Permissions.CreateUsers,
-            Permissions.PrintQR,
-        ],
-    },
+    
     Account: {
         title: 'Account',
         permissions: [
             Permissions.ManageEditProfile,
+            Permissions.ViewAddons, 
+        ],
+    },
+    billing: {
+        title: 'Billing & POS Behaviour',
+        permissions: [
+            Permissions.ItemwiseDiscount,
+            Permissions.RoundingOff,
+            Permissions.LockDiscountPrice,
+            Permissions.AllowDueBilling,
+            Permissions.ChangeViewtype,
+            Permissions.ViewDownloadPDF,
+            Permissions.ViewEditReturn,
+            Permissions.ViewPurchaseTransactions,
+        ],
+    },
+     stockControl: {
+        title: 'Stock Control',
+        permissions: [
+            Permissions.AllownegativeStock,
+            Permissions.PurchaseTaxtype,
+        ],
+    },
+    userManagement: {
+        title: 'User Management',
+        permissions: [
+            Permissions.CreateUsers,
+            Permissions.ViewPaymentmethods,
+            Permissions.ViewFilterbutton,
+            Permissions.ViewAccount,
+            Permissions.PrintQR,
+            Permissions.ViewTransactions,
         ],
     },
 };
-
+const HIDDEN_FROM_UI_PERMISSIONS = [
+    Permissions.HiddenProFeatures,
+];
 const getUngroupedPermissions = (allPermissions: Permissions[]): Permissions[] => {
     const grouped = new Set<Permissions>();
     Object.values(permissionGroups).forEach(group => {
         group.permissions.forEach(perm => grouped.add(perm));
     });
-    return allPermissions.filter(perm => !grouped.has(perm));
+    return allPermissions.filter(perm => !grouped.has(perm) && !HIDDEN_FROM_UI_PERMISSIONS.includes(perm));
 };
-
 
 const ManagePermissionsPage: React.FC = () => {
     const [rolePermissions, setRolePermissions] = useState<RolePermissionsMap>({});
@@ -381,13 +454,22 @@ const ManagePermissionsPage: React.FC = () => {
                                                     />
                                                     <svg className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white opacity-0 peer-checked:opacity-100" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" width="12" height="12"><polyline points="20 6 9 17 4 12"></polyline></svg>
                                                 </div>
-                                                <div className="flex flex-col">
+                                                <div className="flex items-center gap-1.5">
                                                     <span className="text-sm text-gray-600 select-none font-medium">
                                                         {permission}
                                                     </span>
-                                                    {/* Visual Badge for basic users */}
+                                                    {PERMISSION_DESCRIPTIONS[permission] && (
+                                                        <div className="relative group">
+                                                            <span className="flex items-center justify-center w-3 h-3 rounded-full border border-gray-500 text-gray-500 text-[8px] cursor-default select-none">
+                                                                i
+                                                            </span>
+                                                            <div className="absolute left-5 top-1/2 -translate-y-1/2 z-50 hidden group-hover:block w-52 bg-white border border-gray-400 rounded-md shadow-md px-3 py-2 text-[11px] text-gray-500 leading-snug pointer-events-none">
+                                                                {PERMISSION_DESCRIPTIONS[permission]}
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                     {isLockedByPlan && (
-                                                        <span className="text-[10px] font-bold text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded w-max mt-0.5 border border-orange-200">
+                                                        <span className="text-[10px] font-bold text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded w-max border border-orange-200">
                                                             UPGRADE REQUIRED
                                                         </span>
                                                     )}
@@ -422,13 +504,22 @@ const ManagePermissionsPage: React.FC = () => {
                                                     />
                                                     <svg className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white opacity-0 peer-checked:opacity-100" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" width="12" height="12"><polyline points="20 6 9 17 4 12"></polyline></svg>
                                                 </div>
-                                                <div className="flex flex-col">
-                                                    <span className="text-sm text-gray-600 font-medium">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-sm text-gray-600 select-none font-medium">
                                                         {permission}
                                                     </span>
-                                                    {/* Visual Badge for basic users */}
+                                                    {PERMISSION_DESCRIPTIONS[permission] && (
+                                                        <div className="relative group">
+                                                            <span className="flex items-center justify-center w-3 h-3 rounded-full border border-gray-500 text-gray-500 text-[8px] cursor-default select-none">
+                                                                i
+                                                            </span>
+                                                            <div className="absolute left-5 top-1/2 -translate-y-1/2 z-50 hidden group-hover:block w-52 bg-white border border-gray-400 rounded-md shadow-md px-3 py-2 text-[11px] text-gray-500 leading-snug pointer-events-none">
+                                                                {PERMISSION_DESCRIPTIONS[permission]}
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                     {isLockedByPlan && (
-                                                        <span className="text-[10px] font-bold text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded w-max mt-0.5 border border-orange-200">
+                                                        <span className="text-[10px] font-bold text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded w-max border border-orange-200">
                                                             UPGRADE REQUIRED
                                                         </span>
                                                     )}

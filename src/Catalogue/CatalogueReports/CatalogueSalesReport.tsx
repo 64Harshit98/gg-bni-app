@@ -15,6 +15,8 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import DownloadChoiceModal from '../../Pages/Reports/ItemReportComponents/DownloadChoiceModal';
 import { IconSearch, IconClose } from '../../constants/Icons';
+import { CustomTable } from '../../Components/CustomTable';
+import type { TableColumn } from '../../Components/CustomTable';
 //import CataShowWrapper from '../../context/CataShowWrapper';
 //import { Cata_Permissions } from '../enum/cata_permissions.enum';
 
@@ -144,65 +146,37 @@ const PaymentChart: React.FC<{ data: { [key: string]: number } }> = ({ data }) =
     );
 };
 // --- END Reusable Components ---
-
-
-const SalesListTable: React.FC<{
-    sales: OrderRecord[]; // Use OrderRecord
-    sortConfig: { key: keyof OrderRecord; direction: 'asc' | 'desc' };
-    onSort: (key: keyof OrderRecord) => void;
-}> = ({ sales, sortConfig, onSort }) => {
-    const SortableHeader: React.FC<{ sortKey: keyof OrderRecord; children: React.ReactNode; className?: string; }> = ({ sortKey, children, className }) => {
-        const isSorted = sortConfig.key === sortKey;
-        const directionIcon = sortConfig.direction === 'asc' ? '▲' : '▼';
-
-        return (
-            <th className={`py-2 px-3 ${className || ''}`}>
-                <button onClick={() => onSort(sortKey)} className="flex items-center gap-2 uppercase">
-                    {children}
-                    <span className="w-0">
-                        {isSorted ? (
-                            <span className="text-[#F97316] text-xs">{directionIcon}</span>
-                        ) : (
-                            <span className="text-gray-400 hover:text-gray-600 text-xs inline-flex flex-col leading-3">
-                                <span>▲</span>
-                                <span className="-mt-1">▼</span>
-                            </span>
-                        )}
-                    </span>
-                </button>
-            </th>
-        );
-    };
-
-    return (
-        <div className="bg-white p-2 rounded-sm shadow-md mt-2">
-            <div className="max-h-96 overflow-y-auto">
-                <table className="w-full text-sm text-center">
-                    <thead className="text-xs text-slate-500 bg-slate-100 sticky top-0">
-                        <tr>
-                            <SortableHeader sortKey="createdAt">Date</SortableHeader>
-                            <SortableHeader sortKey="invoiceNumber">Order ID</SortableHeader> {/* Changed label */}
-                            <SortableHeader sortKey="partyName">Customer</SortableHeader> {/* Changed label */}
-                            <SortableHeader sortKey="items">Items</SortableHeader>
-                            <SortableHeader sortKey="totalAmount">Amount</SortableHeader>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                        {sales.map(sale => (
-                            <tr key={sale.id} className="hover:bg-slate-50">
-                                <td className="py-2 px-3 text-slate-600">{formatDate(sale.createdAt)}</td>
-                                <td className="py-2 px-3 text-slate-600">{sale.invoiceNumber}</td> {/* Use invoiceNumber */}
-                                <td className="py-2 px-3 font-medium">{sale.partyName}</td>
-                                <td className="py-2 px-3 text-slate-600">{sale.items.reduce((sum, i) => sum + i.quantity, 0)}</td>
-                                <td className="py-2 px-3 text-slate-600">₹{sale.totalAmount.toLocaleString('en-IN')}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    );
-};
+const tableColumns: TableColumn<OrderRecord>[] = [
+    {
+        header: 'Date',
+        accessor: (row) => formatDate(row.createdAt),
+        sortKey: 'createdAt',
+    },
+    {
+        header: 'Order ID',
+        accessor: 'invoiceNumber',
+        sortKey: 'invoiceNumber',
+    },
+    {
+        header: 'Customer',
+        accessor: 'partyName',
+        sortKey: 'partyName',
+    },
+    {
+        header: 'Items',
+        accessor: (row) =>
+            row.items.reduce((sum, i) => sum + i.quantity, 0),
+        sortKey: 'items',
+        className: 'text-center',
+    },
+    {
+        header: 'Amount',
+        accessor: (row) =>
+            `₹${row.totalAmount.toLocaleString('en-IN')}`,
+        sortKey: 'totalAmount',
+        className: 'text-right',
+    },
+];
 
 // --- Define Payment Modes for Orders ---
 // As your 'Orders' doc doesn't have paymentMethods, this will show 0 for now.
@@ -546,7 +520,7 @@ const OrdersReport: React.FC = () => {
                             autoFocus
                         />
 
-                        {/* ❌ CLOSE BUTTON (INPUT KE ANDAR RIGHT SIDE) */}
+                        {/*  CLOSE BUTTON (INPUT KE ANDAR RIGHT SIDE) */}
                         <button
                             onClick={() => {
                                 setSearchQuery('');
@@ -608,7 +582,17 @@ const OrdersReport: React.FC = () => {
                 </div>
             </div>
 
-            {isListVisible && <SalesListTable sales={filteredSales} sortConfig={sortConfig} onSort={handleSort} />}
+            {isListVisible && (
+                <CustomTable<OrderRecord>
+                    data={filteredSales}
+                    columns={tableColumns}
+                    sortConfig={sortConfig}
+                    onSort={handleSort}
+                    keyExtractor={(row) => row.id}
+                    emptyMessage="No orders found."
+                    accentColor="text-[#F97316]"
+                />
+            )}
         </div>
     );
 };

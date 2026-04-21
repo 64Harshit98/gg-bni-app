@@ -245,8 +245,523 @@ const OrdersReturnPage: React.FC = () => {
     );
   };
 
-  // ─── Process return ───────────────────────────────────────────────────────
+  const addExchangeItem = (itemToAdd: Item) => {
+    const mrp = Number(itemToAdd.mrp || 0);
+    const salesPrice = Number(itemToAdd.salesPrice || 0);
+    const presetDiscount = Number(itemToAdd.discount || 0);
+
+    let finalExchangePrice = mrp;
+    let calculatedDiscount = 0;
+
+    if (salesPrice > 0) {
+      finalExchangePrice = salesPrice;
+
+      if (mrp > 0) {
+        calculatedDiscount = ((mrp - salesPrice) / mrp) * 100;
+      }
+    }
+    else if (presetDiscount > 0) {
+      calculatedDiscount = presetDiscount;
+      finalExchangePrice = mrp * (1 - (presetDiscount / 100));
+    }
+    else {
+      finalExchangePrice = mrp;
+      calculatedDiscount = 0;
+    }
+
+
+
+    const existingStock = itemToAdd.stock ?? 0;
+
+    if (existingStock <= 0) {
+      setModal({
+        type: State.ERROR,
+        message: "This item is out of stock."
+      });
+      return;
+    }
+
+    setExchangeItems(prev => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        originalItemId: itemToAdd.id!,
+        name: itemToAdd.name,
+
+        quantity: (itemToAdd as any).unitMultiplier || 1,
+        unitMultiplier: (itemToAdd as any).unitMultiplier || 1,
+
+        unitPrice: finalExchangePrice,
+        amount: finalExchangePrice,
+
+        mrp: mrp,
+        salesPrice: salesPrice,
+
+        discount: parseFloat(calculatedDiscount.toFixed(2)),
+        basePrice: mrp,
+      }
+    ]);
+  };
+
+  const handleExchangeItemSelected = (item: any) => {
+    if (item) {
+      // FIX: Ensure purchasePrice is a number before passing to addExchangeItem
+      addExchangeItem({
+        ...item,
+        purchasePrice: item.purchasePrice ?? 0
+      });
+    }
+  };
+
+  const mappedExchangeItems: SalesItem[] = useMemo(() => {
+    return exchangeItems.map(item => {
+      const realItem = availableItems.find(i => i.id === item.originalItemId);
+
+      return {
+        id: item.id,
+        productId: item.originalItemId,
+        name: item.name,
+        mrp: item.mrp,
+        quantity: item.quantity,
+        discount: item.discount,
+        isEditable: true,
+        purchasePrice: 0,
+        tax: 0,
+        itemGroupId: 0,
+        stock: realItem?.stock ?? 0,
+        amount: item.amount,
+        barcode: '',
+        restockQuantity: 0,
+        customPrice: item.customPrice ?? item.unitPrice,
+      } as SalesItem;
+    });
+  }, [exchangeItems, availableItems]);
+
+  const refreshSelectedOrder = async (orderId: string) => {
+    if (!currentUser?.companyId) return;
+
+    const orderRef = doc(
+      db,
+      'companies',
+      currentUser.companyId,
+      'Orders',
+      orderId
+    );
+
+    const snap = await getDoc(orderRef);
+
+    if (snap.exists()) {
+      const updatedOrder = {
+        id: snap.id,
+        ...snap.data(),
+      } as Order;
+
+      // Update selected sale
+      setSelectedSale(updatedOrder);
+      handleSelectSale(updatedOrder);
+
+      // Update sales list
+      setSalesList(prev =>
+        prev.map(order =>
+          order.id === updatedOrder.id ? updatedOrder : order
+        )
+      );
+    }
+  };
+
+  // --- CALCULATION LOGIC (UI) ---
+  const {
+    totalReturnGross,
+    totalExchangeValue,
+    finalBalance,
+    discountDeducted
+  } = useMemo(() => {
+    const trg = itemsToReturn.reduce(
+      (sum, item) => sum + (item.amount || 0),
+      0
+    );
+
+    const tev = exchangeItems.reduce(
+      (sum, item) => sum + (item.amount || 0),
+      0
+    );
+
+    let dd = 0;
+
+    if (selectedSale) {
+      const baseItems = selectedSale.items || [];
+
+      const originalInvoiceTotal = baseItems.reduce(
+        (sum: number, item: any) =>
+          sum + Number(item.finalPrice || 0),
+        0
+      );
+
+      const originalManualDiscount =
+        Number(selectedSale.manualDiscount) || 0;
+
+      if (originalInvoiceTotal > 0 && originalManualDiscount > 0) {
+        const ratio = trg / originalInvoiceTotal;
+        dd = Math.round(originalManualDiscount * ratio * 100) / 100;
+      }
+    }
+
+    const totalReturnValue = trg - dd;
+
+    //  Mode-based final balance calculation
+    let fb = 0;
+
+    if (modeOfReturn === 'Exchange') {
+      fb = totalReturnValue - tev;
+    } else {
+      // Credit Note & Cash Refund
+      fb = totalReturnValue;
+    }
+
+    return {
+      totalReturnGross: trg,
+      totalReturnValue,
+      totalExchangeValue: tev,
+      finalBalance: fb,
+      discountDeducted: dd
+    };
+  }, [itemsToReturn, exchangeItems, selectedSale, modeOfReturn]);
+
+
+  // --- SAVE LOGIC ---
+  const saveReturnTransaction = async (
+    completionData?: Partial<PaymentCompletionData>
+  ) => {
+    if (!currentUser || !currentUser.companyId || !selectedSale) return;
+
+    setIsLoading(true);
+    const companyId = currentUser.companyId;
+
+    try {
+      const batch = writeBatch(db);
+      const saleRef = doc(db, 'companies', companyId, 'Orders', selectedSale.id);
+
+      // --- 0. FINAL PARTY DETAILS ---
+      const finalPartyName =
+        (completionData?.partyName || partyName || selectedSale.userName || '').trim();
+
+      const finalPartyNumber =
+        (completionData?.partyNumber || partyNumber || '').trim();
+
+      // --- 1. ORIGINAL ITEMS MAP ---
+      const originalItemsMap = new Map<string, any>();
+
+      (selectedSale.items || []).forEach((item: any) => {
+        const safeId = item.id;
+        const qty = Number(item.quantity) || 1;
+        const total = Number(item.finalPrice || item.amount || 0);
+        const unit = Number(item.customPrice ?? item.unitPrice ?? item.salesPrice ?? item.mrp) || (qty > 0 ? total / qty : 0);
+
+        originalItemsMap.set(safeId, {
+          ...item,
+          _effectiveUnitPrice: unit
+        });
+      });
+
+
+      const originalInvoiceTotal = (selectedSale.items || []).reduce(
+        (sum: number, item: any) => sum + Number(item.finalPrice || 0),
+        0
+      );
+
+      const validInventoryIds = new Set(availableItems.map(i => i.id));
+
+      // --- 2. HANDLE RETURNS ---
+      let returnedItemsGrossValue = 0;
+
+      // --- 2. HANDLE RETURNS ---
+      if (modeOfReturn !== 'Exchange') {
+        itemsToReturn.forEach(returnItem => {
+          const originalItem = originalItemsMap.get(returnItem.originalItemId);
+
+          if (originalItem) {
+            originalItem.quantity -= returnItem.quantity;
+            returnedItemsGrossValue +=
+              originalItem._effectiveUnitPrice * returnItem.quantity;
+
+            if (originalItem.quantity <= 0) {
+              originalItemsMap.delete(returnItem.originalItemId);
+            }
+          }
+        });
+      }
+
+      // --- 3. HANDLE EXCHANGE ---
+      if (modeOfReturn === 'Exchange') {
+        // 🔁 remove returned items first
+        itemsToReturn.forEach(returnItem => {
+          const originalItem = originalItemsMap.get(returnItem.originalItemId);
+
+          if (originalItem) {
+            originalItem.quantity -= returnItem.quantity;
+
+            if (originalItem.quantity <= 0) {
+              originalItemsMap.delete(returnItem.originalItemId);
+            }
+          }
+        });
+      }
+
+      // ➕ add exchange items
+      if (modeOfReturn === 'Exchange') {
+        exchangeItems.forEach(exchangeItem => {
+          const existingItem = originalItemsMap.get(exchangeItem.originalItemId);
+
+          if (existingItem) {
+            existingItem.quantity += exchangeItem.quantity;
+          } else {
+            originalItemsMap.set(exchangeItem.originalItemId, {
+              id: exchangeItem.originalItemId,
+              name: exchangeItem.name,
+              mrp: exchangeItem.mrp,
+              quantity: exchangeItem.quantity,
+              discount: exchangeItem.discount || 0,
+              finalPrice: exchangeItem.amount,
+              amount: exchangeItem.amount,
+              unitPrice:
+                exchangeItem.amount / exchangeItem.quantity || exchangeItem.mrp,
+              _effectiveUnitPrice:
+                exchangeItem.amount / exchangeItem.quantity || exchangeItem.mrp
+            });
+          }
+        });
+      }
+
+      // --- 3.5 HANDLE RETURN STOCK (ADD BACK) ---
+      itemsToReturn.forEach(returnItem => {
+        if (validInventoryIds.has(returnItem.originalItemId)) {
+          batch.update(
+            doc(db, 'companies', companyId, 'items', returnItem.originalItemId),
+            {
+              stock: firebaseIncrement(returnItem.quantity),
+              updatedAt: serverTimestamp()
+            }
+          );
+        }
+      });
+
+      // --- 3.6 HANDLE EXCHANGE STOCK (DEDUCT) ---
+      exchangeItems.forEach(exchangeItem => {
+        if (validInventoryIds.has(exchangeItem.originalItemId)) {
+          batch.update(
+            doc(db, 'companies', companyId, 'items', exchangeItem.originalItemId),
+            {
+              stock: firebaseIncrement(-exchangeItem.quantity),
+              updatedAt: serverTimestamp()
+            }
+          );
+        }
+      });
+
+      // --- 4. RECALCULATE BILL ---
+      const newItemsList = Array.from(originalItemsMap.values()).map(item => {
+        const safeUnit =
+          Number(item._effectiveUnitPrice) ||
+          Number(item.unitPrice) ||
+          Number(item.mrp)
+        0;
+
+        const lineTotal = safeUnit * Number(item.quantity);
+
+        const { _effectiveUnitPrice, ...clean } = item;
+
+        return {
+          ...clean,
+          unitPrice: safeUnit,
+          salesPrice: safeUnit,
+          finalPrice: lineTotal,
+          amount: lineTotal
+        };
+      });
+
+      const totals = newItemsList.reduce(
+        (acc, item) => {
+          const gross = item.mrp * item.quantity;
+          const discount = gross - item.finalPrice;
+          acc.subtotal += gross;
+          acc.totalItemDiscount += discount;
+          return acc;
+        },
+        { subtotal: 0, totalItemDiscount: 0 }
+      );
+
+      // --- 5. MANUAL DISCOUNT ---
+      const originalManualDiscount = Number(selectedSale.manualDiscount) || 0;
+      let discountDeduction = 0;
+
+      if (
+        originalManualDiscount > 0 &&
+        originalInvoiceTotal > 0 &&
+        returnedItemsGrossValue > 0
+      ) {
+        discountDeduction =
+          (returnedItemsGrossValue / originalInvoiceTotal) *
+          originalManualDiscount;
+      }
+
+      discountDeduction = Math.round(discountDeduction * 100) / 100;
+      const newManualDiscount = Math.max(
+        0,
+        originalManualDiscount - discountDeduction
+      );
+
+      const updatedFinalAmount =
+        totals.subtotal - totals.totalItemDiscount - newManualDiscount;
+
+      // --- 6. PAYMENTS ---
+      const updatedPaymentMethods = {
+        ...(selectedSale.paymentMethods || {})
+      };
+
+      if (completionData?.paymentDetails) {
+        Object.entries(completionData.paymentDetails).forEach(
+          ([mode, amount]) => {
+            if (mode.toLowerCase() !== 'due') {
+              updatedPaymentMethods[mode] =
+                (updatedPaymentMethods[mode] || 0) + Number(amount);
+            }
+          }
+        );
+      }
+
+
+      const paid = Object.entries(updatedPaymentMethods)
+        .filter(([k]) => k !== 'due')
+        .reduce((sum, [, v]) => sum + Number(v), 0);
+
+      updatedPaymentMethods.due = Math.max(0, updatedFinalAmount - paid);
+
+      // --- 7. HISTORY ---
+
+      const cleanItem = (item: any) => ({
+        id: item.id || '',
+        originalItemId: item.originalItemId || '',
+        name: item.name || '',
+        mrp: item.mrp ?? 0,
+        quantity: item.quantity ?? 1,
+        unitPrice: item.unitPrice ?? 0,
+        amount: item.amount ?? 0,
+        discount: item.discount ?? 0,
+      });
+      const cleanPaymentDetails = completionData?.paymentDetails
+        ? Object.fromEntries(
+          Object.entries(completionData.paymentDetails).filter(
+            ([_, v]) => v !== undefined && v !== null
+          )
+        )
+        : null;
+
+      const returnHistoryRecord = {
+        id: crypto.randomUUID(),
+        returnedAt: new Date(),
+        returnedItems: itemsToReturn.map(cleanItem),
+        exchangeItems: exchangeItems.map(cleanItem),
+        finalBalance,
+        discountDeducted: discountDeduction,
+        modeOfReturn,
+        paymentDetails: cleanPaymentDetails,
+        partyName: finalPartyName,
+        partyNumber: finalPartyNumber
+      };
+
+      const safeReturnHistoryRecord = JSON.parse(
+        JSON.stringify(returnHistoryRecord)
+      );
+
+      // --- 9. CUSTOMER LEDGER ---
+      if (finalPartyNumber.length >= 3 && finalBalance > 0) {
+        batch.set(
+          doc(db, 'companies', companyId, 'customers', finalPartyNumber),
+          {
+            name: finalPartyName,
+            number: finalPartyNumber,
+            creditBalance: firebaseIncrement(finalBalance),
+            lastUpdatedAt: serverTimestamp()
+          },
+          { merge: true }
+        );
+      }
+
+      const actualPaid = selectedSale.paidAmount ?? 0;
+      const newStatus =
+        updatedFinalAmount > 0 && actualPaid >= updatedFinalAmount
+          ? 'Paid'
+          : 'Completed';
+
+      const isUnpaidOrder = (selectedSale.paidAmount ?? 0) === 0;
+
+      batch.update(saleRef, {
+        items: newItemsList,
+        totalAmount: updatedFinalAmount,
+
+        manualDiscount: newManualDiscount,
+        paymentMethods: {
+          ...updatedPaymentMethods,
+          due: isUnpaidOrder
+            ? Math.max(0, selectedSale.totalAmount - returnedItemsGrossValue)
+            : updatedPaymentMethods.due
+        },
+
+        paidAmount: actualPaid,
+        status: isUnpaidOrder ? 'Completed' : newStatus,
+
+        returnHistory: arrayUnion(safeReturnHistoryRecord),
+        updatedAt: serverTimestamp()
+      });
+      await batch.commit();
+      await refreshSelectedOrder(selectedSale.id);
+      setOriginalSaleItems(
+        newItemsList.map((item: any) => ({
+          id: item.id,
+          originalItemId: item.id,
+          name: item.name,
+          quantity: item.quantity,
+          originalQuantity: item.quantity,
+          unitPrice: item.unitPrice,
+          amount: item.finalPrice,
+          mrp: item.mrp
+        }))
+      );
+      setSelectedSale(prev =>
+        prev
+          ? {
+            ...prev,
+            items: newItemsList
+          }
+          : prev
+      );
+      setSelectedReturnIds(new Set());
+      setModal({
+        type: State.SUCCESS,
+        message: 'Return processed successfully!'
+      });
+      setTimeout(() => navigate(ROUTES.ORDERDETAILS), 1500);
+    } catch (err: any) {
+      console.error(err);
+      setModal({
+        type: State.ERROR,
+        message: `Failed: ${err.message}`
+      });
+    } finally {
+      setIsLoading(false);
+      setIsDrawerOpen(false);
+    }
+  };
+
+  useEffect(() => {
+    if (modeOfReturn !== 'Exchange') {
+      setExchangeItems([]);
+    }
+  }, [modeOfReturn]);
+
   const handleProcessReturn = () => {
+
+    //  No items selected at all
     if (itemsToReturn.length === 0 && exchangeItems.length === 0) {
       return setModal({ type: State.ERROR, message: 'No items selected.' });
     }
@@ -272,13 +787,26 @@ const OrdersReturnPage: React.FC = () => {
       return;
     }
 
-    finalBalance < 0 ? setIsDrawerOpen(true) : saveReturnTransaction();
+    // 🔄 FALLBACK (Safety Check)
+    if (finalBalance < 0) {
+      setIsDrawerOpen(true);
+    } else {
+      saveReturnTransaction();
+    }
   };
 
-  // ─── Render ───────────────────────────────────────────────────────────────
-  if (isLoading) {
-    return <div className="flex min-h-screen items-center justify-center">Loading...</div>;
-  }
+  const getBalanceLabel = () => {
+    if (finalBalance < 0) return 'Payment Due';
+    if (modeOfReturn === 'Cash Refund') return 'Refund Amount';
+    return 'Credit Due';
+  };
+
+  const remainingCredit = selectedSale
+    ? getRemainingCreditNote(selectedSale)
+    : 0;
+
+  if (isLoading) return <div className="flex min-h-screen items-center justify-center">Loading...</div>;
+
 
   return (
     <div className="flex flex-col h-screen w-full bg-gray-100 overflow-hidden">
@@ -480,6 +1008,7 @@ const OrdersReturnPage: React.FC = () => {
         onPaymentComplete={saveReturnTransaction}
         initialPartyName={partyName}
         initialPartyNumber={partyNumber}
+        initialCreditOverride={remainingCredit}
       />
     </div>
   );

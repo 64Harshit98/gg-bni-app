@@ -525,6 +525,7 @@ const CatalogueProfitLossReport: React.FC = () => {
 
       {isListVisible && (
         <CustomTable<TransactionDetail>
+          accentColor="text-[#F97316]"
           data={filteredTransactions}
           columns={tableColumns}
           keyExtractor={(item) => item.id}

@@ -49,6 +49,12 @@ const CatalogueItemReport: React.FC = () => {
     isDownloadModalOpen,
   } = useItemReport();
 
+  const getGroupName = (id?: string) => {
+    if (!id) return UNASSIGNED_GROUP_NAME;
+    const group = itemGroups.find((g) => g.id === id);
+    return group ? group.name : UNASSIGNED_GROUP_NAME;
+  };
+
   const { filteredItems, summary } = useMemo(() => {
     let newFilteredItems = items.filter((item) => {
       if (!appliedItemGroupId) return true;
@@ -76,8 +82,15 @@ const CatalogueItemReport: React.FC = () => {
     newFilteredItems.sort((a, b) => {
       const key = sortConfig.key;
       const direction = sortConfig.direction === 'asc' ? 1 : -1;
-      const valA = a[key] ?? '';
-      const valB = b[key] ?? '';
+      const valA =
+        key === "itemGroupId"
+          ? getGroupName(a.itemGroupId)
+          : a[key] ?? '';
+
+      const valB =
+        key === "itemGroupId"
+          ? getGroupName(b.itemGroupId)
+          : b[key] ?? '';
 
       if (typeof valA === 'string' && typeof valB === 'string')
         return valA.localeCompare(valB) * direction;
@@ -127,12 +140,6 @@ const CatalogueItemReport: React.FC = () => {
     const direction =
       sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc';
     setSortConfig({ key, direction });
-  };
-
-  const getGroupName = (id?: string) => {
-    if (!id) return UNASSIGNED_GROUP_NAME;
-    const group = itemGroups.find((g) => g.id === id);
-    return group ? group.name : UNASSIGNED_GROUP_NAME;
   };
 
   const prepareExportData = (item: Item) => {
@@ -212,8 +219,8 @@ const CatalogueItemReport: React.FC = () => {
       // reset styles
       doc.setTextColor(0, 0, 0);
       doc.setFontSize(14);
-      
-  
+
+
       const pageHeight = doc.internal.pageSize.getHeight();
 
       // --- 1. BRAND ACCENT BAR ---
@@ -314,7 +321,7 @@ const CatalogueItemReport: React.FC = () => {
         },
         // --- 5. PAGINATION FOOTER ---
         didDrawPage: function () {
-          const pageCount = doc.internal.getNumberOfPages();
+          const pageCount = (doc.internal as any).getNumberOfPages();
           doc.setFontSize(9);
           doc.setTextColor(156, 163, 175); // gray-400
           // Draw page number at the bottom right
@@ -536,6 +543,7 @@ const CatalogueItemReport: React.FC = () => {
 
       {isListVisible && (
         <CustomTable<Item>
+          accentColor="text-[#F97316]"
           data={filteredItems}
           columns={tableColumns}
           keyExtractor={(item) => item.id || Math.random()}

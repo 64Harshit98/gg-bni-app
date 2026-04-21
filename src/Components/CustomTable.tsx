@@ -16,6 +16,7 @@ interface CustomTableProps<T> {
   onSort?: (key: keyof T) => void;
   className?: string;
   emptyMessage?: string;
+  accentColor?:string;
 }
 
 export const CustomTable = <T,>({
@@ -26,6 +27,7 @@ export const CustomTable = <T,>({
   onSort,
   className,
   emptyMessage = 'No data available',
+  accentColor = 'text-blue-600',
 }: CustomTableProps<T>) => {
   const ASC_ICON = '∧';
   const DESC_ICON = '∨';
@@ -39,7 +41,7 @@ export const CustomTable = <T,>({
     return (
       <span className="w-4 ml-1 inline-block">
         {isSorted ? (
-          <span className="text-blue-600 text-xs font-bold">
+          <span className={`${accentColor} text-xs font-bold`}>
             {directionIcon}
           </span>
         ) : (

@@ -70,6 +70,7 @@ interface PaymentDrawerProps {
     enableExtraExpense?: boolean;
     enableNarration?: boolean;
     enableCustomerDetails?: boolean;
+    initialCreditOverride?: number;
 }
 
 const SESSION_STORAGE_NAME_KEY = 'sessionPartyName';
@@ -89,6 +90,7 @@ interface PartySuggestion {
 }
 
 const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
+    initialCreditOverride,
     isOpen,
     onClose,
     mode = 'sale',
@@ -197,6 +199,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         return diff > 0.01 ? parseFloat(diff.toFixed(2)) : 0;
     }, [netPayable, totalPaymentReceived]);
 
+
     // --- AUTO-SYNC SHIPPING DETAILS ---
     useEffect(() => {
         if (isSameAsBilling) {
@@ -215,6 +218,9 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         setDiscountPercent(billTotal > 0 ? parseFloat((((initialDiscount || 0) / billTotal) * 100).toFixed(2)) : 0)
         setIsDiscountLocked(true);
         setPartyCredit(0);
+        if (initialCreditOverride !== undefined) {
+            setPartyCredit(initialCreditOverride);
+        }
         setUseCredit(false);
         setPartyDebit(0);
         setUseDebit(false);
@@ -369,7 +375,11 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         setPartyNumber(party.number);
         setPartyAddress(party.address || '');
         setPartyGST(party.gstNumber || '');
-        setPartyCredit(party.creditBalance || 0);
+        setPartyCredit(
+            initialCreditOverride !== undefined
+                ? initialCreditOverride
+                : (party.creditBalance || 0)
+        );
         setPartyDebit(party.debitBalance || 0);
         setShippingName(party.shippingName || '');
         setShippingNumber(party.shippingNumber || '');
@@ -536,7 +546,11 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                             <div className="font-bold text-gray-800">{party.name}</div>
                             <div className="text-xs text-gray-500">{party.number}</div>
                         </div>
-                        {party.creditBalance && party.creditBalance > 0 && (<span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full">Credit: ₹{party.creditBalance}</span>)}
+                        {party.creditBalance && party.creditBalance > 0 && (<span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full">Credit: ₹{
+                            initialCreditOverride !== undefined
+                                ? initialCreditOverride
+                                : (party.creditBalance || 0)
+                        }</span>)}
                     </div>
                 ))}
             </div>

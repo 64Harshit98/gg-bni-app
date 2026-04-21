@@ -28,6 +28,23 @@ export default function useCustomerReport() {
     message: '',
   });
 
+  const getRemainingCreditNote = (order: any) => {
+    let totalCredit = 0;
+
+    if (order.returnHistory && order.returnHistory.length > 0) {
+      order.returnHistory.forEach((r: any) => {
+        totalCredit += Number(r.finalBalance || 0);
+      });
+    }
+
+    const usedCredit =
+      order.paymentMethods?.["CREDIT NOTE"] ||
+      order.paymentMethods?.["Credit Note"] ||
+      0;
+
+    return Math.max(0, totalCredit - usedCredit);
+  };
+
   useEffect(() => {
     const today = new Date();
     const formatted = formatDateForInput(today);
@@ -89,6 +106,9 @@ export default function useCustomerReport() {
                     ? data.createdAt.toDate()
                     : new Date(),
                 isValidOrder,
+                returnHistory: data.returnHistory || [],
+                creditNoteRemaining: getRemainingCreditNote(data),
+                paymentMethods: data.paymentMethods || {},
               };
             })
             .filter((s) => s.isValidOrder)

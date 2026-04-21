@@ -304,23 +304,9 @@ const MyShop: React.FC = () => {
                 setError(null);
 
                 const fetchedItemGroups = await dbOperations.getItemGroups();
-                const fetchedItems = await dbOperations.syncItems();
 
                 let groups = fetchedItemGroups || [];
                 setAllItemGroups(groups);
-                setAllItems(
-                    (fetchedItems || []).map(item => ({
-                        ...item,
-                        isListed: item.isListed ?? false
-                    }))
-                );
-
-                if (Array.isArray(fetchedItems) && fetchedItems.length > 0) {
-                    const allLive = fetchedItems.every(item => item?.isListed === true);
-                    setIsAllLive(allLive);
-                } else {
-                    setIsAllLive(false);
-                }
 
                 const businessRef = doc(db, "companies", companyId, "business_info", companyId);
                 const businessSnap = await getDoc(businessRef);
@@ -343,6 +329,27 @@ const MyShop: React.FC = () => {
 
         fetchData();
     }, [authLoading, currentUser, dbOperations, companyId]);
+
+
+    useEffect(() => {
+        if (!dbOperations) return;
+
+        const unsubscribe = dbOperations.listenToItems((data) => {
+            setAllItems([...data].map(item => ({
+                ...item,
+                isListed: item.isListed ?? false,
+                stock: Number(item.stock || 0)
+            })));
+        });
+
+        return () => {
+            if (unsubscribe) unsubscribe();
+        };
+    }, [dbOperations]);
+
+    useEffect(() => {
+        console.log("Updated Items:", allItems);
+    }, [allItems]);
 
     const filteredItems = useMemo(() => {
         const activeCat = resolvedGroupId || selectedCategory;
@@ -665,7 +672,7 @@ const MyShop: React.FC = () => {
                         return (
                             <div
                                 id={item.id}
-                                key={item.id}
+                                key={item.id + "-" + item.stock}
                                 onClick={() => handleOpenDetailDrawer(item)}
                                 className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col h-full transition-all duration-300 relative group hover:shadow-md cursor-pointer ${highlightedId === item.id ? 'ring-3 ring-orange-600 shadow-lg scale-110 z-50 border-[#F97316]' : 'border-gray-100'}  ${!isViewMode ? 'ring-1 ring-[#F97316]/10' : ''}`}>
                                 <div className="aspect-square flex items-center justify-center relative overflow-hidden">
@@ -675,7 +682,7 @@ const MyShop: React.FC = () => {
                                         </div>
                                     )}
                                     <div className="absolute top-2 left-2 text-white rounded-sm text-[10px] font-black uppercase tracking-tight shadow-md">
-                                        <StockIndicator stock={item.stock || 0} />
+                                        <StockIndicator stock={Number(item.stock) || 0} />
                                     </div>
                                     {item.imageUrl ? (
                                         <img src={item.imageUrl} alt={item.name} className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" />

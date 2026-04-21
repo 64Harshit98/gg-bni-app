@@ -58,6 +58,13 @@ const CatalogueCustomerReport: React.FC = () => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
+  const [sortConfig, setSortConfig] = useState<{
+    key: keyof CustomerRow;
+    direction: 'asc' | 'desc';
+  }>({
+    key: 'totalSales',
+    direction: 'desc',
+  });
 
   /* ---------- CUSTOMER AGGREGATION ---------- */
   const customerRows: CustomerRow[] = useMemo(() => {
@@ -74,6 +81,7 @@ const CatalogueCustomerReport: React.FC = () => {
           totalBills: 0,
           totalSales: 0,
           totalDue: 0,
+          creditNoteAmount: 0,
         });
       }
 
@@ -81,11 +89,12 @@ const CatalogueCustomerReport: React.FC = () => {
       row.totalBills += 1;
       row.totalSales += sale.totalAmount;
       row.totalDue += sale.dueAmount || 0;
+      row.creditNoteAmount += sale.creditNoteRemaining || 0;
     });
 
     let result = Array.from(map.values());
 
-    // 🔍 SEARCH FILTER
+    //  SEARCH FILTER
     const trimmedQuery = searchQuery.toLowerCase().trim();
 
     if (trimmedQuery) {
@@ -97,6 +106,29 @@ const CatalogueCustomerReport: React.FC = () => {
 
     return result;
   }, [filteredSales, searchQuery]);
+
+  const sortedCustomerRows = useMemo(() => {
+    const data = [...customerRows];
+
+    data.sort((a, b) => {
+      const direction = sortConfig.direction === 'asc' ? 1 : -1;
+
+      const valA = a[sortConfig.key] ?? '';
+      const valB = b[sortConfig.key] ?? '';
+
+      if (typeof valA === 'string' && typeof valB === 'string') {
+        return valA.localeCompare(valB) * direction;
+      }
+
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return (valA - valB) * direction;
+      }
+
+      return 0;
+    });
+
+    return data;
+  }, [customerRows, sortConfig]);
 
   /* ---------- SUMMARY METRICS ---------- */
   const metrics = useMemo(() => {
@@ -114,6 +146,11 @@ const CatalogueCustomerReport: React.FC = () => {
       0
     );
 
+    const totalCreditNote = customerRows.reduce(
+      (sum, c) => sum + (c.creditNoteAmount || 0),
+      0
+    );
+
     const averageSalePerCustomer =
       totalCustomers > 0 ? totalSales / totalCustomers : 0;
 
@@ -122,6 +159,7 @@ const CatalogueCustomerReport: React.FC = () => {
       totalBills,
       totalDue,
       totalSales,
+      totalCreditNote,
       averageSalePerCustomer,
     };
   }, [customerRows]);
@@ -138,12 +176,23 @@ const CatalogueCustomerReport: React.FC = () => {
     });
   };
 
+  const handleSort = (key: keyof CustomerRow) => {
+    let direction: 'asc' | 'desc' = 'asc';
+
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+
+    setSortConfig({ key, direction });
+  };
+
   /* ---------- EXPORT HELPERS ---------- */
   const prepareExportData = (row: CustomerRow) => ({
     customerName: row.customerName,
     totalBills: row.totalBills,
     totalSales: row.totalSales,
     totalDue: row.totalDue,
+    creditNoteAmount: row.creditNoteAmount,
   });
 
   const downloadAsExcel = () => {
@@ -197,8 +246,6 @@ const CatalogueCustomerReport: React.FC = () => {
       }
 
       doc.setFontSize(16);
-      
-      const pageHeight = doc.internal.pageSize.getHeight();
 
       // ===== CLEAN GENERATION TAG =====
       const generatedAt = new Date().toLocaleString();
@@ -237,7 +284,7 @@ const CatalogueCustomerReport: React.FC = () => {
 
       // --- 1. BRAND ACCENT BAR ---
       // Uses the #F97316 orange from your UI
-      doc.setFillColor(249, 115, 22); 
+      doc.setFillColor(249, 115, 22);
       doc.rect(0, 0, pageWidth, 6, 'F');
 
       // --- 2. HEADER SECTION ---
@@ -250,11 +297,11 @@ const CatalogueCustomerReport: React.FC = () => {
       doc.setFontSize(10);
       doc.setTextColor(107, 114, 128); // gray-500
       doc.setFont('helvetica', 'normal');
-      
+
       const generationDate = new Date().toLocaleDateString('en-IN', {
         year: 'numeric', month: 'short', day: 'numeric',
       });
-      
+
       let subtitleText = `Generated on: ${generationDate}`;
       if (startDate && endDate) {
         subtitleText += `   |   Period: ${startDate} to ${endDate}`;
@@ -264,86 +311,64 @@ const CatalogueCustomerReport: React.FC = () => {
       // --- 3. AUTOTABLE GENERATION ---
       autoTable(doc, {
         startY: 38,
-        head: [['CUSTOMER', 'PHONE', 'BILLS', 'SALES (Rs.)', 'DUE (Rs.)']],
-        body: customerRows.map((c) => {
-          const formattedName = c.customerName
-            ? c.customerName.charAt(0).toUpperCase() + c.customerName.slice(1).toLowerCase()
-            : 'N/A';
 
-          return [
-            formattedName,
-            c.customerNumber || 'N/A',
-            c.totalBills.toString(),
-            c.totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-            c.totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-          ];
-        }),
-        foot: [
-          [
-            'TOTAL',
-            '-',
-            metrics.totalBills.toString(),
-            metrics.totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-            metrics.totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-          ]
-        ],
-        theme: 'plain',
+        head: [['CUSTOMER', 'PHONE', 'BILLS', 'SALES', 'DUE', 'CREDIT NOTE']],
+
+        body: customerRows.map((c) => [
+          c.customerName || 'N/A',
+          c.customerNumber || 'N/A',
+          c.totalBills.toString(),
+          c.totalSales.toLocaleString('en-IN'),
+          c.totalDue.toLocaleString('en-IN'),
+          (c.creditNoteAmount || 0).toLocaleString('en-IN'),
+        ]),
+
+        foot: [[
+          'TOTAL',
+          '-',
+          metrics.totalBills.toString(),
+          metrics.totalSales.toLocaleString('en-IN'),
+          metrics.totalDue.toLocaleString('en-IN'),
+          (metrics.totalCreditNote || 0).toLocaleString('en-IN'),
+        ]],
+
+        theme: 'grid', // 🔥 change
+
+        tableWidth: 'auto',
+
         styles: {
           font: 'helvetica',
-          cellPadding: 7,
-          fontSize: 10,
-          textColor: [55, 65, 81], // gray-700
+          fontSize: 9,
+          cellPadding: 5,
+          overflow: 'linebreak', // 🔥 important
+          cellWidth: 'wrap',
         },
+
         headStyles: {
-          fillColor: [249, 250, 251], // gray-50
-          textColor: [17, 24, 39], // gray-900
-          fontStyle: 'bold',
-          halign: 'center',
-          lineWidth: { top: 1, bottom: 1 },
-          lineColor: [229, 231, 235], // gray-200
-        },
-        footStyles: {
-          fillColor: [255, 255, 255],
+          fillColor: [249, 250, 251],
           textColor: [17, 24, 39],
           fontStyle: 'bold',
+          halign: 'center',
+        },
+
+        footStyles: {
+          fontStyle: 'bold',
           halign: 'right',
-          lineWidth: { top: 1, bottom: 2 }, // Thicker bottom line for totals
-          lineColor: [17, 24, 39],
         },
-        alternateRowStyles: {
-          fillColor: [252, 252, 252], // Extremely subtle zebra striping
-        },
+
         columnStyles: {
-          0: { halign: 'left', cellWidth: 'auto' },
-          1: { halign: 'center', cellWidth: 35 },
-          2: { halign: 'right', cellWidth: 25 },
-          3: { halign: 'right', cellWidth: 40 },
-          4: { halign: 'right', cellWidth: 40 },
+          0: { cellWidth: 45 }, // Customer
+          1: { cellWidth: 30 }, // Phone
+          2: { halign: 'right', cellWidth: 20 },
+          3: { halign: 'right', cellWidth: 30 },
+          4: { halign: 'right', cellWidth: 30 },
+          5: { halign: 'right', cellWidth: 30 },
         },
-        // --- 4. CONDITIONAL FORMATTING ---
-        didParseCell: function (data) {
-          // Check body and foot rows for negative values in the 'Due' column
-          if ((data.section === 'body' || data.section === 'foot') && data.column.index === 4) {
-            const rawVal = parseFloat(String(data.cell.raw).replace(/,/g, ''));
-            if (rawVal < 0) {
-              data.cell.styles.textColor = [220, 38, 38]; // red-600
-              data.cell.styles.fontStyle = 'bold';
-            }
-          }
-        },
-        // --- 5. PAGINATION FOOTER ---
-        didDrawPage: function () {
-          const pageCount = doc.internal.getNumberOfPages();
-          doc.setFontSize(9);
-          doc.setTextColor(156, 163, 175); // gray-400
-          // Draw page number at the bottom right
-          doc.text(
-            `Page ${pageCount}`,
-            pageWidth - 14,
-            pageHeight - 10,
-            { align: 'right' }
-          );
-        },
+
+        margin: { left: 10, right: 10 },
+
+        pageBreak: 'auto',
+        rowPageBreak: 'avoid',
       });
 
       doc.save(`Customer_Report_${new Date().toISOString().split('T')[0]}.pdf`);
@@ -369,14 +394,17 @@ const CatalogueCustomerReport: React.FC = () => {
     {
       header: 'Customer',
       accessor: 'customerName',
+      sortKey: 'customerName'
     },
     {
       header: 'Contact No',
-      accessor: 'customerNumber'
+      accessor: 'customerNumber',
+      sortKey: 'customerNumber'
     },
     {
       header: 'Bills',
       accessor: 'totalBills',
+      sortKey: 'totalBills',
       className: 'text-right',
     },
     {
@@ -389,6 +417,13 @@ const CatalogueCustomerReport: React.FC = () => {
       header: 'Total Due',
       accessor: (row) => `₹${row.totalDue.toLocaleString('en-IN')}`,
       sortKey: 'totalDue',
+      className: 'text-right',
+    },
+    {
+      header: 'Credit Note',
+      accessor: (row) =>
+        `₹${(row.creditNoteAmount || 0).toLocaleString('en-IN')}`,
+      sortKey: 'creditNoteAmount',
       className: 'text-right',
     },
   ];
@@ -539,13 +574,19 @@ const CatalogueCustomerReport: React.FC = () => {
         />
         <CustomCard
           variant={CardVariant.Summary}
-          title="Avg Sale / Customer"
-          value={`₹${Math.round(metrics.averageSalePerCustomer).toLocaleString(
-            'en-IN',
-          )}`}
+          title="Total Credit Note"
+          value={`₹${metrics.totalCreditNote.toLocaleString('en-IN')}`}
           valueClassName="text-green-600 text-3xl"
         />
       </div>
+      <CustomCard
+        variant={CardVariant.Summary}
+        title="Avg Sale / Customer"
+        value={`₹${Math.round(metrics.averageSalePerCustomer).toLocaleString(
+          'en-IN',
+        )}`}
+        valueClassName="text-green-600 text-3xl"
+      />
 
       {/* REPORT DETAILS */}
       <div className="bg-white p-4 rounded-sm flex justify-between items-center mt-2">
@@ -580,8 +621,11 @@ const CatalogueCustomerReport: React.FC = () => {
 
       {isListVisible && (
         <CustomTable<CustomerRow>
-          data={customerRows}
+          accentColor="text-[#F97316]"
+          data={sortedCustomerRows}
           columns={tableColumns}
+          sortConfig={sortConfig}
+          onSort={handleSort}
           keyExtractor={(row) => row.id}
           emptyMessage="No customers found for selected period."
         />

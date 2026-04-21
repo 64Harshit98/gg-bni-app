@@ -5,6 +5,9 @@ export interface Sale {
   totalAmount: number;
   dueAmount?: number;
   createdAt: Date;
+  returnHistory?: any[];
+  creditNoteRemaining?: number;
+  paymentMethods?: { [key: string]: number; };
 }
 
 export interface CustomerRow {
@@ -15,4 +18,5 @@ export interface CustomerRow {
   totalSales: number;
   totalDue: number;
   sortKey?: string;
+  creditNoteAmount: number;
 }

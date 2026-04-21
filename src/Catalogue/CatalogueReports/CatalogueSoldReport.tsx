@@ -280,6 +280,24 @@ const ItemsSoldReport: React.FC = () => {
             });
         }
 
+        itemsArray.sort((a, b) => {
+            const key = sortConfig.key;
+            const direction = sortConfig.direction === 'asc' ? 1 : -1;
+
+            const valA = a[key];
+            const valB = b[key];
+
+            if (typeof valA === 'number' && typeof valB === 'number') {
+                return (valA - valB) * direction;
+            }
+
+            if (typeof valA === 'string' && typeof valB === 'string') {
+                return valA.localeCompare(valB) * direction;
+            }
+
+            return 0;
+        });
+
         return {
             aggregatedItems: itemsArray,
             summary: {
@@ -344,7 +362,7 @@ const ItemsSoldReport: React.FC = () => {
                         img.onerror = () => resolve();
                     });
                 }
-            } catch {}
+            } catch { }
 
             // ===== GENERATION TAG =====
             const generatedAt = new Date().toLocaleString('en-IN');
@@ -636,6 +654,7 @@ const ItemsSoldReport: React.FC = () => {
             {/* DATA TABLE */}
             {isListVisible && (
                 <CustomTable<AggregatedItem>
+                    accentColor="text-[#F97316]"
                     data={aggregatedItems}
                     columns={tableColumns}
                     keyExtractor={(item) => item.id}

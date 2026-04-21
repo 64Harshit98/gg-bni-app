@@ -78,6 +78,7 @@ export interface Order {
     paidAmount?: number;
     createdAt: Date;
     time: string;
+    creditNoteAmount?: number;
     items?: OrderItem[];
     billingDetails?: {
         address: string;
@@ -361,7 +362,7 @@ const OrdersPage: React.FC = () => {
     const dbOperations = useDatabase();
     const [_error, setError] = useState<string | null>(null);
     const [availableItems, setAvailableItems] = useState<Item[]>([]);
-    const [billType, setBillType] = useState<'estimate' | 'bill'>('estimate');
+    const [billType, setBillType] = useState<'estimate' | 'bill'>('bill');
     // const [pendingRequestCount, setPendingRequestCount] = useState(0);
 
     const { currentUser } = useAuth();
@@ -371,6 +372,22 @@ const OrdersPage: React.FC = () => {
         dateRange.end
     );
 
+    const getCreditNoteAmount = (order: Order) => {
+        if (!order.returnHistory || order.returnHistory.length === 0) return 0;
+
+        let totalCredit = 0;
+
+        order.returnHistory.forEach((r) => {
+            totalCredit += Number(r.finalBalance || 0);
+        });
+
+        const usedCredit =
+            order.paymentMethods?.["CREDIT NOTE"] ||
+            order.paymentMethods?.["Credit Note"] ||
+            0;
+
+        return Math.max(0, totalCredit - usedCredit);
+    };
     useEffect(() => {
         let updated = false;
 
@@ -581,8 +598,17 @@ const OrdersPage: React.FC = () => {
             items: updatedItems,
         });
     };
+
     const handleDeleteItem = (id: string) => {
         if (!editingOrder) return;
+
+        if (editingOrder.status === "Completed" || editingOrder.status === "Paid") {
+            setModal({
+                message: "You cannot delete items at this stage. You can only return items.",
+                type: State.ERROR,
+            });
+            return;
+        }
 
         const updatedItems = editingOrder.items?.filter(
             (item) => item.id !== id
@@ -1035,6 +1061,7 @@ const OrdersPage: React.FC = () => {
 
                 await updateDoc(itemRef, {
                     stock: currentStock + restoreQty,
+                    updatedAt: serverTimestamp()
                 });
             }
 
@@ -1118,7 +1145,8 @@ const OrdersPage: React.FC = () => {
                             console.log("STOCK DECREASE:", itemId, currentStock, "-", deductQty);
 
                             await updateDoc(itemRef, {
-                                stock: currentStock - deductQty
+                                stock: currentStock - deductQty,
+                                updatedAt: serverTimestamp()
                             });
 
                         } catch (err) {
@@ -1483,7 +1511,7 @@ const OrdersPage: React.FC = () => {
                                                     </h3>
                                                 )}
                                                 <p className="text-black text-xs font-medium">
-                                                    {Order.userName}
+                                                    {Order.billingDetails?.name} / {Order.billingDetails?.phone}
                                                     {Order.status === "Upcoming" && Order.userLoginPhone && (
                                                         <span className="ml-2 text-[10px] text-black font-semibold border p-1 bg-gray-100">
                                                             {Order.userLoginPhone}
@@ -1701,7 +1729,10 @@ const OrdersPage: React.FC = () => {
                                                                     <button
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
-                                                                            setShowPaymentModal(Order);
+                                                                            setShowPaymentModal({
+                                                                                ...Order,
+                                                                                creditNoteAmount: getCreditNoteAmount(Order)
+                                                                            });;
                                                                         }}
                                                                         className="py-2.5 bg-emerald-500 text-white text-xs font-bold rounded-sm"
                                                                     >
@@ -1728,6 +1759,7 @@ const OrdersPage: React.FC = () => {
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
                                                                         setSelectedOrderForAction(Order);
+                                                                        setBillType('bill');
                                                                     }}
                                                                     disabled={pdfLoadingOrderId === Order.id}
                                                                     className="py-2.5 bg-black text-white text-xs font-bold rounded-sm flex items-center justify-center"
@@ -1763,7 +1795,10 @@ const OrdersPage: React.FC = () => {
                                                                 <button
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
-                                                                        setShowPaymentModal(Order);
+                                                                        setShowPaymentModal({
+                                                                            ...Order,
+                                                                            creditNoteAmount: getCreditNoteAmount(Order)
+                                                                        });;
                                                                     }}
                                                                     className="py-2.5 bg-emerald-500 text-white text-xs font-bold rounded-sm"
                                                                 >
@@ -1775,6 +1810,7 @@ const OrdersPage: React.FC = () => {
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
                                                                         setSelectedOrderForAction(Order);
+                                                                        setBillType('bill');
                                                                     }}
                                                                     className="py-2.5 bg-black text-white text-xs font-bold rounded-sm"
                                                                 >
@@ -1940,6 +1976,7 @@ const OrdersPage: React.FC = () => {
                     <PaymentModal
                         isOpen={!!showPaymentModal}
                         onClose={() => setShowPaymentModal(null)}
+                        creditNoteAmount={showPaymentModal?.creditNoteAmount || 0}
                         invoice={{
                             id: showPaymentModal.id,
                             invoiceNumber: showPaymentModal.orderId,
@@ -2013,7 +2050,7 @@ const OrdersPage: React.FC = () => {
             })()}
 
             {editingOrder && (
-                <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-2 md:p-4">
+                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-2 md:p-4">
                     <div className="bg-white rounded-sm w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
                         {/* Header */}
                         <div className="px-5 py-3 border-b flex justify-between items-center bg-slate-50">

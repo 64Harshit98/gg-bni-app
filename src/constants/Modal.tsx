@@ -82,9 +82,10 @@ interface PaymentModalProps {
     invoice: ModalInvoice | null;
     onSubmit: (invoice: ModalInvoice, amount: number, method: string, chequeNumber?: string, chequeDate?: string) => Promise<void>;
     onConfirm?: (amountToAdd: number) => Promise<void>;
+    creditNoteAmount?: number;
 }
 
-export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, invoice, onSubmit }) => {
+export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, invoice, onSubmit, creditNoteAmount = 0 }) => {
     const [amount, setAmount] = useState('');
     const [method, setMethod] = useState('cash');
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -110,7 +111,10 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
             setError('Please enter a valid amount.');
             return;
         }
-        if (paymentAmount > (invoice.dueAmount ?? 0)) {
+        if (
+            method !== "Credit Note" &&
+            paymentAmount > (invoice.dueAmount ?? 0)
+        ) {
             setError('Payment cannot exceed the due amount.');
             return;
         }
@@ -128,10 +132,26 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
         setIsSubmitting(true);
         setError('');
         try {
+            // CREDIT NOTE HANDLE
+            let finalAmount = paymentAmount;
+            let finalMethod = method;
+
+            if (method === "Credit Note") {
+                if (paymentAmount > creditNoteAmount) {
+                    setError("Itna credit note available nahi hai");
+                    return;
+                }
+            }
+
+            if (method === "Credit Note") {
+                finalAmount = paymentAmount;
+                finalMethod = "Credit Note";
+            }
+
             await onSubmit(
                 invoice,
-                paymentAmount,
-                method,
+                finalAmount,
+                finalMethod,
                 method === 'PDC' ? chequeNumber : undefined,
                 method === 'PDC' ? chequeDate : undefined
             );
@@ -151,6 +171,11 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                 <p className="mb-4 text-slate-600">
                     For <span className="font-semibold">{invoice.partyName}</span> (Due: ₹{(invoice.dueAmount ?? 0).toLocaleString('en-IN')})
                 </p>
+                {creditNoteAmount > 0 && (
+                    <p className="text-sm font-bold text-green-600">
+                        Credit Note: ₹{creditNoteAmount.toLocaleString('en-IN')}
+                    </p>
+                )}
                 <form onSubmit={handleSubmit}>
                     <div className="mb-4">
                         <label htmlFor="amount" className="block text-sm font-medium text-slate-700">Amount</label>
@@ -158,7 +183,28 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                             type="number"
                             id="amount"
                             value={amount}
-                            onChange={(e) => setAmount(e.target.value)}
+                            onChange={(e) => {
+                                let value = parseFloat(e.target.value);
+
+                                if (isNaN(value)) {
+                                    setAmount('');
+                                    return;
+                                }
+
+                                const due = invoice?.dueAmount ?? 0;
+
+                                let maxAllowed = due;
+
+                                if (method === "Credit Note") {
+                                    maxAllowed = Math.min(due, creditNoteAmount || 0);
+                                }
+
+                                if (value > maxAllowed) {
+                                    value = maxAllowed;
+                                }
+
+                                setAmount(String(value));
+                            }}
                             className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                             required
                         />
@@ -168,12 +214,23 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                         <select
                             id="method"
                             value={method}
-                            onChange={(e) => setMethod(e.target.value)}
+                            onChange={(e) => {
+                                const selectedMethod = e.target.value;
+                                setMethod(selectedMethod);
+
+                                // CREDIT NOTE AUTO APPLY
+                                if (selectedMethod === "Credit Note") {
+                                    setAmount(String(
+                                        Math.min(creditNoteAmount || 0, invoice?.dueAmount || 0)
+                                    ));
+                                }
+                            }}
                             className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                         >
                             <option value="cash">Cash</option>
                             <option value="upi">UPI</option>
                             <option value="card">Card</option>
+                            <option value="Credit Note">Credit Note</option>
                             <option value="PDC">PDC</option>
                         </select>
                     </div>

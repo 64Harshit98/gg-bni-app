@@ -26,6 +26,7 @@ export const getItemColumns = (itemGroups: any[]): TableColumn<any>[] => [
        const group = itemGroups.find(g => g.id === item.itemGroupId);
        return group?.name || item.itemGroupId || UNASSIGNED_GROUP_NAME;
     },
+    sortKey: 'itemGroupId',
     className: 'text-slate-600'
   },
   { 

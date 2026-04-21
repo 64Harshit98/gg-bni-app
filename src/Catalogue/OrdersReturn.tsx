@@ -250,6 +250,28 @@ const OrdersReturnPage: React.FC = () => {
     });
   }, [availableCustomers, partyNumber]);
 
+  const getRemainingCreditNote = (order: Order) => {
+    if (!order) return 0;
+
+    // 1. Total credit (returns se)
+    let totalCredit = 0;
+
+    if (order.returnHistory && order.returnHistory.length > 0) {
+      order.returnHistory.forEach((r) => {
+        totalCredit += Number(r.finalBalance || 0);
+      });
+    }
+
+    // 2. Used credit (payment se)
+    const usedCredit =
+      order.paymentMethods?.["CREDIT NOTE"] ||
+      order.paymentMethods?.["Credit Note"] ||
+      0;
+
+    // 3. Remaining
+    return Math.max(0, totalCredit - usedCredit);
+  };
+
   const handleSelectCustomer = (customer: Customer) => {
     setPartyNumber(customer.number);
     setPartyName(customer.name);
@@ -270,7 +292,7 @@ const OrdersReturnPage: React.FC = () => {
           if (!id) return null;
 
           const qty = Number(item.quantity) || 0;
-          const price = Number(item.salesPrice ?? item.mrp) || 0;
+          const price = Number(item.customPrice ?? item.unitPrice ?? item.salesPrice ?? item.mrp) || 0;
           const unit = price;
           const total = price * qty;
 
@@ -281,7 +303,7 @@ const OrdersReturnPage: React.FC = () => {
             name: item.name ?? 'Unnamed Item',
             quantity: qty,
             originalQuantity: qty,
-            unitPrice: unit,
+            unitPrice: price,
             amount: total,
             mrp: Number(item.mrp) || unit
           };
@@ -749,7 +771,7 @@ const OrdersReturnPage: React.FC = () => {
         const safeId = item.id;
         const qty = Number(item.quantity) || 1;
         const total = Number(item.finalPrice || item.amount || 0);
-        const unit = Number(item.salesPrice) || (qty > 0 ? total / qty : 0);
+        const unit = Number(item.customPrice ?? item.unitPrice ?? item.salesPrice ?? item.mrp) || (qty > 0 ? total / qty : 0);
 
         originalItemsMap.set(safeId, {
           ...item,
@@ -1055,7 +1077,7 @@ const OrdersReturnPage: React.FC = () => {
 
   const handleProcessReturn = () => {
 
-    // ❌ No items selected at all
+    //  No items selected at all
     if (itemsToReturn.length === 0 && exchangeItems.length === 0) {
       return setModal({
         type: State.ERROR,
@@ -1132,6 +1154,10 @@ const OrdersReturnPage: React.FC = () => {
     if (modeOfReturn === 'Cash Refund') return 'Refund Amount';
     return 'Credit Due';
   };
+
+  const remainingCredit = selectedSale
+    ? getRemainingCreditNote(selectedSale)
+    : 0;
 
   if (isLoading) return <div className="flex min-h-screen items-center justify-center">Loading...</div>;
 
@@ -1544,6 +1570,7 @@ const OrdersReturnPage: React.FC = () => {
         onPaymentComplete={saveReturnTransaction}
         initialPartyName={partyName}
         initialPartyNumber={partyNumber}
+        initialCreditOverride={remainingCredit}
       />
     </div>
   );

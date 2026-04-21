@@ -1203,7 +1203,7 @@ const SharedProduct: React.FC = () => {
                                 {/* CONTENT */}
                                 <div className="p-3 flex flex-col flex-1">
                                     <h3 className="text-[12px] font-black text-[#1A3B5D] mb-1 uppercase leading-tight">
-                                        {item.name.slice(0, 50)}
+                                        {item.name.slice(0, 44)}
                                     </h3>
 
                                     {/* PRICE */}

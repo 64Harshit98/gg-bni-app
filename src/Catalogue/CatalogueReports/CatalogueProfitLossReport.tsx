@@ -237,6 +237,7 @@ const CatalogueProfitLossReport: React.FC = () => {
       doc.text('Profit & Loss Report', 14, 20);
       doc.setFontSize(11);
       doc.setTextColor(100);
+      doc.text(subtitleText, 14, 30);
 
       autoTable(doc, {
         startY: 45,
@@ -516,6 +517,7 @@ const CatalogueProfitLossReport: React.FC = () => {
 
       {isListVisible && (
         <CustomTable<TransactionDetail>
+          accentColor="text-[#F97316]"
           data={filteredTransactions}
           columns={tableColumns}
           keyExtractor={(item) => item.id}

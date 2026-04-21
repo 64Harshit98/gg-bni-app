@@ -53,6 +53,7 @@ const ItemAdd: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
+  const [showOverwritePrompt, setShowOverwritePrompt] = useState(false);
 
   // --- UPLOAD STATE ---
   const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -62,6 +63,30 @@ const ItemAdd: React.FC = () => {
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const successBannerRef = useRef<HTMLDivElement>(null);
+  const pendingDuplicateCountRef = useRef<number>(0);
+
+  const overwritePromptResolverRef = useRef<((choice: boolean) => void) | null>(null);
+
+  const requestBulkOverwriteChoice = (duplicateCount: number): Promise<boolean> => {
+    return new Promise((resolve) => {
+      pendingDuplicateCountRef.current = duplicateCount;
+      overwritePromptResolverRef.current = resolve;
+      setShowOverwritePrompt(true);
+    });
+  };
+
+  const handleConfirmOverwrite = () => {
+    overwritePromptResolverRef.current?.(true);
+    overwritePromptResolverRef.current = null;
+    setShowOverwritePrompt(false);
+  };
+
+  const handleCancelOverwrite = () => {
+    overwritePromptResolverRef.current?.(false);
+    overwritePromptResolverRef.current = null;
+    setShowOverwritePrompt(false);
+  };
 
   useEffect(() => {
     setPageIsLoading(authLoading || loadingItemSettings || !dbOperations);
@@ -169,7 +194,9 @@ const ItemAdd: React.FC = () => {
     if (mrpValue === 0 && saleValue === 0) {
       setModal({ message: 'Please enter either MRP or Sales Price.', type: State.ERROR }); return;
     }
-
+    if (mrpValue > 0 && saleValue > 0 && saleValue > mrpValue) {
+      setModal({ message: 'Sales Price cannot be greater than MRP', type: State.ERROR }); return;
+    }
     // --- 2. Dynamic Optional Settings Validation ---
     if (itemSettings.requirePurchasePrice && !itemPurchasePrice.trim()) {
       setModal({ message: 'Purchase Price is required as per your settings.', type: State.ERROR }); return;
@@ -262,7 +289,10 @@ const ItemAdd: React.FC = () => {
 
       setSuccess(`Item "${itemName}" added!`);
       resetForm();
-      setTimeout(() => setSuccess(null), 3000);
+      requestAnimationFrame(() => {
+        successBannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+
     } catch (err: any) {
       setError('Failed to add item.');
       setModal({ message: err.message, type: State.ERROR });
@@ -291,8 +321,8 @@ const ItemAdd: React.FC = () => {
           defval: null,
           range: 9
         });
-console.log('Raw headers (first row):', Object.keys(rawJson[0]));
-console.log('First data row:', rawJson[1]);
+        console.log('Raw headers (first row):', Object.keys(rawJson[0]));
+        console.log('First data row:', rawJson[1]);
         // Skip the notes/hints row (row index 0 after range:9 = your notes row)
         const dataJson = rawJson.slice(1); // skip first row which is the notes row
 
@@ -302,6 +332,8 @@ console.log('First data row:', rawJson[1]);
         let createdCount = 0;
         let updatedCount = 0;
         let failedCount = 0;
+        let skippedCount = 0;
+        let shouldOverwriteExisting: boolean | null = null;
 
         const totalItems = dataJson.length;
         setUploadProgress({ current: 0, total: totalItems });
@@ -317,6 +349,24 @@ console.log('First data row:', rawJson[1]);
 
         if (itemsNeedingBarcode > 0) {
           nextSeqNumber = await reserveSequenceBlock(itemsNeedingBarcode);
+        }
+
+        let duplicateCount = 0;
+        for (const rawRow of rawJson) {
+          const row: any = {};
+          Object.keys(rawRow).forEach(k => {
+            row[k.toLowerCase().replace(/[^a-z0-9]/g, "")] = rawRow[k];
+          });
+          const rowBarcode = String(row.barcode || '').trim();
+          if (!rowBarcode) continue;
+          const itemsRef = collection(db, 'companies', currentUser.companyId, 'items');
+          const q = query(itemsRef, where('barcode', '==', rowBarcode), limit(1));
+          const snap = await getDocs(q);
+          if (!snap.empty) duplicateCount++;
+        }
+
+        if (duplicateCount > 0) {
+          shouldOverwriteExisting = await requestBulkOverwriteChoice(duplicateCount);
         }
 
         for (let i = 0; i < dataJson.length; i++) {
@@ -416,7 +466,15 @@ console.log('First data row:', rawJson[1]);
             const itemsRef = collection(db, 'companies', currentUser.companyId, 'items');
             const q = query(itemsRef, where('barcode', '==', rowBarcode), limit(1));
             const snapshot = await getDocs(q);
-            if (!snapshot.empty) isUpdate = true;
+            if (!snapshot.empty) {
+
+              if (!shouldOverwriteExisting) {
+                skippedCount++;
+                continue;
+              }
+
+              isUpdate = true;
+            }
 
             await dbOperations.createItem(itemData, rowBarcode);
 
@@ -437,7 +495,7 @@ console.log('First data row:', rawJson[1]);
             type: State.ERROR
           });
         } else {
-          setSuccess(`Imported: ${createdCount} New, ${updatedCount} Updated.`);
+          setSuccess(`Imported: ${createdCount} New, ${updatedCount} Updated${skippedCount > 0 ? `, ${skippedCount} Skipped` : ''}.`);
         }
 
         setTimeout(() => setSuccess(null), 5000);
@@ -725,6 +783,15 @@ console.log('First data row:', rawJson[1]);
     <div className="flex flex-col h-screen w-full bg-gray-100 font-poppins text-gray-800 relative">
       <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+      {showOverwritePrompt && (
+        <Modal
+          message={`${pendingDuplicateCountRef.current} item${pendingDuplicateCountRef.current > 1 ? 's' : ''} with matching barcodes already exist. Overwrite them with the new data?`}
+          onClose={handleCancelOverwrite}
+          onConfirm={handleConfirmOverwrite}
+          showConfirmButton={true}
+          type={State.INFO}
+        />
+      )}
 
       {/* --- PROGRESS MODAL --- */}
       {uploadProgress && (
@@ -753,7 +820,6 @@ console.log('First data row:', rawJson[1]);
         <div className="flex-1 w-full md:w-[65%] bg-gray-100 md:bg-gray-50 md:border-r border-gray-200 pt-28 pb-24 px-2 md:pt-6 md:px-6 md:pb-6 overflow-y-auto">
 
           {error && <div className="mb-4 text-center p-3 bg-red-100 text-red-700 rounded-sm">{error}</div>}
-          {success && <div className="mb-4 text-center p-3 bg-green-100 text-green-700 rounded-sm">{success}</div>}
 
           {/* MOBILE BULK IMPORT */}
           <div className="md:hidden bg-white p-2 rounded-sm shadow-md mb-4">
@@ -771,6 +837,18 @@ console.log('First data row:', rawJson[1]);
 
           {/* SINGLE ITEM FORM */}
           <div className="bg-white p-4 rounded-sm shadow-md md:mb-0 md:rounded-sm md:shadow-sm md:border md:border-gray-200 mb-10">
+            {success && (
+              <div ref={successBannerRef} className="mb-4 p-3 bg-green-100 text-green-700 rounded-sm flex items-center justify-between gap-2">
+                <span className="flex-1 text-center">{success}</span>
+                <button
+                  onClick={() => setSuccess(null)}
+                  className="text-green-600 hover:text-green-900 font-bold text-lg leading-none shrink-0"
+                  aria-label="Dismiss"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
             <h2 className="text-lg font-bold text-gray-800 mb-4 md:mb-6 md:border-b md:pb-2">Add a Single Item</h2>
             <div className="space-y-4">
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { EditOrderModal } from '../Components/EditOrderModal';
 import { db } from '../lib/Firebase';
 import {
   collection,
@@ -597,10 +598,11 @@ const Journal: React.FC = () => {
   const cancelDelete = () => { setInvoiceToDelete(null); setModal(null); };
 
   // ── Navigation helpers ────────────────────────────────────────────────────
-  const handleEditInvoice = (invoice: Invoice) => {
-    if (invoice.type === 'Credit') navigate(ROUTES.SALES, { state: { invoiceData: invoice, isEditMode: true } });
-    else navigate(ROUTES.PURCHASE, { state: { purchaseId: invoice.id, isEditMode: true } });
-  };
+const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
+
+const handleEditInvoice = (invoice: Invoice) => {
+  setEditingInvoice(invoice);   // ← opens modal instead of navigating
+};
   const handleSalesReturn = (invoice: Invoice) => navigate(ROUTES.SALES_RETURN, { state: { invoiceData: invoice } });
   const handlePurchaseReturn = (invoice: Invoice) => navigate(ROUTES.PURCHASE_RETURN, { state: { invoiceData: invoice } });
   const handlePrintQr = (invoice: Invoice) => {
@@ -724,26 +726,26 @@ const Journal: React.FC = () => {
                 }) : <p className="text-xs text-slate-400">No item details available.</p>}
               </div>
 
-              {invoice.manualDiscount && invoice.manualDiscount > 0 && (
+              {(invoice.manualDiscount ?? 0) > 0 ? (
                 <div className="flex justify-between items-center mt-3 pt-1.5 border-t border-slate-200">
                   <p className="text-xs font-medium text-slate-400">Bill Discount</p>
-                  <p className="text-xs font-semibold text-red-400">- {invoice.manualDiscount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</p>
+                  <p className="text-xs font-semibold text-red-400">- {(invoice.manualDiscount ?? 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</p>
                 </div>
-              )}
+              ) : null}
 
-              {invoice.taxAmount && invoice.taxAmount > 0 && (
+              {(invoice.taxAmount ?? 0) > 0 ? (
                 <div className="flex justify-between items-center mt-1 pt-1.5 border-t border-slate-200">
                   <p className="text-xs font-medium text-slate-400">Tax</p>
-                  <p className="text-xs font-semibold text-yellow-500">+ {invoice.taxAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</p>
+                  <p className="text-xs font-semibold text-yellow-500">+ {(invoice.taxAmount ?? 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</p>
                 </div>
-              )}
+              ) : null}
 
-              {invoice.extraExpenseAmount && invoice.extraExpenseAmount > 0 && (
+              {(invoice.extraExpenseAmount ?? 0) > 0 ? (
                 <div className="flex justify-between items-center mt-1 pt-1.5 border-t border-slate-200">
                   <p className="text-xs font-medium text-slate-400">{invoice.extraExpenseName || 'Extra Expense'}</p>
-                  <p className="text-xs font-semibold text-orange-500">+ {invoice.extraExpenseAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</p>
+                  <p className="text-xs font-semibold text-orange-500">+ {(invoice.extraExpenseAmount ?? 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</p>
                 </div>
-              )}
+              ) : null}
 
               {activeModes.length > 0 && (
                 <div className="flex justify-between items-start mt-1 pt-2 border-t border-slate-200 text-xs text-slate-500">
@@ -978,6 +980,15 @@ const Journal: React.FC = () => {
         <div className="flex-grow overflow-y-auto bg-slate-100 space-y-3 pt-2 pb-24">
           {renderContent()}
         </div>
+        {/* Add EditOrderModal just before the root closing div */}
+        {editingInvoice && (
+          <EditOrderModal
+            invoice={editingInvoice}
+            isOpen={!!editingInvoice}
+            onClose={() => setEditingInvoice(null)}
+            onSaved={() => setEditingInvoice(null)}   // real-time listener auto-refreshes the list
+          />
+        )}
       </div>
     </div>
   );

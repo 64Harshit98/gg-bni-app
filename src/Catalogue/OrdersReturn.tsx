@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
-import { useAuth } from '../context/auth-context';
 import type { Item } from '../constants/models';
 
 import { ROUTES } from '../constants/routes.constants';

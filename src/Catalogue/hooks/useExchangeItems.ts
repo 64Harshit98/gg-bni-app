@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
-import type { Item } from '../constants/models';
-import type { SalesItem } from '../constants/models';
-import type { OrderItem } from '../Pages/Orders';
+import type { Item } from '../../constants/models';
+import type { SalesItem } from '../../constants/models';
+import type { OrderItem } from '../Orders';
 import { State } from '../../enums';
 
 interface ExchangeItem {

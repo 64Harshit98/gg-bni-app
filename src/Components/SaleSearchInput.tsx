@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import type { Order } from '../Pages/Orders';
+import type { Order } from '../Catalogue/Orders';
 
 
 interface SaleSearchInputProps {

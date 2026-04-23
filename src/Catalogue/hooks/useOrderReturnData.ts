@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { db } from '../../lib/Firebase';
 import { collection, query, getDocs, doc, getDoc } from 'firebase/firestore';
 import { useAuth } from '../../context/auth-context';
-import type { Order, OrderItem } from '../Pages/Orders';
+import type { Order, OrderItem } from '../Orders';
 
 export interface UseOrderReturnDataResult {
   salesList: Order[];

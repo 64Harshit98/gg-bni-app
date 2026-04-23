@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { Order } from '../Pages/Orders';
+import type { Order } from '../Orders';
 
 interface TransactionItem {
   id: string;

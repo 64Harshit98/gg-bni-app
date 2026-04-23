@@ -83,6 +83,7 @@ const CustomerReport: React.FC = () => {
           totalSales: 0,
           totalDue: 0,
           sortKey: 'customerName', // FIX: Added required sortKey property
+          creditNoteAmount: 0,
         });
       }
 
@@ -275,7 +276,7 @@ const CustomerReport: React.FC = () => {
           },
           // --- 5. PAGINATION FOOTER ---
           didDrawPage: function () {
-            const pageCount = doc.internal.getNumberOfPages();
+            const pageCount = (doc as any).getNumberOfPages();
             doc.setFontSize(9);
             doc.setTextColor(156, 163, 175); // gray-400
             // Draw page number at the bottom right

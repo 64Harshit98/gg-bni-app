@@ -250,28 +250,6 @@ const OrdersReturnPage: React.FC = () => {
     });
   }, [availableCustomers, partyNumber]);
 
-  const getRemainingCreditNote = (order: Order) => {
-    if (!order) return 0;
-
-    // 1. Total credit (returns se)
-    let totalCredit = 0;
-
-    if (order.returnHistory && order.returnHistory.length > 0) {
-      order.returnHistory.forEach((r) => {
-        totalCredit += Number(r.finalBalance || 0);
-      });
-    }
-
-    // 2. Used credit (payment se)
-    const usedCredit =
-      order.paymentMethods?.["CREDIT NOTE"] ||
-      order.paymentMethods?.["Credit Note"] ||
-      0;
-
-    // 3. Remaining
-    return Math.max(0, totalCredit - usedCredit);
-  };
-
   const handleSelectCustomer = (customer: Customer) => {
     setPartyNumber(customer.number);
     setPartyName(customer.name);
@@ -1155,10 +1133,6 @@ const OrdersReturnPage: React.FC = () => {
     return 'Credit Due';
   };
 
-  const remainingCredit = selectedSale
-    ? getRemainingCreditNote(selectedSale)
-    : 0;
-
   if (isLoading) return <div className="flex min-h-screen items-center justify-center">Loading...</div>;
 
 
@@ -1570,7 +1544,6 @@ const OrdersReturnPage: React.FC = () => {
         onPaymentComplete={saveReturnTransaction}
         initialPartyName={partyName}
         initialPartyNumber={partyNumber}
-        initialCreditOverride={remainingCredit}
       />
     </div>
   );

@@ -65,7 +65,7 @@ const BillSettings: React.FC = () => {
     });
 
     const formatAddress = (addr: any): string => {
-        if (!addr) return 'Not Set';
+        if (!addr) return '';
         if (typeof addr === 'string') return addr;
         const { streetAddress, city, state, postalCode, zipCode, pincode } = addr;
         const parts = [streetAddress, city, state].filter(part => part && part.trim() !== '');
@@ -96,10 +96,10 @@ const BillSettings: React.FC = () => {
                 const sData = settingsSnap.exists() ? settingsSnap.data() : {};
 
                 setBusinessInfo({
-                    companyName: bData.businessName || bData.name || 'Not Set',
+                    companyName: bData.businessName || bData.name || '',
                     address: formatAddress(bData),
-                    phone: bData.phoneNumber || bData.phone || 'Not Set',
-                    email: bData.email || 'Not Set',
+                    phone: bData.phoneNumber || bData.phone || '',
+                    email: bData.email || '',
                     gstin: bData.gstin || '',
                     panNumber: bData.panNumber || '',
                     msmeNumber: bData.msmeUdyamNumber || bData.registrationNumber || '',
@@ -273,7 +273,7 @@ const BillSettings: React.FC = () => {
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email</label>
-                                <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800">
+                                <div className="p-3 min-h-[44px] bg-gray-50 border border-gray-200 rounded-sm text-gray-800">
                                     {businessInfo.email}
                                 </div>
                             </div>
@@ -288,19 +288,19 @@ const BillSettings: React.FC = () => {
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">GSTIN</label>
                                     <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm font-mono text-sm tracking-wide text-gray-800">
-                                        {businessInfo.gstin || <span className="text-gray-400">Not set</span>}
+                                        {businessInfo.gstin || <span className="text-gray-400"></span>}
                                     </div>
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">PAN Number</label>
                                     <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm font-mono text-sm tracking-wide text-gray-800">
-                                        {businessInfo.panNumber || <span className="text-gray-400">Not set</span>}
+                                        {businessInfo.panNumber || <span className="text-gray-400"></span>}
                                     </div>
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">MSME / Udyam No.</label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm font-mono text-sm tracking-wide text-gray-800">
-                                        {businessInfo.msmeNumber || <span className="text-gray-400">Not set</span>}
+                                    <div className="p-3 min-h-[44px] bg-gray-50 border border-gray-200 rounded-sm font-mono text-sm tracking-wide text-gray-800">
+                                        {businessInfo.msmeNumber || <span className="text-gray-400"> </span>}
                                     </div>
                                 </div>
                             </div>
@@ -314,26 +314,26 @@ const BillSettings: React.FC = () => {
                             <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Bank Name</label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800">
-                                        {businessInfo.bankName || <span className="text-gray-400">Not set</span>}
+                                    <div className="p-3 min-h-[44px] bg-gray-50 border border-gray-200 rounded-sm text-gray-800">
+                                        {businessInfo.bankName || <span className="text-gray-400"> </span>}
                                     </div>
                                 </div>
                                 <div>
                                     <label className="block text-[9.8px] font-bold text-gray-500 uppercase mb-1">Account Holder Name</label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800">
-                                        {businessInfo.accountHolderName || <span className="text-gray-400">Not set</span>}
+                                    <div className="p-3 min-h-[44px] bg-gray-50 border border-gray-200 rounded-sm text-gray-800">
+                                        {businessInfo.accountHolderName || <span className="text-gray-400"> </span>}
                                     </div>
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Account Number</label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm font-mono text-sm tracking-wide text-gray-800">
-                                        {businessInfo.accountNumber || <span className="text-gray-400">Not set</span>}
+                                    <div className="p-3 min-h-[44px] bg-gray-50 border border-gray-200 rounded-sm font-mono text-sm tracking-wide text-gray-800">
+                                        {businessInfo.accountNumber || <span className="text-gray-400"> </span>}
                                     </div>
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">IFSC Code</label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm font-mono text-sm tracking-wide text-gray-800">
-                                        {businessInfo.ifscCode || <span className="text-gray-400">Not set</span>}
+                                    <div className="p-3 min-h-[44px] bg-gray-50 border border-gray-200 rounded-sm font-mono text-sm tracking-wide text-gray-800">
+                                        {businessInfo.ifscCode || <span className="text-gray-400"> </span>}
                                     </div>
                                 </div>
                             </div>

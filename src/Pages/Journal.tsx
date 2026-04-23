@@ -956,7 +956,7 @@ const Journal: React.FC = () => {
                   invoice.returnHistory.map((historyItem: any, index: number) => (
                     <span
                       key={`return-${index}`}
-                      className="text-[8px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider bg-orange-50 text-orange-600 border-orange-200 whitespace-nowrap"
+                      className="text-[8px] uppercase font-bold px-1.5 py-0.5 rounded-sm border tracking-wider bg-orange-50 text-orange-600 border-orange-200 whitespace-nowrap"
                     >
                       {historyItem.modeOfReturn || 'Return'}
                     </span>
@@ -967,7 +967,7 @@ const Journal: React.FC = () => {
                 {activeModes.map(([mode]) => (
                   <span
                     key={mode}
-                    className="text-[8px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider bg-blue-50 text-blue-600 border-blue-100 whitespace-nowrap"
+                    className="text-[8px] uppercase font-bold px-1.5 py-0.5 rounded-sm border tracking-wider bg-blue-50 text-blue-600 border-blue-100 whitespace-nowrap"
                   >
                     {mode === 'upi' ? 'UPI' : mode.replace(/_/g, ' ')}
                   </span>
@@ -1107,8 +1107,8 @@ const Journal: React.FC = () => {
 
                 <div className={`flex gap-2 mt-2 pt-4 border-t border-slate-200 ${visibleButtonsCount === 1 ? 'justify-center' : 'justify-between'
                   }`}>
-                  {invoice.status === 'Unpaid' && (<button onClick={(e) => { e.stopPropagation(); openPaymentModal(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-emerald-500 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors">Settle</button>)}
-                  {invoice.status === 'Paid' && (<button onClick={(e) => { e.stopPropagation(); promptDeleteInvoice(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors">Delete</button>)}
+                  {invoice.status === 'Unpaid' && (<button onClick={(e) => { e.stopPropagation(); openPaymentModal(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-emerald-500 rounded-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors">Settle</button>)}
+                  {invoice.status === 'Paid' && (<button onClick={(e) => { e.stopPropagation(); promptDeleteInvoice(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors">Delete</button>)}
                   <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
                     <button onClick={(e) => { e.stopPropagation(); handleEditInvoice(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-gray-400 rounded-sm hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors">Edit</button>
                   </ShowWrapper>
@@ -1195,7 +1195,7 @@ const Journal: React.FC = () => {
                       ...invoiceToPrint,
                       isEstimate: billType === 'estimate'
                     } as any, ACTION.DOWNLOAD)}
-                    className="w-full bg-blue-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                    className="w-full bg-blue-600 text-white py-2.5 px-4 rounded-sm font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
                   >
                     <IconDownload /> Download PDF
                   </button>
@@ -1204,7 +1204,7 @@ const Journal: React.FC = () => {
                       ...invoiceToPrint,
                       isEstimate: billType === 'estimate'
                     } as any, ACTION.PRINT)}
-                    className="w-full bg-white text-gray-700 border border-gray-300 py-2.5 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+                    className="w-full bg-white text-gray-700 border border-gray-300 py-2.5 px-4 rounded-sm font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
                   >
                     <IconPrint /> Print Directly
                   </button>
@@ -1235,7 +1235,7 @@ const Journal: React.FC = () => {
 
       {showQrModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm flex flex-col items-center animate-in fade-in zoom-in duration-300 relative">
+          <div className="bg-white rounded-sm shadow-2xl p-6 w-full max-w-sm flex flex-col items-center animate-in fade-in zoom-in duration-300 relative">
             <button onClick={() => setShowQrModal(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
               <FiX size={24} />
             </button>
@@ -1316,52 +1316,10 @@ const Journal: React.FC = () => {
                       setActiveDateFilter('custom');
                     }
                   }}
-                  className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 cursor-pointer hover:bg-gray-200 px-3 py-1 rounded-full transition-colors select-none"
+                  className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 cursor-pointer hover:bg-gray-200 px-3 py-1 rounded-sm transition-colors select-none"
                 >
                   <p className='text-center text-lg font-light text-slate-600'>{selectedPeriodText}</p>
                   <IconChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${showCustomPicker ? 'rotate-180' : ''}`} />
-                </div>
-
-                {/* Filter icon block moved here, ml-auto for spacing */}
-                <div ref={filterRef} className="flex items-center ml-auto">
-                  <TutorialStep
-                    step={3}
-                    currentStep={tutorialStep}
-                    text="Use this filter to quickly jump to Today, Last 7 Days, Last 30 Days, and more."
-                    onNext={() => next(4)}
-                    onSkip={skip}
-                  >
-                    <button onClick={() => setIsFilterOpen(!isFilterOpen)} className="text-slate-500 hover:text-slate-800 transition-colors">
-                      <IconFilter />
-                    </button>
-                  </TutorialStep>
-
-                  {isFilterOpen && (
-                    <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-md shadow-lg z-10 border overflow-hidden">
-                      <ul className="py-1">
-                        {dateFilters.map((filter) => (
-                          filter.value !== 'custom' && (
-                            <li key={filter.value}>
-                              <button
-                                onClick={() => { handleDateFilterSelect(filter.value); setIsFilterOpen(false); }}
-                                className={`w-full text-left px-4 py-2 text-sm ${activeDateFilter === filter.value ? 'bg-slate-100 text-slate-900' : 'text-slate-700'} hover:bg-slate-50`}
-                              >
-                                {filter.label}
-                              </button>
-                            </li>
-                          )
-                        ))}
-                        <li>
-                          <button
-                            onClick={() => { setActiveDateFilter('custom'); setIsFilterOpen(false); setShowCustomPicker(true); }}
-                            className={`w-full text-left px-4 py-2 text-sm ${activeDateFilter === 'custom' ? 'bg-slate-100 text-slate-900' : 'text-slate-700'} hover:bg-slate-50`}
-                          >
-                            Custom Range
-                          </button>
-                        </li>
-                      </ul>
-                    </div>
-                  )}
                 </div>
               </div>
             </TutorialStep>
@@ -1391,7 +1349,7 @@ const Journal: React.FC = () => {
                 <div className="flex justify-center text-center border-t border-gray-100 -mt-2 -mb-2">
                   <button
                     onClick={() => setShowCustomPicker(false)}
-                    className="flex-grow bg-black text-white text-sm px-4 py-2 rounded hover:bg-gray-800 transition-colors"
+                    className="flex-grow bg-black text-white text-sm px-4 py-2 rounded-sm hover:bg-gray-800 transition-colors"
                   >
                     Apply
                   </button>
@@ -1412,8 +1370,51 @@ const Journal: React.FC = () => {
               </div>
             )}
           </div>
-          <div className="absolute right-4 top-1 border border-slate-300 rounded-sm p-1 bg-gray-100 shadow-sm">
-            <NotificationBell />
+          {/* New right section for notification (LEFT) and filter (RIGHT) */}
+          <div className="flex items-center gap-2">
+
+            {/* Notification (LEFT) */}
+            <div className="border border-slate-300 rounded-sm p-2 bg-gray-100 shadow-sm">
+              <NotificationBell />
+            </div>
+
+            {/* Filter (RIGHT) */}
+            <div ref={filterRef} className="relative">
+              <button
+                onClick={() => setIsFilterOpen(!isFilterOpen)}
+                className="text-slate-500 hover:text-slate-800 transition-colors"
+              >
+                <IconFilter />
+              </button>
+
+              {isFilterOpen && (
+                <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-sm shadow-lg z-10 border overflow-hidden">
+                  <ul className="py-1">
+                    {dateFilters.map((filter) => (
+                      filter.value !== 'custom' && (
+                        <li key={filter.value}>
+                          <button
+                            onClick={() => { handleDateFilterSelect(filter.value); setIsFilterOpen(false); }}
+                            className={`w-full text-left px-4 py-2 text-sm ${activeDateFilter === filter.value ? 'bg-slate-100 text-slate-900' : 'text-slate-700'} hover:bg-slate-50`}
+                          >
+                            {filter.label}
+                          </button>
+                        </li>
+                      )
+                    ))}
+                    <li>
+                      <button
+                        onClick={() => { setActiveDateFilter('custom'); setIsFilterOpen(false); setShowCustomPicker(true); }}
+                        className={`w-full text-left px-4 py-2 text-sm ${activeDateFilter === 'custom' ? 'bg-slate-100 text-slate-900' : 'text-slate-700'} hover:bg-slate-50`}
+                      >
+                        Custom Range
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+              )}
+            </div>
+
           </div>
         </div>
 

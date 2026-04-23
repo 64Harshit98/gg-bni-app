@@ -8,7 +8,9 @@ export interface ItemDoc {
   restockQuantity: number;
   companyId: string;
   supplier?: string;
-  unitCost?: number;
+  purchasePrice?: number;
+  salesPrice?: number;
+  mrp?: number;
 }
 
 export const filterBySearch = (items: ItemDoc[], searchTerm: string) => {
@@ -18,20 +20,23 @@ export const filterBySearch = (items: ItemDoc[], searchTerm: string) => {
 };
 
 export const calculateSummary = (items: ItemDoc[]) => {
-  const totalItemsToRestock = items.length;
+  // Only count items where stock is actually below their own restock threshold
+  const itemsNeedingRestock = items.filter(
+    (i) => (i.stock ?? 0) < (i.restockQuantity ?? 0)
+  );
 
-  const outOfStockCount = items.filter((i) => (i.stock || 0) <= 0).length;
+  const totalItemsToRestock = itemsNeedingRestock.length;
 
-  const estimatedCostToRestock = items.reduce((acc, item) => {
-    const currentStock = item.stock || 0;
-    const quantityNeeded = item.restockQuantity - currentStock;
-    const cost = item.unitCost || 0;
-    return acc + quantityNeeded * cost;
+  const outOfStockCount = items.filter(
+  (i) => (i.stock ?? 0) <= 0 && i.restockQuantity != null && i.restockQuantity > 0
+).length;
+
+  const estimatedCostToRestock = itemsNeedingRestock.reduce((acc, item) => {
+    const currentStock = item.stock ?? 0;
+    const restockQuantity = item.restockQuantity ?? 0;
+    const deficit = Math.max(restockQuantity - currentStock, 0);
+    const unitCost = item.purchasePrice ?? item.salesPrice ?? 0;
+    return acc + (deficit * unitCost);
   }, 0);
-
-  return {
-    totalItemsToRestock,
-    outOfStockCount,
-    estimatedCostToRestock,
-  };
+  return { totalItemsToRestock, outOfStockCount, estimatedCostToRestock };
 };

@@ -12,6 +12,8 @@ import {
 import { useAuth } from '../../context/auth-context';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
+import DownloadChoiceModal from '../../Pages/Reports/ItemReportComponents/DownloadChoiceModal';
 import { IconSearch, IconClose } from '../../constants/Icons';
 //import CataShowWrapper from '../../context/CataShowWrapper';
 //import { Cata_Permissions } from '../enum/cata_permissions.enum';
@@ -222,6 +224,7 @@ const OrdersReport: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [showSearch, setShowSearch] = useState(false);
     const [sortConfig, setSortConfig] = useState<{ key: keyof OrderRecord; direction: 'asc' | 'desc' }>({ key: 'createdAt', direction: 'desc' });
+    const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
 
     useEffect(() => {
         const today = new Date();
@@ -399,6 +402,26 @@ const OrdersReport: React.FC = () => {
         };
     }, [sales, sortConfig, searchQuery]); // Removed appliedFilters from here
 
+    const downloadAsExcel = () => {
+        try {
+            const worksheet = XLSX.utils.json_to_sheet(
+                filteredSales.map((sale) => ({
+                    Date: formatDate(sale.createdAt),
+                    OrderID: sale.invoiceNumber,
+                    Customer: sale.partyName,
+                    Items: sale.items.reduce((sum, i) => sum + i.quantity, 0),
+                    Amount: sale.totalAmount,
+                }))
+            );
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, 'Orders');
+            XLSX.writeFile(workbook, 'orders_report.xlsx');
+            setIsDownloadModalOpen(false);
+        } catch (err) {
+            console.error('Excel export failed', err);
+        }
+    };
+
     const downloadAsPdf = async () => {
         if (!appliedFilters) return;
         try {
@@ -485,6 +508,13 @@ const OrdersReport: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-gray-100 p-2 pb-16">
+
+            <DownloadChoiceModal
+                isOpen={isDownloadModalOpen}
+                onClose={() => setIsDownloadModalOpen(false)}
+                onDownloadPdf={downloadAsPdf}
+                onDownloadExcel={downloadAsExcel}
+            />
 
             <div className="flex items-center justify-between pb-3 border-b mb-2">
 
@@ -578,7 +608,13 @@ const OrdersReport: React.FC = () => {
                 <div className="flex items-center space-x-3">
                     <button onClick={() => setIsListVisible(!isListVisible)} className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-sm hover:bg-slate-300 transition">{isListVisible ? 'Hide List' : 'Show List'}</button>
 
-                    <button onClick={downloadAsPdf} disabled={filteredSales.length === 0} className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-sm shadow-sm hover:bg-blue-700 ">Download PDF</button>
+                    <button
+                        onClick={() => setIsDownloadModalOpen(true)}
+                        disabled={filteredSales.length === 0}
+                        className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-sm shadow-sm hover:bg-blue-700"
+                    >
+                        Download Report
+                    </button>
                 </div>
             </div>
 

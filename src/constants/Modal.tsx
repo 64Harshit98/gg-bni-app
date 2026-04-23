@@ -17,9 +17,9 @@ export const Modal: React.FC<ModalProps> = ({
     type,
 }) => (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[2000] p-4">
-        <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm text-center">
+        <div className="bg-white rounded-sm shadow-2xl p-6 w-full max-w-sm text-center">
             {/* Icon based on type */}
-            <div className={`mx-auto mb-4 w-12 h-12 rounded-full flex items-center justify-center ${type === State.SUCCESS ? 'bg-green-100' :
+            <div className={`mx-auto mb-4 w-12 h-12 rounded-sm flex items-center justify-center ${type === State.SUCCESS ? 'bg-green-100' :
                 type === State.ERROR ? 'bg-red-100' :
                     'bg-blue-100'
                 }`}>
@@ -35,13 +35,13 @@ export const Modal: React.FC<ModalProps> = ({
                 <div className="flex gap-3">
                     <button
                         onClick={onClose}
-                        className="flex-1 bg-gray-200 text-gray-800 py-2 px-4 rounded-lg hover:bg-gray-300 transition-colors"
+                        className="flex-1 bg-gray-200 text-gray-800 py-2 px-4 rounded-sm hover:bg-gray-300 transition-colors"
                     >
                         Cancel
                     </button>
                     <button
                         onClick={onConfirm}
-                        className={`flex-1 text-white py-2 px-4 rounded-lg transition-colors ${type === State.ERROR || type === State.INFO ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
+                        className={`flex-1 text-white py-2 px-4 rounded-sm transition-colors ${type === State.ERROR || type === State.INFO ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
                             }`}
                     >
                         Confirm
@@ -50,7 +50,7 @@ export const Modal: React.FC<ModalProps> = ({
             ) : (
                 <button
                     onClick={onClose}
-                    className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors"
+                    className="w-full bg-blue-600 text-white py-2 px-4 rounded-sm hover:bg-blue-700 transition-colors"
                 >
                     OK
                 </button>
@@ -146,7 +146,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
 
     return (
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex justify-center items-center z-[2000]">
-            <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+            <div className="bg-white rounded-sm shadow-xl p-6 w-full max-w-md">
                 <h2 className="text-2xl font-bold mb-2 text-slate-800">Settle Payment</h2>
                 <p className="mb-4 text-slate-600">
                     For <span className="font-semibold">{invoice.partyName}</span> (Due: ₹{(invoice.dueAmount ?? 0).toLocaleString('en-IN')})
@@ -159,7 +159,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                             id="amount"
                             value={amount}
                             onChange={(e) => setAmount(e.target.value)}
-                            className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                            className="mt-1 block w-full rounded-sm border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                             required
                         />
                     </div>
@@ -169,7 +169,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                             id="method"
                             value={method}
                             onChange={(e) => setMethod(e.target.value)}
-                            className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                            className="mt-1 block w-full rounded-sm border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                         >
                             <option value="cash">Cash</option>
                             <option value="upi">UPI</option>
@@ -185,7 +185,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                                     type="text"
                                     value={chequeNumber}
                                     onChange={(e) => setChequeNumber(e.target.value)}
-                                    className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                    className="mt-1 block w-full rounded-sm border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                                     placeholder="Enter cheque number"
                                     required
                                 />
@@ -196,7 +196,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                                     type="date"
                                     value={chequeDate}
                                     onChange={(e) => setChequeDate(e.target.value)}
-                                    className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                    className="mt-1 block w-full rounded-sm border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                                     required
                                 />
                             </div>
@@ -204,8 +204,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                     )}
                     {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
                     <div className="flex justify-end gap-3">
-                        <button type="button" onClick={onClose} className="px-4 py-2 rounded-md bg-slate-200 text-slate-800 hover:bg-slate-300">Cancel</button>
-                        <button type="submit" disabled={isSubmitting} className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                        <button type="button" onClick={onClose} className="px-4 py-2 rounded-sm bg-slate-200 text-slate-800 hover:bg-slate-300">Cancel</button>
+                        <button type="submit" disabled={isSubmitting} className="px-4 py-2 rounded-sm bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
                         >
                             {isSubmitting ? 'Processing...' : 'Submit Payment'}
                         </button>

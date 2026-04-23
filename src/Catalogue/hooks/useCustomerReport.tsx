@@ -71,6 +71,16 @@ export default function useCustomerReport() {
               const totalAmount = Number(data.totalAmount || 0);
               const paidAmount = Number(data.paidAmount || 0);
 
+              const dueAmount = totalAmount - paidAmount;
+
+              console.log('Customer Report Row:', {
+                id: doc.id,
+                name: data.userName,
+                totalAmount,
+                paidAmount,
+                dueAmount,
+              });
+
               const isValidOrder = data.status !== 'Upcoming';
 
               return {
@@ -81,7 +91,7 @@ export default function useCustomerReport() {
                   : 'N/A',
                 totalAmount,
                 paidAmount,
-                dueAmount: totalAmount - paidAmount,
+                dueAmount,
                 createdAt:
                   data.createdAt instanceof Timestamp
                     ? data.createdAt.toDate()

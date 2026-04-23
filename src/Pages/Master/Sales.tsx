@@ -103,11 +103,11 @@ const calcKeys: CalcKey[][] = [
 
 
 export const applyRounding = (amount: number, isRoundingEnabled: boolean, interval: number = 1): number => {
-    if (!isRoundingEnabled || !interval || interval <= 0) {
-        return parseFloat(amount.toFixed(2));
-    }
-    const rounded = Math.round(amount / interval) * interval;
-    return parseFloat(rounded.toFixed(2));
+  if (!isRoundingEnabled || !interval || interval <= 0) {
+    return parseFloat(amount.toFixed(2));
+  }
+  const rounded = Math.round(amount / interval) * interval;
+  return parseFloat(rounded.toFixed(2));
 };
 
 const toCurrency = (num: number) => {

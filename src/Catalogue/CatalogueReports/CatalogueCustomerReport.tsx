@@ -41,6 +41,7 @@ const CatalogueCustomerReport: React.FC = () => {
     currentUser,
     setStartDate,
     setEndDate,
+    customers
   } = useCustomerReport();
 
   const filteredSales = useMemo(() => {
@@ -71,9 +72,12 @@ const CatalogueCustomerReport: React.FC = () => {
     const map = new Map<string, CustomerRow>();
 
     filteredSales.forEach((sale) => {
-      const key = `${sale.partyName}-${sale.partyNumber}`;
+      const key = sale.partyNumber || sale.partyName;
 
       if (!map.has(key)) {
+        const customer = customers.find(
+          c => c.number === sale.partyNumber
+        );
         map.set(key, {
           id: key,
           customerName: sale.partyName,
@@ -81,15 +85,15 @@ const CatalogueCustomerReport: React.FC = () => {
           totalBills: 0,
           totalSales: 0,
           totalDue: 0,
-          creditNoteAmount: 0,
+          creditNoteAmount: customer?.creditBalance || 0, 
         });
       }
 
       const row = map.get(key)!;
+      row.customerName = sale.partyName;
       row.totalBills += 1;
       row.totalSales += sale.totalAmount;
       row.totalDue += sale.dueAmount || 0;
-      row.creditNoteAmount += sale.creditNoteRemaining || 0;
     });
 
     let result = Array.from(map.values());

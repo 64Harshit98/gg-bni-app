@@ -801,10 +801,6 @@ const OrdersReturnPage: React.FC = () => {
     return 'Credit Due';
   };
 
-  const remainingCredit = selectedSale
-    ? getRemainingCreditNote(selectedSale)
-    : 0;
-
   if (isLoading) return <div className="flex min-h-screen items-center justify-center">Loading...</div>;
 
 
@@ -1008,7 +1004,6 @@ const OrdersReturnPage: React.FC = () => {
         onPaymentComplete={saveReturnTransaction}
         initialPartyName={partyName}
         initialPartyNumber={partyNumber}
-        initialCreditOverride={remainingCredit}
       />
     </div>
   );

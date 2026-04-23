@@ -82,6 +82,7 @@ const CustomerReport: React.FC = () => {
           totalSales: 0,
           totalDue: 0,
           sortKey: 'customerName', // FIX: Added required sortKey property
+          creditNoteAmount: 0,
         });
       }
 

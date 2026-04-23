@@ -328,6 +328,24 @@ const MyShop: React.FC = () => {
                 let groups = fetchedItemGroups || [];
                 setAllItemGroups(groups);
 
+                const fetchedItems = await dbOperations.syncItems();
+
+                setAllItems(
+                    (fetchedItems || []).map(item => ({
+                        ...item,
+                        isListed: item.isListed ?? false,
+                        stock: Number(item.stock || 0)
+                    }))
+                );
+
+                // isAllLive set karna
+                if (Array.isArray(fetchedItems) && fetchedItems.length > 0) {
+                    const allLive = fetchedItems.every(item => item?.isListed === true);
+                    setIsAllLive(allLive);
+                } else {
+                    setIsAllLive(false);
+                }
+
                 const businessRef = doc(db, "companies", companyId, "business_info", companyId);
                 const businessSnap = await getDoc(businessRef);
                 if (businessSnap.exists()) {
@@ -349,27 +367,6 @@ const MyShop: React.FC = () => {
 
         fetchData();
     }, [authLoading, currentUser, dbOperations, companyId]);
-
-
-    useEffect(() => {
-        if (!dbOperations) return;
-
-        const unsubscribe = dbOperations.listenToItems((data) => {
-            setAllItems([...data].map(item => ({
-                ...item,
-                isListed: item.isListed ?? false,
-                stock: Number(item.stock || 0)
-            })));
-        });
-
-        return () => {
-            if (unsubscribe) unsubscribe();
-        };
-    }, [dbOperations]);
-
-    useEffect(() => {
-        console.log("Updated Items:", allItems);
-    }, [allItems]);
 
     const filteredItems = useMemo(() => {
         const activeCat = resolvedGroupId || selectedCategory;

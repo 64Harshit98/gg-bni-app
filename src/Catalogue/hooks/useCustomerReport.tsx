@@ -22,28 +22,12 @@ export default function useCustomerReport() {
 
   const [isListVisible, setIsListVisible] = useState(false);
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+  const [customers, setCustomers] = useState<any[]>([]);
   const [feedbackModal, setFeedbackModal] = useState({
     isOpen: false,
     type: State.INFO,
     message: '',
   });
-
-  const getRemainingCreditNote = (order: any) => {
-    let totalCredit = 0;
-
-    if (order.returnHistory && order.returnHistory.length > 0) {
-      order.returnHistory.forEach((r: any) => {
-        totalCredit += Number(r.finalBalance || 0);
-      });
-    }
-
-    const usedCredit =
-      order.paymentMethods?.["CREDIT NOTE"] ||
-      order.paymentMethods?.["Credit Note"] ||
-      0;
-
-    return Math.max(0, totalCredit - usedCredit);
-  };
 
   useEffect(() => {
     const today = new Date();
@@ -62,6 +46,28 @@ export default function useCustomerReport() {
       end: end.toISOString(),
     });
   }, []);
+
+  useEffect(() => {
+    if (!currentUser?.companyId) return;
+
+    const ref = collection(
+      db,
+      'companies',
+      currentUser.companyId,
+      'customers'
+    );
+
+    const unsubscribe = onSnapshot(ref, (snap) => {
+      const list = snap.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      setCustomers(list);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser]);
 
   useEffect(() => {
     if (!currentUser?.companyId) {
@@ -91,10 +97,11 @@ export default function useCustomerReport() {
               const dueAmount = totalAmount - paidAmount;
 
               const isValidOrder = data.status !== 'Upcoming';
+              const creditNote = Number(data.creditNoteGenerated || 0);
 
               return {
                 id: doc.id,
-                partyName: data.userName || 'N/A',
+                partyName: data.billingDetails?.name || data.userName || 'N/A',
                 partyNumber: data.userLoginPhone
                   ? String(data.userLoginPhone)
                   : 'N/A',
@@ -107,7 +114,6 @@ export default function useCustomerReport() {
                     : new Date(),
                 isValidOrder,
                 returnHistory: data.returnHistory || [],
-                creditNoteRemaining: getRemainingCreditNote(data),
                 paymentMethods: data.paymentMethods || {},
               };
             })
@@ -127,6 +133,7 @@ export default function useCustomerReport() {
   return {
     navigate,
     sales,
+    customers,
     loading,
     error,
     authLoading,

@@ -6,13 +6,7 @@ import { IconScanCircle } from '../constants/Icons';
 import { applyRounding } from '../Pages/Master/Sales';
 import { State } from '../enums';
 import type { Item, SalesItem } from '../constants/models';
-
-interface Order {
-  id: string;
-  orderId?: string;
-  userName?: string;
-  items?: any[];
-}
+import type { OrderItem } from '../Catalogue/Orders';
 
 interface ExchangeSectionProps {
   availableItems: OrderItem[];

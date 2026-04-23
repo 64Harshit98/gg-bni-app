@@ -6,8 +6,8 @@ import {
 } from 'firebase/firestore';
 import { useAuth } from '../../context/auth-context';
 import { State } from '../../enums';
-import type { Order, OrderItem } from '../Pages/Orders';
-import type { PaymentCompletionData } from '../Components/PaymentDrawer';
+import type { Order, OrderItem } from '../Orders';
+import type { PaymentCompletionData } from '../../Components/PaymentDrawer';
 
 interface TransactionItem {
   id: string; originalItemId: string; name: string;

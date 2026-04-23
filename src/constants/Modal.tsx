@@ -21,10 +21,12 @@ export const Modal: React.FC<ModalProps> = ({
             {/* Icon based on type */}
             <div className={`mx-auto mb-4 w-12 h-12 rounded-sm flex items-center justify-center ${type === State.SUCCESS ? 'bg-green-100' :
                 type === State.ERROR ? 'bg-red-100' :
+                type === State.WARNING ? 'bg-yellow-100' :
                     'bg-blue-100'
                 }`}>
                 {type === State.SUCCESS && <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>}
                 {type === State.ERROR && <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>}
+                {type === State.WARNING && <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"></path></svg>}
                 {type === State.INFO && <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>}
             </div>
 
@@ -40,8 +42,8 @@ export const Modal: React.FC<ModalProps> = ({
                         Cancel
                     </button>
                     <button
-                        onClick={onConfirm}
-                        className={`flex-1 text-white py-2 px-4 rounded-sm transition-colors ${type === State.ERROR || type === State.INFO ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
+                        onClick={() => { onConfirm?.(); onClose(); }}
+                        className={`flex-1 text-white py-2 px-4 rounded-lg transition-colors ${type === State.ERROR || type === State.INFO ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
                             }`}
                     >
                         Confirm

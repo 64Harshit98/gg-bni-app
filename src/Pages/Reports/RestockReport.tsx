@@ -1,11 +1,11 @@
 import React, { useMemo, useState } from 'react';
-
+import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import { useAuth } from '../../context/auth-context';
 import {
   Search,
   AlertTriangle,
   ShoppingCart,
   ArrowUpDown,
-  PackageX,
   Loader2,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -26,11 +26,12 @@ import {
 } from './RestockReportComponents/restockReport.utils';
 
 const RestockReportPage: React.FC = () => {
+  const { currentUser } = useAuth();
   const navigate = useNavigate();
   const { items: inventoryItems, loading, error } = useRestockReport();
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-
+  const [activeFilter, setActiveFilter] = useState<'all' | 'urgent' | 'low'>('all');
   // --- Report Details state (same pattern as PurchaseReport) ---
   const [isListVisible, setIsListVisible] = useState(true);
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
@@ -41,20 +42,21 @@ const RestockReportPage: React.FC = () => {
   });
 
   const displayedItems = useMemo(() => {
-    const filtered = filterBySearch(inventoryItems, searchTerm);
+    const filtered = filterBySearch(inventoryItems, searchTerm).filter((item) => {
+      const stock = item.stock ?? 0;
+      if (activeFilter === 'urgent') return stock <= 0;
+      if (activeFilter === 'low') return stock > 0 && stock < item.restockQuantity;
+      return true;
+    });
 
     return [...filtered].sort((a, b) => {
       const stockA = a.stock ?? 0;
       const stockB = b.stock ?? 0;
-
-      // Out of stock always first
       if (stockA <= 0 && stockB > 0) return -1;
       if (stockB <= 0 && stockA > 0) return 1;
-
-      // Then sort by stock value
       return sortOrder === 'asc' ? stockA - stockB : stockB - stockA;
     });
-  }, [inventoryItems, searchTerm, sortOrder]);
+  }, [inventoryItems, searchTerm, sortOrder, activeFilter]);
 
   const { totalItemsToRestock, outOfStockCount, estimatedCostToRestock } =
     useMemo(() => calculateSummary(displayedItems), [displayedItems]);
@@ -63,28 +65,25 @@ const RestockReportPage: React.FC = () => {
     if (stock <= 0) {
       return (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 border border-red-200">
-          <AlertTriangle size={12} className="mr-1" /> Critical
+          Out of stock
         </span>
       );
     }
-
     if (stock <= 5) {
       return (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 border border-orange-200">
-          <PackageX size={12} className="mr-1" /> Low Stock
+          Low stock
         </span>
       );
     }
-
     return (
-      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200">
-        <AlertTriangle size={12} className="mr-1" /> In Stock
+      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
+        In stock
       </span>
     );
   };
-
   /* ---------- PDF DOWNLOAD ---------- */
-  const downloadAsPdf = () => {
+  const downloadAsPdf = async () => {
     const doc = new jsPDF();
 
     // ===== CLEAN GENERATION TAG =====
@@ -125,6 +124,26 @@ const RestockReportPage: React.FC = () => {
     // reset styles
     doc.setTextColor(0, 0, 0);
 
+
+    try {
+    const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
+    if (base64Logo) {
+      const img = new Image();
+      img.src = base64Logo;
+      await new Promise<void>((resolve) => {
+        img.onload = () => {
+          const logoWidth = 20;
+          const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
+          const logoX = pageWidth - logoWidth - 14;
+          doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
+          resolve();
+        };
+        img.onerror = () => resolve();
+      });
+    }
+  } catch {
+    // Continue without logo
+  }
     doc.setFontSize(18);
     doc.text('Restock Report', 14, 20);
     doc.setFontSize(11);
@@ -138,7 +157,7 @@ const RestockReportPage: React.FC = () => {
         const currentStock = item.stock ?? 0;
         const deficit = Math.max((item.restockQuantity ?? 0) - currentStock, 0);
         const status =
-          currentStock <= 0 ? 'Critical' : currentStock <= 5 ? 'Low Stock' : 'In Stock';
+          currentStock <= 0 ? 'Urgent' : currentStock <= 5 ? 'Low Stock' : 'In Stock';
         return [
           item.name,
           currentStock,
@@ -178,7 +197,7 @@ const RestockReportPage: React.FC = () => {
           'Restock Threshold': item.restockQuantity ?? 0,
           Deficit: deficit > 0 ? -deficit : 0,
           Status:
-            currentStock <= 0 ? 'Critical' : currentStock <= 5 ? 'Low Stock' : 'In Stock',
+            currentStock <= 0 ? 'Urgent' : currentStock <= 5 ? 'Low Stock' : 'In Stock',
         };
       });
 
@@ -241,15 +260,12 @@ const RestockReportPage: React.FC = () => {
         </button>
       </div>
 
-      {/*
-        SUMMARY CARDS
-        ─ Mobile  : 2-col grid; Est. Cost spans full width (col-span-2) below the first two
-        ─ Desktop : 3-col grid; all three cards sit in one row
-      */}
+      {/*SUMMARY CARDS*/}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
         {/* Items to Restock */}
         <div className="bg-white p-5 rounded-sm border border-gray-200 shadow-sm relative">
-          <p className="text-sm font-medium text-gray-500">Items to Restock</p>
+          <p className="text-sm font-medium text-gray-500">Need to Restock</p>
+          <p className="text-xs text-gray-400">(Below restock quantity)</p>
           <h3 className="absolute bottom-2 left-4 p-3 text-2xl font-bold text-gray-900">
             {loading ? '-' : totalItemsToRestock}
           </h3>
@@ -258,10 +274,10 @@ const RestockReportPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Critical (Out of Stock) */}
+        {/* (Out of Stock) */}
         <div className="bg-white p-5 rounded-sm border border-gray-200 shadow-sm relative">
-          <p className="text-sm font-medium text-gray-500">Critical</p>
-          <p className="text-sm font-medium text-gray-500">(Out of Stock)</p>
+          <p className="text-sm font-medium text-gray-500">Urgent – Order Now</p>
+          <p className="text-xs text-gray-400">(Zero or negative inventory)</p>
           <h3 className="text-2xl font-bold text-red-600 mt-5">
             {loading ? '-' : outOfStockCount}
           </h3>
@@ -270,11 +286,7 @@ const RestockReportPage: React.FC = () => {
           </div>
         </div>
 
-        {/*
-          Est. Restock Cost
-          col-span-2 on mobile  → full-width row below the two cards above
-          col-span-1 on md+     → sits as the 3rd card in the same row
-        */}
+        {/*Est. Restock Cost*/}
         <div className="col-span-2 md:col-span-1 bg-white p-5 rounded-sm border border-gray-200 shadow-sm flex items-center justify-between">
           <div>
             <p className="text-sm font-medium text-gray-500">Est. Restock Cost</p>
@@ -289,12 +301,9 @@ const RestockReportPage: React.FC = () => {
       </div>
 
       {/* SEARCH */}
-      <div className="bg-white p-4 rounded-t-xl border-b border-gray-200 shadow-sm">
-        <div className="relative w-full">
-          <Search
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-            size={18}
-          />
+      <div className="bg-white p-4 rounded-t-xl border-b border-gray-200 shadow-sm flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
           <input
             type="text"
             placeholder="Search products..."
@@ -302,6 +311,20 @@ const RestockReportPage: React.FC = () => {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
+        </div>
+        <div className="flex gap-2">
+          {(['all', 'urgent', 'low'] as const).map((f) => (
+            <button
+              key={f}
+              onClick={() => setActiveFilter(f)}
+              className={`px-3 py-2 rounded-sm text-sm font-medium border transition ${activeFilter === f
+                  ? 'bg-blue-600 text-white border-gray-800'
+                  : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                }`}
+            >
+              {f === 'all' ? 'All' : f === 'urgent' ? 'Urgent' : 'Low stock'}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -351,15 +374,15 @@ const RestockReportPage: React.FC = () => {
                       }
                       className="flex items-center justify-center gap-1 cursor-pointer hover:text-gray-700"
                     >
-                      Stock Level
+                      Current Stock
                       <ArrowUpDown
                         size={14}
                         className={sortOrder === 'asc' ? 'rotate-180' : ''}
                       />
                     </div>
                   </th>
-                  <th className="p-4 font-semibold text-center">Restock Threshold</th>
-                  <th className="p-4 font-semibold text-center">Deficit</th>
+                  <th className="p-4 font-semibold text-center">Min. Stock Needed</th>
+                  <th className="p-4 font-semibold text-center">Units Short</th>
                   <th className="p-4 font-semibold text-center">Status</th>
                   <th className="p-4 font-semibold text-right">Action</th>
                 </tr>
@@ -411,10 +434,13 @@ const RestockReportPage: React.FC = () => {
 
                         <td className="p-4 text-center">{getStatusBadge(currentStock)}</td>
 
-                        <td className="p-4 text-right">
-                          <button className="text-blue-600 hover:text-blue-800 text-sm font-medium hover:underline">
+                         <td className="p-4 text-right">
+                          <span
+                            className="text-sm font-medium text-gray-400 cursor-not-allowed select-none"
+                            title="Coming soon"
+                          >
                             Order
-                          </button>
+                          </span>
                         </td>
                       </tr>
                     );

@@ -14,7 +14,7 @@ import SearchableItemInput from '../UseComponents/SearchIteminput';
 import BarcodeScanner from '../UseComponents/BarcodeScanner';
 import PaymentDrawer, { type PaymentCompletionData } from '../Components/PaymentDrawer';
 import { Modal } from '../constants/Modal';
-import { ROLES, State } from '../enums';
+import { State } from '../enums';
 import { Spinner } from '../constants/Spinner';
 import { ItemEditDrawer } from '../Components/ItemDrawer';
 import { GenericCartList } from '../Components/CartItem';
@@ -118,7 +118,6 @@ const { currentUser } = useAuth();
   const [priceInfo, setPriceInfo] = useState<string | null>(null);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
 
-  const userRole = currentUser?.role || '';
   const hideMrp = (salesSettings as any)?.hideMrp ?? false;
   const showTaxRow = activeTaxMode !== 'exempt';
 

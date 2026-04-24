@@ -1,6 +1,7 @@
 import { lazy } from 'react';
 import { ROUTES } from '../constants/routes.constants';
 import { Permissions, PLANS } from '../enums';
+import UserReport from '../Pages/Reports/UserReport';
 // --- MAIN MODULE IMPORTS ---
 const Home = lazy(() => import('../Pages/Home'));
 const Account = lazy(() => import('../Pages/Account'));
@@ -125,6 +126,7 @@ export const AppRegistry: AppModule[] = [
             { path: ROUTES.PARTY_LEDGER, component: PartyLedger, permission: Permissions.ViewPurchaseReport },
             { path: ROUTES.GALLA_HISAAB_TOOL, component: GallaHisaabTool, permission: Permissions.ViewPurchaseReport },
             { path: ROUTES.ITEM_SOLD_REPORT, component: ItemSoldReport, permission: Permissions.ViewItemReport },
+            { path: ROUTES.USER_REPORT, component: UserReport, permission: Permissions.ViewItemReport},
         ],
     },
     {

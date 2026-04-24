@@ -15,7 +15,6 @@ import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant, State } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
 
-import { IconClose } from '../../constants/Icons';
 import { getPurchaseColumns } from '../../constants/TableColoumns';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
@@ -343,8 +342,14 @@ const PurchaseReport: React.FC = () => {
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
           Purchase Report
         </h1>
-        <button onClick={() => navigate(-1)} className="p-2">
-          <IconClose width={20} height={20} />
+        <button
+          onClick={() => navigate(-1)}
+          className="absolute mt-1 flex items-center justify-center p-4 rounded-full bg-gray-200 text-gray-500 hover:bg-gray-200 hover:text-gray-900 transition-all"
+          title="Go Back"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M12 5l-7 7 7 7" />
+          </svg>
         </button>
       </div>
 

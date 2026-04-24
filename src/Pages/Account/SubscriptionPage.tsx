@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../../context/auth-context';
 import { PLANS } from '../../enums';
 import { useNavigate } from 'react-router-dom';
-import { IconClose } from '../../constants/Icons';
 
 // --- HELPER: Feature Descriptions ---
 const FEATURE_DESCRIPTIONS: Record<string, string> = {
@@ -284,10 +283,12 @@ const SubscriptionPage: React.FC = () => {
                     <div className="flex justify-between h-16 items-center">
                         <button
                             onClick={() => navigate(-1)}
-                            className={`flex items-center gap-2 transition-colors ${!isPlanActive ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:text-gray-900'}`}
+                            className={`flex items-center gap-2 rounded-full p-4 bg-gray-200 text-gray-500 transition-colors ${!isPlanActive ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:text-gray-900'}`}
                             disabled={!isPlanActive}
                         >
-                            <IconClose className="w-6 h-6 text-gray-700" />
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M19 12H5M12 5l-7 7 7 7" />
+                        </svg>
                         </button>
                         <h1 className="text-xl font-bold text-gray-800">Subscription</h1>
                         <div className="w-10"></div>

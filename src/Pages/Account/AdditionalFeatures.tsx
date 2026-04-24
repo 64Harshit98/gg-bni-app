@@ -7,7 +7,6 @@ import { botMasterService } from '../Additional/Whatsapp/WhatsappApi';
 import { CustomCard } from '../../Components/CustomCard';
 import { IconChevronDown } from '../../constants/Icons';
 import { ROUTES } from '../../constants/routes.constants';
-import { IconClose } from '../../constants/Icons';
 
 interface ServiceItem {
     id: string;
@@ -121,10 +120,12 @@ const AdditionalServices: React.FC = () => {
                 <div className="flex items-start gap-4">
                     <button
                         onClick={() => navigate(-1)}
-                        className="mt-1 flex items-center justify-center p-2 rounded-full bg-gray-50 text-gray-500 hover:bg-gray-200 hover:text-gray-900 transition-all"
+                        className="mt-1 flex items-center justify-center p-4 rounded-full bg-gray-200 text-gray-500 hover:bg-gray-200 hover:text-gray-900 transition-all"
                         title="Go Back"
                     >
-                        <IconClose />
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M19 12H5M12 5l-7 7 7 7" />
+                        </svg>
                     </button>
 
                     <div className="flex flex-col">

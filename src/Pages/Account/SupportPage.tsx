@@ -18,7 +18,6 @@ import {
   Send
 } from 'lucide-react';
 import { ROUTES } from '../../constants/routes.constants';
-import { IconClose } from '../../constants/Icons';
 
 // --- TYPES ---
 interface AccordionItemProps {
@@ -98,20 +97,20 @@ const SupportPage: React.FC = () => {
   }, []);
 
   const generateRefNumber = async () => {
-  const counterRef = doc(db, "counters", "support_tickets");
-  const counterSnap = await getDoc(counterRef);
-  
-  let nextNumber = 1;
-  if (counterSnap.exists()) {
-    nextNumber = (counterSnap.data().count || 0) + 1;
-  }
-  
-  await updateDoc(counterRef, { count: nextNumber }).catch(() =>
-    addDoc(collection(db, "counters"), { count: nextNumber })
-  );
-  
-  return `TKT-${String(nextNumber).padStart(4, '0')}`; // TKT-0001, TKT-0002...
-};
+    const counterRef = doc(db, "counters", "support_tickets");
+    const counterSnap = await getDoc(counterRef);
+
+    let nextNumber = 1;
+    if (counterSnap.exists()) {
+      nextNumber = (counterSnap.data().count || 0) + 1;
+    }
+
+    await updateDoc(counterRef, { count: nextNumber }).catch(() =>
+      addDoc(collection(db, "counters"), { count: nextNumber })
+    );
+
+    return `TKT-${String(nextNumber).padStart(4, '0')}`; // TKT-0001, TKT-0002...
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,7 +120,7 @@ const SupportPage: React.FC = () => {
     }
     setSubmitting(true);
     try {
-      const refNumber = await generateRefNumber(); 
+      const refNumber = await generateRefNumber();
       await addDoc(collection(db, "support_tickets"), {
         referenceNumber: refNumber,
         fullName: userProfile.fullName,
@@ -154,9 +153,11 @@ const SupportPage: React.FC = () => {
           <div className="flex justify-between h-16 items-center">
             <button
               onClick={() => navigate(-1)}
-              className="flex items-center gap-2 text-gray-500 hover:text-gray-900 transition-colors"
+              className="flex items-center gap-2 p-4 rounded-full bg-gray-200 text-gray-500 hover:text-gray-900 transition-colors"
             >
-              <IconClose />
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 12H5M12 5l-7 7 7 7" />
+              </svg>
             </button>
             <h1 className="text-xl font-bold text-gray-800">Help & Support</h1>
             <div className="w-10"></div>

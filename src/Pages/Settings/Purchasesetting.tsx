@@ -256,7 +256,14 @@ const PurchaseSettingsPage: React.FC = () => {
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
             <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
-                <button onClick={() => navigate(-1)} className="text-2xl font-bold text-gray-600 bg-transparent border-none cursor-pointer p-1">&times;</button>
+                <button
+                    onClick={() => navigate(-1)}
+                    className="mt-1 flex items-center justify-center p-4 rounded-full bg-gray-200 text-gray-500 hover:bg-gray-200 hover:text-gray-900 transition-all"
+                    title="Go Back"
+                >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M19 12H5M12 5l-7 7 7 7" />
+                    </svg></button>
                 <h1 className="text-base md:text-lg font-semibold text-gray-800">Purchase Settings</h1>
                 <div className="w-6"></div>
             </div>

@@ -5,7 +5,7 @@ import { formatDate, formatDateForInput } from './SalesReportComponents/salesRep
 import usePartyLedger, { type LedgerTransaction, type PaymentRecord } from './PartyLedger/usePartyLedger';
 
 import { CustomCard } from '../../Components/CustomCard';
-import { IconClose, IconChevronDown } from '../../constants/Icons';
+import { IconChevronDown } from '../../constants/Icons';
 
 const PartyLedger: React.FC = () => {
     const navigate = useNavigate();
@@ -101,8 +101,14 @@ const PartyLedger: React.FC = () => {
                     <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
                         Party Ledger
                     </h1>
-                    <button onClick={() => navigate(-1)} className="p-2">
-                        <IconClose width={20} height={20} />
+                    <button
+                        onClick={() => navigate(-1)}
+                        className="absolute mt-2 flex items-center justify-center p-2 rounded-full bg-gray-200 text-gray-500 hover:bg-gray-200 hover:text-gray-900 transition-all"
+                        title="Go Back"
+                    >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M19 12H5M12 5l-7 7 7 7" />
+                        </svg>
                     </button>
                 </div>
             )}
@@ -216,9 +222,11 @@ const PartyLedger: React.FC = () => {
                                     setSelectedPartyName(null);
                                     setExpandedBillId(null);
                                 }}
-                                className="p-2 text-gray-500 hover:bg-gray-200 rounded-full transition-colors"
+                                className="absolute rounded-full bg-gray-200 p-2 text-gray-500 hover:bg-gray-200 transition-colors"
                             >
-                                <IconClose width={20} height={20} />
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M12 5l-7 7 7 7" />
+          </svg>
                             </button>
                         </div>
 

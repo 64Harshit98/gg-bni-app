@@ -6,7 +6,6 @@ import * as XLSX from 'xlsx';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant, State } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
-import { IconClose } from '../../constants/Icons';
 import { getPnlColumns } from '../../constants/TableColoumns';
 import FilterSelect from './SalesReportComponents/FilterSelect';
 import { usePnlReport, usePnlStates } from './PNLReportComponents/usePnlReport';
@@ -149,27 +148,27 @@ const PnlReportPage: React.FC = () => {
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
-      
+
       const { totalRevenue, totalCost, grossProfit, grossProfitPercentage } = pnlSummary;
-       try {
-      const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
-      if (base64Logo) {
-        const img = new Image();
-        img.src = base64Logo;
-        await new Promise<void>((resolve) => {
-          img.onload = () => {
-            const logoWidth = 20;
-            const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
-            const logoX = pageWidth - logoWidth - 14;
-            doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
-            resolve();
-          };
-          img.onerror = () => resolve();
-        });
+      try {
+        const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
+        if (base64Logo) {
+          const img = new Image();
+          img.src = base64Logo;
+          await new Promise<void>((resolve) => {
+            img.onload = () => {
+              const logoWidth = 20;
+              const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
+              const logoX = pageWidth - logoWidth - 14;
+              doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
+              resolve();
+            };
+            img.onerror = () => resolve();
+          });
+        }
+      } catch {
+        // Continue without logo
       }
-    } catch {
-      // Continue without logo
-    }
 
       // --- 1. BRAND ACCENT BAR ---
       doc.setFillColor(37, 99, 235); // blue-600
@@ -185,14 +184,14 @@ const PnlReportPage: React.FC = () => {
       doc.setFontSize(10);
       doc.setTextColor(107, 114, 128); // gray-500
       doc.setFont('helvetica', 'normal');
-      
+
       const generationDate = new Date().toLocaleDateString('en-IN', {
         year: 'numeric', month: 'short', day: 'numeric',
       });
-      
+
       const start = appliedFilters?.start ? formatDate(new Date(appliedFilters.start)) : 'All Time';
       const end = appliedFilters?.end ? formatDate(new Date(appliedFilters.end)) : 'All Time';
-      
+
       const subtitleText = `Generated: ${generationDate}   |   Period: ${start} to ${end}`;
       doc.text(subtitleText, 14, 31);
 
@@ -228,8 +227,8 @@ const PnlReportPage: React.FC = () => {
         },
         didParseCell: function (data) {
           // Highlight negative Gross Profit or Margin in red
-          if ((data.row.index === 0 && data.column.index === 3) || 
-              (data.row.index === 1 && data.column.index === 3)) {
+          if ((data.row.index === 0 && data.column.index === 3) ||
+            (data.row.index === 1 && data.column.index === 3)) {
             const rawVal = parseFloat(String(data.cell.raw).replace(/,/g, '').replace('%', ''));
             if (rawVal < 0) {
               data.cell.styles.textColor = [220, 38, 38]; // red-600
@@ -394,8 +393,14 @@ const PnlReportPage: React.FC = () => {
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
           Profit & Loss Report
         </h1>
-        <button onClick={() => navigate(-1)} className="p-2">
-          <IconClose width={20} height={20} />
+        <button
+          onClick={() => navigate(-1)}
+          className="absolute mt-1 flex items-center justify-center p-3 rounded-full bg-gray-200 text-gray-500 hover:bg-gray-200 hover:text-gray-900 transition-all"
+          title="Go Back"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M12 5l-7 7 7 7" />
+          </svg>
         </button>
       </div>
 

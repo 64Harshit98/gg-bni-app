@@ -6,23 +6,8 @@ export interface Invoice {
   partyNumber?: string;
   totalAmount: number;
   items: any[]; // You can be more specific if you have a SalesItem type
-  dueAmount?: number;             
-  status: 'Paid' | 'Unpaid';     
-  type: 'Debit' | 'Credit';  
   createdAt?: any;
   salesmanId?: string;
-  taxType?: string;
-  manualDiscount?: number;
-  partyAddress?: string;
-  partyGstin?: string;
-  shippingName?: string;
-  shippingAddress?: string;
-  shippingNumber?: string;
-  shippingGST?: string;
-  extraExpenseName?: string;
-  extraExpenseAmount?: number;
-  narration?: string;
-  salesmanName?: string;
   // Add other fields you use, like taxAmount, subtotal, etc.
 }
 
@@ -125,32 +110,4 @@ export interface SalesItem {
   finalPrice?: number;
   stock?: number;
   productId?:string
-}
-
-export interface PdfData {
-  printFormat?: 'A4' | 'THERMAL58';
-  gstScheme: string;
-  taxType: string;
-  companyName: string;
-  companyAddress: string;
-  companyContact: string;
-  companyEmail: string;
-  companyLogoBase64?: string;
-  signatureBase64: string;
-  companyGstin: string;
-  msmeNumber: string;
-  panNumber: string;
-  billDiscount: number;
-  upiId: string;
-  billTo: { name: string; address: string; phone: string; gstin: string };
-  shipTo?: { name: string; address: string; phone: string; gstin?: string };
-  extraExpenseName?: string;
-  extraExpenseAmount?: number;
-  narration?: string;
-  invoice: { number: string; date: string; billedBy: string; roNumber: string };
-  items: any[];
-  terms: string;
-  finalAmount: number;
-  isEstimate?: boolean;
-  bankDetails: { accountName: string; accountNumber: string; bankName: string; ifsc: string };
 }

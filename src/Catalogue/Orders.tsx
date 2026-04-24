@@ -229,6 +229,7 @@ const OrdersPage: React.FC = () => {
   const [_pageIsLoading, setPageIsLoading] = useState(false);
   const [_error, setError] = useState<string | null>(null);
   const [availableItems, setAvailableItems] = useState<Item[]>([]);
+  const [pendingAdjustment, setPendingAdjustment] = useState<{ amount: number } | null>(null);
 
   // Initialise dateRange from location state or today
   useEffect(() => {
@@ -329,16 +330,40 @@ const OrdersPage: React.FC = () => {
     setEditingOrder((prev) => prev ? { ...prev, totalAmount: calculatedEditTotal } : prev);
   }, [calculatedEditTotal]);
 
-  const handleQuantityChange = (id: string, newQuantity: number) => {
-    if (!editingOrder) return;
+  const handleQuantityChange = async (id: string, newQuantity: number) => {
+    if (!editingOrder || !currentUser?.companyId) return;
+
+    const companyId = currentUser.companyId;
+
+    const existingItem = editingOrder.items?.find((i) => i.id === id);
+    if (!existingItem) return;
+
+    const moq = Number(existingItem.moq && existingItem.moq > 0 ? existingItem.moq : 1);
+    const qty = isNaN(Number(newQuantity)) || Number(newQuantity) < moq ? moq : Number(newQuantity);
+
+    const oldQty = Number(existingItem.quantity || 0);
+    const diff = qty - oldQty;
+
+    try {
+      if (diff !== 0 && existingItem.itemId) {
+        const itemRef = doc(db, 'companies', companyId, 'items', existingItem.itemId);
+        const snap = await getDoc(itemRef);
+        if (snap.exists()) {
+          const currentStock = Number(snap.data().stock || 0);
+          // Sales flow → reduce stock when qty increases
+          const updatedStock = currentStock - diff;
+          await updateDoc(itemRef, { stock: updatedStock, updatedAt: serverTimestamp() });
+        }
+      }
+    } catch (e) {
+      console.error('Stock update failed on quantity change', e);
+    }
+
     setEditingOrder({
       ...editingOrder,
-      items: editingOrder.items?.map((item) => {
-        if (item.id !== id) return item;
-        const moq = Number(item.moq && item.moq > 0 ? item.moq : 1);
-        const qty = isNaN(Number(newQuantity)) || Number(newQuantity) < moq ? moq : Number(newQuantity);
-        return { ...item, quantity: qty };
-      }),
+      items: editingOrder.items?.map((item) =>
+        item.id === id ? { ...item, quantity: qty } : item
+      ),
     });
   };
 
@@ -369,9 +394,33 @@ const OrdersPage: React.FC = () => {
     });
   };
 
-  const handleDeleteItem = (id: string) => {
-    if (!editingOrder) return;
-    setEditingOrder({ ...editingOrder, items: editingOrder.items?.filter((item) => item.id !== id) });
+  const handleDeleteItem = async (id: string) => {
+    if (!editingOrder || !currentUser?.companyId) return;
+
+    const companyId = currentUser.companyId;
+
+    const itemToDelete = editingOrder.items?.find((item) => item.id === id);
+    if (!itemToDelete) return;
+
+    try {
+      if (itemToDelete.itemId && itemToDelete.quantity > 0) {
+        const itemRef = doc(db, 'companies', companyId, 'items', itemToDelete.itemId);
+        const snap = await getDoc(itemRef);
+        if (snap.exists()) {
+          const currentStock = Number(snap.data().stock || 0);
+          // Revert stock (since removing item from sale)
+          const updatedStock = currentStock + Number(itemToDelete.quantity || 0);
+          await updateDoc(itemRef, { stock: updatedStock, updatedAt: serverTimestamp() });
+        }
+      }
+    } catch (e) {
+      console.error('Stock update failed on delete', e);
+    }
+
+    setEditingOrder({
+      ...editingOrder,
+      items: editingOrder.items?.filter((item) => item.id !== id),
+    });
   };
 
   const handleSaveSuccess = (updatedItemData: Partial<Item>) => {
@@ -551,7 +600,11 @@ const OrdersPage: React.FC = () => {
   // ─── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-100 mb-10">
-      {modal && <Modal message={modal.message} type={modal.type} onClose={() => setModal(null)} />}
+      {modal && (
+        <div className="fixed inset-0 z-[3000] flex items-center justify-center">
+          <Modal message={modal.message} type={modal.type} onClose={() => setModal(null)} />
+        </div>
+      )}
 
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <div className="bg-white shadow-sm sticky top-0 z-[55] px-4 py-2">
@@ -918,7 +971,7 @@ const OrdersPage: React.FC = () => {
 
       {/* ── Edit order modal ─────────────────────────────────────────────── */}
       {editingOrder && (
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-2 md:p-4">
+        <div className="fixed inset-0 z-[1500] flex items-center justify-center bg-black/60 backdrop-blur-sm p-2 md:p-4">
           <div className="bg-white rounded-sm w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
             {/* Header */}
             <div className="px-5 py-3 border-b flex justify-between items-center bg-slate-50">
@@ -1031,14 +1084,60 @@ const OrdersPage: React.FC = () => {
                 onClick={async () => {
                   if (!editingOrder || !currentUser?.companyId) return;
                   try {
-                    const totalAmt = Number(editingOrder.totalAmount || 0);
-                    const paidAmt = Number(editingOrder.paidAmount || 0);
-                    let updatedStatus = editingOrder.status;
-                    if (updatedStatus === 'Paid' && totalAmt > paidAmt) updatedStatus = 'Completed';
-                    else if (updatedStatus === 'Completed' && totalAmt <= paidAmt && totalAmt > 0) updatedStatus = 'Paid';
-                    await updateDoc(doc(db, 'companies', currentUser.companyId, 'Orders', editingOrder.id), { items: editingOrder.items, totalAmount: totalAmt, status: updatedStatus, billingDetails: editingOrder.billingDetails, shippingDetails: editingOrder.shippingDetails, updatedAt: serverTimestamp() });
-                    setEditingOrder(null);
-                  } catch (error) { alert('Failed to save changes.'); }
+                    // --- Net Credit/Due calculation ---
+                    const originalOrder = Orders.find(o => o.id === editingOrder.id);
+                    const originalTotal = Number(originalOrder?.totalAmount || 0);
+                    const newTotal = Number(editingOrder.totalAmount || 0);
+                    const netDiff = newTotal - originalTotal;
+
+                    if (netDiff < 0) {
+                      const amount = Math.abs(netDiff);
+                      setPendingAdjustment({ amount });
+                      return;
+                    } else if (netDiff > 0) {
+                      const extraDueAmount = netDiff;
+                      setModal({
+                        message: `Due Increased: ₹${extraDueAmount.toFixed(2)}`,
+                        type: State.SUCCESS,
+                      });
+                      const totalAmt = Number(editingOrder.totalAmount || 0);
+                      const paidAmt = Number(editingOrder.paidAmount || 0);
+                      let updatedStatus = editingOrder.status;
+                      if (updatedStatus === 'Paid' && totalAmt > paidAmt) updatedStatus = 'Completed';
+                      else if (updatedStatus === 'Completed' && totalAmt <= paidAmt && totalAmt > 0) updatedStatus = 'Paid';
+                      await updateDoc(doc(db, 'companies', currentUser.companyId, 'Orders', editingOrder.id), {
+                        items: editingOrder.items,
+                        totalAmount: totalAmt,
+                        status: updatedStatus,
+                        billingDetails: editingOrder.billingDetails,
+                        shippingDetails: editingOrder.shippingDetails,
+                        extraDueAmount,
+                        updatedAt: serverTimestamp()
+                      });
+                      setEditingOrder(null);
+                    } else {
+                      // No change
+                      const totalAmt = Number(editingOrder.totalAmount || 0);
+                      const paidAmt = Number(editingOrder.paidAmount || 0);
+                      let updatedStatus = editingOrder.status;
+                      if (updatedStatus === 'Paid' && totalAmt > paidAmt) updatedStatus = 'Completed';
+                      else if (updatedStatus === 'Completed' && totalAmt <= paidAmt && totalAmt > 0) updatedStatus = 'Paid';
+                      await updateDoc(doc(db, 'companies', currentUser.companyId, 'Orders', editingOrder.id), {
+                        items: editingOrder.items,
+                        totalAmount: totalAmt,
+                        status: updatedStatus,
+                        billingDetails: editingOrder.billingDetails,
+                        shippingDetails: editingOrder.shippingDetails,
+                        updatedAt: serverTimestamp()
+                      });
+                      setEditingOrder(null);
+                    }
+                  } catch (error) {
+                    setModal({
+                      message: 'Failed to save changes.',
+                      type: State.ERROR,
+                    });
+                  }
                 }}
                 className="flex-[2] bg-orange-600 text-white py-2.5 rounded-sm text-sm font-black shadow-sm hover:bg-orange-700 transition-colors uppercase"
               >
@@ -1048,6 +1147,85 @@ const OrdersPage: React.FC = () => {
           </div>
         </div>
       )}
+    {/* Pending Adjustment Popup */}
+    {pendingAdjustment && editingOrder && currentUser?.companyId && (
+      <div className="fixed inset-0 z-[4000] flex items-center justify-center bg-black/50">
+        <div className="bg-white rounded-md shadow-2xl p-6 w-[380px] md:w-[420px]">
+          <p className="text-base font-extrabold text-slate-800 text-center mb-5">
+            Amount ₹{pendingAdjustment.amount.toFixed(2)} reduced
+          </p>
+          <div className="flex gap-4">
+            <button
+              className="flex-1 py-3 bg-orange-600 text-white text-sm font-bold rounded-md"
+              onClick={async () => {
+                try {
+                  const totalAmt = Number(editingOrder.totalAmount || 0);
+                  const paidAmt = Number(editingOrder.paidAmount || 0);
+                  let updatedStatus = editingOrder.status;
+                  if (updatedStatus === 'Paid' && totalAmt > paidAmt) updatedStatus = 'Completed';
+                  else if (updatedStatus === 'Completed' && totalAmt <= paidAmt && totalAmt > 0) updatedStatus = 'Paid';
+                  await updateDoc(doc(db, 'companies', currentUser.companyId, 'Orders', editingOrder.id), {
+                    items: editingOrder.items,
+                    totalAmount: totalAmt,
+                    status: updatedStatus,
+                    billingDetails: editingOrder.billingDetails,
+                    shippingDetails: editingOrder.shippingDetails,
+                    creditNoteAmount: pendingAdjustment.amount,
+                    updatedAt: serverTimestamp()
+                  });
+                  setPendingAdjustment(null);
+                  setEditingOrder(null);
+                  setModal({
+                    message: `Credit Note: ₹${pendingAdjustment.amount.toFixed(2)} added`,
+                    type: State.SUCCESS,
+                  });
+                } catch {
+                  setModal({
+                    message: 'Failed to save changes.',
+                    type: State.ERROR,
+                  });
+                }
+              }}
+            >
+              Credit Note
+            </button>
+            <button
+              className="flex-1 py-3 bg-green-600 text-white text-sm font-bold rounded-md"
+              onClick={async () => {
+                try {
+                  const totalAmt = Number(editingOrder.totalAmount || 0);
+                  const paidAmt = Number(editingOrder.paidAmount || 0);
+                  let updatedStatus = editingOrder.status;
+                  if (updatedStatus === 'Paid' && totalAmt > paidAmt) updatedStatus = 'Completed';
+                  else if (updatedStatus === 'Completed' && totalAmt <= paidAmt && totalAmt > 0) updatedStatus = 'Paid';
+                  await updateDoc(doc(db, 'companies', currentUser.companyId, 'Orders', editingOrder.id), {
+                    items: editingOrder.items,
+                    totalAmount: totalAmt,
+                    status: updatedStatus,
+                    billingDetails: editingOrder.billingDetails,
+                    shippingDetails: editingOrder.shippingDetails,
+                    updatedAt: serverTimestamp()
+                  });
+                  setPendingAdjustment(null);
+                  setEditingOrder(null);
+                  setModal({
+                    message: `Refund: ₹${pendingAdjustment.amount.toFixed(2)} should be paid back`,
+                    type: State.SUCCESS,
+                  });
+                } catch {
+                  setModal({
+                    message: 'Failed to save changes.',
+                    type: State.ERROR,
+                  });
+                }
+              }}
+            >
+              Refund
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     </div>
   );
 };

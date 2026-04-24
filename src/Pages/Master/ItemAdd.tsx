@@ -60,6 +60,50 @@ const ItemAdd: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
 
   const [isScannerOpen, setIsScannerOpen] = useState(false);
+  // Add a ref to track which field was last edited by the user
+  const lastEditedSale = useRef<'discount' | 'price' | null>(null);
+  const lastEditedPurchase = useRef<'discount' | 'price' | null>(null);
+
+  // ── Sale direction: Discount → Price ──────────────────────────────────
+  useEffect(() => {
+    if (lastEditedSale.current !== 'discount') return;
+    const mrp = parseFloat(itemMRP);
+    const disc = parseFloat(itemDiscount);
+    if (mrp > 0 && disc >= 0) {
+      setItemSalesPrice((mrp * (1 - disc / 100)).toFixed(2));
+    }
+  }, [itemMRP, itemDiscount]);
+
+  // ── Sale direction: Price → Discount ──────────────────────────────────
+  useEffect(() => {
+    if (lastEditedSale.current !== 'price') return;
+    const mrp = parseFloat(itemMRP);
+    const price = parseFloat(itemSalesPrice);
+    if (mrp > 0 && price >= 0) {
+      setItemDiscount(price < mrp ? ((mrp - price) / mrp * 100).toFixed(2) : '0');
+    }
+  }, [itemMRP, itemSalesPrice]);
+
+  // ── Purchase direction: Discount → Price ──────────────────────────────
+  useEffect(() => {
+    if (lastEditedPurchase.current !== 'discount') return;
+    const mrp = parseFloat(itemMRP);
+    const disc = parseFloat(PurchaseDiscount);
+    if (mrp > 0 && disc >= 0) {
+      setItemPurchasePrice((mrp * (1 - disc / 100)).toFixed(2));
+    }
+  }, [itemMRP, PurchaseDiscount]);
+
+  // ── Purchase direction: Price → Discount ──────────────────────────────
+  useEffect(() => {
+    if (lastEditedPurchase.current !== 'price') return;
+    const mrp = parseFloat(itemMRP);
+    const price = parseFloat(itemPurchasePrice);
+    if (mrp > 0 && price >= 0) {
+      setPurchaseDiscount(price < mrp ? ((mrp - price) / mrp * 100).toFixed(2) : '0');
+    }
+  }, [itemMRP, itemPurchasePrice]);
+
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -152,6 +196,8 @@ const ItemAdd: React.FC = () => {
     setRestockQuantity('');
     setHsnCode('');
     setItemUnit('');
+    lastEditedSale.current = null;
+    lastEditedPurchase.current = null;
     setPacketSize('');
     setSelectedCategory(itemGroups.length > 0 ? itemGroups[0].id! : '');
   };
@@ -916,7 +962,14 @@ const ItemAdd: React.FC = () => {
                     <label className="text-sm font-medium text-gray-600 after:content-['*'] after:text-red-500 mr-2">Sales Price</label>
                     <InfoTooltip text="The price you are selling this item for." />
                   </div>
-                  <input type="number" value={itemSalesPrice} onChange={(e) => setItemSalesPrice(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0.00" />
+                  <input type="number" value={itemSalesPrice} onChange={(e) => {
+                    lastEditedSale.current = 'price';
+                    setItemSalesPrice(e.target.value);
+                  }} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder={
+                    itemMRP && itemDiscount
+                      ? 'Auto-calculated'
+                      : '0.00'
+                  } />
                   <p className="text-[10px] text-gray-400">Required if MRP is empty</p>
                 </div>
 
@@ -927,7 +980,14 @@ const ItemAdd: React.FC = () => {
                     </label>
                     <InfoTooltip text="The price you paid to acquire this item." />
                   </div>
-                  <input type="number" value={itemPurchasePrice} onChange={(e) => setItemPurchasePrice(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0.00" />
+                  <input type="number" value={itemPurchasePrice} onChange={(e) => {
+                    lastEditedPurchase.current = 'price';
+                    setItemPurchasePrice(e.target.value);
+                  }} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder={
+                    itemMRP && PurchaseDiscount
+                      ? 'Auto-calculated'
+                      : '0.00'
+                  } />
                 </div>
                 <div>
                   <div className="flex items-center mb-1">
@@ -936,14 +996,20 @@ const ItemAdd: React.FC = () => {
                     </label>
                     <InfoTooltip text="Default discount percentage given to customers." />
                   </div>
-                  <input type="number" value={itemDiscount} onChange={(e) => setItemDiscount(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />
+                  <input type="number" value={itemDiscount} onChange={(e) => {
+                    lastEditedSale.current = 'discount';
+                    setItemDiscount(e.target.value);
+                  }} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />
                 </div>
                 <div>
                   <div className="flex items-center mb-1">
                     <label className="text-sm font-medium text-gray-600 mr-2">Purchase Disc (%)</label>
                     <InfoTooltip text="Discount percentage received from the supplier." />
                   </div>
-                  <input type="number" value={PurchaseDiscount} onChange={(e) => setPurchaseDiscount(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />
+                  <input type="number" value={PurchaseDiscount} onChange={(e) => {
+                    lastEditedPurchase.current = 'discount';
+                    setPurchaseDiscount(e.target.value);
+                  }} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-sky-500" placeholder="0" />
                 </div>
 
                 <div>

@@ -47,7 +47,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
     const dbOperations = useDatabase();
     const [formData, setFormData] = useState<Partial<Item>>({});
     const [isSaving, setIsSaving] = useState(false);
-
+    const lastEditedField = useRef<string | null>(null);
     const [isFetching, setIsFetching] = useState(false);
 
     const [error, setError] = useState<string | null>(null);
@@ -148,8 +148,8 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
         const checked = (e.target as HTMLInputElement).checked;
 
         // Added 'salesPrice' to numeric fields
-        const isNumericField = ['mrp', 'purchasePrice', 'stock', 'tax', 'discount', 'salesPrice', 'packetSize', 'moq'].includes(name);
-
+        const isNumericField = ['mrp', 'purchasePrice', 'stock', 'tax', 'discount', 'salesPrice', 'packetSize', 'moq', 'purchasediscount'].includes(name);
+        lastEditedField.current = name;
         setFormData(prev => ({
             ...prev,
             [name]: isCheckbox
@@ -157,6 +157,45 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 : (value === '' && isNumericField ? '' : (isNumericField ? parseFloat(value) : value))
         }));
     };
+    // MRP or Sale Discount changed → recalculate Sales Price
+    useEffect(() => {
+        if (lastEditedField.current === 'salesPrice') return; // user is editing price directly
+        const mrp = parseFloat(String(formData.mrp ?? ''));
+        const disc = parseFloat(String(formData.discount ?? ''));
+        if (mrp > 0 && disc >= 0) {
+            setFormData(prev => ({ ...prev, salesPrice: parseFloat((mrp * (1 - disc / 100)).toFixed(2)) }));
+        }
+    }, [formData.mrp, formData.discount]);
+
+    // Sales Price changed → recalculate Sale Discount
+    useEffect(() => {
+        if (lastEditedField.current !== 'salesPrice') return;
+        const mrp = parseFloat(String(formData.mrp ?? ''));
+        const salesPrice = parseFloat(String(formData.salesPrice ?? ''));
+        if (mrp > 0 && salesPrice >= 0) {
+            setFormData(prev => ({ ...prev, discount: parseFloat(((mrp - salesPrice) / mrp * 100).toFixed(2)) }));
+        }
+    }, [formData.salesPrice]);
+
+    // MRP or Purchase Discount changed → recalculate Purchase Price
+    useEffect(() => {
+        if (lastEditedField.current === 'purchasePrice') return; // user is editing price directly
+        const mrp = parseFloat(String(formData.mrp ?? ''));
+        const disc = parseFloat(String(formData.purchasediscount ?? ''));
+        if (mrp > 0 && disc >= 0) {
+            setFormData(prev => ({ ...prev, purchasePrice: parseFloat((mrp * (1 - disc / 100)).toFixed(2)) }));
+        }
+    }, [formData.mrp, formData.purchasediscount]);
+
+    // Purchase Price changed → recalculate Purchase Discount
+    useEffect(() => {
+        if (lastEditedField.current !== 'purchasePrice') return;
+        const mrp = parseFloat(String(formData.mrp ?? ''));
+        const purchasePrice = parseFloat(String(formData.purchasePrice ?? ''));
+        if (mrp > 0 && purchasePrice >= 0) {
+            setFormData(prev => ({ ...prev, purchasediscount: parseFloat(((mrp - purchasePrice) / mrp * 100).toFixed(2)) }));
+        }
+    }, [formData.purchasePrice]);
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -402,6 +441,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         name="mrp"
                                         value={formData.mrp ?? ''}
                                         onChange={handleChange}
+                                        placeholder={formData.mrp && formData.discount ? 'Auto-calculated' : '0.00'}
                                         className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                     />
                                 </div>
@@ -462,6 +502,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         name="purchasePrice"
                                         value={formData.purchasePrice ?? ''}
                                         onChange={handleChange}
+                                        placeholder={formData.mrp && formData.purchasediscount ? 'Auto-calculated' : '0.00'}
                                         className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                     />
                                 </div>

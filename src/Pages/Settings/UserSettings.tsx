@@ -8,7 +8,6 @@ import { Spinner } from '../../constants/Spinner';
 import { Permissions, ROLES, State, Variant } from '../../enums'; // Import ROLES
 import { CustomButton } from '../../Components';
 import { Modal } from '../../constants/Modal';
-import { IconClose } from '../../constants/Icons';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 
 
@@ -252,9 +251,15 @@ const ManageUsersPage: React.FC = () => {
         <div className="flex flex-col min-h-screen bg-gray-100 w-full mb-15">
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
-            <div className="flex items-center justify-between p-3 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
-                <button onClick={() => navigate(-1)} className="text-gray-600 hover:text-gray-900 p-1">
-                    <IconClose />
+            <div className="flex items-center justify-between p-3 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10 gap-2">
+                <button
+                        onClick={() => navigate(-1)}
+                        className="mt-1 flex items-center justify-center p-3 rounded-full bg-gray-200 text-gray-500 hover:bg-gray-200 hover:text-gray-900 transition-all"
+                        title="Go Back"
+                    >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M19 12H5M12 5l-7 7 7 7" />
+                        </svg>
                 </button>
                 <h1 className="text-lg font-semibold text-gray-800">Manage Users</h1>
                 <CustomButton onClick={handleAddUser} variant={Variant.Save} className='flex justify-right ml-10'>

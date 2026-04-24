@@ -5,7 +5,6 @@ import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../../context/auth-context';
 import { State } from '../../enums';
 import { Modal } from '../../constants/Modal';
-import { IconClose } from '../../constants/Icons';
 import { useNavigate } from 'react-router';
 
 // --- Interfaces ---
@@ -198,10 +197,13 @@ const BillSettings: React.FC = () => {
 
             <div className="flex items-center bg-white border-b border-gray-200 sticky top-0 z-10">
                 <button
-                    onClick={() => navigate(-1)}
-                    className="ml-4 flex items-center gap-2 text-gray-500 hover:text-gray-900 transition-colors"
-                >
-                    <IconClose />
+                        onClick={() => navigate(-1)}
+                        className="mt-1 flex items-center justify-center p-4 rounded-full bg-gray-200 text-gray-500 hover:bg-gray-200 hover:text-gray-900 transition-all"
+                        title="Go Back"
+                    >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M19 12H5M12 5l-7 7 7 7" />
+                        </svg>
                 </button>
                 <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
                     <h1 className="text-2xl font-bold text-gray-900">Invoice Configuration</h1>

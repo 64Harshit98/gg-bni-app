@@ -3,7 +3,7 @@ import SearchableItemInput from '../UseComponents/SearchIteminput';
 import { GenericCartList } from '../Components/CartItem';
 import { ItemEditDrawer } from '../Components/ItemDrawer';
 import { IconScanCircle } from '../constants/Icons';
-import { applyRounding } from '../Pages/Master/Sales';
+import { applyRounding } from '../Pages/Master/SalesComponents/Salescalculations';
 import { State } from '../enums';
 import type { Item, SalesItem } from '../constants/models';
 import type { OrderItem } from '../Catalogue/Orders';

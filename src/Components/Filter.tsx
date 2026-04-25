@@ -102,8 +102,8 @@ export const FilterControls: React.FC = () => {
     const location = useLocation();
     const isCatalogue = location.pathname.includes('catalogue');
 
-    const primaryColor = isCatalogue ? '#F97316' : '#2563eb';
-    const primaryHover = isCatalogue ? '#ea580c' : '#1d4ed8';
+    const primaryColor = isCatalogue ? '#F97316' : '#0ea5e9';
+    const primaryHover = isCatalogue ? '#ea580c' : '#0369a1';
 
     useEffect(() => {
         setLocalFilters(filters);

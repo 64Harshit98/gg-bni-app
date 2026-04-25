@@ -412,7 +412,7 @@ const ItemReport: React.FC = () => {
           </FilterSelect>
           <button
             onClick={handleApplyFilters}
-            className="w-[28%] py-2 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 transition self-end sm:self-auto"
+            className="w-[28%] py-2 bg-sky-500 text-white font-semibold rounded-md shadow-sm hover:bg-sky-700 transition self-end sm:self-auto"
           >
             Apply
           </button>
@@ -475,7 +475,7 @@ const ItemReport: React.FC = () => {
                 setIsDownloadModalOpen(true);
               }
             }}
-            className="flex-1 md:flex-none px-4 py-2 min-h-[44px] bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 disabled:opacity-50"
+            className="flex-1 md:flex-none px-4 py-2 min-h-[44px] bg-sky-500 text-white font-semibold rounded-md shadow-sm hover:bg-sky-700 disabled:opacity-50"
           >
             Download Report
           </button>

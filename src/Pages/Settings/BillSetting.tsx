@@ -185,7 +185,7 @@ const BillSettings: React.FC = () => {
     if (isLoading) {
         return (
             <div className="flex items-center justify-center min-h-screen bg-gray-50">
-                <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-8 h-8 border-4 border-sky-600 border-t-transparent rounded-full animate-spin"></div>
                 <span className="ml-3 text-gray-600 font-medium">Loading Settings...</span>
             </div>
         );
@@ -223,7 +223,7 @@ const BillSettings: React.FC = () => {
                                 <button
                                     type="button"
                                     onClick={() => navigate('/edit-profile')}
-                                    className="text-blue-600 hover:underline text-xs bg-transparent border-0 cursor-pointer p-0 font-normal"
+                                    className="text-sky-600 hover:underline text-xs bg-transparent border-0 cursor-pointer p-0 font-normal"
                                 >
                                     Business Profile
                                 </button>
@@ -359,7 +359,7 @@ const BillSettings: React.FC = () => {
                                 value={settings.upiId || ''}
                                 onChange={handleChange}
                                 placeholder="e.g. yourname@upi"
-                                className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-sky-500 focus:border-sky-500 outline-none"
                             />
                         </div>
                     </div>
@@ -373,14 +373,14 @@ const BillSettings: React.FC = () => {
                     </div>
                     <div className="p-6">
                         <div className="flex flex-col sm:flex-row gap-4">
-                            <label className={`flex-1 flex items-center p-4 border rounded-lg cursor-pointer transition-colors ${settings.printFormat === 'A4' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 hover:bg-gray-50'}`}>
+                            <label className={`flex-1 flex items-center p-4 border rounded-lg cursor-pointer transition-colors ${settings.printFormat === 'A4' ? 'border-sky-600 bg-sky-50' : 'border-gray-300 hover:bg-gray-50'}`}>
                                 <input
                                     type="radio"
                                     name="printFormat"
                                     value="A4"
                                     checked={settings.printFormat === 'A4'}
                                     onChange={handleChange}
-                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                    className="w-4 h-4 text-sky-600 border-gray-300 focus:ring-sky-500"
                                 />
                                 <div className="ml-3">
                                     <span className="block text-sm font-medium text-gray-900">A4 Size</span>
@@ -388,14 +388,14 @@ const BillSettings: React.FC = () => {
                                 </div>
                             </label>
 
-                            <label className={`flex-1 flex items-center p-4 border rounded-lg cursor-pointer transition-colors ${settings.printFormat === 'THERMAL58' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 hover:bg-gray-50'}`}>
+                            <label className={`flex-1 flex items-center p-4 border rounded-lg cursor-pointer transition-colors ${settings.printFormat === 'THERMAL58' ? 'border-sky-600 bg-sky-50' : 'border-gray-300 hover:bg-gray-50'}`}>
                                 <input
                                     type="radio"
                                     name="printFormat"
                                     value="THERMAL58"
                                     checked={settings.printFormat === 'THERMAL58'}
                                     onChange={handleChange}
-                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                    className="w-4 h-4 text-sky-600 border-gray-300 focus:ring-sky-500"
                                 />
                                 <div className="ml-3">
                                     <span className="block text-sm font-medium text-gray-900">2-Inch Thermal</span>
@@ -455,7 +455,7 @@ const BillSettings: React.FC = () => {
                             value={settings.termsAndConditions}
                             onChange={handleChange}
                             rows={5}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-blue-500 focus:border-blue-500 outline-none text-sm leading-relaxed"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-sky-500 focus:border-sky-500 outline-none text-sm leading-relaxed"
                         />
                     </div>
                 </div>
@@ -469,7 +469,7 @@ const BillSettings: React.FC = () => {
                     disabled={isSaving}
                     className={`
                         w-full md:w-auto px-8 py-3 rounded-sm text-white font-bold text-lg shadow-md transition-all transform active:scale-[0.98]
-                        ${isSaving ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}
+                        ${isSaving ? 'bg-gray-400 cursor-not-allowed' : 'bg-sky-500 hover:bg-sky-700'}
                     `}
                 >
                     {isSaving ? 'Saving...' : 'Save Changes'}

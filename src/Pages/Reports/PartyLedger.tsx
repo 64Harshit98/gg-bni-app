@@ -122,7 +122,7 @@ const PartyLedger: React.FC = () => {
                             placeholder="Search by Party Name or Number..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full p-2 border border-gray-300 rounded-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                            className="w-full p-2 border border-gray-300 rounded-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 text-sm"
                         />
                     </div>
 
@@ -140,20 +140,20 @@ const PartyLedger: React.FC = () => {
                             <input type="date" value={customEndDate} onChange={(e) => { setCustomEndDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border border-gray-200 rounded-sm" />
                         </div>
                     </div>
-                    <button onClick={handleApplyFilters} className="w-full mt-3 px-3 py-2 bg-blue-600 text-white text-sm font-semibold rounded-sm hover:bg-blue-700 transition-colors">
+                    <button onClick={handleApplyFilters} className="w-full mt-3 px-3 py-2 bg-sky-500 text-white text-sm font-semibold rounded-sm hover:bg-sky-700 transition-colors">
                         Apply
                     </button>
                     <div className="flex justify-center mt-3">
                         <div className="flex bg-gray-100 rounded-sm p-1 text-sm">
                             <button
                                 onClick={() => setPartyTypeFilter('Customer')}
-                                className={`px-4 py-1.5 rounded-sm transition ${partyTypeFilter === 'Customer' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600'}`}
+                                className={`px-4 py-1.5 rounded-sm transition ${partyTypeFilter === 'Customer' ? 'bg-sky-500 text-white shadow-sm' : 'text-gray-600'}`}
                             >
                                 Customer
                             </button>
                             <button
                                 onClick={() => setPartyTypeFilter('Supplier')}
-                                className={`px-4 py-1.5 rounded-sm transition ${partyTypeFilter === 'Supplier' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600'}`}
+                                className={`px-4 py-1.5 rounded-sm transition ${partyTypeFilter === 'Supplier' ? 'bg-sky-500 text-white shadow-sm' : 'text-gray-600'}`}
                             >
                                 Supplier
                             </button>
@@ -177,7 +177,7 @@ const PartyLedger: React.FC = () => {
                             >
                                 {/* Top Row: Badge and Total */}
                                 <div className="flex items-start justify-between mb-1.5">
-                                    <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider whitespace-nowrap ${party.partyType === 'Customer' ? 'bg-blue-50 text-blue-600 border-blue-200' :
+                                    <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider whitespace-nowrap ${party.partyType === 'Customer' ? 'bg-sky-50 text-sky-500 border-sky-200' :
                                         party.partyType === 'Supplier' ? 'bg-purple-50 text-purple-600 border-purple-200' :
                                             'bg-orange-50 text-orange-600 border-orange-200'
                                         }`}>
@@ -264,7 +264,7 @@ const PartyLedger: React.FC = () => {
                                     <div className="flex justify-between items-end w-full -mt-5 relative pointer-events-none">
                                         {/* LEFT: Transaction Type Badge */}
                                         <div className="flex justify-start gap-1 flex-wrap max-w-[50%] pointer-events-auto">
-                                            <span className={`text-[8px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider whitespace-nowrap ${txn.type === 'sale' ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-purple-50 text-purple-600 border-purple-200'}`}>
+                                            <span className={`text-[8px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider whitespace-nowrap ${txn.type === 'sale' ? 'bg-sky-50 text-sky-500 border-sky-200' : 'bg-purple-50 text-purple-600 border-purple-200'}`}>
                                                 {txn.type}
                                             </span>
                                         </div>
@@ -335,7 +335,7 @@ const PartyLedger: React.FC = () => {
                                                                     </span>
                                                                 </div>
 
-                                                                <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border bg-blue-50 text-blue-600 border-blue-200">
+                                                                <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border bg-sky-50 text-sky-500 border-sky-200">
                                                                     {payment.method === 'upi' ? 'UPI' : payment.method.replace(/_/g, ' ')}
                                                                 </span>
                                                             </div>

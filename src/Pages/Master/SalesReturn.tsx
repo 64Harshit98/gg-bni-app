@@ -827,7 +827,7 @@ const SalesReturnPage: React.FC = () => {
               <div className="relative" ref={salesDropdownRef}>
                 <label htmlFor="search-sale" className="block text-sm font-medium mb-1 text-gray-700">Search Original Sale</label>
                 <div className="flex gap-2">
-                  <input id="search-sale" type="text" value={searchSaleQuery} onChange={(e) => { setSearchSaleQuery(e.target.value); setIsSalesDropdownOpen(true); }} onFocus={() => setIsSalesDropdownOpen(true)} placeholder={selectedSale ? `${selectedSale.partyName} (${selectedSale.invoiceNumber})` : "Invoice or Name..."} className="flex-grow p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" autoComplete="off" readOnly={!!selectedSale} />
+                  <input id="search-sale" type="text" value={searchSaleQuery} onChange={(e) => { setSearchSaleQuery(e.target.value); setIsSalesDropdownOpen(true); }} onFocus={() => setIsSalesDropdownOpen(true)} placeholder={selectedSale ? `${selectedSale.partyName} (${selectedSale.invoiceNumber})` : "Invoice or Name..."} className="flex-grow p-2 border rounded-lg focus:ring-2 focus:ring-sky-500 outline-none" autoComplete="off" readOnly={!!selectedSale} />
                   {selectedSale && (<button onClick={handleClear} className=" px-3 bg-gray-200 text-gray-700 font-semibold rounded-lg whitespace-nowrap hover:bg-gray-300">Clear</button>)}
                 </div>
                 {isSalesDropdownOpen && !selectedSale && (
@@ -849,8 +849,8 @@ const SalesReturnPage: React.FC = () => {
                 <div className="bg-white p-3 rounded-sm shadow-md mb-4 border border-gray-200">
                   <div className="space-y-3 mb-4">
                     <div className="grid grid-cols-2 gap-4">
-                      <div><label className="block text-xs font-bold text-gray-500 uppercase">Date</label><input type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm" /></div>
-                      <div><label className="block text-xs font-bold text-gray-500 uppercase">Party</label><input type="text" value={partyName} onChange={(e) => setPartyName(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm" /></div>
+                      <div><label className="block text-xs font-bold text-gray-500 uppercase">Date</label><input type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-sky-500 outline-none text-sm" /></div>
+                      <div><label className="block text-xs font-bold text-gray-500 uppercase">Party</label><input type="text" value={partyName} onChange={(e) => setPartyName(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-sky-500 outline-none text-sm" /></div>
                     </div>
                     <div className="relative" ref={customerDropdownRef}>
                       <label className="block text-xs font-bold text-gray-500 uppercase">Party Number</label>
@@ -865,7 +865,7 @@ const SalesReturnPage: React.FC = () => {
                           setIsCustomerDropdownOpen(true);
                         }}
                         onFocus={() => setIsCustomerDropdownOpen(true)}
-                        className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm"
+                        className="w-full p-1 border-b border-gray-300 focus:border-sky-500 outline-none text-sm"
                         autoComplete="off"
                         placeholder="Search customer by number or name..."
                       />
@@ -966,7 +966,7 @@ const SalesReturnPage: React.FC = () => {
 
                 {/* Mobile Summary */}
                 <div className="md:hidden bg-white p-2 rounded-sm shadow-md">
-                  <div className="flex justify-between items-center text-sm text-blue-700">
+                  <div className="flex justify-between items-center text-sm text-sky-700">
                     <p>Return Value</p><p className="font-medium">₹{totalReturnGross.toFixed(2)}</p>
                   </div>
                   {discountDeducted > 0 && (
@@ -975,7 +975,7 @@ const SalesReturnPage: React.FC = () => {
                     </div>
                   )}
                   {modeOfReturn === 'Exchange' && (
-                    <div className="flex justify-between items-center text-sm text-blue-700 mt-1">
+                    <div className="flex justify-between items-center text-sm text-sky-700 mt-1">
                       <p>Exchange Value</p><p className="font-medium">₹{totalExchangeValue.toFixed(2)}</p>
                     </div>
                   )}
@@ -1001,7 +1001,7 @@ const SalesReturnPage: React.FC = () => {
                   setModeOfReturn(value)
                   if (value !== 'Exchange')
                     setExchangeItems([])
-                }} className="w-full p-3 border border-gray-300 rounded-lg bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none">
+                }} className="w-full p-3 border border-gray-300 rounded-lg bg-gray-50 focus:ring-2 focus:ring-sky-500 outline-none">
                   <option disabled={isDueSale} >Credit Note</option>
                   <option>Exchange</option>
                   <option>Cash Refund</option>
@@ -1023,7 +1023,7 @@ const SalesReturnPage: React.FC = () => {
                   <span>₹{totalReturnValue.toFixed(2)}</span>
                 </div>
                 {modeOfReturn === 'Exchange' && (
-                  <div className="flex justify-between text-blue-600 mt-2">
+                  <div className="flex justify-between text-sky-500 mt-2">
                     <span>Less: New Items Value</span>
                     <span>- ₹{totalExchangeValue.toFixed(2)}</span>
                   </div>
@@ -1036,7 +1036,7 @@ const SalesReturnPage: React.FC = () => {
                     ₹{Math.abs(finalBalance).toFixed(2)}
                   </span>
                 </div>
-                <button onClick={handleProcessReturn} className="w-full bg-blue-600 text-white py-4 px-4 rounded-xl shadow-lg shadow-blue-200 transition-all active:scale-[0.98] text-lg font-bold hover:bg-blue-700">
+                <button onClick={handleProcessReturn} className="w-full bg-sky-500 text-white py-4 px-4 rounded-xl shadow-lg shadow-sky-200 transition-all active:scale-[0.98] text-lg font-bold hover:bg-sky-700">
                   Process Transaction
                 </button>
               </div>

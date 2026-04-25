@@ -838,7 +838,7 @@ const PurchasePage: React.FC = () => {
   };
 
   if (pageIsLoading) return (<div className="flex items-center justify-center h-screen"><Spinner /> <p className="ml-2">Loading...</p></div>);
-  if (error) return (<div className="flex flex-col items-center justify-center h-screen text-red-600"><p>{error}</p><button onClick={() => navigate(-1)} className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Go Back</button></div>);
+  if (error) return (<div className="flex flex-col items-center justify-center h-screen text-red-600"><p>{error}</p><button onClick={() => navigate(-1)} className="mt-4 px-4 py-2 bg-sky-500 text-white rounded hover:bg-sky-700">Go Back</button></div>);
 
   const showTaxToggle = true; // Always show the manual tax toggle on the UI
   const displayTaxTotal = showTaxToggle && billTaxType !== 'none';
@@ -857,7 +857,7 @@ const PurchasePage: React.FC = () => {
             value={invoiceDate}
             onChange={(e) => setInvoiceDate(e.target.value)}
             // 👇 Changed width to w-32 and added cursor-pointer
-            className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-25 text-sm outline-none transition-colors cursor-pointer"
+            className="bg-transparent border-b border-gray-400 focus:border-sky-600 text-gray-800 font-bold text-center w-25 text-sm outline-none transition-colors cursor-pointer"
           />
           <span className="text-[9px] text-gray-400 uppercase tracking-wide mt-0.5">DATE</span>
 
@@ -870,7 +870,7 @@ const PurchasePage: React.FC = () => {
             type="text"
             value={invoiceNumber}
             onChange={(e) => setInvoiceNumber(e.target.value)}
-            className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-24 text-sm outline-none transition-colors"
+            className="bg-transparent border-b border-gray-400 focus:border-sky-600 text-gray-800 font-bold text-center w-24 text-sm outline-none transition-colors"
           />
           <span className="text-[9px] text-gray-400 uppercase tracking-wide mt-0.5">Inv No</span>
         </div>
@@ -888,7 +888,7 @@ const PurchasePage: React.FC = () => {
               type="text"
               value={invoiceNumber}
               onChange={(e) => setInvoiceNumber(e.target.value)}
-              className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-24 text-sm outline-none transition-colors"
+              className="bg-transparent border-b border-gray-400 focus:border-sky-600 text-gray-800 font-bold text-center w-24 text-sm outline-none transition-colors"
             />
           </div>
           <div className="flex items-center gap-2">
@@ -898,7 +898,7 @@ const PurchasePage: React.FC = () => {
               value={invoiceDate}
               onChange={(e) => setInvoiceDate(e.target.value)}
               // 👇 Changed width to w-32 and added cursor-pointer
-              className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-25 text-sm outline-none transition-colors cursor-pointer"
+              className="bg-transparent border-b border-gray-400 focus:border-bl-sky-600 text-gray-800 font-bold text-center w-25 text-sm outline-none transition-colors cursor-pointer"
             />
           </div>
         </div>
@@ -945,7 +945,7 @@ const PurchasePage: React.FC = () => {
                 </div>
                 <button
                   onClick={() => setIsScannerOpen(true)}
-                  className='bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition-colors'
+                  className='bg-sky-600 text-white p-3 rounded-lg hover:bg-sky-700 transition-colors'
                   title="Scan Barcode"
                 >
                   <IconScanCircle width={22} height={22} />
@@ -959,7 +959,7 @@ const PurchasePage: React.FC = () => {
                     onClick={() => setSelectedCategory(cat)}
                     className={`px-3 py-1 rounded-sm text-xs whitespace-nowrap border transition
                       ${selectedCategory === cat
-                        ? 'bg-blue-600 text-white border-blue-600'
+                        ? 'bg-sky-600 text-white border-sky-600'
                         : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'
                       }`}
                   >
@@ -1019,7 +1019,7 @@ const PurchasePage: React.FC = () => {
                         key={item.id}
                         className={`bg-white rounded-sm flex flex-col w-full overflow-visible transition-all duration-200 relative group
         ${isSelected
-                            ? 'border-2 border-blue-400 shadow-md ring-1 ring-blue-100'
+                            ? 'border-2 border-sky-400 shadow-md ring-1 ring-sky-100'
                             : 'border border-gray-100 hover:shadow-md hover:border-gray-200'}`}
                         style={{ margin: '0 2px' }}
                       >
@@ -1058,7 +1058,7 @@ const PurchasePage: React.FC = () => {
                           {/* ── Discount badge – Blinkit style, top-left ── */}
                           {discPct > 0 && (
                             <div
-                              className="absolute top-1.5 left-1.5 z-10 bg-blue-600 text-white font-bold text-[9px] leading-tight px-1.5 py-[3px] rounded-md shadow-sm"
+                              className="absolute top-1.5 left-1.5 z-10 bg-sky-600 text-white font-bold text-[9px] leading-tight px-1.5 py-[3px] rounded-md shadow-sm"
                             >
                               {discPct}% OFF
                             </div>
@@ -1087,7 +1087,7 @@ const PurchasePage: React.FC = () => {
                               {item.name.length > 45 ? item.name.slice(0, 45) : item.name}
                             </p>
                             <button onClick={(e) => { e.stopPropagation(); const orig = availableItems.find(a => a.id === item.id); if (orig) handleOpenEditDrawer(orig); }}
-                              className="text-gray-400 hover:text-blue-600 flex-shrink-0 mt-0.5">
+                              className="text-gray-400 hover:text-sky-600 flex-shrink-0 mt-0.5">
                               <FiEdit size={11} />
                             </button>
                           </div>
@@ -1111,7 +1111,7 @@ const PurchasePage: React.FC = () => {
                             {isSelected && (
                               <div className="flex items-center gap-1 border-t border-gray-50 pt-1 min-w-0">
                                 <span className="text-[9px] uppercase text-gray-400 tracking-wide flex-shrink-0">Subtotal</span>
-                                <span className="text-[10px] font-semibold text-blue-600 truncate">₹{lineSubtotal.toLocaleString('en-IN')}</span>
+                                <span className="text-[10px] font-semibold text-sky-600 truncate">₹{lineSubtotal.toLocaleString('en-IN')}</span>
                               </div>
                             )}
 
@@ -1124,7 +1124,7 @@ const PurchasePage: React.FC = () => {
                                     e.stopPropagation();
                                     addItemToCart(item);
                                   }}
-                                  className="w-full h-[26px] rounded-md text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 transition-colors"
+                                  className="w-full h-[26px] rounded-md text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-sky-50 hover:text-sky-600 border border-gray-200 transition-colors"
                                 >
                                   + Add
                                 </button>
@@ -1162,13 +1162,13 @@ const PurchasePage: React.FC = () => {
                     <div
                       key={item.id}
                       className={`bg-white rounded-sm border flex flex-col overflow-visible transition-all relative
-      ${isSelected ? 'border-blue-400 ring-1 ring-blue-100' : 'border-gray-100 hover:shadow-sm'}`}
+      ${isSelected ? 'border-sky-400 ring-1 ring-sky-100' : 'border-gray-100 hover:shadow-sm'}`}
                       style={{ minHeight: 130 }}
                     >
                       {/* Discount badge - corner stamp */}
                       {discPct > 0 && (
                         <div
-                          className="absolute -top-px -left-px bg-blue-600 text-white text-[8px] font-medium leading-tight text-center z-10"
+                          className="absolute -top-px -left-px bg-sky-600 text-white text-[8px] font-medium leading-tight text-center z-10"
                           style={{ borderRadius: '10px 0 8px 0', padding: '3px 6px', minWidth: 28 }}
                         >
                           {discPct}% OFF
@@ -1221,7 +1221,7 @@ const PurchasePage: React.FC = () => {
                               const orig = availableItems.find(a => a.id === item.id);
                               if (orig) handleOpenEditDrawer(orig);
                             }}
-                            className="text-gray-400 hover:text-blue-600 transition-colors flex-shrink-0"
+                            className="text-gray-400 hover:text-sky-600 transition-colors flex-shrink-0"
                           >
                             <FiEdit size={10} />
                           </button>
@@ -1234,7 +1234,7 @@ const PurchasePage: React.FC = () => {
                           {!isSelected ? (
                             <button
                               onClick={(e) => { e.stopPropagation(); addItemToCart(item); }}
-                              className="w-full py-1.5 rounded-md text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 transition-colors"
+                              className="w-full py-1.5 rounded-md text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-sky-50 hover:text-sky-600 border border-gray-200 transition-colors"
                             >
                               + Add
                             </button>
@@ -1243,7 +1243,7 @@ const PurchasePage: React.FC = () => {
                               {/* Subtotal LEFT */}
                               <div className="text-left min-w-0 flex-shrink overflow-hidden">
                                 <p className="text-[9px] uppercase text-gray-400 tracking-wide leading-none">Subtotal</p>
-                                <p className="text-[11px] font-semibold text-blue-600 truncate">
+                                <p className="text-[11px] font-semibold text-sky-600 truncate">
                                   ₹{lineSubtotal.toLocaleString('en-IN')}
                                 </p>
                               </div>
@@ -1292,11 +1292,11 @@ const PurchasePage: React.FC = () => {
               >
                 {showTaxToggle && (
                   <div className="flex justify-between items-center py-2 bg-transparent border-b border-gray-100 mb-4">
-                    <p className="text-sm font-semibold text-gray-600">Tax Calculation</p>
+                    <p className="text-sm font-semibold text-gray-600">Tax Calculation</p>Z
                     <select
                       value={billTaxType}
                       onChange={(e) => setBillTaxType(e.target.value as TaxOption)}
-                      className="border border-gray-300 rounded-md p-1 text-sm bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium"
+                      className="border border-gray-300 rounded-md p-1 text-sm bg-gray-50 focus:ring-2 focus:ring-sky-500 outline-none text-gray-800 font-medium"
                     >
                       <option value="exclusive">Tax Exclusive</option>
                       <option value="inclusive">Tax Inclusive</option>
@@ -1330,7 +1330,7 @@ const PurchasePage: React.FC = () => {
                   <select
                     value={billTaxType}
                     onChange={(e) => setBillTaxType(e.target.value as TaxOption)}
-                    className="border border-gray-300 rounded-md p-1 text-sm bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium">
+                    className="border border-gray-300 rounded-md p-1 text-sm bg-gray-50 focus:ring-2 focus:ring-sky-500 outline-none text-gray-800 font-medium">
                     <option value="exclusive">Tax Exclusive</option>
                     <option value="inclusive">Tax Inclusive</option>
                     <option value="exempt">Tax Exempt</option>
@@ -1452,7 +1452,7 @@ const PurchasePage: React.FC = () => {
                   <select
                     value={billTaxType}
                     onChange={(e) => setBillTaxType(e.target.value as TaxOption)}
-                    className="border border-gray-300 rounded-md p-1 text-sm bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium"
+                    className="border border-gray-300 rounded-md p-1 text-sm bg-gray-50 focus:ring-2 focus:ring-sky-500 outline-none text-gray-800 font-medium"
                   >
                     <option value="exclusive">Tax Exclusive</option>
                     <option value="inclusive">Tax Inclusive</option>
@@ -1489,7 +1489,7 @@ const PurchasePage: React.FC = () => {
                   <select
                     value={billTaxType}
                     onChange={(e) => setBillTaxType(e.target.value as TaxOption)}
-                    className="border border-gray-300 rounded-md p-1 text-sm bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium"
+                    className="border border-gray-300 rounded-md p-1 text-sm bg-gray-50 focus:ring-2 focus:ring-sky-500 outline-none text-gray-800 font-medium"
                   >
                     <option value="exclusive">Tax Exclusive</option>
                     <option value="inclusive">Tax Inclusive</option>

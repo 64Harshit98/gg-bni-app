@@ -857,30 +857,18 @@ const OrdersReturnPage: React.FC = () => {
               <div className="bg-white p-3 rounded-sm shadow-md mb-4 border border-gray-200">
                 <div className="space-y-3 mb-4">
                   <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-gray-500 uppercase">Date</label>
-                      <input type="date" value={returnDate} onChange={e => setReturnDate(e.target.value)}
-                        className="w-full p-1 border-b border-gray-300 focus:border-[#F97316] outline-none text-sm" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-gray-500 uppercase">Party</label>
-                      <input type="text" value={partyName} onChange={e => setPartyName(e.target.value)}
-                        className="w-full p-1 border-b border-gray-300 focus:border-[#F97316] outline-none text-sm" />
-                    </div>
+                    <div><label className="block text-xs font-bold text-gray-500 uppercase">Date</label><input type="date" readOnly value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-[#F97316] outline-none text-sm" /></div>
+                    <div><label className="block text-xs font-bold text-gray-500 uppercase">Party</label><input type="text" readOnly value={partyName} onChange={(e) => setPartyName(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-[#F97316] outline-none text-sm" /></div>
                   </div>
-                  <div>
+
+                  {/* --- NEW DROPDOWN FOR PARTY NUMBER --- */}
+                  <div className="relative" ref={customerDropdownRef}>
                     <label className="block text-xs font-bold text-gray-500 uppercase">Party Number</label>
                     <input
-                      type="text"
                       value={partyNumber}
-                      onChange={e => {
-                        const value = e.target.value.replace(/\D/g, '');
-                        if (value.length <= 10) setPartyNumber(value);
-                      }}
+                      readOnly
                       className="w-full p-1 border-b border-gray-300 focus:border-[#F97316] outline-none text-sm"
-                      autoComplete="off"
-                      placeholder="Customer phone number"
-                      maxLength={10}
+                      placeholder="Search customer by number or name..."
                     />
                   </div>
                 </div>

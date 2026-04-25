@@ -815,7 +815,7 @@ const PurchaseReturnPage: React.FC = () => {
                   onChange={(e) => { setSearchQuery(e.target.value); setIsDropdownOpen(true); }}
                   onFocus={() => setIsDropdownOpen(true)}
                   placeholder={selectedPurchase ? `${selectedPurchase.partyName} (${selectedPurchase.invoiceNumber})` : "Supplier or Invoice..."}
-                  className="flex-grow p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" autoComplete="off" readOnly={!!selectedPurchase}
+                  className="flex-grow p-2 border rounded-lg focus:ring-2 focus:ring-sky-500 outline-none" autoComplete="off" readOnly={!!selectedPurchase}
                 />
                 {selectedPurchase && (
                   <button onClick={handleClear} className="py-2 px-3 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300">
@@ -842,7 +842,7 @@ const PurchaseReturnPage: React.FC = () => {
               <div className="bg-white p-2 rounded-sm shadow-md mb-4 border border-gray-200">
                 <div className="space-y-3 mb-4">
                   <div className='grid grid-cols-2 gap-4'>
-                    <div><label className="block text-xs font-bold text-gray-500 uppercase">Date</label><input type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm" /></div>
+                    <div><label className="block text-xs font-bold text-gray-500 uppercase">Date</label><input type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-sky-500 outline-none text-sm" /></div>
 
                     {/* --- PARTY NAME DROPDOWN (NEW) --- */}
                     <div className="relative" ref={nameDropdownRef}>
@@ -855,7 +855,7 @@ const PurchaseReturnPage: React.FC = () => {
                           setIsNameDropdownOpen(true);
                         }}
                         onFocus={() => setIsNameDropdownOpen(true)}
-                        className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm"
+                        className="w-full p-1 border-b border-gray-300 focus:border-sky-500 outline-none text-sm"
                         autoComplete="off"
                         placeholder="Search by name..."
                       />
@@ -891,7 +891,7 @@ const PurchaseReturnPage: React.FC = () => {
                         setIsPartyDropdownOpen(true);
                       }}
                       onFocus={() => setIsPartyDropdownOpen(true)}
-                      className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm"
+                      className="w-full p-1 border-b border-gray-300 focus:border-sky-500 outline-none text-sm"
                       autoComplete="off"
                       placeholder="Search party by number or name..."
                     />
@@ -1030,7 +1030,7 @@ const PurchaseReturnPage: React.FC = () => {
               {/* Transaction Type */}
               <div className="mb-6">
                 <label className="block text-sm font-semibold text-gray-600 mb-2">Transaction Type</label>
-                <select value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none">
+                <select value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg bg-gray-50 focus:ring-2 focus:ring-sky-500 outline-none">
                   <option>Exchange</option>
                   <option>Debit Note</option>
                   <option>Cash Refund</option>
@@ -1070,7 +1070,7 @@ const PurchaseReturnPage: React.FC = () => {
                     ₹{Math.abs(finalBalance).toFixed(2)}
                   </span>
                 </div>
-                <button onClick={handleProcessReturn} className="w-full bg-blue-600 text-white py-4 px-4 rounded-xl shadow-lg shadow-blue-200 transition-all active:scale-[0.98] text-lg font-bold hover:bg-blue-700">
+                <button onClick={handleProcessReturn} className="w-full bg-sky-600 text-white py-4 px-4 rounded-xl shadow-lg shadow-sky-200 transition-all active:scale-[0.98] text-lg font-bold hover:bg-sky-700">
                   Process Transaction
                 </button>
               </div>

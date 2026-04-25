@@ -391,7 +391,7 @@ const PurchaseReport: React.FC = () => {
 
         <div className="flex justify-center mt-2">
           <button onClick={handleApplyFilters}
-            className="w-full md:w-fit mt-2 px-10 py-2 bg-blue-600 text-white text-lg font-semibold rounded-sm hover:bg-blue-700" >
+            className="w-full md:w-fit mt-2 px-10 py-2 bg-sky-500 text-white text-lg font-semibold rounded-sm hover:bg-sky-700" >
             Apply
           </button>
         </div>
@@ -447,7 +447,7 @@ const PurchaseReport: React.FC = () => {
                 setIsDownloadModalOpen(true);
               }
             }}
-            className="flex-1 md:flex-none px-4 py-0.5 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 transition"
+            className="flex-1 md:flex-none px-4 py-0.5 bg-sky-500 text-white font-semibold rounded-md shadow-sm hover:bg-sky-700 transition"
           >
             Download Report
           </button>

@@ -92,13 +92,13 @@ export const SalesBarChartReport: React.FC<SalesBarChartProps> = ({ isDataVisibl
         <div className="flex items-center p-1 bg-gray-100 rounded-lg">
           <button
             onClick={() => setViewMode('amount')}
-            className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${viewMode === 'amount' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+            className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${viewMode === 'amount' ? 'bg-white text-sky-500 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
           >
             Amt
           </button>
           <button
             onClick={() => setViewMode('quantity')}
-            className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${viewMode === 'quantity' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+            className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${viewMode === 'quantity' ? 'bg-white text-sky-500 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
           >
             Qty
           </button>
@@ -140,7 +140,7 @@ export const SalesBarChartReport: React.FC<SalesBarChartProps> = ({ isDataVisibl
                 type="linear" // Matches the straight lines in your image
                 dataKey={viewMode === 'amount' ? 'sales' : 'bills'}
                 name={viewMode === 'amount' ? 'Sales' : 'Bills'}
-                stroke={viewMode === 'amount' ? '#3b82f6' : '#16a34a'}
+                stroke={viewMode === 'amount' ? '#0ea5e9' : '#16a34a'}
                 strokeWidth={2}
                 // This creates the "White center, Blue border" dot look
                 dot={{ fill: 'white', stroke: viewMode === 'amount' ? '#3b82f6' : '#16a34a', strokeWidth: 2, r: 4 }}

@@ -534,7 +534,7 @@ const ItemsSoldReport: React.FC = () => {
 
                 <button
                     onClick={handleApplyFilters}
-                    className="w-full mt-2 px-3 py-1 bg-blue-600 text-white text-lg font-semibold rounded-lg hover:bg-blue-700"
+                    className="w-full mt-2 px-3 py-1 bg-sky-500 text-white text-lg font-semibold rounded-lg hover:bg-sky-700"
                 >
                     Apply
                 </button>

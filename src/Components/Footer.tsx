@@ -77,7 +77,7 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
         )}
 
         {showTaxRow && (
-          <div className="border-b border-gray-200 pb-2 flex justify-between text-blue-600">
+          <div className="border-b border-gray-200 pb-2 flex justify-between text-sky-600">
             <span>{taxLabel}</span>
             <span className="font-medium">+ ₹{taxAmount.toFixed(2)}</span>
           </div>
@@ -98,7 +98,7 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
             <CustomButton
               onClick={onActionClick}
               variant={Variant.Payment}
-              className="w-full py-3.5 text-base font-bold shadow-lg shadow-blue-200 rounded-sm flex justify-center items-center active:scale-[0.98] transition-transform"
+              className="w-full py-3.5 text-base font-bold shadow-lg shadow-sky-200 rounded-sm flex justify-center items-center active:scale-[0.98] transition-transform"
               disabled={disableAction}
             >
               {actionLabel}

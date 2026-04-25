@@ -410,7 +410,7 @@ const ManagePermissionsPage: React.FC = () => {
                             {selectedRole} Permissions
                         </h2>
                         <div className="flex items-center gap-3">
-                            <span className="px-3 py-2 text-xs font-semibold tracking-wide text-blue-800 bg-blue-100 rounded-sm">
+                            <span className="px-3 py-2 text-xs font-semibold tracking-wide text-sky-800 bg-sky-100 rounded-sm">
                                 {rolePermissions[selectedRole]?.length || 0} Active
                             </span>
                             <button
@@ -543,7 +543,7 @@ const ManagePermissionsPage: React.FC = () => {
             <div className="mt-4 text-center rounded-sm pt-4 sticky bottom-10 bg-transparent pb-4 mx-4">
                 <button
                     onClick={() => handleSaveChanges(selectedRole)}
-                    className="w-auto bg-sky-500 text-white font-bold py-3 px-4 rounded-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-lg transition-transform active:scale-95"
+                    className="w-auto bg-sky-500 text-white font-bold py-3 px-4 rounded-sm hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 shadow-lg transition-transform active:scale-95"
                 >
                     Save Changes for {selectedRole}
                 </button>

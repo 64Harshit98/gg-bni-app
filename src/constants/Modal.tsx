@@ -42,8 +42,8 @@ export const Modal: React.FC<ModalProps> = ({
                         Cancel
                     </button>
                     <button
-                        onClick={() => { onConfirm?.(); onClose(); }}
-                        className={`flex-1 text-white py-2 px-4 rounded-lg transition-colors ${type === State.ERROR || type === State.INFO ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
+                        onClick={onConfirm}
+                        className={`flex-1 text-white py-2 px-4 rounded-lg transition-colors ${type === State.ERROR || type === State.INFO ? 'bg-red-600 hover:bg-red-700' : 'bg-sky-600 hover:bg-sky-700'
                             }`}
                     >
                         Confirm
@@ -52,7 +52,7 @@ export const Modal: React.FC<ModalProps> = ({
             ) : (
                 <button
                     onClick={onClose}
-                    className="w-full bg-blue-600 text-white py-2 px-4 rounded-sm hover:bg-blue-700 transition-colors"
+                    className="w-full bg-sky-500 text-white py-2 px-4 rounded-lg hover:bg-sky-700 transition-colors"
                 >
                     OK
                 </button>
@@ -232,8 +232,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                     )}
                     {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
                     <div className="flex justify-end gap-3">
-                        <button type="button" onClick={onClose} className="px-4 py-2 rounded-sm bg-slate-200 text-slate-800 hover:bg-slate-300">Cancel</button>
-                        <button type="submit" disabled={isSubmitting} className="px-4 py-2 rounded-sm bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                        <button type="button" onClick={onClose} className="px-4 py-2 rounded-md bg-slate-200 text-slate-800 hover:bg-slate-300">Cancel</button>
+                        <button type="submit" disabled={isSubmitting} className="px-4 py-2 rounded-md bg-sky-500 text-white hover:bg-sky-700 disabled:opacity-50"
                         >
                             {isSubmitting ? 'Processing...' : 'Submit Payment'}
                         </button>

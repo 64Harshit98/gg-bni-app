@@ -1422,7 +1422,7 @@ const Sales: React.FC = () => {
     const handleCloseQrModal = () => { setSavedBillData(null); };
 
     if (pageIsLoading) return <div className="flex items-center justify-center h-screen"><Spinner /> <p className="ml-2">Loading...</p></div>;
-    if (error) return <div className="flex flex-col items-center justify-center h-screen text-red-600"><p>{error}</p><button onClick={() => navigate(-1)} className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Go Back</button></div>;
+    if (error) return <div className="flex flex-col items-center justify-center h-screen text-red-600"><p>{error}</p><button onClick={() => navigate(-1)} className="mt-4 px-4 py-2 bg-sky-500 text-white rounded hover:bg-sky-500">Go Back</button></div>;
 
     // --- Render Tax Toggle (DROPDOWN) ---
     const renderTaxToggle = () => {
@@ -1439,9 +1439,9 @@ const Sales: React.FC = () => {
                             value={activeTaxMode}
                             onChange={(e) => setActiveTaxMode(e.target.value as any)}
                             disabled={(salesSettings?.gstScheme !== 'regular')}
-                            className={`appearance-none border border-gray-300 pr-8 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium transition-all ${isLocked
+                            className={`appearance-none border border-gray-300 pr-8 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 font-medium transition-all ${isLocked
                                 ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                : 'bg-gray-50 hover:border-blue-400 text-gray-700 cursor-pointer'
+                                : 'bg-gray-50 hover:border-sky-400 text-gray-700 cursor-pointer'
                                 }`}
                         >
                             <option value="exclusive">Tax Exclusive</option>
@@ -1466,9 +1466,9 @@ const Sales: React.FC = () => {
                             value={activeTaxMode}
                             onChange={(e) => setActiveTaxMode(e.target.value as any)}
                             disabled={(salesSettings?.gstScheme !== 'regular')}
-                            className={`appearance-none w-full bg-white border border-gray-300 px-3 py-2 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium transition-all shadow-sm md:px-4 md:py-2.5 md:text-[15px] md:rounded-sm ${isLocked
+                            className={`appearance-none w-full bg-white border border-gray-300 px-3 py-2 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 font-medium transition-all shadow-sm md:px-4 md:py-2.5 md:text-[15px] md:rounded-sm ${isLocked
                                 ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                : 'hover:border-blue-400 text-gray-700 cursor-pointer'
+                                : 'hover:border-sky-400 text-gray-700 cursor-pointer'
                                 }`}
                         >
                             <option value="exclusive">Tax Exclusive</option>
@@ -1497,7 +1497,7 @@ const Sales: React.FC = () => {
                             type="date"
                             value={invoiceDate}
                             onChange={(e) => setInvoiceDate(e.target.value)}
-                            className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-25 text-sm outline-none transition-colors cursor-pointer" // 👈 Widened to w-32 and added cursor-pointer
+                            className="bg-transparent border-b border-gray-400 focus:border-sky-500 text-gray-800 font-bold text-center w-25 text-sm outline-none transition-colors cursor-pointer" // 👈 Widened to w-32 and added cursor-pointer
                         />
                         <span className="text-[9px] text-gray-400 uppercase tracking-wide mt-0.5">DATE</span>
                     </div>
@@ -1512,7 +1512,7 @@ const Sales: React.FC = () => {
                                 isInvoiceNumberManuallyEdited.current = true;
                                 setInvoiceNumber(e.target.value)
                             }}
-                            className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-24 text-sm outline-none transition-colors"
+                            className="bg-transparent border-b border-gray-400 focus:border-sky-500 text-gray-800 font-bold text-center w-24 text-sm outline-none transition-colors"
                         />
                         <span className="text-[9px] text-gray-400 uppercase tracking-wide mt-0.5">INV NO</span>
                     </div>
@@ -1533,7 +1533,7 @@ const Sales: React.FC = () => {
                                     isInvoiceNumberManuallyEdited.current = true;
                                     setInvoiceNumber(e.target.value);
                                 }}
-                                className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-24 text-sm outline-none transition-colors"
+                                className="bg-transparent border-b border-gray-400 focus:border-sky-500 text-gray-800 font-bold text-center w-24 text-sm outline-none transition-colors"
                             />
                         </div>
                         <div className="flex items-center gap-2">
@@ -1542,7 +1542,7 @@ const Sales: React.FC = () => {
                                 type="date"
                                 value={invoiceDate}
                                 onChange={(e) => setInvoiceDate(e.target.value)}
-                                className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-25 text-sm outline-none transition-colors cursor-pointer" // 👈 Widened to w-32 and added cursor-pointer
+                                className="bg-transparent border-b border-gray-400 focus:border-sky-500 text-gray-800 font-bold text-center w-25 text-sm outline-none transition-colors cursor-pointer" // 👈 Widened to w-32 and added cursor-pointer
                             />
                         </div>
                     </div>
@@ -1604,7 +1604,7 @@ const Sales: React.FC = () => {
                                         value={gridSearchQuery}
                                         onChange={(e) => setGridSearchQuery(e.target.value)}
                                         placeholder="Search items by name or barcode..."
-                                        className="w-full border border-gray-300 rounded-sm px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-8"
+                                        className="w-full border border-gray-300 rounded-sm px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent pr-8"
                                         autoComplete="off"
                                     />
                                     {gridSearchQuery && (
@@ -1623,7 +1623,7 @@ const Sales: React.FC = () => {
                             <div className="flex gap-2 overflow-x-auto px-3 pb-3 bg-white border-b border-gray-300">
                                 {categories.map(cat => (
                                     <button key={cat} onClick={() => setSelectedCategory(cat)}
-                                        className={`px-3 py-1 rounded-sm text-xs whitespace-nowrap border transition ${selectedCategory === cat ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'}`}>
+                                        className={`px-3 py-1 rounded-sm text-xs whitespace-nowrap border transition ${selectedCategory === cat ? 'bg-sky-500 text-white border-sky-500' : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'}`}>
                                         {cat === 'All' ? 'All' : itemGroupMap[cat] || cat}
                                     </button>
                                 ))}
@@ -1642,7 +1642,7 @@ const Sales: React.FC = () => {
                                     key={opt.value}
                                     onClick={() => setSortOrder(opt.value)}
                                     className={`px-2.5 py-1 rounded-sm text-xs whitespace-nowrap border transition flex-shrink-0 ${sortOrder === opt.value
-                                        ? 'bg-blue-600 text-white border-blue-600'
+                                        ? 'bg-sky-500 text-white border-sky-500'
                                         : 'bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200'
                                         }`}
                                 >
@@ -1693,7 +1693,7 @@ const Sales: React.FC = () => {
                                             }}
                                             className={`bg-white rounded-sm flex flex-col w-full overflow-visible transition-all duration-200 relative group cursor-pointer
 ${isSelected
-                                                    ? 'border-2 border-blue-400 shadow-md ring-1 ring-blue-100'
+                                                    ? 'border-2 border-sky-400 shadow-md ring-1 ring-sky-100'
                                                     : 'border border-gray-100 hover:shadow-md hover:border-gray-200'}`}
                                             style={{ margin: '0 2px' }}
                                         >
@@ -1732,7 +1732,7 @@ ${isSelected
                                                 {/* ── Discount badge – Blinkit style, top-left ── */}
                                                 {discPct > 0 && (
                                                     <div
-                                                        className="absolute top-1.5 left-1.5 z-10 bg-blue-600 text-white font-bold text-[9px] leading-tight px-1.5 py-[3px] rounded-md shadow-sm"
+                                                        className="absolute top-1.5 left-1.5 z-10 bg-sky-500 text-white font-bold text-[9px] leading-tight px-1.5 py-[3px] rounded-md shadow-sm"
                                                     >
                                                         {discPct}% OFF
                                                     </div>
@@ -1761,7 +1761,7 @@ ${isSelected
                                                         {item.name.length > 45 ? item.name.slice(0, 45) : item.name}
                                                     </p>
                                                     <button onClick={(e) => { e.stopPropagation(); const orig = availableItems.find(a => a.id === item.id); if (orig) handleOpenEditDrawer(orig); }}
-                                                        className="text-gray-400 hover:text-blue-600 flex-shrink-0 mt-0.5">
+                                                        className="text-gray-400 hover:text-sky-500 flex-shrink-0 mt-0.5">
                                                         <FiEdit size={11} />
                                                     </button>
                                                 </div>
@@ -1785,7 +1785,7 @@ ${isSelected
                                                     {isSelected && (
                                                         <div className="flex items-center gap-1 border-t border-gray-50 pt-1 min-w-0">
                                                             <span className="text-[9px] uppercase text-gray-400 tracking-wide flex-shrink-0">Subtotal</span>
-                                                            <span className="text-[10px] font-semibold text-blue-600 truncate">₹{lineSubtotal.toLocaleString('en-IN')}</span>
+                                                            <span className="text-[10px] font-semibold text-sky-500 truncate">₹{lineSubtotal.toLocaleString('en-IN')}</span>
                                                         </div>
                                                     )}
 
@@ -1798,7 +1798,7 @@ ${isSelected
                                                                     e.stopPropagation();
                                                                     addItemToCart(item);
                                                                 }}
-                                                                className="w-full h-[26px] rounded-sm text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 transition-colors"
+                                                                className="w-full h-[26px] rounded-sm text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-sky-50 hover:text-sky-500 border border-gray-200 transition-colors"
                                                             >
                                                                 + Add
                                                             </button>
@@ -1836,13 +1836,13 @@ ${isSelected
                                     <div
                                         key={item.id}
                                         className={`bg-white rounded-sm border flex flex-col overflow-visible transition-all relative
-                                      ${isSelected ? 'border-blue-400 ring-1 ring-blue-100' : 'border-gray-100 hover:shadow-sm'}`}
+                                      ${isSelected ? 'border-sky-400 ring-1 ring-sky-100' : 'border-gray-100 hover:shadow-sm'}`}
                                         style={{ minHeight: 130 }}
                                     >
                                         {/* Discount badge - corner stamp */}
                                         {discPct > 0 && (
                                             <div
-                                                className="absolute -top-px -left-px bg-blue-600 text-white text-[8px] font-medium leading-tight text-center z-10"
+                                                className="absolute -top-px -left-px bg-sky-500 text-white text-[8px] font-medium leading-tight text-center z-10"
                                                 style={{ borderRadius: '10px 0 8px 0', padding: '3px 6px', minWidth: 28 }}
                                             >
                                                 {discPct}% OFF
@@ -1895,7 +1895,7 @@ ${isSelected
                                                         const orig = availableItems.find(a => a.id === item.id);
                                                         if (orig) handleOpenEditDrawer(orig);
                                                     }}
-                                                    className="text-gray-400 hover:text-blue-600 transition-colors flex-shrink-0"
+                                                    className="text-gray-400 hover:text-sky-500 transition-colors flex-shrink-0"
                                                 >
                                                     <FiEdit size={10} />
                                                 </button>
@@ -1908,7 +1908,7 @@ ${isSelected
                                                 {!isSelected ? (
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); addItemToCart(item); }}
-                                                        className="w-full py-1.5 rounded-sm text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 transition-colors"
+                                                        className="w-full py-1.5 rounded-sm text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-sky-50 hover:text-sky-500 border border-gray-200 transition-colors"
                                                     >
                                                         + Add
                                                     </button>
@@ -1917,7 +1917,7 @@ ${isSelected
                                                         {/* Subtotal LEFT */}
                                                         <div className="text-left min-w-0 flex-shrink overflow-hidden">
                                                             <p className="text-[9px] uppercase text-gray-400 tracking-wide leading-none">Subtotal</p>
-                                                            <p className="text-[11px] font-semibold text-blue-600 truncate">
+                                                            <p className="text-[11px] font-semibold text-sky-500 truncate">
                                                                 ₹{lineSubtotal.toLocaleString('en-IN')}
                                                             </p>
                                                         </div>
@@ -2017,7 +2017,7 @@ ${isSelected
                             ) : (
                                 <p className="text-xs text-amber-600 mb-3 text-center bg-amber-50 p-2 rounded w-full border border-amber-200">No phone number provided for WhatsApp.</p>
                             )}
-                            <button onClick={handleCloseQrModal} className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors">Done</button>
+                            <button onClick={handleCloseQrModal} className="w-full bg-sky-500 text-white py-3 rounded-lg font-semibold hover:bg-sky-700 transition-colors">Done</button>
                         </div>
                     </div>
                 )}
@@ -2367,7 +2367,7 @@ ${isSelected
 
                         <button
                             onClick={handleCloseQrModal}
-                            className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+                            className="w-full bg-sky-500 text-white py-3 rounded-lg font-semibold hover:bg-sky-700 transition-colors"
                         >
                             Done
                         </button>

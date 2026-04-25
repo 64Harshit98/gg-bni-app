@@ -31,7 +31,7 @@ export default function ReportDetails({
           className={`flex-1 md:flex-none px-4 py-2 text-white font-semibold rounded-md shadow-sm
             ${isCatalogueMode
               ? 'bg-[#F97316] hover:bg-orange-700'
-              : 'bg-blue-600 hover:bg-blue-700'
+              : 'bg-sky-500 hover:bg-sky-700'
             }`}
         >
           Download Report

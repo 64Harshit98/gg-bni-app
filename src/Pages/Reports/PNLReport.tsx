@@ -171,7 +171,7 @@ const PnlReportPage: React.FC = () => {
       }
 
       // --- 1. BRAND ACCENT BAR ---
-      doc.setFillColor(37, 99, 235); // blue-600
+      doc.setFillColor(37, 99, 235); // sky-600
       doc.rect(0, 0, pageWidth, 6, 'F');
 
       // --- 2. HEADER SECTION ---
@@ -449,7 +449,7 @@ const PnlReportPage: React.FC = () => {
 
         <div className="flex justify-center mt-2">
           <button onClick={handleApplyFilters}
-            className="w-full md:w-fit mt-2 px-10 py-2 bg-blue-600 text-white text-lg font-semibold rounded-lg hover:bg-blue-700" >
+            className="w-full md:w-fit mt-2 px-10 py-2 bg-sky-500 text-white text-lg font-semibold rounded-lg hover:bg-sky-700" >
             Apply
           </button>
         </div>
@@ -462,7 +462,7 @@ const PnlReportPage: React.FC = () => {
           variant={CardVariant.Summary}
           title="Total Sales"
           value={`₹${pnlSummary.totalRevenue.toLocaleString('en-IN')}`}
-          valueClassName="text-blue-600"
+          valueClassName="text-sky-600"
         />
         <CustomCard
           className="py-10"
@@ -516,7 +516,7 @@ const PnlReportPage: React.FC = () => {
                 setIsDownloadModalOpen(true);
               }
             }}
-            className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md"
+            className="px-4 py-2 bg-sky-500 hover:bg-sky-700 text-white font-semibold rounded-md"
           >
             Download Report
           </button>

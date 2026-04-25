@@ -119,7 +119,7 @@ const ManageItems: React.FC = () => {
 
   const getStockBadgeClasses = (stock: number) => {
     if (stock === 0) return 'bg-red-100 text-red-700';
-    if (stock < 10) return 'bg-blue-100 text-blue-700';
+    if (stock < 10) return 'bg-sky-100 text-sky-700';
     return 'bg-green-100 text-green-700';
   };
 
@@ -176,7 +176,7 @@ const ManageItems: React.FC = () => {
 
           <button
             onClick={applyFilters}
-            className="px-5 py-2 bg-blue-600 text-white rounded-md font-semibold hover:bg-blue-700 transition"
+            className="px-5 py-2 bg-sky-500 text-white rounded-md font-semibold hover:bg-sky-700 transition"
           >
             Apply
           </button>
@@ -250,7 +250,7 @@ const ManageItems: React.FC = () => {
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => openEditDrawer(item)}
-                    className="text-blue-600 hover:text-blue-800"
+                    className="text-sky-500 hover:text-sky-700"
                   >
                     <FiEdit2 size={18} />
                   </button>

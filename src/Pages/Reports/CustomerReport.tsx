@@ -175,42 +175,42 @@ const CustomerReport: React.FC = () => {
       } catch {
         // Continue without logo
       }
-      const pageHeight = doc.internal.pageSize.getHeight();
-
-      // --- 1. BRAND ACCENT BAR ---
-      // Uses the #F97316 orange from your UI
-      doc.setFillColor(37, 99, 235); // blue-600 
-      doc.rect(0, 0, pageWidth, 6, 'F');
-
-      // --- 2. HEADER SECTION ---
-      doc.setFontSize(22);
-      doc.setTextColor(17, 24, 39); // gray-900
-      doc.setFont('helvetica', 'bold');
-      doc.text('Customer Report', 14, 24);
-
-      // Dynamic Subtitle with Date Range
-      doc.setFontSize(10);
-      doc.setTextColor(107, 114, 128); // gray-500
-      doc.setFont('helvetica', 'normal');
-
-      const generationDate = new Date().toLocaleDateString('en-IN', {
-        year: 'numeric', month: 'short', day: 'numeric',
-      });
-
-      let subtitleText = `Generated on: ${generationDate}`;
-      if (startDate && endDate) {
-        subtitleText += `   |   Period: ${startDate} to ${endDate}`;
-      }
-      doc.text(subtitleText, 14, 31);
-
-      // --- 3. AUTOTABLE GENERATION ---
-      autoTable(doc, {
-        startY: 38,
-        head: [['CUSTOMER', 'PHONE', 'BILLS', 'SALES (Rs.)', 'DUE (Rs.)']],
-        body: customerRows.map((c) => {
-          const formattedName = c.customerName
-            ? c.customerName.charAt(0).toUpperCase() + c.customerName.slice(1).toLowerCase()
-            : 'N/A';
+        const pageHeight = doc.internal.pageSize.getHeight();
+  
+        // --- 1. BRAND ACCENT BAR ---
+        // Uses the #F97316 orange from your UI
+        doc.setFillColor(37, 99, 235); // sky-600 
+        doc.rect(0, 0, pageWidth, 6, 'F');
+  
+        // --- 2. HEADER SECTION ---
+        doc.setFontSize(22);
+        doc.setTextColor(17, 24, 39); // gray-900
+        doc.setFont('helvetica', 'bold');
+        doc.text('Customer Report', 14, 24);
+  
+        // Dynamic Subtitle with Date Range
+        doc.setFontSize(10);
+        doc.setTextColor(107, 114, 128); // gray-500
+        doc.setFont('helvetica', 'normal');
+        
+        const generationDate = new Date().toLocaleDateString('en-IN', {
+          year: 'numeric', month: 'short', day: 'numeric',
+        });
+        
+        let subtitleText = `Generated on: ${generationDate}`;
+        if (startDate && endDate) {
+          subtitleText += `   |   Period: ${startDate} to ${endDate}`;
+        }
+        doc.text(subtitleText, 14, 31);
+  
+        // --- 3. AUTOTABLE GENERATION ---
+        autoTable(doc, {
+          startY: 38,
+          head: [['CUSTOMER', 'PHONE', 'BILLS', 'SALES (Rs.)', 'DUE (Rs.)']],
+          body: customerRows.map((c) => {
+            const formattedName = c.customerName
+              ? c.customerName.charAt(0).toUpperCase() + c.customerName.slice(1).toLowerCase()
+              : 'N/A';
 
           return [
             formattedName,
@@ -417,7 +417,7 @@ const CustomerReport: React.FC = () => {
 
         <div className="flex justify-center mt-2">
           <button onClick={handleApplyFilters}
-            className="w-full md:w-fit mt-2 px-10 py-2 bg-blue-600 text-white text-lg font-semibold rounded-lg hover:bg-blue-700" >
+            className="w-full md:w-fit mt-2 px-10 py-2 bg-sky-500 text-white text-lg font-semibold rounded-lg hover:bg-sky-700" >
             Apply
           </button>
         </div>
@@ -469,7 +469,7 @@ const CustomerReport: React.FC = () => {
           </button>
           <button
             onClick={() => customerRows.length === 0 ? setFeedbackModal({ isOpen: true, type: State.INFO, message: 'No data.' }) : setIsDownloadModalOpen(true)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md font-semibold"
+            className="px-4 py-2 bg-sky-500 hover:bg-sky-700 text-white rounded-md font-semibold"
           >
             Download Report
           </button>

@@ -11,11 +11,13 @@ interface SearchableItemInputProps {
     placeholder?: string;
     isLoading?: boolean;
     error?: string | null;
+    onSearchChange?: (query: string) => void;
     onAddItem?: (searchQuery: String) => void;
     selectedCategory?: string;
     onCategoryChange?: (category: string) => void;
     categories?: string[];
     itemGroupMap?: Record<string, string>;
+    disableDropdown?: boolean;
 }
 
 const THROTTLE_DELAY = 500;
@@ -27,10 +29,12 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
     isLoading = false,
     error = null,
     onAddItem,
+    onSearchChange,
     selectedCategory = 'All',
     onCategoryChange,
     categories = [],
     itemGroupMap = {},
+    disableDropdown = false,
 }) => {
     const [searchQuery, setSearchQuery] = useState<string>('');
     const [throttledQuery, setThrottledQuery] = useState<string>('');
@@ -135,6 +139,7 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
         setThrottledQuery('');
         inputRef.current?.focus();
         setIsDropdownOpen(false);
+        onSearchChange?.('');
     };
 
     // --- KEYBOARD NAVIGATION ---
@@ -218,8 +223,9 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
                     value={searchQuery}
                     onChange={(e) => {
                         setSearchQuery(e.target.value);
-                        setIsDropdownOpen(true);
+                        if (!disableDropdown) setIsDropdownOpen(true);
                         setActiveIndex(-1);
+                        onSearchChange?.(e.target.value);
                     }}
                     onFocus={() => setIsDropdownOpen(true)}
                     onKeyDown={handleKeyDown}
@@ -242,7 +248,7 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
             </div>
 
             {/* FLOATING DROPDOWN */}
-            {isDropdownOpen && searchQuery && (
+            {!disableDropdown && isDropdownOpen && searchQuery && (
                 <div
                     ref={listRef} // Attached Ref here for scrolling
                     className="absolute top-full left-0 right-0 z-50 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl max-h-72 overflow-y-auto overflow-x-hidden scroll-smooth"

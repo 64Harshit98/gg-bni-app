@@ -17,11 +17,7 @@ import { getUnitMultiplier } from '../../Components/itemUnits';
 export interface ModalState { message: string; type: State }
 export interface UploadProgress { current: number; total: number }
 
-// Options accepted by the hook so each consumer can pass variant-specific deps
 export interface UseItemFormOptions {
-  /** Called after a successful single-item save so the consumer can do
-   *  extra work (e.g. uploading an image file) before the item is written.
-   *  Should return the final imageUrl string (or null) to store. */
   resolveImageUrl?: (barcode: string) => Promise<string | null>;
 }
 
@@ -35,10 +31,10 @@ export const useItemForm = (options: UseItemFormOptions = {}) => {
   // ── Form fields ──────────────────────────────────────────────────────────
   const [itemName,          setItemName]          = useState('');
   const [itemMRP,           setItemMRP]           = useState('');
-  const [itemSalesPrice,    setItemSalesPrice]    = useState('');
-  const [itemPurchasePrice, setItemPurchasePrice] = useState('');
-  const [itemDiscount,      setItemDiscount]      = useState('');
-  const [PurchaseDiscount,  setPurchaseDiscount]  = useState('');
+  const [itemSalesPrice,    _setItemSalesPrice]   = useState('');
+  const [itemPurchasePrice, _setItemPurchasePrice]= useState('');
+  const [itemDiscount,      _setItemDiscount]     = useState('');
+  const [PurchaseDiscount,  _setPurchaseDiscount] = useState('');
   const [itemTax,           setItemTax]           = useState('');
   const [itemAmount,        setItemAmount]        = useState('');
   const [restockQuantity,   setRestockQuantity]   = useState('');
@@ -48,6 +44,81 @@ export const useItemForm = (options: UseItemFormOptions = {}) => {
   const [itemUnit,          setItemUnit]          = useState('');
   const [packetSize,        setPacketSize]        = useState('');
   const [moq,               setMoq]               = useState('1');
+
+  // ── Track which sale/purchase field was last edited by the user ──────────
+  // 'discount' | 'price' | null
+  const lastEditedSale     = useRef<'discount' | 'price' | null>(null);
+  const lastEditedPurchase = useRef<'discount' | 'price' | null>(null);
+
+  // ── Wrapped setters that tag the ref before updating state ───────────────
+  // These are what the UI should call so the auto-calculate effects know
+  // which direction to derive from.
+
+  /** Call this when the user types in the Sale Discount field */
+  const setItemDiscount = (v: string) => {
+    lastEditedSale.current = 'discount';
+    _setItemDiscount(v);
+  };
+
+  /** Call this when the user types in the Sales Price field */
+  const setItemSalesPrice = (v: string) => {
+    lastEditedSale.current = 'price';
+    _setItemSalesPrice(v);
+  };
+
+  /** Call this when the user types in the Purchase Discount field */
+  const setPurchaseDiscount = (v: string) => {
+    lastEditedPurchase.current = 'discount';
+    _setPurchaseDiscount(v);
+  };
+
+  /** Call this when the user types in the Purchase Price field */
+  const setItemPurchasePrice = (v: string) => {
+    lastEditedPurchase.current = 'price';
+    _setItemPurchasePrice(v);
+  };
+
+  // ── Auto-calculate: Sale Discount → Sales Price ──────────────────────────
+  // When the user last edited the discount field, recalculate the price.
+  useEffect(() => {
+    if (lastEditedSale.current !== 'discount') return;
+    const mrp  = parseFloat(itemMRP);
+    const disc = parseFloat(itemDiscount);
+    if (mrp > 0 && disc >= 0) {
+      _setItemSalesPrice((mrp * (1 - disc / 100)).toFixed(2));
+    }
+  }, [itemMRP, itemDiscount]);
+
+  // ── Auto-calculate: Sales Price → Sale Discount ──────────────────────────
+  // When the user last edited the price field, recalculate the discount.
+  useEffect(() => {
+    if (lastEditedSale.current !== 'price') return;
+    const mrp   = parseFloat(itemMRP);
+    const price = parseFloat(itemSalesPrice);
+    if (mrp > 0 && price >= 0) {
+      _setItemDiscount(price < mrp ? ((mrp - price) / mrp * 100).toFixed(2) : '0');
+    }
+  }, [itemMRP, itemSalesPrice]);
+
+  // ── Auto-calculate: Purchase Discount → Purchase Price ───────────────────
+  useEffect(() => {
+    if (lastEditedPurchase.current !== 'discount') return;
+    const mrp  = parseFloat(itemMRP);
+    const disc = parseFloat(PurchaseDiscount);
+    if (mrp > 0 && disc >= 0) {
+      _setItemPurchasePrice((mrp * (1 - disc / 100)).toFixed(2));
+    }
+  }, [itemMRP, PurchaseDiscount]);
+
+  // ── Auto-calculate: Purchase Price → Purchase Discount ───────────────────
+  useEffect(() => {
+    if (lastEditedPurchase.current !== 'price') return;
+    const mrp   = parseFloat(itemMRP);
+    const price = parseFloat(itemPurchasePrice);
+    if (mrp > 0 && price >= 0) {
+      _setPurchaseDiscount(price < mrp ? ((mrp - price) / mrp * 100).toFixed(2) : '0');
+    }
+  }, [itemMRP, itemPurchasePrice]);
 
   // ── UI state ─────────────────────────────────────────────────────────────
   const [itemGroups,      setItemGroups]      = useState<ItemGroup[]>([]);
@@ -61,8 +132,14 @@ export const useItemForm = (options: UseItemFormOptions = {}) => {
   const [isUploading,     setIsUploading]     = useState(false);
   const [uploadProgress,  setUploadProgress]  = useState<UploadProgress | null>(null);
 
+  // ── Overwrite prompt state ───────────────────────────────────────────────
+  const [showOverwritePrompt,   setShowOverwritePrompt]   = useState(false);
+  const [pendingDuplicateCount, setPendingDuplicateCount] = useState(0);
+  const overwritePromptResolverRef = useRef<((choice: boolean) => void) | null>(null);
+
   // ── Refs ─────────────────────────────────────────────────────────────────
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef     = useRef<HTMLInputElement>(null);
+  const successBannerRef = useRef<HTMLDivElement>(null);
 
   // ── Page loading gate ────────────────────────────────────────────────────
   useEffect(() => {
@@ -88,13 +165,10 @@ export const useItemForm = (options: UseItemFormOptions = {}) => {
   // ── Fetch / peek next barcode ────────────────────────────────────────────
   const fetchNextBarcode = async () => {
     if (!currentUser?.companyId) return;
-
-    // If the consumer's settings say NOT to auto-generate, clear the field
     if (itemSettings && !itemSettings.autoGenerateBarcode) {
       setItemBarcode('');
       return;
     }
-
     try {
       const counterRef = doc(db, 'companies', currentUser.companyId, 'counters', 'items');
       const snap = await getDoc(counterRef);
@@ -116,10 +190,11 @@ export const useItemForm = (options: UseItemFormOptions = {}) => {
   const resetForm = (extraReset?: () => void) => {
     setItemName('');
     setItemMRP('');
-    setItemSalesPrice('');
-    setItemPurchasePrice('');
-    setItemDiscount('');
-    setPurchaseDiscount('');
+    // Use the internal raw setters so we don't flip the lastEdited refs
+    _setItemSalesPrice('');
+    _setItemPurchasePrice('');
+    _setItemDiscount('');
+    _setPurchaseDiscount('');
     setItemTax('');
     setItemAmount('');
     setRestockQuantity('');
@@ -128,6 +203,9 @@ export const useItemForm = (options: UseItemFormOptions = {}) => {
     setPacketSize('');
     setSelectedCategory('');
     setMoq('1');
+    // Reset direction tracking so auto-calc doesn't fire stale effects
+    lastEditedSale.current     = null;
+    lastEditedPurchase.current = null;
     fetchNextBarcode();
     extraReset?.();
   };
@@ -162,6 +240,27 @@ export const useItemForm = (options: UseItemFormOptions = {}) => {
     });
   };
 
+  // ── Overwrite prompt helpers ─────────────────────────────────────────────
+  const requestBulkOverwriteChoice = (duplicateCount: number): Promise<boolean> => {
+    return new Promise((resolve) => {
+      setPendingDuplicateCount(duplicateCount);
+      overwritePromptResolverRef.current = resolve;
+      setShowOverwritePrompt(true);
+    });
+  };
+
+  const handleConfirmOverwrite = () => {
+    overwritePromptResolverRef.current?.(true);
+    overwritePromptResolverRef.current = null;
+    setShowOverwritePrompt(false);
+  };
+
+  const handleCancelOverwrite = () => {
+    overwritePromptResolverRef.current?.(false);
+    overwritePromptResolverRef.current = null;
+    setShowOverwritePrompt(false);
+  };
+
   // ── Add single item ──────────────────────────────────────────────────────
   const handleAddItem = async (extraReset?: () => void) => {
     if (!dbOperations || !currentUser || !itemSettings) {
@@ -169,9 +268,9 @@ export const useItemForm = (options: UseItemFormOptions = {}) => {
     }
     setError(null); setSuccess(null); setModal(null);
 
-    // Required fields
+    // ── 1. Strictly required field validation ────────────────────────────
     if (!itemName.trim()) {
-      setModal({ message: 'Item Name and MRP are required.', type: State.ERROR }); return;
+      setModal({ message: 'Item Name is required.', type: State.ERROR }); return;
     }
 
     const mrpValue      = parseFloat(itemMRP) || 0;
@@ -182,7 +281,12 @@ export const useItemForm = (options: UseItemFormOptions = {}) => {
       setModal({ message: 'Please enter either MRP or Sales Price.', type: State.ERROR }); return;
     }
 
-    // Settings-driven optional validation
+    // ── 2. Sales Price cannot exceed MRP ─────────────────────────────────
+    if (mrpValue > 0 && saleValue > 0 && saleValue > mrpValue) {
+      setModal({ message: 'Sales Price cannot be greater than MRP.', type: State.ERROR }); return;
+    }
+
+    // ── 3. Dynamic optional settings validation ──────────────────────────
     if (itemSettings.requireBarcode && !itemBarcode.trim()) {
       setModal({ message: 'Barcode is required.', type: State.ERROR }); return;
     }
@@ -190,16 +294,16 @@ export const useItemForm = (options: UseItemFormOptions = {}) => {
       setModal({ message: 'Sale Discount is required.', type: State.ERROR }); return;
     }
     if (itemSettings.requirePurchasePrice && !itemPurchasePrice.trim()) {
-      setModal({ message: 'Purchase Price required.', type: State.ERROR }); return;
+      setModal({ message: 'Purchase Price is required as per your settings.', type: State.ERROR }); return;
     }
     if (itemSettings.requirePurchaseDiscount && !PurchaseDiscount.trim()) {
-      setModal({ message: 'Purchase Discount required.', type: State.ERROR }); return;
+      setModal({ message: 'Purchase Discount is required as per your settings.', type: State.ERROR }); return;
     }
     if (itemSettings.requireTax && !itemTax.trim()) {
-      setModal({ message: 'Tax required.', type: State.ERROR }); return;
+      setModal({ message: 'Tax is required as per your settings.', type: State.ERROR }); return;
     }
     if (itemSettings.requireRestockQuantity && !restockQuantity.trim()) {
-      setModal({ message: 'Restock quantity required.', type: State.ERROR }); return;
+      setModal({ message: 'Restock Level is required as per your settings.', type: State.ERROR }); return;
     }
     if (itemUnit === 'pkt' && (!packetSize.trim() || parseInt(packetSize, 10) <= 0)) {
       setModal({ message: 'Please enter a valid quantity for the Packet.', type: State.ERROR }); return;
@@ -211,7 +315,7 @@ export const useItemForm = (options: UseItemFormOptions = {}) => {
       setModal({ message: 'Category is required as per your settings.', type: State.ERROR }); return;
     }
 
-    // Resolve final barcode
+    // ── 4. Resolve final barcode ─────────────────────────────────────────
     let finalBarcode = itemBarcode.trim();
     if (!finalBarcode && itemSettings.autoGenerateBarcode) {
       await fetchNextBarcode();
@@ -219,7 +323,7 @@ export const useItemForm = (options: UseItemFormOptions = {}) => {
     }
     if (!finalBarcode) finalBarcode = Date.now().toString();
 
-    // Discount logic
+    // ── 5. Discount logic: zero out if both MRP and price are set ────────
     let finalSaleDiscount     = parseFloat(itemDiscount) || 0;
     let finalPurchaseDiscount = parseFloat(PurchaseDiscount) || 0;
     if (mrpValue > 0 && saleValue > 0)     finalSaleDiscount = 0;
@@ -227,7 +331,7 @@ export const useItemForm = (options: UseItemFormOptions = {}) => {
 
     setIsSaving(true);
     try {
-      // Duplicate barcode check
+      // ── 6. Duplicate barcode check ───────────────────────────────────
       const itemsRef = collection(db, 'companies', currentUser.companyId, 'items');
       const q        = query(itemsRef, where('barcode', '==', finalBarcode), limit(1));
       const snapshot = await getDocs(q);
@@ -241,12 +345,10 @@ export const useItemForm = (options: UseItemFormOptions = {}) => {
         }
       }
 
-      // Resolve group
-      const groups = await dbOperations.getItemGroups();
+      const groups        = await dbOperations.getItemGroups();
       const uncategorized = groups.find(g => g.name.toLowerCase().trim() === 'uncategorized');
       const finalGroupId  = selectedCategory || uncategorized?.id || '';
 
-      // Resolve image (consumer-provided async fn, e.g. Firebase Storage upload)
       let finalImageUrl: string | null = null;
       if (options.resolveImageUrl) {
         finalImageUrl = await options.resolveImageUrl(finalBarcode);
@@ -279,7 +381,10 @@ export const useItemForm = (options: UseItemFormOptions = {}) => {
 
       setSuccess(`Item "${itemName}" added!`);
       resetForm(extraReset);
-      setTimeout(() => setSuccess(null), 3000);
+      requestAnimationFrame(() => {
+        successBannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+
     } catch (err: any) {
       setError('Failed to add item.');
       setModal({ message: err.message, type: State.ERROR });
@@ -313,13 +418,13 @@ export const useItemForm = (options: UseItemFormOptions = {}) => {
           ...(rawRange !== undefined ? { range: rawRange } : {}),
         });
 
-        // When using range:9 the first row after that is a notes row — skip it
         const dataJson = opts.skipFirstRow ? rawJson.slice(1) : rawJson;
         if (dataJson.length === 0) throw new Error('File empty.');
 
         let createdCount = 0;
         let updatedCount = 0;
         let failedCount  = 0;
+        let skippedCount = 0;
         const totalItems = dataJson.length;
         setUploadProgress({ current: 0, total: totalItems });
 
@@ -332,11 +437,31 @@ export const useItemForm = (options: UseItemFormOptions = {}) => {
         const needingBarcode = dataJson.filter((r: any) => !r.barcode && !r.Barcode).length;
         let nextSeqNumber    = needingBarcode > 0 ? await reserveSequenceBlock(needingBarcode) : 0;
 
+        // ── Pre-scan for duplicates and ask once ─────────────────────────
+        let shouldOverwriteExisting: boolean | null = null;
+        let duplicateCount = 0;
+
+        for (const rawRow of dataJson) {
+          const row: any = {};
+          Object.keys(rawRow).forEach(k => {
+            row[k.toLowerCase().replace(/[^a-z0-9]/g, '')] = rawRow[k];
+          });
+          const rowBarcode = String(row.barcode || '').trim();
+          if (!rowBarcode) continue;
+          const iRef = collection(db, 'companies', currentUser.companyId, 'items');
+          const snap = await getDocs(query(iRef, where('barcode', '==', rowBarcode), limit(1)));
+          if (!snap.empty) duplicateCount++;
+        }
+
+        if (duplicateCount > 0) {
+          shouldOverwriteExisting = await requestBulkOverwriteChoice(duplicateCount);
+        }
+
+        // ── Main import loop ─────────────────────────────────────────────
         for (let i = 0; i < dataJson.length; i++) {
           await new Promise(resolve => setTimeout(resolve, 0));
           setUploadProgress({ current: i + 1, total: totalItems });
 
-          // Normalise keys
           const rawRow = dataJson[i];
           const row: any = {};
           Object.keys(rawRow).forEach(k => {
@@ -344,10 +469,10 @@ export const useItemForm = (options: UseItemFormOptions = {}) => {
           });
 
           // Category resolution
-          const rawCat          = row.itemgroupid || row.itemgroup || row.category || row.group || row.categoryname;
-          const csvCatValue     = rawCat ? String(rawCat).trim() : 'Uncategorized';
-          const categoryLower   = csvCatValue.toLowerCase();
-          let targetGroupId     = '';
+          const rawCat        = row.itemgroupid || row.itemgroup || row.category || row.group || row.categoryname;
+          const csvCatValue   = rawCat ? String(rawCat).trim() : 'Uncategorized';
+          const categoryLower = csvCatValue.toLowerCase();
+          let targetGroupId   = '';
 
           if (groupMap.has(categoryLower)) {
             targetGroupId = groupMap.get(categoryLower)!;
@@ -364,7 +489,6 @@ export const useItemForm = (options: UseItemFormOptions = {}) => {
             } catch { /* fall through with empty group */ }
           }
 
-          // Row-level validation — support both 'name' and 'itemname' column headers
           const rowName = row.itemname || row.name;
           if (!rowName) { failedCount++; continue; }
 
@@ -412,6 +536,11 @@ export const useItemForm = (options: UseItemFormOptions = {}) => {
             const snap     = await getDocs(query(iRef, where('barcode', '==', rowBarcode), limit(1)));
             const isUpdate = !snap.empty;
 
+            if (isUpdate && !shouldOverwriteExisting) {
+              skippedCount++;
+              continue;
+            }
+
             await dbOperations.createItem(itemData, rowBarcode);
             if (isUpdate) updatedCount++; else createdCount++;
           } catch { failedCount++; }
@@ -421,11 +550,11 @@ export const useItemForm = (options: UseItemFormOptions = {}) => {
 
         if (failedCount > 0) {
           setModal({
-            message: `Error in ${failedCount} entries. Check required fields.`,
+            message: `Error in ${failedCount} entries. Check required fields (Item Name, Sale Price or MRP).`,
             type: State.ERROR,
           });
         } else {
-          setSuccess(`Imported: ${createdCount} New, ${updatedCount} Updated.`);
+          setSuccess(`Imported: ${createdCount} New, ${updatedCount} Updated${skippedCount > 0 ? `, ${skippedCount} Skipped` : ''}.`);
           setTimeout(() => setSuccess(null), 5000);
         }
       } catch (err: any) {
@@ -572,6 +701,7 @@ export const useItemForm = (options: UseItemFormOptions = {}) => {
     // Fields
     itemName,          setItemName,
     itemMRP,           setItemMRP,
+    // NOTE: Use these wrapped setters from the UI — they track lastEdited direction
     itemSalesPrice,    setItemSalesPrice,
     itemPurchasePrice, setItemPurchasePrice,
     itemDiscount,      setItemDiscount,
@@ -594,15 +724,22 @@ export const useItemForm = (options: UseItemFormOptions = {}) => {
     loading,
     pageIsLoading,
     error,
-    success,
+    success,           setSuccess,
     modal,             setModal,
     isSaving,
     isScannerOpen,     setIsScannerOpen,
     isUploading,
     uploadProgress,
 
+    // Overwrite prompt
+    showOverwritePrompt,
+    pendingDuplicateCount,
+    handleConfirmOverwrite,
+    handleCancelOverwrite,
+
     // Refs
     fileInputRef,
+    successBannerRef,
 
     // Actions
     handleAddItem,

@@ -73,14 +73,6 @@ export default function useCustomerReport() {
 
               const dueAmount = totalAmount - paidAmount;
 
-              console.log('Customer Report Row:', {
-                id: doc.id,
-                name: data.userName,
-                totalAmount,
-                paidAmount,
-                dueAmount,
-              });
-
               const isValidOrder = data.status !== 'Upcoming';
 
               return {

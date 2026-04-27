@@ -865,7 +865,7 @@ const handleEditInvoice = (invoice: Invoice) => {
                 {/* Search input (shared component) */}
                 <TutorialStep step={1} currentStep={tutorialStep} text="Tap the search icon to find invoices by name, number, or phone." onNext={() => next(2)} onSkip={skip} mobileArrowAlign="left">
                   <SearchInput
-                    showSearch={search.showSearch}
+                    showSearch={false}
                     value={search.searchQuery}
                     onChange={search.setSearchQuery}
                     onToggle={search.toggleSearch}

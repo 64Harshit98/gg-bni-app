@@ -5,6 +5,8 @@ import { collection, getDocs, doc, updateDoc, writeBatch, query, orderBy, where,
 import { FiUsers, FiCheckCircle, FiCalendar, FiGift, FiList } from 'react-icons/fi';
 import { LuIndianRupee } from 'react-icons/lu';
 import { Spinner } from '../../constants/Spinner';
+import { IconClose } from '../../constants/Icons';
+import { useNavigate } from 'react-router-dom';
 
 interface Agent {
     id: string;
@@ -37,7 +39,6 @@ interface Company {
     referralCredits: number;
 }
 
-// NEW: Interface for the Credit Ledger
 interface CreditRecord {
     id: string;
     referrerName: string;
@@ -46,15 +47,102 @@ interface CreditRecord {
     date: Date;
 }
 
+// ========================================================
+// NEW: Custom Settlement Modal (Strictly using rounded-sm)
+// ========================================================
+const SettlePayoutModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    request: PayoutRequest | null;
+    onSubmit: (amount: number) => Promise<void>;
+}> = ({ isOpen, onClose, request, onSubmit }) => {
+    const [amount, setAmount] = useState<number | string>('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    useEffect(() => {
+        if (isOpen && request) {
+            setAmount(request.amount); // Default to full amount
+        }
+    }, [isOpen, request]);
+
+    if (!isOpen || !request) return null;
+
+    const handleSubmit = async () => {
+        setIsSubmitting(true);
+        await onSubmit(Number(amount));
+        setIsSubmitting(false);
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+            <div className="bg-white rounded-sm shadow-xl w-full max-w-sm p-6 border border-gray-200">
+                <div className="flex justify-between items-center mb-5">
+                    <h2 className="text-lg font-bold text-gray-900">Settle Payout</h2>
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-700 p-1 rounded-sm transition-colors">
+                        <IconClose width={18} height={18} />
+                    </button>
+                </div>
+
+                <div className="mb-5 bg-gray-50 p-3 rounded-sm border border-gray-100 text-sm">
+                    <div className="flex justify-between mb-1">
+                        <span className="text-gray-500 font-medium">Agent:</span>
+                        <span className="font-bold text-gray-900">{request.agentName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span className="text-gray-500 font-medium">Requested:</span>
+                        <span className="font-bold text-gray-900">₹{request.amount.toFixed(2)}</span>
+                    </div>
+                </div>
+
+                <div className="mb-6">
+                    <label className="block text-xs font-bold text-gray-600 uppercase mb-2">
+                        Settlement Amount (₹)
+                    </label>
+                    <input
+                        type="number"
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                        max={request.amount}
+                        min={1}
+                        placeholder="Enter amount"
+                        className="w-full px-3 py-2.5 border border-gray-300 rounded-sm focus:outline-none focus:ring-2 focus:ring-black text-sm font-semibold text-gray-900 transition-shadow"
+                    />
+                </div>
+
+                <div className="flex gap-3">
+                    <button
+                        onClick={onClose}
+                        disabled={isSubmitting}
+                        className="flex-1 px-4 py-2 bg-white border border-gray-300 rounded-sm text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        onClick={handleSubmit}
+                        disabled={isSubmitting || !amount || Number(amount) <= 0}
+                        className="flex-1 px-4 py-2 bg-black text-white rounded-sm text-sm font-bold hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                        {isSubmitting ? 'Processing...' : 'Confirm'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const SuperAdminDashboard: React.FC = () => {
     const { currentUser } = useAuth();
     const [agents, setAgents] = useState<Agent[]>([]);
     const [payoutRequests, setPayoutRequests] = useState<PayoutRequest[]>([]);
     const [companies, setCompanies] = useState<Company[]>([]);
-    const [creditLedger, setCreditLedger] = useState<CreditRecord[]>([]); // NEW STATE
-
+    const [creditLedger, setCreditLedger] = useState<CreditRecord[]>([]);
+    const navigate = useNavigate();
     const [_totalCommissionsCount, setTotalCommissionsCount] = useState(0);
     const [loading, setLoading] = useState(true);
+
+    // Modal State
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [selectedRequest, setSelectedRequest] = useState<PayoutRequest | null>(null);
 
     const [activeTab, setActiveTab] = useState<'agents' | 'payouts' | 'users'>('users');
 
@@ -115,8 +203,6 @@ const SuperAdminDashboard: React.FC = () => {
                 });
             });
 
-            // OLD SORT: compList.sort((a, b) => a.expiryDate.getTime() - b.expiryDate.getTime());
-
             // NEW SORT: Push users with credits to the top, then sort the rest by expiry date
             compList.sort((a, b) => {
                 if (b.referralCredits !== a.referralCredits) {
@@ -127,7 +213,7 @@ const SuperAdminDashboard: React.FC = () => {
 
             setCompanies(compList);
 
-            // 4. Fetch Credit Ledger (NEW)
+            // 4. Fetch Credit Ledger
             const ledgerQuery = query(collection(db, 'creditLedger'), orderBy('date', 'desc'));
             const ledgerSnap = await getDocs(ledgerQuery);
             const ledgerList: CreditRecord[] = [];
@@ -172,35 +258,69 @@ const SuperAdminDashboard: React.FC = () => {
         }
     };
 
-    const handleMarkAsPaid = async (requestId: string, agentId: string, amount: number) => {
-        const confirmPay = window.confirm(`Mark ₹${amount} as paid? This will clear their request and deduct their wallet.`);
-        if (!confirmPay) return;
+    const handleSettlePayment = async (settleAmount: number) => {
+        if (!selectedRequest) return;
+
+        const { id: requestId, agentId, amount: currentAmount } = selectedRequest;
+
+        if (isNaN(settleAmount) || settleAmount <= 0) {
+            return alert("Please enter a valid amount greater than 0.");
+        }
+        if (settleAmount > currentAmount) {
+            return alert(`You cannot settle more than the requested amount (₹${currentAmount}).`);
+        }
+
+        const isFullSettlement = settleAmount === currentAmount;
 
         try {
             const batch = writeBatch(db);
             const reqRef = doc(db, 'payoutRequests', requestId);
-            batch.update(reqRef, { status: 'paid' });
             const agentRef = doc(db, 'agents', agentId);
-            batch.update(agentRef, { unpaidBalance: increment(-amount), hasPendingRequest: false });
 
-            const commQuery = query(collection(db, 'commissions'), where('agentId', '==', agentId), where('status', '==', 'pending'));
-            const commSnap = await getDocs(commQuery);
-            commSnap.forEach(cDoc => { batch.update(cDoc.ref, { status: 'paid' }); });
+            if (isFullSettlement) {
+                // FULL SETTLEMENT
+                batch.update(reqRef, { status: 'paid' });
+                batch.update(agentRef, { unpaidBalance: increment(-settleAmount), hasPendingRequest: false });
+
+                const commQuery = query(collection(db, 'commissions'), where('agentId', '==', agentId), where('status', '==', 'pending'));
+                const commSnap = await getDocs(commQuery);
+                commSnap.forEach(cDoc => { batch.update(cDoc.ref, { status: 'paid' }); });
+            } else {
+                // PARTIAL SETTLEMENT
+                batch.update(reqRef, { amount: increment(-settleAmount) });
+                batch.update(agentRef, { unpaidBalance: increment(-settleAmount) });
+            }
 
             await batch.commit();
-            setPayoutRequests(prev => prev.map(r => r.id === requestId ? { ...r, status: 'paid' } : r));
-            setAgents(prev => prev.map(a => a.id === agentId ? { ...a, unpaidBalance: Math.max(0, a.unpaidBalance - amount) } : a));
-            alert("Payout successfully marked as paid!");
+
+            // Update the local UI state
+            setPayoutRequests(prev => prev.map(r => {
+                if (r.id === requestId) {
+                    return isFullSettlement
+                        ? { ...r, status: 'paid' }
+                        : { ...r, amount: r.amount - settleAmount };
+                }
+                return r;
+            }));
+
+            setAgents(prev => prev.map(a =>
+                a.id === agentId
+                    ? { ...a, unpaidBalance: Math.max(0, a.unpaidBalance - settleAmount) }
+                    : a
+            ));
+
+            alert(`Successfully settled ₹${settleAmount}!`);
+
+            // Close modal and reset selection
+            setIsModalOpen(false);
+            setSelectedRequest(null);
 
         } catch (error) {
-            console.error("Error processing payout:", error);
-            alert("Failed to process payout.");
+            console.error("Error processing settlement:", error);
+            alert("Failed to process settlement.");
         }
     };
 
-    // ========================================================
-    // 🚨 UPDATED: ADD FREE MONTH (NOW WRITES TO LEDGER)
-    // ========================================================
     const handleAddFreeMonth = async (companyId: string, currentExpiry: Date, currentCredits: number, companyName: string) => {
         const confirmAdd = window.confirm(`Add 1 Month (30 Days) of free software to ${companyName}?`);
         if (!confirmAdd) return;
@@ -214,13 +334,11 @@ const SuperAdminDashboard: React.FC = () => {
             const companyRef = doc(db, 'companies', companyId);
             const ledgerRef = doc(collection(db, 'creditLedger'));
 
-            // 1. Update company document
             batch.update(companyRef, {
                 expiryDate: newExpiryDate,
                 referralCredits: newCredits
             });
 
-            // 2. Add receipt to ledger showing they CLAIMED a month
             batch.set(ledgerRef, {
                 referrerId: companyId,
                 referrerName: companyName,
@@ -231,10 +349,8 @@ const SuperAdminDashboard: React.FC = () => {
 
             await batch.commit();
 
-            // 3. Update UI state
             setCompanies(prev => prev.map(c => c.id === companyId ? { ...c, expiryDate: newExpiryDate, referralCredits: newCredits } : c));
 
-            // Add fake record to top of local state so we see it instantly
             const newRecord: CreditRecord = {
                 id: ledgerRef.id,
                 referrerName: companyName,
@@ -267,44 +383,47 @@ const SuperAdminDashboard: React.FC = () => {
             <div className="max-w-7xl mx-auto space-y-6">
 
                 {/* Header Stats */}
-                <div className="flex justify-between items-end mb-8">
+                <div className="flex items-center justify-between pb-3 border-b mb-2">
                     <div>
                         <h1 className="text-3xl font-bold text-gray-900">Super Admin Console</h1>
                         <p className="text-gray-500 mt-1">Manage partners, payouts, and user subscriptions globally.</p>
                     </div>
+                    <button onClick={() => navigate(-1)} className="p-2 rounded-sm hover:bg-gray-200 transition-colors">
+                        <IconClose width={20} height={20} />
+                    </button>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                    <div className="bg-white p-6 rounded-sm shadow-sm border border-gray-200">
                         <div className="flex items-center gap-4">
-                            <div className="p-3 bg-blue-50 text-blue-600 rounded-lg"><FiUsers size={24} /></div>
+                            <div className="p-3 bg-blue-50 text-blue-600 rounded-sm"><FiUsers size={24} /></div>
                             <div>
                                 <p className="text-sm text-gray-500 font-medium">Total Partners</p>
                                 <p className="text-2xl font-bold text-gray-900">{agents.length}</p>
                             </div>
                         </div>
                     </div>
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                    <div className="bg-white p-6 rounded-sm shadow-sm border border-gray-200">
                         <div className="flex items-center gap-4">
-                            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-lg"><FiCheckCircle size={24} /></div>
+                            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-sm"><FiCheckCircle size={24} /></div>
                             <div>
                                 <p className="text-sm text-gray-500 font-medium">Total Users</p>
                                 <p className="text-2xl font-bold text-gray-900">{companies.length}</p>
                             </div>
                         </div>
                     </div>
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                    <div className="bg-white p-6 rounded-sm shadow-sm border border-gray-200">
                         <div className="flex items-center gap-4">
-                            <div className="p-3 bg-orange-50 text-orange-600 rounded-lg"><LuIndianRupee size={24} /></div>
+                            <div className="p-3 bg-orange-50 text-orange-600 rounded-sm"><LuIndianRupee size={24} /></div>
                             <div>
                                 <p className="text-sm text-gray-500 font-medium">Pending Payouts</p>
                                 <p className="text-2xl font-bold text-gray-900">₹{totalPendingAmount.toFixed(2)}</p>
                             </div>
                         </div>
                     </div>
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                    <div className="bg-white p-6 rounded-sm shadow-sm border border-gray-200">
                         <div className="flex items-center gap-4">
-                            <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg"><FiGift size={24} /></div>
+                            <div className="p-3 bg-emerald-50 text-emerald-600 rounded-sm"><FiGift size={24} /></div>
                             <div>
                                 <p className="text-sm text-gray-500 font-medium">Unclaimed Credits</p>
                                 <p className="text-2xl font-bold text-gray-900">{usersWithCredits} Users</p>
@@ -319,7 +438,7 @@ const SuperAdminDashboard: React.FC = () => {
                         onClick={() => setActiveTab('users')}
                         className={`py-3 px-6 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === 'users' ? 'border-black text-black' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
                     >
-                        Registered Users (Subscriptions)
+                        Users Referrals
                     </button>
                     <button
                         onClick={() => setActiveTab('agents')}
@@ -338,8 +457,7 @@ const SuperAdminDashboard: React.FC = () => {
                 {/* TAB CONTENT: USERS (COMPANIES) */}
                 {activeTab === 'users' && (
                     <div className="space-y-6">
-                        {/* Users Table */}
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                        <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden">
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm text-left text-gray-600">
                                     <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
@@ -361,16 +479,16 @@ const SuperAdminDashboard: React.FC = () => {
                                                         <p className="text-xs text-gray-500">{company.ownerPhoneNumber}</p>
                                                     </td>
                                                     <td className="px-6 py-4 font-medium text-gray-500">
-                                                        {company.createdAt.toLocaleDateString()}
+                                                        {company.createdAt.toLocaleDateString('en-IN')}
                                                     </td>
                                                     <td className="px-6 py-4">
-                                                        <span className={`px-2.5 py-1 rounded text-xs font-bold tracking-wide ${isExpired ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
-                                                            {company.expiryDate.toLocaleDateString()}
+                                                        <span className={`px-2.5 py-1 rounded-sm text-xs font-bold tracking-wide ${isExpired ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                                                            {company.expiryDate.toLocaleDateString('en-IN')}
                                                         </span>
                                                     </td>
                                                     <td className="px-6 py-4 text-center">
                                                         {company.referralCredits > 0 ? (
-                                                            <span className="bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-xs font-bold flex items-center justify-center gap-1 w-max mx-auto border border-purple-200">
+                                                            <span className="bg-purple-100 text-purple-700 px-3 py-1 rounded-sm text-xs font-bold flex items-center justify-center gap-1 w-max mx-auto border border-purple-200">
                                                                 <FiGift /> {company.referralCredits} Months
                                                             </span>
                                                         ) : (
@@ -380,7 +498,7 @@ const SuperAdminDashboard: React.FC = () => {
                                                     <td className="px-6 py-4 text-center">
                                                         <button
                                                             onClick={() => handleAddFreeMonth(company.id, company.expiryDate, company.referralCredits, company.name)}
-                                                            className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors w-full flex items-center justify-center gap-1.5 ${company.referralCredits > 0
+                                                            className={`px-4 py-2 rounded-sm text-xs font-bold transition-colors w-full flex items-center justify-center gap-1.5 ${company.referralCredits > 0
                                                                 ? 'bg-purple-600 text-white hover:bg-purple-700 shadow-sm'
                                                                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200'
                                                                 }`}
@@ -396,8 +514,7 @@ const SuperAdminDashboard: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* NEW: Credit Ledger Table */}
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                        <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden">
                             <div className="p-5 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
                                 <h3 className="text-base font-bold text-gray-800 flex items-center gap-2">
                                     <FiList className="text-gray-600" /> Credit History & Referrals
@@ -420,7 +537,7 @@ const SuperAdminDashboard: React.FC = () => {
                                             creditLedger.map(record => (
                                                 <tr key={record.id} className="border-b border-gray-100 hover:bg-gray-50">
                                                     <td className="px-6 py-4 font-medium text-gray-500">
-                                                        {record.date.toLocaleDateString()}
+                                                        {record.date.toLocaleDateString('en-IN')}
                                                     </td>
                                                     <td className="px-6 py-4 font-bold text-gray-900">
                                                         {record.referrerName}
@@ -434,9 +551,9 @@ const SuperAdminDashboard: React.FC = () => {
                                                     </td>
                                                     <td className="px-6 py-4 text-right">
                                                         {record.type === 'Earned' ? (
-                                                            <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold border border-green-200">+1 Earned</span>
+                                                            <span className="bg-green-100 text-green-700 px-3 py-1 rounded-sm text-xs font-bold border border-green-200">+1 Earned</span>
                                                         ) : (
-                                                            <span className="bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-xs font-bold border border-purple-200">-1 Claimed</span>
+                                                            <span className="bg-purple-100 text-purple-700 px-3 py-1 rounded-sm text-xs font-bold border border-purple-200">-1 Claimed</span>
                                                         )}
                                                     </td>
                                                 </tr>
@@ -451,7 +568,7 @@ const SuperAdminDashboard: React.FC = () => {
 
                 {/* TAB CONTENT: AGENTS */}
                 {activeTab === 'agents' && (
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden">
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm text-left text-gray-600">
                                 <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
@@ -471,7 +588,7 @@ const SuperAdminDashboard: React.FC = () => {
                                                 <p className="text-xs text-gray-500">{agent.phoneNumber}</p>
                                             </td>
                                             <td className="px-6 py-4">
-                                                <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-bold uppercase tracking-wider block w-max mb-1">
+                                                <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded-sm text-xs font-bold uppercase tracking-wider block w-max mb-1">
                                                     {agent.role}
                                                 </span>
                                                 <span className="font-mono text-xs font-bold text-gray-500">{agent.ownReferralCode}</span>
@@ -480,7 +597,7 @@ const SuperAdminDashboard: React.FC = () => {
                                                 <select
                                                     value={agent.tier}
                                                     onChange={(e) => handleTierChange(agent.id, e.target.value)}
-                                                    className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-black focus:border-black block w-full p-2.5 font-semibold cursor-pointer"
+                                                    className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-sm focus:ring-black focus:border-black block w-full p-2.5 font-semibold cursor-pointer"
                                                 >
                                                     <option value="Bronze">Bronze</option>
                                                     <option value="Silver">Silver</option>
@@ -506,7 +623,7 @@ const SuperAdminDashboard: React.FC = () => {
 
                 {/* TAB CONTENT: PAYOUTS */}
                 {activeTab === 'payouts' && (
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden">
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm text-left text-gray-600">
                                 <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
@@ -526,13 +643,13 @@ const SuperAdminDashboard: React.FC = () => {
                                             return (
                                                 <tr key={req.id} className="border-b border-gray-100 hover:bg-gray-50">
                                                     <td className="px-6 py-4">
-                                                        <p className="text-sm font-medium text-gray-800">{req.date.toLocaleDateString()}</p>
+                                                        <p className="text-sm font-medium text-gray-800">{req.date.toLocaleDateString('en-IN')}</p>
                                                     </td>
                                                     <td className="px-6 py-4">
                                                         <p className="font-bold text-gray-900">{req.agentName}</p>
                                                     </td>
                                                     <td className="px-6 py-4">
-                                                        <span className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded text-xs font-bold tracking-wide">
+                                                        <span className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-sm text-xs font-bold tracking-wide">
                                                             UPI: {req.upiId}
                                                         </span>
                                                     </td>
@@ -542,13 +659,16 @@ const SuperAdminDashboard: React.FC = () => {
                                                     <td className="px-6 py-4 text-center">
                                                         {req.status === 'pending' ? (
                                                             <button
-                                                                onClick={() => handleMarkAsPaid(req.id, req.agentId, req.amount)}
-                                                                className="bg-black text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-gray-800 transition-colors w-full"
+                                                                onClick={() => {
+                                                                    setSelectedRequest(req);
+                                                                    setIsModalOpen(true);
+                                                                }}
+                                                                className="bg-black text-white px-4 py-2 rounded-sm text-xs font-bold hover:bg-gray-800 transition-colors w-full"
                                                             >
-                                                                Mark Paid
+                                                                Settle Amount
                                                             </button>
                                                         ) : (
-                                                            <span className="bg-green-100 text-green-700 px-4 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 w-full">
+                                                            <span className="bg-green-100 text-green-700 px-4 py-2 rounded-sm text-xs font-bold flex items-center justify-center gap-1 w-full">
                                                                 <FiCheckCircle /> Settled
                                                             </span>
                                                         )}
@@ -563,6 +683,16 @@ const SuperAdminDashboard: React.FC = () => {
                     </div>
                 )}
 
+                {/* THE NEW MODAL COMPONENT */}
+                <SettlePayoutModal
+                    isOpen={isModalOpen}
+                    onClose={() => {
+                        setIsModalOpen(false);
+                        setSelectedRequest(null);
+                    }}
+                    request={selectedRequest}
+                    onSubmit={handleSettlePayment}
+                />
             </div>
         </div>
     );

@@ -1038,4 +1038,6 @@ const Sales: React.FC = () => {
     return <SalesListView {...sharedViewProps} />;
 };
 
+
+export { applyRounding } from './SalesComponents/Salescalculations';
 export default Sales;

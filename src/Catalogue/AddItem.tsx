@@ -1,792 +1,459 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import type { ItemGroup } from '../constants/models';
 import { ROUTES } from '../constants/routes.constants';
 import { CustomButton } from '../Components';
 import { Variant, State } from '../enums';
-import XLSX from 'xlsx-js-style';
 import BarcodeScanner from '../UseComponents/BarcodeScanner';
-import { useAuth, useDatabase } from '../context/auth-context';
 import { Spinner } from '../constants/Spinner';
 import { Modal } from '../constants/Modal';
-import { useItemSettings } from '../context/SettingsContext';
 import { IconScanCircle } from '../constants/Icons';
-import { collection, query, where, getDocs, limit, doc, runTransaction, getDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'; // <-- NEW
-import ExcelJS from 'exceljs'; // <-- NEW IMPORT
-import { db, storage } from '../lib/Firebase'; // <-- NEW: Make sure storage is exported
-import imageCompression from 'browser-image-compression'; // <-- NEW
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { storage } from '../lib/Firebase';
+import imageCompression from 'browser-image-compression';
 
-const formatImageUrl = (url: string | null | undefined): string | null => {
-    if (!url) return null;
-    let cleanUrl = url.trim();
-    if (cleanUrl.includes('drive.google.com')) {
-        let fileId = null;
-        const matchFileD = cleanUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
-        if (matchFileD) {
-            fileId = matchFileD[1];
-        } else {
-            const matchIdParam = cleanUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
-            if (matchIdParam) fileId = matchIdParam[1];
-        }
-        if (fileId) return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`;
-    }
-    return cleanUrl;
-};
+import { useItemForm } from '../Catalogue/hooks/useItemForm';
+import { UNIT_OPTIONS, getUnitLabel } from '../Components/itemUnits';
+import { formatImageUrl } from '../Components/formatImageUrl';
+import UploadProgressModal from '../Components/UploadProgressModal';
+import BulkImportPanel from '../Components/BulkImportPanel';
 
 const ItemAdd: React.FC = () => {
-
-    const UNIT_OPTIONS = [
-        { value: 'pcs', label: 'Pieces (1 pcs)' },
-        { value: 'box', label: 'Box (10 pcs)' },
-        { value: 'pkt', label: 'Packet (Custom)' },
-        { value: 'doz', label: 'Dozen (12 pcs)' },
-        { value: 'qt', label: 'Quintal (100 pcs)' },
-        { value: 'ton', label: 'Ton (1000 pcs)' },
-    ];
-
-    const getUnitLabel = () => {
-        if (itemUnit === 'box') return '10 pcs';
-        if (itemUnit === 'doz') return '12 pcs';
-        if (itemUnit === 'qt') return '100 pcs';
-        if (itemUnit === 'ton') return '1000 pcs';
-        if (itemUnit === 'pkt') return `${packetSize || 1} pcs`;
-        return '1 pcs';
-    };
-
-    const navigate = useNavigate();
-    const location = useLocation();
-    const dbOperations = useDatabase();
-    const { currentUser, loading: authLoading } = useAuth();
-    const { itemSettings, loadingSettings: loadingItemSettings } = useItemSettings();
-
-    // --- STATE ---
-    const [itemName, setItemName] = useState<string>('');
-    const [itemMRP, setItemMRP] = useState<string>('');
-    const [itemSalesPrice, setItemSalesPrice] = useState<string>('');
-    const [itemPurchasePrice, setItemPurchasePrice] = useState<string>('');
-    const [itemDiscount, setItemDiscount] = useState<string>('');
-    const [PurchaseDiscount, setPurchaseDiscount] = useState<string>('');
-    const [itemTax, setItemTax] = useState<string>('');
-    const [itemAmount, setItemAmount] = useState<string>('');
-    const [restockQuantity, setRestockQuantity] = useState<string>('');
-    const [selectedCategory, setSelectedCategory] = useState<string>('');
-    const [itemBarcode, setItemBarcode] = useState<string>('');
-    const [hsnCode, setHsnCode] = useState<string>('');
-    const [imageUrl, setImageUrl] = useState<string>('');
-    const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
-    const [loading, setLoading] = useState<boolean>(true);
-    const [pageIsLoading, setPageIsLoading] = useState<boolean>(true);
-    const [error, setError] = useState<string | null>(null);
-    const [success, setSuccess] = useState<string | null>(null);
-    const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
-    const [moq, setMoq] = useState<string>('1');
-    const [imageFile, setImageFile] = useState<File | null>(null);
-    const [imagePreview, setImagePreview] = useState<string | null>(null);
-    const [isImageCompressing, setIsImageCompressing] = useState(false);
-    const [isUploading, setIsUploading] = useState<boolean>(false);
-    const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
-    const [isScannerOpen, setIsScannerOpen] = useState(false);
-    const [isSaving, setIsSaving] = useState<boolean>(false);
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const imageInputRef = useRef<HTMLInputElement>(null); // NEW
-    const [itemUnit, setItemUnit] = useState<string>('pcs');
-    const [packetSize, setPacketSize] = useState<string>('');
-
-    useEffect(() => {
-        setPageIsLoading(authLoading || loadingItemSettings || !dbOperations);
-    }, [authLoading, loadingItemSettings, dbOperations]);
-
-    const isActive = (path: string) => location.pathname === path;
-
-    const fetchGroups = async () => {
-        if (!dbOperations) return;
-        try {
-            setLoading(true);
-            const groups = await dbOperations.getItemGroups();
-            setItemGroups(groups);
-            if (groups.length === 0) setSelectedCategory('');
-        } catch (err) {
-            console.error('Failed to fetch item groups:', err);
-            setError('Failed to load item categories.');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const fetchNextBarcode = async () => {
-        if (!currentUser?.companyId) return;
-        try {
-            const counterRef = doc(db, 'companies', currentUser.companyId, 'counters', 'items');
-            const snap = await getDoc(counterRef);
-            let nextSeq = 1001;
-            if (snap.exists()) {
-                nextSeq = (snap.data().currentSequence || 1000) + 1;
-            }
-            setItemBarcode(String(nextSeq));
-        } catch (e) {
-            console.error("Failed to fetch next barcode", e);
-        }
-    };
-
-    useEffect(() => {
-        if (dbOperations && currentUser) {
-            fetchGroups();
-            fetchNextBarcode();
-        }
-    }, [dbOperations, currentUser]);
-
-    const resetForm = () => {
-        setItemName('');
-        setItemMRP('');
-        setItemSalesPrice('');
-        setItemPurchasePrice('');
-        setItemDiscount('');
-        setPurchaseDiscount('');
-        setItemTax('');
-        setItemAmount('');
-        fetchNextBarcode();
-        setRestockQuantity('');
-        setHsnCode('');
-        setSelectedCategory('');
-        setImageUrl('');
-        setImageFile(null);
-        setImagePreview(null);
-        setMoq('1');
-        setItemUnit('pcs');
-        setPacketSize('');
-        if (imageInputRef.current) imageInputRef.current.value = '';
-    };
-
-    const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        setIsImageCompressing(true);
-        try {
-            const options = {
-                maxSizeMB: 0.5,
-                maxWidthOrHeight: 1024,
-                useWebWorker: true,
-            };
-            const compressedFile = await imageCompression(file, options);
-            setImageFile(compressedFile);
-            setImagePreview(URL.createObjectURL(compressedFile));
-        } catch (error) {
-            console.error('Error compressing image:', error);
-            setModal({ message: 'Failed to compress image.', type: State.ERROR });
-        } finally {
-            setIsImageCompressing(false);
-        }
-    };
-
-
-    const reserveSequenceBlock = async (count: number): Promise<number> => {
-        if (!currentUser?.companyId) throw new Error("No Company ID");
-        const counterRef = doc(db, 'companies', currentUser.companyId, 'counters', 'items');
-        try {
-            return await runTransaction(db, async (transaction) => {
-                const counterDoc = await transaction.get(counterRef);
-                let lastSeq = 1000;
-                if (counterDoc.exists()) {
-                    lastSeq = counterDoc.data().currentSequence || 1000;
-                }
-                const nextSeq = lastSeq + count;
-                transaction.set(counterRef, { currentSequence: nextSeq }, { merge: true });
-                return lastSeq + 1;
-            });
-        } catch (e) {
-            return Date.now();
-        }
-    };
-
-    const handleAddItem = async () => {
-        if (!dbOperations || !currentUser || !itemSettings) {
-            setModal({ message: 'App not ready.', type: State.ERROR }); return;
-        }
-        setError(null); setSuccess(null); setModal(null);
-
-        // --- 1. Basic Field Validation ---
-        if (!itemName.trim() || !itemMRP.trim()) {
-            setModal({
-                message: 'Item Name and MRP are required.',
-                type: State.ERROR
-            });
-            return;
-        }
-
-        if (itemSettings.requireBarcode && !itemBarcode.trim()) {
-            setModal({ message: 'Barcode is required.', type: State.ERROR }); return;
-        }
-
-        if (itemSettings.requireSaleDiscount && !itemDiscount.trim()) {
-            setModal({ message: 'Sale Discount is required.', type: State.ERROR }); return;
-        }
-
-        let finalBarcode = itemBarcode.trim();
-
-        if (!finalBarcode && itemSettings.autoGenerateBarcode) {
-            await fetchNextBarcode();
-            finalBarcode = itemBarcode.trim();
-        }
-
-        if (!finalBarcode) finalBarcode = Date.now().toString();
-
-        if (itemSettings.requirePurchasePrice && !itemPurchasePrice.trim()) {
-            setModal({ message: 'Purchase Price required.', type: State.ERROR }); return;
-        }
-
-        if (itemSettings.requirePurchaseDiscount && !PurchaseDiscount.trim()) {
-            setModal({ message: 'Purchase Discount required.', type: State.ERROR }); return;
-        }
-
-        if (itemSettings.requireTax && !itemTax.trim()) {
-            setModal({ message: 'Tax required.', type: State.ERROR }); return;
-        }
-
-        if (itemSettings.requireRestockQuantity && !restockQuantity.trim()) {
-            setModal({ message: 'Restock quantity required.', type: State.ERROR }); return;
-        }
-
-        const mrpValue = parseFloat(itemMRP) || 0;
-        const saleValue = parseFloat(itemSalesPrice) || 0;
-        const purchaseValue = parseFloat(itemPurchasePrice) || 0;
-
-        if (mrpValue === 0 && saleValue === 0) {
-            setModal({ message: 'Please enter either MRP or Sales Price.', type: State.ERROR }); return;
-        }
-
-        let finalSaleDiscount = parseFloat(itemDiscount) || 0;
-        let finalPurchaseDiscount = parseFloat(PurchaseDiscount) || 0;
-        if (mrpValue > 0 && purchaseValue > 0) finalPurchaseDiscount = 0;
-
-        setIsSaving(true);
-        const groups = await dbOperations.getItemGroups();
-
-        try {
-            const itemsRef = collection(db, 'companies', currentUser.companyId, 'items');
-            const q = query(itemsRef, where('barcode', '==', finalBarcode), limit(1));
-            const snapshot = await getDocs(q);
-
-            if (!snapshot.empty) {
-                const existingDoc = snapshot.docs[0].data();
-                if (!existingDoc.isDeleted && !existingDoc.deleted) {
-                    setModal({ message: `Barcode ${finalBarcode} already exists in your active items.`, type: State.ERROR });
-                    setIsSaving(false);
-                    return;
-                }
-            }
-
-            const uncategorizedGroup = groups.find(g => g.name.toLowerCase().trim() === "uncategorized");
-            const finalGroupId = selectedCategory || uncategorizedGroup?.id || "";
-            const customDocId = finalBarcode;
-
-            let currentMultiplier = 1;
-            if (itemUnit === 'box') currentMultiplier = 10;
-            if (itemUnit === 'doz') currentMultiplier = 12;
-            if (itemUnit === 'qt') currentMultiplier = 100;
-            if (itemUnit === 'ton') currentMultiplier = 1000;
-            if (itemUnit === 'pkt') currentMultiplier = parseInt(packetSize, 10) || 1;
-
-            let finalUploadedImageUrl = null;
-            if (imageFile) {
-                const storageRef = ref(storage, `companies/${currentUser.companyId}/items/${finalBarcode}_${Date.now()}`);
-                await uploadBytes(storageRef, imageFile);
-                finalUploadedImageUrl = await getDownloadURL(storageRef);
-            } else if (imageUrl.trim()) {
-                finalUploadedImageUrl = formatImageUrl(imageUrl); // Fallback to URL input
-            }
-
-            const newItemData: any = {
-                name: itemName.trim(),
-                mrp: mrpValue,
-                salesPrice: saleValue,
-                purchasePrice: purchaseValue,
-                discount: finalSaleDiscount,
-                purchasediscount: finalPurchaseDiscount,
-                tax: parseFloat(itemTax) || 0,
-                hsnSac: hsnCode.trim(),
-                itemGroupId: finalGroupId,
-                stock: parseInt(itemAmount, 10) || 0,
-                amount: parseInt(itemAmount, 10) || 0,
-                barcode: finalBarcode,
-                restockQuantity: parseInt(restockQuantity, 10) || 0,
-                moq: parseInt(moq, 10) || 1,
-                unit: itemUnit,
-                unitMultiplier: currentMultiplier,
-                packetSize: itemUnit === 'pkt' ? parseInt(packetSize, 10) : null,
-                imageUrl: finalUploadedImageUrl, // <-- SAVES FIREBASE URL OR FORMATTED LINK
-                isDeleted: false,
-            };
-
-            await dbOperations.createItem(newItemData, customDocId);
-
-            const barcodeNum = parseInt(finalBarcode, 10);
-            if (!isNaN(barcodeNum)) {
-                const counterRef = doc(db, 'companies', currentUser.companyId, 'counters', 'items');
-                await runTransaction(db, async (transaction) => {
-                    const counterDoc = await transaction.get(counterRef);
-                    const currentDBSeq = counterDoc.exists() ? (counterDoc.data().currentSequence || 1000) : 1000;
-                    if (barcodeNum > currentDBSeq) {
-                        transaction.set(counterRef, { currentSequence: barcodeNum }, { merge: true });
-                    }
-                });
-            }
-
-            setSuccess(`Item "${itemName}" added!`);
-            resetForm();
-            setTimeout(() => setSuccess(null), 3000);
-        } catch (err: any) {
-            setError('Failed to add item.');
-            setModal({ message: err.message, type: State.ERROR });
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    // --- BULK UPLOAD ---
-    const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file || !dbOperations || !currentUser || !itemSettings || !currentUser.companyId) return;
-
-        setIsUploading(true);
-        setUploadProgress(null);
-        setError(null); setSuccess(null); setModal(null);
-
-        try {
-            const arrayBuffer = await file.arrayBuffer();
-            const workbook = new ExcelJS.Workbook();
-            await workbook.xlsx.load(arrayBuffer);
-
-            const worksheet = workbook.worksheets[0]; // Get first sheet
-            if (!worksheet) throw new Error("Excel file is empty.");
-
-            // --- 1. EXTRACT ALL EMBEDDED IMAGES ---
-            const images = worksheet.getImages();
-            const rowImageMap = new Map<number, any>();
-
-            // Map each image to its row. ExcelJS uses 0-based indexing for the image 'range.tl' (top-left)
-            for (const image of images) {
-                const rowIndex = image.range.tl.row;
-                // Wrap in Number() to satisfy TypeScript
-                const imgData = workbook.getImage(Number(image.imageId));
-                rowImageMap.set(rowIndex, imgData);
-            }
-
-            let processedCount = 0;
-            let createdCount = 0;
-            let updatedCount = 0;
-            let failedCount = 0;
-
-            // Count total rows (excluding header) for the progress bar
-            const totalItems = worksheet.rowCount - 1;
-            setUploadProgress({ current: 0, total: totalItems });
-
-            let currentGroups = await dbOperations.getItemGroups();
-            const groupMap = new Map<string, string>();
-            currentGroups.forEach(g => groupMap.set(g.name.toLowerCase().trim(), g.id!));
-
-            // We need to loop through rows manually since we aren't using sheet_to_json anymore
-            let nextSeqNumber = 0;
-            let needsBarcodeCount = 0;
-
-            // Quick first pass to count how many items are missing a barcode (assuming Column 5 is Barcode)
-            for (let r = 2; r <= worksheet.rowCount; r++) {
-                const row = worksheet.getRow(r);
-                const rawName = row.getCell(1).text;
-                if (!rawName) continue; // Skip empty rows
-
-                const existingBarcode = row.getCell(5).text?.trim();
-                if (!existingBarcode) {
-                    needsBarcodeCount++;
-                }
-            }
-
-            // Reserve the block in Firestore if needed
-            if (needsBarcodeCount > 0) {
-                nextSeqNumber = await reserveSequenceBlock(needsBarcodeCount);
-            }
-            // Start at row 2 to skip the header
-            for (let rowNum = 2; rowNum <= worksheet.rowCount; rowNum++) {
-                const row = worksheet.getRow(rowNum);
-
-                // Assuming your Excel columns are in a specific order. Adjust these indexes!
-                // E.g., Column 1 = Name, Column 2 = MRP, Column 3 = Sales Price, etc.
-                const rawName = row.getCell(1).text;
-                if (!rawName) continue; // Skip empty rows
-
-                await new Promise(resolve => setTimeout(resolve, 0)); // Keep UI responsive
-                setUploadProgress({ current: processedCount + 1, total: totalItems });
-
-                const rowMRP = parseFloat(row.getCell(2).text) || 0;
-                const rowSale = parseFloat(row.getCell(3).text) || 0;
-                const rowPurchase = parseFloat(row.getCell(4).text) || 0;
-                let rowBarcode = row.getCell(5).text?.trim();
-                const csvCategoryValue = (row.getCell(6).text || "Uncategorized").trim();
-                const stockVal = parseInt(row.getCell(7).text) || 0;
-
-                if (rowMRP === 0 && rowSale === 0) { failedCount++; continue; }
-
-                // Category logic...
-                const categoryLower = csvCategoryValue.toLowerCase();
-                let targetGroupId = "";
-                if (groupMap.has(categoryLower)) {
-                    targetGroupId = groupMap.get(categoryLower)!;
-                } else {
-                    try {
-                        const newGroupId = await dbOperations.createItemGroup({ name: csvCategoryValue, description: 'Auto-created via Bulk Import' });
-                        if (newGroupId && typeof newGroupId === 'string') {
-                            groupMap.set(categoryLower, newGroupId);
-                            targetGroupId = newGroupId;
-                        }
-                    } catch (grpErr) {
-                        if (selectedCategory) targetGroupId = selectedCategory;
-                    }
-                }
-
-                let isUpdate = false;
-                const itemsRef = collection(db, 'companies', currentUser.companyId, 'items');
-
-                if (rowBarcode) {
-                    // 1. If Excel has a barcode, check if it exists in Firebase
-                    const q = query(itemsRef, where('barcode', '==', rowBarcode), limit(1));
-                    const snapshot = await getDocs(q);
-                    if (!snapshot.empty) {
-                        isUpdate = true;
-                    }
-                } else {
-                    // 2. If Excel is missing the barcode, check if the ITEM NAME already exists
-                    const qName = query(itemsRef, where('name', '==', rawName.trim()), limit(1));
-                    const snapshotName = await getDocs(qName);
-
-                    if (!snapshotName.empty) {
-                        // Match found by name! We are updating an existing item.
-                        isUpdate = true;
-                        // Steal the existing barcode from the database so it overwrites the right document
-                        rowBarcode = snapshotName.docs[0].data().barcode;
-                    } else {
-                        // 3. Truly a new item. Assign a new generated sequence number.
-                        rowBarcode = String(nextSeqNumber);
-                        nextSeqNumber++;
-                    }
-                }
-
-                // --- 2. UPLOAD THE EMBEDDED IMAGE TO FIREBASE ---
-                const rowImageUrlStr = row.getCell(8).text?.trim();
-
-                // --- 2. UPLOAD EMBEDDED IMAGE OR USE TEXT LINK ---
-                let finalUploadedImageUrl = null;
-
-                // Check if an actual image file was pasted into this row
-                const embeddedImageData = rowImageMap.get(rowNum - 1);
-
-                if (embeddedImageData) {
-                    try {
-                        // Convert raw binary buffer to a standard Blob
-                        const imageBlob = new Blob([embeddedImageData.buffer], {
-                            type: `image/${embeddedImageData.extension}`
-                        });
-
-                        const storageRef = ref(storage, `companies/${currentUser.companyId}/items/${rowBarcode}_${Date.now()}.${embeddedImageData.extension}`);
-                        await uploadBytes(storageRef, imageBlob);
-                        finalUploadedImageUrl = await getDownloadURL(storageRef); // Gets the Firebase URL
-                    } catch (uploadErr) {
-                        console.error("Firebase Image Upload Failed:", uploadErr);
-                    }
-                } else if (rowImageUrlStr) {
-                    // Fallback: If no image was pasted, check if they typed a Google Drive/Web link
-                    finalUploadedImageUrl = formatImageUrl(rowImageUrlStr) || null;
-                }
-                // --- 3. SAVE TO FIRESTORE ---
-                const itemData: any = {
-                    name: rawName.trim(),
-                    mrp: rowMRP,
-                    salesPrice: rowSale,
-                    purchasePrice: rowPurchase,
-                    discount: 0,
-                    purchasediscount: 0,
-                    tax: 0,
-                    itemGroupId: targetGroupId,
-                    stock: stockVal,
-                    amount: stockVal,
-                    barcode: rowBarcode,
-                    imageUrl: finalUploadedImageUrl, // <-- Saves the Firebase URL
-                    isDeleted: false,
-                };
-
-                try {
-                    // We already figured out if this is an update earlier!
-                    await dbOperations.createItem(itemData, rowBarcode);
-                    if (isUpdate) {
-                        updatedCount++;
-                    } else {
-                        createdCount++;
-                    }
-                    processedCount++;
-                } catch (e) {
-                    failedCount++;
-                }
-            }
-
-            await fetchGroups();
-            if (failedCount > 0) {
-                setModal({ message: `Imported with some errors. ${failedCount} rows failed.`, type: State.ERROR });
-            } else {
-                setSuccess(`Imported: ${createdCount} New, ${updatedCount} Updated.`);
-            }
-            setTimeout(() => setSuccess(null), 5000);
-
-        } catch (err: any) {
-            console.error(err);
-            setError("File processing failed. Ensure it is a valid .xlsx file.");
-        } finally {
-            setIsUploading(false);
-            setUploadProgress(null);
-            if (fileInputRef.current) fileInputRef.current.value = '';
-        }
-    };
-
-    const handleBarcodeScanned = (barcode: string) => {
-        setItemBarcode(barcode);
-        setIsScannerOpen(false);
-    };
-
-    const handleDownloadSample = () => {
-        const sampleData = [{
-            name: 'Apple', mrp: 100, salesPrice: 95, purchasePrice: 80, 'Sale Discount': 0, purchasediscount: 0,
-            tax: 0, hsnCode: '080810', itemGroupId: 'Fruits', stock: 50, barcode: '1001', restockQuantity: 10,
-            moq: 10, imageUrl: "https://images.unsplash.com/photo-1560806887-1e4cd0b6fac6",
-        }];
-        const ws = XLSX.utils.json_to_sheet(sampleData);
-        const mandatoryCols = [0, 10];
-        mandatoryCols.forEach((colIndex) => {
-            const cellAddress = XLSX.utils.encode_col(colIndex) + "1";
-            if (ws[cellAddress]) {
-                ws[cellAddress].s = {
-                    font: { bold: true, color: { rgb: "FF0000" } }, fill: { fgColor: { rgb: "FEE2E2" } }, alignment: { horizontal: "center" }
-                };
-            }
-        });
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Items');
-        XLSX.writeFile(wb, 'Sellar_Items_Sample.xlsx');
-    };
-
-    if (pageIsLoading) return <Spinner />;
-
-    const renderHeader = () => (
-        <div className="fixed top-0 left-0 right-0 z-10 p-4 bg-gray-100 border-b border-gray-300 flex flex-col md:static md:flex-row md:justify-between md:items-center md:p-3 md:bg-white md:shadow-sm">
-            <h1 className="text-2xl font-bold text-gray-800 text-center mb-4 md:mb-0 md:text-left">
-                Add Item
-            </h1>
-            <div className="flex items-center justify-center gap-6">
-                <CustomButton variant={Variant.Transparent} onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`)} active={isActive(`${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`)}>Item Add</CustomButton>
-                <CustomButton variant={Variant.Transparent} onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`)} active={isActive(`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`)}>Item Groups</CustomButton>
+  const navigate = useNavigate();
+  const location = useLocation();
+  const isActive = (path: string) => location.pathname === path;
+
+  // ── Image state (orange variant only) ───────────────────────────────────
+  const [imageUrl,            setImageUrl]           = useState('');
+  const [imageFile,           setImageFile]          = useState<File | null>(null);
+  const [imagePreview,        setImagePreview]       = useState<string | null>(null);
+  const [isImageCompressing,  setIsImageCompressing] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Hook ─────────────────────────────────────────────────────────────────
+  const form = useItemForm({
+    resolveImageUrl: async (barcode) => {
+      if (imageFile) {
+        const storageRef = ref(storage, `companies/${barcode}_${Date.now()}`);
+        await uploadBytes(storageRef, imageFile);
+        return getDownloadURL(storageRef);
+      }
+      return formatImageUrl(imageUrl) ?? null;
+    },
+  });
+
+  // ── Image handlers ───────────────────────────────────────────────────────
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsImageCompressing(true);
+    try {
+      const compressed = await imageCompression(file, {
+        maxSizeMB: 0.5, maxWidthOrHeight: 1024, useWebWorker: true,
+      });
+      setImageFile(compressed);
+      setImagePreview(URL.createObjectURL(compressed));
+    } catch {
+      form.setModal({ message: 'Failed to compress image.', type: State.ERROR });
+    } finally {
+      setIsImageCompressing(false);
+    }
+  };
+
+  const removeImage = () => {
+    setImageFile(null);
+    setImagePreview(null);
+    if (imageInputRef.current) imageInputRef.current.value = '';
+  };
+
+  // Extra form reset for image fields
+  const extraReset = () => {
+    setImageFile(null);
+    setImagePreview(null);
+    setImageUrl('');
+    if (imageInputRef.current) imageInputRef.current.value = '';
+  };
+
+  if (form.pageIsLoading) return <Spinner />;
+
+  const renderHeader = () => (
+    <div className="fixed top-0 left-0 right-0 z-10 p-4 bg-gray-100 border-b border-gray-300 flex flex-col md:static md:flex-row md:justify-between md:items-center md:p-3 md:bg-white md:shadow-sm">
+      <h1 className="text-2xl font-bold text-gray-800 text-center mb-4 md:mb-0 md:text-left">
+        Add Item
+      </h1>
+      <div className="flex items-center justify-center gap-6">
+        <CustomButton variant={Variant.Transparent} onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`)} active={isActive(`${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`)}>Item Add</CustomButton>
+        <CustomButton variant={Variant.Transparent} onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`)} active={isActive(`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`)}>Item Groups</CustomButton>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col h-screen w-full bg-gray-100 font-poppins text-gray-800 relative">
+      <BarcodeScanner
+        isOpen={form.isScannerOpen}
+        onClose={() => form.setIsScannerOpen(false)}
+        onScanSuccess={form.handleBarcodeScanned}
+      />
+      {form.modal && (
+        <Modal message={form.modal.message} onClose={() => form.setModal(null)} type={form.modal.type} />
+      )}
+
+      {form.uploadProgress && (
+        <UploadProgressModal
+          current={form.uploadProgress.current}
+          total={form.uploadProgress.total}
+          barColorClass="bg-[#F97316]"
+        />
+      )}
+
+      {renderHeader()}
+
+      <div className="flex-1 flex flex-col md:flex-row relative">
+
+        {/* LEFT PANEL */}
+        <div className="flex-1 w-full md:w-[65%] bg-gray-100 md:bg-gray-50 md:border-r border-gray-200 pt-28 pb-24 px-2 md:pt-6 md:px-6 md:pb-6 overflow-y-auto">
+
+          {form.error   && <div className="mb-4 text-center p-3 bg-red-100 text-red-700 rounded-sm">{form.error}</div>}
+          {form.success && <div className="mb-4 text-center p-3 bg-green-100 text-green-700 rounded-sm">{form.success}</div>}
+
+          {/* MOBILE BULK IMPORT */}
+          <div className="md:hidden bg-white p-2 rounded-sm shadow-md mb-4">
+            <div className="flex flex-col items-center justify-center mb-4">
+              <h2 className="text-lg font-semibold text-gray-700 mb-2">Bulk Import</h2>
+              <input type="file" ref={form.fileInputRef} onChange={(e) => form.handleFileUpload(e)} className="hidden" accept=".xlsx, .xls, .csv" />
+              <button
+                onClick={() => form.fileInputRef.current?.click()}
+                disabled={form.isUploading}
+                className="w-full max-w-xs bg-[#F97316] text-white py-2 px-4 rounded-sm hover:bg-[#ea580c] disabled:bg-gray-400 flex items-center justify-center gap-2"
+              >
+                {form.isUploading ? <Spinner /> : 'Import from Excel'}
+              </button>
+              <button
+                type="button"
+                onClick={form.handleDownloadSample}
+                disabled={form.isUploading}
+                className="w-full max-w-xs bg-white text-[#F97316] border border-[#F97316] py-2 px-4 rounded-sm mt-4 hover:bg-[#F97316]/10"
+              >
+                Download Sample
+              </button>
             </div>
-        </div>
-    );
+          </div>
 
-    return (
-        <div className="flex flex-col h-screen w-full bg-gray-100 font-poppins text-gray-800 relative">
-            <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
-            {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+          {/* SINGLE ITEM FORM */}
+          <div className="bg-white p-6 rounded-sm shadow-md md:mb-0 md:rounded-sm md:shadow-sm md:border md:border-gray-200 mb-10">
+            <h2 className="text-lg font-bold text-gray-800 mb-4 md:mb-6 md:border-b md:pb-2">Add a Single Item</h2>
 
-            {uploadProgress && (
-                <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center">
-                    <div className="bg-white p-8 rounded-sm shadow-xl w-80 text-center">
-                        <h3 className="text-lg font-bold mb-4 text-gray-800">Uploading Items...</h3>
-                        <div className="w-full bg-gray-200 rounded-sm h-4 mb-2 overflow-hidden">
-                            <div className="bg-[#F97316] h-4 rounded-full transition-all duration-100" style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}></div>
-                        </div>
-                        <p className="text-sm text-gray-600 font-mono">{uploadProgress.current} / {uploadProgress.total} processed</p>
-                    </div>
+            {/* IMAGE SELECTION */}
+            <div className="mb-6 flex flex-col md:flex-row gap-4 items-start">
+              <div
+                className="w-32 h-32 flex-shrink-0 border-2 border-dashed border-gray-300 rounded-lg overflow-hidden bg-gray-50 flex items-center justify-center relative cursor-pointer hover:bg-gray-100 transition-colors"
+                onClick={() => imageInputRef.current?.click()}
+              >
+                {isImageCompressing ? (
+                  <div className="flex flex-col items-center"><Spinner /><span className="text-[10px] mt-2 text-gray-500">Compressing...</span></div>
+                ) : imagePreview ? (
+                  <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-xs text-gray-400 text-center px-2">Click to add<br />Image</span>
+                )}
+                <input type="file" accept="image/*" ref={imageInputRef} onChange={handleImageChange} className="hidden" />
+              </div>
+              <div className="flex-1 w-full space-y-2">
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Or paste Image URL</label>
+                  <input
+                    type="text"
+                    value={imageUrl}
+                    onChange={(e) => setImageUrl(e.target.value)}
+                    disabled={!!imageFile}
+                    className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316] outline-none disabled:bg-gray-100 disabled:text-gray-400"
+                    placeholder="https://example.com/image.jpg"
+                  />
                 </div>
-            )}
-
-            {renderHeader()}
-
-            <div className="flex-1 flex flex-col md:flex-row relative">
-
-                {/* LEFT PANEL */}
-                <div className="flex-1 w-full md:w-[65%] bg-gray-100 md:bg-gray-50 md:border-r border-gray-200 pt-28 pb-24 px-2 md:pt-6 md:px-6 md:pb-6 overflow-y-auto">
-
-                    {error && <div className="mb-4 text-center p-3 bg-red-100 text-red-700 rounded-sm">{error}</div>}
-                    {success && <div className="mb-4 text-center p-3 bg-green-100 text-green-700 rounded-sm">{success}</div>}
-
-                    {/* MOBILE BULK IMPORT */}
-                    <div className="md:hidden bg-white p-2 rounded-sm shadow-md mb-4">
-                        <div className="flex flex-col items-center justify-center mb-4">
-                            <h2 className="text-lg font-semibold text-gray-700 mb-2">Bulk Import</h2>
-                            <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".xlsx, .xls, .csv" />
-                            <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="w-full max-w-xs bg-[#F97316] text-white py-2 px-4 rounded-sm hover:bg-[#ea580c] disabled:bg-gray-400 flex items-center justify-center gap-2">
-                                {isUploading ? <Spinner /> : 'Import from Excel'}
-                            </button>
-                            <button type="button" onClick={handleDownloadSample} disabled={isUploading} className="w-full max-w-xs bg-white text-[#F97316] border border-[#F97316] py-2 px-4 rounded-sm mt-4 hover:bg-[#F97316]/10">
-                                Download Sample
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* SINGLE ITEM FORM */}
-                    <div className="bg-white p-6 rounded-sm shadow-md md:mb-0 md:rounded-sm md:shadow-sm md:border md:border-gray-200 mb-10">
-                        <h2 className="text-lg font-bold text-gray-800 mb-4 md:mb-6 md:border-b md:pb-2">Add a Single Item</h2>
-
-                        {/* --- NEW: IMAGE SELECTION UI --- */}
-                        <div className="mb-6 flex flex-col md:flex-row gap-4 items-start">
-                            <div className="w-32 h-32 flex-shrink-0 border-2 border-dashed border-gray-300 rounded-lg overflow-hidden bg-gray-50 flex items-center justify-center relative cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => imageInputRef.current?.click()}>
-                                {isImageCompressing ? (
-                                    <div className="flex flex-col items-center"><Spinner /><span className="text-[10px] mt-2 text-gray-500">Compressing...</span></div>
-                                ) : imagePreview ? (
-                                    <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
-                                ) : (
-                                    <span className="text-xs text-gray-400 text-center px-2">Click to add<br />Image</span>
-                                )}
-                                <input type="file" accept="image/*" ref={imageInputRef} onChange={handleImageChange} className="hidden" />
-                            </div>
-                            <div className="flex-1 w-full space-y-2">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-600 mb-1">Or paste Image URL</label>
-                                    <input type="text" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} disabled={!!imageFile} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316] outline-none disabled:bg-gray-100 disabled:text-gray-400" placeholder="https://example.com/image.jpg" />
-                                </div>
-                                {imageFile && <button onClick={() => { setImageFile(null); setImagePreview(null); if (imageInputRef.current) imageInputRef.current.value = ''; }} className="text-xs text-red-500 hover:underline">Remove Selected Image</button>}
-                            </div>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:ml-0.5 after:text-red-500">Item Name</label>
-                                <input type="text" value={itemName} onChange={(e) => setItemName(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316] outline-none" placeholder="e.g. Apple" />
-                            </div>
-
-                            <div className='w-full'>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-600 mb-1">
-                                        Barcode
-                                        {itemSettings?.requireBarcode && (
-                                            <span className="text-red-500 ml-0.5">*</span>
-                                        )}
-                                    </label>
-                                    <div className="flex gap-2">
-                                        <input type="text" value={itemBarcode} onChange={(e) => setItemBarcode(e.target.value)} className="flex-grow p-3 border border-gray-300 rounded-sm focus:ring-[#F97316] outline-none" placeholder="Scan or Type" />
-                                        <button type="button" onClick={() => setIsScannerOpen(true)} className="bg-gray-700 text-white p-3 rounded-sm"><IconScanCircle width={20} height={20} /></button>
-                                    </div>
-                                    <p className="text-xs text-gray-400 mt-1">This is the next available number. You can change it if needed.</p>
-                                </div>
-                            </div>
-
-                            <div className='grid grid-cols-2 gap-4'>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">
-                                        {`MRP (for ${getUnitLabel()})`}
-                                    </label>
-                                    <input type="number" value={itemMRP} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => { const newMRP = parseFloat(e.target.value) || 0; const discount = parseFloat(itemDiscount) || 0; setItemMRP(e.target.value); if (discount > 0) { const salePrice = newMRP - (newMRP * discount / 100); setItemSalesPrice(String(Math.round(salePrice * 100) / 100)); } }} className="w-full p-3 border border-gray-300 rounded-md focus:ring-[#F97316]" placeholder="0" />
-                                    <p className="text-[10px] text-gray-400">Required if Sale Price is empty</p>
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-600 mb-1">MOQ</label>
-                                    <input type="number" value={moq} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setMoq(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]" placeholder="1" />
-                                    <p className="text-[10px] text-gray-400">Minimum Item Quantity</p>
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">{`Sales Price (for ${getUnitLabel()})`}</label>
-                                    <input type="number" value={itemSalesPrice} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => { let value = e.target.value; const mrp = parseFloat(itemMRP) || 0; const num = parseFloat(value) || 0; if (mrp > 0 && num > mrp) { value = String(mrp); } setItemSalesPrice(value); }} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]" placeholder="0" />
-                                    <p className="text-[10px] text-gray-400">Required if MRP is empty</p>
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-600 mb-1">Purchase Price {itemSettings?.requirePurchasePrice && (<span className="text-red-500 ml-0.5">*</span>)}</label>
-                                    <input type="number" value={itemPurchasePrice} onChange={(e) => setItemPurchasePrice(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]" placeholder="0" />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-600 mb-1">Sale Disc (%) {itemSettings?.requireSaleDiscount && (<span className="text-red-500 ml-0.5">*</span>)}</label>
-                                    <input type="number" value={itemDiscount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => { const discount = parseFloat(e.target.value) || 0; const mrp = parseFloat(itemMRP) || 0; setItemDiscount(e.target.value); if (mrp > 0 && discount > 0) { const salePrice = mrp - (mrp * discount / 100); setItemSalesPrice(String(Math.round(salePrice * 100) / 100)); } }} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]" placeholder="Enter discount" />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-600 mb-1">Purchase Disc (%) {itemSettings?.requirePurchaseDiscount && (<span className="text-red-500 ml-0.5">*</span>)}</label>
-                                    <input type="number" value={PurchaseDiscount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setPurchaseDiscount(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]" placeholder="0" />
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-600 mb-1">Tax (%){itemSettings?.requireTax && (<span className="text-red-500 ml-0.5">*</span>)}</label>
-                                    <input type="number" value={itemTax} onChange={(e) => setItemTax(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]" placeholder="0" />
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-600 mb-1">HSN Code</label>
-                                    <input type="text" value={hsnCode} onChange={(e) => setHsnCode(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]" placeholder="e.g. 123456" />
-                                </div>
-
-                                {/* Stock removed from mandatory UI */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-600 mb-1">Stock</label>
-                                    <input type="number" value={itemAmount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemAmount(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]" placeholder="0" />
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-600 mb-1">Restock Level{itemSettings?.requireRestockQuantity && (<span className="text-red-500 ml-0.5">*</span>)}</label>
-                                    <input type="number" onWheel={(e) => (e.target as HTMLInputElement).blur()} value={restockQuantity} onChange={(e) => setRestockQuantity(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]" placeholder="0" />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-600 mb-1">Category</label>
-                                <select value={selectedCategory} onChange={(e) => { if (e.target.value === 'ADD_NEW_GROUP') { navigate(`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`); } else { setSelectedCategory(e.target.value); } }} className="w-full p-3 border border-gray-300 rounded-sm bg-white focus:ring-[#F97316]">
-                                    <option value="">uncategorized</option>
-                                    <option value="ADD_NEW_GROUP" className="font-semibold bg-gray-100">+ Add New Group</option>
-                                    {itemGroups.map(g => (<option key={g.id} value={g.id!}>{g.name}</option>))}
-                                </select>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-600 mb-1">Unit</label>
-                                <div className="flex gap-2">
-                                    <select value={itemUnit} onChange={(e) => { setItemUnit(e.target.value); if (e.target.value !== 'pkt') setPacketSize(''); }} className={`p-3 border border-gray-300 rounded-sm bg-white focus:ring-[#F97316] ${itemUnit === 'pkt' ? 'w-1/2' : 'w-full'}`}>
-                                        {UNIT_OPTIONS.map(unit => (<option key={unit.value} value={unit.value}>{unit.label}</option>))}
-                                    </select>
-                                    {itemUnit === 'pkt' && (<input type="number" value={packetSize} onChange={(e) => setPacketSize(e.target.value)} className="w-1/2 p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]" placeholder="Qty per pkt" min="1" />)}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* RIGHT BLOCK DESKTOP VIEW */}
-                <div className="hidden md:flex w-[35%] flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
-                    <div className="flex-1 p-6 flex flex-col">
-                        <div className="bg-[#F97316]/10 rounded-xl p-5 border border-[#F97316]/20">
-                            <h2 className="text-lg font-bold text-[#F97316] mb-2">Bulk Import</h2>
-                            <p className="text-sm text-[#F97316] mb-4">Upload Excel/CSV. Missing categories created automatically.</p>
-                            <div className="flex flex-col gap-3">
-                                <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="w-full bg-white text-[#F97316] border border-sky-200 py-3 px-4 rounded-lg font-semibold hover:bg-[#F97316]/10 disabled:bg-gray-100 flex items-center justify-center gap-2">
-                                    {isUploading ? <Spinner /> : 'Upload Excel File'}
-                                </button>
-                                <button type="button" onClick={handleDownloadSample} disabled={isUploading} className="text-sm text-[#F97316] hover:text-sky-700 underline text-center">
-                                    Download Sample Template
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="flex-grow"></div>
-
-                        <div className="border-t border-gray-100 pb-10">
-                            <button onClick={handleAddItem} disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)} className="w-full bg-[#F97316] text-white py-4 px-6 rounded-xl text-lg font-bold hover:bg-[#ea580c] disabled:bg-gray-300 flex items-center justify-center gap-2">
-                                {isSaving ? <Spinner /> : 'Add Item'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                {/* --- MOBILE FIXED FOOTER --- */}
-                <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-gray-100 border-t border-gray-200 z-20 flex justify-center pb-20">
-                    <button onClick={handleAddItem} disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)} className="w-full max-w-sm bg-[#F97316] text-white py-3 px-6 rounded-lg text-lg font-semibold hover:bg-[#F97316] disabled:bg-gray-400 flex items-center justify-center gap-2 shadow-md">
-                        {isSaving ? <Spinner /> : 'Add Item'}
-                    </button>
-                </div>
-
+                {imageFile && (
+                  <button onClick={removeImage} className="text-xs text-red-500 hover:underline">
+                    Remove Selected Image
+                  </button>
+                )}
+              </div>
             </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:ml-0.5 after:text-red-500">Item Name</label>
+                <input
+                  type="text"
+                  value={form.itemName}
+                  onChange={(e) => form.setItemName(e.target.value)}
+                  className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316] outline-none"
+                  placeholder="e.g. Apple"
+                />
+              </div>
+
+              <div className="w-full">
+                <label className="block text-sm font-medium text-gray-600 mb-1">
+                  Barcode
+                  {form.itemSettings?.requireBarcode && <span className="text-red-500 ml-0.5">*</span>}
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={form.itemBarcode}
+                    onChange={(e) => form.setItemBarcode(e.target.value)}
+                    className="flex-grow p-3 border border-gray-300 rounded-sm focus:ring-[#F97316] outline-none"
+                    placeholder="Scan or Type"
+                  />
+                  <button type="button" onClick={() => form.setIsScannerOpen(true)} className="bg-gray-700 text-white p-3 rounded-sm">
+                    <IconScanCircle width={20} height={20} />
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">This is the next available number. You can change it if needed.</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">
+                    {`MRP (for ${getUnitLabel(form.itemUnit, form.packetSize)})`}
+                  </label>
+                  <input
+                    type="number"
+                    value={form.itemMRP}
+                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                    onChange={(e) => {
+                      const newMRP = parseFloat(e.target.value) || 0;
+                      const discount = parseFloat(form.itemDiscount) || 0;
+                      form.setItemMRP(e.target.value);
+                      if (discount > 0) {
+                        const salePrice = newMRP - (newMRP * discount / 100);
+                        form.setItemSalesPrice(String(Math.round(salePrice * 100) / 100));
+                      }
+                    }}
+                    className="w-full p-3 border border-gray-300 rounded-md focus:ring-[#F97316]"
+                    placeholder="0"
+                  />
+                  <p className="text-[10px] text-gray-400">Required if Sale Price is empty</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">MOQ</label>
+                  <input
+                    type="number"
+                    value={form.moq}
+                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                    onChange={(e) => form.setMoq(e.target.value)}
+                    className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]"
+                    placeholder="1"
+                  />
+                  <p className="text-[10px] text-gray-400">Minimum Item Quantity</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1 after:content-['*'] after:text-red-500">
+                    {`Sales Price (for ${getUnitLabel(form.itemUnit, form.packetSize)})`}
+                  </label>
+                  <input
+                    type="number"
+                    value={form.itemSalesPrice}
+                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                    onChange={(e) => {
+                      const mrp = parseFloat(form.itemMRP) || 0;
+                      const num = parseFloat(e.target.value) || 0;
+                      form.setItemSalesPrice(mrp > 0 && num > mrp ? String(mrp) : e.target.value);
+                    }}
+                    className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]"
+                    placeholder="0"
+                  />
+                  <p className="text-[10px] text-gray-400">Required if MRP is empty</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">
+                    Purchase Price {form.itemSettings?.requirePurchasePrice && <span className="text-red-500 ml-0.5">*</span>}
+                  </label>
+                  <input
+                    type="number"
+                    value={form.itemPurchasePrice}
+                    onChange={(e) => form.setItemPurchasePrice(e.target.value)}
+                    className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]"
+                    placeholder="0"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">
+                    Sale Disc (%) {form.itemSettings?.requireSaleDiscount && <span className="text-red-500 ml-0.5">*</span>}
+                  </label>
+                  <input
+                    type="number"
+                    value={form.itemDiscount}
+                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                    onChange={(e) => {
+                      const discount = parseFloat(e.target.value) || 0;
+                      const mrp = parseFloat(form.itemMRP) || 0;
+                      form.setItemDiscount(e.target.value);
+                      if (mrp > 0 && discount > 0) {
+                        const salePrice = mrp - (mrp * discount / 100);
+                        form.setItemSalesPrice(String(Math.round(salePrice * 100) / 100));
+                      }
+                    }}
+                    className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]"
+                    placeholder="Enter discount"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">
+                    Purchase Disc (%) {form.itemSettings?.requirePurchaseDiscount && <span className="text-red-500 ml-0.5">*</span>}
+                  </label>
+                  <input
+                    type="number"
+                    value={form.PurchaseDiscount}
+                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                    onChange={(e) => form.setPurchaseDiscount(e.target.value)}
+                    className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]"
+                    placeholder="0"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">
+                    Tax (%) {form.itemSettings?.requireTax && <span className="text-red-500 ml-0.5">*</span>}
+                  </label>
+                  <input
+                    type="number"
+                    value={form.itemTax}
+                    onChange={(e) => form.setItemTax(e.target.value)}
+                    className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]"
+                    placeholder="0"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">HSN Code</label>
+                  <input
+                    type="text"
+                    value={form.hsnCode}
+                    onChange={(e) => form.setHsnCode(e.target.value)}
+                    className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]"
+                    placeholder="e.g. 123456"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">Stock</label>
+                  <input
+                    type="number"
+                    value={form.itemAmount}
+                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                    onChange={(e) => form.setItemAmount(e.target.value)}
+                    className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]"
+                    placeholder="0"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-1">
+                    Restock Level {form.itemSettings?.requireRestockQuantity && <span className="text-red-500 ml-0.5">*</span>}
+                  </label>
+                  <input
+                    type="number"
+                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                    value={form.restockQuantity}
+                    onChange={(e) => form.setRestockQuantity(e.target.value)}
+                    className="w-full p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]"
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-600 mb-1">Category</label>
+                <select
+                  value={form.selectedCategory}
+                  onChange={(e) => {
+                    if (e.target.value === 'ADD_NEW_GROUP') {
+                      navigate(`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`);
+                    } else {
+                      form.setSelectedCategory(e.target.value);
+                    }
+                  }}
+                  className="w-full p-3 border border-gray-300 rounded-sm bg-white focus:ring-[#F97316]"
+                >
+                  <option value="">uncategorized</option>
+                  <option value="ADD_NEW_GROUP" className="font-semibold bg-gray-100">+ Add New Group</option>
+                  {form.itemGroups.map(g => <option key={g.id} value={g.id!}>{g.name}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-600 mb-1">Unit</label>
+                <div className="flex gap-2">
+                  <select
+                    value={form.itemUnit}
+                    onChange={(e) => {
+                      form.setItemUnit(e.target.value);
+                      if (e.target.value !== 'pkt') form.setPacketSize('');
+                    }}
+                    className={`p-3 border border-gray-300 rounded-sm bg-white focus:ring-[#F97316] ${form.itemUnit === 'pkt' ? 'w-1/2' : 'w-full'}`}
+                  >
+                    {UNIT_OPTIONS.map(unit => <option key={unit.value} value={unit.value}>{unit.label}</option>)}
+                  </select>
+                  {form.itemUnit === 'pkt' && (
+                    <input
+                      type="number"
+                      value={form.packetSize}
+                      onChange={(e) => form.setPacketSize(e.target.value)}
+                      className="w-1/2 p-3 border border-gray-300 rounded-sm focus:ring-[#F97316]"
+                      placeholder="Qty per pkt"
+                      min="1"
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-    );
+
+        {/* RIGHT PANEL — desktop */}
+        <div className="hidden md:flex w-[35%] flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
+          <div className="flex-1 p-6 flex flex-col">
+            <input type="file" ref={form.fileInputRef} onChange={(e) => form.handleFileUpload(e)} className="hidden" accept=".xlsx, .xls, .csv" />
+            <BulkImportPanel
+              isUploading={form.isUploading}
+              onUploadClick={() => form.fileInputRef.current?.click()}
+              onDownloadSample={form.handleDownloadSample}
+              cardClass="bg-[#F97316]/10 border border-[#F97316]/20 rounded-xl"
+              headingClass="text-[#F97316]"
+              subtitleClass="text-[#F97316]"
+              uploadBtnClass="bg-white text-[#F97316] border border-sky-200 hover:bg-[#F97316]/10"
+              downloadLinkClass="text-[#F97316] hover:text-sky-700"
+            />
+            <div className="flex-grow" />
+            <div className="border-t border-gray-100 pb-10">
+              <button
+                onClick={() => form.handleAddItem(extraReset)}
+                disabled={form.isSaving || form.pageIsLoading || (form.loading && form.itemGroups.length === 0)}
+                className="w-full bg-[#F97316] text-white py-4 px-6 rounded-xl text-lg font-bold hover:bg-[#ea580c] disabled:bg-gray-300 flex items-center justify-center gap-2"
+              >
+                {form.isSaving ? <Spinner /> : 'Add Item'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* MOBILE FIXED FOOTER */}
+        <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-gray-100 border-t border-gray-200 z-20 flex justify-center pb-20">
+          <button
+            onClick={() => form.handleAddItem(extraReset)}
+            disabled={form.isSaving || form.pageIsLoading || (form.loading && form.itemGroups.length === 0)}
+            className="w-full max-w-sm bg-[#F97316] text-white py-3 px-6 rounded-lg text-lg font-semibold hover:bg-[#F97316] disabled:bg-gray-400 flex items-center justify-center gap-2 shadow-md"
+          >
+            {form.isSaving ? <Spinner /> : 'Add Item'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default ItemAdd;

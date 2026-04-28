@@ -89,6 +89,7 @@ interface InvoiceItem {
   taxType?: string;
   taxAmount?: number;
   taxableAmount?: number;
+  isCustomAmount?: boolean;
 }
 
 interface Invoice {
@@ -221,6 +222,11 @@ const useJournalData = (companyId?: string) => {
             taxType: item.taxType || '',
             taxAmount: Number(item.taxAmount) || 0,
             taxableAmount: Number(item.taxableAmount) || 0,
+            isCustomAmount:
+              item.isCustomAmount === true ||
+              item.itemGroupId === 'calculator' ||
+              item.unit === 'Bill' ||
+              false,
           };
         });
 
@@ -578,7 +584,7 @@ const Journal: React.FC = () => {
     try {
       await runTransaction(db, async (transaction) => {
         for (const item of invoiceToDelete.items!) {
-          if (item.id && item.quantity > 0) {
+          if (item.id && item.quantity > 0 && item.isCustomAmount !== true) {
             const itemDocRef = doc(db, 'companies', companyId, 'items', item.id);
             const stockChange = invoiceToDelete.type === 'Credit' ? item.quantity : -item.quantity;
             transaction.update(itemDocRef, { stock: increment(stockChange), updatedAt: serverTimestamp() });

@@ -120,7 +120,7 @@ const ItemAdd: React.FC = () => {
           <div className="md:hidden bg-white p-2 rounded-sm shadow-md mb-4">
             <div className="flex flex-col items-center justify-center mb-4">
               <h2 className="text-lg font-semibold text-gray-700 mb-2">Bulk Import</h2>
-              <input type="file" ref={form.fileInputRef} onChange={(e) => form.handleFileUpload(e)} className="hidden" accept=".xlsx, .xls, .csv" />
+              <input type="file" ref={form.fileInputRef} onChange={(e) => form.handleFileUpload(e, { skipFirstRow: true })} className="hidden" accept=".xlsx, .xls, .csv" />
               <button
                 onClick={() => form.fileInputRef.current?.click()}
                 disabled={form.isUploading}
@@ -417,8 +417,7 @@ const ItemAdd: React.FC = () => {
         {/* RIGHT PANEL — desktop */}
         <div className="hidden md:flex w-[35%] flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
           <div className="flex-1 p-6 flex flex-col">
-            <input type="file" ref={form.fileInputRef} onChange={(e) => form.handleFileUpload(e)} className="hidden" accept=".xlsx, .xls, .csv" />
-            <BulkImportPanel
+            <input type="file" ref={form.fileInputRef} onChange={(e) => form.handleFileUpload(e, { skipFirstRow: true })} className="hidden" accept=".xlsx, .xls, .csv" /> <BulkImportPanel
               isUploading={form.isUploading}
               onUploadClick={() => form.fileInputRef.current?.click()}
               onDownloadSample={form.handleDownloadSample}

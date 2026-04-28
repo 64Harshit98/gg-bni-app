@@ -939,6 +939,8 @@ const PurchasePage: React.FC = () => {
                     isLoading={pageIsLoading}
                     error={error}
                     onAddItem={(query) => navigate(ROUTES.ITEM_ADD, { state: { prefillName: query } })}
+                    categories={categories}
+                    itemGroupMap={itemGroupMap}
                   />
                 </div>
                 <button
@@ -1380,7 +1382,11 @@ const PurchasePage: React.FC = () => {
           <div className="flex-shrink-0 p-2 bg-white border-b mt-2 rounded-sm md:mt-0">
             <div className="flex gap-2 items-end">
               <div className="flex-grow">
-                <SearchableItemInput label="Search & Add Item" placeholder="Search by name or barcode..." items={availableItems} onItemSelected={handleItemSelected} isLoading={pageIsLoading} error={error} onAddItem={(query) => navigate(ROUTES.ITEM_ADD, { state: { prefillName: query } })} />
+                <SearchableItemInput label="Search & Add Item" placeholder="Search by name or barcode..." items={availableItems} onItemSelected={handleItemSelected} isLoading={pageIsLoading} error={error}
+                  onAddItem={(query) => navigate(ROUTES.ITEM_ADD, { state: { prefillName: query } })}
+                  categories={categories}
+                  itemGroupMap={itemGroupMap}
+                />
               </div>
               <button onClick={() => setIsScannerOpen(true)} className="p-3 bg-gray-700 text-white rounded-md font-semibold transition hover:bg-gray-800" title="Scan Barcode">
                 <IconScanCircle width={20} height={20} />

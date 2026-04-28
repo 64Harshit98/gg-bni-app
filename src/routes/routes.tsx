@@ -92,16 +92,25 @@ const router = createBrowserRouter(
     ]
     : [
       {
+        path: '/',
+        errorElement: <GlobalError />,
         element: (
           <>
             <ScrollRestoration />
-            <PermissionWrapper />
+            <Outlet />
           </>
         ),
-        errorElement: <GlobalError />,
         children: [
-          // 2. PUBLIC/AUTH ROUTES
+
+          // --- 1. LEGACY PUBLIC ROUTES (Completely outside permissions!) ---
+          { path: 'catalogue/:companyId', element: <Catalogue />, handle: { isPublic: true } },
+          { path: ':companyId/:groupId', element: <SharedProduct />, handle: { isPublic: true } },
+          { path: 'checkout/:companyId', element: <CartPage />, handle: { isPublic: true } },
+
+
+          // --- 2. PROTECTED ADMIN APP ---
           {
+            element: <PermissionWrapper />, // <-- Permissions only wrap these children!
             children: [
               { path: ROUTES.LANDING, element: <Landing />, handle: { isPublic: true } },
               { path: '/download-bill/:companyId/:invoiceId', element: <DownloadBill />, handle: { isPublic: true } },
@@ -123,24 +132,19 @@ const router = createBrowserRouter(
                   { path: ROUTES.WHATSAPP_VERIFICATION, element: <WAVerification />, handle: { isPublic: false } },
                 ],
               },
+
+              // PRIVATE/PROTECTED DASHBOARD ROUTES
+              {
+                element: <RequireSubscription />,
+                children: [
+                  { element: <MainLayout />, children: generateDynamicRoutes('MAIN') },
+                  { element: <CatalogueLayout />, children: generateDynamicRoutes('CATALOGUE') },
+                ],
+              },
+
+              { path: ROUTES.UNAUTHORIZED, element: <UnauthorizedPage /> },
             ],
-          },
-
-          // 3. PRIVATE/PROTECTED DASHBOARD ROUTES
-          {
-            element: <RequireSubscription />,
-            children: [
-              { element: <MainLayout />, children: generateDynamicRoutes('MAIN') },
-              { element: <CatalogueLayout />, children: generateDynamicRoutes('CATALOGUE') },
-            ],
-          },
-
-          // 4. LEGACY PUBLIC ROUTES (Keep these so old links still work)
-          { path: 'catalogue/:companyId', element: <Catalogue />, handle: { isPublic: true } },
-          { path: ':companyId/:groupId', element: <SharedProduct />, handle: { isPublic: true } },
-          { path: 'checkout/:companyId', element: <CartPage />, handle: { isPublic: true } },
-
-          { path: ROUTES.UNAUTHORIZED, element: <UnauthorizedPage /> },
+          }
         ],
       }
     ]

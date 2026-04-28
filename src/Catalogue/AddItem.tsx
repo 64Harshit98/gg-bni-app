@@ -13,6 +13,7 @@ import { useItemSettings } from '../context/SettingsContext';
 import { IconScanCircle } from '../constants/Icons';
 import { collection, query, where, getDocs, limit, doc, runTransaction, getDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'; // <-- NEW
+import ExcelJS from 'exceljs'; // <-- NEW IMPORT
 import { db, storage } from '../lib/Firebase'; // <-- NEW: Make sure storage is exported
 import imageCompression from 'browser-image-compression'; // <-- NEW
 
@@ -344,7 +345,7 @@ const ItemAdd: React.FC = () => {
     };
 
     // --- BULK UPLOAD ---
-    const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file || !dbOperations || !currentUser || !itemSettings || !currentUser.companyId) return;
 
@@ -352,141 +353,197 @@ const ItemAdd: React.FC = () => {
         setUploadProgress(null);
         setError(null); setSuccess(null); setModal(null);
 
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-            try {
-                const data = new Uint8Array(e.target?.result as ArrayBuffer);
-                const workbook = XLSX.read(data, { type: 'array' });
-                const sheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[sheetName];
-                const rawJson: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            const workbook = new ExcelJS.Workbook();
+            await workbook.xlsx.load(arrayBuffer);
 
-                if (rawJson.length === 0) throw new Error("File empty.");
+            const worksheet = workbook.worksheets[0]; // Get first sheet
+            if (!worksheet) throw new Error("Excel file is empty.");
 
-                let processedCount = 0;
-                let createdCount = 0;
-                let updatedCount = 0;
-                let failedCount = 0;
+            // --- 1. EXTRACT ALL EMBEDDED IMAGES ---
+            const images = worksheet.getImages();
+            const rowImageMap = new Map<number, any>();
 
-                const totalItems = rawJson.length;
-                setUploadProgress({ current: 0, total: totalItems });
-
-                let currentGroups = await dbOperations.getItemGroups();
-                const groupMap = new Map<string, string>();
-                currentGroups.forEach(g => groupMap.set(g.name.toLowerCase().trim(), g.id!));
-
-                const itemsNeedingBarcode = rawJson.filter((row: any) => !row.barcode && !row.Barcode).length;
-                let nextSeqNumber = 0;
-
-                if (itemsNeedingBarcode > 0) {
-                    nextSeqNumber = await reserveSequenceBlock(itemsNeedingBarcode);
-                }
-
-                for (let i = 0; i < rawJson.length; i++) {
-                    await new Promise(resolve => setTimeout(resolve, 0));
-                    setUploadProgress({ current: i + 1, total: totalItems });
-
-                    const rawRow = rawJson[i];
-                    const row: any = {};
-
-                    Object.keys(rawRow).forEach(k => {
-                        const cleanKey = k.toLowerCase().replace(/[^a-z0-9]/g, "");
-                        row[cleanKey] = rawRow[k];
-                    });
-
-                    const csvCategoryValue = String(row.itemgroupid || row.itemgroup || row.category || row.group || row.categoryname || "Uncategorized").trim();
-                    const categoryLower = csvCategoryValue.toLowerCase();
-                    let targetGroupId = "";
-
-                    if (groupMap.has(categoryLower)) {
-                        targetGroupId = groupMap.get(categoryLower)!;
-                    } else {
-                        try {
-                            const newGroupId = await dbOperations.createItemGroup({ name: csvCategoryValue, description: 'Auto-created via Bulk Import' });
-                            if (newGroupId && typeof newGroupId === 'string') {
-                                groupMap.set(categoryLower, newGroupId);
-                                targetGroupId = newGroupId;
-                            } else throw new Error();
-                        } catch (grpErr) {
-                            if (selectedCategory) targetGroupId = selectedCategory;
-                        }
-                    }
-
-                    if (!row.name) { failedCount++; continue; }
-
-                    const rowMRP = parseFloat(String(row.mrp ?? row.MRP ?? 0));
-                    const rowSale = parseFloat(String(row.salesprice ?? row.sellingprice ?? 0));
-                    const rowPurchase = parseFloat(String(row.purchaseprice ?? row.purchasePrice ?? row.PurchasePrice ?? 0));
-
-                    if (rowMRP === 0 && rowSale === 0) { failedCount++; continue; }
-
-                    let rowSaleDiscount = parseFloat(String(row.discount ?? row.salediscount ?? row.salesdiscount ?? row.saledisc ?? 0));
-                    if (rowMRP > 0 && rowSale > 0) rowSaleDiscount = 0;
-
-                    let rowPurchaseDiscount = parseFloat(String(row.purchasediscount ?? 0));
-                    if (rowMRP > 0 && rowPurchase > 0) rowPurchaseDiscount = 0;
-
-                    try {
-                        const stockVal = parseInt(String(row.stock ?? row.amount ?? row.qty ?? row.quantity ?? 0), 10);
-                        let rowBarcode = String(row.barcode || '').trim();
-                        const rowHsn = String(row.hsn || row.hsncode || row.sac || row.hsnsac || '').trim();
-                        const rowImageUrl = String(row.imageurl ?? row.image ?? row.picture ?? row.link ?? '').trim();
-
-                        if (!rowBarcode) {
-                            rowBarcode = String(nextSeqNumber);
-                            nextSeqNumber++;
-                        }
-
-                        const itemData: any = {
-                            name: String(row.name).trim(),
-                            mrp: rowMRP,
-                            salesPrice: rowSale,
-                            purchasePrice: rowPurchase,
-                            discount: rowSaleDiscount,
-                            purchasediscount: rowPurchaseDiscount,
-                            tax: parseFloat(String(row.tax ?? 0)),
-                            hsnSac: rowHsn,
-                            itemGroupId: targetGroupId,
-                            stock: stockVal,
-                            amount: stockVal,
-                            barcode: rowBarcode,
-                            restockQuantity: parseInt(String(row.restockquantity ?? 0), 10),
-                            taxRate: parseFloat(String(row.tax ?? 0)),
-                            imageUrl: formatImageUrl(rowImageUrl) || null,
-                            isDeleted: false,
-                        };
-
-                        let isUpdate = false;
-                        const itemsRef = collection(db, 'companies', currentUser.companyId, 'items');
-                        const q = query(itemsRef, where('barcode', '==', rowBarcode), limit(1));
-                        const snapshot = await getDocs(q);
-                        if (!snapshot.empty) isUpdate = true;
-
-                        await dbOperations.createItem(itemData, rowBarcode);
-                        if (isUpdate) updatedCount++; else createdCount++;
-                        processedCount++;
-                    } catch (e: any) {
-                        failedCount++;
-                    }
-                }
-
-                await fetchGroups();
-                if (failedCount > 0) {
-                    setModal({ message: `Error in ${failedCount} entries. Check required fields.`, type: State.ERROR });
-                } else {
-                    setSuccess(`Imported: ${createdCount} New, ${updatedCount} Updated.`);
-                }
-                setTimeout(() => setSuccess(null), 5000);
-
-            } catch (err: any) {
-                setError("File processing failed.");
-            } finally {
-                setIsUploading(false);
-                setUploadProgress(null);
-                if (fileInputRef.current) fileInputRef.current.value = '';
+            // Map each image to its row. ExcelJS uses 0-based indexing for the image 'range.tl' (top-left)
+            for (const image of images) {
+                const rowIndex = image.range.tl.row;
+                // Wrap in Number() to satisfy TypeScript
+                const imgData = workbook.getImage(Number(image.imageId));
+                rowImageMap.set(rowIndex, imgData);
             }
-        };
-        reader.readAsArrayBuffer(file);
+
+            let processedCount = 0;
+            let createdCount = 0;
+            let updatedCount = 0;
+            let failedCount = 0;
+
+            // Count total rows (excluding header) for the progress bar
+            const totalItems = worksheet.rowCount - 1;
+            setUploadProgress({ current: 0, total: totalItems });
+
+            let currentGroups = await dbOperations.getItemGroups();
+            const groupMap = new Map<string, string>();
+            currentGroups.forEach(g => groupMap.set(g.name.toLowerCase().trim(), g.id!));
+
+            // We need to loop through rows manually since we aren't using sheet_to_json anymore
+            let nextSeqNumber = 0;
+            let needsBarcodeCount = 0;
+
+            // Quick first pass to count how many items are missing a barcode (assuming Column 5 is Barcode)
+            for (let r = 2; r <= worksheet.rowCount; r++) {
+                const row = worksheet.getRow(r);
+                const rawName = row.getCell(1).text;
+                if (!rawName) continue; // Skip empty rows
+
+                const existingBarcode = row.getCell(5).text?.trim();
+                if (!existingBarcode) {
+                    needsBarcodeCount++;
+                }
+            }
+
+            // Reserve the block in Firestore if needed
+            if (needsBarcodeCount > 0) {
+                nextSeqNumber = await reserveSequenceBlock(needsBarcodeCount);
+            }
+            // Start at row 2 to skip the header
+            for (let rowNum = 2; rowNum <= worksheet.rowCount; rowNum++) {
+                const row = worksheet.getRow(rowNum);
+
+                // Assuming your Excel columns are in a specific order. Adjust these indexes!
+                // E.g., Column 1 = Name, Column 2 = MRP, Column 3 = Sales Price, etc.
+                const rawName = row.getCell(1).text;
+                if (!rawName) continue; // Skip empty rows
+
+                await new Promise(resolve => setTimeout(resolve, 0)); // Keep UI responsive
+                setUploadProgress({ current: processedCount + 1, total: totalItems });
+
+                const rowMRP = parseFloat(row.getCell(2).text) || 0;
+                const rowSale = parseFloat(row.getCell(3).text) || 0;
+                const rowPurchase = parseFloat(row.getCell(4).text) || 0;
+                let rowBarcode = row.getCell(5).text?.trim();
+                const csvCategoryValue = (row.getCell(6).text || "Uncategorized").trim();
+                const stockVal = parseInt(row.getCell(7).text) || 0;
+
+                if (rowMRP === 0 && rowSale === 0) { failedCount++; continue; }
+
+                // Category logic...
+                const categoryLower = csvCategoryValue.toLowerCase();
+                let targetGroupId = "";
+                if (groupMap.has(categoryLower)) {
+                    targetGroupId = groupMap.get(categoryLower)!;
+                } else {
+                    try {
+                        const newGroupId = await dbOperations.createItemGroup({ name: csvCategoryValue, description: 'Auto-created via Bulk Import' });
+                        if (newGroupId && typeof newGroupId === 'string') {
+                            groupMap.set(categoryLower, newGroupId);
+                            targetGroupId = newGroupId;
+                        }
+                    } catch (grpErr) {
+                        if (selectedCategory) targetGroupId = selectedCategory;
+                    }
+                }
+
+                let isUpdate = false;
+                const itemsRef = collection(db, 'companies', currentUser.companyId, 'items');
+
+                if (rowBarcode) {
+                    // 1. If Excel has a barcode, check if it exists in Firebase
+                    const q = query(itemsRef, where('barcode', '==', rowBarcode), limit(1));
+                    const snapshot = await getDocs(q);
+                    if (!snapshot.empty) {
+                        isUpdate = true;
+                    }
+                } else {
+                    // 2. If Excel is missing the barcode, check if the ITEM NAME already exists
+                    const qName = query(itemsRef, where('name', '==', rawName.trim()), limit(1));
+                    const snapshotName = await getDocs(qName);
+
+                    if (!snapshotName.empty) {
+                        // Match found by name! We are updating an existing item.
+                        isUpdate = true;
+                        // Steal the existing barcode from the database so it overwrites the right document
+                        rowBarcode = snapshotName.docs[0].data().barcode;
+                    } else {
+                        // 3. Truly a new item. Assign a new generated sequence number.
+                        rowBarcode = String(nextSeqNumber);
+                        nextSeqNumber++;
+                    }
+                }
+
+                // --- 2. UPLOAD THE EMBEDDED IMAGE TO FIREBASE ---
+                const rowImageUrlStr = row.getCell(8).text?.trim();
+
+                // --- 2. UPLOAD EMBEDDED IMAGE OR USE TEXT LINK ---
+                let finalUploadedImageUrl = null;
+
+                // Check if an actual image file was pasted into this row
+                const embeddedImageData = rowImageMap.get(rowNum - 1);
+
+                if (embeddedImageData) {
+                    try {
+                        // Convert raw binary buffer to a standard Blob
+                        const imageBlob = new Blob([embeddedImageData.buffer], {
+                            type: `image/${embeddedImageData.extension}`
+                        });
+
+                        const storageRef = ref(storage, `companies/${currentUser.companyId}/items/${rowBarcode}_${Date.now()}.${embeddedImageData.extension}`);
+                        await uploadBytes(storageRef, imageBlob);
+                        finalUploadedImageUrl = await getDownloadURL(storageRef); // Gets the Firebase URL
+                    } catch (uploadErr) {
+                        console.error("Firebase Image Upload Failed:", uploadErr);
+                    }
+                } else if (rowImageUrlStr) {
+                    // Fallback: If no image was pasted, check if they typed a Google Drive/Web link
+                    finalUploadedImageUrl = formatImageUrl(rowImageUrlStr) || null;
+                }
+                // --- 3. SAVE TO FIRESTORE ---
+                const itemData: any = {
+                    name: rawName.trim(),
+                    mrp: rowMRP,
+                    salesPrice: rowSale,
+                    purchasePrice: rowPurchase,
+                    discount: 0,
+                    purchasediscount: 0,
+                    tax: 0,
+                    itemGroupId: targetGroupId,
+                    stock: stockVal,
+                    amount: stockVal,
+                    barcode: rowBarcode,
+                    imageUrl: finalUploadedImageUrl, // <-- Saves the Firebase URL
+                    isDeleted: false,
+                };
+
+                try {
+                    // We already figured out if this is an update earlier!
+                    await dbOperations.createItem(itemData, rowBarcode);
+                    if (isUpdate) {
+                        updatedCount++;
+                    } else {
+                        createdCount++;
+                    }
+                    processedCount++;
+                } catch (e) {
+                    failedCount++;
+                }
+            }
+
+            await fetchGroups();
+            if (failedCount > 0) {
+                setModal({ message: `Imported with some errors. ${failedCount} rows failed.`, type: State.ERROR });
+            } else {
+                setSuccess(`Imported: ${createdCount} New, ${updatedCount} Updated.`);
+            }
+            setTimeout(() => setSuccess(null), 5000);
+
+        } catch (err: any) {
+            console.error(err);
+            setError("File processing failed. Ensure it is a valid .xlsx file.");
+        } finally {
+            setIsUploading(false);
+            setUploadProgress(null);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
     };
 
     const handleBarcodeScanned = (barcode: string) => {

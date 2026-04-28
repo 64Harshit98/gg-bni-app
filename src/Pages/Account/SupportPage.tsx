@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
-import { collection, addDoc, serverTimestamp, doc, getDoc, getDocs, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, getDoc, getDocs, setDoc } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 // --- ICONS ---
@@ -105,9 +105,9 @@ const SupportPage: React.FC = () => {
       nextNumber = (counterSnap.data().count || 0) + 1;
     }
 
-    await updateDoc(counterRef, { count: nextNumber }).catch(() =>
-      addDoc(collection(db, "counters"), { count: nextNumber })
-    );
+    // FIX: setDoc safely creates "support_tickets" if it's missing, 
+    // or updates the count if it already exists.
+    await setDoc(counterRef, { count: nextNumber });
 
     return `TKT-${String(nextNumber).padStart(4, '0')}`; // TKT-0001, TKT-0002...
   };

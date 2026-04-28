@@ -9,7 +9,7 @@ const SalesCalculatorView: React.FC<SalesViewProps> = ({
     // Modal
     modal, setModal,
     // Items
-     setItems,
+    setItems,
     // Calculator state
     calcInput, setCalcInput,
     stagedCalcInput, setStagedCalcInput,
@@ -104,8 +104,8 @@ const SalesCalculatorView: React.FC<SalesViewProps> = ({
                                         ${type === 'function'
                                             ? 'bg-red-50 border-red-300 text-red-500 hover:bg-red-100'
                                             : type === 'operator'
-                                            ? 'bg-indigo-50 border-indigo-300 text-indigo-600 hover:bg-indigo-100'
-                                            : 'bg-white shadow-sm border-gray-300 text-gray-800 hover:bg-gray-50'
+                                                ? 'bg-indigo-50 border-indigo-300 text-indigo-600 hover:bg-indigo-100'
+                                                : 'bg-white shadow-sm border-gray-300 text-gray-800 hover:bg-gray-50'
                                         }
                                         ${colClass || 'col-span-2'}`}
                                 >
@@ -142,15 +142,19 @@ const SalesCalculatorView: React.FC<SalesViewProps> = ({
                         setStagedCalcInput('');
                     }
                 }}
-                enableCustomerDetails={salesSettings?.enableCustomerInfoToggle ?? false}
+                enableCustomerDetails={
+                    (salesSettings?.requireCustomerName || salesSettings?.requireCustomerMobile)
+                        ? true
+                        : (salesSettings?.enableCustomerInfoToggle ?? false)
+                }
                 {...drawerSharedProps}
                 onPaymentComplete={handleSavePayment}
                 enableShippingDetails={false}
                 enableExtraExpense={false}
                 enableNarration={false}
                 allowDueBilling={false}
-                requireCustomerName={false}
-                requireCustomerMobile={false}
+                requireCustomerName={salesSettings?.requireCustomerName ?? false}
+                requireCustomerMobile={salesSettings?.requireCustomerMobile ?? false}
                 isPartyNameEditable={true}
                 initialPartyName=""
                 initialPartyNumber=""

@@ -392,6 +392,14 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     };
 
     const handleConfirm = async () => {
+        if (requireCustomerName && !partyName.trim()) {
+            setModal({ message: 'Customer Name is required.', type: State.ERROR });
+            return;
+        }
+        if (requireCustomerMobile && !partyNumber.trim()) {
+            setModal({ message: 'Customer Mobile Number is required.', type: State.ERROR });
+            return;
+        }
         if (pendingAmount > 0.01) {
             setModal({ message: `Mismatch: ₹${pendingAmount.toFixed(2)} remaining.`, type: State.ERROR });
             return;
@@ -549,7 +557,14 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         <div className="fixed inset-0 z-[99] flex items-end justify-center sm:items-center" onClick={onClose}>
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" />
 
-            {modal && <div className="absolute z-[10000]"><Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} /></div>}
+            {modal && (
+                <div
+                    className="fixed inset-0 z-[10000] flex items-center justify-center"
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />
+                </div>
+            )}
 
             <div className="relative w-full max-w-lg bg-gray-50 rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[90dvh] flex flex-col transform transition-transform duration-300 ease-out animate-slide-up" onClick={(e) => e.stopPropagation()}>
 

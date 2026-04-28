@@ -155,7 +155,7 @@ export const generateThermalReceipt = (
     doc.setFont('helvetica', 'bold');
     doc.text('Particulars', margin, currentY);
     doc.text('Qty', 32, currentY, { align: 'right' });
-    doc.text('Rate', 43, currentY, { align: 'right' });
+    doc.text('Net Price', 43, currentY, { align: 'right' });
     doc.text('Amount', 56, currentY, { align: 'right' });
     currentY += 2;
 

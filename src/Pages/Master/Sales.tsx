@@ -1616,8 +1616,8 @@ const Sales: React.FC = () => {
                                         </button>
                                     )}
                                 </div>
-                                <button onClick={() => setIsScannerOpen(true)} className="bg-blue-600 text-white p-3 rounded-sm hover:bg-blue-700 transition-colors" title="Scan Barcode">
-                                    <IconScanCircle width={22} height={22} />
+                                <button onClick={() => setIsScannerOpen(true)} className='bg-transparent text-gray-700 p-3 border border-gray-700 rounded-sm font-semibold transition hover:bg-gray-800 hover:text-white' title="Scan Barcode">
+                                    <IconScanCircle width={20} height={20} />
                                 </button>
                             </div>
                             <div className="flex gap-2 overflow-x-auto px-3 pb-3 bg-white border-b border-gray-300">
@@ -1673,8 +1673,9 @@ const Sales: React.FC = () => {
                                 defaultPrice = applyRounding(defaultPrice, isRoundingEnabled, roundingInterval);
                                 const sp = lastAddedCartItem?.customPrice ?? item.salesPrice ?? item.mrp ?? 0;
                                 const lineSubtotal = Math.round((Number(sp) * quantity) * 100) / 100;
-                                const discPct = !hideMrp && mrp > 0 && Number(sp) < mrp
-                                    ? Math.round(((mrp - Number(sp)) / mrp) * 100) : 0;
+                                const discPct = (!hideMrp && allowItemDiscount && mrp > 0 && Number(sp) < mrp)
+                                    ? Math.round(((mrp - Number(sp)) / mrp) * 100)
+                                    : 0;
 
                                 if (isCardImageView) {
                                     const imageUrl: string | undefined =
@@ -2184,7 +2185,7 @@ ${isSelected
                                     itemGroupMap={itemGroupMap}
                                 />
                             </div>
-                            <button onClick={() => setIsScannerOpen(true)} className='bg-transparent text-gray-700 p-3 border border-gray-700 rounded-sm font-semibold transition hover:bg-gray-800' title="Scan Barcode">
+                            <button onClick={() => setIsScannerOpen(true)} className='bg-transparent text-gray-700 p-3 border border-gray-700 rounded-sm font-semibold transition hover:bg-gray-800 hover:text-white' title="Scan Barcode">
                                 <IconScanCircle width={20} height={20} />
                             </button>
                         </div>

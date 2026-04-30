@@ -1,32 +1,50 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../context/auth-context";
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../lib/Firebase';
 
 const GlobalCatalogueModal = () => {
     const { currentUser } = useAuth();
     const [show, setShow] = useState(false);
-
-    // 1. New state to hold the dynamic subdomain URL
     const [shareUrl, setShareUrl] = useState("");
 
+    // 1. Actively fetch the absolute best link for the user behind the scenes
     useEffect(() => {
-        // 2. Catch the custom event payload (e: any)
+        const fetchBestLink = async () => {
+            if (!currentUser?.companyId) return;
+
+            // Set the dev/fallback link immediately just in case
+            const fallbackUrl = `${window.location.origin}/catalogue/${currentUser.companyId}`;
+            setShareUrl(fallbackUrl);
+
+            try {
+                // Check if they have a custom subdomain
+                const docRef = doc(db, 'companies', currentUser.companyId);
+                const snap = await getDoc(docRef);
+                if (snap.exists() && snap.data().subdomain) {
+                    // Overwrite with the custom link!
+                    setShareUrl(`https://${snap.data().subdomain}.sellar.in`);
+                }
+            } catch (err) {
+                console.error("Error fetching subdomain for modal:", err);
+            }
+        };
+        fetchBestLink();
+    }, [currentUser]);
+
+    // 2. Handle opening the modal
+    useEffect(() => {
         const openHandler = (e: any) => {
-            // If the layout passed the custom link, use it!
+            // If the event specifically forced a link, use it, otherwise keep the one we fetched
             if (e.detail && e.detail.link) {
                 setShareUrl(e.detail.link);
-            } else {
-                // Safe fallback to the old path just in case
-                setShareUrl(`${window.location.origin}/catalogue/${currentUser?.companyId}`);
             }
             setShow(true);
         };
 
         window.addEventListener("open-catalogue-share", openHandler);
-
-        return () => {
-            window.removeEventListener("open-catalogue-share", openHandler);
-        };
-    }, [currentUser]); // Added currentUser to dependencies
+        return () => window.removeEventListener("open-catalogue-share", openHandler);
+    }, []);
 
     if (!show) return null;
 
@@ -53,7 +71,6 @@ const GlobalCatalogueModal = () => {
                     <button
                         className="w-full py-3 bg-[#1A3B5D] text-white rounded-sm text-sm font-bold uppercase tracking-wider active:scale-95 transition-all"
                         onClick={() => {
-                            // 3. Open the dynamic URL
                             window.open(shareUrl, "_blank");
                         }}
                     >
@@ -61,31 +78,28 @@ const GlobalCatalogueModal = () => {
                     </button>
 
                     <button
-    className="w-full py-3 bg-[#F97316] text-white rounded-sm text-sm font-bold uppercase tracking-wider active:scale-95 transition-all shadow-md"
-    onClick={async () => {
-        if (navigator.share) {
-            // Close modal FIRST so backdrop click can't interfere
-            try {
-                await navigator.share({
-                    title: "Check out my store",
-                    url: shareUrl,
-                });
-            } catch (err) {
-                // User cancelled — do nothing, no WhatsApp fallback
-                console.log("Share cancelled");
-            }
-            return; // Always return after native share attempt
-        }
+                        className="w-full py-3 bg-[#F97316] text-white rounded-sm text-sm font-bold uppercase tracking-wider active:scale-95 transition-all shadow-md"
+                        onClick={async () => {
+                            if (navigator.share) {
+                                try {
+                                    await navigator.share({
+                                        title: "Check out my store",
+                                        url: shareUrl,
+                                    });
+                                    return;
+                                } catch (err) {
+                                    console.log("Share cancelled");
+                                }
+                            }
 
-        // Only reaches here if navigator.share is unavailable (desktop)
-        window.open(
-            `https://wa.me/?text=${encodeURIComponent("Check out my store: " + shareUrl)}`,
-            "_blank"
-        );
-    }}
->
-    Share Link
-</button>
+                            window.open(
+                                `https://wa.me/?text=${encodeURIComponent("Check out my store: " + shareUrl)}`,
+                                "_blank"
+                            );
+                        }}
+                    >
+                        Share Link
+                    </button>
                 </div>
             </div>
         </div>

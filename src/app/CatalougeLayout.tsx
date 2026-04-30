@@ -6,7 +6,7 @@ import { ROUTES } from '../constants/routes.constants';
 import { CatItems } from '../routes/CatalougeRoutes';
 import { useAuth } from '../context/auth-context';
 import sellarLogo from '../assets/sellar-logo-heading.png';
-import { Share2, Globe } from "lucide-react"; // <-- Add Globe icon
+import { Share2 } from "lucide-react"; // <-- Add Globe icon
 import { useOrderSound } from '../Catalogue/hooks/useOrderSound';
 import { useConfirmedOrdersCount } from '../Catalogue/hooks/useConfirmedOrdersCount';
 import GlobalCatalogueModal from '../Components/CatalogueShareCard';
@@ -85,17 +85,6 @@ const CatalogueLayout = () => {
             >
                 Orders Return
             </Button>
-
-            {/* UNCOMMENTED AND UPDATED */}
-            {currentUser && (
-                <Button
-                    variant="outline"
-                    className="w-full mb-2 rounded bg-orange-50 border-orange-200 text-orange-600 hover:bg-orange-100 font-bold"
-                    onClick={() => window.open(storeLink, '_blank')}
-                >
-                    View Store
-                </Button>
-            )}
         </>
     );
 
@@ -155,17 +144,6 @@ const CatalogueLayout = () => {
                         <span className="text-lg">+</span>
                         <span>Add Item</span>
                     </NavLink>
-
-                    {currentUser && (
-                        <button
-                            onClick={() => window.open(storeLink, '_blank')}
-                            className={`w-full text-left ${sidebarLinkClass(false)}`}
-                        >
-                            <span className="text-lg"><Globe size={18} /></span>
-                            <span>View Store</span>
-                        </button>
-                    )}
-
                     {/* <NavLink
                             to={`${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`}
                             end

@@ -151,17 +151,37 @@ const MyShop: React.FC = () => {
 
         const group = allItemGroups.find((g) => g.id === item.itemGroupId);
         const categorySlug = group ? generateSlug(group.name) : item.itemGroupId;
-        const shareUrl = `${window.location.origin}/${companyId}/${categorySlug}?itemId=${item.id}`;
+
+        // 1. Safe fallback just in case
+        let shareUrl = `${window.location.origin}/${companyId}/${categorySlug}?itemId=${item.id}`;
+
+        try {
+            // 2. Fetch their official subdomain instantly on click
+            const docRef = doc(db, 'companies', companyId);
+            const snap = await getDoc(docRef);
+
+            if (snap.exists() && snap.data().subdomain) {
+                // 3. Overwrite with the beautiful public URL, keeping the itemId attached!
+                shareUrl = `https://${snap.data().subdomain}.sellar.in/${categorySlug}?itemId=${item.id}`;
+            }
+        } catch (error) {
+            console.error("Error fetching subdomain for sharing:", error);
+        }
 
         try {
             if (navigator.share) {
                 await navigator.share({
                     title: `${companyName} - ${item.name}`,
-                    text: `Check out this product from ${companyName}`,
+                    // I slightly updated the text here so it includes the actual item name!
+                    text: `Check out ${item.name} from ${companyName}`,
                     url: shareUrl,
                 });
             } else {
                 await navigator.clipboard.writeText(shareUrl);
+
+                // If you have your `setModal` state in this file, use it! 
+                // Otherwise, you can safely leave this as an alert.
+                // setModal({ message: "Product link copied to clipboard!", type: State.SUCCESS });
                 alert("Product link copied to clipboard!");
             }
         } catch (error) {

@@ -22,7 +22,7 @@ const tiles = [
         textClass: 'text-blue-600',
     },
     {
-        label: 'App Key Leads',
+        label: 'App Registration Leads',
         description: 'Track and manage leads generated through the Sellar app',
         route: '/leads',
         icon: (
@@ -46,7 +46,7 @@ const tiles = [
         textClass: 'text-yellow-600',
     },
     {
-        label: 'Support Tickets',
+        label: 'App Support Tickets',
         description: 'Manage open and closed support tickets from customers',
         route: '/super-admin/support',
         icon: (
@@ -96,9 +96,6 @@ const SuperAdminHub: React.FC = () => {
                 <h1 className="flex-1 text-xl text-center font-bold text-gray-800 md:text-2xl">
                     Super Admin
                 </h1>
-                <span className="text-[10px] font-mono text-gray-400 bg-gray-200 px-2 py-1 rounded">
-                    {currentUser?.uid?.slice(0, 8)}...
-                </span>
             </div>
 
             {/* Section label */}

@@ -2,8 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
 import { collection, query, where, orderBy, onSnapshot, Timestamp, doc, updateDoc } from 'firebase/firestore';
-
-// Shared Components (matching Sales Report)
+import { useAuth } from '../../context/auth-context';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
 import { IconClose } from '../../constants/Icons';
@@ -20,10 +19,15 @@ interface Lead {
   submittedAt?: any;
 }
 
+const SUPER_ADMIN_UIDS = [
+  "6vwZ1HRqX7VSnh5KP4JW0TKeuZm2",
+  "1AKioGfop8PmHhry6uXOz8Rw6qT2"
+];
+
 const WebsiteLeadsDashboard: React.FC = () => {
   const navigate = useNavigate();
 
-  // States
+  const { currentUser } = useAuth();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [activeStatus, setActiveStatus] = useState<string>('all');
   const [datePreset, setDatePreset] = useState('today');
@@ -43,37 +47,37 @@ const WebsiteLeadsDashboard: React.FC = () => {
 
   // 1. Handle Date Presets
   const handleDatePresetChange = (preset: string) => {
-  setDatePreset(preset);
-  if (preset === 'custom') return;
+    setDatePreset(preset);
+    if (preset === 'custom') return;
 
-  const start = new Date();
-  const end = new Date();
+    const start = new Date();
+    const end = new Date();
 
-  switch (preset) {
-    case 'yesterday':
-      start.setDate(start.getDate() - 1);
-      end.setDate(end.getDate() - 1);
-      break;
-    case 'last7':
-      start.setDate(start.getDate() - 6);
-      break;
-    case 'last30':
-      start.setDate(start.getDate() - 29);
-      break;
-    // 'today' — start/end already today
-  }
+    switch (preset) {
+      case 'yesterday':
+        start.setDate(start.getDate() - 1);
+        end.setDate(end.getDate() - 1);
+        break;
+      case 'last7':
+        start.setDate(start.getDate() - 6);
+        break;
+      case 'last30':
+        start.setDate(start.getDate() - 29);
+        break;
+      // 'today' — start/end already today
+    }
 
-  setStartDate(toDateStr(start));
-  setEndDate(toDateStr(end));
-};
+    setStartDate(toDateStr(start));
+    setEndDate(toDateStr(end));
+  };
 
   const handleApplyFilters = () => {
-  const s = startDate ? new Date(startDate) : new Date(0);
-  const e = endDate ? new Date(endDate) : new Date();
-  s.setHours(0, 0, 0, 0);
-  e.setHours(23, 59, 59, 999);
-  setAppliedFilters({ start: s.getTime(), end: e.getTime() });
-};
+    const s = startDate ? new Date(startDate) : new Date(0);
+    const e = endDate ? new Date(endDate) : new Date();
+    s.setHours(0, 0, 0, 0);
+    e.setHours(23, 59, 59, 999);
+    setAppliedFilters({ start: s.getTime(), end: e.getTime() });
+  };
   useEffect(() => {
     const today = new Date();
     const start = new Date(today);
@@ -85,20 +89,24 @@ const WebsiteLeadsDashboard: React.FC = () => {
 
   // 2. Firebase Listener
   useEffect(() => {
-  setLoading(true);
-  const q = query(
-    collection(db, "contacts"),
-    where("submittedAt", ">=", Timestamp.fromMillis(appliedFilters.start)),
-    where("submittedAt", "<=", Timestamp.fromMillis(appliedFilters.end)),
-    orderBy("submittedAt", "desc")
-  );
+    if (!currentUser || !SUPER_ADMIN_UIDS.includes(currentUser.uid)) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    const q = query(
+      collection(db, "contacts"),
+      where("submittedAt", ">=", Timestamp.fromMillis(appliedFilters.start)),
+      where("submittedAt", "<=", Timestamp.fromMillis(appliedFilters.end)),
+      orderBy("submittedAt", "desc")
+    );
 
-  const unsubscribe = onSnapshot(q, (snapshot) => {
-    setLeads(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Lead[]);
-    setLoading(false);
-  });
-  return () => unsubscribe();
-}, [appliedFilters]);
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setLeads(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Lead[]);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, [appliedFilters]);
 
   // 3. Status Update Logic
   const updateStatus = async (id: string, newStatus: string) => {
@@ -110,19 +118,19 @@ const WebsiteLeadsDashboard: React.FC = () => {
   };
 
   // 4. Stats & Filtering
- // Stats always reflect active date range (already filtered by Firebase query)
-const stats = useMemo(() => ({
-  pending: leads.filter(l => !l.status || l.status === 'pending').length,
-  issue: leads.filter(l => l.status === 'issue').length,
-  converted: leads.filter(l => l.status === 'converted').length,
-  not_interested: leads.filter(l => l.status === 'not_interested').length,
-}), [leads]);
+  // Stats always reflect active date range (already filtered by Firebase query)
+  const stats = useMemo(() => ({
+    pending: leads.filter(l => !l.status || l.status === 'pending').length,
+    issue: leads.filter(l => l.status === 'issue').length,
+    converted: leads.filter(l => l.status === 'converted').length,
+    not_interested: leads.filter(l => l.status === 'not_interested').length,
+  }), [leads]);
 
-// Status filter applied on top of already date-filtered leads
-const filteredLeads = useMemo(() => {
-  if (activeStatus === 'all') return leads;
-  return leads.filter(l => (l.status || 'pending') === activeStatus);
-}, [leads, activeStatus]);
+  // Status filter applied on top of already date-filtered leads
+  const filteredLeads = useMemo(() => {
+    if (activeStatus === 'all') return leads;
+    return leads.filter(l => (l.status || 'pending') === activeStatus);
+  }, [leads, activeStatus]);
 
   const toggleExpand = (id: string) => {
     setExpandedLeadId(prev => (prev === id ? null : id));

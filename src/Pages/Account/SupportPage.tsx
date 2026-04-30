@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
-import { collection, addDoc, serverTimestamp, doc, getDoc, getDocs, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, getDoc, getDocs, setDoc } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 // --- ICONS ---
@@ -98,20 +98,20 @@ const SupportPage: React.FC = () => {
   }, []);
 
   const generateRefNumber = async () => {
-  const counterRef = doc(db, "counters", "support_tickets");
-  const counterSnap = await getDoc(counterRef);
-  
-  let nextNumber = 1;
-  if (counterSnap.exists()) {
-    nextNumber = (counterSnap.data().count || 0) + 1;
-  }
-  
-  await updateDoc(counterRef, { count: nextNumber }).catch(() =>
-    addDoc(collection(db, "counters"), { count: nextNumber })
-  );
-  
-  return `TKT-${String(nextNumber).padStart(4, '0')}`; // TKT-0001, TKT-0002...
-};
+    const counterRef = doc(db, "counters", "support_tickets");
+    const counterSnap = await getDoc(counterRef);
+
+    let nextNumber = 1;
+    if (counterSnap.exists()) {
+      nextNumber = (counterSnap.data().count || 0) + 1;
+    }
+
+    // FIX: setDoc safely creates "support_tickets" if it's missing, 
+    // or updates the count if it already exists.
+    await setDoc(counterRef, { count: nextNumber });
+
+    return `TKT-${String(nextNumber).padStart(4, '0')}`; // TKT-0001, TKT-0002...
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,7 +121,7 @@ const SupportPage: React.FC = () => {
     }
     setSubmitting(true);
     try {
-      const refNumber = await generateRefNumber(); 
+      const refNumber = await generateRefNumber();
       await addDoc(collection(db, "support_tickets"), {
         referenceNumber: refNumber,
         fullName: userProfile.fullName,

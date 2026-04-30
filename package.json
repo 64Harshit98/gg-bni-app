@@ -34,6 +34,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "file-saver": "^2.0.5",
     "firebase": "^12.5.0",

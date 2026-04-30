@@ -14,7 +14,6 @@ import { formatDate } from '../../Pages/Reports/PNLReportComponents/pnlReport.ut
 import { handleDatePresetChange } from '../../Pages/Reports/PNLReportComponents/pnlReport.utils';
 import DownloadChoiceModal from '../../Pages/Reports/ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
-import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 //import CataShowWrapper from '../../context/CataShowWrapper';
 //import { Cata_Permissions } from '../enum/cata_permissions.enum';
 
@@ -211,86 +210,96 @@ const CatalogueProfitLossReport: React.FC = () => {
 
       const { totalRevenue, totalCost, grossProfit, grossProfitPercentage } = pnlSummary;
 
-      // Embed company logo (same as Item Report)
-      try {
-        const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
-        if (base64Logo) {
-          const img = new Image();
-          img.src = base64Logo;
-          await new Promise<void>((resolve) => {
-            img.onload = () => {
-              const logoWidth = 15;
-              const logoHeight =
-                (img.naturalHeight / img.naturalWidth) * logoWidth;
-              const logoX = pageWidth - logoWidth - 14;
-              doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
-              resolve();
-            };
-            img.onerror = () => resolve();
-          });
-        }
-      } catch {
-        // Continue without logo
-      }
-
-      doc.setFontSize(18);
-      doc.text('Profit & Loss Report', 14, 20);
-      doc.setFontSize(11);
-      doc.setTextColor(100);
-
+      // ===== SUMMARY TABLE =====
       autoTable(doc, {
-        startY: 45,
+        startY: 34,
         body: [
           [
-            'Total Sales:',
-            `₹${totalRevenue.toLocaleString('en-IN')}`,
-            'Gross Profit / Loss:',
-            `₹${grossProfit.toLocaleString('en-IN')}`,
+            'TOTAL SALES',
+            totalRevenue.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
+            'GROSS PROFIT / LOSS',
+            grossProfit.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
           ],
           [
-            'Total Cost:',
-            `₹${totalCost.toLocaleString('en-IN')}`,
-            'Gross Profit %:',
+            'TOTAL COST',
+            totalCost.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
+            'GROSS MARGIN',
             `${grossProfitPercentage.toFixed(2)}%`,
           ],
         ],
         theme: 'plain',
-        styles: { fontSize: 10 },
+        styles: {
+          font: 'helvetica',
+          cellPadding: 4,
+          fontSize: 11,
+          textColor: [17, 24, 39],
+        },
         columnStyles: {
-          0: { fontStyle: 'bold' },
-          2: { fontStyle: 'bold' },
+          0: { fontStyle: 'bold', textColor: [107, 114, 128], cellWidth: 35 },
+          1: { fontStyle: 'bold', halign: 'right', cellWidth: 45 },
+          2: { fontStyle: 'bold', textColor: [107, 114, 128], cellWidth: 50 },
+          3: { fontStyle: 'bold', halign: 'right', cellWidth: 45 },
         },
       });
 
+      // ===== TRANSACTIONS TABLE =====
       autoTable(doc, {
         startY: (doc as any).lastAutoTable.finalY + 10,
-        head: [['Date', 'Invoice', 'Sales', 'Cost', 'Profit']],
+        head: [['DATE', 'INVOICE', 'SALES (Rs.)', 'COST (Rs.)', 'PROFIT (Rs.)']],
         body: filteredTransactions.map((t) => [
           formatDate(t.createdAt),
-          t.invoiceNumber,
-          `₹${t.totalAmount.toLocaleString('en-IN')}`,
-          `₹${(t.costOfGoodsSold || 0).toLocaleString('en-IN')}`,
-          `₹${(t.profit || 0).toLocaleString('en-IN')}`,
+          t.invoiceNumber || 'N/A',
+          t.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
+          (t.costOfGoodsSold || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }),
+          (t.profit || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }),
         ]),
-        theme: 'striped',
-        headStyles: { fillColor: [41, 128, 185] },
+        theme: 'plain',
+        styles: {
+          font: 'helvetica',
+          cellPadding: 6,
+          fontSize: 10,
+          textColor: [55, 65, 81],
+        },
+        headStyles: {
+          fillColor: [249, 250, 251],
+          textColor: [17, 24, 39],
+          fontStyle: 'bold',
+          halign: 'center',
+        },
+        columnStyles: {
+          1: { halign: 'left', cellWidth: 50 },
+        },
+        didParseCell: function (data) {
+          if (data.section === 'body' && data.column.index === 4) {
+            const rawVal = parseFloat(String(data.cell.raw).replace(/,/g, ''));
+            if (rawVal < 0) {
+              data.cell.styles.textColor = [220, 38, 38];
+              data.cell.styles.fontStyle = 'bold';
+            }
+          }
+        },
+        didDrawPage: function () {
+          const pageCount = doc.internal.getNumberOfPages();
+          const pageHeight = doc.internal.pageSize.getHeight();
+
+          doc.setFontSize(9);
+          doc.setTextColor(156, 163, 175);
+          doc.text(
+            `Page ${pageCount}`,
+            pageWidth - 14,
+            pageHeight - 10,
+            { align: 'right' }
+          );
+        },
       });
 
-      doc.save(`PNL-Report-${startDate}-to-${endDate}.pdf`);
-      setIsDownloadModalOpen(false);
-      setFeedbackModal({
-        isOpen: true,
-        type: State.SUCCESS,
-        message: 'PDF downloaded successfully!',
-      });
-    } catch (error) {
-      setFeedbackModal({
-        isOpen: true,
-        type: State.ERROR,
-        message: 'Failed to generate PDF file.',
-      });
+      doc.save(`PNL_Report_${startDate}_to_${endDate}.pdf`);
+
+    } catch (err) {
+      console.error('PDF Generation Error:', err);
     }
   };
+
 
   /* ---------- EXCEL DOWNLOAD (NEW) ---------- */
   const downloadAsExcel = () => {

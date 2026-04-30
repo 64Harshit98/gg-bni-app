@@ -122,7 +122,22 @@ const OrderingPage: React.FC = () => {
         if (!companyId || !group?.id) return;
 
         const categorySlug = generateSlug(group.name);
-        const shareUrl = `${window.location.origin}/${companyId}/${categorySlug}`;
+
+        // 1. Safe fallback just in case
+        let shareUrl = `${window.location.origin}/${companyId}/${categorySlug}`;
+
+        try {
+            // 2. Fetch their official subdomain instantly on click
+            const docRef = doc(db, 'companies', companyId);
+            const snap = await getDoc(docRef);
+
+            if (snap.exists() && snap.data().subdomain) {
+                // 3. Overwrite with the beautiful public URL!
+                shareUrl = `https://${snap.data().subdomain}.sellar.in/${categorySlug}`;
+            }
+        } catch (error) {
+            console.error("Error fetching subdomain for sharing:", error);
+        }
 
         try {
             if (navigator.share) {
@@ -132,11 +147,14 @@ const OrderingPage: React.FC = () => {
                     url: shareUrl,
                 });
             } else {
+                // Fallback for desktop browsers
                 await navigator.clipboard.writeText(shareUrl);
-                alert("Category link copied to clipboard!");
+
+                // Using your existing modal state instead of a native alert for a cleaner UI!
+                setModal({ message: "Category link copied to clipboard!", type: State.SUCCESS });
             }
         } catch (error) {
-            console.error("Error sharing category:", error);
+            console.log("Share cancelled:", error);
         }
     };
 
@@ -265,9 +283,9 @@ const OrderingPage: React.FC = () => {
                 />
             )}
 
-            {/* --- FIXED HEADER SECTION --- */}
             <header className="sticky top-0 z-[100] bg-white border-b border-gray-100 shadow-sm w-full">
-                <div className="max-w-7xl mx-auto px-4 py-8 relative flex items-center justify-between">
+                {/* Changed py-8 to py-4 to make the header a normal height */}
+                <div className="max-w-7xl mx-auto px-4 py-4 relative flex items-center justify-between h-16">
 
                     {/* Center Section - Company Name */}
                     <h1 className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-lg md:text-lg font-black text-[#1A3B5D] uppercase tracking-tighter text-center whitespace-nowrap">
@@ -482,16 +500,19 @@ const OrderingPage: React.FC = () => {
                                                     {isVirtual ? <i className="text-gray-500">{group.name}</i> : group.name}
                                                 </h3>
 
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleShareCategory(group);
-                                                    }}
-                                                    className="p-1.5 rounded-sm bg-[#F97316]/10 text-[#F97316] hover:bg-[#F97316] hover:text-white transition-all"
-                                                    title="Share Category"
-                                                >
-                                                    <Send size={14} />
-                                                </button>
+                                                {/* Only show the share button for real, created categories */}
+                                                {!isVirtual && (
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleShareCategory(group);
+                                                        }}
+                                                        className="p-1.5 rounded-sm bg-[#F97316]/10 text-[#F97316] hover:bg-[#F97316] hover:text-white transition-all"
+                                                        title="Share Category"
+                                                    >
+                                                        <Send size={14} />
+                                                    </button>
+                                                )}
                                             </div>
 
                                             {/* Centered Item Count Badge UI */}

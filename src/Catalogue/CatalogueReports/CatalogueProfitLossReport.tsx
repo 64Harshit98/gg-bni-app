@@ -279,7 +279,7 @@ const CatalogueProfitLossReport: React.FC = () => {
           }
         },
         didDrawPage: function () {
-          const pageCount = doc.internal.getNumberOfPages();
+          const pageCount = (doc.internal as any).getNumberOfPages();
           const pageHeight = doc.internal.pageSize.getHeight();
 
           doc.setFontSize(9);

@@ -8,6 +8,7 @@ import { ROUTES } from '../constants/routes.constants';
 import BusinessCard from './BusinessCards/BusinessCard';
 import { Permissions } from '../enums/permissions.enum';
 import ShowWrapper from '../context/ShowWrapper';
+import ShinyText from '../Components/ShinyText';
 
 interface UserProfile {
     name: string;
@@ -22,6 +23,27 @@ const Account: React.FC = () => {
     const [profileData, setProfileData] = useState<UserProfile | null>(null);
     const [loadingProfile, setLoadingProfile] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
+
+    useEffect(() => {
+        const fetchExpiry = async () => {
+            if (!currentUser?.companyId) return;
+            const ref = doc(db, 'companies', currentUser.companyId);
+            const snap = await getDoc(ref);
+            if (snap.exists()) {
+                const expiry = snap.data().expiryDate;
+                if (!expiry) return;
+                const d = expiry.toDate ? expiry.toDate() : new Date(expiry);
+                const diff = d.getTime() - new Date().getTime();
+                setDaysRemaining(Math.ceil(diff / (1000 * 60 * 60 * 24)));
+            }
+        };
+        fetchExpiry();
+    }, [currentUser?.companyId]);
+
+    const showBadge = daysRemaining !== null && daysRemaining <= 7 && daysRemaining >= 0;
+    const isUrgent = daysRemaining !== null && daysRemaining <= 2;
 
     useEffect(() => {
         const fetchUserProfile = async () => {
@@ -113,6 +135,12 @@ const Account: React.FC = () => {
 
     return (
         <div className="flex min-h-screen flex-col bg-gray-100">
+            {showBadge && (
+                <div className={`w-full text-center py-2 text-sm font-bold text-white shadow-sm transition-colors duration-300 ${isUrgent ? 'bg-red-300' : 'bg-amber-200'}`}>
+                    <ShinyText text={`Subscription expires in ${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'}.`} speed={4} delay={0} color="#030303" shineColor="#faf5f5" spread={100} direction="left" yoyo={false} pauseOnHover={false} disabled={false} />
+                    <Link to="/subscription" className="text-black ml-2 underline hover:text-gray-100">Renew Now</Link>
+                </div>
+            )}
             <header className="flex flex-shrink-0 items-center justify-between border-b border-slate-300 bg-gray-100 p-4">
 
                 {/* Centre — identical to Dashboard */}
@@ -122,7 +150,7 @@ const Account: React.FC = () => {
 
 
             </header>
-            
+
             <div className="flex flex-col py-3 items-center">
                 <div className="relative mb-2">
                     {profileData.profilePicture ? (
@@ -156,7 +184,7 @@ const Account: React.FC = () => {
                                 strokeLinecap="round"
                                 strokeLinejoin="round"
                                 d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"
-                            /> 
+                            />
                         </svg>
                     </button>
                 </div>

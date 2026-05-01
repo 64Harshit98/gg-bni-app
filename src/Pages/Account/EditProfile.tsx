@@ -11,20 +11,21 @@ import { FloatingLabelInput } from '../../Components/ui/FloatingLabelInput';
 import { FloatingLabelSelect } from '../../Components/FloatingLabelSelect';
 // Example options, replace with real data as needed
 const businessTypeOptions = [
-  { value: '', label: 'Select type' },
-  { value: 'Private Limited', label: 'Private Limited' },
-  { value: 'Partnership', label: 'Partnership' },
-  { value: 'Sole Proprietor', label: 'Sole Proprietor' },
-  { value: 'LLP', label: 'LLP' },
+  { value: 'Retail', label: 'Retail' },
+  { value: 'Wholesale', label: 'Wholesale' },
+  { value: 'Services', label: 'Services' },
+  { value: 'Manufacturing', label: 'Manufacturing' },
   { value: 'Other', label: 'Other' },
 ];
 
 const businessCategoryOptions = [
-  { value: '', label: 'Select category' },
-  { value: 'Retail', label: 'Retail' },
-  { value: 'Wholesale', label: 'Wholesale' },
-  { value: 'Manufacturing', label: 'Manufacturing' },
-  { value: 'Services', label: 'Services' },
+  { value: 'Electronics', label: 'Electronics' },
+  { value: 'Gifts & Stationery', label: 'Gifts & Stationery' },
+  { value: 'Grocery', label: 'Grocery' },
+  { value: 'Fashion', label: 'Fashion & Apparel' },
+  { value: 'Health & Beauty', label: 'Health & Beauty' },
+  { value: 'Home & Furniture', label: 'Home & Furniture' },
+  { value: 'Food & Beverage', label: 'Food & Beverage' },
   { value: 'Other', label: 'Other' },
 ];
 import { FiCamera, FiCheck, FiX } from 'react-icons/fi';
@@ -54,6 +55,9 @@ interface ProfileData {
   accountNumber: string;
   accountHolderName: string;
   ifscCode: string;
+  instagram?: string;
+  facebook?: string;
+  twitter?: string;
 }
 
 // --- UTILITY: Logo Compression (preserves transparency) ---
@@ -88,7 +92,7 @@ const compressLogo = (file: File): Promise<Blob> => {
 
       canvas.toBlob(
         (blob) => {
-          if (blob) { resolve(blob); } 
+          if (blob) { resolve(blob); }
           else { reject(new Error('Logo compression failed')); }
           URL.revokeObjectURL(img.src);
         },
@@ -182,7 +186,23 @@ const useProfileData = (userId?: string, companyId?: string) => {
       ]);
       const userData = userDocSnap.exists() ? userDocSnap.data() : {};
       const businessData = businessDocSnap.exists() ? businessDocSnap.data() : {};
-      setProfile({ ...userData, ...businessData });
+
+      console.log('businessData:', businessData);
+      +   console.log('businessType from Firestore:', businessData.businessType);
+      setProfile({
+        ...businessData,  // Business data first
+        name: userData.name || "",
+        email: userData.email || "",
+        phone: userData.phone || "",
+        profilePicture: userData.profilePicture || businessData.profilePicture || "",
+        panNumber: userData.panNumber || "",
+        accountType: userData.accountType || "",
+        msmeUdyamNumber: userData.msmeUdyamNumber || businessData.msmeUdyamNumber || "",
+        // Ensure these business fields are explicitly preserved
+        businessType: businessData.businessType || "",
+        businessCategory: businessData.businessCategory || "",
+        companyLogo: businessData.companyLogo || "",
+      });
     } catch (err) {
       console.error("Error fetching profile data:", err);
       setError("Failed to load profile information.");
@@ -203,55 +223,58 @@ const useProfileData = (userId?: string, companyId?: string) => {
     fetchProfileData(); // ✅ Now accessible
   };
 
-const saveData = async (data: Partial<ProfileData>) => {
-  if (!userId || !companyId || !auth.currentUser) {
-    throw new Error("User or company is not authenticated.");
-  }
+  const saveData = async (data: Partial<ProfileData>) => {
+    if (!userId || !companyId || !auth.currentUser) {
+      throw new Error("User or company is not authenticated.");
+    }
 
-  const { name, email, phone, profilePicture, panNumber, accountType, ...businessData } = data;
+    const { name, email, phone, profilePicture, accountType, ...businessData } = data;
 
-  const userDocRef = doc(db, 'companies', companyId, 'users', userId);
-  const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
+    const userDocRef = doc(db, 'companies', companyId, 'users', userId);
+    const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
 
-  const promises = [];
+    const promises = [];
 
-  const authUpdates: { displayName?: string; photoURL?: string } = {};
-  if (name && auth.currentUser.displayName !== name) authUpdates.displayName = name;
-  if (profilePicture && auth.currentUser.photoURL !== profilePicture) authUpdates.photoURL = profilePicture;
+    const authUpdates: { displayName?: string; photoURL?: string } = {};
+    if (name && auth.currentUser.displayName !== name) authUpdates.displayName = name;
+    if (profilePicture && auth.currentUser.photoURL !== profilePicture) authUpdates.photoURL = profilePicture;
 
-  if (Object.keys(authUpdates).length > 0) {
-    promises.push(updateProfile(auth.currentUser, authUpdates));
-  }
+    if (Object.keys(authUpdates).length > 0) {
+      promises.push(updateProfile(auth.currentUser, authUpdates));
+    }
 
-  // 2. User Doc Update (Sanitize data to ensure no undefined values)
-  const userUpdateData: Record<string, any> = {};
-  if (name) userUpdateData.name = name;
-  if (phone !== undefined) userUpdateData.phone = phone;
-  if (email !== undefined) userUpdateData.email = email;
-  if (panNumber !== undefined) userUpdateData.panNumber = panNumber;
-  if (accountType !== undefined) userUpdateData.accountType = accountType;
-  // Only include profilePicture if it is defined (avoid Firestore crash)
-  if (profilePicture !== undefined) userUpdateData.profilePicture = profilePicture;
+    // 2. User Doc Update (Sanitize data to ensure no undefined values)
+    const userUpdateData: Record<string, any> = {};
+    if (name) userUpdateData.name = name;
+    if (phone !== undefined) userUpdateData.phone = phone;
+    if (email !== undefined) userUpdateData.email = email;
+    if (data.panNumber !== undefined) userUpdateData.panNumber = data.panNumber;
+    if (accountType !== undefined) userUpdateData.accountType = accountType;
+    if (data.msmeUdyamNumber !== undefined) userUpdateData.msmeUdyamNumber = data.msmeUdyamNumber;
+    // Only include profilePicture if it is defined (avoid Firestore crash)
+    if (profilePicture !== undefined) userUpdateData.profilePicture = profilePicture;
 
-  if (Object.keys(userUpdateData).length > 0) {
-    promises.push(setDoc(userDocRef, userUpdateData, { merge: true }));
-  }
+    if (Object.keys(userUpdateData).length > 0) {
+      promises.push(setDoc(userDocRef, userUpdateData, { merge: true }));
+    }
 
-  // 3. Business Info Update (Filter out undefined)
-  const cleanBusinessData = Object.fromEntries(
-    Object.entries(businessData).filter(([_, v]) => v !== undefined)
-  );
+    // 3. Business Info Update (Filter out undefined)
+    const cleanBusinessData = Object.fromEntries(
+      Object.entries(businessData).filter(([_, v]) => v !== undefined)
+    );
 
-  promises.push(setDoc(businessDocRef, {
-    ...cleanBusinessData,
-    ownerName: name,
-    updatedAt: serverTimestamp()
-  }, { merge: true }));
+    promises.push(setDoc(businessDocRef, {
+      ...cleanBusinessData,
+      ownerName: name,
+      email: email,
+      phoneNumber: phone,
+      updatedAt: serverTimestamp()
+    }, { merge: true }));
 
-  await Promise.all(promises);
-};
+    await Promise.all(promises);
+  };
 
-return { profile, loading, error, saveData, refetch };
+  return { profile, loading, error, saveData, refetch };
 };
 
 // ─── SectionCard ───────────────────────────────────────────────────────────
@@ -260,7 +283,7 @@ const SectionCard: React.FC<{ title: string; icon: string; children: React.React
   icon,
   children,
 }) => (
-  <div className="bg-white rounded-sm border border-slate-100 shadow-sm overflow-hidden flex flex-col">
+  <div className="bg-white rounded-sm border border-slate-100 shadow-sm overflow-hidden flex flex-col h-full">
     <div className="px-3 py-2 border-b border-slate-100 flex items-center gap-2">
       <span className="text-xs">{icon}</span>
       <span className="text-[9px] font-bold tracking-widest uppercase text-slate-500">{title}</span>
@@ -393,9 +416,9 @@ const EditProfilePage: React.FC = () => {
       return;
     }
     if (formData.gstin && formData.gstin.length !== 15) {
-  setSubmitError('GSTIN must be exactly 15 characters.');
-  return;
-}
+      setSubmitError('GSTIN must be exactly 15 characters.');
+      return;
+    }
 
     setIsSubmitting(true);
 
@@ -476,7 +499,7 @@ const EditProfilePage: React.FC = () => {
       : 'bg-gradient-to-br from-sky-400 to-sky-600 shadow-sky-200/60';
   return (
     <div className="min-h-screen bg-slate-100">
-      <div className="max-w-4xl mx-auto px-4 py-5 pb-24">
+      <div className="max-w-7xl mx-auto px-4 py-3 pb-24">
 
         {/* ── Page Header ── */}
         <div className="flex items-center justify-between mb-1">
@@ -490,7 +513,7 @@ const EditProfilePage: React.FC = () => {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-1">
 
           {/* ── IDENTITY BANNER: Avatar + Company Logo side by side ── */}
           <div className="bg-white rounded-sm border border-slate-100 shadow-sm px-5 py-2 flex items-center gap-6">
@@ -573,108 +596,154 @@ const EditProfilePage: React.FC = () => {
 
           </div>
 
-          {/* ── 2 × 2 CARD GRID ── */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+          {/* ── Row 1: Personal | Business | Address (desktop 3-col) ── */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[1fr_1.4fr_1fr] gap-1 items-stretch">
 
             {/* Card 1 — Personal Information */}
             <SectionCard title="Personal Information" icon="">
               <div className="flex flex-col gap-4">
                 <FloatingLabelInput
-                  type="text"
-                  name="name"
-                  value={formData.name || ''}
-                  onChange={handleInputChange}
-                  label="Full Name"
+                  type="text" name="name" value={formData.name || ''}
+                  onChange={handleInputChange} label="Full Name"
                 />
                 <div>
                   <FloatingLabelInput
-                    type="text"
-                    name="phone"
-                    value={formData.phone || ''}
-                    onChange={handlePhoneChange}
-                    label="Phone Number"
-                    maxLength={10}
-                    inputMode="numeric"
+                    type="text" name="phone" value={formData.phone || ''}
+                    onChange={handlePhoneChange} label="Phone Number"
+                    maxLength={10} inputMode="numeric"
                   />
                   {phoneError && (
                     <p className="text-red-500 text-[11px] mt-1 mb-0">{phoneError}</p>
                   )}
                 </div>
-                {/* Email — read-only */}
-                <div className="-mt-2">
-                  <LabeledField label="Email Address">
-                    <input
-                      type="email"
-                      name="email"
-                      value={formData.email || ''}
-                      readOnly
-                      className={`${inputClass} bg-slate-100 text-slate-400 cursor-not-allowed`}
-                      placeholder="Email Address"
-                    />
-                  </LabeledField>
-                </div>
+                <LabeledField label="Email Address">
+                  <input
+                    type="email" name="email" value={formData.email || ''} readOnly
+                    className={`${inputClass} bg-slate-100 text-slate-400 cursor-not-allowed`}
+                    placeholder="Email Address"
+                  />
+                </LabeledField>
               </div>
             </SectionCard>
 
+            {/* Card 2 — Business Information */}
             <SectionCard title="Business Information" icon="">
               <div className="grid grid-cols-2 gap-4">
-                <FloatingLabelInput type="text" name="businessName" value={formData.businessName || ''} onChange={handleInputChange} label="Business Name" />
+                <div className="col-span-2">
+                  <FloatingLabelInput type="text" name="businessName" value={formData.businessName || ''} onChange={handleInputChange} label="Business Name" />
+                </div>
                 <FloatingLabelSelect
                   id="businessType"
                   label="Business Type"
-                  value={formData.businessType || ''}
-                  onChange={(e) =>
-                    setFormData(prev => ({ ...prev, businessType: e.target.value }))
-                  }
+                  value={formData.businessType || ''}  // ✅ read from formData
+                  onChange={(e) => {
+                    setFormData(prev => ({ ...prev, businessType: e.target.value }));
+                  }}
                   options={businessTypeOptions}
                 />
+
                 <FloatingLabelSelect
                   id="businessCategory"
                   label="Category"
-                  value={formData.businessCategory || ''}
-                  onChange={(e) =>
-                    setFormData(prev => ({ ...prev, businessCategory: e.target.value }))
-                  }
+                  value={formData.businessCategory || ''}  // ✅ read from formData
+                  onChange={(e) => {
+                    setFormData(prev => ({ ...prev, businessCategory: e.target.value }));
+                  }}
                   options={businessCategoryOptions}
                 />
                 <FloatingLabelInput
-                        type="text"
-                        name="gstin"
-                        value={formData.gstin || ''}
-                        onChange={(e) => {
-                            const val = e.target.value.toUpperCase();
-                            if (val.length <= 15) {
-                            setFormData(prev => ({ ...prev, gstin: val }));
-                          } 
-                        }}
-                      label="GSTIN"/>
-                <FloatingLabelInput type="text" name="panNumber" value={formData.panNumber || ''} onChange={handleInputChange} label="PAN Number" />
+                  type="text" name="gstin" value={formData.gstin || ''}
+                  onChange={(e) => {
+                    const val = e.target.value.toUpperCase();
+                    if (val.length <= 15) setFormData(prev => ({ ...prev, gstin: val }));
+                  }}
+                  label="GSTIN"
+                />
+                <FloatingLabelInput type="text" name="panNumber" value={formData.panNumber || ''} onChange={handleInputChange} label="PAN No." />
                 <FloatingLabelInput type="text" name="msmeUdyamNumber" value={formData.msmeUdyamNumber || ''} onChange={handleInputChange} label="MSME No." />
               </div>
             </SectionCard>
 
+            {/* Card 3 — Business Address (desktop xl only) */}
+            <div className="hidden xl:block h-full">
+              <SectionCard title="Business Address" icon="">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <FloatingLabelInput name="streetAddress" value={formData.streetAddress || ''} onChange={handleInputChange} label="Street Address" />
+                  </div>
+                  <FloatingLabelInput type="text" name="city" value={formData.city || ''} onChange={handleInputChange} label="City" />
+                  <FloatingLabelInput type="text" name="state" value={formData.state || ''} onChange={handleInputChange} label="State" />
+                  <div>
+                    <FloatingLabelInput type="text" name="postalCode" value={formData.postalCode || ''} onChange={handlePostalCodeChange} label="Postal Code" maxLength={6} inputMode="numeric" />
+                    {postalError && <p className="text-red-500 text-[11px] mt-1 mb-0">{postalError}</p>}
+                  </div>
+                </div>
+              </SectionCard>
+            </div>
+          </div>
+
+          {/* ── Row 2 (tablet/mobile): Address | Bank ── */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:hidden gap-1">
+
+            {/* Card 3 — Business Address (tablet & mobile only) */}
             <SectionCard title="Business Address" icon="">
               <div className="grid grid-cols-2 gap-4">
-                <FloatingLabelInput name="streetAddress" value={formData.streetAddress || ''} onChange={handleInputChange} label="Street Address" />
+                <div className="col-span-2">
+                  <FloatingLabelInput name="streetAddress" value={formData.streetAddress || ''} onChange={handleInputChange} label="Street Address" />
+                </div>
                 <FloatingLabelInput type="text" name="city" value={formData.city || ''} onChange={handleInputChange} label="City" />
                 <FloatingLabelInput type="text" name="state" value={formData.state || ''} onChange={handleInputChange} label="State" />
-                <div>
+                <div className='col-span-2'>
                   <FloatingLabelInput type="text" name="postalCode" value={formData.postalCode || ''} onChange={handlePostalCodeChange} label="Postal Code" maxLength={6} inputMode="numeric" />
                   {postalError && <p className="text-red-500 text-[11px] mt-1 mb-0">{postalError}</p>}
                 </div>
               </div>
             </SectionCard>
 
+            {/* Card 4 — Bank Details */}
+            <SectionCard title="Bank Details" icon="">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <FloatingLabelInput type="text" name="accountHolderName" value={formData.accountHolderName || ''} onChange={handleInputChange} label="Acc Holder Name" />
+                </div>
+                <FloatingLabelInput type="text" name="bankName" value={formData.bankName || ''} onChange={handleInputChange} label="Bank" />
+                <FloatingLabelInput type="text" name="ifscCode" value={formData.ifscCode || ''} onChange={handleInputChange} label="IFSC Code" />
+                <div className="col-span-2">
+                  <FloatingLabelInput type="text" name="accountNumber" value={formData.accountNumber || ''} onChange={handleInputChange} label="Account No." />
+                </div>
+              </div>
+            </SectionCard>
+          </div>
+
+          {/* ── Row 3 (tablet/mobile): Social Media ── */}
+          <div className="grid grid-cols-1 xl:hidden gap-1">
+            <SectionCard title="Social Media" icon="">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <FloatingLabelInput type="text" name="instagram" value={formData.instagram || ''} onChange={handleInputChange} label="Instagram" />
+                <FloatingLabelInput type="text" name="facebook" value={formData.facebook || ''} onChange={handleInputChange} label="Facebook" />
+                <FloatingLabelInput type="text" name="twitter" value={formData.twitter || ''} onChange={handleInputChange} label="Twitter / X" />
+              </div>
+            </SectionCard>
+          </div>
+
+          {/* ── Desktop xl: Bank + Social side by side ── */}
+          <div className="hidden xl:grid xl:grid-cols-2 gap-1">
             <SectionCard title="Bank Details" icon="">
               <div className="grid grid-cols-2 gap-4">
                 <FloatingLabelInput type="text" name="accountHolderName" value={formData.accountHolderName || ''} onChange={handleInputChange} label="Acc Holder Name" />
                 <FloatingLabelInput type="text" name="bankName" value={formData.bankName || ''} onChange={handleInputChange} label="Bank Name" />
                 <FloatingLabelInput type="text" name="ifscCode" value={formData.ifscCode || ''} onChange={handleInputChange} label="IFSC Code" />
-                <FloatingLabelInput type="text" name="accountNumber" value={formData.accountNumber || ''} onChange={handleInputChange} label="Account Number" />
+                <FloatingLabelInput type="text" name="accountNumber" value={formData.accountNumber || ''} onChange={handleInputChange} label="Account No." />
               </div>
             </SectionCard>
-
-          </div>{/* end grid */}
+            <SectionCard title="Social Media" icon="">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FloatingLabelInput type="text" name="instagram" value={formData.instagram || ''} onChange={handleInputChange} label="Instagram" />
+                <FloatingLabelInput type="text" name="facebook" value={formData.facebook || ''} onChange={handleInputChange} label="Facebook" />
+                <FloatingLabelInput type="text" name="twitter" value={formData.twitter || ''} onChange={handleInputChange} label="Twitter / X" />
+              </div>
+            </SectionCard>
+          </div>
 
           {/* ── Error banner ── */}
           {submitError && (
@@ -691,31 +760,32 @@ const EditProfilePage: React.FC = () => {
           )}
 
           {/* ── Submit button ── */}
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className={[
-              'w-full py-4 rounded-sm text-white text-[15px] font-semibold border-0',
-              'flex items-center justify-center gap-2 shadow-lg transition-all duration-300',
-              isSubmitting ? 'cursor-not-allowed' : 'cursor-pointer',
-              submitBtnClass,
-            ].join(' ')}
-          >
-            {isSubmitting ? (
-              <>
-                <div className="w-4 h-4 rounded-sm border-2 border-white/40 border-t-white animate-spin" />
-                Saving…
-              </>
-            ) : submitSuccess ? (
-              <>
-                <FiCheck size={18} />
-                {submitSuccess}
-              </>
-            ) : (
-              'Save All Changes'
-            )}
-          </button>
-
+          <div className="sticky bottom-0 left-0 right-0 sm:static bg-slate-100 sm:bg-transparent pt-2 sm:pt-0 -mx-4 sm:mx-0 px-4 sm:px-0 pb-2 sm:pb-0 z-10">
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className={[
+                'w-full py-4 rounded-sm text-white text-[15px] font-semibold border-0',
+                'flex items-center justify-center gap-2 shadow-lg transition-all duration-300',
+                isSubmitting ? 'cursor-not-allowed' : 'cursor-pointer',
+                submitBtnClass,
+              ].join(' ')}
+            >
+              {isSubmitting ? (
+                <>
+                  <div className="w-4 h-4 rounded-sm border-2 border-white/40 border-t-white animate-spin" />
+                  Saving…
+                </>
+              ) : submitSuccess ? (
+                <>
+                  <FiCheck size={18} />
+                  {submitSuccess}
+                </>
+              ) : (
+                'Save All Changes'
+              )}
+            </button>
+          </div>
         </form>
       </div>
     </div>

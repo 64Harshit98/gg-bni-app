@@ -127,7 +127,7 @@ const ItemReport: React.FC = () => {
     };
   };
 
- const downloadAsPdf = async () => {
+  const downloadAsPdf = async () => {
     try {
       // Landscape A4 for wide data tables
       const doc = new jsPDF('l', 'mm', 'a4');
@@ -192,7 +192,7 @@ const ItemReport: React.FC = () => {
       doc.setTextColor(0, 0, 0);
 
       doc.setFontSize(14);
-      
+
       //const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
 
@@ -210,11 +210,11 @@ const ItemReport: React.FC = () => {
       doc.setFontSize(10);
       doc.setTextColor(107, 114, 128); // gray-500
       doc.setFont('helvetica', 'normal');
-      
+
       const generationDate = new Date().toLocaleDateString('en-IN', {
         year: 'numeric', month: 'short', day: 'numeric',
       });
-      
+
       const subtitleText = `Generated: ${generationDate}   |   Total Items: ${summary.totalItems}   |   Avg Margin: ${Math.round(summary.averageMarginPercentage)}%`;
       doc.text(subtitleText, 14, 31);
 
@@ -225,7 +225,7 @@ const ItemReport: React.FC = () => {
       }
 
       const exportData = filteredItems.map(prepareExportData);
-      
+
       // Helper to convert camelCase/snake_case keys to clean uppercase headers
       // e.g. "totalSalesAmount" -> "TOTAL SALES AMOUNT"
       const formatHeader = (str: string) => {
@@ -239,7 +239,7 @@ const ItemReport: React.FC = () => {
       const rawHeaders = Object.keys(exportData[0] || {});
       const cleanHeaders = rawHeaders.map(formatHeader);
       const body = exportData.map((obj) => Object.values(obj));
-      
+
       const numericColumns = ['mrp', 'purchasePrice', 'discount', 'tax', 'stock', 'restockQuantity'];
       const columnStyles: any = {};
 
@@ -296,7 +296,7 @@ const ItemReport: React.FC = () => {
         },
         // --- 6. PAGINATION FOOTER ---
         didDrawPage: function () {
-          const pageCount = doc.internal.getNumberOfPages();
+          const pageCount = (doc.internal as any).getNumberOfPages();
           doc.setFontSize(9);
           doc.setTextColor(156, 163, 175); // gray-400
           doc.text(

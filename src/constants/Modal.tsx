@@ -1,3 +1,5 @@
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { State } from "../enums";
 
 interface ModalProps {
@@ -15,11 +17,12 @@ export const Modal: React.FC<ModalProps> = ({
     // Set a default value for showConfirmButton to make it optional
     showConfirmButton = false,
     type,
-}) => (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[2000] p-4">
-        <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm text-center">
+}) => {
+    const modalContent = (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[2000] p-4">
+        <div className="bg-white rounded-sm shadow-2xl p-6 w-full max-w-sm text-center">
             {/* Icon based on type */}
-            <div className={`mx-auto mb-4 w-12 h-12 rounded-full flex items-center justify-center ${type === State.SUCCESS ? 'bg-green-100' :
+            <div className={`mx-auto mb-4 w-12 h-12 rounded-sm flex items-center justify-center ${type === State.SUCCESS ? 'bg-green-100' :
                 type === State.ERROR ? 'bg-red-100' :
                     'bg-blue-100'
                 }`}>
@@ -56,10 +59,12 @@ export const Modal: React.FC<ModalProps> = ({
                 </button>
             )}
         </div>
-    </div>
-);
+        </div>
+    );
 
-import React, { useState, useEffect } from 'react';
+    if (typeof document === 'undefined') return modalContent;
+    return createPortal(modalContent, document.body);
+};
 
 export interface ModalInvoice {
     id: string;
@@ -159,7 +164,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                             id="amount"
                             value={amount}
                             onChange={(e) => setAmount(e.target.value)}
-                            className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                            className="mt-1 block w-full rounded-sm border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                             required
                         />
                     </div>
@@ -169,7 +174,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                             id="method"
                             value={method}
                             onChange={(e) => setMethod(e.target.value)}
-                            className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                            className="mt-1 block w-full rounded-sm border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                         >
                             <option value="cash">Cash</option>
                             <option value="upi">UPI</option>
@@ -185,7 +190,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                                     type="text"
                                     value={chequeNumber}
                                     onChange={(e) => setChequeNumber(e.target.value)}
-                                    className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                    className="mt-1 block w-full rounded-sm border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                                     placeholder="Enter cheque number"
                                     required
                                 />
@@ -196,7 +201,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                                     type="date"
                                     value={chequeDate}
                                     onChange={(e) => setChequeDate(e.target.value)}
-                                    className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                    className="mt-1 block w-full rounded-sm border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                                     required
                                 />
                             </div>
@@ -204,8 +209,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                     )}
                     {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
                     <div className="flex justify-end gap-3">
-                        <button type="button" onClick={onClose} className="px-4 py-2 rounded-md bg-slate-200 text-slate-800 hover:bg-slate-300">Cancel</button>
-                        <button type="submit" disabled={isSubmitting} className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                        <button type="button" onClick={onClose} className="px-4 py-2 rounded-sm bg-slate-200 text-slate-800 hover:bg-slate-300">Cancel</button>
+                        <button type="submit" disabled={isSubmitting} className="px-4 py-2 rounded-sm bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
                         >
                             {isSubmitting ? 'Processing...' : 'Submit Payment'}
                         </button>

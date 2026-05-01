@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from "framer-motion";
 import { ACTION } from '../enums/action.enum'
-import { useLocation } from 'react-router-dom';
+import { useLocation, Link } from 'react-router-dom';
 import { db } from '../lib/Firebase';
 import QRCode from 'react-qr-code';
 import SearchableItemInput from '../UseComponents/SearchIteminput';
@@ -10,6 +10,7 @@ import { ROUTES } from '../../src/constants/routes.constants';
 import { GenericCartList } from '../Components/CartItem';
 import { ItemEditDrawer } from '../Components/ItemDrawer';
 import { useDatabase } from '../context/auth-context';
+import ShinyText from '../Components/ShinyText';
 import {
     collection,
     query,
@@ -22,7 +23,9 @@ import {
     deleteDoc,
     orderBy,
     where,
-    serverTimestamp
+    serverTimestamp,
+    increment as firebaseIncrement,
+    setDoc
 } from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
 //import CataShowWrapper from '../context/CataShowWrapper';
@@ -213,6 +216,7 @@ export const useOrdersData = (
                                 const finalPrice =
                                     i.customPrice ??
                                     (salesPrice > 0 ? salesPrice : mrp);
+                               // console.log("Item:", i.name, "MOQ :", i.moq);
 
                                 return {
                                     id: i.id,
@@ -302,6 +306,57 @@ const getDateRange = (
 };
 
 
+
+export const useLiveMoqMapHook = (
+    companyId: string | undefined,
+    editingOrder: Order | null
+): Record<string, number> => {
+    const [moqMap, setMoqMap] = useState<Record<string, number>>({});
+
+    useEffect(() => {
+        if (!companyId || !editingOrder?.items?.length) {
+            setMoqMap({});
+            return;
+        }
+
+        let cancelled = false;
+
+        const fetchMoqs = async () => {
+            const entries: [string, number][] = await Promise.all(
+                editingOrder.items!.map(async (item): Promise<[string, number]> => {
+                    const itemId = item.itemId || item.id;
+                    if (!itemId) return [item.id, 0];
+
+                    try {
+                        const itemSnap = await getDoc(
+                            doc(db, 'companies', companyId, 'items', itemId)
+                        );
+
+                        if (itemSnap.exists()) {
+                            const data = itemSnap.data();
+                            console.log(
+                                `[MOQ] item "${item.name}" (${itemId}) → moq from DB: ${data.moq}`
+                            );
+                            return [item.id, Number(data.moq ?? 0)];
+                        }
+                    } catch (err) {
+                        console.warn(`[MOQ] fetch failed for ${itemId}:`, err);
+                    }
+
+                    return [item.id, 0];
+                })
+            );
+
+            if (!cancelled) setMoqMap(Object.fromEntries(entries));
+        };
+
+        fetchMoqs();
+        return () => { cancelled = true; };
+    }, [companyId, editingOrder?.id]);
+
+    return moqMap;
+};
+
 const OrdersPage: React.FC = () => {
 
     // AUDIO REF
@@ -335,6 +390,8 @@ const OrdersPage: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'billing' | 'shipping'>('billing');
     const [paymentFilter, setPaymentFilter] = useState<'paid' | 'unpaid'>('unpaid');
     const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+    const [pendingAdjustment, setPendingAdjustment] = useState<{ amount: number } | null>(null);
+    const [showAdjustmentPopup, setShowAdjustmentPopup] = useState(false);
     const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
     const [showQrModal, setShowQrModal] = useState<Order | null>(null);
     const [enableItemWiseDiscount, setEnableItemWiseDiscount] = useState(false);
@@ -365,6 +422,29 @@ const OrdersPage: React.FC = () => {
     // const [pendingRequestCount, setPendingRequestCount] = useState(0);
 
     const { currentUser } = useAuth();
+
+    // ── Subscription badge ────────────────────────────────────────────────────
+  const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
+
+  useEffect(() => {
+    const fetchExpiry = async () => {
+      if (!currentUser?.companyId) return;
+      const ref = doc(db, 'companies', currentUser.companyId);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const expiry = snap.data().expiryDate;
+        if (!expiry) return;
+        const d = expiry.toDate ? expiry.toDate() : new Date(expiry);
+        setDaysRemaining(Math.ceil((d.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)));
+      }
+    };
+    fetchExpiry();
+  }, [currentUser?.companyId]);
+
+  const showBadge = daysRemaining !== null && daysRemaining <= 7 && daysRemaining >= 0;
+  const isUrgent = daysRemaining !== null && daysRemaining <= 2;
+
+    const liveMoqMap = useLiveMoqMapHook(currentUser?.companyId, editingOrder);
     const { Orders, loading: dataLoading, error } = useOrdersData(
         currentUser?.companyId,
         dateRange.start,
@@ -495,40 +575,32 @@ const OrdersPage: React.FC = () => {
     };
 
     const mappedOrderItems = (editingOrder?.items || []).map((item) => {
-        const mrp = Number(item.mrp || 0);
-        const salePrice = Number(item.salesPrice || 0);
-        let discount = Number(item.discount || 0);
-        let netPrice = Number(item.customPrice ?? 0);
+        const mrp        = Number(item.mrp || 0);
+        const salePrice  = Number(item.salesPrice || 0);
+        let   discount   = Number(item.discount || 0);
+        let   netPrice   = Number(item.customPrice ?? 0);
 
-        // Case 1: Agar custom price manually set hai
+        const liveMoq = liveMoqMap[item.id] ?? Number(item.moq ?? 0);
+
         if (netPrice > 0) {
-            discount = mrp > 0
-                ? ((mrp - netPrice) / mrp) * 100
-                : 0;
-        }
-        // Case 2: Agar sale price diya hai par discount nahi hai
-        else if (salePrice > 0 && discount === 0) {
+            discount = mrp > 0 ? ((mrp - netPrice) / mrp) * 100 : 0;
+        } else if (salePrice > 0 && discount === 0) {
             netPrice = salePrice;
-            discount = mrp > 0
-                ? ((mrp - salePrice) / mrp) * 100
-                : 0;
-        }
-        // Case 3: Agar discount diya hai par sale price nahi hai
-        else if (discount > 0 && mrp > 0) {
+            discount = mrp > 0 ? ((mrp - salePrice) / mrp) * 100 : 0;
+        } else if (discount > 0 && mrp > 0) {
             netPrice = mrp * (1 - discount / 100);
-        }
-        // Case 4: Default fallback
-        else {
+        } else {
             netPrice = salePrice > 0 ? salePrice : mrp;
         }
 
         return {
             ...item,
-            productId: item.itemId || item.id,
-            isEditable: true,
-            discount: Number(discount.toFixed(2)),
-            customPrice: Number(netPrice.toFixed(2)),
-            unitMultiplier: 1, // MOQ-based quantity ke liye
+            productId:      item.itemId || item.id,
+            isEditable:     true,
+            discount:       Number(discount.toFixed(2)),
+            customPrice:    Number(netPrice.toFixed(2)),
+            unitMultiplier: Number(item.unitMultiplier || 1),
+            moq:            liveMoq,
         };
     });
 
@@ -538,12 +610,12 @@ const OrdersPage: React.FC = () => {
         const updatedItems = editingOrder.items?.map((item) => {
             if (item.id !== id) return item;
 
-            const moq = Number(item.moq && item.moq > 0 ? item.moq : 1);
+            const moq = Number(item.moq ?? 0);
+            const minQty = moq > 0 ? moq : 1;
+
             let qty = Number(newQuantity);
 
-            if (isNaN(qty) || qty < moq) {
-                qty = moq;
-            }
+            if (isNaN(qty) || qty < minQty) qty = minQty;
 
             return {
                 ...item,
@@ -1172,6 +1244,107 @@ const OrdersPage: React.FC = () => {
         });
     };
 
+ const handleSaveChanges = async () => {
+  if (!editingOrder || !currentUser?.companyId) return;
+
+  try {
+    const companyId = currentUser.companyId;
+    const originalOrder = Orders.find(o => o.id === editingOrder.id);
+
+    const originalTotal = Number(originalOrder?.totalAmount || 0);
+    const newTotal = Number(calculatedEditTotal || 0);
+    const netDiff = newTotal - originalTotal;
+
+    // ── Stock delta calculation (same logic as EditOrderModal) ──────────
+    const oldQuantities = new Map<string, number>();
+    (originalOrder?.items || []).forEach((oldItem: any) => {
+      const pid = oldItem.itemId || oldItem.id;
+      const qty = Number(oldItem.quantity || 0) * Number(oldItem.unitMultiplier || 1);
+      oldQuantities.set(pid, (oldQuantities.get(pid) || 0) + qty);
+    });
+
+    const newQuantities = new Map<string, number>();
+    (editingOrder.items || []).forEach((item: any) => {
+      const pid = item.itemId || item.id;
+      if (pid) {
+        const qty = Number(item.quantity || 0) * Number(item.unitMultiplier || 1);
+        newQuantities.set(pid, (newQuantities.get(pid) || 0) + qty);
+      }
+    });
+
+    const allPids = new Set([...oldQuantities.keys(), ...newQuantities.keys()]);
+
+    // ── Helper: build the Firestore update payload ──────────────────────
+    const buildUpdatePayload = (extraFields: Record<string, any> = {}) => ({
+      items: editingOrder.items,
+      totalAmount: newTotal,
+      billingDetails: editingOrder.billingDetails,
+      shippingDetails: editingOrder.shippingDetails,
+      updatedAt: serverTimestamp(),
+      ...extraFields,
+    });
+
+    // ── Helper: resolve status after amount change ──────────────────────
+    const resolveStatus = () => {
+      const paidAmt = Number(editingOrder.paidAmount || 0);
+      let status = editingOrder.status;
+      if (status === 'Paid' && newTotal > paidAmt) status = 'Completed';
+      else if (status === 'Completed' && newTotal <= paidAmt && newTotal > 0) status = 'Paid';
+      return status;
+    };
+
+    // ── Stock updates (runs for all cases) ─────────────────────────────
+    const stockUpdatePromises: Promise<void>[] = [];
+    allPids.forEach(pid => {
+      const diff = (newQuantities.get(pid) || 0) - (oldQuantities.get(pid) || 0);
+      if (diff !== 0) {
+        const itemRef = doc(db, 'companies', companyId, 'items', pid);
+        stockUpdatePromises.push(
+          updateDoc(itemRef, {
+            stock: firebaseIncrement(-diff), // sold more → stock decreases
+            updatedAt: serverTimestamp(),
+          })
+        );
+      }
+    });
+
+    const orderRef = doc(db, 'companies', companyId, 'Orders', editingOrder.id);
+
+    // CASE 1: Amount reduced → show popup (stock still updates)
+    if (netDiff < 0) {
+      await Promise.all(stockUpdatePromises);
+      setPendingAdjustment({ amount: Math.abs(netDiff) });
+      setShowAdjustmentPopup(true);
+      return;
+    }
+
+    // CASE 2: Amount increased
+    if (netDiff > 0) {
+      await Promise.all([
+        ...stockUpdatePromises,
+        updateDoc(orderRef, buildUpdatePayload({
+          status: resolveStatus(),
+          extraDueAmount: netDiff,
+        })),
+      ]);
+      setEditingOrder(null);
+      setModal({ message: `Due Increased: ₹${netDiff.toFixed(2)}`, type: State.SUCCESS });
+      return;
+    }
+
+    // CASE 3: No amount change (items/qty may still have changed)
+    await Promise.all([
+      ...stockUpdatePromises,
+      updateDoc(orderRef, buildUpdatePayload({ status: resolveStatus() })),
+    ]);
+    setEditingOrder(null);
+
+  } catch (error) {
+    console.error('Save error:', error);
+    setModal({ message: 'Failed to save changes.', type: State.ERROR });
+  }
+};
+
     // {
     //     isGeneratingPdf && (
     //         <div className="fixed inset-0 z-[5000] bg-black/40 flex items-center justify-center">
@@ -1185,8 +1358,123 @@ const OrdersPage: React.FC = () => {
     //     )
     // }
 
+    // --- Adjustment Handlers ---
+    const handleCreditNote = async () => {
+      if (!editingOrder || !currentUser?.companyId || !pendingAdjustment) return;
+
+      const totalAmt = Number(editingOrder.totalAmount || 0);
+      const paidAmt = Number(editingOrder.paidAmount || 0);
+
+      let updatedStatus = editingOrder.status;
+
+      if (updatedStatus === 'Paid' && totalAmt > paidAmt) updatedStatus = 'Completed';
+      else if (updatedStatus === 'Completed' && totalAmt <= paidAmt && totalAmt > 0) updatedStatus = 'Paid';
+
+      await updateDoc(
+        doc(db, 'companies', currentUser.companyId, 'Orders', editingOrder.id),
+        {
+          items: editingOrder.items,
+          totalAmount: totalAmt,
+          status: updatedStatus,
+          billingDetails: editingOrder.billingDetails,
+          shippingDetails: editingOrder.shippingDetails,
+          creditNoteAmount: pendingAdjustment.amount,
+          updatedAt: serverTimestamp(),
+        }
+      );
+
+      // --- ADD CREDIT NOTE TO CUSTOMER BALANCE ---
+      try {
+        const normalizePhone = (num: string) =>
+          num.replace(/\D/g, '').slice(-10);
+
+        const rawNumber =
+          editingOrder.userLoginPhone ||
+          editingOrder.billingDetails?.phone ||
+          '';
+
+        const customerIdentifier = normalizePhone(rawNumber);
+
+        if (customerIdentifier) {
+          const customerRef = doc(
+            db,
+            'companies',
+            currentUser.companyId,
+            'customers',
+            customerIdentifier
+          );
+
+          const customerName =
+            editingOrder.userName ||
+            editingOrder.billingDetails?.name ||
+            '';
+
+          await setDoc(
+            customerRef,
+            {
+              number: customerIdentifier,
+              name: customerName,
+              creditBalance: firebaseIncrement(pendingAdjustment.amount),
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+        }
+      } catch (err) {
+        console.error("Failed to update customer credit balance:", err);
+      }
+
+      setShowAdjustmentPopup(false);
+      setPendingAdjustment(null);
+      setEditingOrder(null);
+
+      setModal({
+        message: `Credit Note: ₹${pendingAdjustment.amount.toFixed(2)} added`,
+        type: State.SUCCESS,
+      });
+    };
+
+    const handleRefund = async () => {
+      if (!editingOrder || !currentUser?.companyId || !pendingAdjustment) return;
+
+      const totalAmt = Number(editingOrder.totalAmount || 0);
+      const paidAmt = Number(editingOrder.paidAmount || 0);
+
+      let updatedStatus = editingOrder.status;
+
+      if (updatedStatus === 'Paid' && totalAmt > paidAmt) updatedStatus = 'Completed';
+      else if (updatedStatus === 'Completed' && totalAmt <= paidAmt && totalAmt > 0) updatedStatus = 'Paid';
+
+      await updateDoc(
+        doc(db, 'companies', currentUser.companyId, 'Orders', editingOrder.id),
+        {
+          items: editingOrder.items,
+          totalAmount: totalAmt,
+          status: updatedStatus,
+          billingDetails: editingOrder.billingDetails,
+          shippingDetails: editingOrder.shippingDetails,
+          updatedAt: serverTimestamp(),
+        }
+      );
+
+      setShowAdjustmentPopup(false);
+      setPendingAdjustment(null);
+      setEditingOrder(null);
+
+      setModal({
+        message: `Refund: ₹${pendingAdjustment.amount.toFixed(2)} processed`,
+        type: State.SUCCESS,
+      });
+    };
+
     return (
         <div className="flex min-h-screen w-full flex-col bg-gray-100 mb-10">
+            {showBadge && (
+              <div className={`w-full text-center py-2 text-sm font-bold text-white shadow-sm ${isUrgent ? 'bg-red-300' : 'bg-amber-200'}`}>
+                <ShinyText text={`Subscription expires in ${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'}.`} speed={4} delay={0} color="#030303" shineColor="#faf5f5" spread={100} direction="left" yoyo={false} pauseOnHover={false} disabled={false} />
+                <Link to="/subscription" className="text-black ml-2 underline hover:text-gray-100">Renew Now</Link>
+              </div>
+            )}
             {modal && <Modal message={modal.message} type={modal.type} onClose={() => setModal(null)} />}
 
             {/* --- 5. UPDATED HEADER (No Toggle) --- */}
@@ -1467,7 +1755,7 @@ const OrdersPage: React.FC = () => {
                                                         .map(([method]) => (
                                                             <span
                                                                 key={`exchange-${method}`}
-                                                                className="text-[8px] uppercase font-bold px-2 py-0.5 rounded bg-red-50 text-red-600 border border-red-200"
+                                                                className="text-[8px] uppercase font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100"
                                                             >
                                                                 {method}
                                                             </span>
@@ -1543,9 +1831,7 @@ const OrdersPage: React.FC = () => {
                                                             className="p-2 cursor-pointer"
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                setEditingOrder(Order);
-                                                                setSelectedItemForEdit(item);
-                                                                setIsEditDrawerOpen(true);
+                                                                
                                                             }}
                                                         >
                                                             <div className="flex justify-between items-start -mb-1">
@@ -2285,35 +2571,7 @@ const OrdersPage: React.FC = () => {
                                 Discard
                             </button>
                             <button
-                                onClick={async () => {
-                                    if (!editingOrder || !currentUser?.companyId) return;
-                                    try {
-                                        const totalAmt = Number(editingOrder.totalAmount || 0);
-                                        const paidAmt = Number(editingOrder.paidAmount || 0);
-
-                                        let updatedStatus = editingOrder.status;
-
-                                        if (updatedStatus === 'Paid' && totalAmt > paidAmt) {
-                                            updatedStatus = 'Completed';
-                                        } else if (updatedStatus === 'Completed' && totalAmt <= paidAmt && totalAmt > 0) {
-                                            updatedStatus = 'Paid';
-                                        }
-
-                                        const OrderRef = doc(db, 'companies', currentUser.companyId, 'Orders', editingOrder.id);
-                                        await updateDoc(OrderRef, {
-                                            items: editingOrder.items,
-                                            totalAmount: totalAmt,
-                                            status: updatedStatus,
-                                            billingDetails: editingOrder.billingDetails,
-                                            shippingDetails: editingOrder.shippingDetails,
-                                            updatedAt: serverTimestamp()
-                                        });
-                                        setEditingOrder(null);
-                                    } catch (error) {
-                                        console.error("Error updating Order:", error);
-                                        alert("Failed to save changes.");
-                                    }
-                                }}
+                                onClick={handleSaveChanges}
                                 className="flex-[2] bg-orange-600 text-white py-2.5 rounded-sm text-sm font-black shadow-sm hover:bg-orange-700 transition-colors uppercase"
                             >
                                 SAVE CHANGES
@@ -2322,6 +2580,48 @@ const OrdersPage: React.FC = () => {
                     </div>
                 </div>
             )}
+        {/* Adjustment Popup */}
+        {showAdjustmentPopup && pendingAdjustment && (
+          <div className="fixed inset-0 z-[4000] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <div className="bg-white w-[360px] rounded-sm shadow-xl border border-slate-200 p-5">
+
+              <p className="text-center text-[11px] font-black uppercase tracking-widest text-slate-500">
+                Amount Reduced
+              </p>
+
+              <p className="text-center text-xl font-black text-orange-600 mt-2 mb-5">
+                ₹{pendingAdjustment.amount.toFixed(2)}
+              </p>
+
+              <div className="flex gap-3">
+                <button
+                  className="flex-1 py-2.5 bg-orange-600 text-white text-xs font-black rounded-sm hover:bg-orange-700 transition"
+                  onClick={handleCreditNote}
+                >
+                  Credit Note
+                </button>
+
+                <button
+                  className="flex-1 py-2.5 bg-green-600 text-white text-xs font-black rounded-sm hover:bg-green-700 transition"
+                  onClick={handleRefund}
+                >
+                  Refund
+                </button>
+              </div>
+
+              <button
+                className="mt-4 w-full text-[10px] font-bold text-slate-400 hover:text-slate-700"
+                onClick={() => {
+                  setShowAdjustmentPopup(false);
+                  setPendingAdjustment(null);
+                }}
+              >
+                Cancel
+              </button>
+
+            </div>
+          </div>
+        )}
         </div>
     );
 };

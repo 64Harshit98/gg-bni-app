@@ -13,6 +13,7 @@ import { handleDatePresetChange } from '../../Pages/Reports/PNLReportComponents/
 import FilterSelect from '../../Pages/Reports/SalesReportComponents/FilterSelect';
 import DownloadChoiceModal from '../../Pages/Reports/ItemReportComponents/DownloadChoiceModal';
 import { type CustomerRow } from '../../Pages/Reports/CustomerReportComponents/customerReport.utils';
+type CustomerRowWithCredit = CustomerRow & { creditNote: number };
 import useCustomerReport from '../hooks/useCustomerReport';
 //import CataShowWrapper from '../../context/CataShowWrapper';
 //import { Cata_Permissions } from '../enum/cata_permissions.enum';
@@ -60,8 +61,8 @@ const CatalogueCustomerReport: React.FC = () => {
   const [showSearch, setShowSearch] = useState(false);
 
   /* ---------- CUSTOMER AGGREGATION ---------- */
-  const customerRows: CustomerRow[] = useMemo(() => {
-    const map = new Map<string, CustomerRow>();
+  const customerRows: CustomerRowWithCredit[] = useMemo(() => {
+    const map = new Map<string, CustomerRowWithCredit>();
 
     filteredSales.forEach((sale) => {
       const key = `${sale.partyName}-${sale.partyNumber}`;
@@ -74,13 +75,25 @@ const CatalogueCustomerReport: React.FC = () => {
           totalBills: 0,
           totalSales: 0,
           totalDue: 0,
+          creditNote: 0,
         });
       }
 
       const row = map.get(key)!;
       row.totalBills += 1;
       row.totalSales += sale.totalAmount;
-      row.totalDue += sale.dueAmount || 0;
+
+      const due = sale.dueAmount || 0;
+
+      // normalize due
+      if (due < 0) {
+        row.creditNote += Math.abs(due); // shift negative to credit
+      } else {
+        row.totalDue += due;
+      }
+
+      // existing credit notes
+      row.creditNote += (sale as any).creditNoteAmount || 0;
     });
 
     let result = Array.from(map.values());
@@ -107,7 +120,10 @@ const CatalogueCustomerReport: React.FC = () => {
       0
     );
 
-    const totalDue = customerRows.reduce((sum, c) => sum + c.totalDue, 0);
+    const totalDue = customerRows.reduce(
+    (sum, c) => sum + Math.max(0, c.totalDue),
+    0
+  );
 
     const totalSales = customerRows.reduce(
       (sum, c) => sum + c.totalSales,
@@ -139,11 +155,12 @@ const CatalogueCustomerReport: React.FC = () => {
   };
 
   /* ---------- EXPORT HELPERS ---------- */
-  const prepareExportData = (row: CustomerRow) => ({
+  const prepareExportData = (row: CustomerRowWithCredit) => ({
     customerName: row.customerName,
     totalBills: row.totalBills,
     totalSales: row.totalSales,
     totalDue: row.totalDue,
+    creditNote: row.creditNote || 0,
   });
 
   const downloadAsExcel = () => {
@@ -264,7 +281,7 @@ const CatalogueCustomerReport: React.FC = () => {
       // --- 3. AUTOTABLE GENERATION ---
       autoTable(doc, {
         startY: 38,
-        head: [['CUSTOMER', 'PHONE', 'BILLS', 'SALES (Rs.)', 'DUE (Rs.)']],
+        head: [['CUSTOMER', 'PHONE', 'BILLS', 'SALES (Rs.)', 'DUE (Rs.)', 'CREDIT NOTE (Rs.)']],
         body: customerRows.map((c) => {
           const formattedName = c.customerName
             ? c.customerName.charAt(0).toUpperCase() + c.customerName.slice(1).toLowerCase()
@@ -275,7 +292,8 @@ const CatalogueCustomerReport: React.FC = () => {
             c.customerNumber || 'N/A',
             c.totalBills.toString(),
             c.totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-            c.totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            Math.max(0, c.totalDue).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            (c.creditNote || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
           ];
         }),
         foot: [
@@ -285,6 +303,8 @@ const CatalogueCustomerReport: React.FC = () => {
             metrics.totalBills.toString(),
             metrics.totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
             metrics.totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            customerRows.reduce((sum, c) => sum + (c.creditNote || 0), 0)
+              .toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
           ]
         ],
         theme: 'plain',
@@ -315,10 +335,11 @@ const CatalogueCustomerReport: React.FC = () => {
         },
         columnStyles: {
           0: { halign: 'left', cellWidth: 'auto' },
-          1: { halign: 'center', cellWidth: 35 },
-          2: { halign: 'right', cellWidth: 25 },
-          3: { halign: 'right', cellWidth: 40 },
-          4: { halign: 'right', cellWidth: 40 },
+          1: { halign: 'center', cellWidth: 30 },
+          2: { halign: 'right', cellWidth: 20 },
+          3: { halign: 'right', cellWidth: 30 },
+          4: { halign: 'right', cellWidth: 30 },
+          5: { halign: 'right', cellWidth: 30 },
         },
         // --- 4. CONDITIONAL FORMATTING ---
         didParseCell: function (data) {
@@ -333,7 +354,7 @@ const CatalogueCustomerReport: React.FC = () => {
         },
         // --- 5. PAGINATION FOOTER ---
         didDrawPage: function () {
-          const pageCount = doc.internal.getNumberOfPages();
+          const pageCount = (doc as any).getNumberOfPages() || 0;
           doc.setFontSize(9);
           doc.setTextColor(156, 163, 175); // gray-400
           // Draw page number at the bottom right
@@ -365,7 +386,7 @@ const CatalogueCustomerReport: React.FC = () => {
   };
 
   /* ---------- TABLE COLUMNS ---------- */
-  const tableColumns: TableColumn<CustomerRow>[] = [
+  const tableColumns: TableColumn<CustomerRowWithCredit>[] = [
     {
       header: 'Customer',
       accessor: 'customerName',
@@ -387,8 +408,14 @@ const CatalogueCustomerReport: React.FC = () => {
     },
     {
       header: 'Total Due',
-      accessor: (row) => `₹${row.totalDue.toLocaleString('en-IN')}`,
+      accessor: (row) => `₹${Math.max(0, row.totalDue).toLocaleString('en-IN')}`,
       sortKey: 'totalDue',
+      className: 'text-right',
+    },
+    {
+      header: 'Credit Note',
+      accessor: (row) => `₹${(row.creditNote || 0).toLocaleString('en-IN')}`,
+      sortKey: 'creditNote',
       className: 'text-right',
     },
   ];
@@ -579,7 +606,7 @@ const CatalogueCustomerReport: React.FC = () => {
       </div>
 
       {isListVisible && (
-        <CustomTable<CustomerRow>
+        <CustomTable<CustomerRowWithCredit>
           data={customerRows}
           columns={tableColumns}
           keyExtractor={(row) => row.id}

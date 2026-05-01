@@ -269,7 +269,7 @@ const CatalogueBillSettings: React.FC = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 min-w-0">
                                 <div className="md:col-span-2">
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                        Company Name
+                                        COMPANY NAME
                                     </label>
                                     <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium">
                                         {businessInfo.companyName}
@@ -277,9 +277,9 @@ const CatalogueBillSettings: React.FC = () => {
                                 </div>
                                 <div className="md:col-span-2">
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                        Registered Address
+                                        REGISTERED ADDRESS
                                     </label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800">
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium">
                                         {businessInfo.address}
                                     </div>
                                 </div>
@@ -290,17 +290,17 @@ const CatalogueBillSettings: React.FC = () => {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                    Phone
+                                    PHONE
                                 </label>
-                                <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800">
+                                <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium">
                                     {businessInfo.phone}
                                 </div>
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                    Email
+                                    EMAIL
                                 </label>
-                                <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800">
+                                <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium">
                                     {businessInfo.email}
                                 </div>
                             </div>
@@ -311,14 +311,14 @@ const CatalogueBillSettings: React.FC = () => {
                         {/* Tax & Registration */}
                         <div>
                             <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3">
-                                Tax & Registration
+                                TAX & REGISTRATION
                             </p>
                             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
                                         GSTIN
                                     </label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm font-mono text-sm tracking-wide text-gray-800">
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate">
                                         {businessInfo.gstin || (
                                             <span className="text-gray-400">Not set</span>
                                         )}
@@ -326,9 +326,9 @@ const CatalogueBillSettings: React.FC = () => {
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                        PAN Number
+                                        PAN NUMBER
                                     </label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm font-mono text-sm tracking-wide text-gray-800">
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium">
                                         {businessInfo.panNumber || (
                                             <span className="text-gray-400">Not set</span>
                                         )}
@@ -336,9 +336,9 @@ const CatalogueBillSettings: React.FC = () => {
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                        MSME / Udyam No.
+                                        MSME No.
                                     </label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm font-mono text-sm tracking-wide text-gray-800">
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate">
                                         {businessInfo.msmeNumber || (
                                             <span className="text-gray-400">Not set</span>
                                         )}
@@ -351,24 +351,24 @@ const CatalogueBillSettings: React.FC = () => {
                         {/* Bank Details */}
                         <div>
                             <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3">
-                                Bank Details
+                                BANK DETAILS
                             </p>
                             <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                        Bank Name
+                                        BANK NAME
                                     </label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded- text-gray-800">
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate">
                                         {businessInfo.bankName || (
                                             <span className="text-gray-400">Not set</span>
                                         )}
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="block text-[9.8px] font-bold text-gray-500 uppercase mb-1">
-                                        Account Holder Name
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                        ACC.HOLDER NAME
                                     </label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800">
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate">
                                         {businessInfo.accountHolderName || (
                                             <span className="text-gray-400">Not set</span>
                                         )}
@@ -376,9 +376,9 @@ const CatalogueBillSettings: React.FC = () => {
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                        Account Number
+                                        ACCOUNT NUMBER
                                     </label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm font-mono text-sm tracking-wide text-gray-800">
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate">
                                         {businessInfo.accountNumber || (
                                             <span className="text-gray-400">Not set</span>
                                         )}
@@ -388,7 +388,7 @@ const CatalogueBillSettings: React.FC = () => {
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
                                         IFSC Code
                                     </label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm font-mono text-sm tracking-wide text-gray-800">
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium">
                                         {businessInfo.ifscCode || (
                                             <span className="text-gray-400">Not set</span>
                                         )}

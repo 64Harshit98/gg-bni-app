@@ -212,8 +212,8 @@ const CatalogueItemReport: React.FC = () => {
       // reset styles
       doc.setTextColor(0, 0, 0);
       doc.setFontSize(14);
-      
-  
+
+
       const pageHeight = doc.internal.pageSize.getHeight();
 
       // --- 1. BRAND ACCENT BAR ---
@@ -314,7 +314,7 @@ const CatalogueItemReport: React.FC = () => {
         },
         // --- 5. PAGINATION FOOTER ---
         didDrawPage: function () {
-          const pageCount = doc.internal.getNumberOfPages();
+          const pageCount = (doc.internal as any).getNumberOfPages();
           doc.setFontSize(9);
           doc.setTextColor(156, 163, 175); // gray-400
           // Draw page number at the bottom right

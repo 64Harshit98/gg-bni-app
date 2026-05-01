@@ -149,27 +149,27 @@ const PnlReportPage: React.FC = () => {
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
-      
+
       const { totalRevenue, totalCost, grossProfit, grossProfitPercentage } = pnlSummary;
-       try {
-      const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
-      if (base64Logo) {
-        const img = new Image();
-        img.src = base64Logo;
-        await new Promise<void>((resolve) => {
-          img.onload = () => {
-            const logoWidth = 20;
-            const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
-            const logoX = pageWidth - logoWidth - 14;
-            doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
-            resolve();
-          };
-          img.onerror = () => resolve();
-        });
+      try {
+        const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
+        if (base64Logo) {
+          const img = new Image();
+          img.src = base64Logo;
+          await new Promise<void>((resolve) => {
+            img.onload = () => {
+              const logoWidth = 20;
+              const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
+              const logoX = pageWidth - logoWidth - 14;
+              doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
+              resolve();
+            };
+            img.onerror = () => resolve();
+          });
+        }
+      } catch {
+        // Continue without logo
       }
-    } catch {
-      // Continue without logo
-    }
 
       // --- 1. BRAND ACCENT BAR ---
       doc.setFillColor(37, 99, 235); // blue-600
@@ -185,14 +185,14 @@ const PnlReportPage: React.FC = () => {
       doc.setFontSize(10);
       doc.setTextColor(107, 114, 128); // gray-500
       doc.setFont('helvetica', 'normal');
-      
+
       const generationDate = new Date().toLocaleDateString('en-IN', {
         year: 'numeric', month: 'short', day: 'numeric',
       });
-      
+
       const start = appliedFilters?.start ? formatDate(new Date(appliedFilters.start)) : 'All Time';
       const end = appliedFilters?.end ? formatDate(new Date(appliedFilters.end)) : 'All Time';
-      
+
       const subtitleText = `Generated: ${generationDate}   |   Period: ${start} to ${end}`;
       doc.text(subtitleText, 14, 31);
 
@@ -228,8 +228,8 @@ const PnlReportPage: React.FC = () => {
         },
         didParseCell: function (data) {
           // Highlight negative Gross Profit or Margin in red
-          if ((data.row.index === 0 && data.column.index === 3) || 
-              (data.row.index === 1 && data.column.index === 3)) {
+          if ((data.row.index === 0 && data.column.index === 3) ||
+            (data.row.index === 1 && data.column.index === 3)) {
             const rawVal = parseFloat(String(data.cell.raw).replace(/,/g, '').replace('%', ''));
             if (rawVal < 0) {
               data.cell.styles.textColor = [220, 38, 38]; // red-600
@@ -306,7 +306,7 @@ const PnlReportPage: React.FC = () => {
         },
         // --- 6. PAGINATION FOOTER ---
         didDrawPage: function () {
-          const pageCount = doc.internal.getNumberOfPages();
+          const pageCount = (doc.internal as any).getNumberOfPages();
           doc.setFontSize(9);
           doc.setTextColor(156, 163, 175); // gray-400
           doc.text(

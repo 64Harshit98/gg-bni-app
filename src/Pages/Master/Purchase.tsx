@@ -13,7 +13,7 @@ import SearchableItemInput from '../../UseComponents/SearchIteminput';
 import { CustomButton } from '../../Components';
 import { incrementPurchaseCounter, peekNextPurchaseNumber } from '../../UseComponents/InvoiceCounter';
 import { Spinner } from '../../constants/Spinner';
-import { FiTrash2, FiEdit, FiCamera, FiX } from 'react-icons/fi';
+import { FiTrash2, FiEdit, FiCamera, FiX, FiChevronDown } from 'react-icons/fi';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
 import { usePurchaseSettings } from '../../context/SettingsContext';
 import { GenericCartList } from '../../Components/CartItem';
@@ -34,6 +34,7 @@ interface PurchaseItem extends Omit<SalesItem, 'finalPrice' | 'effectiveUnitPric
   customPrice?: number | string;
   isEditable?: boolean;
   unitMultiplier?: number;
+  unit?: string;
 }
 
 interface PurchaseDocumentData {
@@ -204,6 +205,7 @@ const PurchasePage: React.FC = () => {
                 // FIX: Force a brand new unique ID for React list rendering
                 id: crypto.randomUUID(),
                 name: item.name || 'Unknown Item',
+                unit: item.unit || masterItem?.unit || '',
                 purchasePrice: item.purchasePrice || 0,
                 originalPurchasePrice: masterItem?.purchasePrice || 0,
                 quantity: item.quantity || 1,
@@ -280,15 +282,24 @@ const PurchasePage: React.FC = () => {
       if (mrp > 0) {
         calculatedDiscount = ((mrp - masterPurchasePrice) / mrp) * 100;
       }
-    } else if (masterPurchaseDiscount > 0) {
-      // Priority 2: Master Purchase Discount exists
+    } else if (mrp > 0) {
+      finalNetPrice = mrp;
+      calculatedDiscount = 0;
+      if (masterPurchaseDiscount > 0) {
+        // Priority 2: Master Purchase Discount exists
+        calculatedDiscount = masterPurchaseDiscount;
+        finalNetPrice = mrp * (1 - (masterPurchaseDiscount / 100));
+      } else if (globalDefaultDiscount > 0) {
+        // Priority 3: Global Default Discount exists
+        calculatedDiscount = globalDefaultDiscount;
+        finalNetPrice = mrp * (1 - (globalDefaultDiscount / 100));
+      }
+    }
+    else if (masterPurchaseDiscount > 0) {
       calculatedDiscount = masterPurchaseDiscount;
-      finalNetPrice = mrp * (1 - (masterPurchaseDiscount / 100));
-    } else if (globalDefaultDiscount > 0 && mrp > 0) {
-      // Priority 3: Global Default Discount exists
-      calculatedDiscount = globalDefaultDiscount;
-      finalNetPrice = mrp * (1 - (globalDefaultDiscount / 100));
-    } else {
+      finalNetPrice = 0; // No base price to calculate from
+    }
+    else {
       // Priority 4: No price, no purchase discount -> 0
       finalNetPrice = 0;
       calculatedDiscount = 0;
@@ -298,6 +309,7 @@ const PurchasePage: React.FC = () => {
       id: crypto.randomUUID(),
       productId: itemToAdd.id!,
       name: itemToAdd.name || 'Unnamed Item',
+      unit: itemToAdd.unit || '',
       purchasePrice: finalNetPrice,
       originalPurchasePrice: masterPurchasePrice,
       mrp: mrp,
@@ -388,12 +400,12 @@ const PurchasePage: React.FC = () => {
   };
 
   const categories = useMemo(() => {
-    const groups = new Set(availableItems.map(i => i.itemGroupId || 'Others'));
+    const groups = new Set(availableItems.map(i => i.itemGroupId || 'uncategorized'));
     return ['All', ...Array.from(groups).sort()];
   }, [availableItems]);
   const sortedGridItems = useMemo(() => {
     const filtered = availableItems.filter(item => {
-      const itemGroupId = item.itemGroupId || 'Others';
+      const itemGroupId = item.itemGroupId || 'uncategorized';
       const matchesCategory = selectedCategory === 'All' || itemGroupId === selectedCategory;
       const matchesSearch = gridSearchQuery === '' ||
         item.name.toLowerCase().includes(gridSearchQuery.toLowerCase()) ||
@@ -832,17 +844,74 @@ const PurchasePage: React.FC = () => {
   const handleOpenEditDrawer = (item: Item) => { setSelectedItemForEdit(item); setIsItemDrawerOpen(true); };
   const handleCloseEditDrawer = () => { setIsItemDrawerOpen(false); setTimeout(() => setSelectedItemForEdit(null), 300); };
   const handleSaveSuccess = (updatedItemData: Partial<Item>) => {
+    // 1. Update the master available items list
     setAvailableItems(prevItems => prevItems.map(item =>
       item.id === selectedItemForEdit?.id ? { ...item, ...updatedItemData, id: item.id } as Item : item
     ));
-    const updateForCart: Partial<PurchaseItem> & { stock?: number } = { ...updatedItemData };
-    if ((updateForCart as any).Stock !== undefined) { updateForCart.stock = (updateForCart as any).Stock; delete (updateForCart as any).Stock; }
-    Object.keys(updateForCart).forEach(key => { if (updateForCart[key as keyof typeof updateForCart] === undefined) delete updateForCart[key as keyof typeof updateForCart]; });
+
+    // 2. Re-run addItemToCart pricing logic for cart items linked to this product
+    const editedProductId = selectedItemForEdit?.id;
+    if (!editedProductId) return;
+
     setItems(prevCartItems => prevCartItems.map(cartItem => {
-      if (cartItem.productId === selectedItemForEdit?.id) {
-        return { ...cartItem, ...updateForCart, id: cartItem.id };
+      if (cartItem.productId !== editedProductId) return cartItem;
+
+      // Build a merged "master item" with the freshly saved fields
+      const mergedMaster = {
+        ...selectedItemForEdit,
+        ...updatedItemData,
+        id: editedProductId,
+      } as Item;
+
+      const resolvedTax = mergedMaster.tax ?? mergedMaster.taxRate ?? 0;
+      const mrp = Number(mergedMaster.mrp || 0);
+      const masterPurchasePrice = Number(mergedMaster.purchasePrice || 0);
+      const masterPurchaseDiscount = (mergedMaster as any).purchasediscount || 0;
+      const globalDefaultDiscount = purchaseSettings?.defaultDiscount ?? 0;
+
+      let finalNetPrice = 0;
+      let calculatedDiscount = 0;
+
+      if (masterPurchasePrice > 0) {
+        finalNetPrice = masterPurchasePrice;
+        if (mrp > 0) {
+          calculatedDiscount = ((mrp - masterPurchasePrice) / mrp) * 100;
+        }
+      } else if (mrp > 0) {
+        finalNetPrice = mrp;
+        calculatedDiscount = 0;
+        if (masterPurchaseDiscount > 0) {
+          calculatedDiscount = masterPurchaseDiscount;
+          finalNetPrice = mrp * (1 - (masterPurchaseDiscount / 100));
+        } else if (globalDefaultDiscount > 0) {
+          calculatedDiscount = globalDefaultDiscount;
+          finalNetPrice = mrp * (1 - (globalDefaultDiscount / 100));
+        }
+      } else if (masterPurchaseDiscount > 0) {
+        calculatedDiscount = masterPurchaseDiscount;
+        finalNetPrice = 0;
       }
-      return cartItem;
+
+      const stock = (updatedItemData as any).stock ?? (updatedItemData as any).Stock ?? cartItem.stock;
+
+      return {
+        ...cartItem,
+        name: mergedMaster.name || cartItem.name,
+        mrp,
+        purchasePrice: parseFloat(finalNetPrice.toFixed(2)),
+        originalPurchasePrice: masterPurchasePrice,
+        discount: parseFloat(calculatedDiscount.toFixed(2)),
+        purchasediscount: parseFloat(calculatedDiscount.toFixed(2)),
+        taxRate: resolvedTax,
+        barcode: mergedMaster.barcode || cartItem.barcode,
+        stock,
+        // preserve cart-specific fields
+        id: cartItem.id,
+        productId: cartItem.productId,
+        quantity: cartItem.quantity,
+        unitMultiplier: cartItem.unitMultiplier,
+        isEditable: cartItem.isEditable,
+      };
     }));
   };
 
@@ -853,6 +922,52 @@ const PurchasePage: React.FC = () => {
   const displayTaxTotal = showTaxToggle && billTaxType !== 'none';
   const isCardView = purchaseSettings?.purchaseViewType === 'card';
   const isCardImageView = isCardView && (purchaseSettings?.cardViewWithPhoto !== false);
+
+  const renderTaxToggle = () => {
+    return (
+      <>
+        {/* MOBILE VIEW */}
+        <div className="flex md:hidden justify-between items-center p-1 bg-white border-b border-gray-200 px-5 rounded-sm">
+          <span className="text-sm font-semibold text-gray-700">Tax Calculation</span>
+          <div className="relative">
+            <select
+              value={billTaxType}
+              onChange={(e) => setBillTaxType(e.target.value as TaxOption)}
+              className="appearance-none border border-gray-300 pr-8 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium transition-all bg-gray-50 hover:border-blue-400 text-gray-700 cursor-pointer"
+            >
+              <option value="exclusive">Tax Exclusive</option>
+              <option value="inclusive">Tax Inclusive</option>
+              <option value="none">Tax Exempt</option>
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
+              <FiChevronDown size={14} />
+            </div>
+          </div>
+        </div>
+
+        {/* DESKTOP VIEW */}
+        <div className="hidden md:flex flex-row items-center justify-between md:flex-col md:items-start gap-2 py-2 bg-white border-b border-gray-200">
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
+            Tax Calculation
+          </span>
+          <div className="relative w-1/2 md:w-full">
+            <select
+              value={billTaxType}
+              onChange={(e) => setBillTaxType(e.target.value as TaxOption)}
+              className="appearance-none w-full bg-white border border-gray-300 px-3 py-2 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium transition-all shadow-sm md:px-4 md:py-2.5 md:text-[15px] md:rounded-sm hover:border-blue-400 text-gray-700 cursor-pointer"
+            >
+              <option value="exclusive">Tax Exclusive</option>
+              <option value="inclusive">Tax Inclusive</option>
+              <option value="none">Tax Exempt</option>
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-gray-400">
+              <FiChevronDown size={14} />
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  };
 
   const renderHeader = () => (
     <div className="flex flex-col md:flex-row md:justify-between md:items-center bg-gray-100 md:bg-white border-b border-gray-200 shadow-sm flex-shrink-0 p-2 md:px-4 md:py-3 mb-2 md:mb-0">
@@ -999,7 +1114,7 @@ const PurchasePage: React.FC = () => {
                         : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'
                       }`}
                   >
-                    {cat === 'All' ? 'All' : itemGroupMap[cat] || 'Others'}
+                    {cat === 'All' ? 'All' : itemGroupMap[cat] || 'uncategorized'}
                   </button>
                 ))}
               </div>
@@ -1059,11 +1174,40 @@ const PurchasePage: React.FC = () => {
                   const lastAddedCartItem = matchingCartItems[matchingCartItems.length - 1];
                   const isSelected = matchingCartItems.length > 0;
                   const quantity = lastAddedCartItem?.quantity || 0;
-                  const cp = lastAddedCartItem?.purchasePrice ?? item.purchasePrice ?? item.mrp ?? 0;
                   const mrp = item.mrp || 0;
-                  const lineSubtotal = Math.round((Number(cp) * quantity) * 100) / 100;
-                  const discPct = mrp > 0 && Number(cp) < mrp ? Math.round(((mrp - Number(cp)) / mrp) * 100) : 0;
+                  const masterPurchasePrice = Number(item.purchasePrice || 0);
+                  const masterPurchaseDiscount = (item as any).purchasediscount || 0;
+                  const globalDefaultDiscount = purchaseSettings?.defaultDiscount ?? 0;
 
+                  let effectiveDisplayPrice = 0;
+                  let effectiveDiscPct = 0;
+
+                  if (lastAddedCartItem) {
+                    effectiveDisplayPrice = Number(lastAddedCartItem.purchasePrice ?? 0);
+                    effectiveDiscPct = mrp > 0 && effectiveDisplayPrice < mrp
+                      ? Math.round(((mrp - effectiveDisplayPrice) / mrp) * 100)
+                      : 0;
+                  } else if (masterPurchasePrice > 0) {
+                    effectiveDisplayPrice = masterPurchasePrice;
+                    effectiveDiscPct = mrp > 0 && masterPurchasePrice < mrp
+                      ? Math.round(((mrp - masterPurchasePrice) / mrp) * 100)
+                      : 0;
+                  } else if (mrp > 0) {
+                    if (masterPurchaseDiscount > 0) {
+                      effectiveDisplayPrice = mrp * (1 - masterPurchaseDiscount / 100);
+                      effectiveDiscPct = masterPurchaseDiscount;
+                    } else if (globalDefaultDiscount > 0) {
+                      effectiveDisplayPrice = mrp * (1 - globalDefaultDiscount / 100);
+                      effectiveDiscPct = globalDefaultDiscount;
+                    } else {
+                      effectiveDisplayPrice = mrp;
+                      effectiveDiscPct = 0;
+                    }
+                  }
+
+                  const cp = effectiveDisplayPrice;
+                  const discPct = effectiveDiscPct;
+                  const lineSubtotal = Math.round((Number(cp) * quantity) * 100) / 100;
 
                   // ── CARD WITH IMAGE ────────────────────────────────────────────────────
                   if (isCardImageView) {
@@ -1076,6 +1220,10 @@ const PurchasePage: React.FC = () => {
                     return (
                       <div
                         key={item.id}
+                        onClick={() => {
+                          if (isSelected) handleQuantityChange(lastAddedCartItem.id, quantity + 1);
+                          else addItemToCart(item);
+                        }}
                         className={`bg-white rounded-sm flex flex-col w-full overflow-visible transition-all duration-200 relative group
         ${isSelected
                             ? 'border-2 border-blue-400 shadow-md ring-1 ring-blue-100'
@@ -1164,6 +1312,11 @@ const PurchasePage: React.FC = () => {
                                   ₹{mrp.toLocaleString('en-IN')}
                                 </span>
                               )}
+                              {item.unit && (
+                                <span className="text-[9px] text-gray-400 font-medium ml-0.5">
+                                  ({item.unit})
+                                </span>
+                              )}
                             </div>
 
                             {/* Subtotal row — only when selected */}
@@ -1220,6 +1373,10 @@ const PurchasePage: React.FC = () => {
                   return (
                     <div
                       key={item.id}
+                      onClick={() => {
+                        if (isSelected) handleQuantityChange(lastAddedCartItem.id, quantity + 1);
+                        else addItemToCart(item);
+                      }}
                       className={`bg-white rounded-sm border flex flex-col overflow-visible transition-all relative
       ${isSelected ? 'border-blue-400 ring-1 ring-blue-100' : 'border-gray-100 hover:shadow-sm'}`}
                       style={{ minHeight: 130 }}
@@ -1271,6 +1428,11 @@ const PurchasePage: React.FC = () => {
                             {discPct > 0 && mrp > 0 && Number(cp) < mrp && (
                               <span className="text-[10px] text-gray-400 line-through">
                                 ₹{mrp.toLocaleString('en-IN')}
+                              </span>
+                            )}
+                            {item.unit && (
+                              <span className="text-[9px] text-gray-400 font-medium ml-0.5">
+                                ({item.unit})
                               </span>
                             )}
                           </div>
@@ -1349,20 +1511,7 @@ const PurchasePage: React.FC = () => {
                 onActionClick={handleProceedToPayment}
                 disableAction={items.length === 0}
               >
-                {showTaxToggle && (
-                  <div className="flex justify-between items-center py-2 bg-transparent border-b border-gray-100 mb-4">
-                    <p className="text-sm font-semibold text-gray-600">Tax Calculation</p>
-                    <select
-                      value={billTaxType}
-                      onChange={(e) => setBillTaxType(e.target.value as TaxOption)}
-                      className="border border-gray-300 rounded-md p-1 text-sm bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium"
-                    >
-                      <option value="exclusive">Tax Exclusive</option>
-                      <option value="inclusive">Tax Inclusive</option>
-                      <option value="exempt">Tax Exempt</option>
-                    </select>
-                  </div>
-                )}
+                {showTaxToggle && renderTaxToggle()}
               </GenericBillFooter>
             </div>
           </div>
@@ -1383,19 +1532,7 @@ const PurchasePage: React.FC = () => {
               onActionClick={handleProceedToPayment}
               disableAction={items.length === 0}
             >
-              {showTaxToggle && (
-                <div className="flex justify-between items-center p-2 bg-white border-b border-gray-200 px-5">
-                  <p className="text-sm font-semibold text-gray-600">Tax Calculation</p>
-                  <select
-                    value={billTaxType}
-                    onChange={(e) => setBillTaxType(e.target.value as TaxOption)}
-                    className="border border-gray-300 rounded-md p-1 text-sm bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium">
-                    <option value="exclusive">Tax Exclusive</option>
-                    <option value="inclusive">Tax Inclusive</option>
-                    <option value="exempt">Tax Exempt</option>
-                  </select>
-                </div>
-              )}
+              {showTaxToggle && renderTaxToggle()}
             </GenericBillFooter>
           </div>
         </div>
@@ -1527,20 +1664,7 @@ const PurchasePage: React.FC = () => {
               onActionClick={handleProceedToPayment}
               disableAction={items.length === 0}
             >
-              {showTaxToggle && (
-                <div className="flex justify-between items-center p-2 bg-white border-b border-gray-200 px-5">
-                  <p className="text-sm font-semibold text-gray-600">Tax Calculation</p>
-                  <select
-                    value={billTaxType}
-                    onChange={(e) => setBillTaxType(e.target.value as TaxOption)}
-                    className="border border-gray-300 rounded-md p-1 text-sm bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium"
-                  >
-                    <option value="exclusive">Tax Exclusive</option>
-                    <option value="inclusive">Tax Inclusive</option>
-                    <option value="none">Tax Exempt</option>
-                  </select>
-                </div>
-              )}
+              {showTaxToggle && renderTaxToggle()}
             </GenericBillFooter>
           </div>
 
@@ -1564,20 +1688,7 @@ const PurchasePage: React.FC = () => {
               onActionClick={handleProceedToPayment}
               disableAction={items.length === 0}
             >
-              {showTaxToggle && (
-                <div className="flex justify-between items-center py-2 bg-transparent border-b border-gray-100 mb-4">
-                  <p className="text-sm font-semibold text-gray-600">Tax Calculation</p>
-                  <select
-                    value={billTaxType}
-                    onChange={(e) => setBillTaxType(e.target.value as TaxOption)}
-                    className="border border-gray-300 rounded-md p-1 text-sm bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 font-medium"
-                  >
-                    <option value="exclusive">Tax Exclusive</option>
-                    <option value="inclusive">Tax Inclusive</option>
-                    <option value="none">Tax Exempt</option>
-                  </select>
-                </div>
-              )}
+              {showTaxToggle && renderTaxToggle()}
             </GenericBillFooter>
           </div>
         </div>

@@ -428,6 +428,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                             className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         >
                                             <option value="" disabled>Select category</option>
+                                            <option value="uncategorized">Uncategorized</option> 
                                             {itemGroups.map((group) => (
                                                 <option key={group.id} value={group.id}>
                                                     {group.name}
@@ -540,6 +541,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                             disabled={isSaving}
                                         >
                                             <option value="" disabled>Select a category</option>
+                                            <option value="uncategorized">Uncategorized</option>   
                                             {itemGroups.map((group) => (
                                                 <option key={group.id} value={group.id}>
                                                     {group.name}

@@ -86,34 +86,39 @@ const BusinessInfoPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [businessName, setBusinessName] = useState('');
-  const [businessType, setBusinessType] = useState('');
-  const [customBusinessType, setCustomBusinessType] = useState('');
-  const [businessCategory, setBusinessCategory] = useState('');
-  const [customBusinessCategory, setCustomBusinessCategory] = useState('');
-  const [gstType, setGstType] = useState('');
-  const [gstin, setGstin] = useState('');
-  const [streetAddress, setStreetAddress] = useState('');
-  const [city, setCity] = useState('');
-  const [state, setState] = useState('');
-  const [postalCode, setPostalCode] = useState('');
 
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState('Creating Account...');
 
+  const [formData, setFormData] = useState({
+    businessName: '',
+    businessType: '',
+    businessCategory: '',
+    customBusinessType: '',
+    customBusinessCategory: '',
+    gstType: '',
+    gstin: '',
+    streetAddress: '',
+    city: '',
+    state: '',
+    postalCode: '',
+  })
+
   const handleClearData = () => {
-    setBusinessName('');
-    setBusinessType('');
-    setCustomBusinessType('');
-    setBusinessCategory('');
-    setCustomBusinessCategory('');
-    setGstType('');
-    setGstin('');
-    setStreetAddress('');
-    setCity('');
-    setState('');
-    setPostalCode('');
+    setFormData({
+      businessName: '',
+      businessType: '',
+      businessCategory: '',
+      customBusinessType: '',
+      customBusinessCategory: '',
+      gstType: '',
+      gstin: '',
+      streetAddress: '',
+      city: '',
+      state: '',
+      postalCode: '',
+    });
     setError(null);
   };
 
@@ -124,41 +129,60 @@ const BusinessInfoPage: React.FC = () => {
     return <Navigate to={ROUTES.SIGNUP} replace />;
   }
 
-  useEffect(() => {
-    if (previousData.businessName) setBusinessName(previousData.businessName);
-    if (previousData.businessType) setBusinessType(previousData.businessType);
-    if (previousData.businessCategory) setBusinessCategory(previousData.businessCategory);
-    if (previousData.gstType) setGstType(previousData.gstType);
-    if (previousData.gstin) setGstin(previousData.gstin);
-    if (previousData.streetAddress) setStreetAddress(previousData.streetAddress);
-    if (previousData.city) setCity(previousData.city);
-    if (previousData.state) setState(previousData.state);
-    if (previousData.postalCode) setPostalCode(previousData.postalCode);
-  }, []);
+const [isHydrated, setIsHydrated] = useState(false);
+
+useEffect(() => {
+  const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+  if (saved) {
+    setFormData(JSON.parse(saved));
+  }
+  setIsHydrated(true);
+}, []);
 
   const validateForm = (): boolean => {
-    const finalBusinessType = businessType === 'Other' ? customBusinessType : businessType;
-    const finalBusinessCategory = businessCategory === 'Other' ? customBusinessCategory : businessCategory;
+    const finalBusinessType = formData.businessType === 'Other' ? formData.customBusinessType : formData.businessType;
+    const finalBusinessCategory = formData.businessCategory === 'Other' ? formData.customBusinessCategory : formData.businessCategory;
 
-    if (!businessName.trim() || !finalBusinessType.trim() || !finalBusinessCategory.trim() ||
-      !streetAddress.trim() || !city.trim() || !state.trim() || !postalCode.trim()) {
+    if (
+      !formData.businessName.trim() ||
+      !finalBusinessType.trim() ||
+      !finalBusinessCategory.trim() ||
+      !formData.streetAddress.trim() ||
+      !formData.city.trim() ||
+      !formData.state.trim() ||
+      !formData.postalCode.trim()
+    ) {
       setError('Please fill out all required fields.');
       return false;
     }
 
-    if (gstType === 'Regular' || gstType === 'Composite') {
-      if (!gstin.trim() || gstin.length !== 15) {
+    if (formData.gstType === 'Regular' || formData.gstType === 'Composite') {
+      if (!formData.gstin.trim() || formData.gstin.length !== 15) {
         setError('Valid 15-character GSTIN is required.');
         return false;
       }
     }
 
-    if (postalCode.length !== 6) {
+    if (formData.postalCode.length !== 6) {
       setError('Pincode must be exactly 6 digits.');
       return false;
     }
     return true;
   };
+
+  const handleChange = (field: string, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      [field] : value
+    }))
+  }
+  
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(formData));
+  }, [formData, isHydrated]);
+
 
   const handleFinishSetup = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -169,23 +193,23 @@ const BusinessInfoPage: React.FC = () => {
     setIsSubmitting(true);
     setStatusMessage('Configuring Dashboard...');
 
-    const finalBusinessType = businessType === 'Other' ? customBusinessType : businessType;
-    const finalBusinessCategory = businessCategory === 'Other' ? customBusinessCategory : businessCategory;
-    const finalGstin = gstType === 'NA' ? '' : gstin.toUpperCase();
+    const finalBusinessType = formData.businessType === 'Other' ? formData.customBusinessType : formData.businessType;
+    const finalBusinessCategory = formData.businessCategory === 'Other' ? formData.customBusinessCategory : formData.businessCategory;
+    const finalGstin = formData.gstType === 'NA' ? '' : formData.gstin.toUpperCase();
 
     try {
       // 1. Prepare Business Payload
       const businessInfoPayload = {
-        businessName,
+        businessName: formData.businessName,
         businessType: finalBusinessType,
         businessCategory: finalBusinessCategory,
-        gstType,
+        gstType: formData.gstType,
         gstin: finalGstin,
-        streetAddress,
-        city,
-        state,
-        postalCode,
-        fullAddress: `${streetAddress}, ${city}, ${state} - ${postalCode}`,
+        streetAddress: formData.streetAddress,
+        city: formData.city,
+        state: formData.state,
+        postalCode: formData.postalCode,
+        fullAddress: `${formData.streetAddress}, ${formData.city}, ${formData.state} - ${formData.postalCode}`,
         createdAt: new Date(),
       };
 
@@ -199,8 +223,8 @@ const BusinessInfoPage: React.FC = () => {
 
       // 3. Inject Default Sales Settings (Replaces deleted configuration step)
       const salesSettingsPayload = {
-        gstScheme: gstType,
-        taxType: gstType === 'Regular' ? 'exclusive' : 'exclusive',
+        gstScheme: formData.gstType,
+        taxType: formData.gstType === 'Regular' ? 'exclusive' : 'exclusive',
         enableItemWiseDiscount: true,
         allowDueBilling: true,
         requireCustomerName: true,
@@ -276,7 +300,7 @@ return (
       </div>
     </div>
 
-    <div className={`flex-grow px-4 pb-32 ${error ? 'overflow-y-auto' : 'overflow-hidden'}`}>
+    <div className={`flex-grow px-4 pb-32 ${(error || formData.businessType === "Other" || formData.businessCategory === "Other") ? 'overflow-y-auto' : 'overflow-hidden'}`}>
       <div className="flex justify-between items-center mb-3 mt-3">
         <h1 className="text-3xl font-bold">Business Details</h1>
         <button
@@ -300,40 +324,41 @@ return (
               <FloatingLabelInput
                 id="businessName"
                 label="Business Name"
-                value={businessName}
-                onChange={(e) => setBusinessName(e.target.value)}
+                value={formData.businessName}
+                onChange={(e) => handleChange('businessName', e.target.value)
+                }
                 required
                 className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
               />
             </div>
 
-            <div className={`gap-4 ${businessType !== "Other" && businessCategory !== "Other" ? "grid grid-cols-1 md:grid-cols-2" : "flex flex-col"}`}>
+            <div className={`gap-4 ${formData.businessType !== "Other" && formData.businessCategory !== "Other" ? "grid grid-cols-1 md:grid-cols-2" : "flex flex-col"}`}>
               {/* Business Type */}
-              <div className={`${businessType !== "Other" && businessCategory !== "Other" ? "w-full" : ""}`}>
-                {businessType !== "Other" && businessCategory !== "Other" ? (
+              <div className={`${formData.businessType !== "Other" && formData.businessCategory !== "Other" ? "w-full" : ""}`}>
+                {formData.businessType !== "Other" && formData.businessCategory !== "Other" ? (
                   <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
                     <FiHome className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
                     <FloatingLabelSelect
                       id="businessType"
                       label="Business Type"
-                      value={businessType}
-                      onChange={(e) => setBusinessType(e.target.value)}
+                      value={formData.businessType}
+                      onChange={(e) => handleChange('businessType', e.target.value)}
                       options={businessTypeOptions}
                       required
                       className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
                     />
                   </div>
                 ) : (
-                  <div className={`w-full ${businessType === "Other" ? "flex flex-col md:flex-row gap-4" : ""}`}>
-                    {businessType === "Other" ? (
+                  <div className={`w-full ${formData.businessType === "Other" ? "flex flex-col md:flex-row gap-4" : ""}`}>
+                    {formData.businessType === "Other" ? (
                       <>
                         <div className="relative w-full md:w-1/2 [&_label]:!left-[3rem] [&_label]:bg-white">
                           <FiHome className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
                           <FloatingLabelSelect
                             id="businessType"
                             label="Business Type"
-                            value={businessType}
-                            onChange={(e) => setBusinessType(e.target.value)}
+                            value={formData.businessType}
+                            onChange={(e) => handleChange('businessType', e.target.value)}
                             options={businessTypeOptions}
                             required
                             className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
@@ -345,8 +370,8 @@ return (
                           <FloatingLabelInput
                             id="customBusinessType"
                             label="Specify Business Type"
-                            value={customBusinessType}
-                            onChange={(e) => setCustomBusinessType(e.target.value)}
+                            value={formData.customBusinessType}
+                            onChange={(e) => handleChange('customBusinessType', e.target.value)}
                             required
                             className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
                           />
@@ -358,8 +383,8 @@ return (
                         <FloatingLabelSelect
                           id="businessType"
                           label="Business Type"
-                          value={businessType}
-                          onChange={(e) => setBusinessType(e.target.value)}
+                          value={formData.businessType}
+                          onChange={(e) => handleChange('businessType', e.target.value)}
                           options={businessTypeOptions}
                           required
                           className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
@@ -371,15 +396,15 @@ return (
               </div>
 
               {/* Category */}
-              <div className={`${businessType !== "Other" && businessCategory !== "Other" ? "w-full" : "flex flex-col md:flex-row gap-4 w-full"}`}>
-                {businessType !== "Other" && businessCategory !== "Other" ? (
+              <div className={`${formData.businessType !== "Other" && formData.businessCategory !== "Other" ? "w-full" : "flex flex-col md:flex-row gap-4 w-full"}`}>
+                {formData.businessType !== "Other" && formData.businessCategory !== "Other" ? (
                   <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
                     <FiTag className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
                     <FloatingLabelSelect
                       id="businessCategory"
                       label="Category"
-                      value={businessCategory}
-                      onChange={(e) => setBusinessCategory(e.target.value)}
+                      value={formData.businessCategory}
+                      onChange={(e) => handleChange('businessCategory', e.target.value)}
                       options={businessCategoryOptions}
                       required
                       className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
@@ -387,26 +412,26 @@ return (
                   </div>
                 ) : (
                   <div className="flex flex-col md:flex-row gap-4 w-full">
-                    <div className={`relative [&_label]:!left-[3rem] [&_label]:bg-white ${businessCategory === "Other" ? "w-full md:w-1/2" : "flex-1"}`}>
+                    <div className={`relative [&_label]:!left-[3rem] [&_label]:bg-white ${formData.businessCategory === "Other" ? "w-full md:w-1/2" : "flex-1"}`}>
                       <FiTag className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
                       <FloatingLabelSelect
                         id="businessCategory"
                         label="Category"
-                        value={businessCategory}
-                        onChange={(e) => setBusinessCategory(e.target.value)}
+                        value={formData.businessCategory}
+                        onChange={(e) => handleChange('businessCategory', e.target.value)}
                         options={businessCategoryOptions}
                         required
                         className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
                       />
                     </div>
-                    {businessCategory === "Other" && (
+                    {formData.businessCategory === "Other" && (
                       <div className="relative w-full md:w-1/2 [&_label]:!left-[3rem] [&_label]:bg-white">
                         <FiTag className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
                         <FloatingLabelInput
                           id="customBusinessCategory"
                           label="Specify Category"
-                          value={customBusinessCategory}
-                          onChange={(e) => setCustomBusinessCategory(e.target.value)}
+                          value={formData.customBusinessCategory}
+                          onChange={(e) => handleChange('customBusinessCategory', e.target.value)}
                           required
                           className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
                         />
@@ -423,8 +448,8 @@ return (
               <FloatingLabelSelect
                 id="gstType"
                 label="GST Registration Type"
-                value={gstType}
-                onChange={(e) => setGstType(e.target.value)}
+                value={formData.gstType}
+                onChange={(e) => handleChange('gstType', e.target.value)}
                 options={gstTypeOptions}
                 required
                 className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
@@ -436,14 +461,14 @@ return (
               <FloatingLabelInput
                 id="gstin"
                 label="GSTIN Number"
-                value={gstin}
+                value={formData.gstin}
                 onChange={(e) => {
-                  if (e.target.value.length <= 15) setGstin(e.target.value.toUpperCase());
+                  if (e.target.value.length <= 15) handleChange('gstin', e.target.value.toUpperCase());
                 }}
-                required={gstType === "Regular" || gstType === "Composite"}
-                disabled={gstType === "NA"}
+                required={formData.gstType === "Regular" || formData.gstType === "Composite"}
+                disabled={formData.gstType === "NA"}
                 className={`pl-12 py-2.5 border border-[#7D7777A3] shadow-sm bg-white ${
-                  gstType === "NA" ? "cursor-not-allowed" : ""
+                  formData.gstType === "NA" ? "cursor-not-allowed" : ""
                 }`}
               />
             </div>
@@ -454,8 +479,8 @@ return (
             <FloatingLabelInput
               id="streetAddress"
               label="Street Address / Area"
-              value={streetAddress}
-              onChange={(e) => setStreetAddress(e.target.value)}
+              value={formData.streetAddress}
+              onChange={(e) => handleChange('streetAddress', e.target.value)}
               required
               className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
             />
@@ -467,8 +492,8 @@ return (
               <FloatingLabelInput
                 id="city"
                 label="City"
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
+                value={formData.city}
+                onChange={(e) => handleChange('city', e.target.value)}
                 required
                 className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
               />
@@ -479,9 +504,9 @@ return (
                 id="postalCode"
                 label="Pincode"
                 type="number"
-                value={postalCode}
+                value={formData.postalCode}
                 onChange={(e) => {
-                  if (e.target.value.length <= 6) setPostalCode(e.target.value);
+                  if (e.target.value.length <= 6) handleChange('postalCode', e.target.value);
                 }}
                 required
                 className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
@@ -494,8 +519,8 @@ return (
             <FloatingLabelSelect
               id="state"
               label="State"
-              value={state}
-              onChange={(e) => setState(e.target.value)}
+              value={formData.state}
+              onChange={(e) => handleChange('state', e.target.value)}
               options={indianStates}
               required
               className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"

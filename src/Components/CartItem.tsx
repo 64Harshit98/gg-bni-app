@@ -282,9 +282,15 @@ export const GenericCartList = <T extends CartItem>({
                     <button
                       onClick={() => {
                         const step = item.unitMultiplier || 1;
-                        onQuantityChange(item.id, Math.max(step, (item.quantity || step) - step));
+                        const moq = Number(item.moq ?? 0);
+                        console.log(moq)
+                        const minQty = moq > 0 ? moq : step;
+                        onQuantityChange(item.id, Math.max(minQty, (item.quantity || minQty) - step));
                       }}
-                      disabled={item.quantity <= (item.unitMultiplier || 1) || !item.isEditable}
+                      disabled={
+                        item.quantity <= (Number(item.moq ?? 0) > 0 ? Number(item.moq) : (item.unitMultiplier || 1))
+                        || !item.isEditable
+                      }
                       className="px-2 text-gray-600 hover:bg-gray-100 disabled:text-gray-300 disabled:cursor-not-allowed text-lg leading-none flex items-center justify-center h-full w-8 border-r border-slate-300"
                     >−</button>
                     <div className="flex-1 h-full flex items-center justify-center">
@@ -296,8 +302,10 @@ export const GenericCartList = <T extends CartItem>({
                         }}
                         onBlur={() => {
                           const step = item.unitMultiplier || 1;
-                          if (!item.quantity || item.quantity < step) {
-                            onQuantityChange(item.id, step);
+                          const moq = Number(item.moq ?? 0);
+                          const minQty = moq > 0 ? moq : step;
+                          if (!item.quantity || item.quantity < minQty) {
+                            onQuantityChange(item.id, minQty);
                           }
                         }}
                         locked={!item.isEditable}
@@ -426,9 +434,14 @@ export const GenericCartList = <T extends CartItem>({
                   <button
                     onClick={() => {
                       const step = item.unitMultiplier || 1;
-                      onQuantityChange(item.id, Math.max(step, (item.quantity || step) - step));
+                      const moq = Number(item.moq ?? 0);
+                      const minQty = moq > 0 ? moq : step;
+                      onQuantityChange(item.id, Math.max(minQty, (item.quantity || minQty) - step));
                     }}
-                    disabled={item.quantity <= (item.unitMultiplier || 1) || !item.isEditable}
+                    disabled={
+                      item.quantity <= (Number(item.moq ?? 0) > 0 ? Number(item.moq) : (item.unitMultiplier || 1))
+                      || !item.isEditable
+                    }
                     className="px-2 text-gray-600 hover:bg-gray-100 disabled:text-gray-300 disabled:cursor-not-allowed text-lg leading-none flex items-center justify-center h-full w-8 border-r border-slate-300"
                   >−</button>
                   <div className="flex-1 h-full flex items-center justify-center">
@@ -440,8 +453,10 @@ export const GenericCartList = <T extends CartItem>({
                       }}
                       onBlur={() => {
                         const step = item.unitMultiplier || 1;
-                        if (!item.quantity || item.quantity < step) {
-                          onQuantityChange(item.id, step);
+                        const moq = Number(item.moq ?? 0);
+                        const minQty = moq > 0 ? moq : step;
+                        if (!item.quantity || item.quantity < minQty) {
+                          onQuantityChange(item.id, minQty);
                         }
                       }}
                       locked={!item.isEditable}

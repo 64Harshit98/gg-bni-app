@@ -256,7 +256,7 @@ const BillSettings: React.FC = () => {
                                 </div>
                                 <div className="md:col-span-2">
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Registered Address</label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800">
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium">
                                         {businessInfo.address}
                                     </div>
                                 </div>
@@ -267,13 +267,13 @@ const BillSettings: React.FC = () => {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Phone</label>
-                                <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800">
+                                <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium">
                                     {businessInfo.phone}
                                 </div>
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email</label>
-                                <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800">
+                                <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium">
                                     {businessInfo.email}
                                 </div>
                             </div>
@@ -287,19 +287,19 @@ const BillSettings: React.FC = () => {
                             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">GSTIN</label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm font-mono text-sm tracking-wide text-gray-800">
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate">
                                         {businessInfo.gstin || <span className="text-gray-400">Not set</span>}
                                     </div>
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">PAN Number</label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm font-mono text-sm tracking-wide text-gray-800">
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium">
                                         {businessInfo.panNumber || <span className="text-gray-400">Not set</span>}
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">MSME / Udyam No.</label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm font-mono text-sm tracking-wide text-gray-800">
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">MSME No.</label>
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate">
                                         {businessInfo.msmeNumber || <span className="text-gray-400">Not set</span>}
                                     </div>
                                 </div>
@@ -314,25 +314,25 @@ const BillSettings: React.FC = () => {
                             <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Bank Name</label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800">
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate">
                                         {businessInfo.bankName || <span className="text-gray-400">Not set</span>}
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="block text-[9.8px] font-bold text-gray-500 uppercase mb-1">Account Holder Name</label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800">
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Acc.Holder Name</label>
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate">
                                         {businessInfo.accountHolderName || <span className="text-gray-400">Not set</span>}
                                     </div>
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Account Number</label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm font-mono text-sm tracking-wide text-gray-800">
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate">
                                         {businessInfo.accountNumber || <span className="text-gray-400">Not set</span>}
                                     </div>
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">IFSC Code</label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm font-mono text-sm tracking-wide text-gray-800">
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium">
                                         {businessInfo.ifscCode || <span className="text-gray-400">Not set</span>}
                                     </div>
                                 </div>
@@ -364,14 +364,14 @@ const BillSettings: React.FC = () => {
                 </div>
 
                 {/* --- NEW SECTION: Print Preferences --- */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden">
                     <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
                         <h2 className="text-lg font-semibold text-gray-800">Print Preferences</h2>
                         <p className="text-xs text-gray-500">Choose your default bill format.</p>
                     </div>
                     <div className="p-6">
                         <div className="flex flex-col sm:flex-row gap-4">
-                            <label className={`flex-1 flex items-center p-4 border rounded-lg cursor-pointer transition-colors ${settings.printFormat === 'A4' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 hover:bg-gray-50'}`}>
+                            <label className={`flex-1 flex items-center p-4 border rounded-sm cursor-pointer transition-colors ${settings.printFormat === 'A4' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 hover:bg-gray-50'}`}>
                                 <input
                                     type="radio"
                                     name="printFormat"
@@ -386,7 +386,7 @@ const BillSettings: React.FC = () => {
                                 </div>
                             </label>
 
-                            <label className={`flex-1 flex items-center p-4 border rounded-lg cursor-pointer transition-colors ${settings.printFormat === 'THERMAL58' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 hover:bg-gray-50'}`}>
+                            <label className={`flex-1 flex items-center p-4 border rounded-sm cursor-pointer transition-colors ${settings.printFormat === 'THERMAL58' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 hover:bg-gray-50'}`}>
                                 <input
                                     type="radio"
                                     name="printFormat"
@@ -406,7 +406,7 @@ const BillSettings: React.FC = () => {
                 {/* ------------------------------------- */}
 
                 {/* SECTION 4: Digital Signature */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden">
                     <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
                         <div>
                             <h2 className="text-lg font-semibold text-gray-800">Digital Signature</h2>

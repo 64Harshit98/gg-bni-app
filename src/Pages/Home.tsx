@@ -115,19 +115,25 @@ const DashboardContent = () => {
     completeTutorial(currentUser, 'dashboardTutorialDone', setTutorialStep);
   };
 
-  const daysRemaining = useMemo(() => {
-    const subData = (currentUser as any)?.subscription || (currentUser as any)?.Subscription;
-    const rawDate = subData?.expiryDate;
-    if (!rawDate) return null;
-    const expiryDate = new Date((rawDate as any).toDate ? (rawDate as any).toDate() : rawDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    expiryDate.setHours(0, 0, 0, 0);
-    const diffTime = expiryDate.getTime() - today.getTime();
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  }, [currentUser]);
+  const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
 
-  const showBadge = daysRemaining !== null && daysRemaining <= 5 && daysRemaining >= 0;
+  useEffect(() => {
+    const fetchExpiry = async () => {
+      if (!currentUser?.companyId) return;
+      const ref = doc(db, 'companies', currentUser.companyId);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const expiry = snap.data().expiryDate;
+        if (!expiry) return;
+        const d = expiry.toDate ? expiry.toDate() : new Date(expiry);
+        const diff = d.getTime() - new Date().getTime();
+        setDaysRemaining(Math.ceil(diff / (1000 * 60 * 60 * 24)));
+      }
+    };
+    fetchExpiry();
+  }, [currentUser?.companyId]);
+
+  const showBadge = daysRemaining !== null && daysRemaining <= 7 && daysRemaining >= 0;
   const isUrgent = daysRemaining !== null && daysRemaining <= 2;
   const hasCataloguePermission = currentUser?.permissions?.includes(Permissions.ViewCatalogue);
   const currentItem = SiteItems.find(item => item.to === location.pathname);

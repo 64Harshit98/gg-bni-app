@@ -471,8 +471,8 @@ const EditProfilePage: React.FC = () => {
   const submitBtnClass = submitSuccess
     ? 'bg-gradient-to-br from-green-400 to-green-600 shadow-green-200/60'
     : isSubmitting
-      ? 'bg-sky-200'
-      : 'bg-gradient-to-br from-sky-400 to-sky-600 shadow-sky-200/60';
+      ? 'bg-orange-200'
+      : 'bg-gradient-to-br from-orange-400 to-orange-600 shadow-orange-200/60';
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -607,7 +607,9 @@ const EditProfilePage: React.FC = () => {
             {/* Card 2 — Business Information */}
             <SectionCard title="Business Information" icon=''>
               <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
                 <FloatingLabelInput type="text" name="businessName" value={formData.businessName || ''} onChange={handleInputChange} label="Business Name" />
+                </div>
                 <FloatingLabelSelect
                   id="businessType" label="Business Type" value={businessType}
                   onChange={(e) => { setBusinessType(e.target.value); setFormData(prev => ({ ...prev, businessType: e.target.value })); }}
@@ -619,7 +621,7 @@ const EditProfilePage: React.FC = () => {
                   options={businessCategoryOptions}
                 />
                 <FloatingLabelInput type="text" name="gstin" value={formData.gstin || ''} onChange={handleInputChange} label="GSTIN" />
-                <FloatingLabelInput type="text" name="panNumber" value={formData.panNumber || ''} onChange={handleInputChange} label="PAN Number" />
+                <FloatingLabelInput type="text" name="panNumber" value={formData.panNumber || ''} onChange={handleInputChange} label="PAN No." />
                 <FloatingLabelInput type="text" name="msmeUdyamNumber" value={formData.msmeUdyamNumber || ''} onChange={handleInputChange} label="MSME No." />
               </div>
             </SectionCard>
@@ -655,7 +657,7 @@ const EditProfilePage: React.FC = () => {
                   </div>
                   <FloatingLabelInput type="text" name="city" value={formData.city || ''} onChange={handleInputChange} label="City" />
                   <FloatingLabelInput type="text" name="state" value={formData.state || ''} onChange={handleInputChange} label="State" />
-                  <div>
+                  <div className='col-span-2'>
                     <FloatingLabelInput type="text" name="postalCode" value={formData.postalCode || ''} onChange={handlePostalCodeChange} label="Postal Code" maxLength={6} inputMode="numeric" />
                     {postalError && <p className="text-red-500 text-[11px] mt-1 mb-0">{postalError}</p>}
                   </div>
@@ -666,10 +668,14 @@ const EditProfilePage: React.FC = () => {
             {/* Card 4 — Bank Details */}
             <SectionCard title="Bank Details" icon="">
               <div className="grid grid-cols-2 gap-4">
-                <FloatingLabelInput type="text" name="accountHolderName" value={formData.accountHolderName || ''} onChange={handleInputChange} label="Acc Holder Name" />
-                <FloatingLabelInput type="text" name="bankName" value={formData.bankName || ''} onChange={handleInputChange} label="Bank Name" />
+                <div className="col-span-2">
+                  <FloatingLabelInput type="text" name="accountHolderName" value={formData.accountHolderName || ''} onChange={handleInputChange} label="Acc Holder Name" />
+                </div>
+                <FloatingLabelInput type="text" name="bankName" value={formData.bankName || ''} onChange={handleInputChange} label="Bank" />
                 <FloatingLabelInput type="text" name="ifscCode" value={formData.ifscCode || ''} onChange={handleInputChange} label="IFSC Code" />
-                <FloatingLabelInput type="text" name="accountNumber" value={formData.accountNumber || ''} onChange={handleInputChange} label="Account No." />
+                <div className="col-span-2">
+                  <FloatingLabelInput type="text" name="accountNumber" value={formData.accountNumber || ''} onChange={handleInputChange} label="Account No." />
+                </div>
               </div>
             </SectionCard>
           </div>
@@ -721,31 +727,32 @@ const EditProfilePage: React.FC = () => {
           )}
 
           {/* ── Submit button ── */}
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className={[
-              'w-full py-4 rounded-sm text-white text-[15px] font-semibold border-0',
-              'flex items-center justify-center gap-2 shadow-lg transition-all duration-300',
-              isSubmitting ? 'cursor-not-allowed' : 'cursor-pointer',
-              submitBtnClass,
-            ].join(' ')}
-          >
-            {isSubmitting ? (
-              <>
-                <div className="w-4 h-4 rounded-sm border-2 border-white/40 border-t-white animate-spin" />
-                Saving…
-              </>
-            ) : submitSuccess ? (
-              <>
-                <FiCheck size={18} />
-                {submitSuccess}
-              </>
-            ) : (
-              'Save All Changes'
-            )}
-          </button>
-
+          <div className="sticky bottom-0 left-0 right-0 sm:static bg-slate-100 sm:bg-transparent pt-2 sm:pt-0 -mx-4 sm:mx-0 px-4 sm:px-0 pb-2 sm:pb-0 z-10">
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className={[
+                'w-full py-4 rounded-sm text-white text-[15px] font-semibold border-0',
+                'flex items-center justify-center gap-2 shadow-lg transition-all duration-300',
+                isSubmitting ? 'cursor-not-allowed' : 'cursor-pointer',
+                submitBtnClass,
+              ].join(' ')}
+            >
+              {isSubmitting ? (
+                <>
+                  <div className="w-4 h-4 rounded-sm border-2 border-white/40 border-t-white animate-spin" />
+                  Saving…
+                </>
+              ) : submitSuccess ? (
+                <>
+                  <FiCheck size={18} />
+                  {submitSuccess}
+                </>
+              ) : (
+                'Save All Changes'
+              )}
+            </button>
+          </div>
         </form>
       </div >
     </div >

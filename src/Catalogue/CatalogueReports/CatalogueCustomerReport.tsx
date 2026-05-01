@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { TableColumn } from '../../Components/CustomTable';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -18,6 +18,8 @@ import useCustomerReport from '../hooks/useCustomerReport';
 //import CataShowWrapper from '../../context/CataShowWrapper';
 //import { Cata_Permissions } from '../enum/cata_permissions.enum';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import { collection, onSnapshot, query } from 'firebase/firestore';
+import { db } from '../../lib/Firebase';
 
 
 const CatalogueCustomerReport: React.FC = () => {
@@ -59,6 +61,35 @@ const CatalogueCustomerReport: React.FC = () => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
+  const [customerCreditMap, setCustomerCreditMap] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!currentUser?.companyId) {
+      setCustomerCreditMap({});
+      return;
+    }
+
+    const customersRef = collection(db, 'companies', currentUser.companyId, 'customers');
+    const unsubscribe = onSnapshot(
+      query(customersRef),
+      (snapshot) => {
+        const nextMap: Record<string, number> = {};
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() as Record<string, unknown>;
+          const credit = Number(data.creditBalance || 0);
+          const numberKey = String(data.number || '').trim();
+          const nameKey = String(data.name || '').trim().toLowerCase();
+
+          if (numberKey) nextMap[`num:${numberKey}`] = Number.isFinite(credit) ? credit : 0;
+          if (nameKey) nextMap[`name:${nameKey}`] = Number.isFinite(credit) ? credit : 0;
+        });
+        setCustomerCreditMap(nextMap);
+      },
+      () => setCustomerCreditMap({}),
+    );
+
+    return unsubscribe;
+  }, [currentUser?.companyId]);
 
   /* ---------- CUSTOMER AGGREGATION ---------- */
   const customerRows: CustomerRowWithCredit[] = useMemo(() => {
@@ -85,18 +116,18 @@ const CatalogueCustomerReport: React.FC = () => {
 
       const due = sale.dueAmount || 0;
 
-      // normalize due
-      if (due < 0) {
-        row.creditNote += Math.abs(due); // shift negative to credit
-      } else {
+      if (due > 0) {
         row.totalDue += due;
       }
-
-      // existing credit notes
-      row.creditNote += (sale as any).creditNoteAmount || 0;
     });
 
     let result = Array.from(map.values());
+    result = result.map((row) => {
+      const byNumber = customerCreditMap[`num:${row.customerNumber}`];
+      const byName = customerCreditMap[`name:${row.customerName.toLowerCase()}`];
+      const creditNote = byNumber ?? byName ?? 0;
+      return { ...row, creditNote: Math.max(0, Number(creditNote || 0)) };
+    });
 
     // 🔍 SEARCH FILTER
     const trimmedQuery = searchQuery.toLowerCase().trim();
@@ -109,7 +140,7 @@ const CatalogueCustomerReport: React.FC = () => {
     }
 
     return result;
-  }, [filteredSales, searchQuery]);
+  }, [filteredSales, searchQuery, customerCreditMap]);
 
   /* ---------- SUMMARY METRICS ---------- */
   const metrics = useMemo(() => {

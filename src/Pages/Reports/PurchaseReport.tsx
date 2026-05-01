@@ -168,111 +168,205 @@ const PurchaseReport: React.FC = () => {
   }, [appliedFilters, purchases, sortConfig]);
 
   /* ---------- PDF DOWNLOAD ---------- */
-  const downloadAsPdf = async () => {
-    if (!appliedFilters) return;
+    const downloadAsPdf = async () => {
+      if (!appliedFilters) return;
 
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
+      try {
+        const doc = new jsPDF();
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
 
-    try {
-      const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
-      if (base64Logo) {
-        const img = new Image();
-        img.src = base64Logo;
-        await new Promise<void>((resolve) => {
-          img.onload = () => {
-            const logoWidth = 20;
-            const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
-            const logoX = pageWidth - logoWidth - 14;
-            doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
-            resolve();
-          };
-          img.onerror = () => resolve();
+        // --- 1. BRAND ACCENT BAR ---
+        doc.setFillColor(37, 99, 235);
+        doc.rect(0, 0, pageWidth, 6, 'F');
+
+        // --- 2. COMPANY LOGO (top-right) ---
+        try {
+          const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
+          if (base64Logo) {
+            const img = new Image();
+            img.src = base64Logo;
+            await new Promise<void>((resolve) => {
+              img.onload = () => {
+                const logoWidth = 20;
+                const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
+                doc.addImage(base64Logo, 'PNG', pageWidth - logoWidth - 14, 10, logoWidth, logoHeight);
+                resolve();
+              };
+              img.onerror = () => resolve();
+            });
+          }
+        } catch {
+          // Continue without logo
+        }
+        
+
+        // ===== CLEAN GENERATION TAG =====
+        const now = new Date();
+        const generatedAt = now.toLocaleString('en-IN', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+
+        const margin = 14;
+
+        const tagText = `Generated using SELLAR • ${generatedAt}`;
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+
+        const textWidth = doc.getTextWidth(tagText);
+        const paddingX = 2;
+
+        const boxWidth = textWidth + paddingX * 2;
+        const boxHeight = 5;
+
+        const boxX = pageWidth - margin - boxWidth;
+        const boxY = 10;
+
+        // background
+        doc.setFillColor(245, 245, 245);
+        doc.rect(boxX, boxY, boxWidth, boxHeight, "F");
+
+        // text
+        doc.setTextColor(80, 80, 80);
+        doc.text(tagText, boxX + paddingX, boxY + 3.5);
+
+        // reset
+        doc.setTextColor(0, 0, 0);
+
+        // --- 3. HEADER SECTION ---
+        doc.setFontSize(22);
+        doc.setTextColor(17, 24, 39); // gray-900
+        doc.setFont('helvetica', 'bold');
+        doc.text('Purchase Report', 14, 24);
+
+        doc.setFontSize(10);
+        doc.setTextColor(107, 114, 128); // gray-500
+        doc.setFont('helvetica', 'normal');
+
+        const generationDate = new Date().toLocaleDateString('en-IN', {
+          year: 'numeric', month: 'short', day: 'numeric',
+        });
+
+        const subtitleText = `Generated: ${generationDate}   |   Period: ${formatDate(appliedFilters.start)} to ${formatDate(appliedFilters.end)}`;
+        doc.text(subtitleText, 14, 31);
+
+        // --- 4. TABLE ---
+        autoTable(doc, {
+          startY: 38,
+          head: [['DATE', 'SUPPLIER', 'ITEMS', 'AMOUNT (Rs.)', 'PAYMENT']],
+          body: filteredPurchases.map((purchase) => {
+            const formattedSupplier = purchase.partyName
+              ? purchase.partyName.charAt(0).toUpperCase() + purchase.partyName.slice(1).toLowerCase()
+              : 'N/A';
+
+            const totalItems = purchase.items.reduce((sum, i) => sum + i.quantity, 0);
+
+            const paymentMethod =
+              Object.entries(purchase.paymentMethods || {})
+                .filter(([_, value]) => value > 0)
+                .map(([key]) => key.charAt(0).toUpperCase() + key.slice(1))
+                .join(', ') || 'N/A';
+
+            return [
+              formatDate(purchase.createdAt),
+              formattedSupplier,
+              totalItems.toString(),
+              purchase.totalAmount.toLocaleString('en-IN', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              }),
+              paymentMethod,
+            ];
+          }),
+          foot: [
+            [
+              'TOTAL',
+              '-',
+              summary.totalItemsPurchased.toString(),
+              summary.totalPurchases.toLocaleString('en-IN', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              }),
+              '',
+            ],
+          ],
+          theme: 'plain',
+          styles: {
+            font: 'helvetica',
+            cellPadding: 7,
+            fontSize: 10,
+            textColor: [55, 65, 81], // gray-700
+          },
+          headStyles: {
+            fillColor: [249, 250, 251], // gray-50
+            textColor: [17, 24, 39],   // gray-900
+            fontStyle: 'bold',
+            halign: 'left',
+            lineWidth: { top: 1, bottom: 1 },
+            lineColor: [229, 231, 235], // gray-200
+          },
+          footStyles: {
+            fillColor: [255, 255, 255],
+            textColor: [17, 24, 39],
+            fontStyle: 'bold',
+            halign: 'left',
+            lineWidth: { top: 1, bottom: 2 },
+            lineColor: [17, 24, 39],
+          },
+          alternateRowStyles: {
+            fillColor: [252, 252, 252],
+          },
+          columnStyles: {
+            0: { halign: 'left', cellWidth: 35 },  // DATE
+            1: { halign: 'left', cellWidth: 50 },  // SUPPLIER
+            2: { halign: 'left', cellWidth: 20 },  // ITEMS
+            3: { halign: 'left', cellWidth: 45 },  // AMOUNT
+            4: { halign: 'left', cellWidth: 35 },  // PAYMENT
+          },
+          didParseCell: function (data) {
+            // Highlight negative amounts in red
+            if ((data.section === 'body' || data.section === 'foot') && data.column.index === 3) {
+              const rawVal = parseFloat(String(data.cell.raw).replace(/,/g, ''));
+              if (rawVal < 0) {
+                data.cell.styles.textColor = [220, 38, 38]; // red-600
+                data.cell.styles.fontStyle = 'bold';
+              }
+            }
+            // Align footer cells
+            if (data.section === 'foot') {
+              data.cell.styles.halign = 'left';
+            }
+          },
+          didDrawPage: function () {
+            const pageCount = doc.getNumberOfPages();
+            doc.setFontSize(9);
+            doc.setTextColor(156, 163, 175); // gray-400
+            doc.text(
+              `Page ${pageCount}`,
+              pageWidth - 14,
+              pageHeight - 10,
+              { align: 'right' }
+            );
+          },
+        });
+
+        doc.save(`purchase_report_${formatDateForInput(new Date())}.pdf`);
+        setIsDownloadModalOpen(false);
+
+      } catch (err) {
+        console.error('PDF Generation Error:', err);
+        setFeedbackModal({
+          isOpen: true,
+          type: State.ERROR,
+          message: 'Failed to generate PDF.',
         });
       }
-    } catch {
-      // Continue without logo
-    }
-
-    // ===== CLEAN GENERATION TAG =====
-    const now = new Date();
-    const generatedAt = now.toLocaleString('en-IN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-
-    const margin = 14;
-
-    const tagText = `Generated using SELLAR • ${generatedAt}`;
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8);
-
-    const textWidth = doc.getTextWidth(tagText);
-    const paddingX = 2;
-
-    const boxWidth = textWidth + paddingX * 2;
-    const boxHeight = 5;
-
-    const boxX = pageWidth - margin - boxWidth;
-    const boxY = 10;
-
-    // light gray background
-    doc.setFillColor(245, 245, 245);
-    doc.rect(boxX, boxY, boxWidth, boxHeight, "F");
-
-    // text
-    doc.setTextColor(80, 80, 80);
-    doc.text(tagText, boxX + paddingX, boxY + 3.5);
-
-    // reset styles
-    doc.setTextColor(0, 0, 0);
-
-    doc.setFontSize(18);
-    doc.text('Purchase Report', 14, 20);
-    doc.setFontSize(11);
-    doc.setTextColor(100);
-
-    doc.text(
-      `Date Range: ${formatDate(appliedFilters.start)} to ${formatDate(
-        appliedFilters.end,
-      )}`,
-      14,
-      29,
-    );
-
-    autoTable(doc, {
-      startY: 35,
-      head: [['Date', 'Supplier Name', 'Items', 'Amount', 'Payment Method']],
-      body: filteredPurchases.map((purchase) => [
-        formatDate(purchase.createdAt),
-        purchase.partyName,
-        purchase.items.reduce((sum, i) => sum + i.quantity, 0),
-        `Rs. ${purchase.totalAmount.toLocaleString('en-IN')}`,
-        Object.entries(purchase.paymentMethods || {})
-          .filter(([_, value]) => value > 0)
-          .map(([key]) => key.charAt(0).toUpperCase() + key.slice(1))
-          .join(', ') || 'N/A',
-      ]),
-      foot: [
-        [
-          'Total',
-          '',
-          `${summary.totalItemsPurchased}`,
-          `Rs. ${summary.totalPurchases.toLocaleString('en-IN')}`,
-          '',
-        ],
-      ],
-      theme: 'grid',
-      headStyles: { fillColor: [41, 128, 185] },
-      footStyles: { fontStyle: 'bold', fillColor: [41, 128, 185] },
-    });
-
-    doc.save(`purchase_report_${formatDateForInput(new Date())}.pdf`);
-  };
+    };
 
   /* ---------- EXCEL DOWNLOAD ---------- */
   const downloadAsExcel = () => {

@@ -80,12 +80,38 @@ export default function useCustomerReport() {
         setSales(
           snapshot.docs.map((doc) => {
             const data = doc.data();
+            const paymentMethods = (data.paymentMethods || {}) as Record<string, unknown>;
+
+            const sumMethodAmounts = (matcher: (key: string) => boolean) =>
+              Object.entries(paymentMethods).reduce((sum, [key, value]) => {
+                if (!matcher(key)) return sum;
+                const num = Number(value || 0);
+                return sum + (Number.isFinite(num) ? num : 0);
+              }, 0);
+
+            // Primary source: paymentMethods (as saved by PaymentDrawer)
+            const dueFromMethods = sumMethodAmounts((key) =>
+              key.toLowerCase().includes('due'),
+            );
+            const creditFromMethods = sumMethodAmounts(
+              (key) => key.toLowerCase() === 'credit note',
+            );
+
+            // Fallback source: top-level fields if older docs don't have method keys
+            const dueAmount = Number(data.dueAmount ?? dueFromMethods ?? 0);
+            const creditNoteAmount = Number(
+              data.creditNoteAmount ?? creditFromMethods ?? 0,
+            );
+
             return {
               id: doc.id,
               partyName: data.partyName || 'N/A',
               partyNumber: data.partyNumber || 'N/A',
-              totalAmount: data.totalAmount || 0,
-              dueAmount: data.dueAmount || 0,
+              totalAmount: Number(data.totalAmount || 0),
+              dueAmount: Number.isFinite(dueAmount) ? dueAmount : 0,
+              creditNoteAmount: Number.isFinite(creditNoteAmount)
+                ? creditNoteAmount
+                : 0,
               createdAt:
                 data.createdAt instanceof Timestamp
                   ? data.createdAt.toDate()

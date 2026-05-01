@@ -496,8 +496,11 @@ const OrderingPage: React.FC = () => {
                                     ) : (
                                         <>
                                             <div className="flex items-center justify-between mb-1.5">
-                                                <h3 className="text-[14px] font-bold text-[#1A3B5D] uppercase  leading-tight truncate">
-                                                    {isVirtual ? <i className="text-gray-500">{group.name}</i> : group.name}
+                                                <h3 className="text-[14px] font-bold text-[#1A3B5D] uppercase leading-tight break-words overflow-hidden max-h-[2.5em]">
+                                                    {isVirtual
+                                                        ? <i className="text-gray-500">{group.name}</i>
+                                                        : group.name
+                                                    }
                                                 </h3>
 
                                                 {/* Only show the share button for real, created categories */}

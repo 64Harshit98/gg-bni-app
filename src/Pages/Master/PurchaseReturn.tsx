@@ -96,6 +96,7 @@ const PurchaseReturnPage: React.FC = () => {
   const [supplierGstin, setSupplierGstin] = useState<string>('');
 
   const [modeOfReturn, setModeOfReturn] = useState<string>('Exchange');
+  const [exchangeBalanceAction, setExchangeBalanceAction] = useState<'Debit Note' | 'Cash Refund'>('Debit Note');
   const [newItemsReceived, setNewItemsReceived] = useState<ReturnCartItem[]>([]);
   const [returnDate, setReturnDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
@@ -384,8 +385,8 @@ const PurchaseReturnPage: React.FC = () => {
       id: crypto.randomUUID(),
       originalItemId: item.id!,
       name: item.name,
-      quantity: (item as any).unitMultiplier || 1,
-      unitMultiplier: (item as any).unitMultiplier || 1,
+      quantity: 1,
+      unitMultiplier: 1,
       unitPrice: finalNetPrice,
       amount: finalNetPrice,
       isEditable: true,
@@ -527,67 +528,66 @@ const PurchaseReturnPage: React.FC = () => {
 
   // --- UI CALCULATIONS (With Discount) ---
   const { totalReturnValue, totalNewItemsValue, finalBalance, discountDeducted } = useMemo(() => {
-  const totalReturnGross = itemsToReturn.reduce((sum, item) => sum + item.amount, 0);
-  
-  // --- TAX CALCULATION---
-  let returnTax = 0;
+    const totalReturnGross = itemsToReturn.reduce((sum, item) => sum + item.amount, 0);
 
-  if (selectedPurchase) {
-    returnTax = selectedPurchase.items.reduce((sum: number, item: any) => {
-      const itemFinalPrice = Number(item.purchasePrice || item.finalPrice || 0);
-      const taxRate = Number(item.taxRate || item.tax || 0);
-      const taxType = item.taxType;
+    // --- TAX CALCULATION---
+    let returnTax = 0;
 
-      if (taxType === 'inclusive' && taxRate > 0) {
-        const itemTax = itemFinalPrice * (taxRate / 100);
-        return sum + itemTax;
+    if (selectedPurchase) {
+      returnTax = selectedPurchase.items.reduce((sum: number, item: any) => {
+        const itemFinalPrice = Number(item.purchasePrice || item.finalPrice || 0);
+        const taxRate = Number(item.taxRate || item.tax || 0);
+        const taxType = item.taxType;
+
+        if (taxType === 'inclusive' && taxRate > 0) {
+          const itemTax = itemFinalPrice * (taxRate / 100);
+          return sum + itemTax;
+        }
+
+        return sum;
+      }, 0);
+
+      const originalGross = selectedPurchase.items.reduce((sum, item) => {
+        const price = item.purchasePrice ?? (item.quantity ? item.quantity : 0);
+        return sum + (item.quantity * price);
+      }, 0);
+
+      if (originalGross > 0 && returnTax > 0) {
+        const ratio = totalReturnGross / originalGross;
+        returnTax = Math.round(returnTax * ratio * 100) / 100;
       }
-
-      return sum;
-    }, 0);
-
-    // proportional tax based on return ratio
-    const originalGross = selectedPurchase.items.reduce((sum, item) => {
-      const price = item.purchasePrice ?? (item.quantity ? item.quantity : 0);
-      return sum + (item.quantity * price);
-    }, 0);
-
-    if (originalGross > 0 && returnTax > 0) {
-      const ratio = totalReturnGross / originalGross;
-      returnTax = Math.round(returnTax * ratio * 100) / 100;
     }
-  }
-  
-  const totalNewItemsValue = newItemsReceived.reduce((sum, item) => sum + item.amount, 0);
 
-  let discountDeducted = 0;
+    const totalNewItemsValue = newItemsReceived.reduce((sum, item) => sum + item.amount, 0);
 
-  if (selectedPurchase) {
-    const originalGross = selectedPurchase.items.reduce((sum, item) => {
-      const price = item.purchasePrice ?? (item.quantity ? item.quantity : 0);
-      return sum + (item.quantity * price);
-    }, 0);
+    let discountDeducted = 0;
 
-    const originalManualDiscount = Number(selectedPurchase.manualDiscount) || 0;
+    if (selectedPurchase) {
+      const originalGross = selectedPurchase.items.reduce((sum, item) => {
+        const price = item.purchasePrice ?? (item.quantity ? item.quantity : 0);
+        return sum + (item.quantity * price);
+      }, 0);
 
-    if (originalGross > 0 && originalManualDiscount > 0) {
-      const ratio = totalReturnGross / originalGross;
-      discountDeducted = originalManualDiscount * ratio;
-      discountDeducted = Math.round(discountDeducted * 100) / 100;
+      const originalManualDiscount = Number(selectedPurchase.manualDiscount) || 0;
+
+      if (originalGross > 0 && originalManualDiscount > 0) {
+        const ratio = totalReturnGross / originalGross;
+        discountDeducted = originalManualDiscount * ratio;
+        discountDeducted = Math.round(discountDeducted * 100) / 100;
+      }
     }
-  }
 
-  const netReturnValue = totalReturnGross - discountDeducted + returnTax;
-  const finalBalance = netReturnValue - totalNewItemsValue;
+    const netReturnValue = totalReturnGross - discountDeducted + returnTax;
+    const finalBalance = netReturnValue - totalNewItemsValue;
 
-  return { 
-    totalReturnValue: netReturnValue, 
-    totalNewItemsValue, 
-    finalBalance: Math.round(finalBalance), 
-    discountDeducted,
-    returnTax  // ADDED THIS
-  };
-}, [itemsToReturn, newItemsReceived, selectedPurchase]);
+    return {
+      totalReturnValue: netReturnValue,
+      totalNewItemsValue,
+      finalBalance: Math.round(finalBalance),
+      discountDeducted,
+      returnTax
+    };
+  }, [itemsToReturn, newItemsReceived, selectedPurchase]);
 
 
   // --- SAVE LOGIC ---
@@ -665,6 +665,10 @@ const PurchaseReturnPage: React.FC = () => {
 
       updatedPaymentMethods.due = Math.max(0, newTotalAmount - totalPaidSoFar);
 
+      const actualReturnMode = modeOfReturn === 'Exchange' && finalBalance > 0
+        ? `Exchange & ${exchangeBalanceAction}`
+        : modeOfReturn;
+
       const returnHistoryRecord = {
         id: crypto.randomUUID(),
         returnedAt: new Date(),
@@ -672,8 +676,8 @@ const PurchaseReturnPage: React.FC = () => {
         newItemsReceived: newItemsReceived.map(({ id, ...item }) => item),
         finalBalance,
         discountDeducted,
-        modeOfReturn,
-        returnType: modeOfReturn,
+        modeOfReturn: actualReturnMode,
+        returnType: actualReturnMode,
         paymentDetails: completionData?.paymentDetails || null,
         invoiceNumber: selectedPurchase.invoiceNumber,
         partyName: finalSupplierName,
@@ -706,7 +710,10 @@ const PurchaseReturnPage: React.FC = () => {
           lastUpdatedAt: serverTimestamp()
         };
 
-        if (modeOfReturn !== 'Cash Refund' && finalBalance > 0) {
+        const shouldAddDebit = finalBalance > 0 &&
+          (modeOfReturn === 'Debit Note' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Debit Note'));
+
+        if (shouldAddDebit) {
           const netDebitToAdd = finalBalance - (completionData?.discount || 0);
           if (netDebitToAdd > 0) {
             supplierUpdateData.debitBalance = firebaseIncrement(netDebitToAdd);
@@ -776,6 +783,7 @@ const PurchaseReturnPage: React.FC = () => {
   const getBalanceLabel = () => {
     if (finalBalance < 0) return 'Payment Due';
     if (modeOfReturn === 'Cash Refund') return 'Refund Received';
+    if (modeOfReturn === 'Exchange' && finalBalance > 0 && exchangeBalanceAction === 'Cash Refund') return 'Refund Received';
     return 'Debit Note';
   };
 
@@ -1014,7 +1022,19 @@ const PurchaseReturnPage: React.FC = () => {
                 )}
                 <div className="border-t border-gray-200 my-2"></div>
                 <div className={`flex justify-between items-center text-lg font-bold ${finalBalance >= 0 ? 'text-green-600' : 'text-orange-600'}`}>
-                  <p>{getBalanceLabel()}</p><p>₹{Math.abs(finalBalance).toFixed(2)}</p>
+                  {modeOfReturn === 'Exchange' && finalBalance > 0 ? (
+                    <select
+                      value={exchangeBalanceAction}
+                      onChange={(e) => setExchangeBalanceAction(e.target.value as any)}
+                      className="bg-transparent border-b-2 border-gray-200 hover:border-gray-400 focus:border-blue-500 outline-none cursor-pointer py-1 pr-2 text-gray-700 transition-colors"
+                    >
+                      <option value="Debit Note">Debit Note</option>
+                      <option value="Cash Refund">Cash Refund</option>
+                    </select>
+                  ) : (
+                    <p>{getBalanceLabel()}</p>
+                  )}
+                  <p>₹{Math.abs(finalBalance).toFixed(2)}</p>
                 </div>
               </div>
             </>
@@ -1063,9 +1083,20 @@ const PurchaseReturnPage: React.FC = () => {
               </div>
 
               {/* Final Total */}
-              <div className="mt-auto border-t border-gray-100">
-                <div className="flex justify-between items-end">
-                  <span className="text-gray-500 font-medium">{getBalanceLabel()}</span>
+              <div className="mt-auto pt-4 border-t border-gray-100">
+                <div className="flex justify-between items-end mb-4">
+                  {modeOfReturn === 'Exchange' && finalBalance > 0 ? (
+                    <select
+                      value={exchangeBalanceAction}
+                      onChange={(e) => setExchangeBalanceAction(e.target.value as any)}
+                      className="text-gray-500 font-medium bg-transparent border-b-2 border-gray-200 hover:border-gray-400 focus:border-blue-500 outline-none cursor-pointer pb-1 pr-2 transition-colors"
+                    >
+                      <option value="Debit Note">Debit Note</option>
+                      <option value="Cash Refund">Cash Refund</option>
+                    </select>
+                  ) : (
+                    <span className="text-gray-500 font-medium">{getBalanceLabel()}</span>
+                  )}
                   <span className={`text-3xl font-bold ${finalBalance >= 0 ? 'text-green-600' : 'text-orange-600'}`}>
                     ₹{Math.abs(finalBalance).toFixed(2)}
                   </span>

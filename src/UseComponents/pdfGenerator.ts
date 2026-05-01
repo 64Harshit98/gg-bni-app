@@ -184,11 +184,6 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
       doc.setFont('helvetica', 'normal');
       doc.text('LOGO', logoX + logoW / 2, logoY + logoH / 2 + 1, { align: 'center' });
     }
-  } else {
-    doc.rect(logoX, logoY, logoW, logoH);
-    doc.setFontSize(6);
-    doc.setFont('helvetica', 'normal');
-    doc.text('LOGO', logoX + logoW / 2, logoY + logoH / 2 + 1, { align: 'center' });
   }
 
   doc.setFontSize(16);

@@ -70,6 +70,7 @@ interface ExchangeItem {
   salesPrice?: number;
   customPrice?: number | string;
   unitMultiplier?: number;
+  moq?: number;
 }
 
 interface Customer {
@@ -101,7 +102,7 @@ const SalesReturnPage: React.FC = () => {
   const [originalSaleItems, setOriginalSaleItems] = useState<TransactionItem[]>([]);
   const [selectedReturnIds, setSelectedReturnIds] = useState<Set<string>>(new Set());
   const [exchangeItems, setExchangeItems] = useState<ExchangeItem[]>([]);
-
+  const [exchangeBalanceAction, setExchangeBalanceAction] = useState<'Credit Note' | 'Cash Refund'>('Credit Note');
   const [salesList, setSalesList] = useState<SalesData[]>([]);
   const [selectedSale, setSelectedSale] = useState<SalesData | null>(null);
   const [searchSaleQuery, setSearchSaleQuery] = useState<string>('');
@@ -357,7 +358,8 @@ const SalesReturnPage: React.FC = () => {
 
         if (field === 'discount') {
           const discountValue = Number(updatedValue) || 0;
-          const basePrice = (updatedItem.mrp && updatedItem.mrp > 0) ? updatedItem.mrp : (updatedItem.salesPrice || 0);
+          const basePrice = (updatedItem.salesPrice && updatedItem.salesPrice > 0) ? updatedItem.salesPrice : (updatedItem.mrp || 0);
+
           let newPrice = basePrice * (1 - discountValue / 100);
           newPrice = applyRounding(newPrice, isRoundingEnabled, roundingInterval);
           updatedItem.unitPrice = newPrice;
@@ -408,21 +410,14 @@ const SalesReturnPage: React.FC = () => {
     const mrp = Number(itemToAdd.mrp || 0);
     const salesPrice = Number(itemToAdd.salesPrice || 0);
     const presetDiscount = Number(itemToAdd.discount || 0);
+    const initialMoq = Number((itemToAdd as any).moq || 1); // Grab MOQ
 
-    let finalExchangePrice = mrp;
-    let calculatedDiscount = 0;
+    // NEW LOGIC: Sales Price is the base.
+    const basePrice = salesPrice > 0 ? salesPrice : mrp;
+    let finalExchangePrice = basePrice;
 
-    if (salesPrice > 0) {
-      finalExchangePrice = salesPrice;
-      if (mrp > 0) {
-        calculatedDiscount = ((mrp - salesPrice) / mrp) * 100;
-      }
-    } else if (presetDiscount > 0) {
-      calculatedDiscount = presetDiscount;
-      finalExchangePrice = mrp * (1 - (presetDiscount / 100));
-    } else {
-      finalExchangePrice = mrp;
-      calculatedDiscount = 0;
+    if (presetDiscount > 0) {
+      finalExchangePrice = basePrice * (1 - (presetDiscount / 100));
     }
 
     const isRoundingEnabled = salesSettings?.enableRounding ?? true;
@@ -433,13 +428,14 @@ const SalesReturnPage: React.FC = () => {
       id: crypto.randomUUID(),
       originalItemId: itemToAdd.id!,
       name: itemToAdd.name,
-      quantity: (itemToAdd as any).unitMultiplier || 1, // UPDATED
-      unitMultiplier: (itemToAdd as any).unitMultiplier || 1,
+      quantity: Math.max(1, initialMoq),
+      unitMultiplier: 1,
+      moq: initialMoq,
       unitPrice: finalExchangePrice,
       amount: finalExchangePrice,
       mrp: mrp,
       salesPrice: salesPrice,
-      discount: parseFloat(calculatedDiscount.toFixed(2)),
+      discount: presetDiscount,
     }]);
   };
 
@@ -460,9 +456,11 @@ const SalesReturnPage: React.FC = () => {
   };
 
   const handleQuantityChange = (id: string, newQuantity: number) => {
-    handleListChange(setExchangeItems, id, 'quantity', Math.max(1, newQuantity));
-  };
+    const item = exchangeItems.find(i => i.id === id);
+    const moq = item?.moq || 1;
 
+    handleListChange(setExchangeItems, id, 'quantity', Math.max(moq, newQuantity));
+  };
   const handleCustomPriceChange = (id: string, value: string) => {
     if (value === '' || /^[0-9]*\.?[0-9]*$/.test(value)) {
       setExchangeItems(prev => prev.map(item => item.id === id ? { ...item, customPrice: value } : item));
@@ -501,6 +499,7 @@ const SalesReturnPage: React.FC = () => {
       restockQuantity: 0,
       customPrice: item.customPrice ?? item.unitPrice,
       unitMultiplier: item.unitMultiplier || 1,
+      moq: item.moq,
     } as SalesItem));
   }, [exchangeItems]);
 
@@ -724,6 +723,10 @@ const SalesReturnPage: React.FC = () => {
       updatedPaymentMethods.due = dueAmount;
 
       // 6. HISTORY & DB UPDATE
+      const actualReturnMode = modeOfReturn === 'Exchange' && finalBalance > 0
+        ? `Exchange & ${exchangeBalanceAction}`
+        : modeOfReturn;
+
       const returnHistoryRecord = {
         id: crypto.randomUUID(),
         returnedAt: new Date(),
@@ -732,7 +735,7 @@ const SalesReturnPage: React.FC = () => {
         finalBalance,
         discountDeducted: discountDeductionAmount,
         newDiscountApplied: newDrawerDiscount,
-        modeOfReturn,
+        modeOfReturn: actualReturnMode,
         partyName: finalPartyName
       };
 
@@ -757,7 +760,11 @@ const SalesReturnPage: React.FC = () => {
       if (finalPartyNumber.length >= 3) {
         const customerRef = doc(db, 'companies', companyId, 'customers', finalPartyNumber);
         const customerUpdateData: any = { name: finalPartyName, number: finalPartyNumber, companyId, lastUpdatedAt: serverTimestamp() };
-        if (modeOfReturn !== 'Cash Refund' && finalBalance > 0) {
+
+        const shouldAddCredit = finalBalance > 0 &&
+          (modeOfReturn === 'Credit Note' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Credit Note'));
+
+        if (shouldAddCredit) {
           customerUpdateData.creditBalance = firebaseIncrement(finalBalance);
         }
         batch.set(customerRef, customerUpdateData, { merge: true });
@@ -792,6 +799,7 @@ const SalesReturnPage: React.FC = () => {
   const getBalanceLabel = () => {
     if (finalBalance < 0) return 'Payment Due';
     if (modeOfReturn === 'Cash Refund') return 'Refund Amount';
+    if (modeOfReturn === 'Exchange' && finalBalance > 0 && exchangeBalanceAction === 'Cash Refund') return 'Refund Amount';
     return 'Credit Due';
   };
 
@@ -981,7 +989,19 @@ const SalesReturnPage: React.FC = () => {
                   )}
                   <div className="border-t border-gray-200 my-2"></div>
                   <div className={`flex justify-between items-center text-lg font-bold ${finalBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    <p>{getBalanceLabel()}</p><p>₹{Math.abs(finalBalance).toFixed(2)}</p>
+                    {modeOfReturn === 'Exchange' && finalBalance > 0 ? (
+                      <select
+                        value={exchangeBalanceAction}
+                        onChange={(e) => setExchangeBalanceAction(e.target.value as any)}
+                        className="bg-transparent border border-gray-300  rounded-sm hover:border-gray-400 focus:border-blue-500 outline-none cursor-pointer py-1 pr-2 text-gray-700 transition-colors"
+                      >
+                        <option value="Credit Note">Credit Due</option>
+                        <option value="Cash Refund">Cash Refund</option>
+                      </select>
+                    ) : (
+                      <p>{getBalanceLabel()}</p>
+                    )}
+                    <p>₹{Math.abs(finalBalance).toFixed(2)}</p>
                   </div>
                 </div>
               </>
@@ -1031,7 +1051,18 @@ const SalesReturnPage: React.FC = () => {
               </div>
               <div className="mt-auto pt-4 border-t border-gray-100">
                 <div className="flex justify-between items-end mb-4">
-                  <span className="text-gray-500 font-medium">{getBalanceLabel()}</span>
+                  {modeOfReturn === 'Exchange' && finalBalance > 0 ? (
+                    <select
+                      value={exchangeBalanceAction}
+                      onChange={(e) => setExchangeBalanceAction(e.target.value as any)}
+                      className="text-gray-500 font-medium bg-transparent border border-gray-200 rounded-sm hover:border-gray-400 focus:border-blue-500 outline-none cursor-pointer pb-1 pr-2 transition-colors"
+                    >
+                      <option value="Credit Note">Credit Due</option>
+                      <option value="Cash Refund">Cash Refund</option>
+                    </select>
+                  ) : (
+                    <span className="text-gray-500 font-medium">{getBalanceLabel()}</span>
+                  )}
                   <span className={`text-3xl font-bold ${finalBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                     ₹{Math.abs(finalBalance).toFixed(2)}
                   </span>

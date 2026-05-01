@@ -65,6 +65,8 @@ interface InvoiceItem {
   taxType?: string;
   taxAmount?: number;
   taxableAmount?: number;
+  salesPrice?: number;
+  discountPercentage?: number;
 }
 
 interface Invoice {
@@ -215,7 +217,9 @@ const useJournalData = (companyId?: string) => {
             quantity: quantity,
             finalPrice: type === 'Credit' ? dbFinalPrice : calculatedFinalPrice,
             mrp: mrp,
+            salesPrice: Number(item.salesPrice) || 0, // <-- Add this line
             discount: item.discount || 0,
+            discountPercentage: Number(item.discountPercentage) || Number(item.discount) || 0,
             effectiveUnitPrice: effectiveUnit,
             manualDiscount: item.manualDiscount || 0,
             purchasePrice: Number(item.purchasePrice) || 0,
@@ -355,7 +359,7 @@ const Journal: React.FC = () => {
   const [tutorialStep, setTutorialStep] = useState(0);
 
   // Bill type toggle for action modal
-  const [billType, setBillType] = useState<'estimate' | 'bill'>('estimate');
+  const [billType, setBillType] = useState<'estimate' | 'bill'>('bill');
 
   const next = (n: number) => setTutorialStep(n <= TOTAL_STEPS ? n : 0);
   const skip = () => {
@@ -579,30 +583,66 @@ const Journal: React.FC = () => {
 
 
     const populatedItems = (invoice.items || []).map((item: any, index: number) => {
-      const fullItem = fetchedItems.find((fi: any) => fi.id === item.id);
-      const finalTaxRate = item.taxRate || item.tax || item.gstPercent || fullItem?.tax || 0;
-
+      const fullItem: any = fetchedItems.find((fi: any) => fi.id === item.id) || {};
+      const finalTaxRate = item.taxRate || item.tax || item.gstPercent || fullItem.tax || 0;
       const resolvedTaxType = item.taxType || invoice.taxType || salesSettings?.taxType || '';
-      let itemAmount = 0;
-      if (resolvedTaxType === 'Exclusive' && item.taxableAmount) {
-        itemAmount = item.taxableAmount;
-      } else if (item.effectiveUnitPrice && item.effectiveUnitPrice > 0) {
-        itemAmount = item.effectiveUnitPrice * item.quantity;
-      } else if (item.finalPrice !== undefined && item.finalPrice !== null && item.finalPrice > 0) {
-        itemAmount = item.finalPrice;
-      } else {
-        itemAmount = item.mrp * item.quantity;
+
+      // 1. Get the Discount Percentage
+      const discountPercent = Number(
+        isPurchase
+          ? (item.purchasediscount || item.discountPercentage || item.discount || fullItem.purchasediscount || 0)
+          : (item.discountPercentage || item.discount || fullItem.discountPercentage || fullItem.discount || 0)
+      );
+
+      // 2. Get the Final Target Amount (What the user actually paid)
+      let itemAmount = Number(item.finalPrice);
+      if (!itemAmount) {
+        if (resolvedTaxType === 'Exclusive' && item.taxableAmount) {
+          itemAmount = Number(item.taxableAmount);
+        } else {
+          itemAmount = Number(item.effectiveUnitPrice) * Number(item.quantity) || 0;
+        }
       }
+
+      // 3. Reverse-Engineer the True Base Price
+      // This completely ignores the catalog and forces the math to match what happened at POS.
+      let unitPrice = 0;
+      const qty = Number(item.quantity) || 1;
+      const amountPerUnit = itemAmount / qty;
+
+      if (discountPercent > 0 && discountPercent < 100) {
+        unitPrice = amountPerUnit / (1 - (discountPercent / 100));
+      } else {
+        // If 0% discount, the base price IS the final price (handles your 200 YoYo markup perfectly)
+        unitPrice = amountPerUnit;
+      }
+
+      // Fallback only if unitPrice is somehow 0
+      if (!unitPrice) {
+        unitPrice = Number(isPurchase
+          ? (item.purchasePrice || fullItem.purchasePrice || item.mrp)
+          : (item.salesPrice || fullItem.salesPrice || item.mrp || 0)
+        );
+      }
+
+      unitPrice = Math.round(unitPrice * 100) / 100;
 
       return {
         sno: index + 1,
         name: item.name,
-        quantity: item.quantity,
-        unit: fullItem?.unit || item.unit || "Pcs",
-        listPrice: isPurchase ? (item.purchasePrice || item.mrp) : item.mrp,
+        quantity: qty,
+        unit: fullItem.unit || item.unit || "Pcs",
+
+        // Flood all possible price keys with the mathematically correct unit price
+        listPrice: unitPrice,
+        mrp: unitPrice,
+        rate: unitPrice,
+        salesPrice: unitPrice,
+        effectiveUnitPrice: unitPrice,
+
         gstPercent: finalTaxRate,
-        hsn: fullItem?.hsnSac || item.hsnSac || "N/A",
-        discountAmount: isPurchase ? (item.purchasediscount || item.discount || item.manualDiscount || 0) : (item.discount || item.manualDiscount || 0),
+        hsn: fullItem.hsnSac || item.hsnSac || "N/A",
+        discountAmount: discountPercent,
         amount: itemAmount,
         taxType: resolvedTaxType,
         taxAmount: item.taxAmount,
@@ -1170,7 +1210,7 @@ const Journal: React.FC = () => {
       {/* ACTION SELECTION MODAL */}
       {invoiceToPrint && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setInvoiceToPrint(null)}>
-          <div className="bg-white rounded-sm p-6 w-full max-w-sm mx-4 shadow-xl animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-sm p-4 w-full max-w-sm mx-4 shadow-xl animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-gray-800">Select Action</h3>
               <button onClick={() => setInvoiceToPrint(null)} className="text-gray-500 hover:text-gray-700">
@@ -1179,13 +1219,13 @@ const Journal: React.FC = () => {
             </div>
             {/* Bill type toggle */}
             <div className="flex mb-4 bg-slate-100 rounded-sm p-1">
-              {['estimate', 'bill'].map((type) => (
+              {['bill', 'estimate'].map((type) => (
                 <button
                   key={type}
                   onClick={() => setBillType(type as any)}
                   className={`flex-1 py-2 text-xs font-bold uppercase rounded-sm transition-all ${billType === type
-                      ? 'bg-white text-[#F97316] shadow-sm'
-                      : 'text-slate-500'
+                    ? 'bg-white text-sky-600 shadow-sm'
+                    : 'text-slate-500'
                     }`}
                 >
                   {type}
@@ -1288,7 +1328,7 @@ const Journal: React.FC = () => {
       )}
 
       {/* ── HEADER ROW ─────────────────────────────────────────────────────── */}
-      <div className="flex flex-col z-20 relative">
+      <div className="flex flex-col relative">
 
         {/* Row 1: Title + Filter icon */}
         <div className="flex items-center justify-between px-4 pt-2 relative">

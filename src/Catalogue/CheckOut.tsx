@@ -387,10 +387,8 @@ const CartPage: React.FC = () => {
                 currentNumber = data.currentVoucherNumber || 1001;
             }
 
-            //  next number prepare
             const invoice = `${prefix}${currentNumber}`;
 
-            //  atomic increment
             transaction.set(
                 settingsRef,
                 {
@@ -412,7 +410,8 @@ const CartPage: React.FC = () => {
     const shouldShowPrice = !hidePriceEnabled && (!approvalEnabled || isUserApproved);
 
     const placeOrder = async () => {
-        // 1. Get existing guest ID or generate a new one on the fly
+        if (isPlacing) return;
+
         let guestId = localStorage.getItem("upcoming_user_key");
 
         if (!currentUser?.uid && !guestId) {
@@ -420,7 +419,6 @@ const CartPage: React.FC = () => {
             localStorage.setItem("upcoming_user_key", guestId);
         }
 
-        // 2. MODIFIED GUARD: Now only fails if the company ID is genuinely missing
         if (!effectiveCompanyId) {
             alert("Invalid checkout link. Please go back to the catalogue.");
             return;

@@ -22,6 +22,7 @@ interface SalesBarChartProps {
     name: string;
     sales: number;
     previousSales?: number;
+    count?: number; // <-- Added this so TypeScript knows about the count
   }[];
 }
 
@@ -34,7 +35,7 @@ export const SalesBarChartReport: React.FC<SalesBarChartProps> = ({ isDataVisibl
       date: item.name,
       sales: item.sales,
       previous: item.previousSales || 0,
-      bills: Math.ceil(item.sales / 1000)
+      bills: item.count || 0 // <-- FIX: Now using the actual document count instead of the math formula
     }));
   }, [data]);
 
@@ -135,14 +136,13 @@ export const SalesBarChartReport: React.FC<SalesBarChartProps> = ({ isDataVisibl
               />
 
               <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#9ca3af', strokeWidth: 1, strokeDasharray: '4 4' }} />
-        
+
               <Line
-                type="linear" // Matches the straight lines in your image
+                type="linear"
                 dataKey={viewMode === 'amount' ? 'sales' : 'bills'}
                 name={viewMode === 'amount' ? 'Sales' : 'Bills'}
                 stroke={viewMode === 'amount' ? '#3b82f6' : '#16a34a'}
                 strokeWidth={2}
-                // This creates the "White center, Blue border" dot look
                 dot={{ fill: 'white', stroke: viewMode === 'amount' ? '#3b82f6' : '#16a34a', strokeWidth: 2, r: 4 }}
                 activeDot={{ r: 6, strokeWidth: 2 }}
               />

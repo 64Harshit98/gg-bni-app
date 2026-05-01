@@ -1705,34 +1705,34 @@ const Sales: React.FC = () => {
                             ))}
                         </div>
                         <div className="px-3 pt-2 pb-2 bg-white border-b border-gray-100 grid grid-cols-3 items-center">
-                                <div className="justify-self-start">
-                                    <h3 className="text-gray-700 font-medium">Cart</h3>
-                                </div>
-                                <div className="justify-self-center">
-                                    {salesSettings?.enableSalesmanSelection && (
-                                        <select
-                                            value={selectedWorker?.uid || ''}
-                                            onChange={(e) => {
-                                                if (e.target.value === 'ADD_NEW_SALESMAN') navigate(ROUTES.USER_ADD);
-                                                else setSelectedWorker(workers.find(w => w.uid === e.target.value) || null);
-                                            }}
-                                            className="p-1 border rounded text-sm"
-                                            disabled={!hasPermission(Permissions.ViewTransactions) || (isEditMode && !isManager)}
-                                        >
-                                            <option value="">Salesman</option>
-                                            {workers.map(w => <option key={w.uid} value={w.uid}>{w.name}</option>)}
-                                            <option value="ADD_NEW_SALESMAN" className="font-semibold bg-gray-100">+ Add New Salesman</option>
-                                        </select>
-                                    )}
-                                </div>
-                                <div className="justify-self-end">
-                                    {items.length > 0 && (
-                                        <button onClick={handleClearCart} className="text-xs text-red-600 bg-red-50 px-2 py-1 rounded border border-red-200 flex items-center gap-1">
-                                            <FiTrash2 /> Clear
-                                        </button>
-                                    )}
-                                </div>
+                            <div className="justify-self-start">
+                                <h3 className="text-gray-700 font-medium">Cart</h3>
                             </div>
+                            <div className="justify-self-center">
+                                {salesSettings?.enableSalesmanSelection && (
+                                    <select
+                                        value={selectedWorker?.uid || ''}
+                                        onChange={(e) => {
+                                            if (e.target.value === 'ADD_NEW_SALESMAN') navigate(ROUTES.USER_ADD);
+                                            else setSelectedWorker(workers.find(w => w.uid === e.target.value) || null);
+                                        }}
+                                        className="p-1 border rounded text-sm"
+                                        disabled={!hasPermission(Permissions.ViewTransactions) || (isEditMode && !isManager)}
+                                    >
+                                        <option value="">Salesman</option>
+                                        {workers.map(w => <option key={w.uid} value={w.uid}>{w.name}</option>)}
+                                        <option value="ADD_NEW_SALESMAN" className="font-semibold bg-gray-100">+ Add New Salesman</option>
+                                    </select>
+                                )}
+                            </div>
+                            <div className="justify-self-end">
+                                {items.length > 0 && (
+                                    <button onClick={handleClearCart} className="text-xs text-red-600 bg-red-50 px-2 py-1 rounded border border-red-200 flex items-center gap-1">
+                                        <FiTrash2 /> Clear
+                                    </button>
+                                )}
+                            </div>
+                        </div>
                         {/* Card grid — fills remaining height, scrollable */}
                         <div className="flex-1 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-5 bg-gray-100 pb-20"
                             style={{ gridAutoRows: 'auto', alignContent: 'start', gap: '14px', padding: '8px 14px' }}>
@@ -1754,12 +1754,11 @@ const Sales: React.FC = () => {
                                     defaultPrice = mrp * (1 - (presetDiscount / 100));
                                 }
                                 defaultPrice = applyRounding(defaultPrice, isRoundingEnabled, roundingInterval);
-                                const sp = lastAddedCartItem?.customPrice ?? item.salesPrice ?? item.mrp ?? 0;
+                                const sp = lastAddedCartItem?.customPrice ?? defaultPrice;
                                 const lineSubtotal = Math.round((Number(sp) * quantity) * 100) / 100;
                                 const discPct = (!hideMrp && allowItemDiscount && mrp > 0 && Number(sp) < mrp)
                                     ? Math.round(((mrp - Number(sp)) / mrp) * 100)
                                     : 0;
-
                                 if (isCardImageView) {
                                     const imageUrl: string | undefined =
                                         (item as any).image ||

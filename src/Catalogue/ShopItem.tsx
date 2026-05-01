@@ -706,8 +706,8 @@ const MyShop: React.FC = () => {
 
                                 <div className="p-3 flex flex-col flex-1">
                                     <div className="flex items-start justify-between mb-1">
-                                        <h3 className="text-[12px] font-black text-[#1A3B5D] uppercase leading-tight">
-                                            {item.name.slice(0, 30)}
+                                        <h3 className="text-[14px] font-bold text-[#1A3B5D] uppercase leading-tight break-words overflow-hidden max-h-[2.5em]">
+                                            {item.name}
                                         </h3>
 
                                         {!isUncategorized && (

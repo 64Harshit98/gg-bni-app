@@ -83,106 +83,217 @@ const RestockReportPage: React.FC = () => {
     );
   };
   /* ---------- PDF DOWNLOAD ---------- */
-  const downloadAsPdf = async () => {
-    const doc = new jsPDF();
+    const downloadAsPdf = async () => {
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
 
-    // ===== CLEAN GENERATION TAG =====
-    const now = new Date();
-    const generatedAt = now.toLocaleString('en-IN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+        let base64Logo: string | null = null;
+        try {
+          base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
+        } catch {
+          // Continue without logo
+        }
 
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const margin = 14;
+      // --- 1. BRAND ACCENT BAR ---
+      doc.setFillColor(37, 99, 235);
+      doc.rect(0, 0, pageWidth, 6, 'F');
 
-    const tagText = `Generated using SELLAR • ${generatedAt}`;
+      // --- 2. COMPANY LOGO (top-right) ---
+      if (base64Logo) {
+        await new Promise<void>((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+            const logoWidth = 20;
+            const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
+            doc.addImage(base64Logo!, 'PNG', pageWidth - logoWidth - 14, 10, logoWidth, logoHeight);
+            resolve();
+          };
+          img.onerror = () => resolve();
+          img.src = base64Logo!;
+        });
+      }
 
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8);
+      // ===== CLEAN GENERATION TAG =====
 
-    const textWidth = doc.getTextWidth(tagText);
-    const paddingX = 2;
+      const now = new Date();
 
-    const boxWidth = textWidth + paddingX * 2;
-    const boxHeight = 5;
+      const generatedAt = now.toLocaleString('en-IN', {
 
-    const boxX = pageWidth - margin - boxWidth;
-    const boxY = 10;
+        day: '2-digit',
 
-    // light gray background
-    doc.setFillColor(245, 245, 245);
-    doc.rect(boxX, boxY, boxWidth, boxHeight, "F");
+        month: '2-digit',
 
-    // text
-    doc.setTextColor(80, 80, 80);
-    doc.text(tagText, boxX + paddingX, boxY + 3.5);
+        year: 'numeric',
 
-    // reset styles
-    doc.setTextColor(0, 0, 0);
+        hour: '2-digit',
 
+        minute: '2-digit'
 
-    try {
-    const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
-    if (base64Logo) {
-      const img = new Image();
-      img.src = base64Logo;
-      await new Promise<void>((resolve) => {
-        img.onload = () => {
-          const logoWidth = 20;
-          const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
-          const logoX = pageWidth - logoWidth - 14;
-          doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
-          resolve();
-        };
-        img.onerror = () => resolve();
       });
-    }
-  } catch {
-    // Continue without logo
-  }
-    doc.setFontSize(18);
-    doc.text('Restock Report', 14, 20);
-    doc.setFontSize(11);
-    doc.setTextColor(100);
-    doc.text(`Generated: ${new Date().toLocaleDateString('en-IN')}`, 14, 27);
 
-    autoTable(doc, {
-      startY: 35,
-      head: [['Product Name', 'Stock Level', 'Restock Threshold', 'Deficit', 'Status']],
-      body: displayedItems.map((item) => {
-        const currentStock = item.stock ?? 0;
-        const deficit = Math.max((item.restockQuantity ?? 0) - currentStock, 0);
-        const status =
-          currentStock <= 0 ? 'Urgent' : currentStock <= 5 ? 'Low Stock' : 'In Stock';
-        return [
-          item.name,
-          currentStock,
-          item.restockQuantity ?? 0,
-          deficit > 0 ? `-${deficit}` : '-',
-          status,
-        ];
-      }),
-      foot: [
-        [
-          `Total Items: ${totalItemsToRestock}`,
-          '',
-          '',
-          '',
-          `Out of Stock: ${outOfStockCount}`,
+      const margin = 14;
+
+      const tagText = `Generated using SELLAR • ${generatedAt}`;
+
+      doc.setFont("helvetica", "bold");
+
+      doc.setFontSize(8);
+
+      const textWidth = doc.getTextWidth(tagText);
+
+      const paddingX = 2;
+
+      const boxWidth = textWidth + paddingX * 2;
+
+      const boxHeight = 5;
+
+      const boxX = pageWidth - margin - boxWidth;
+
+      const boxY = 10;
+
+      // background
+
+      doc.setFillColor(245, 245, 245);
+
+      doc.rect(boxX, boxY, boxWidth, boxHeight, "F");
+
+      // text
+
+      doc.setTextColor(80, 80, 80);
+
+      doc.text(tagText, boxX + paddingX, boxY + 3.5);
+
+      // reset
+
+      doc.setTextColor(0, 0, 0);
+
+      // --- 3. HEADER SECTION ---
+      doc.setFontSize(22);
+      doc.setTextColor(17, 24, 39); // gray-900
+      doc.setFont('helvetica', 'bold');
+      doc.text('Restock Report', 14, 24);
+
+      doc.setFontSize(10);
+      doc.setTextColor(107, 114, 128); // gray-500
+      doc.setFont('helvetica', 'normal');
+
+      const generationDate = new Date().toLocaleDateString('en-IN', {
+        year: 'numeric', month: 'short', day: 'numeric',
+      });
+
+      const activeFilterLabel =
+        activeFilter === 'urgent' ? 'Urgent items only' :
+        activeFilter === 'low'    ? 'Low stock items only' :
+                                    'All items';
+
+      const subtitleText = `Generated: ${generationDate}   |   Filter: ${activeFilterLabel}   |   Items: ${displayedItems.length}`;
+      doc.text(subtitleText, 14, 31);
+
+      // --- 4. TABLE ---
+      autoTable(doc, {
+        startY: 38,
+        head: [['PRODUCT', 'STOCK', 'MIN. NEEDED', 'UNITS SHORT', 'STATUS']],
+        body: displayedItems.map((item) => {
+          const currentStock = item.stock ?? 0;
+          const deficit = Math.max((item.restockQuantity ?? 0) - currentStock, 0);
+          const status =
+            currentStock <= 0 ? 'Urgent' :
+            currentStock <= 5 ? 'Low Stock' :
+                                'In Stock';
+          return [
+            item.name,
+            currentStock.toString(),
+            (item.restockQuantity ?? 0).toString(),
+            deficit > 0 ? `-${deficit}` : '-',
+            status,
+          ];
+        }),
+        foot: [
+          [
+            `Total: ${displayedItems.length} items`,
+            '',
+            '',
+            '',
+            `Out of stock: ${outOfStockCount}`,
+          ],
         ],
-      ],
-      theme: 'grid',
-      headStyles: { fillColor: [41, 128, 185] },
-      footStyles: { fontStyle: 'bold', fillColor: [41, 128, 185] },
-    });
+        theme: 'plain',
+        styles: {
+          font: 'helvetica',
+          cellPadding: 7,
+          fontSize: 10,
+          textColor: [55, 65, 81], // gray-700
+        },
+        headStyles: {
+          fillColor: [249, 250, 251], // gray-50
+          textColor: [17, 24, 39],   // gray-900
+          fontStyle: 'bold',
+          halign: 'left',
+          lineWidth: { top: 1, bottom: 1 },
+          lineColor: [229, 231, 235], // gray-200
+        },
+        footStyles: {
+          fillColor: [255, 255, 255],
+          textColor: [17, 24, 39],
+          fontStyle: 'bold',
+          halign: 'left',
+          lineWidth: { top: 1, bottom: 2 },
+          lineColor: [17, 24, 39],
+        },
+        alternateRowStyles: {
+          fillColor: [252, 252, 252],
+        },
+        columnStyles: {
+          0: { halign: 'left', cellWidth: 70 },  // PRODUCT
+          1: { halign: 'left', cellWidth: 25 },  // STOCK
+          2: { halign: 'left', cellWidth: 35 },  // MIN. NEEDED
+          3: { halign: 'left', cellWidth: 30 },  // UNITS SHORT
+          4: { halign: 'left', cellWidth: 30 },  // STATUS
+        },
+        didParseCell: function (data) {
+          // Color-code the STATUS column
+          if (data.section === 'body' && data.column.index === 4) {
+            const val = String(data.cell.raw);
+            if (val === 'Urgent') {
+              data.cell.styles.textColor = [220, 38, 38];   // red-600
+              data.cell.styles.fontStyle = 'bold';
+            } else if (val === 'Low Stock') {
+              data.cell.styles.textColor = [234, 88, 12];   // orange-600
+              data.cell.styles.fontStyle = 'bold';
+            } else {
+              data.cell.styles.textColor = [22, 163, 74];   // green-600
+            }
+          }
+          // Color-code UNITS SHORT column (negatives in red)
+          if (data.section === 'body' && data.column.index === 3) {
+            const val = String(data.cell.raw);
+            if (val.startsWith('-')) {
+              data.cell.styles.textColor = [220, 38, 38];   // red-600
+              data.cell.styles.fontStyle = 'bold';
+            }
+          }
+          // Align footer cells left
+          if (data.section === 'foot') {
+            data.cell.styles.halign = 'left';
+          }
+        },
+        didDrawPage: function () {
+          const pageCount = doc.getNumberOfPages();
+          doc.setFontSize(9);
+          doc.setTextColor(156, 163, 175); // gray-400
+          doc.text(
+            `Page ${pageCount}`,
+            pageWidth - 14,
+            pageHeight - 10,
+            { align: 'right' }
+          );
+        },
+      });
 
-    doc.save(`restock_report_${new Date().toISOString().split('T')[0]}.pdf`);
-    setIsDownloadModalOpen(false);
-  };
+      doc.save(`restock_report_${new Date().toISOString().split('T')[0]}.pdf`);
+      setIsDownloadModalOpen(false);
+    };
 
   /* ---------- EXCEL DOWNLOAD ---------- */
   const downloadAsExcel = () => {

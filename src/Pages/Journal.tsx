@@ -1295,9 +1295,9 @@ const Journal: React.FC = () => {
           {/* Filter + notification block moved OUTSIDE the flex-1 container, at the true top-right of header */}
           <div
             ref={filterRef}
-            className="absolute top-2 right-4 flex items-center gap-2 z-30"
+            className="absolute top-4 right-4 flex items-center gap-2 z-30"
           >
-            <div className="border border-slate-300 rounded-sm p-1 bg-gray-100 shadow-sm">
+            <div className="border border-slate-300 rounded-sm p-2 bg-gray-100 shadow-sm flex items-center justify-center">
               <NotificationBell />
             </div>
 
@@ -1369,9 +1369,11 @@ const Journal: React.FC = () => {
                 >
                   <button
                     onClick={() => setShowSearch(!showSearch)}
-                    className="text-slate-500 hover:text-slate-800 transition-colors ml-0"
+                    className="text-slate-500 hover:text-slate-800 transition-colors ml-0 -mt-1"
                   >
-                    {showSearch ? <IconClose /> : <IconSearch />}
+                    <span className="relative -top-1">
+                      {showSearch ? <IconClose /> : <IconSearch />}
+                    </span>
                   </button>
                 </TutorialStep>
 

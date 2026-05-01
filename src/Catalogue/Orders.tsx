@@ -79,6 +79,8 @@ export interface Order {
     userName: string;
     status: OrderStatus;
     paidAmount?: number;
+    creditNoteAmount?: number;
+    refundAmount?: number; 
     createdAt: Date;
     time: string;
     items?: OrderItem[];
@@ -191,6 +193,8 @@ export const useOrdersData = (
                         isLead: data.isLead || false,
                         totalAmount: Number(data.totalAmount || 0),
                         paidAmount: Number(data.paidAmount || 0),
+                        creditNoteAmount: Number(data.creditNoteAmount || 0),
+                        refundAmount: Number(data.refundAmount || 0), 
                         status: data.status || 'Upcoming',
                         paymentMethod: data.paymentMethod,
                         paymentMethods: data.paymentMethods,
@@ -666,13 +670,13 @@ const OrdersPage: React.FC = () => {
         });
     };
 
-    useEffect(() => {
-        if (!editingOrder || !currentUser?.companyId) return;
+    // useEffect(() => {
+    //     if (!editingOrder || !currentUser?.companyId) return;
 
-        setEditingOrder(prev =>
-            prev ? { ...prev, totalAmount: calculatedEditTotal } : prev
-        );
-    }, [calculatedEditTotal]);
+    //     setEditingOrder(prev =>
+    //         prev ? { ...prev, totalAmount: calculatedEditTotal } : prev
+    //     );
+    // }, [calculatedEditTotal]);
 
     useEffect(() => {
         const fetchCompanyInfo = async () => {
@@ -1249,10 +1253,24 @@ const OrdersPage: React.FC = () => {
 
   try {
     const companyId = currentUser.companyId;
-    const originalOrder = Orders.find(o => o.id === editingOrder.id);
+    const orderRef = doc(db, 'companies', companyId, 'Orders', editingOrder.id);
+    const liveOrderSnap = await getDoc(orderRef);
+    const originalOrder = liveOrderSnap.exists()
+      ? ({ id: editingOrder.id, ...(liveOrderSnap.data() as any) } as any)
+      : Orders.find(o => o.id === editingOrder.id);
 
-    const originalTotal = Number(originalOrder?.totalAmount || 0);
-    const newTotal = Number(calculatedEditTotal || 0);
+    const getItemsTotal = (items: any[] = []) =>
+      items.reduce((sum, item) => {
+        const salesPrice = Number(item.salesPrice || 0);
+        const mrp = Number(item.mrp || 0);
+        const unitPrice = item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+        return sum + Number(unitPrice || 0) * Number(item.quantity || 0);
+      }, 0);
+
+    // Compare item-based totals so increase/decrease detection is always correct,
+    // even if stored totalAmount was stale.
+    const originalTotal = Number(getItemsTotal(originalOrder?.items || []));
+    const newTotal = Number(getItemsTotal(editingOrder.items || []));
     const netDiff = newTotal - originalTotal;
 
     // ── Stock delta calculation (same logic as EditOrderModal) ──────────
@@ -1286,11 +1304,26 @@ const OrdersPage: React.FC = () => {
 
     // ── Helper: resolve status after amount change ──────────────────────
     const resolveStatus = () => {
-      const paidAmt = Number(editingOrder.paidAmount || 0);
-      let status = editingOrder.status;
-      if (status === 'Paid' && newTotal > paidAmt) status = 'Completed';
-      else if (status === 'Completed' && newTotal <= paidAmt && newTotal > 0) status = 'Paid';
-      return status;
+    const liveStatus = originalOrder?.status || editingOrder.status;
+    
+    // Only touch status for final-stage orders (Completed/Paid)
+    // Confirmed/Packed orders should keep their status unchanged
+    if (liveStatus !== 'Completed' && liveStatus !== 'Paid') {
+        return liveStatus;
+    }
+
+    const paidAmt = Number(originalOrder?.paidAmount || 0);
+    // Save-flow unpaid/paid decision should follow actual paid amount against new total.
+    // Credit/refund adjustments are handled separately in their own handlers.
+    const effectiveDue = Math.max(0, newTotal - paidAmt);
+
+    if (effectiveDue > 0) {
+        return 'Completed'; // has due → unpaid section
+    } else if (newTotal > 0) {
+        return 'Paid'; // fully settled
+    }
+
+    return liveStatus;
     };
 
     // ── Stock updates (runs for all cases) ─────────────────────────────
@@ -1307,8 +1340,6 @@ const OrdersPage: React.FC = () => {
         );
       }
     });
-
-    const orderRef = doc(db, 'companies', companyId, 'Orders', editingOrder.id);
 
     // CASE 1: Amount reduced → show popup (stock still updates)
     if (netDiff < 0) {
@@ -1360,111 +1391,88 @@ const OrdersPage: React.FC = () => {
 
     // --- Adjustment Handlers ---
     const handleCreditNote = async () => {
-      if (!editingOrder || !currentUser?.companyId || !pendingAdjustment) return;
+    if (!editingOrder || !currentUser?.companyId || !pendingAdjustment) return;
 
-      const totalAmt = Number(editingOrder.totalAmount || 0);
-      const paidAmt = Number(editingOrder.paidAmount || 0);
+    const liveOrder = Orders.find(o => o.id === editingOrder.id);
+    const totalAmt = Number(
+      (editingOrder.items || []).reduce((sum, item) => {
+        const salesPrice = Number(item.salesPrice || 0);
+        const mrp = Number(item.mrp || 0);
+        const unitPrice = item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+        return sum + Number(unitPrice || 0) * Number(item.quantity || 0);
+      }, 0)
+    );
+    const paidAmt = Number(liveOrder?.paidAmount || 0);
+    const updatedPaidAmt = Math.max(0, paidAmt - pendingAdjustment.amount);
+    const effectiveDue = Math.max(0, totalAmt - updatedPaidAmt);
+    const updatedStatus = effectiveDue > 0 ? 'Completed' : 'Paid';
 
-      let updatedStatus = editingOrder.status;
-
-      if (updatedStatus === 'Paid' && totalAmt > paidAmt) updatedStatus = 'Completed';
-      else if (updatedStatus === 'Completed' && totalAmt <= paidAmt && totalAmt > 0) updatedStatus = 'Paid';
-
-      await updateDoc(
+    await updateDoc(
         doc(db, 'companies', currentUser.companyId, 'Orders', editingOrder.id),
         {
-          items: editingOrder.items,
-          totalAmount: totalAmt,
-          status: updatedStatus,
-          billingDetails: editingOrder.billingDetails,
-          shippingDetails: editingOrder.shippingDetails,
-          creditNoteAmount: pendingAdjustment.amount,
-          updatedAt: serverTimestamp(),
+        items: editingOrder.items,
+        totalAmount: totalAmt,
+        paidAmount: updatedPaidAmt,
+        status: updatedStatus,
+        billingDetails: editingOrder.billingDetails,
+        shippingDetails: editingOrder.shippingDetails,
+        creditNoteAmount: firebaseIncrement(pendingAdjustment.amount),
+        updatedAt: serverTimestamp(),
         }
-      );
+    );
 
-      // --- ADD CREDIT NOTE TO CUSTOMER BALANCE ---
-      try {
-        const normalizePhone = (num: string) =>
-          num.replace(/\D/g, '').slice(-10);
-
-        const rawNumber =
-          editingOrder.userLoginPhone ||
-          editingOrder.billingDetails?.phone ||
-          '';
-
+    // Credit balance update (your existing customer code stays the same)
+    try {
+        const normalizePhone = (num: string) => num.replace(/\D/g, '').slice(-10);
+        const rawNumber = editingOrder.userLoginPhone || editingOrder.billingDetails?.phone || '';
         const customerIdentifier = normalizePhone(rawNumber);
-
         if (customerIdentifier) {
-          const customerRef = doc(
-            db,
-            'companies',
-            currentUser.companyId,
-            'customers',
-            customerIdentifier
-          );
-
-          const customerName =
-            editingOrder.userName ||
-            editingOrder.billingDetails?.name ||
-            '';
-
-          await setDoc(
-            customerRef,
-            {
-              number: customerIdentifier,
-              name: customerName,
-              creditBalance: firebaseIncrement(pendingAdjustment.amount),
-              updatedAt: serverTimestamp(),
-            },
-            { merge: true }
-          );
+        const customerRef = doc(db, 'companies', currentUser.companyId, 'customers', customerIdentifier);
+        const customerName = editingOrder.userName || editingOrder.billingDetails?.name || '';
+        await setDoc(customerRef, {
+            number: customerIdentifier,
+            name: customerName,
+            creditBalance: firebaseIncrement(pendingAdjustment.amount),
+            updatedAt: serverTimestamp(),
+        }, { merge: true });
         }
-      } catch (err) {
+    } catch (err) {
         console.error("Failed to update customer credit balance:", err);
-      }
+    }
 
-      setShowAdjustmentPopup(false);
-      setPendingAdjustment(null);
-      setEditingOrder(null);
-
-      setModal({
-        message: `Credit Note: ₹${pendingAdjustment.amount.toFixed(2)} added`,
-        type: State.SUCCESS,
-      });
+    setShowAdjustmentPopup(false);
+    setPendingAdjustment(null);
+    setEditingOrder(null);
+    setModal({ message: `Credit Note: ₹${pendingAdjustment.amount.toFixed(2)} added`, type: State.SUCCESS });
     };
-
     const handleRefund = async () => {
-      if (!editingOrder || !currentUser?.companyId || !pendingAdjustment) return;
+    if (!editingOrder || !currentUser?.companyId || !pendingAdjustment) return;
 
-      const totalAmt = Number(editingOrder.totalAmount || 0);
-      const paidAmt = Number(editingOrder.paidAmount || 0);
+    const totalAmt = Number(editingOrder.totalAmount || 0);
+    
+    
+    
 
-      let updatedStatus = editingOrder.status;
+   
+    const updatedStatus = 'Paid';
 
-      if (updatedStatus === 'Paid' && totalAmt > paidAmt) updatedStatus = 'Completed';
-      else if (updatedStatus === 'Completed' && totalAmt <= paidAmt && totalAmt > 0) updatedStatus = 'Paid';
-
-      await updateDoc(
+    await updateDoc(
         doc(db, 'companies', currentUser.companyId, 'Orders', editingOrder.id),
         {
-          items: editingOrder.items,
-          totalAmount: totalAmt,
-          status: updatedStatus,
-          billingDetails: editingOrder.billingDetails,
-          shippingDetails: editingOrder.shippingDetails,
-          updatedAt: serverTimestamp(),
+        items: editingOrder.items,
+        totalAmount: totalAmt,
+        status: updatedStatus,
+        billingDetails: editingOrder.billingDetails,
+        shippingDetails: editingOrder.shippingDetails,
+        refundAmount: firebaseIncrement(pendingAdjustment.amount),
+        updatedAt: serverTimestamp(),
         }
-      );
+    );
 
-      setShowAdjustmentPopup(false);
-      setPendingAdjustment(null);
-      setEditingOrder(null);
-
-      setModal({
-        message: `Refund: ₹${pendingAdjustment.amount.toFixed(2)} processed`,
-        type: State.SUCCESS,
-      });
+    setShowAdjustmentPopup(false);
+    setPendingAdjustment(null);
+    setEditingOrder(null);
+    setModal({ message: `Refund: ₹${pendingAdjustment.amount.toFixed(2)} processed`, type: State.SUCCESS });
     };
 
     return (
@@ -1913,6 +1921,23 @@ const OrdersPage: React.FC = () => {
                                                                     <p className="text-[7px] font-bold text-green-600 uppercase tracking-tighter leading-none mb-0.5">Paid</p>
                                                                     <p className="text-[11px] font-black text-green-700 leading-none">₹{paid.toFixed(2)}</p>
                                                                 </div>
+
+                                                                <div className="text-right border-r border-slate-200 pr-3">
+                                                                    <p className="text-[7px] font-bold text-blue-600 uppercase tracking-tighter leading-none mb-0.5">Credit</p>
+                                                                    <p className="text-[11px] font-black text-blue-700 leading-none">
+                                                                        ₹{Number(Order.creditNoteAmount || 0).toFixed(2)}
+                                                                    </p>
+                                                                </div>
+
+                                                                {Number(Order.refundAmount || 0) > 0 && (
+                                                                <div className="text-right border-r border-slate-200 pr-3">
+                                                                    <p className="text-[7px] font-bold text-red-600  uppercase tracking-tighter leading-none mb-0.5">Refund</p>
+                                                                    <p className="text-[11px] font-black text-red-600 leading-none">
+                                                                    ₹{Number(Order.refundAmount || 0).toFixed(2)}
+                                                                    </p>
+                                                                </div>
+                                                                )}
+
                                                                 <div className="text-right">
                                                                     <p className="text-[7px] font-bold text-red-600 uppercase tracking-tighter leading-none mb-0.5">Due</p>
                                                                     <p className="text-[11px] font-black text-red-700 leading-none">₹{due.toFixed(2)}</p>

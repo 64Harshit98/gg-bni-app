@@ -52,7 +52,7 @@ const QuickListedToggle: React.FC<QuickListedToggleProps> = ({ itemId, isListed,
         <button
             onClick={handleClick}
             disabled={disabled || isLoading}
-            className={`flex-1 py-1.5 rounded-sm text-[9px] font-black uppercase cursor-pointer tracking-wider transition-all flex items-center justify-center gap-1 ${isListed ? 'bg-[#F97316] text-white shadow-sm' : 'bg-gray-100 text-gray-400 cursor-pointer'
+            className={`flex-1 py-1.5 rounded-sm text-[9px] font-black uppercase cursor-pointer tracking-wider transition-all flex items-center justify-center gap-1 ${isListed ? 'bg-green-500/80 text-white shadow-sm' : 'bg-gray-100 text-gray-400 cursor-pointer'
                 }`}
         >
             {isLoading ? <FiLoader className="animate-spin" size={10} /> : isListed ? <FiCheckSquare size={10} /> : <FiStar size={10} />}
@@ -850,7 +850,6 @@ const MyShop: React.FC = () => {
 
             <ItemEditDrawer
                 item={selectedItemForEdit}
-                isCatalogue={true}
                 isOpen={isDrawerOpen}
                 onClose={() => {
                     setIsDrawerOpen(false);

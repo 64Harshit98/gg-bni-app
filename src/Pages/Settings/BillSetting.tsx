@@ -436,7 +436,7 @@ const BillSettings: React.FC = () => {
                             </div>
                         </div>
                         {settings.printFormat === 'THERMAL58' && (
-                            <p className="mt-2 text-xs text-amber-600 font-medium">Note: Signatures are not displayed on 2-Inch Thermal receipts to save space.</p>
+                            <p className="mt-2 text-xs text-amber-600 font-medium">Note: Signatures are not displayed on 2-Inch Thermal receipts.</p>
                         )}
                     </div>
                 </div>

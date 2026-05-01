@@ -46,10 +46,11 @@ export interface SalesItem extends OriginalSalesItem {
     barcode: string;
     restockQuantity: number;
     productId: string;
-    unit?: string;               // ADDED
-    unitMultiplier?: number;     // ADDED
-    packetSize?: number | undefined;  // ADDED
-    isCustomAmount?: boolean;        // ADDED
+    unit?: string;
+    unitMultiplier?: number;
+    moq?: number;
+    packetSize?: number | undefined;
+    isCustomAmount?: boolean;
     isStagedCalcItem?: boolean;
 }
 
@@ -455,9 +456,7 @@ const Sales: React.FC = () => {
             const currentQuantity = cartItem.quantity || 1;
             accumulatorQuantity += currentQuantity;
 
-            let baseForSubtotal = (cartItem.salesPrice && cartItem.salesPrice > 0) ? cartItem.salesPrice : (cartItem.mrp || 0);
-
-            // 👇 Fixed condition here so it doesn't fail if taxRate is null
+            let baseForSubtotal = (cartItem.salesPrice > 0) ? cartItem.salesPrice : (cartItem.mrp || 0);
             const itemSpecificTaxRate = cartItem.tax !== undefined ? Number(cartItem.tax) : taxRate;
 
             if (effectiveTaxMode === 'inclusive' && itemSpecificTaxRate > 0) {
@@ -466,8 +465,7 @@ const Sales: React.FC = () => {
 
             accumulatorSubtotal += baseForSubtotal * currentQuantity;
 
-            const baseForDiscount = (cartItem.salesPrice && cartItem.salesPrice > 0) ? cartItem.salesPrice : (cartItem.mrp || 0);
-
+            const baseForDiscount = (cartItem.salesPrice > 0) ? cartItem.salesPrice : (cartItem.mrp || 0);
             let effectiveUnitPrice = 0;
             if (cartItem.customPrice !== undefined && cartItem.customPrice !== null && cartItem.customPrice !== '') {
                 effectiveUnitPrice = parseFloat(String(cartItem.customPrice));
@@ -806,29 +804,25 @@ const Sales: React.FC = () => {
         const mrp = Number(itemToAdd.mrp || 0);
         const salesPrice = Number(itemToAdd.salesPrice || 0);
         const presetDiscount = Number(itemToAdd.discount || 0);
-        let finalNetPrice = mrp;
-        let calculatedDiscount = 0;
-        const basePrice = mrp > 0 ? mrp : salesPrice;
+        const initialMoq = Number((itemToAdd as any).moq || 1); // Grab MOQ from item master
+
+        const basePrice = salesPrice > 0 ? salesPrice : mrp;
+        let finalNetPrice = basePrice;
 
         if (presetDiscount > 0) {
-            calculatedDiscount = presetDiscount;
-            finalNetPrice = basePrice * (1 - presetDiscount / 100);
-        } else if (salesPrice > 0 && salesPrice < mrp) {
-            finalNetPrice = salesPrice;
-            calculatedDiscount = ((mrp - salesPrice) / mrp) * 100;
-        } else {
-            finalNetPrice = basePrice;
-            calculatedDiscount = 0;
+            finalNetPrice = basePrice * (1 - (presetDiscount / 100));
         }
+
         const isRoundingEnabled = salesSettings?.enableRounding ?? true;
         const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
         finalNetPrice = applyRounding(finalNetPrice, isRoundingEnabled, roundingInterval);
+
         const newSalesItem: SalesItem = {
             ...itemToAdd,
             id: crypto.randomUUID(),
             productId: itemToAdd.id!,
-            quantity: (itemToAdd as any).unitMultiplier || 1,
-            discount: parseFloat(calculatedDiscount.toFixed(2)),
+            quantity: Math.max(1, initialMoq),
+            discount: presetDiscount,
             customPrice: finalNetPrice,
             isEditable: true,
             purchasePrice: itemToAdd.purchasePrice || 0,
@@ -838,10 +832,11 @@ const Sales: React.FC = () => {
             amount: itemToAdd.amount || 0,
             barcode: itemToAdd.barcode || '',
             restockQuantity: itemToAdd.restockQuantity || 0,
-            unit: (itemToAdd as any).unit || '',                     // ADDED
-            unitMultiplier: (itemToAdd as any).unitMultiplier || 1,  // ADDED
+            unit: (itemToAdd as any).unit || '',
+            unitMultiplier: 1,
             packetSize: (itemToAdd as any).packetSize || null,
         };
+
         setItems(prev => {
             const insertionOrder = salesSettings?.cartInsertionOrder || 'top';
             return insertionOrder === 'top' ? [newSalesItem, ...prev] : [...prev, newSalesItem];
@@ -949,7 +944,7 @@ const Sales: React.FC = () => {
         const safeDiscount = isNaN(n) ? 0 : n;
         setItems(prev => prev.map(i => {
             if (i.id === id) {
-                const basePrice = (i.salesPrice && i.salesPrice > 0) ? i.salesPrice : (i.mrp || 0);
+                const basePrice = (i.salesPrice > 0) ? i.salesPrice : (i.mrp || 0);
                 let newPrice = basePrice * (1 - safeDiscount / 100);
                 const isRoundingEnabled = salesSettings?.enableRounding ?? true;
                 const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
@@ -965,7 +960,8 @@ const Sales: React.FC = () => {
             if (i.id === id && typeof i.customPrice === 'string') {
                 const n = parseFloat(i.customPrice);
                 if (i.customPrice === '' || isNaN(n)) return { ...i, customPrice: undefined };
-                let d = 0; const basePrice = (i.mrp && i.mrp > 0) ? i.mrp : (i.salesPrice || 0);
+                let d = 0;
+                const basePrice = (i.salesPrice > 0) ? i.salesPrice : (i.mrp || 0);
                 if (basePrice > 0) d = ((basePrice - n) / basePrice) * 100;
                 return { ...i, customPrice: n, discount: parseFloat(d.toFixed(2)) };
             }
@@ -977,45 +973,39 @@ const Sales: React.FC = () => {
     const handleOpenEditDrawer = (item: Item) => { setSelectedItemForEdit(item); setIsItemDrawerOpen(true); };
     const handleCloseEditDrawer = () => { setIsItemDrawerOpen(false); setTimeout(() => setSelectedItemForEdit(null), 300); };
     const handleSaveSuccess = (updatedItemData: Partial<Item>) => {
-        setAvailableItems(prevItems => prevItems.map(item => item.id === selectedItemForEdit?.id ? { ...item, ...updatedItemData, id: item.id } as Item : item));
-        const updateForCart: Partial<SalesItem> = { ...updatedItemData };
-        if ((updateForCart as any).Stock !== undefined) { updateForCart.stock = (updateForCart as any).Stock; delete (updateForCart as any).Stock; }
-        Object.keys(updateForCart).forEach(key => { if (updateForCart[key as keyof typeof updateForCart] === undefined) delete updateForCart[key as keyof typeof updateForCart]; });
+        setAvailableItems(prevItems => prevItems.map(item =>
+            item.id === selectedItemForEdit?.id ? { ...item, ...updatedItemData, id: item.id } as Item : item
+        ));
 
-        const isRoundingEnabled = salesSettings?.enableRounding ?? true;
-        const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
+        const updateForCart: Partial<SalesItem> = { ...updatedItemData };
+        if ((updateForCart as any).Stock !== undefined) {
+            updateForCart.stock = (updateForCart as any).Stock;
+            delete (updateForCart as any).Stock;
+        }
+
+        Object.keys(updateForCart).forEach(key => {
+            if (updateForCart[key as keyof typeof updateForCart] === undefined) {
+                delete updateForCart[key as keyof typeof updateForCart];
+            }
+        });
 
         setItems(prevCartItems => prevCartItems.map(cartItem => {
             if (cartItem.productId === selectedItemForEdit?.id || cartItem.id === selectedItemForEdit?.id) {
-                const merged = { ...cartItem, ...updateForCart } as SalesItem;
-
-                // Recalculate price & discount from updated mrp/salesPrice
-                const newMrp = Number(merged.mrp || 0);
-                const newSalesPrice = Number(merged.salesPrice || 0);
-                const presetDiscount = Number(merged.discount || 0);
-
-                let newCustomPrice: number;
-                let newDiscount: number;
-                const basePrice = newMrp > 0 ? newMrp : newSalesPrice;
-
+                const mergedItem = { ...cartItem, ...updateForCart } as SalesItem;
+                const mrp = Number(mergedItem.mrp || 0);
+                const salesPrice = Number(mergedItem.salesPrice || 0);
+                const presetDiscount = Number(mergedItem.discount || 0);
+                const basePrice = salesPrice > 0 ? salesPrice : mrp;
+                let finalNetPrice = basePrice;
                 if (presetDiscount > 0) {
-                    newDiscount = presetDiscount;
-                    newCustomPrice = basePrice * (1 - presetDiscount / 100);
-                } else if (newSalesPrice > 0 && newSalesPrice < newMrp) {
-                    newCustomPrice = newSalesPrice;
-                    newDiscount = ((newMrp - newSalesPrice) / newMrp) * 100;
-                } else {
-                    newCustomPrice = basePrice;
-                    newDiscount = 0;
+                    finalNetPrice = basePrice * (1 - (presetDiscount / 100));
                 }
+                const isRoundingEnabled = salesSettings?.enableRounding ?? true;
+                const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
+                finalNetPrice = applyRounding(finalNetPrice, isRoundingEnabled, roundingInterval);
+                mergedItem.customPrice = finalNetPrice;
 
-                newCustomPrice = applyRounding(newCustomPrice, isRoundingEnabled, roundingInterval);
-
-                return {
-                    ...merged,
-                    customPrice: parseFloat(newCustomPrice.toFixed(2)),
-                    discount: parseFloat(newDiscount.toFixed(2)),
-                };
+                return mergedItem;
             }
             return cartItem;
         }));
@@ -1032,9 +1022,8 @@ const Sales: React.FC = () => {
             const stockNeeds = new Map<string, number>();
             items.filter(i => i.isEditable).forEach(i => {
                 const pid = i.productId;
-                const multiplier = i.unitMultiplier || 1; // ADDED
-                const requiredStock = (i.quantity || 1) * multiplier; // ADDED
-                stockNeeds.set(pid, (stockNeeds.get(pid) || 0) + requiredStock); // UPDATED
+                const requiredStock = i.quantity || 1; // Multiplier removed. 1:1 mapping.
+                stockNeeds.set(pid, (stockNeeds.get(pid) || 0) + requiredStock);
             });
             const invalidItems: string[] = [];
             stockNeeds.forEach((needed, pid) => {
@@ -1254,18 +1243,15 @@ const Sales: React.FC = () => {
                     const oldQuantities = new Map<string, number>();
                     (invoiceToEdit.items || []).forEach((oldItem: any) => {
                         const pid = oldItem.productId || oldItem.id;
-                        const oldMultiplier = oldItem.unitMultiplier || 1;
-                        const oldQty = (oldItem.quantity || 1) * oldMultiplier;
+                        const oldQty = oldItem.quantity || 1; // Multiplier removed.
                         oldQuantities.set(pid, (oldQuantities.get(pid) || 0) + oldQty);
                     });
 
-                    // 2. Calculate the new quantities from the current cart
                     const newQuantities = new Map<string, number>();
                     items.forEach(newItem => {
                         const pid = newItem.productId || newItem.id;
                         if (pid) {
-                            const newMultiplier = newItem.unitMultiplier || 1;
-                            const newQty = (newItem.quantity || 1) * newMultiplier;
+                            const newQty = newItem.quantity || 1; // Multiplier removed.
                             newQuantities.set(pid, (newQuantities.get(pid) || 0) + newQty);
                         }
                     });
@@ -1300,7 +1286,8 @@ const Sales: React.FC = () => {
                         const pid = i.productId || i.id;
                         if (pid && !i.isCustomAmount) {
                             const itemRef = doc(db, "companies", companyId, "items", pid);
-                            transaction.update(itemRef, { stock: firebaseIncrement(-(i.quantity || 1)), updatedAt: serverTimestamp() }); // BACK TO NORMAL
+                            const totalToDeduct = i.quantity || 1;
+                            transaction.update(itemRef, { stock: firebaseIncrement(-totalToDeduct), updatedAt: serverTimestamp() });
                         }
                     });
 
@@ -1747,21 +1734,16 @@ const Sales: React.FC = () => {
                                 const mrp = Number(item.mrp || 0);
                                 const itemSalesPrice = Number(item.salesPrice || 0);
                                 const presetDiscount = Number(item.discount || 0);
-                                let baseDisplayPrice: number;
+                                const basePrice = itemSalesPrice > 0 ? itemSalesPrice : mrp;
+                                let baseDisplayPrice = basePrice;
+
                                 if (presetDiscount > 0 && allowItemDiscount) {
-                                    // Discount takes priority (fixes MRP == salesPrice case)
-                                    baseDisplayPrice = (mrp > 0 ? mrp : itemSalesPrice) * (1 - presetDiscount / 100);
-                                } else if (itemSalesPrice > 0 && itemSalesPrice < mrp) {
-                                    baseDisplayPrice = itemSalesPrice;
-                                } else {
-                                    baseDisplayPrice = mrp > 0 ? mrp : itemSalesPrice;
+                                    baseDisplayPrice = basePrice * (1 - (presetDiscount / 100));
                                 }
                                 baseDisplayPrice = applyRounding(baseDisplayPrice, isRoundingEnabled, roundingInterval);
-
                                 const effectiveSp = (lastAddedCartItem?.customPrice !== undefined && lastAddedCartItem?.customPrice !== null && lastAddedCartItem?.customPrice !== '')
                                     ? Number(lastAddedCartItem.customPrice)
                                     : baseDisplayPrice;
-
                                 const sp = effectiveSp;
                                 const lineSubtotal = Math.round((Number(sp) * quantity) * 100) / 100;
                                 const discPct = (!hideMrp && allowItemDiscount && mrp > 0 && Number(sp) < mrp && Number(sp) > 0)
@@ -1782,7 +1764,7 @@ const Sales: React.FC = () => {
                                                 else addItemToCart(item);
                                             }}
                                             className={`bg-white rounded-sm flex flex-col w-full overflow-visible transition-all duration-200 relative group cursor-pointer
-${isSelected
+                                                ${isSelected
                                                     ? 'border-2 border-blue-400 shadow-md ring-1 ring-blue-100'
                                                     : 'border border-gray-100 hover:shadow-md hover:border-gray-200'}`}
                                             style={{ margin: '0 2px' }}

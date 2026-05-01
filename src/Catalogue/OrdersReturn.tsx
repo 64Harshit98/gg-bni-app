@@ -1426,7 +1426,6 @@ const OrdersReturnPage: React.FC = () => {
                         isOpen={isItemDrawerOpen}
                         onClose={handleCloseEditDrawer}
                         onSaveSuccess={handleSaveSuccess}
-                        isCatalogue={true}
                       />
                     )}
                   </>

@@ -80,7 +80,7 @@ export interface Order {
     status: OrderStatus;
     paidAmount?: number;
     creditNoteAmount?: number;
-    refundAmount?: number; 
+    refundAmount?: number;
     createdAt: Date;
     time: string;
     items?: OrderItem[];
@@ -194,7 +194,7 @@ export const useOrdersData = (
                         totalAmount: Number(data.totalAmount || 0),
                         paidAmount: Number(data.paidAmount || 0),
                         creditNoteAmount: Number(data.creditNoteAmount || 0),
-                        refundAmount: Number(data.refundAmount || 0), 
+                        refundAmount: Number(data.refundAmount || 0),
                         status: data.status || 'Upcoming',
                         paymentMethod: data.paymentMethod,
                         paymentMethods: data.paymentMethods,
@@ -220,7 +220,7 @@ export const useOrdersData = (
                                 const finalPrice =
                                     i.customPrice ??
                                     (salesPrice > 0 ? salesPrice : mrp);
-                               // console.log("Item:", i.name, "MOQ :", i.moq);
+                                // console.log("Item:", i.name, "MOQ :", i.moq);
 
                                 return {
                                     id: i.id,
@@ -428,25 +428,25 @@ const OrdersPage: React.FC = () => {
     const { currentUser } = useAuth();
 
     // ── Subscription badge ────────────────────────────────────────────────────
-  const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
+    const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
 
-  useEffect(() => {
-    const fetchExpiry = async () => {
-      if (!currentUser?.companyId) return;
-      const ref = doc(db, 'companies', currentUser.companyId);
-      const snap = await getDoc(ref);
-      if (snap.exists()) {
-        const expiry = snap.data().expiryDate;
-        if (!expiry) return;
-        const d = expiry.toDate ? expiry.toDate() : new Date(expiry);
-        setDaysRemaining(Math.ceil((d.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)));
-      }
-    };
-    fetchExpiry();
-  }, [currentUser?.companyId]);
+    useEffect(() => {
+        const fetchExpiry = async () => {
+            if (!currentUser?.companyId) return;
+            const ref = doc(db, 'companies', currentUser.companyId);
+            const snap = await getDoc(ref);
+            if (snap.exists()) {
+                const expiry = snap.data().expiryDate;
+                if (!expiry) return;
+                const d = expiry.toDate ? expiry.toDate() : new Date(expiry);
+                setDaysRemaining(Math.ceil((d.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)));
+            }
+        };
+        fetchExpiry();
+    }, [currentUser?.companyId]);
 
-  const showBadge = daysRemaining !== null && daysRemaining <= 7 && daysRemaining >= 0;
-  const isUrgent = daysRemaining !== null && daysRemaining <= 2;
+    const showBadge = daysRemaining !== null && daysRemaining <= 7 && daysRemaining >= 0;
+    const isUrgent = daysRemaining !== null && daysRemaining <= 2;
 
     const liveMoqMap = useLiveMoqMapHook(currentUser?.companyId, editingOrder);
     const { Orders, loading: dataLoading, error } = useOrdersData(
@@ -579,10 +579,10 @@ const OrdersPage: React.FC = () => {
     };
 
     const mappedOrderItems = (editingOrder?.items || []).map((item) => {
-        const mrp        = Number(item.mrp || 0);
-        const salePrice  = Number(item.salesPrice || 0);
-        let   discount   = Number(item.discount || 0);
-        let   netPrice   = Number(item.customPrice ?? 0);
+        const mrp = Number(item.mrp || 0);
+        const salePrice = Number(item.salesPrice || 0);
+        let discount = Number(item.discount || 0);
+        let netPrice = Number(item.customPrice ?? 0);
 
         const liveMoq = liveMoqMap[item.id] ?? Number(item.moq ?? 0);
 
@@ -599,12 +599,12 @@ const OrdersPage: React.FC = () => {
 
         return {
             ...item,
-            productId:      item.itemId || item.id,
-            isEditable:     true,
-            discount:       Number(discount.toFixed(2)),
-            customPrice:    Number(netPrice.toFixed(2)),
+            productId: item.itemId || item.id,
+            isEditable: true,
+            discount: Number(discount.toFixed(2)),
+            customPrice: Number(netPrice.toFixed(2)),
             unitMultiplier: Number(item.unitMultiplier || 1),
-            moq:            liveMoq,
+            moq: liveMoq,
         };
     });
 
@@ -1248,133 +1248,133 @@ const OrdersPage: React.FC = () => {
         });
     };
 
- const handleSaveChanges = async () => {
-  if (!editingOrder || !currentUser?.companyId) return;
+    const handleSaveChanges = async () => {
+        if (!editingOrder || !currentUser?.companyId) return;
 
-  try {
-    const companyId = currentUser.companyId;
-    const orderRef = doc(db, 'companies', companyId, 'Orders', editingOrder.id);
-    const liveOrderSnap = await getDoc(orderRef);
-    const originalOrder = liveOrderSnap.exists()
-      ? ({ id: editingOrder.id, ...(liveOrderSnap.data() as any) } as any)
-      : Orders.find(o => o.id === editingOrder.id);
+        try {
+            const companyId = currentUser.companyId;
+            const orderRef = doc(db, 'companies', companyId, 'Orders', editingOrder.id);
+            const liveOrderSnap = await getDoc(orderRef);
+            const originalOrder = liveOrderSnap.exists()
+                ? ({ id: editingOrder.id, ...(liveOrderSnap.data() as any) } as any)
+                : Orders.find(o => o.id === editingOrder.id);
 
-    const getItemsTotal = (items: any[] = []) =>
-      items.reduce((sum, item) => {
-        const salesPrice = Number(item.salesPrice || 0);
-        const mrp = Number(item.mrp || 0);
-        const unitPrice = item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
-        return sum + Number(unitPrice || 0) * Number(item.quantity || 0);
-      }, 0);
+            const getItemsTotal = (items: any[] = []) =>
+                items.reduce((sum, item) => {
+                    const salesPrice = Number(item.salesPrice || 0);
+                    const mrp = Number(item.mrp || 0);
+                    const unitPrice = item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+                    return sum + Number(unitPrice || 0) * Number(item.quantity || 0);
+                }, 0);
 
-    // Compare item-based totals so increase/decrease detection is always correct,
-    // even if stored totalAmount was stale.
-    const originalTotal = Number(getItemsTotal(originalOrder?.items || []));
-    const newTotal = Number(getItemsTotal(editingOrder.items || []));
-    const netDiff = newTotal - originalTotal;
+            // Compare item-based totals so increase/decrease detection is always correct,
+            // even if stored totalAmount was stale.
+            const originalTotal = Number(getItemsTotal(originalOrder?.items || []));
+            const newTotal = Number(getItemsTotal(editingOrder.items || []));
+            const netDiff = newTotal - originalTotal;
 
-    // ── Stock delta calculation (same logic as EditOrderModal) ──────────
-    const oldQuantities = new Map<string, number>();
-    (originalOrder?.items || []).forEach((oldItem: any) => {
-      const pid = oldItem.itemId || oldItem.id;
-      const qty = Number(oldItem.quantity || 0) * Number(oldItem.unitMultiplier || 1);
-      oldQuantities.set(pid, (oldQuantities.get(pid) || 0) + qty);
-    });
+            // ── Stock delta calculation (same logic as EditOrderModal) ──────────
+            const oldQuantities = new Map<string, number>();
+            (originalOrder?.items || []).forEach((oldItem: any) => {
+                const pid = oldItem.itemId || oldItem.id;
+                const qty = Number(oldItem.quantity || 0) * Number(oldItem.unitMultiplier || 1);
+                oldQuantities.set(pid, (oldQuantities.get(pid) || 0) + qty);
+            });
 
-    const newQuantities = new Map<string, number>();
-    (editingOrder.items || []).forEach((item: any) => {
-      const pid = item.itemId || item.id;
-      if (pid) {
-        const qty = Number(item.quantity || 0) * Number(item.unitMultiplier || 1);
-        newQuantities.set(pid, (newQuantities.get(pid) || 0) + qty);
-      }
-    });
+            const newQuantities = new Map<string, number>();
+            (editingOrder.items || []).forEach((item: any) => {
+                const pid = item.itemId || item.id;
+                if (pid) {
+                    const qty = Number(item.quantity || 0) * Number(item.unitMultiplier || 1);
+                    newQuantities.set(pid, (newQuantities.get(pid) || 0) + qty);
+                }
+            });
 
-    const allPids = new Set([...oldQuantities.keys(), ...newQuantities.keys()]);
+            const allPids = new Set([...oldQuantities.keys(), ...newQuantities.keys()]);
 
-    // ── Helper: build the Firestore update payload ──────────────────────
-    const buildUpdatePayload = (extraFields: Record<string, any> = {}) => ({
-      items: editingOrder.items,
-      totalAmount: newTotal,
-      billingDetails: editingOrder.billingDetails,
-      shippingDetails: editingOrder.shippingDetails,
-      updatedAt: serverTimestamp(),
-      ...extraFields,
-    });
+            // ── Helper: build the Firestore update payload ──────────────────────
+            const buildUpdatePayload = (extraFields: Record<string, any> = {}) => ({
+                items: editingOrder.items,
+                totalAmount: newTotal,
+                billingDetails: editingOrder.billingDetails,
+                shippingDetails: editingOrder.shippingDetails,
+                updatedAt: serverTimestamp(),
+                ...extraFields,
+            });
 
-    // ── Helper: resolve status after amount change ──────────────────────
-    const resolveStatus = () => {
-    const liveStatus = originalOrder?.status || editingOrder.status;
-    
-    // Only touch status for final-stage orders (Completed/Paid)
-    // Confirmed/Packed orders should keep their status unchanged
-    if (liveStatus !== 'Completed' && liveStatus !== 'Paid') {
-        return liveStatus;
-    }
+            // ── Helper: resolve status after amount change ──────────────────────
+            const resolveStatus = () => {
+                const liveStatus = originalOrder?.status || editingOrder.status;
 
-    const paidAmt = Number(originalOrder?.paidAmount || 0);
-    // Save-flow unpaid/paid decision should follow actual paid amount against new total.
-    // Credit/refund adjustments are handled separately in their own handlers.
-    const effectiveDue = Math.max(0, newTotal - paidAmt);
+                // Only touch status for final-stage orders (Completed/Paid)
+                // Confirmed/Packed orders should keep their status unchanged
+                if (liveStatus !== 'Completed' && liveStatus !== 'Paid') {
+                    return liveStatus;
+                }
 
-    if (effectiveDue > 0) {
-        return 'Completed'; // has due → unpaid section
-    } else if (newTotal > 0) {
-        return 'Paid'; // fully settled
-    }
+                const paidAmt = Number(originalOrder?.paidAmount || 0);
+                // Save-flow unpaid/paid decision should follow actual paid amount against new total.
+                // Credit/refund adjustments are handled separately in their own handlers.
+                const effectiveDue = Math.max(0, newTotal - paidAmt);
 
-    return liveStatus;
+                if (effectiveDue > 0) {
+                    return 'Completed'; // has due → unpaid section
+                } else if (newTotal > 0) {
+                    return 'Paid'; // fully settled
+                }
+
+                return liveStatus;
+            };
+
+            // ── Stock updates (runs for all cases) ─────────────────────────────
+            const stockUpdatePromises: Promise<void>[] = [];
+            allPids.forEach(pid => {
+                const diff = (newQuantities.get(pid) || 0) - (oldQuantities.get(pid) || 0);
+                if (diff !== 0) {
+                    const itemRef = doc(db, 'companies', companyId, 'items', pid);
+                    stockUpdatePromises.push(
+                        updateDoc(itemRef, {
+                            stock: firebaseIncrement(-diff), // sold more → stock decreases
+                            updatedAt: serverTimestamp(),
+                        })
+                    );
+                }
+            });
+
+            // CASE 1: Amount reduced → show popup (stock still updates)
+            if (netDiff < 0) {
+                await Promise.all(stockUpdatePromises);
+                setPendingAdjustment({ amount: Math.abs(netDiff) });
+                setShowAdjustmentPopup(true);
+                return;
+            }
+
+            // CASE 2: Amount increased
+            if (netDiff > 0) {
+                await Promise.all([
+                    ...stockUpdatePromises,
+                    updateDoc(orderRef, buildUpdatePayload({
+                        status: resolveStatus(),
+                        extraDueAmount: netDiff,
+                    })),
+                ]);
+                setEditingOrder(null);
+                setModal({ message: `Due Increased: ₹${netDiff.toFixed(2)}`, type: State.SUCCESS });
+                return;
+            }
+
+            // CASE 3: No amount change (items/qty may still have changed)
+            await Promise.all([
+                ...stockUpdatePromises,
+                updateDoc(orderRef, buildUpdatePayload({ status: resolveStatus() })),
+            ]);
+            setEditingOrder(null);
+
+        } catch (error) {
+            console.error('Save error:', error);
+            setModal({ message: 'Failed to save changes.', type: State.ERROR });
+        }
     };
-
-    // ── Stock updates (runs for all cases) ─────────────────────────────
-    const stockUpdatePromises: Promise<void>[] = [];
-    allPids.forEach(pid => {
-      const diff = (newQuantities.get(pid) || 0) - (oldQuantities.get(pid) || 0);
-      if (diff !== 0) {
-        const itemRef = doc(db, 'companies', companyId, 'items', pid);
-        stockUpdatePromises.push(
-          updateDoc(itemRef, {
-            stock: firebaseIncrement(-diff), // sold more → stock decreases
-            updatedAt: serverTimestamp(),
-          })
-        );
-      }
-    });
-
-    // CASE 1: Amount reduced → show popup (stock still updates)
-    if (netDiff < 0) {
-      await Promise.all(stockUpdatePromises);
-      setPendingAdjustment({ amount: Math.abs(netDiff) });
-      setShowAdjustmentPopup(true);
-      return;
-    }
-
-    // CASE 2: Amount increased
-    if (netDiff > 0) {
-      await Promise.all([
-        ...stockUpdatePromises,
-        updateDoc(orderRef, buildUpdatePayload({
-          status: resolveStatus(),
-          extraDueAmount: netDiff,
-        })),
-      ]);
-      setEditingOrder(null);
-      setModal({ message: `Due Increased: ₹${netDiff.toFixed(2)}`, type: State.SUCCESS });
-      return;
-    }
-
-    // CASE 3: No amount change (items/qty may still have changed)
-    await Promise.all([
-      ...stockUpdatePromises,
-      updateDoc(orderRef, buildUpdatePayload({ status: resolveStatus() })),
-    ]);
-    setEditingOrder(null);
-
-  } catch (error) {
-    console.error('Save error:', error);
-    setModal({ message: 'Failed to save changes.', type: State.ERROR });
-  }
-};
 
     // {
     //     isGeneratingPdf && (
@@ -1391,97 +1391,97 @@ const OrdersPage: React.FC = () => {
 
     // --- Adjustment Handlers ---
     const handleCreditNote = async () => {
-    if (!editingOrder || !currentUser?.companyId || !pendingAdjustment) return;
+        if (!editingOrder || !currentUser?.companyId || !pendingAdjustment) return;
 
-    const liveOrder = Orders.find(o => o.id === editingOrder.id);
-    const totalAmt = Number(
-      (editingOrder.items || []).reduce((sum, item) => {
-        const salesPrice = Number(item.salesPrice || 0);
-        const mrp = Number(item.mrp || 0);
-        const unitPrice = item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
-        return sum + Number(unitPrice || 0) * Number(item.quantity || 0);
-      }, 0)
-    );
-    const paidAmt = Number(liveOrder?.paidAmount || 0);
-    const updatedPaidAmt = Math.max(0, paidAmt - pendingAdjustment.amount);
-    const effectiveDue = Math.max(0, totalAmt - updatedPaidAmt);
-    const updatedStatus = effectiveDue > 0 ? 'Completed' : 'Paid';
+        const liveOrder = Orders.find(o => o.id === editingOrder.id);
+        const totalAmt = Number(
+            (editingOrder.items || []).reduce((sum, item) => {
+                const salesPrice = Number(item.salesPrice || 0);
+                const mrp = Number(item.mrp || 0);
+                const unitPrice = item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+                return sum + Number(unitPrice || 0) * Number(item.quantity || 0);
+            }, 0)
+        );
+        const paidAmt = Number(liveOrder?.paidAmount || 0);
+        const updatedPaidAmt = Math.max(0, paidAmt - pendingAdjustment.amount);
+        const effectiveDue = Math.max(0, totalAmt - updatedPaidAmt);
+        const updatedStatus = effectiveDue > 0 ? 'Completed' : 'Paid';
 
-    await updateDoc(
-        doc(db, 'companies', currentUser.companyId, 'Orders', editingOrder.id),
-        {
-        items: editingOrder.items,
-        totalAmount: totalAmt,
-        paidAmount: updatedPaidAmt,
-        status: updatedStatus,
-        billingDetails: editingOrder.billingDetails,
-        shippingDetails: editingOrder.shippingDetails,
-        creditNoteAmount: firebaseIncrement(pendingAdjustment.amount),
-        updatedAt: serverTimestamp(),
+        await updateDoc(
+            doc(db, 'companies', currentUser.companyId, 'Orders', editingOrder.id),
+            {
+                items: editingOrder.items,
+                totalAmount: totalAmt,
+                paidAmount: updatedPaidAmt,
+                status: updatedStatus,
+                billingDetails: editingOrder.billingDetails,
+                shippingDetails: editingOrder.shippingDetails,
+                creditNoteAmount: firebaseIncrement(pendingAdjustment.amount),
+                updatedAt: serverTimestamp(),
+            }
+        );
+
+        // Credit balance update (your existing customer code stays the same)
+        try {
+            const normalizePhone = (num: string) => num.replace(/\D/g, '').slice(-10);
+            const rawNumber = editingOrder.userLoginPhone || editingOrder.billingDetails?.phone || '';
+            const customerIdentifier = normalizePhone(rawNumber);
+            if (customerIdentifier) {
+                const customerRef = doc(db, 'companies', currentUser.companyId, 'customers', customerIdentifier);
+                const customerName = editingOrder.userName || editingOrder.billingDetails?.name || '';
+                await setDoc(customerRef, {
+                    number: customerIdentifier,
+                    name: customerName,
+                    creditBalance: firebaseIncrement(pendingAdjustment.amount),
+                    updatedAt: serverTimestamp(),
+                }, { merge: true });
+            }
+        } catch (err) {
+            console.error("Failed to update customer credit balance:", err);
         }
-    );
 
-    // Credit balance update (your existing customer code stays the same)
-    try {
-        const normalizePhone = (num: string) => num.replace(/\D/g, '').slice(-10);
-        const rawNumber = editingOrder.userLoginPhone || editingOrder.billingDetails?.phone || '';
-        const customerIdentifier = normalizePhone(rawNumber);
-        if (customerIdentifier) {
-        const customerRef = doc(db, 'companies', currentUser.companyId, 'customers', customerIdentifier);
-        const customerName = editingOrder.userName || editingOrder.billingDetails?.name || '';
-        await setDoc(customerRef, {
-            number: customerIdentifier,
-            name: customerName,
-            creditBalance: firebaseIncrement(pendingAdjustment.amount),
-            updatedAt: serverTimestamp(),
-        }, { merge: true });
-        }
-    } catch (err) {
-        console.error("Failed to update customer credit balance:", err);
-    }
-
-    setShowAdjustmentPopup(false);
-    setPendingAdjustment(null);
-    setEditingOrder(null);
-    setModal({ message: `Credit Note: ₹${pendingAdjustment.amount.toFixed(2)} added`, type: State.SUCCESS });
+        setShowAdjustmentPopup(false);
+        setPendingAdjustment(null);
+        setEditingOrder(null);
+        setModal({ message: `Credit Note: ₹${pendingAdjustment.amount.toFixed(2)} added`, type: State.SUCCESS });
     };
     const handleRefund = async () => {
-    if (!editingOrder || !currentUser?.companyId || !pendingAdjustment) return;
+        if (!editingOrder || !currentUser?.companyId || !pendingAdjustment) return;
 
-    const totalAmt = Number(editingOrder.totalAmount || 0);
-    
-    
-    
+        const totalAmt = Number(editingOrder.totalAmount || 0);
 
-   
-    const updatedStatus = 'Paid';
 
-    await updateDoc(
-        doc(db, 'companies', currentUser.companyId, 'Orders', editingOrder.id),
-        {
-        items: editingOrder.items,
-        totalAmount: totalAmt,
-        status: updatedStatus,
-        billingDetails: editingOrder.billingDetails,
-        shippingDetails: editingOrder.shippingDetails,
-        refundAmount: firebaseIncrement(pendingAdjustment.amount),
-        updatedAt: serverTimestamp(),
-        }
-    );
 
-    setShowAdjustmentPopup(false);
-    setPendingAdjustment(null);
-    setEditingOrder(null);
-    setModal({ message: `Refund: ₹${pendingAdjustment.amount.toFixed(2)} processed`, type: State.SUCCESS });
+
+
+        const updatedStatus = 'Paid';
+
+        await updateDoc(
+            doc(db, 'companies', currentUser.companyId, 'Orders', editingOrder.id),
+            {
+                items: editingOrder.items,
+                totalAmount: totalAmt,
+                status: updatedStatus,
+                billingDetails: editingOrder.billingDetails,
+                shippingDetails: editingOrder.shippingDetails,
+                refundAmount: firebaseIncrement(pendingAdjustment.amount),
+                updatedAt: serverTimestamp(),
+            }
+        );
+
+        setShowAdjustmentPopup(false);
+        setPendingAdjustment(null);
+        setEditingOrder(null);
+        setModal({ message: `Refund: ₹${pendingAdjustment.amount.toFixed(2)} processed`, type: State.SUCCESS });
     };
 
     return (
         <div className="flex min-h-screen w-full flex-col bg-gray-100 mb-10">
             {showBadge && (
-              <div className={`w-full text-center py-2 text-sm font-bold text-white shadow-sm ${isUrgent ? 'bg-red-300' : 'bg-amber-200'}`}>
-                <ShinyText text={`Subscription expires in ${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'}.`} speed={4} delay={0} color="#030303" shineColor="#faf5f5" spread={100} direction="left" yoyo={false} pauseOnHover={false} disabled={false} />
-                <Link to="/subscription" className="text-black ml-2 underline hover:text-gray-100">Renew Now</Link>
-              </div>
+                <div className={`w-full text-center py-2 text-sm font-bold text-white shadow-sm ${isUrgent ? 'bg-red-300' : 'bg-amber-200'}`}>
+                    <ShinyText text={`Subscription expires in ${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'}.`} speed={4} delay={0} color="#030303" shineColor="#faf5f5" spread={100} direction="left" yoyo={false} pauseOnHover={false} disabled={false} />
+                    <Link to="/subscription" className="text-black ml-2 underline hover:text-gray-100">Renew Now</Link>
+                </div>
             )}
             {modal && <Modal message={modal.message} type={modal.type} onClose={() => setModal(null)} />}
 
@@ -1839,7 +1839,7 @@ const OrdersPage: React.FC = () => {
                                                             className="p-2 cursor-pointer"
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                
+
                                                             }}
                                                         >
                                                             <div className="flex justify-between items-start -mb-1">
@@ -1930,12 +1930,12 @@ const OrdersPage: React.FC = () => {
                                                                 </div>
 
                                                                 {Number(Order.refundAmount || 0) > 0 && (
-                                                                <div className="text-right border-r border-slate-200 pr-3">
-                                                                    <p className="text-[7px] font-bold text-red-600  uppercase tracking-tighter leading-none mb-0.5">Refund</p>
-                                                                    <p className="text-[11px] font-black text-red-600 leading-none">
-                                                                    ₹{Number(Order.refundAmount || 0).toFixed(2)}
-                                                                    </p>
-                                                                </div>
+                                                                    <div className="text-right border-r border-slate-200 pr-3">
+                                                                        <p className="text-[7px] font-bold text-red-600  uppercase tracking-tighter leading-none mb-0.5">Refund</p>
+                                                                        <p className="text-[11px] font-black text-red-600 leading-none">
+                                                                            ₹{Number(Order.refundAmount || 0).toFixed(2)}
+                                                                        </p>
+                                                                    </div>
                                                                 )}
 
                                                                 <div className="text-right">
@@ -2579,7 +2579,6 @@ const OrdersPage: React.FC = () => {
                                                 isOpen={isEditDrawerOpen}
                                                 onClose={() => setIsEditDrawerOpen(false)}
                                                 onSaveSuccess={handleSaveSuccess}
-                                                isCatalogue={true}
                                             />
                                         )}
                                     </div>
@@ -2605,48 +2604,48 @@ const OrdersPage: React.FC = () => {
                     </div>
                 </div>
             )}
-        {/* Adjustment Popup */}
-        {showAdjustmentPopup && pendingAdjustment && (
-          <div className="fixed inset-0 z-[4000] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-            <div className="bg-white w-[360px] rounded-sm shadow-xl border border-slate-200 p-5">
+            {/* Adjustment Popup */}
+            {showAdjustmentPopup && pendingAdjustment && (
+                <div className="fixed inset-0 z-[4000] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white w-[360px] rounded-sm shadow-xl border border-slate-200 p-5">
 
-              <p className="text-center text-[11px] font-black uppercase tracking-widest text-slate-500">
-                Amount Reduced
-              </p>
+                        <p className="text-center text-[11px] font-black uppercase tracking-widest text-slate-500">
+                            Amount Reduced
+                        </p>
 
-              <p className="text-center text-xl font-black text-orange-600 mt-2 mb-5">
-                ₹{pendingAdjustment.amount.toFixed(2)}
-              </p>
+                        <p className="text-center text-xl font-black text-orange-600 mt-2 mb-5">
+                            ₹{pendingAdjustment.amount.toFixed(2)}
+                        </p>
 
-              <div className="flex gap-3">
-                <button
-                  className="flex-1 py-2.5 bg-orange-600 text-white text-xs font-black rounded-sm hover:bg-orange-700 transition"
-                  onClick={handleCreditNote}
-                >
-                  Credit Note
-                </button>
+                        <div className="flex gap-3">
+                            <button
+                                className="flex-1 py-2.5 bg-orange-600 text-white text-xs font-black rounded-sm hover:bg-orange-700 transition"
+                                onClick={handleCreditNote}
+                            >
+                                Credit Note
+                            </button>
 
-                <button
-                  className="flex-1 py-2.5 bg-green-600 text-white text-xs font-black rounded-sm hover:bg-green-700 transition"
-                  onClick={handleRefund}
-                >
-                  Refund
-                </button>
-              </div>
+                            <button
+                                className="flex-1 py-2.5 bg-green-600 text-white text-xs font-black rounded-sm hover:bg-green-700 transition"
+                                onClick={handleRefund}
+                            >
+                                Refund
+                            </button>
+                        </div>
 
-              <button
-                className="mt-4 w-full text-[10px] font-bold text-slate-400 hover:text-slate-700"
-                onClick={() => {
-                  setShowAdjustmentPopup(false);
-                  setPendingAdjustment(null);
-                }}
-              >
-                Cancel
-              </button>
+                        <button
+                            className="mt-4 w-full text-[10px] font-bold text-slate-400 hover:text-slate-700"
+                            onClick={() => {
+                                setShowAdjustmentPopup(false);
+                                setPendingAdjustment(null);
+                            }}
+                        >
+                            Cancel
+                        </button>
 
-            </div>
-          </div>
-        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

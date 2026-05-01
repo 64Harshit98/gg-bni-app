@@ -7,13 +7,15 @@ import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { FiSave, FiX, FiPackage, FiCamera } from 'react-icons/fi';
 import { Spinner } from '../constants/Spinner';
 import imageCompression from 'browser-image-compression';
+import ShowWrapper from '../context/ShowWrapper';
+import { Permissions, State } from '../enums';
+import { Modal } from '../constants/Modal';
 
 interface ItemEditDrawerProps {
     item: Item | null;
     isOpen: boolean;
     onClose: () => void;
     onSaveSuccess: (updatedItem: Partial<Item>) => void;
-    isCatalogue?: boolean
 }
 
 const ImagePreview: React.FC<{ imageUrl: string | null; alt: string }> = ({ imageUrl, alt }) => {
@@ -42,7 +44,7 @@ const UNIT_OPTIONS = [
     { value: 'ton', label: 'Ton (1000)' },
 ];
 
-export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, onClose, onSaveSuccess, isCatalogue = false }) => {
+export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, onClose, onSaveSuccess }) => {
     const cameraInputRef = useRef<HTMLInputElement>(null);
     const dbOperations = useDatabase();
     const [formData, setFormData] = useState<Partial<Item>>({});
@@ -50,10 +52,10 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
 
     const [isFetching, setIsFetching] = useState(false);
 
-    const [error, setError] = useState<string | null>(null);
+    const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
     const firstInputRef = useRef<HTMLInputElement>(null);
     const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
-    const [loadingGroups, setLoadingGroups] = useState(false);
+    const [_loadingGroups, setLoadingGroups] = useState(false);
 
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -80,7 +82,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
         const fetchLiveItemData = async () => {
             if (isOpen && item && item.id && item.companyId) {
                 setIsFetching(true);
-                setError(null);
+                setModal(null);
 
                 try {
                     const itemRef = doc(db, 'companies', item.companyId, 'items', item.id);
@@ -109,7 +111,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                         isListed: liveData.isListed ?? false,
                         imageUrl: liveData.imageUrl || '',
                         description: liveData.description || '',
-                        unit: liveData.unit || '', // ADDED
+                        unit: liveData.unit || '',
                         packetSize: (liveData as any).packetSize ?? undefined,
                         moq: (liveData as any).moq ?? 1,
                     });
@@ -124,14 +126,14 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
 
                 } catch (err) {
                     console.error("Error fetching live item data:", err);
-                    setError("Failed to load latest item details.");
+                    setModal({ message: "Failed to load latest item details.", type: State.ERROR }); // <-- Changed
                 } finally {
                     setIsFetching(false);
                 }
 
             } else if (!isOpen) {
                 setFormData({});
-                setError(null);
+                setModal(null);
                 setIsSaving(false);
                 setImageFile(null);
                 setImagePreview(null);
@@ -147,8 +149,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
         const isCheckbox = type === 'checkbox';
         const checked = (e.target as HTMLInputElement).checked;
 
-        // Added 'salesPrice' to numeric fields
-        const isNumericField = ['mrp', 'purchasePrice', 'stock', 'tax', 'discount', 'salesPrice', 'packetSize', 'moq'].includes(name);
+        const isNumericField = ['stock', 'tax', 'packetSize', 'moq'].includes(name);
 
         setFormData(prev => ({
             ...prev,
@@ -162,7 +163,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
         const file = e.target.files?.[0];
         if (!file) return;
 
-        setError(null);
+        setModal(null);
         setUploadProgress(null);
 
         const options = {
@@ -183,7 +184,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
 
         } catch (error) {
             console.error("Image compression failed:", error);
-            setError("Image compression failed. Please try a different file.");
+            setModal({ message: "Image compression failed. Please try a different file.", type: State.ERROR });
         }
     };
 
@@ -191,17 +192,28 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
         const companyId = item?.companyId;
 
         if (!item || !item.id || !dbOperations || !companyId) {
-            setError("Cannot save: Missing item, item ID, or company ID.");
+            setModal({ message: "Cannot save: Missing item, item ID, or company ID.", type: State.ERROR });
             setIsSaving(false);
             return;
         }
+
+        // VALIDATION: Prevent saving if both MRP and Sales Price are 0
+        const currentMRP = Number(formData.mrp || 0);
+        const currentSalesPrice = Number(formData.salesPrice || 0);
+
+        if (currentMRP === 0 && currentSalesPrice === 0) {
+            setModal({ message: "Both MRP and Sales Price cannot be 0. Please enter at least one.", type: State.ERROR });
+            setIsSaving(false);
+            return;
+        }
+
         if (formData.unit === 'pkt' && (!formData.packetSize || Number(formData.packetSize) <= 0)) {
-            setError("Please enter a valid quantity for the Packet.");
+            setModal({ message: "Please enter a valid quantity for the Packet.", type: State.ERROR });
             return;
         }
 
         setIsSaving(true);
-        setError(null);
+        setModal(null);
         setUploadProgress(null);
 
         try {
@@ -223,6 +235,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                         },
                         (error) => {
                             console.error("Upload failed:", error);
+                            setModal({ message: "Image upload failed. Please check network and security rules.", type: State.ERROR });
                             reject(new Error("Image upload failed. Please check network and security rules."));
                         },
                         async () => {
@@ -241,7 +254,6 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
             if (formData.unit === 'ton') currentMultiplier = 1000;
             if (formData.unit === 'pkt') currentMultiplier = parseInt(String(formData.packetSize), 10) || 1;
 
-            // Change ItemUpdatePayload to 'any' to bypass the strict TypeScript error
             const dataToUpdate: any = {
                 name: String(formData.name || ''),
                 mrp: Number(formData.mrp || 0),
@@ -261,7 +273,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 unit: String(formData.unit || ''),
                 unitMultiplier: currentMultiplier,
                 packetSize: formData.unit === 'pkt' ? parseInt(String(formData.packetSize), 10) : null,
-                ...(isCatalogue ? { moq: Number(formData.moq || 1) } : {})
+                moq: Number(formData.moq || 1)
             };
 
             await dbOperations.updateItem(item.id, dataToUpdate);
@@ -277,7 +289,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
 
         } catch (err: any) {
             console.error("Failed to save item:", err);
-            setError(err.message || "Failed to save changes. Please try again.");
+            setModal({ message: err.message || "Failed to save changes. Please try again.", type: State.ERROR });
         } finally {
             setIsSaving(false);
         }
@@ -336,8 +348,11 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                         </div>
                     ) : (
                         <>
-                            {error && <p className="text-red-600 bg-red-100 p-3 rounded text-sm">{error}</p>}
-
+                            {modal && (
+                                <div onClick={(e) => e.stopPropagation()}>
+                                    <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />
+                                </div>
+                            )}
                             <div>
                                 <label className="text-sm font-medium leading-none mb-1 block">Item Image</label>
 
@@ -388,68 +403,50 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                             {/* --- Pricing Row --- */}
 
                             <div className="grid grid-cols-2 gap-4">
-
                                 {/* --- MRP --- */}
                                 <div>
                                     <label className="text-sm font-medium mb-1 block">
-                                        {isCatalogue
-                                            ? `MRP (for ${getUnitLabel()})`
-                                            : 'MRP (₹)'
-                                        }
+                                        {`MRP (for ${getUnitLabel()})`}
                                     </label>
                                     <input
                                         type="number"
                                         name="mrp"
                                         value={formData.mrp ?? ''}
+                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
                                         onChange={handleChange}
                                         className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                     />
                                 </div>
 
-                                {/* --- MOQ (Catalogue only) / Category (POS) --- */}
-                                {isCatalogue ? (
-                                    <div>
-                                        <label className="text-sm font-medium mb-1 block">MOQ</label>
-                                        <input
-                                            type="number"
-                                            name="moq"
-                                            value={formData.moq ?? ''}
-                                            onChange={handleChange}
-                                            className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                        />
-                                    </div>
-                                ) : (
-                                    <div>
-                                        <label className="text-sm font-medium mb-1 block">Category</label>
-                                        <select
-                                            name="itemGroupId"
-                                            value={formData.itemGroupId || ''}
-                                            onChange={handleChange}
-                                            className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                        >
-                                            <option value="" disabled>Select category</option>
-                                            <option value="uncategorized">Uncategorized</option> 
-                                            {itemGroups.map((group) => (
-                                                <option key={group.id} value={group.id}>
-                                                    {group.name}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                )}
+                                {/* --- Category --- */}
+                                <div>
+                                    <label className="text-sm font-medium mb-1 block">Category</label>
+                                    <select
+                                        name="itemGroupId"
+                                        value={formData.itemGroupId || ''}
+                                        onChange={handleChange}
+                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        <option value="" disabled>Select category</option>
+                                        <option value="uncategorized">Uncategorized</option>
+                                        {itemGroups.map((group) => (
+                                            <option key={group.id} value={group.id}>
+                                                {group.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
 
                                 {/* --- Sales Price --- */}
                                 <div>
                                     <label className="text-sm font-medium mb-1 block">
-                                        {isCatalogue
-                                            ? `Sales Price (for ${getUnitLabel()})`
-                                            : 'Sales Price (₹)'
-                                        }
+                                        {`Sales Price (for ${getUnitLabel()})`}
                                     </label>
                                     <input
                                         type="number"
                                         name="salesPrice"
                                         value={formData.salesPrice ?? ''}
+                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
                                         onChange={handleChange}
                                         className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                     />
@@ -462,33 +459,35 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         type="number"
                                         name="purchasePrice"
                                         value={formData.purchasePrice ?? ''}
+                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
                                         onChange={handleChange}
                                         className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                     />
                                 </div>
-
                             </div>
 
                             {/* --- Purchase & Stock Row --- */}
                             <div className="grid grid-cols-2 gap-4">
+                                {/* --- Sale Disc (%) --- */}
                                 <div>
                                     <label htmlFor="edit-discount" className="text-sm font-medium leading-none mb-1 block">Sale Disc (%)</label>
                                     <input
                                         type="number" id="edit-discount" name="discount" step="0.01"
                                         value={formData.discount ?? ''}
-                                        onChange={handleChange}
                                         onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                        onChange={handleChange}
                                         className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         disabled={isSaving}
                                     />
                                 </div>
+                                {/* --- Purchase Disc (%) --- */}
                                 <div>
                                     <label htmlFor="edit-purchasediscount" className="text-sm font-medium leading-none mb-1 block">Purchase Disc (%)</label>
                                     <input
                                         type="number" id="edit-purchasediscount" name="purchasediscount" step="0.01"
                                         value={formData.purchasediscount ?? ''}
-                                        onChange={handleChange}
                                         onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                        onChange={handleChange}
                                         className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         disabled={isSaving}
                                     />
@@ -521,36 +520,17 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                     />
                                 </div>
                             </div>
-                            {isCatalogue && (
-                                <div>
-                                    <label
-                                        htmlFor="edit-itemGroupId"
-                                        className="text-sm font-medium leading-none mb-1 block"
-                                    >
-                                        Category
-                                    </label>
-                                    {loadingGroups ? (
-                                        <p className="text-xs text-gray-500">Loading categories...</p>
-                                    ) : (
-                                        <select
-                                            id="edit-itemGroupId"
-                                            name="itemGroupId"
-                                            value={formData.itemGroupId || ''}
-                                            onChange={handleChange}
-                                            className="flex h-10 w-full rounded-sm border border-gray-300 px-3 py-2 text-sm"
-                                            disabled={isSaving}
-                                        >
-                                            <option value="" disabled>Select a category</option>
-                                            <option value="uncategorized">Uncategorized</option>   
-                                            {itemGroups.map((group) => (
-                                                <option key={group.id} value={group.id}>
-                                                    {group.name}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    )}
-                                </div>
-                            )}
+                            <div>
+                                <label className="text-sm font-medium leading-none mb-1 block">MOQ</label>
+                                <input
+                                    type="number"
+                                    name="moq"
+                                    value={formData.moq ?? ''}
+                                    onChange={handleChange}
+                                    className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                    disabled={isSaving}
+                                />
+                            </div>
                             <div>
                                 <label htmlFor="edit-unit" className="text-sm font-medium leading-none mb-1 block">Unit</label>
                                 <div className="flex gap-2">
@@ -625,23 +605,25 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                 />
                             </div>
 
-                            <div className="flex items-center space-x-2 pt-2">
-                                <input
-                                    type="checkbox"
-                                    id={`edit-isListed-${item?.id}`}
-                                    name="isListed"
-                                    checked={formData.isListed ?? false}
-                                    onChange={handleChange}
-                                    disabled={isSaving}
-                                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-sky-500 cursor-pointer"
-                                />
-                                <label
-                                    htmlFor={`edit-isListed-${item?.id}`}
-                                    className="text-sm font-medium text-gray-700 select-none cursor-pointer"
-                                >
-                                    {isCatalogue ? "List this item in Catalogue" : "List this item on Ordering Page"}
-                                </label>
-                            </div>
+                            <ShowWrapper requiredPermission={Permissions.ViewCatalogue}>
+                                <div className="flex items-center space-x-2 pt-2">
+                                    <input
+                                        type="checkbox"
+                                        id={`edit-isListed-${item?.id}`}
+                                        name="isListed"
+                                        checked={formData.isListed ?? false}
+                                        onChange={handleChange}
+                                        disabled={isSaving}
+                                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-sky-500 cursor-pointer"
+                                    />
+                                    <label
+                                        htmlFor={`edit-isListed-${item?.id}`}
+                                        className="text-sm font-medium text-gray-700 select-none cursor-pointer"
+                                    >
+                                        List this item on Catalog
+                                    </label>
+                                </div>
+                            </ShowWrapper>
                         </>
                     )}
                     <div className="border-t p-4 flex gap-3 bg-white sticky bottom-0">

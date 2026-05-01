@@ -42,7 +42,6 @@ import UserReport from '../Pages/Reports/UserReport';
 const CHome = lazy(() => import('../Catalogue/CatalogueHome'));
 const CatalogueAccounts = lazy(() => import('../Catalogue/CatalougeAccount'));
 const OrderDetails = lazy(() => import('../Catalogue/Orders'));
-const AddItem = lazy(() => import('../Catalogue/AddItem'));
 const RequestPage = lazy(() => import('../Catalogue/RequestPage'));
 const CatItemGroup = lazy(() => import('../Catalogue/ItemGroup'));
 const CatalogueReports = lazy(() => import('../Catalogue/CatalogueReports/CatalogueReports'));
@@ -68,6 +67,24 @@ const CataloguePartyLedger = lazy(() => import('../Catalogue/CatalogueReports/Ca
 const CatlogueManageItems = lazy(() => import('../Catalogue/CatalogueReports/CatalogueManageItems'));
 const CatlogueSoldReport = lazy(() => import('../Catalogue/CatalogueReports/CatalogueSoldReport'));
 const CatalogueAdditionalServices = lazy(() => import('../Catalogue/CatalogueAdditionalServices'));
+const PosItemAddWrapper = (props: any) => (
+    <ItemAdd
+        {...props}
+        theme="blue"
+        routes={{ itemAdd: ROUTES.ITEM_ADD, itemGroup: ROUTES.ITEM_GROUP }}
+    />
+);
+
+const CatalogueItemAddWrapper = (props: any) => (
+    <ItemAdd
+        {...props}
+        theme="orange"
+        routes={{
+            itemAdd: `${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`,
+            itemGroup: `${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`
+        }}
+    />
+);
 
 export interface AppRoute {
     path?: string;
@@ -101,7 +118,7 @@ export const AppRegistry: AppModule[] = [
             { path: ROUTES.PURCHASE, component: Purchase, permission: Permissions.CreatePurchase },
             { path: ROUTES.PURCHASE_RETURN, component: PurchaseReturn, permission: Permissions.CreatePurchaseReturn },
             { path: ROUTES.PRINTQR, component: PrintQR, permission: Permissions.PrintQR },
-            { path: ROUTES.ITEM_ADD, component: ItemAdd, permission: Permissions.ManageItems },
+            { path: ROUTES.ITEM_ADD, component: PosItemAddWrapper, permission: Permissions.ManageItems },
             { path: ROUTES.ITEM_GROUP, component: ItemGroup, permission: Permissions.ManageItemGroup },
             { path: ROUTES.MANAGE_ITEMS, component: ManageItems, permission: Permissions.ManageItemGroup },
             { path: ROUTES.USER_ADD, component: UserAdd, permission: Permissions.CreateUsers },
@@ -138,7 +155,7 @@ export const AppRegistry: AppModule[] = [
             { path: ROUTES.CHOME, component: CHome, permission: null },
             { path: ROUTES.CATALOGUE_ACCOUNTS, component: CatalogueAccounts, permission: null },
             { path: ROUTES.ORDERDETAILS, component: OrderDetails, permission: null },
-            { path: ROUTES.ADD_PRODUCT, component: AddItem, permission: null },
+            { path: ROUTES.ITEM_ADD, component: CatalogueItemAddWrapper, permission: Permissions.ManageItems },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`, component: RequestPage, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`, component: CatItemGroup, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_REPORTS}`, component: CatalogueReports, permission: null },
@@ -162,7 +179,7 @@ export const AppRegistry: AppModule[] = [
             { path: `${ROUTES.CHOME}/${ROUTES.ORDER}`, component: Order, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`, component: OrdersReturnPage, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.MYSHOP}/:groupId`, component: MyShop, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`, component: AddItem, permission: null },
+            { path: `${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`, component: CatalogueItemAddWrapper, permission: Permissions.ManageItems },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`, component: RequestPage, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_SUPPORT}`, component: Catasupport, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_ADDITIONAL_SERVICES}`, component: CatalogueAdditionalServices, permission: null },

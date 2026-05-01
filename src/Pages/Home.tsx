@@ -23,13 +23,23 @@ import { CACHE_DURATION } from '../lib/fetchDashboardData';
 import useTutorial from '../Catalogue/hooks/useTutorial';
 import { completeTutorial } from '../Catalogue/hooks/useCompleteTutorial';
 
+
 export interface SmartMetric { name: string; amount: number; quantity: number; }
 
 interface DashboardData {
   totalSales: number;
   totalOrders: number;
   percentageChange: number;
-  salesByDate: { name: string; sales: number; previousSales: number; count: number }[];
+  salesByDate: {
+    name: string;
+    sales: number;
+    previousSales: number;
+    count: number;
+    qty?: number;
+    quantity?: number;
+    bills?: number;
+    Bills?: number;
+  }[];
   paymentMethods: SmartMetric[];
   topItems: SmartMetric[];
   topCustomers: SmartMetric[];
@@ -237,12 +247,28 @@ const DashboardContent = () => {
       else if (currentTotalSales > 0) percentageChange = 100;
 
       const chartData = [];
+      // FIX 1: Restored to prevStart so the chart has a starting dot to draw the line
       const itr = new Date(prevStart);
+
       while (itr <= end) {
         const offset = itr.getTimezoneOffset() * 60000;
         const key = new Date(itr.getTime() - offset).toISOString().split('T')[0];
         const label = itr.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
-        chartData.push({ name: label, sales: currentSalesMap[key]?.amount || 0, count: currentSalesMap[key]?.count || 0, previousSales: 0 });
+
+        const countVal = currentSalesMap[key]?.count || 0;
+
+        chartData.push({
+          name: label,
+          sales: currentSalesMap[key]?.amount || 0,
+          count: countVal,
+          // FIX 2: Pass all possible variations of the count key to ensure the chart reads it
+          quantity: countVal,
+          qty: countVal,
+          bills: countVal,
+          Bills: countVal,
+          previousSales: 0
+        });
+
         itr.setDate(itr.getDate() + 1);
       }
 
@@ -292,7 +318,7 @@ const DashboardContent = () => {
             <button
               disabled={!hasCataloguePermission}
               onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className={`flex w-30 items-center justify-between gap-2 rounded-sm border border-slate-400 p-2 text-sm font-medium text-slate-700 transition-colors ${!hasCataloguePermission ? 'opacity-50 cursor-not-allowed bg-gray-100' : 'hover:bg-slate-200 cursor-pointer'}`}
+              className={`flex w-20 items-center justify-between gap-2 rounded-sm border border-slate-400 p-2 text-sm font-medium text-slate-700 transition-colors ${!hasCataloguePermission ? 'opacity-50 cursor-not-allowed bg-gray-100' : 'hover:bg-slate-200 cursor-pointer'}`}
             >
               <span className="font-medium">{currentLabel}</span>
               <IconChevronDown width={16} height={16} className={`transition-transform ${isMenuOpen ? 'rotate-180' : 'rotate-0'}`} />

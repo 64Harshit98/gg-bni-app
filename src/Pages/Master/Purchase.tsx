@@ -13,15 +13,12 @@ import SearchableItemInput from '../../UseComponents/SearchIteminput';
 import { CustomButton } from '../../Components';
 import { incrementPurchaseCounter, peekNextPurchaseNumber } from '../../UseComponents/InvoiceCounter';
 import { Spinner } from '../../constants/Spinner';
-import { FiTrash2, FiEdit, FiCamera } from 'react-icons/fi';
+import { FiTrash2, FiEdit, FiCamera, FiX } from 'react-icons/fi';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
 import { usePurchaseSettings } from '../../context/SettingsContext';
 import { GenericCartList } from '../../Components/CartItem';
 import { GenericBillFooter } from '../../Components/Footer';
 import { IconScanCircle } from '../../constants/Icons';
-
-
-
 
 interface PurchaseItem extends Omit<SalesItem, 'finalPrice' | 'effectiveUnitPrice' | 'discountPercentage'> {
   purchasePrice: number | string;
@@ -115,6 +112,7 @@ const PurchasePage: React.FC = () => {
   const [gridSearchQuery, setGridSearchQuery] = useState<string>('');
   const [itemGroupMap, setItemGroupMap] = useState<Record<string, string>>({});
   const [isFooterExpanded, setIsFooterExpanded] = useState(false);
+  const [sortOrder, setSortOrder] = useState<'az' | 'za' | 'price_asc' | 'price_desc'>('az');
 
   const [showPrintQrModal, setShowPrintQrModal] = useState<PurchaseItem[] | null>(null);
   const [editModeData, setEditModeData] = useState<Purchase | null>(null);
@@ -393,7 +391,6 @@ const PurchasePage: React.FC = () => {
     const groups = new Set(availableItems.map(i => i.itemGroupId || 'Others'));
     return ['All', ...Array.from(groups).sort()];
   }, [availableItems]);
-
   const sortedGridItems = useMemo(() => {
     const filtered = availableItems.filter(item => {
       const itemGroupId = item.itemGroupId || 'Others';
@@ -404,14 +401,17 @@ const PurchasePage: React.FC = () => {
       return matchesCategory && matchesSearch;
     });
 
-    return filtered.sort((a, b) => {
-      const aInCart = items.some(i => i.productId === a.id);
-      const bInCart = items.some(i => i.productId === b.id);
-      if (aInCart && !bInCart) return -1;
-      if (!aInCart && bInCart) return 1;
-      return 0;
-    });
-  }, [availableItems, selectedCategory, gridSearchQuery, items]);
+    const sortFn = (a: Item, b: Item) => {
+      switch (sortOrder) {
+        case 'az': return a.name.localeCompare(b.name);
+        case 'za': return b.name.localeCompare(a.name);
+        case 'price_asc': return (a.purchasePrice || a.mrp || 0) - (b.purchasePrice || b.mrp || 0);
+        case 'price_desc': return (b.purchasePrice || b.mrp || 0) - (a.purchasePrice || a.mrp || 0);
+        default: return 0;
+      }
+    };
+    return [...filtered].sort(sortFn);
+  }, [availableItems, selectedCategory, gridSearchQuery, items, sortOrder]);
 
   const {
     subtotal,
@@ -498,12 +498,21 @@ const PurchasePage: React.FC = () => {
     setItems((prevItems) => prevItems.filter((item) => item.id !== id));
   };
 
+  const [showClearCartConfirm, setShowClearCartConfirm] = useState(false);
+
   const handleClearCart = () => {
     if (items.length > 0) {
-      if (window.confirm("Are you sure you want to remove all items?")) {
-        setItems([]);
-      }
+      setModal({
+        message: 'Are you sure you want to remove all items from the cart?',
+        type: State.ERROR,
+      });
+      setShowClearCartConfirm(true);
     }
+  };
+
+  const handleConfirmClearCart = () => {
+    setItems([]);
+    setShowClearCartConfirm(false);
   };
 
   const handleItemSelected = (item: Item | null) => {
@@ -845,7 +854,6 @@ const PurchasePage: React.FC = () => {
   const isCardView = purchaseSettings?.purchaseViewType === 'card';
   const isCardImageView = isCardView && (purchaseSettings?.cardViewWithPhoto !== false);
 
-
   const renderHeader = () => (
     <div className="flex flex-col md:flex-row md:justify-between md:items-center bg-gray-100 md:bg-white border-b border-gray-200 shadow-sm flex-shrink-0 p-2 md:px-4 md:py-3 mb-2 md:mb-0">
 
@@ -918,34 +926,62 @@ const PurchasePage: React.FC = () => {
   if (isCardView) {
     return (
       <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden pb-0">
-        {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+        {modal && (
+          <Modal
+            message={modal.message}
+            onClose={() => {
+              setModal(null);
+              setShowClearCartConfirm(false);
+            }}
+            onConfirm={showClearCartConfirm ? () => {
+              handleConfirmClearCart();
+              setModal(null);
+            } : undefined}
+            showConfirmButton={showClearCartConfirm}
+            type={modal.type}
+          />
+        )}
+        {showClearCartConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm bg-black/20">
+            <div className="bg-white p-6 rounded-sm shadow-xl w-full max-w-sm mx-4">
+              <h3 className="text-lg font-bold text-gray-800">Clear Cart</h3>
+              <p className="my-4 text-gray-600">Are you sure you want to remove all items?</p>
+              <div className="flex justify-end gap-4 mt-6">
+                <CustomButton variant={Variant.Outline} onClick={() => setShowClearCartConfirm(false)}>Cancel</CustomButton>
+                <CustomButton variant={Variant.Filled} onClick={handleConfirmClearCart}>Clear</CustomButton>
+              </div>
+            </div>
+          </div>
+        )}
+
         <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
         {renderHeader()}
+
         <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
           <div className="flex flex-col w-full md:w-3/4 h-full relative min-w-0 border-r border-gray-200 overflow-hidden">
             <div className="flex-shrink-0 bg-gray-50 border-b border-gray-200">
               <div className="p-3 bg-white  flex gap-2 items-center">
-                <div className="flex-grow">
-                  <SearchableItemInput
-                    label=""
+                <div className="flex-grow relative">
+                  <input
+                    type="text"
+                    value={gridSearchQuery}
+                    onChange={(e) => setGridSearchQuery(e.target.value)}
                     placeholder="Search items by name or barcode..."
-                    items={availableItems}
-                    onItemSelected={(item) => {
-                      if (item) {
-                        addItemToCart(item);
-                        setGridSearchQuery('');
-                      }
-                    }}
-                    isLoading={pageIsLoading}
-                    error={error}
-                    onAddItem={(query) => navigate(ROUTES.ITEM_ADD, { state: { prefillName: query } })}
-                    categories={categories}
-                    itemGroupMap={itemGroupMap}
+                    className="w-full border border-gray-300 rounded-sm px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-8"
+                    autoComplete="off"
                   />
+                  {gridSearchQuery && (
+                    <button
+                      onClick={() => setGridSearchQuery('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <FiX size={14} />
+                    </button>
+                  )}
                 </div>
                 <button
                   onClick={() => setIsScannerOpen(true)}
-                  className='bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition-colors'
+                  className='bg-blue-600 text-white p-3 rounded-sm hover:bg-blue-700 transition-colors'
                   title="Scan Barcode"
                 >
                   <IconScanCircle width={22} height={22} />
@@ -967,21 +1003,44 @@ const PurchasePage: React.FC = () => {
                   </button>
                 ))}
               </div>
+              {/* Sort Bar */}
+              <div className="flex gap-1.5 items-center px-3 py-2 bg-white border-b border-gray-200 overflow-x-auto flex-shrink-0">
+                <span className="text-xs text-gray-400 font-medium uppercase tracking-wide whitespace-nowrap flex-shrink-0">Sort:</span>
+                {([
+                  { value: 'az', label: 'A → Z' },
+                  { value: 'za', label: 'Z → A' },
+                  { value: 'price_asc', label: 'Price ↑' },
+                  { value: 'price_desc', label: 'Price ↓' },
+                ] as const).map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setSortOrder(opt.value)}
+                    className={`px-2.5 py-1 rounded-sm text-xs whitespace-nowrap border transition flex-shrink-0 ${sortOrder === opt.value
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200'
+                      }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <div className="px-3 pt-2 pb-2 bg-white border-b border-gray-100 grid grid-cols-3 items-center">
+                <div className="justify-self-start">
+                  <h3 className="text-gray-700 font-medium">Cart</h3>
+                </div>
+                <div className="justify-self-center" />
+                <div className="justify-self-end">
+                  {items.length > 0 && (
+                    <button onClick={handleClearCart} className="text-xs text-red-600 bg-red-50 px-2 py-1 rounded border border-red-200 flex items-center gap-1">
+                      <FiTrash2 /> Clear
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
-
-            <div className="flex justify-between items-center pt-0 pb-0 bg-gray-100 border-b border-gray-200 px-2 mb-1">
-              <h3 className="text-gray-700 text-base font-medium">Cart</h3>
-              {items.length > 0 && (
-                <button onClick={handleClearCart} className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-medium transition-colors">
-                  <FiTrash2 size={16} />
-                  <span>Clear Cart</span>
-                </button>
-              )}
-            </div>
-
             <div className="flex-1 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-5  bg-gray-100" style={{ gridAutoRows: 'auto', alignContent: 'start', gap: '14px', padding: '8px 14px' }}>
               {sortedGridItems.length === 0 ? (
-                <div className="col-span-full text-center text-gray-500 mt-10 py-10 bg-white rounded-lg">
+                <div className="col-span-full text-center text-gray-500 mt-10 py-10 bg-white rounded-sm">
                   {gridSearchQuery ? (
                     <>
                       <p className="text-lg">No items found for "<span className="font-semibold">{gridSearchQuery}</span>"</p>
@@ -1370,7 +1429,33 @@ const PurchasePage: React.FC = () => {
   // --- LIST VIEW (Desktop Split / Mobile Stack) ---
   return (
     <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden">
-      {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+      {modal && (
+        <Modal
+          message={modal.message}
+          onClose={() => {
+            setModal(null);
+            setShowClearCartConfirm(false);
+          }}
+          onConfirm={showClearCartConfirm ? () => {
+            handleConfirmClearCart();
+            setModal(null);
+          } : undefined}
+          showConfirmButton={showClearCartConfirm}
+          type={modal.type}
+        />
+      )}
+      {showClearCartConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm bg-black/20">
+          <div className="bg-white p-6 rounded-sm shadow-xl w-full max-w-sm mx-4">
+            <h3 className="text-lg font-bold text-gray-800">Clear Cart</h3>
+            <p className="my-4 text-gray-600">Are you sure you want to remove all items?</p>
+            <div className="flex justify-end gap-4 mt-6">
+              <CustomButton variant={Variant.Outline} onClick={() => setShowClearCartConfirm(false)}>Cancel</CustomButton>
+              <CustomButton variant={Variant.Filled} onClick={handleConfirmClearCart}>Clear</CustomButton>
+            </div>
+          </div>
+        </div>
+      )}
       <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
 
       {renderHeader()}
@@ -1381,12 +1466,10 @@ const PurchasePage: React.FC = () => {
 
           <div className="flex-shrink-0 p-2 bg-white border-b mt-2 rounded-sm md:mt-0">
             <div className="flex gap-2 items-end">
+
               <div className="flex-grow">
-                <SearchableItemInput label="Search & Add Item" placeholder="Search by name or barcode..." items={availableItems} onItemSelected={handleItemSelected} isLoading={pageIsLoading} error={error}
-                  onAddItem={(query) => navigate(ROUTES.ITEM_ADD, { state: { prefillName: query } })}
-                  categories={categories}
-                  itemGroupMap={itemGroupMap}
-                />
+                <SearchableItemInput label="Search & Add Item" placeholder="Search by name or barcode..." items={availableItems} onItemSelected={handleItemSelected} isLoading={pageIsLoading} error={error} categories={categories}
+                  itemGroupMap={itemGroupMap} />
               </div>
               <button onClick={() => setIsScannerOpen(true)} className="p-3 bg-gray-700 text-white rounded-md font-semibold transition hover:bg-gray-800" title="Scan Barcode">
                 <IconScanCircle width={20} height={20} />
@@ -1395,13 +1478,10 @@ const PurchasePage: React.FC = () => {
           </div>
 
           <div className='flex-grow overflow-y-auto p-2 bg-gray-100'>
-            <div className="flex justify-between items-center px-2 mb-2">
+            <div className="flex justify-between items-center px-2 mb-2 border-b pt-1">
               <h3 className="text-gray-700 text-lg font-medium">Cart</h3>
               {items.length > 0 && (
-                <button onClick={handleClearCart} className="flex items-center gap-1 text-sm text-red-500 hover:text-red-700 font-medium transition-colors">
-                  <FiTrash2 size={16} />
-                  <span>Clear Cart</span>
-                </button>
+                <div className="justify-self-end">{items.length > 0 && <button onClick={handleClearCart} className="text-xs text-red-600 bg-red-50 px-2 py-1 rounded border border-red-200 flex items-center gap-1"><FiTrash2 /> Clear</button>}</div>
               )}
             </div>
 
@@ -1527,7 +1607,7 @@ const PurchasePage: React.FC = () => {
 
       {showPrintQrModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm bg-black/20">
-          <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm mx-4">
+          <div className="bg-white p-6 rounded-sm shadow-xl w-full max-w-sm mx-4">
             <h3 className="text-lg font-bold text-gray-800">Purchase Saved!</h3>
             <p className="my-4 text-gray-600">Print barcodes/QR codes for the items?</p>
             <div className="flex justify-end gap-4 mt-6">

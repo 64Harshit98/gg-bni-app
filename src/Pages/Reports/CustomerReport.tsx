@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { TableColumn } from '../../Components/CustomTable';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx';
 import { CustomCard } from '../../Components/CustomCard';
 import { CustomTable } from '../../Components/CustomTable';
 import { CardVariant } from '../../enums';
-import { IconClose } from '../../constants/Icons';
+import { IconClose, IconSearch } from '../../constants/Icons';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
 import { handleDatePresetChange } from './PNLReportComponents/pnlReport.utils';
@@ -15,6 +15,13 @@ import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { type CustomerRow } from './CustomerReportComponents/customerReport.utils';
 import useCustomerReport from './CustomerReportComponents/useCustomerReport';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import { collection, onSnapshot, query } from 'firebase/firestore';
+import { db } from '../../lib/Firebase';
+
+type CustomerRowWithCredit = CustomerRow & {
+  id: string;
+  creditNote: number;
+};
 
 const CustomerReport: React.FC = () => {
   const {
@@ -42,12 +49,43 @@ const CustomerReport: React.FC = () => {
     setEndDate,
   } = useCustomerReport();
 
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
+  const [customerCreditMap, setCustomerCreditMap] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!currentUser?.companyId) {
+      setCustomerCreditMap({});
+      return;
+    }
+
+    const customersRef = collection(db, 'companies', currentUser.companyId, 'customers');
+    const unsubscribe = onSnapshot(
+      query(customersRef),
+      (snapshot) => {
+        const nextMap: Record<string, number> = {};
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() as Record<string, unknown>;
+          const credit = Number(data.creditBalance || 0);
+          const numberKey = String(data.number || '').trim();
+          const nameKey = String(data.name || '').trim().toLowerCase();
+
+          if (numberKey) nextMap[`num:${numberKey}`] = Number.isFinite(credit) ? credit : 0;
+          if (nameKey) nextMap[`name:${nameKey}`] = Number.isFinite(credit) ? credit : 0;
+        });
+        setCustomerCreditMap(nextMap);
+      },
+      () => setCustomerCreditMap({}),
+    );
+
+    return unsubscribe;
+  }, [currentUser?.companyId]);
 
   const { customerRows, summary } = useMemo(() => {
     if (!appliedFilters) {
       return {
         filteredSales: [],
-        customerRows: [],
+        customerRows: [] as CustomerRowWithCredit[],
         summary: {
           totalCustomers: 0,
           totalBills: 0,
@@ -70,18 +108,20 @@ const CustomerReport: React.FC = () => {
     );
 
     /* ---------- CUSTOMER AGGREGATION ---------- */
-    const map = new Map<string, CustomerRow>();
+    const map = new Map<string, CustomerRowWithCredit>();
 
     newFilteredSales.forEach((sale) => {
       const key = sale.partyName;
 
       if (!map.has(key)) {
         map.set(key, {
-          customerName: key,
+          id: `${sale.partyName}-${sale.partyNumber || 'N/A'}`,
+          customerName: sale.partyName,
           customerNumber: sale.partyNumber || 'N/A',
           totalBills: 0,
           totalSales: 0,
           totalDue: 0,
+          creditNote: 0,
           sortKey: 'customerName', // FIX: Added required sortKey property
         });
       }
@@ -89,10 +129,28 @@ const CustomerReport: React.FC = () => {
       const row = map.get(key)!;
       row.totalBills += 1;
       row.totalSales += sale.totalAmount;
-      row.totalDue += sale.dueAmount || 0;
+
+      const due = sale.dueAmount || 0;
+      if (due > 0) {
+        row.totalDue += due;
+      }
     });
 
-    const customerRows = Array.from(map.values());
+    let customerRows = Array.from(map.values());
+    customerRows = customerRows.map((row) => {
+      const byNumber = customerCreditMap[`num:${row.customerNumber}`];
+      const byName = customerCreditMap[`name:${row.customerName.toLowerCase()}`];
+      const creditNote = byNumber ?? byName ?? 0;
+      return { ...row, creditNote: Math.max(0, Number(creditNote || 0)) };
+    });
+
+    const trimmedQuery = searchQuery.toLowerCase().trim();
+    if (trimmedQuery) {
+      customerRows = customerRows.filter((c) =>
+        c.customerName.toLowerCase().includes(trimmedQuery) ||
+        c.customerNumber.toLowerCase().includes(trimmedQuery),
+      );
+    }
 
     /* ---------- SUMMARY METRICS ---------- */
     const totalCustomers = customerRows.length;
@@ -101,7 +159,7 @@ const CustomerReport: React.FC = () => {
       (sum, s) => sum + s.totalAmount,
       0,
     );
-    const totalDue = customerRows.reduce((sum, c) => sum + c.totalDue, 0);
+    const totalDue = customerRows.reduce((sum, c) => sum + Math.max(0, c.totalDue), 0);
 
     const averageSalePerCustomer =
       totalCustomers > 0 ? totalSales / totalCustomers : 0;
@@ -117,7 +175,7 @@ const CustomerReport: React.FC = () => {
         averageSalePerCustomer,
       },
     };
-  }, [sales, appliedFilters]);
+  }, [sales, appliedFilters, searchQuery, customerCreditMap]);
 
   const handleApplyFilters = () => {
     const start = new Date(startDate);
@@ -139,7 +197,8 @@ const CustomerReport: React.FC = () => {
         Number: row.customerNumber,
         Bills: row.totalBills,
         Sales: row.totalSales,
-        Due: row.totalDue,
+        Due: Math.max(0, row.totalDue),
+        'Credit Note': row.creditNote || 0,
       }));
       const worksheet = XLSX.utils.json_to_sheet(data);
       const workbook = XLSX.utils.book_new();
@@ -206,7 +265,7 @@ const CustomerReport: React.FC = () => {
       // --- 3. AUTOTABLE GENERATION ---
       autoTable(doc, {
         startY: 38,
-        head: [['CUSTOMER', 'PHONE', 'BILLS', 'SALES (Rs.)', 'DUE (Rs.)']],
+        head: [['CUSTOMER', 'PHONE', 'BILLS', 'SALES (Rs.)', 'DUE (Rs.)', 'CREDIT NOTE (Rs.)']],
         body: customerRows.map((c) => {
           const formattedName = c.customerName
             ? c.customerName.charAt(0).toUpperCase() + c.customerName.slice(1).toLowerCase()
@@ -217,7 +276,8 @@ const CustomerReport: React.FC = () => {
             c.customerNumber || 'N/A',
             c.totalBills.toString(),
             c.totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-            c.totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            Math.max(0, c.totalDue).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            (c.creditNote || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
           ];
         }),
         foot: [
@@ -227,6 +287,9 @@ const CustomerReport: React.FC = () => {
             summary.totalBills.toString(),
             summary.totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
             summary.totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            customerRows
+              .reduce((sum, c) => sum + (c.creditNote || 0), 0)
+              .toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
           ]
         ],
         theme: 'plain',
@@ -259,8 +322,9 @@ const CustomerReport: React.FC = () => {
           0: { halign: 'left', cellWidth: 'auto' },
           1: { halign: 'center', cellWidth: 35 },
           2: { halign: 'right', cellWidth: 25 },
-          3: { halign: 'right', cellWidth: 40 },
-          4: { halign: 'right', cellWidth: 40 },
+          3: { halign: 'right', cellWidth: 34 },
+          4: { halign: 'right', cellWidth: 30 },
+          5: { halign: 'right', cellWidth: 36 },
         },
         // --- 4. CONDITIONAL FORMATTING ---
         didParseCell: function (data) {
@@ -308,7 +372,7 @@ const CustomerReport: React.FC = () => {
 
   /* ---------- TABLE COLUMNS ---------- */
   // FIX: Updated sortKey to match keys found in CustomerRow for strict type safety
-  const tableColumns: TableColumn<CustomerRow>[] = [
+  const tableColumns: TableColumn<CustomerRowWithCredit>[] = [
     {
       header: 'Customer',
       accessor: 'customerName',
@@ -332,8 +396,14 @@ const CustomerReport: React.FC = () => {
     },
     {
       header: 'Total Due',
-      accessor: (row) => `₹${row.totalDue.toLocaleString('en-IN')}`,
+      accessor: (row) => `₹${Math.max(0, row.totalDue).toLocaleString('en-IN')}`,
       sortKey: 'totalDue',
+      className: 'py-3 text-center w-1/5',
+    },
+    {
+      header: 'Credit Note',
+      accessor: (row) => `₹${(row.creditNote || 0).toLocaleString('en-IN')}`,
+      sortKey: 'creditNote' as any,
       className: 'py-3 text-center w-1/5',
     },
   ];
@@ -361,11 +431,38 @@ const CustomerReport: React.FC = () => {
       />
 
       <div className="flex items-center justify-between pb-3 border-b mb-2">
+        <button onClick={() => setShowSearch(true)} className="p-2">
+          <IconSearch />
+        </button>
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">Customer Report</h1>
         <button onClick={() => navigate(-1)} className="p-2">
           <IconClose width={20} height={20} />
         </button>
       </div>
+
+      {showSearch && (
+        <div className="flex justify-center mb-2 px-2">
+          <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-[#F97316]">
+            <input
+              type="text"
+              placeholder="Search by Customer..."
+              className="flex-1 text-base font-light p-2 outline-none bg-transparent text-center"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              autoFocus
+            />
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setShowSearch(false);
+              }}
+              className="p-1 text-gray-500 hover:text-black"
+            >
+              <IconClose />
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white p-4 rounded-lg shadow-md mb-2">
         <div className="grid grid-cols-1 gap-3">
@@ -471,10 +568,10 @@ const CustomerReport: React.FC = () => {
       </div>
 
       {isListVisible && (
-        <CustomTable<CustomerRow>
+        <CustomTable<CustomerRowWithCredit>
           data={customerRows}
           columns={tableColumns}
-          keyExtractor={(row) => row.customerName}
+          keyExtractor={(row) => row.id}
           onSort={(key) => handleSort(key as any)}
           sortConfig={sortConfig as any}
           emptyMessage="No customers found for selected period."

@@ -92,10 +92,13 @@ const GlobalCatalogueModal = () => {
                                 }
                             }
 
-                            window.open(
-                                `https://wa.me/?text=${encodeURIComponent("Check out my store: " + shareUrl)}`,
-                                "_blank"
-                            );
+                            // Fallback: copy link instead of opening WhatsApp
+                            try {
+                                await navigator.clipboard.writeText(shareUrl);
+                                alert("Link copied to clipboard");
+                            } catch (err) {
+                                console.error("Clipboard copy failed:", err);
+                            }
                         }}
                     >
                         Share Link

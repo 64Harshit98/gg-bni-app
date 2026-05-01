@@ -112,7 +112,7 @@ export const TutorialStep: React.FC<Props> = ({
               </button>
               <button
                 onClick={onNext}
-                className="text-xs bg-blue-500 hover:bg-white hover:text-blue-500 text-white px-3 py-1.5 rounded-sm"
+                className="text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-sm"
               >
                 {isLast ? "Finish" : "Next →"}
               </button>

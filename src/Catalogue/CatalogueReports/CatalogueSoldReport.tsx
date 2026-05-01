@@ -37,6 +37,24 @@ const ItemsSoldReport: React.FC = () => {
     const [datePreset, setDatePreset] = useState<DatePreset>(DatePreset.TODAY);
     const [customStartDate, setCustomStartDate] = useState<string>('');
     const [customEndDate, setCustomEndDate] = useState<string>('');
+
+    useEffect(() => {
+        if (datePreset === DatePreset.TODAY) {
+            const start = new Date();
+            const end = new Date();
+
+            start.setHours(0, 0, 0, 0);
+            end.setHours(23, 59, 59, 999);
+
+            setCustomStartDate(formatDateForInput(start));
+            setCustomEndDate(formatDateForInput(end));
+
+            setAppliedFilters({
+                start: start.getTime(),
+                end: end.getTime(),
+            });
+        }
+    }, []);
     const [appliedFilters, setAppliedFilters] = useState<{ start: number; end: number } | null>(() => {
         const now = new Date();
         const start = new Date(now);
@@ -131,7 +149,7 @@ const ItemsSoldReport: React.FC = () => {
         if (datePreset !== DatePreset.CUSTOM) {
             handleApplyFilters();
         }
-    }, [datePreset, sales]);
+    }, [datePreset, sales, customStartDate, customEndDate]);
 
     const [sortConfig, setSortConfig] = useState<{
         key: keyof AggregatedItem;

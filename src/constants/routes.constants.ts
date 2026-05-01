@@ -84,4 +84,5 @@ export const ROUTES = {
   APP_LEADS:'/leads',
   WEBSITE_QUERY:'/super-admin/website-leads',
   CATA_ADDITIONAL_SERVICES: 'additional-services',
+  USER_REPORT:'/user-report',
 };

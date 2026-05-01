@@ -456,7 +456,7 @@ const Sales: React.FC = () => {
             const currentQuantity = cartItem.quantity || 1;
             accumulatorQuantity += currentQuantity;
 
-            let baseForSubtotal = (cartItem.mrp && cartItem.mrp > 0) ? cartItem.mrp : (cartItem.salesPrice || 0);
+            let baseForSubtotal = (cartItem.salesPrice && cartItem.salesPrice > 0) ? cartItem.salesPrice : (cartItem.mrp || 0);
 
             // 👇 Fixed condition here so it doesn't fail if taxRate is null
             const itemSpecificTaxRate = cartItem.tax !== undefined ? Number(cartItem.tax) : taxRate;
@@ -467,7 +467,7 @@ const Sales: React.FC = () => {
 
             accumulatorSubtotal += baseForSubtotal * currentQuantity;
 
-            const baseForDiscount = (cartItem.mrp && cartItem.mrp > 0) ? cartItem.mrp : (cartItem.salesPrice || 0);
+            const baseForDiscount = (cartItem.salesPrice && cartItem.salesPrice > 0) ? cartItem.salesPrice : (cartItem.mrp || 0);
 
             let effectiveUnitPrice = 0;
             if (cartItem.customPrice !== undefined && cartItem.customPrice !== null && cartItem.customPrice !== '') {
@@ -812,7 +812,7 @@ const Sales: React.FC = () => {
         if (salesPrice > 0) {
             finalNetPrice = salesPrice;
             if (mrp > 0) {
-                calculatedDiscount = ((mrp - salesPrice) / mrp) * 100;
+                calculatedDiscount = mrp > 0 ? ((mrp - salesPrice) / mrp) * 100 : 0;
             }
         } else if (presetDiscount > 0) {
             calculatedDiscount = presetDiscount;
@@ -849,8 +849,20 @@ const Sales: React.FC = () => {
         });
     };
 
+    const [showClearCartConfirm, setShowClearCartConfirm] = useState(false);
+
     const handleClearCart = () => {
-        if (items.length > 0 && window.confirm("Are you sure you want to remove all items?")) setItems([]);
+        if (items.length > 0) {
+            setModal({
+                message: 'Are you sure you want to remove all items from the cart?',
+                type: State.ERROR,
+            });
+            setShowClearCartConfirm(true);
+        }
+    };
+    const handleConfirmClearCart = () => {
+        setItems([]);
+        setShowClearCartConfirm(false);
     };
     const handleItemSelected = (selectedItem: Item | null) => {
         if (selectedItem) { addItemToCart(selectedItem); setGridSearchQuery(''); }
@@ -938,7 +950,7 @@ const Sales: React.FC = () => {
         const safeDiscount = isNaN(n) ? 0 : n;
         setItems(prev => prev.map(i => {
             if (i.id === id) {
-                const basePrice = (i.mrp && i.mrp > 0) ? i.mrp : (i.salesPrice || 0);
+                const basePrice = (i.salesPrice && i.salesPrice > 0) ? i.salesPrice : (i.mrp || 0);
                 let newPrice = basePrice * (1 - safeDiscount / 100);
                 const isRoundingEnabled = salesSettings?.enableRounding ?? true;
                 const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
@@ -970,8 +982,41 @@ const Sales: React.FC = () => {
         const updateForCart: Partial<SalesItem> = { ...updatedItemData };
         if ((updateForCart as any).Stock !== undefined) { updateForCart.stock = (updateForCart as any).Stock; delete (updateForCart as any).Stock; }
         Object.keys(updateForCart).forEach(key => { if (updateForCart[key as keyof typeof updateForCart] === undefined) delete updateForCart[key as keyof typeof updateForCart]; });
+
+        const isRoundingEnabled = salesSettings?.enableRounding ?? true;
+        const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
+
         setItems(prevCartItems => prevCartItems.map(cartItem => {
-            if (cartItem.productId === selectedItemForEdit?.id || cartItem.id === selectedItemForEdit?.id) return { ...cartItem, ...updateForCart } as SalesItem;
+            if (cartItem.productId === selectedItemForEdit?.id || cartItem.id === selectedItemForEdit?.id) {
+                const merged = { ...cartItem, ...updateForCart } as SalesItem;
+
+                // Recalculate price & discount from updated mrp/salesPrice
+                const newMrp = Number(merged.mrp || 0);
+                const newSalesPrice = Number(merged.salesPrice || 0);
+                const presetDiscount = Number(merged.discount || 0);
+
+                let newCustomPrice: number;
+                let newDiscount: number;
+
+                if (newSalesPrice > 0) {
+                    newCustomPrice = newSalesPrice;
+                    newDiscount = newMrp > 0 ? ((newMrp - newSalesPrice) / newMrp) * 100 : 0;
+                } else if (presetDiscount > 0) {
+                    newDiscount = presetDiscount;
+                    newCustomPrice = newMrp * (1 - presetDiscount / 100);
+                } else {
+                    newCustomPrice = newMrp;
+                    newDiscount = 0;
+                }
+
+                newCustomPrice = applyRounding(newCustomPrice, isRoundingEnabled, roundingInterval);
+
+                return {
+                    ...merged,
+                    customPrice: parseFloat(newCustomPrice.toFixed(2)),
+                    discount: parseFloat(newDiscount.toFixed(2)),
+                };
+            }
             return cartItem;
         }));
     };
@@ -1562,7 +1607,33 @@ const Sales: React.FC = () => {
     if (isCardView) {
         return (
             <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden pb-0">
-                {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+                {modal && (
+                    <Modal
+                        message={modal.message}
+                        onClose={() => {
+                            setModal(null);
+                            setShowClearCartConfirm(false);
+                        }}
+                        onConfirm={showClearCartConfirm ? () => {
+                            handleConfirmClearCart();
+                            setModal(null);
+                        } : undefined}
+                        showConfirmButton={showClearCartConfirm}
+                        type={modal.type}
+                    />
+                )}
+                {showClearCartConfirm && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm bg-black/20">
+                        <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm mx-4">
+                            <h3 className="text-lg font-bold text-gray-800">Clear Cart</h3>
+                            <p className="my-4 text-gray-600">Are you sure you want to remove all items?</p>
+                            <div className="flex justify-end gap-4 mt-6">
+                                <CustomButton variant={Variant.Outline} onClick={() => setShowClearCartConfirm(false)}>Cancel</CustomButton>
+                                <CustomButton variant={Variant.Filled} onClick={handleConfirmClearCart}>Clear</CustomButton>
+                            </div>
+                        </div>
+                    </div>
+                )}
                 <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
                 <BarcodeLinkModal
                     isOpen={isBarcodeLinkModalOpen}
@@ -1580,23 +1651,6 @@ const Sales: React.FC = () => {
 
                         {/* Search / category bar */}
                         <div className="flex-shrink-0 bg-gray-50 border-b border-gray-200">
-                            {salesSettings?.enableSalesmanSelection && (
-                                <div className="px-3 pt-2 pb-1 bg-white border-b border-gray-100 flex justify-center">
-                                    <select
-                                        value={selectedWorker?.uid || ''}
-                                        onChange={(e) => {
-                                            if (e.target.value === 'ADD_NEW_SALESMAN') navigate(ROUTES.USER_ADD);
-                                            else setSelectedWorker(workers.find(w => w.uid === e.target.value) || null);
-                                        }}
-                                        className="p-1 border rounded text-sm"
-                                        disabled={!hasPermission(Permissions.ViewTransactions) || (isEditMode && !isManager)}
-                                    >
-                                        <option value="">Salesman</option>
-                                        {workers.map(w => <option key={w.uid} value={w.uid}>{w.name}</option>)}
-                                        <option value="ADD_NEW_SALESMAN" className="font-semibold bg-gray-100">+ Add New Salesman</option>
-                                    </select>
-                                </div>
-                            )}
                             <div className="p-3 bg-white flex gap-2 items-center">
                                 <div className="flex-grow relative">
                                     <input
@@ -1650,6 +1704,35 @@ const Sales: React.FC = () => {
                                 </button>
                             ))}
                         </div>
+                        <div className="px-3 pt-2 pb-2 bg-white border-b border-gray-100 grid grid-cols-3 items-center">
+                                <div className="justify-self-start">
+                                    <h3 className="text-gray-700 font-medium">Cart</h3>
+                                </div>
+                                <div className="justify-self-center">
+                                    {salesSettings?.enableSalesmanSelection && (
+                                        <select
+                                            value={selectedWorker?.uid || ''}
+                                            onChange={(e) => {
+                                                if (e.target.value === 'ADD_NEW_SALESMAN') navigate(ROUTES.USER_ADD);
+                                                else setSelectedWorker(workers.find(w => w.uid === e.target.value) || null);
+                                            }}
+                                            className="p-1 border rounded text-sm"
+                                            disabled={!hasPermission(Permissions.ViewTransactions) || (isEditMode && !isManager)}
+                                        >
+                                            <option value="">Salesman</option>
+                                            {workers.map(w => <option key={w.uid} value={w.uid}>{w.name}</option>)}
+                                            <option value="ADD_NEW_SALESMAN" className="font-semibold bg-gray-100">+ Add New Salesman</option>
+                                        </select>
+                                    )}
+                                </div>
+                                <div className="justify-self-end">
+                                    {items.length > 0 && (
+                                        <button onClick={handleClearCart} className="text-xs text-red-600 bg-red-50 px-2 py-1 rounded border border-red-200 flex items-center gap-1">
+                                            <FiTrash2 /> Clear
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
                         {/* Card grid — fills remaining height, scrollable */}
                         <div className="flex-1 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-5 bg-gray-100 pb-20"
                             style={{ gridAutoRows: 'auto', alignContent: 'start', gap: '14px', padding: '8px 14px' }}>
@@ -2154,7 +2237,33 @@ ${isSelected
 
     return (
         <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden pb-2">
-            {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+            {modal && (
+                <Modal
+                    message={modal.message}
+                    onClose={() => {
+                        setModal(null);
+                        setShowClearCartConfirm(false);
+                    }}
+                    onConfirm={showClearCartConfirm ? () => {
+                        handleConfirmClearCart();
+                        setModal(null);
+                    } : undefined}
+                    showConfirmButton={showClearCartConfirm}
+                    type={modal.type}
+                />
+            )}
+            {showClearCartConfirm && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm bg-black/20">
+                    <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm mx-4">
+                        <h3 className="text-lg font-bold text-gray-800">Clear Cart</h3>
+                        <p className="my-4 text-gray-600">Are you sure you want to remove all items?</p>
+                        <div className="flex justify-end gap-4 mt-6">
+                            <CustomButton variant={Variant.Outline} onClick={() => setShowClearCartConfirm(false)}>Cancel</CustomButton>
+                            <CustomButton variant={Variant.Filled} onClick={handleConfirmClearCart}>Clear</CustomButton>
+                        </div>
+                    </div>
+                </div>
+            )}
             <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
             <BarcodeLinkModal
                 isOpen={isBarcodeLinkModalOpen}
@@ -2185,7 +2294,7 @@ ${isSelected
                                     itemGroupMap={itemGroupMap}
                                 />
                             </div>
-                            <button onClick={() => setIsScannerOpen(true)} className='bg-transparent text-gray-700 p-3 border border-gray-700 rounded-sm font-semibold transition hover:bg-gray-800 hover:text-white' title="Scan Barcode">
+                            <button onClick={() => setIsScannerOpen(true)} className='bg-gray-700 text-white p-3 border border-gray-700 rounded-sm font-semibold transition hover:bg-gray-800' title="Scan Barcode">
                                 <IconScanCircle width={20} height={20} />
                             </button>
                         </div>

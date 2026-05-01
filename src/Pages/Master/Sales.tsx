@@ -101,7 +101,6 @@ const calcKeys: CalcKey[][] = [
     ]
 ];
 
-
 export const applyRounding = (amount: number, isRoundingEnabled: boolean, interval: number = 1): number => {
     if (!isRoundingEnabled || !interval || interval <= 0) {
         return parseFloat(amount.toFixed(2));
@@ -402,13 +401,13 @@ const Sales: React.FC = () => {
     }, [items, isEditMode]);
 
     const categories = useMemo(() => {
-        const groups = new Set(availableItems.map(i => i.itemGroupId || 'Others'));
+        const groups = new Set(availableItems.map(i => i.itemGroupId || 'uncategorized'));
         return ['All', ...Array.from(groups).sort()];
     }, [availableItems]);
 
     const sortedGridItems = useMemo(() => {
         const filtered = availableItems.filter(item => {
-            const itemGroupId = item.itemGroupId || 'Others';
+            const itemGroupId = item.itemGroupId || 'uncategorized';
             const matchesCategory = selectedCategory === 'All' || itemGroupId === selectedCategory;
             const matchesSearch = gridSearchQuery === '' || item.name.toLowerCase().includes(gridSearchQuery.toLowerCase()) || item.barcode?.includes(gridSearchQuery);
             return matchesCategory && matchesSearch;
@@ -809,16 +808,16 @@ const Sales: React.FC = () => {
         const presetDiscount = Number(itemToAdd.discount || 0);
         let finalNetPrice = mrp;
         let calculatedDiscount = 0;
-        if (salesPrice > 0) {
-            finalNetPrice = salesPrice;
-            if (mrp > 0) {
-                calculatedDiscount = mrp > 0 ? ((mrp - salesPrice) / mrp) * 100 : 0;
-            }
-        } else if (presetDiscount > 0) {
+        const basePrice = mrp > 0 ? mrp : salesPrice;
+
+        if (presetDiscount > 0) {
             calculatedDiscount = presetDiscount;
-            finalNetPrice = mrp * (1 - (presetDiscount / 100));
+            finalNetPrice = basePrice * (1 - presetDiscount / 100);
+        } else if (salesPrice > 0 && salesPrice < mrp) {
+            finalNetPrice = salesPrice;
+            calculatedDiscount = ((mrp - salesPrice) / mrp) * 100;
         } else {
-            finalNetPrice = mrp;
+            finalNetPrice = basePrice;
             calculatedDiscount = 0;
         }
         const isRoundingEnabled = salesSettings?.enableRounding ?? true;
@@ -997,15 +996,16 @@ const Sales: React.FC = () => {
 
                 let newCustomPrice: number;
                 let newDiscount: number;
+                const basePrice = newMrp > 0 ? newMrp : newSalesPrice;
 
-                if (newSalesPrice > 0) {
-                    newCustomPrice = newSalesPrice;
-                    newDiscount = newMrp > 0 ? ((newMrp - newSalesPrice) / newMrp) * 100 : 0;
-                } else if (presetDiscount > 0) {
+                if (presetDiscount > 0) {
                     newDiscount = presetDiscount;
-                    newCustomPrice = newMrp * (1 - presetDiscount / 100);
+                    newCustomPrice = basePrice * (1 - presetDiscount / 100);
+                } else if (newSalesPrice > 0 && newSalesPrice < newMrp) {
+                    newCustomPrice = newSalesPrice;
+                    newDiscount = ((newMrp - newSalesPrice) / newMrp) * 100;
                 } else {
-                    newCustomPrice = newMrp;
+                    newCustomPrice = basePrice;
                     newDiscount = 0;
                 }
 
@@ -1747,16 +1747,24 @@ const Sales: React.FC = () => {
                                 const mrp = Number(item.mrp || 0);
                                 const itemSalesPrice = Number(item.salesPrice || 0);
                                 const presetDiscount = Number(item.discount || 0);
-                                let defaultPrice = mrp;
-                                if (itemSalesPrice > 0) {
-                                    defaultPrice = itemSalesPrice;
-                                } else if (presetDiscount > 0 && allowItemDiscount) {
-                                    defaultPrice = mrp * (1 - (presetDiscount / 100));
+                                let baseDisplayPrice: number;
+                                if (presetDiscount > 0 && allowItemDiscount) {
+                                    // Discount takes priority (fixes MRP == salesPrice case)
+                                    baseDisplayPrice = (mrp > 0 ? mrp : itemSalesPrice) * (1 - presetDiscount / 100);
+                                } else if (itemSalesPrice > 0 && itemSalesPrice < mrp) {
+                                    baseDisplayPrice = itemSalesPrice;
+                                } else {
+                                    baseDisplayPrice = mrp > 0 ? mrp : itemSalesPrice;
                                 }
-                                defaultPrice = applyRounding(defaultPrice, isRoundingEnabled, roundingInterval);
-                                const sp = lastAddedCartItem?.customPrice ?? defaultPrice;
+                                baseDisplayPrice = applyRounding(baseDisplayPrice, isRoundingEnabled, roundingInterval);
+
+                                const effectiveSp = (lastAddedCartItem?.customPrice !== undefined && lastAddedCartItem?.customPrice !== null && lastAddedCartItem?.customPrice !== '')
+                                    ? Number(lastAddedCartItem.customPrice)
+                                    : baseDisplayPrice;
+
+                                const sp = effectiveSp;
                                 const lineSubtotal = Math.round((Number(sp) * quantity) * 100) / 100;
-                                const discPct = (!hideMrp && allowItemDiscount && mrp > 0 && Number(sp) < mrp)
+                                const discPct = (!hideMrp && allowItemDiscount && mrp > 0 && Number(sp) < mrp && Number(sp) > 0)
                                     ? Math.round(((mrp - Number(sp)) / mrp) * 100)
                                     : 0;
                                 if (isCardImageView) {
@@ -1861,6 +1869,11 @@ ${isSelected
                                                                 ₹{mrp.toLocaleString('en-IN')}
                                                             </span>
                                                         )}
+                                                        {item.unit && (
+                                                            <span className="text-[9px] text-gray-400 font-medium ml-0.5">
+                                                                ({item.unit})
+                                                            </span>
+                                                        )}
                                                     </div>
 
                                                     {/* Subtotal row — only when selected */}
@@ -1917,6 +1930,10 @@ ${isSelected
                                 return (
                                     <div
                                         key={item.id}
+                                        onClick={() => {
+                                            if (isSelected) handleQuantityChange(lastAddedCartItem.id, quantity + 1);
+                                            else addItemToCart(item);
+                                        }}
                                         className={`bg-white rounded-sm border flex flex-col overflow-visible transition-all relative
                                       ${isSelected ? 'border-blue-400 ring-1 ring-blue-100' : 'border-gray-100 hover:shadow-sm'}`}
                                         style={{ minHeight: 130 }}
@@ -1968,6 +1985,11 @@ ${isSelected
                                                     {discPct > 0 && mrp > 0 && Number(sp) < mrp && (
                                                         <span className="text-[10px] text-gray-400 line-through">
                                                             ₹{mrp.toLocaleString('en-IN')}
+                                                        </span>
+                                                    )}
+                                                    {item.unit && (
+                                                        <span className="text-[9px] text-gray-400 font-medium ml-0.5">
+                                                            ({item.unit})
                                                         </span>
                                                     )}
                                                 </div>

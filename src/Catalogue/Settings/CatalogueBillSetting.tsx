@@ -58,8 +58,6 @@ const CatalogueBillSettings: React.FC = () => {
         companyLogo: '',
     });
 
-    console.log(businessInfo)
-
     const [settings, setSettings] = useState<BillSettingsData>({
         upiId: '',
         termsAndConditions: '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
@@ -179,10 +177,22 @@ const CatalogueBillSettings: React.FC = () => {
             }
 
             const dataToSave = {
-                ...settings,
-                signatureBase64: currentSignature,
-                updatedAt: serverTimestamp(),
-            };
+            // Editable settings
+            upiId: settings.upiId,
+            termsAndConditions: settings.termsAndConditions,
+            signatureBase64: currentSignature,
+
+            // ✅ Always sync from businessInfo so these stay fresh
+            companyGstin: businessInfo.gstin,
+            panNumber: businessInfo.panNumber,
+            msmeNumber: businessInfo.msmeNumber,
+            accountName: businessInfo.accountHolderName,
+            accountNumber: businessInfo.accountNumber,
+            bankName: businessInfo.bankName,
+            ifscCode: businessInfo.ifscCode,
+
+            updatedAt: serverTimestamp(),
+        };
 
             const docRef = doc(db, 'companies', currentUser.companyId, 'settings', 'bill');
             await setDoc(docRef, dataToSave, { merge: true });

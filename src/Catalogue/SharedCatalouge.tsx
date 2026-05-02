@@ -3,13 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getItemGroupsByCompany, getItemsByCompany } from '../lib/ItemsFirebase';
 import type { ItemGroup, Item } from '../constants/models';
 import { FiPackage, FiPlus } from 'react-icons/fi';
-import { ShoppingCart } from 'lucide-react';
+import { ShoppingCart, Pin } from 'lucide-react';
 import { Spinner } from '../constants/Spinner';
 import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName.tsx';
 import SearchBar from './SearchBar.tsx';
 // import LeadPopUp from './PopUp.tsx';
-import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { doc, getDoc, collection, query, where, getDocs , onSnapshot} from "firebase/firestore";
 import { db } from "../lib/Firebase";
 import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting';
 
@@ -100,6 +100,7 @@ const SharedCataloguePage: React.FC = () => {
     const [isSortOpen, setIsSortOpen] = useState(false);
     const [isSearchSticky, setIsSearchSticky] = useState(false);
     const [catalogueSettings, setCatalogueSettings] = useState<CatalogueSalesSettings | null>(null);
+    const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
     const liveItems = useMemo(() => {
         return allItems.filter(item =>
             item.isListed &&
@@ -228,7 +229,19 @@ const SharedCataloguePage: React.FC = () => {
             window.removeEventListener('storage', handleStorage);
         };
     }, []);
-
+    useEffect(() => {
+    if (!effectiveCompanyId) return;
+    const ref = doc(db, 'companies', effectiveCompanyId, 'settings', 'pinned_categories');
+    const unsubscribe = onSnapshot(ref, (snap) => {
+        if (snap.exists()) {
+            setPinnedIds(new Set(snap.data().ids || []));
+        } else {
+            setPinnedIds(new Set());
+        }
+    });
+    return () => unsubscribe();
+}, [effectiveCompanyId]);
+    
     const getGroupImages = (groupId: string): string[] => {
         const imgs = allItems
             .filter(item => item.itemGroupId === groupId)
@@ -248,7 +261,15 @@ const SharedCataloguePage: React.FC = () => {
                 ).length;
 
                 return itemCount > 0;
-            });
+            })
+                .sort((a, b) => {
+                    const aPinned = pinnedIds.has(a.id!);
+                    const bPinned = pinnedIds.has(b.id!);
+                    if (aPinned !== bPinned) return aPinned ? -1 : 1;
+                    return sortOrder === 'A-Z'
+                        ? a.name.localeCompare(b.name)
+                        : b.name.localeCompare(a.name);
+                });
         }
 
         const lowerQuery = searchQuery.toLowerCase().trim();
@@ -272,13 +293,16 @@ const SharedCataloguePage: React.FC = () => {
 
                 return catalogueMatch || itemMatch;
             })
-            .sort((a, b) =>
-                sortOrder === 'A-Z'
+            .sort((a, b) => {
+                const aPinned = pinnedIds.has(a.id!);
+                const bPinned = pinnedIds.has(b.id!);
+                if (aPinned !== bPinned) return aPinned ? -1 : 1;
+                return sortOrder === 'A-Z'
                     ? a.name.localeCompare(b.name)
-                    : b.name.localeCompare(a.name)
-            );
+                    : b.name.localeCompare(a.name);
+            });
 
-    }, [itemGroups, allItems, searchQuery, sortOrder]);
+    }, [itemGroups, allItems, searchQuery, sortOrder, pinnedIds]);
 
     if (domainResolveError) {
         return (
@@ -423,6 +447,11 @@ const SharedCataloguePage: React.FC = () => {
                                 className="bg-white rounded-sm overflow-hidden shadow-sm border border-gray-100 flex flex-col transition-all group cursor-pointer active:scale-95"
                             >
                                 <div className="aspect-square bg-[#F8FAFC] relative overflow-hidden">
+                                    {pinnedIds.has(group.id!) && (
+                                        <div className="absolute top-1.5 right-1.5 z-10 bg-white text-[#F97316] rounded-sm px-1 py-1 flex items-center gap-0.5 shadow-md">
+                                            <Pin size={12} className="fill-[#F97316]" />
+                                        </div>
+                                    )}
                                     {collageImages.length > 0 ? (
                                         <div className="grid grid-cols-2 grid-rows-2 w-full h-full gap-[2px] p-[2px]">
                                             {collageImages.map((img, index) => (
@@ -453,9 +482,11 @@ const SharedCataloguePage: React.FC = () => {
                                 </div>
 
                                 <div className="p-3 flex flex-col flex-1">
-                                    <h3 className="text-[14px] font-bold text-[#1A3B5D] mb-1 truncate leading-tight">
-                                        {group.name}
-                                    </h3>
+                                    <div className="flex items-center justify-between mb-1">
+                                        <h3 className="text-[14px] font-bold text-[#1A3B5D] truncate leading-tight">
+                                            {group.name}
+                                        </h3>
+                                    </div>
 
                                     <div className="flex items-center justify-center gap-1.5 bg-blue-50 px-2 py-0.5 rounded-sm border border-blue-100 w-fit mx-auto">
                                         <span className="text-[10px] font-black text-[#F97316] leading-none">

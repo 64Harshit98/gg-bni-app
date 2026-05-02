@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { ShoppingCart, X, Minus, Plus, Trash2, Send } from 'lucide-react';
+import { ShoppingCart, X, Minus, Plus, Trash2, Send, Pin } from 'lucide-react';
 import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting'
 import { ROUTES } from '../constants/routes.constants';
 import { useAuth, useDatabase } from '../context/auth-context';
@@ -14,7 +14,7 @@ import { useBusinessName } from './hooks/BusinessName';
 import { syncNotifyStock } from "../../src/Catalogue/utils/syncNotifyStock";
 import SearchBar from './SearchBar';
 import { db } from '../lib/Firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc , setDoc } from 'firebase/firestore';
 
 const StockIndicator: React.FC<{ stock: number }> = ({ stock }) => {
     let colorClass = 'text-green-600 bg-green-100';
@@ -102,6 +102,35 @@ const MyShop: React.FC = () => {
     const [pendingLiveState, setPendingLiveState] = useState<boolean | null>(null);
     const [showUncategorizedWarning, setShowUncategorizedWarning] = useState(false);
     const [isScrolled, setIsScrolled] = useState(false);
+    const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
+
+    useEffect(() => {
+    if (!companyId) return;
+
+    const loadPins = async () => {
+        try {
+            const ref = doc(db, 'companies', companyId, 'settings', 'pinned_items');
+            const snap = await getDoc(ref);
+            if (snap.exists()) {
+                const ids: string[] = snap.data().ids || [];
+                setPinnedIds(new Set(ids));
+                // Keep localStorage in sync
+                localStorage.setItem(`pinned_items_${companyId}`, JSON.stringify(ids));
+            } else {
+                // Fallback to localStorage if Firestore doc doesn't exist yet
+                const saved = localStorage.getItem(`pinned_items_${companyId}`);
+                if (saved) setPinnedIds(new Set(JSON.parse(saved)));
+            }
+        } catch (err) {
+            console.error("Failed to load pinned items:", err);
+            // Fallback to localStorage on error
+            const saved = localStorage.getItem(`pinned_items_${companyId}`);
+            if (saved) setPinnedIds(new Set(JSON.parse(saved)));
+        }
+    };
+
+    loadPins();
+}, [companyId]);
 
     const generateSlug = (name: string) => {
         return name
@@ -402,6 +431,9 @@ const MyShop: React.FC = () => {
         });
 
         return [...result].sort((a, b) => {
+            const aPinned = pinnedIds.has(a.id!);
+            const bPinned = pinnedIds.has(b.id!);
+            if (aPinned !== bPinned) return aPinned ? -1 : 1;
             const nameA = a.name || "";
             const nameB = b.name || "";
             if (sortOrder === 'A-Z') return nameA.localeCompare(nameB);
@@ -417,7 +449,8 @@ const MyShop: React.FC = () => {
         isViewMode,
         sortOrder,
         resolvedGroupId,
-        allItemGroups
+        allItemGroups,
+        pinnedIds
     ]);
 
     useEffect(() => {
@@ -481,6 +514,26 @@ const MyShop: React.FC = () => {
     const handleOpenDetailDrawer = (item: Item) => {
         setSelectedItemForDetails(item);
         setIsDetailDrawerOpen(true);
+    };
+
+    const handleTogglePin = (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        if (!companyId) return;
+        setPinnedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
+             // Save to localStorage (existing behaviour)
+        localStorage.setItem(`pinned_items_${companyId}`, JSON.stringify([...next]));
+
+        // Save to Firestore
+        const settingsRef = doc(db, 'companies', companyId, 'settings', 'pinned_items');
+        setDoc(settingsRef, { ids: [...next] }, { merge: true });
+            return next;
+        });
     };
 
     const handleToggleListed = async (itemId: string, newState: boolean) => {
@@ -689,6 +742,11 @@ const MyShop: React.FC = () => {
                                 onClick={() => handleOpenDetailDrawer(item)}
                                 className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col h-full transition-all duration-300 relative group hover:shadow-md cursor-pointer ${highlightedId === item.id ? 'ring-3 ring-orange-600 shadow-lg scale-110 z-50 border-[#F97316]' : 'border-gray-100'}  ${!isViewMode ? 'ring-1 ring-[#F97316]/10' : ''}`}>
                                 <div className="aspect-square flex items-center justify-center relative overflow-hidden">
+                                    {pinnedIds.has(item.id!) && (
+                                        <div className=" absolute top-1.5 right-1.5 z-10 bg-white text-[#F97316] rounded-sm px-1 py-1 flex items-center gap-0.5 shadow-md">
+                                            <Pin size={12} className="fill-[#F97316]" />
+                                        </div>
+                                    )}
                                     {showDiscountBadge && (
                                         <div className="absolute top-2 right-2 bg-[#F97316] text-white px-2 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-tight shadow-md">
                                             {discountPercent}% OFF
@@ -711,16 +769,28 @@ const MyShop: React.FC = () => {
                                         </h3>
 
                                         {!isUncategorized && (
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleShareItem(item);
-                                                }}
-                                                className="p-1 rounded-sm bg-[#F97316]/10 text-[#F97316] hover:bg-[#F97316] hover:text-white transition-all"
-                                                title="Share Product"
-                                            >
-                                                <Send size={12} />
-                                            </button>
+                                            <div className="flex items-center gap-1">
+                                                <button
+                                                    onClick={(e) => handleTogglePin(e, item.id!)}
+                                                    className={`p-1 rounded-sm transition-all ${pinnedIds.has(item.id!)
+                                                            ? 'bg-[#F97316]/10 text-[#F97316]'
+                                                            : 'bg-gray-100 text-gray-400 hover:bg-[#F97316] hover:text-white'
+                                                        }`}
+                                                    title={pinnedIds.has(item.id!) ? 'Unpin' : 'Pin to top'}
+                                                >
+                                                    <Pin size={12} className={pinnedIds.has(item.id!) ? 'fill-[#F97316]' : ''} />
+                                                </button>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleShareItem(item);
+                                                    }}
+                                                    className="p-1 rounded-sm bg-[#F97316]/10 text-[#F97316] hover:bg-[#F97316] hover:text-white transition-all"
+                                                    title="Share Product"
+                                                >
+                                                    <Send size={12} />
+                                                </button>
+                                            </div>
                                         )}
                                     </div>
                                     <div className="flex items-center justify-between w-full">

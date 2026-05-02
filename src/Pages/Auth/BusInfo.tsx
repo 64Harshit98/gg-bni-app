@@ -502,10 +502,12 @@ const BusinessInfoPage: React.FC = () => {
                     <FloatingLabelInput
                       id="postalCode"
                       label="Pincode"
-                      type="number"
+                      type="text"
+                      inputMode='numeric'
                       value={formData.postalCode}
                       onChange={(e) => {
-                        if (e.target.value.length <= 6) handleChange('postalCode', e.target.value);
+                        const digits = e.target.value.replace(/\D/g, '');
+                        if (digits.length <= 6) handleChange('postalCode', digits);
                       }}
                       required
                       className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"

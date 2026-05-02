@@ -165,10 +165,23 @@ const BillSettings: React.FC = () => {
             }
 
             const dataToSave = {
-                ...settings,
-                signatureBase64: currentSignature,
-                updatedAt: serverTimestamp()
-            };
+            // Editable settings
+            upiId: settings.upiId,
+            termsAndConditions: settings.termsAndConditions,
+            printFormat: settings.printFormat,
+            signatureBase64: currentSignature,
+
+            // ✅ Always sync from businessInfo so these stay fresh
+            companyGstin: businessInfo.gstin,
+            panNumber: businessInfo.panNumber,
+            msmeNumber: businessInfo.msmeNumber,
+            accountName: businessInfo.accountHolderName,
+            accountNumber: businessInfo.accountNumber,
+            bankName: businessInfo.bankName,
+            ifscCode: businessInfo.ifscCode,
+
+            updatedAt: serverTimestamp()
+        };
 
             const docRef = doc(db, 'companies', currentUser.companyId, 'settings', 'bill');
             await setDoc(docRef, dataToSave, { merge: true });

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting'
-import { ShoppingCart, Minus, Plus } from 'lucide-react';
+import { ShoppingCart, Minus, Plus, Pin } from 'lucide-react';
 import { useAuth } from '../context/auth-context';
 import type { Item, ItemGroup } from '../constants/models';
 import { FiPackage, FiPlus } from 'react-icons/fi';
@@ -123,6 +123,20 @@ const SharedProduct: React.FC = () => {
     const [notifiedItems, setNotifiedItems] = useState<Record<string, boolean>>({});
     const [isScrolled, setIsScrolled] = useState(false);
     const [isSearchSticky, setIsSearchSticky] = useState(false);
+    const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
+
+    useEffect(() => {
+        if (!effectiveCompanyId) return;
+        const ref = doc(db, 'companies', effectiveCompanyId, 'settings', 'pinned_items');
+        const unsubscribe = onSnapshot(ref, (snap) => {
+            if (snap.exists()) {
+                setPinnedIds(new Set(snap.data().ids || []));
+            } else {
+                setPinnedIds(new Set());
+            }
+        });
+        return () => unsubscribe();
+    }, [effectiveCompanyId]);
     const cartIconRef = useRef<HTMLButtonElement | null>(null);
     const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -795,13 +809,16 @@ const SharedProduct: React.FC = () => {
         });
 
         return [...result].sort((a, b) => {
+            const aPinned = pinnedIds.has(a.id!);
+            const bPinned = pinnedIds.has(b.id!);
+            if (aPinned !== bPinned) return aPinned ? -1 : 1;
             if (sortOrder === 'A-Z') return a.name.localeCompare(b.name);
             if (sortOrder === 'Z-A') return b.name.localeCompare(a.name);
             if (sortOrder === 'Price: Low-High') return (a.mrp || 0) - (b.mrp || 0);
             if (sortOrder === 'Price: High-Low') return (b.mrp || 0) - (a.mrp || 0);
             return 0;
         });
-    }, [allItems, searchQuery, sortOrder, resolvedGroupId, catalogueSettings]);
+    }, [allItems, searchQuery, sortOrder, resolvedGroupId, catalogueSettings, pinnedIds]);
 
 
     useEffect(() => {
@@ -1177,6 +1194,11 @@ const SharedProduct: React.FC = () => {
                             >
                                 {/* IMAGE */}
                                 <div className="aspect-square bg-[#F8FAFC] flex items-center justify-center relative overflow-hidden">
+                                    {pinnedIds.has(item.id!) && (
+                                        <div className="absolute top-1.5 right-1.5 z-10 bg-white text-[#F97316] rounded-sm px-1 py-1 flex items-center gap-0.5 shadow-md">
+                                            <Pin size={12} className="fill-[#F97316]" />
+                                        </div>
+                                    )}
                                     {item.imageUrl ? (
                                         <img
                                             src={item.imageUrl}

@@ -4,10 +4,10 @@ import type { Item, ItemGroup } from '../constants/models';
 import { Modal } from '../constants/Modal';
 import { State } from '../enums';
 import { FiX, FiPackage, FiPlus } from 'react-icons/fi';
-import { Trash2, X, Send } from 'lucide-react';
+import { Trash2, X, Send, Pin } from 'lucide-react';
 import { Spinner } from '../constants/Spinner';
 import { db } from '../lib/Firebase';
-import { addDoc, collection, serverTimestamp, doc, getDoc } from 'firebase/firestore';
+import { addDoc, collection, serverTimestamp, doc, getDoc, setDoc } from 'firebase/firestore';
 import { OrderInvoiceNumber } from '../UseComponents/InvoiceCounter';
 import { useNavigate } from 'react-router';
 import Footer from './Footer';
@@ -40,9 +40,30 @@ const OrderingPage: React.FC = () => {
     // --- YOUR NEW STATES ---
     const [editingId, setEditingId] = useState<string | null>(null);
     const [tempName, setTempName] = useState('');
+    const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
     const [isSubdomainModalOpen, setIsSubdomainModalOpen] = useState(false); // <-- NEW STATE
 
-
+    useEffect(() => {
+        if (!companyId) return;
+        const loadPins = async () => {
+            try {
+                const ref = doc(db, 'companies', companyId, 'settings', 'pinned_categories');
+                const snap = await getDoc(ref);
+                if (snap.exists()) {
+                    const ids: string[] = snap.data().ids || [];
+                    setPinnedIds(new Set(ids));
+                    localStorage.setItem(`pinned_${companyId}`, JSON.stringify(ids));
+                } else {
+                    const saved = localStorage.getItem(`pinned_${companyId}`);
+                    if (saved) setPinnedIds(new Set(JSON.parse(saved)));
+                }
+            } catch {
+                const saved = localStorage.getItem(`pinned_${companyId}`);
+                if (saved) setPinnedIds(new Set(JSON.parse(saved)));
+            }
+        };
+        loadPins();
+    }, [companyId]);
     // --- Fetch Data ---
     useEffect(() => {
         if (authLoading || !currentUser || !dbOperations) {
@@ -52,7 +73,7 @@ const OrderingPage: React.FC = () => {
 
         const fetchData = async () => {
             if (!companyId) return;
-
+            console.log("COMPANY ID:", companyId);
             try {
                 setPageIsLoading(true);
 
@@ -157,13 +178,24 @@ const OrderingPage: React.FC = () => {
             console.log("Share cancelled:", error);
         }
     };
-
+    const handleTogglePin = (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        setPinnedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) { next.delete(id); } else { next.add(id); }
+            if (companyId) {
+                localStorage.setItem(`pinned_${companyId}`, JSON.stringify([...next]));
+                const ref = doc(db, 'companies', companyId, 'settings', 'pinned_categories');
+                setDoc(ref, { ids: [...next] }, { merge: true });
+            }
+            return next;
+        });
+    };
     const handleSaveEdit = async (id: string) => {
         if (!dbOperations) {
             setModal({ message: 'Database connection error', type: State.ERROR });
             return;
         }
-
         try {
             await dbOperations.updateItemGroup(id, { name: tempName });
             setItemGroups(prev => prev.map(group =>
@@ -212,10 +244,13 @@ const OrderingPage: React.FC = () => {
         }
 
         return displayedGroups.sort((a, b) => {
+            const aPinned = pinnedIds.has(a.id!);
+            const bPinned = pinnedIds.has(b.id!);
+            if (aPinned !== bPinned) return aPinned ? -1 : 1;
             if (sortOrder === 'A-Z') return a.name.localeCompare(b.name);
             return b.name.localeCompare(a.name);
         });
-    }, [itemGroups, items, searchQuery, sortOrder]);
+    }, [itemGroups, items, searchQuery, sortOrder, pinnedIds]);
 
     const getGroupImages = (groupId: string): string[] => {
         const validGroupIds = new Set(itemGroups.map(g => g.id));
@@ -406,6 +441,11 @@ const OrderingPage: React.FC = () => {
                             >
                                 {/* --- IMAGE SECTION WITH TOP BADGE --- */}
                                 <div className="aspect-square bg-[#F8FAFC] relative overflow-hidden">
+                                    {pinnedIds.has(group.id!) && (
+                                        <div className="absolute top-1.5 right-1.5 z-10 bg-white text-[#F97316] rounded-sm px-1 py-1 flex items-center gap-0.5 shadow-md">
+                                            <Pin size={12} className="fill-[#F97316]" />
+                                        </div>
+                                    )}
                                     {collageImages.length > 0 ? (
                                         <div className="grid grid-cols-2 grid-rows-2 w-full h-full gap-[2px] p-[2px]">
                                             {collageImages.map((img, index) => (
@@ -502,20 +542,35 @@ const OrderingPage: React.FC = () => {
                                                         : group.name
                                                     }
                                                 </h3>
+                                                <div className="flex items-center gap-1 shrink-0">
+                                                    {/* Pin button — always visible for all non-virtual groups */}
+                                                    {!isVirtual && (
+                                                        <button
+                                                            onClick={(e) => handleTogglePin(e, group.id!)}
+                                                            className={`p-1.5 rounded-sm transition-all ${pinnedIds.has(group.id!)
+                                                                ? 'bg-[#F97316]/10 text-[#F97316]'
+                                                                : 'bg-gray-100 text-gray-400 hover:bg-[#F97316] hover:text-white'
+                                                                }`}
+                                                            title={pinnedIds.has(group.id!) ? 'Unpin' : 'Pin to top'}
+                                                        >
+                                                            <Pin size={12} className={pinnedIds.has(group.id!) ? 'fill-white' : ''} />
+                                                        </button>
+                                                    )}
 
-                                                {/* Only show the share button for real, created categories */}
-                                                {!isVirtual && (
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            handleShareCategory(group);
-                                                        }}
-                                                        className="p-1.5 rounded-sm bg-[#F97316]/10 text-[#F97316] hover:bg-[#F97316] hover:text-white transition-all"
-                                                        title="Share Category"
-                                                    >
-                                                        <Send size={14} />
-                                                    </button>
-                                                )}
+                                                    {/* Share button */}
+                                                    {!isVirtual && (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleShareCategory(group);
+                                                            }}
+                                                            className="p-1.5 rounded-sm bg-[#F97316]/10 text-[#F97316] hover:bg-[#F97316] hover:text-white transition-all"
+                                                            title="Share Category"
+                                                        >
+                                                            <Send size={14} />
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </div>
 
                                             {/* Centered Item Count Badge UI */}

@@ -756,7 +756,7 @@ const MyShop: React.FC = () => {
                                         <StockIndicator stock={item.stock || 0} />
                                     </div>
                                     {item.imageUrl ? (
-                                        <img src={item.imageUrl} alt={item.name} className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" />
+                                        <img src={item.imageUrl} alt={item.name} className="object-contain w-full h-full transition-transform duration-500 group-hover:scale-110" />
                                     ) : (
                                         <FiPackage className="w-10 h-10 text-gray-200" />
                                     )}

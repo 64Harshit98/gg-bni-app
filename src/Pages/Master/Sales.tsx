@@ -1778,7 +1778,7 @@ const Sales: React.FC = () => {
                                                         <img
                                                             src={imageUrl}
                                                             alt={item.name}
-                                                            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                                            className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105"
                                                             loading="lazy"
                                                             onError={(e) => {
                                                                 (e.currentTarget as HTMLImageElement).style.display = 'none';

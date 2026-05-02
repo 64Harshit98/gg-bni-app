@@ -1203,7 +1203,7 @@ const SharedProduct: React.FC = () => {
                                         <img
                                             src={item.imageUrl}
                                             alt={item.name}
-                                            className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110"
+                                            className="object-contain w-full h-full transition-transform duration-500 group-hover:scale-110"
                                         />
                                     ) : (
                                         <FiPackage className="w-10 h-10 text-gray-200" />

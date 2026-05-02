@@ -378,23 +378,6 @@ const OrdersReturnPage: React.FC = () => {
             const maxQty = (item as any).originalQuantity;
             safeValue = Math.min(Math.max(1, num), maxQty);
           }
-          //  Exchange Items Validation (Check Stock)
-          else {
-            const realItem = availableItems.find(
-              i => i.id === (item as any).originalItemId
-            );
-            const stock = realItem?.stock ?? 0;
-
-            if (num > stock) {
-              setModal({
-                type: State.ERROR,
-                message: "You don't have enough stock for this item."
-              });
-              return item;
-            }
-
-            safeValue = Math.max(1, num);
-          }
         }
 
         const updatedItem = { ...item, [field]: safeValue };
@@ -485,16 +468,6 @@ const OrdersReturnPage: React.FC = () => {
     const item = exchangeItems.find(i => i.id === id);
     if (!item) return;
 
-    const realItem = availableItems.find(i => i.id === item.originalItemId);
-    const stock = realItem?.stock ?? 0;
-
-    if (newQuantity > stock) {
-      setModal({
-        type: State.ERROR,
-        message: "You don't have enough stock for this item."
-      });
-      return;
-    }
 
     handleListChange(setExchangeItems, id, 'quantity', Math.max(1, newQuantity));
   };
@@ -564,17 +537,6 @@ const OrdersReturnPage: React.FC = () => {
     }
 
 
-
-    const existingStock = itemToAdd.stock ?? 0;
-
-    if (existingStock <= 0) {
-      setModal({
-        type: State.ERROR,
-        message: "This item is out of stock."
-      });
-      return;
-    }
-
     setExchangeItems(prev => [
       ...prev,
       {
@@ -582,8 +544,8 @@ const OrdersReturnPage: React.FC = () => {
         originalItemId: itemToAdd.id!,
         name: itemToAdd.name,
 
-        quantity: (itemToAdd as any).unitMultiplier || 1,
-        unitMultiplier: (itemToAdd as any).unitMultiplier || 1,
+        quantity: 1,
+        unitMultiplier: 1,
 
         unitPrice: finalExchangePrice,
         amount: finalExchangePrice,

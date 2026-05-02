@@ -392,7 +392,6 @@ const CartPage: React.FC = () => {
             transaction.set(
                 settingsRef,
                 {
-                    currentVoucherNumber: currentNumber + 1,
                     updatedAt: serverTimestamp(),
                 },
                 { merge: true }

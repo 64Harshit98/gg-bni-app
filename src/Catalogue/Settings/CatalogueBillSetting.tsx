@@ -65,7 +65,7 @@ const CatalogueBillSettings: React.FC = () => {
     });
 
     const formatAddress = (addr: any): string => {
-        if (!addr) return 'Not Set';
+        if (!addr) return '';
         if (typeof addr === 'string') return addr;
         const { streetAddress, city, state, postalCode, zipCode, pincode } = addr;
         const parts = [streetAddress, city, state].filter(part => part && part.trim() !== '');
@@ -177,22 +177,22 @@ const CatalogueBillSettings: React.FC = () => {
             }
 
             const dataToSave = {
-            // Editable settings
-            upiId: settings.upiId,
-            termsAndConditions: settings.termsAndConditions,
-            signatureBase64: currentSignature,
+                // Editable settings
+                upiId: settings.upiId,
+                termsAndConditions: settings.termsAndConditions,
+                signatureBase64: currentSignature,
 
-            // ✅ Always sync from businessInfo so these stay fresh
-            companyGstin: businessInfo.gstin,
-            panNumber: businessInfo.panNumber,
-            msmeNumber: businessInfo.msmeNumber,
-            accountName: businessInfo.accountHolderName,
-            accountNumber: businessInfo.accountNumber,
-            bankName: businessInfo.bankName,
-            ifscCode: businessInfo.ifscCode,
+                // ✅ Always sync from businessInfo so these stay fresh
+                companyGstin: businessInfo.gstin,
+                panNumber: businessInfo.panNumber,
+                msmeNumber: businessInfo.msmeNumber,
+                accountName: businessInfo.accountHolderName,
+                accountNumber: businessInfo.accountNumber,
+                bankName: businessInfo.bankName,
+                ifscCode: businessInfo.ifscCode,
 
-            updatedAt: serverTimestamp(),
-        };
+                updatedAt: serverTimestamp(),
+            };
 
             const docRef = doc(db, 'companies', currentUser.companyId, 'settings', 'bill');
             await setDoc(docRef, dataToSave, { merge: true });
@@ -329,9 +329,7 @@ const CatalogueBillSettings: React.FC = () => {
                                         GSTIN
                                     </label>
                                     <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate">
-                                        {businessInfo.gstin || (
-                                            <span className="text-gray-400">Not set</span>
-                                        )}
+                                        {businessInfo.gstin}
                                     </div>
                                 </div>
                                 <div>
@@ -339,9 +337,7 @@ const CatalogueBillSettings: React.FC = () => {
                                         PAN NUMBER
                                     </label>
                                     <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium">
-                                        {businessInfo.panNumber || (
-                                            <span className="text-gray-400">Not set</span>
-                                        )}
+                                        {businessInfo.panNumber}
                                     </div>
                                 </div>
                                 <div>
@@ -349,9 +345,7 @@ const CatalogueBillSettings: React.FC = () => {
                                         MSME No.
                                     </label>
                                     <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate">
-                                        {businessInfo.msmeNumber || (
-                                            <span className="text-gray-400">Not set</span>
-                                        )}
+                                        {businessInfo.msmeNumber}
                                     </div>
                                 </div>
                             </div>
@@ -369,9 +363,7 @@ const CatalogueBillSettings: React.FC = () => {
                                         BANK NAME
                                     </label>
                                     <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate">
-                                        {businessInfo.bankName || (
-                                            <span className="text-gray-400">Not set</span>
-                                        )}
+                                        {businessInfo.bankName}
                                     </div>
                                 </div>
                                 <div>
@@ -379,9 +371,7 @@ const CatalogueBillSettings: React.FC = () => {
                                         ACC.HOLDER NAME
                                     </label>
                                     <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate">
-                                        {businessInfo.accountHolderName || (
-                                            <span className="text-gray-400">Not set</span>
-                                        )}
+                                        {businessInfo.accountHolderName}
                                     </div>
                                 </div>
                                 <div>
@@ -389,9 +379,7 @@ const CatalogueBillSettings: React.FC = () => {
                                         ACCOUNT NUMBER
                                     </label>
                                     <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate">
-                                        {businessInfo.accountNumber || (
-                                            <span className="text-gray-400">Not set</span>
-                                        )}
+                                        {businessInfo.accountNumber}
                                     </div>
                                 </div>
                                 <div>
@@ -399,9 +387,7 @@ const CatalogueBillSettings: React.FC = () => {
                                         IFSC Code
                                     </label>
                                     <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium">
-                                        {businessInfo.ifscCode || (
-                                            <span className="text-gray-400">Not set</span>
-                                        )}
+                                        {businessInfo.ifscCode}
                                     </div>
                                 </div>
                             </div>

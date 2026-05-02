@@ -456,8 +456,19 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         rowImageMap.set(rowIndex, imgData);
       }
 
+      let headerRowNum = 1; // fallback
+      for (let r = 1; r <= Math.min(worksheet.rowCount, 15); r++) {
+        const firstCell = worksheet.getRow(r).getCell(1).text?.trim().toLowerCase();
+        if (firstCell && (firstCell.includes('item name') || firstCell === 'name')) {
+          headerRowNum = r;
+          break;
+        }
+      }
+      // Data starts 2 rows after header (skip the notes/hint row right below headers)
+      const dataStartRow = headerRowNum + 2;
+
       let processedCount = 0, createdCount = 0, updatedCount = 0, failedCount = 0, skippedCount = 0;
-      const totalItems = worksheet.rowCount - 1;
+      const totalItems = Math.max(0, worksheet.rowCount - dataStartRow + 1);
       setUploadProgress({ current: 0, total: totalItems });
 
       let currentGroups = await dbOperations.getItemGroups();
@@ -468,7 +479,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       let needsBarcodeCount = 0;
       const itemsRef = collection(db, 'companies', currentUser.companyId, 'items');
 
-      for (let r = 2; r <= worksheet.rowCount; r++) {
+      for (let r = dataStartRow; r <= worksheet.rowCount; r++) {
         const row = worksheet.getRow(r);
         const rowBarcode = row.getCell(2).text?.trim();
         const rawName = row.getCell(1).text;
@@ -493,7 +504,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         nextSeqNumber = await reserveSequenceBlock(needsBarcodeCount);
       }
 
-      for (let rowNum = 2; rowNum <= worksheet.rowCount; rowNum++) {
+      for (let rowNum = dataStartRow; rowNum <= worksheet.rowCount; rowNum++) {
         const row = worksheet.getRow(rowNum);
 
         const rawName = row.getCell(1).text;

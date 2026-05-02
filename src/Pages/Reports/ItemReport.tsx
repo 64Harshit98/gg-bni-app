@@ -113,7 +113,7 @@ const ItemReport: React.FC = () => {
     return group ? group.name : UNASSIGNED_GROUP_NAME;
   };
 
-  const prepareExportData = (item: Item) => {
+  const prepareExportDataForPdf = (item: Item) => {
     return {
       name: item.name,
       mrp: item.mrp || 0,
@@ -126,6 +126,32 @@ const ItemReport: React.FC = () => {
       restockQuantity: item.restockQuantity || 0,
     };
   };
+  const prepareExportDataForExcel = (item: Item) => {
+  const salePrice = item.salesPrice ||
+    (item.mrp && item.discount ? parseFloat((item.mrp * (1 - item.discount / 100)).toFixed(2)) : item.mrp || 0);
+
+  return {
+    name: item.name || '-',
+    barcode: item.barcode || '-',
+    itemGroup: getGroupName(item.itemGroupId),
+    mrp: item.mrp || 0,
+    purchasePrice: item.purchasePrice || 0,
+    purchaseDiscount: item.purchasediscount || 0,
+    salesPrice: salePrice,
+    discount: item.discount || 0,
+    tax: item.tax || 0,
+    taxRate: item.taxRate || 0,
+    gst: item.gst || 0,
+    hsnSac: item.hsnSac || '-',
+    unit: item.unit || '-',
+    packetSize: item.packetSize || 0,
+    unitMultiplier: item.unitMultiplier || 0,
+    moq: item.moq || 0,
+    stock: item.stock || 0,
+    restockQuantity: item.restockQuantity || 0,
+    description: item.description || '-',
+  };
+};
 
   const downloadAsPdf = async () => {
     try {
@@ -224,7 +250,7 @@ const ItemReport: React.FC = () => {
         throw new Error("No data available to export");
       }
 
-      const exportData = filteredItems.map(prepareExportData);
+      const exportData = filteredItems.map(prepareExportDataForPdf);
 
       // Helper to convert camelCase/snake_case keys to clean uppercase headers
       // e.g. "totalSalesAmount" -> "TOTAL SALES AMOUNT"
@@ -330,7 +356,7 @@ const ItemReport: React.FC = () => {
 
   const downloadAsExcel = () => {
     try {
-      const dataToExport = filteredItems.map(prepareExportData);
+      const dataToExport = filteredItems.map(prepareExportDataForExcel);
       const worksheet = XLSX.utils.json_to_sheet(dataToExport);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Items');

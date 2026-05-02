@@ -134,18 +134,31 @@ const CatalogueItemReport: React.FC = () => {
     const group = itemGroups.find((g) => g.id === id);
     return group ? group.name : UNASSIGNED_GROUP_NAME;
   };
-
-  const prepareExportData = (item: Item) => {
+  const prepareExportDataForExcel = (item: Item) => {
+    const salePrice = item.salesPrice ||
+      (item.mrp && item.discount ? parseFloat((item.mrp * (1 - item.discount / 100)).toFixed(2)) : item.mrp || 0);
+  
     return {
-      name: item.name,
+      name: item.name || '-',
+      barcode: item.barcode || '-',
+      itemGroup: getGroupName(item.itemGroupId),
       mrp: item.mrp || 0,
       purchasePrice: item.purchasePrice || 0,
+      purchaseDiscount: item.purchasediscount || 0,
+      salesPrice: salePrice,
       discount: item.discount || 0,
       tax: item.tax || 0,
-      itemGroupId: getGroupName(item.itemGroupId),
+      taxRate: item.taxRate || 0,
+      gst: item.gst || 0,
+      hsnSac: item.hsnSac || '-',
+      unit: item.unit || '-',
+      packetSize: item.packetSize || 0,
+      unitMultiplier: item.unitMultiplier || 0,
+      moq: item.moq || 0,
       stock: item.stock || 0,
-      barcode: item.barcode || '-',
       restockQuantity: item.restockQuantity || 0,
+      description: item.description || '-',
+      isListed: item.isListed ? 'Yes' : 'No',
     };
   };
 
@@ -347,7 +360,7 @@ const CatalogueItemReport: React.FC = () => {
 
   const downloadAsExcel = () => {
     try {
-      const dataToExport = filteredItems.map(prepareExportData);
+      const dataToExport = filteredItems.map(prepareExportDataForExcel);
       const worksheet = XLSX.utils.json_to_sheet(dataToExport);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Items');

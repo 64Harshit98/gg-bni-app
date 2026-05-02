@@ -1318,6 +1318,8 @@ const Sales: React.FC = () => {
                     setSavedBillData({ id: result.id, number: result.number, invoiceData: invoiceData });
                     localStorage.removeItem('sales_cart_draft');
                     setItems([]);
+                    setStagedCalcInput('');
+                    setCalcInput('');         
                     const nextNum = await peekNextInvoiceNumber(currentUser.companyId);
                     isInvoiceNumberManuallyEdited.current = false;
                     setInvoiceNumber(nextNum);

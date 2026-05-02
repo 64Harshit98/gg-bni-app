@@ -5,11 +5,14 @@ import { useAuth } from './auth-context';
 import { type SalesSettings, getDefaultSalesSettings } from '../Pages/Settings/SalesSetting';
 import { type PurchaseSettings, getDefaultPurchaseSettings } from '../Pages/Settings/Purchasesetting';
 import { type ItemSettings, getDefaultItemSettings } from '../Pages/Settings/ItemSetting';
+import { type CatalogueSalesSettings, getDefaultCatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting';
 
 interface SettingsContextType {
     salesSettings: SalesSettings | null;
     purchaseSettings: PurchaseSettings | null;
     itemSettings: ItemSettings | null;
+    catalogueSettings: CatalogueSalesSettings | null;
+    loadingCatalogueSettings: boolean;
     loadingSalesSettings: boolean;
     loadingPurchaseSettings: boolean;
     loadingItemSettings: boolean;
@@ -28,6 +31,37 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
     const [loadingSalesSettings, setLoadingSalesSettings] = useState(true);
     const [loadingPurchaseSettings, setLoadingPurchaseSettings] = useState(true);
     const [loadingItemSettings, setLoadingItemSettings] = useState(true);
+
+    const [catalogueSettings, setCatalogueSettings] = useState<CatalogueSalesSettings | null>(null);
+    const [loadingCatalogueSettings, setLoadingCatalogueSettings] = useState(true);
+
+    useEffect(() => {
+        if (!currentUser?.companyId) {
+            setLoadingCatalogueSettings(false);
+            setCatalogueSettings(null);
+            return;
+        }
+
+        setLoadingCatalogueSettings(true);
+        const companyId = currentUser.companyId;
+        const docRef = doc(db, 'companies', companyId, 'settings', 'catalogue-sales-settings');
+
+        const unsubscribe = onSnapshot(docRef, (docSnap) => {
+            if (docSnap.exists()) {
+                setCatalogueSettings(docSnap.data() as CatalogueSalesSettings);
+            } else {
+                // This ensures the app "sees" defaults even if DB is empty
+                setCatalogueSettings(getDefaultCatalogueSalesSettings(companyId));
+            }
+            setLoadingCatalogueSettings(false);
+        }, (error) => {
+            console.error('Error fetching Catalogue Settings:', error);
+            setCatalogueSettings(getDefaultCatalogueSalesSettings(companyId));
+            setLoadingCatalogueSettings(false);
+        });
+
+        return () => unsubscribe();
+    }, [currentUser?.companyId]);
 
     // --- FETCH SALES SETTINGS ---
     useEffect(() => {
@@ -123,12 +157,14 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
     }, [currentUser?.companyId]);
 
 
-    const isLoadingSettings = loadingSalesSettings || loadingPurchaseSettings || loadingItemSettings;
+    const isLoadingSettings = loadingSalesSettings || loadingPurchaseSettings || loadingItemSettings || loadingCatalogueSettings;
 
     const contextValue = {
         salesSettings,
         purchaseSettings,
         itemSettings,
+        catalogueSettings,
+        loadingCatalogueSettings,
         loadingSalesSettings,
         loadingPurchaseSettings,
         loadingItemSettings,
@@ -140,6 +176,17 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
             {children}
         </SettingsContext.Provider>
     );
+};
+
+export const useCatalogueSettings = () => {
+    const context = useContext(SettingsContext);
+    if (context === undefined) {
+        throw new Error('useCatalogueSettings must be used within a SettingsProvider');
+    }
+    return {
+        catalogueSettings: context.catalogueSettings,
+        loadingSettings: context.loadingCatalogueSettings
+    };
 };
 
 export const useSalesSettings = () => {

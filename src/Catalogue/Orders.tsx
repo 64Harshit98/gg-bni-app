@@ -429,6 +429,34 @@ const OrdersPage: React.FC = () => {
 
     // ── Subscription badge ────────────────────────────────────────────────────
     const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
+    const [customerCredit, setCustomerCredit] = useState<number>(0);
+
+    // Fetch customer credit when the Payment Modal opens
+    useEffect(() => {
+        const fetchCredit = async () => {
+            if (!showPaymentModal || !currentUser?.companyId) {
+                setCustomerCredit(0);
+                return;
+            }
+
+            const phone = showPaymentModal.userLoginPhone || showPaymentModal.billingDetails?.phone || '';
+            const normalizedPhone = phone.replace(/\D/g, '').slice(-10);
+
+            if (normalizedPhone) {
+                try {
+                    const customerRef = doc(db, 'companies', currentUser.companyId, 'customers', normalizedPhone);
+                    const snap = await getDoc(customerRef);
+                    if (snap.exists()) {
+                        setCustomerCredit(Number(snap.data().creditBalance || 0));
+                    }
+                } catch (err) {
+                    console.error("Error fetching credit balance:", err);
+                }
+            }
+        };
+
+        fetchCredit();
+    }, [showPaymentModal, currentUser?.companyId]);
 
     useEffect(() => {
         const fetchExpiry = async () => {
@@ -1138,17 +1166,6 @@ const OrdersPage: React.FC = () => {
         setIsUpdatingStatus(orderId);
 
         try {
-            const nextStatusMap: Record<OrderStatus, OrderStatus> = {
-                Upcoming: "Confirmed",
-                Confirmed: "Packed",
-                Packed: "Completed",
-                Completed: "Completed",
-                Paid: "Paid"
-            };
-
-            const nextStatus =
-                manualNextStatus || nextStatusMap[currentStatus];
-
             if (!currentUser?.companyId) return;
 
             const OrderRef = doc(
@@ -1158,6 +1175,33 @@ const OrdersPage: React.FC = () => {
                 "Orders",
                 orderId
             );
+
+            // Fetch the latest order data to make smart status decisions
+            const orderSnap = await getDoc(OrderRef);
+            if (!orderSnap.exists()) return;
+            const orderData = orderSnap.data();
+
+            const nextStatusMap: Record<OrderStatus, OrderStatus> = {
+                Upcoming: "Confirmed",
+                Confirmed: "Packed",
+                Packed: "Completed",
+                Completed: "Completed",
+                Paid: "Paid"
+            };
+
+            let nextStatus = manualNextStatus || nextStatusMap[currentStatus];
+
+            // --- THE FIX ---
+            // If moving out of Packed, check if it's already fully paid via Advance
+            if (currentStatus === "Packed" && nextStatus === "Completed") {
+                const total = Number(orderData.totalAmount || 0);
+                const paid = Number(orderData.paidAmount || 0);
+
+                // If Due is 0 (using <= 0.1 to prevent JS decimal bugs), skip Unpaid and go to Paid
+                if ((total - paid) <= 0.1) {
+                    nextStatus = "Paid";
+                }
+            }
 
             //  STOCK DECREASE WHEN CONFIRMED
             if (nextStatus === "Confirmed") {
@@ -1298,32 +1342,29 @@ const OrdersPage: React.FC = () => {
                 totalAmount: newTotal,
                 billingDetails: editingOrder.billingDetails,
                 shippingDetails: editingOrder.shippingDetails,
+                userName: editingOrder.billingDetails?.name,
+                userLoginPhone: editingOrder.billingDetails?.phone,
                 updatedAt: serverTimestamp(),
                 ...extraFields,
             });
 
             // ── Helper: resolve status after amount change ──────────────────────
-            const resolveStatus = () => {
+            // Replace your existing resolveStatus inside handleSaveChanges with this:
+            const resolveStatus = (total: number, paid: number) => {
                 const liveStatus = originalOrder?.status || editingOrder.status;
 
-                // Only touch status for final-stage orders (Completed/Paid)
-                // Confirmed/Packed orders should keep their status unchanged
+                // RULE 1: Never auto-move from Confirmed or Packed on edit.
                 if (liveStatus !== 'Completed' && liveStatus !== 'Paid') {
                     return liveStatus;
                 }
 
-                const paidAmt = Number(originalOrder?.paidAmount || 0);
-                // Save-flow unpaid/paid decision should follow actual paid amount against new total.
-                // Credit/refund adjustments are handled separately in their own handlers.
-                const effectiveDue = Math.max(0, newTotal - paidAmt);
-
-                if (effectiveDue > 0) {
-                    return 'Completed'; // has due → unpaid section
-                } else if (newTotal > 0) {
-                    return 'Paid'; // fully settled
+                // RULE 2: Auto-move ONLY between Completed (Unpaid) and Paid
+                const effectiveDue = total - paid;
+                if (effectiveDue <= 0.1) { // 0.1 handles JavaScript float precision bugs
+                    return 'Paid';
+                } else {
+                    return 'Completed';
                 }
-
-                return liveStatus;
             };
 
             // ── Stock updates (runs for all cases) ─────────────────────────────
@@ -1341,12 +1382,34 @@ const OrdersPage: React.FC = () => {
                 }
             });
 
-            // CASE 1: Amount reduced → show popup (stock still updates)
+            // CASE 1: Amount reduced -> check due before offering refund (stock still updates)
+            const originalPaid = Number(originalOrder?.paidAmount || 0);
+            const originalDue = Math.max(0, originalTotal - originalPaid);
+            const priceReduction = Math.abs(netDiff);
             if (netDiff < 0) {
-                await Promise.all(stockUpdatePromises);
-                setPendingAdjustment({ amount: Math.abs(netDiff) });
-                setShowAdjustmentPopup(true);
-                return;
+
+                if (priceReduction <= originalDue) {
+                    // CASE 1A: The reduction just eats into the unpaid Due. 
+                    // No refund/credit note needed. Just save the new total.
+                    await Promise.all([
+                        ...stockUpdatePromises,
+                        updateDoc(orderRef, buildUpdatePayload({
+                            status: resolveStatus(newTotal, originalPaid)
+                        })),
+                    ]);
+                    setEditingOrder(null);
+                    setModal({ message: 'Due reduced successfully.', type: State.SUCCESS });
+                    return;
+                } else {
+                    // CASE 1B: The reduction wipes out the Due and digs into the Paid amount.
+                    // We ONLY refund the leftover difference.
+                    const refundableAmount = priceReduction - originalDue;
+                    await Promise.all(stockUpdatePromises);
+
+                    setPendingAdjustment({ amount: refundableAmount });
+                    setShowAdjustmentPopup(true);
+                    return;
+                }
             }
 
             // CASE 2: Amount increased
@@ -1354,7 +1417,7 @@ const OrdersPage: React.FC = () => {
                 await Promise.all([
                     ...stockUpdatePromises,
                     updateDoc(orderRef, buildUpdatePayload({
-                        status: resolveStatus(),
+                        status: resolveStatus(newTotal, originalPaid), // <--- FIXED
                         extraDueAmount: netDiff,
                     })),
                 ]);
@@ -1366,7 +1429,9 @@ const OrdersPage: React.FC = () => {
             // CASE 3: No amount change (items/qty may still have changed)
             await Promise.all([
                 ...stockUpdatePromises,
-                updateDoc(orderRef, buildUpdatePayload({ status: resolveStatus() })),
+                updateDoc(orderRef, buildUpdatePayload({
+                    status: resolveStatus(newTotal, originalPaid) // <--- FIXED
+                })),
             ]);
             setEditingOrder(null);
 
@@ -1405,7 +1470,16 @@ const OrdersPage: React.FC = () => {
         const paidAmt = Number(liveOrder?.paidAmount || 0);
         const updatedPaidAmt = Math.max(0, paidAmt - pendingAdjustment.amount);
         const effectiveDue = Math.max(0, totalAmt - updatedPaidAmt);
-        const updatedStatus = effectiveDue > 0 ? 'Completed' : 'Paid';
+
+        // --- SMART STATUS LOGIC ---
+        const liveStatus = liveOrder?.status || editingOrder.status;
+        let updatedStatus = liveStatus;
+
+        // Only alter the status if it's already in the final stages
+        if (liveStatus === 'Completed' || liveStatus === 'Paid') {
+            updatedStatus = effectiveDue > 0.1 ? 'Completed' : 'Paid';
+        }
+        // --------------------------
 
         await updateDoc(
             doc(db, 'companies', currentUser.companyId, 'Orders', editingOrder.id),
@@ -1413,7 +1487,7 @@ const OrdersPage: React.FC = () => {
                 items: editingOrder.items,
                 totalAmount: totalAmt,
                 paidAmount: updatedPaidAmt,
-                status: updatedStatus,
+                status: updatedStatus, // Uses the smart status
                 billingDetails: editingOrder.billingDetails,
                 shippingDetails: editingOrder.shippingDetails,
                 creditNoteAmount: firebaseIncrement(pendingAdjustment.amount),
@@ -1448,20 +1522,36 @@ const OrdersPage: React.FC = () => {
     const handleRefund = async () => {
         if (!editingOrder || !currentUser?.companyId || !pendingAdjustment) return;
 
-        const totalAmt = Number(editingOrder.totalAmount || 0);
+        const liveOrder = Orders.find(o => o.id === editingOrder.id);
+        const totalAmt = Number(
+            (editingOrder.items || []).reduce((sum, item) => {
+                const salesPrice = Number(item.salesPrice || 0);
+                const mrp = Number(item.mrp || 0);
+                const unitPrice = item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+                return sum + Number(unitPrice || 0) * Number(item.quantity || 0);
+            }, 0)
+        );
+        const paidAmt = Number(liveOrder?.paidAmount || 0);
+        const updatedPaidAmt = Math.max(0, paidAmt - pendingAdjustment.amount);
+        const effectiveDue = Math.max(0, totalAmt - updatedPaidAmt);
 
+        // --- SMART STATUS LOGIC ---
+        const liveStatus = liveOrder?.status || editingOrder.status;
+        let updatedStatus = liveStatus;
 
-
-
-
-        const updatedStatus = 'Paid';
+        // Only alter the status if it's already in the final stages
+        if (liveStatus === 'Completed' || liveStatus === 'Paid') {
+            updatedStatus = effectiveDue > 0.1 ? 'Completed' : 'Paid';
+        }
+        // --------------------------
 
         await updateDoc(
             doc(db, 'companies', currentUser.companyId, 'Orders', editingOrder.id),
             {
                 items: editingOrder.items,
                 totalAmount: totalAmt,
-                status: updatedStatus,
+                paidAmount: updatedPaidAmt,
+                status: updatedStatus, // Uses the smart status
                 billingDetails: editingOrder.billingDetails,
                 shippingDetails: editingOrder.shippingDetails,
                 refundAmount: firebaseIncrement(pendingAdjustment.amount),
@@ -1719,56 +1809,58 @@ const OrdersPage: React.FC = () => {
                                             </button>
                                         )}
                                         <div className="absolute right-5 top-0 flex gap-1">
-                                            {/* PAYMENT METHOD BADGES (DUE EXCLUDED) */}
-                                            {Order.paymentMethods &&
-                                                Object.entries(Order.paymentMethods)
-                                                    .filter(([method, amount]) => {
-                                                        if (method.toLowerCase() === 'due') return false;
+                                            <div className="absolute right-5 top-0 flex gap-1">
+                                                {/* PAYMENT METHOD BADGES (DUE EXCLUDED) */}
+                                                {Order.paymentMethods &&
+                                                    Object.entries(Order.paymentMethods)
+                                                        .filter(([method, amount]) => {
+                                                            if (method.toLowerCase() === 'due') return false;
 
-                                                        const latestReturn =
-                                                            Order.returnHistory?.[Order.returnHistory.length - 1];
+                                                            const latestReturn =
+                                                                Order.returnHistory?.[Order.returnHistory.length - 1];
 
-                                                        const usedInExchange =
-                                                            latestReturn?.paymentDetails &&
-                                                            Number(latestReturn.paymentDetails[method]) > 0;
+                                                            const usedInExchange =
+                                                                latestReturn?.paymentDetails &&
+                                                                Number(latestReturn.paymentDetails[method]) > 0;
 
-                                                        // agar exchange me use hua hai to blue me mat dikha
-                                                        if (usedInExchange) return false;
+                                                            // agar exchange me use hua hai to blue me mat dikha
+                                                            if (usedInExchange) return false;
 
-                                                        return Number(amount) > 0;
-                                                    })
-                                                    .map(([method]) => (
-                                                        <span
-                                                            key={`original-${method}`}
-                                                            className="text-[8px] uppercase font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100"
-                                                        >
-                                                            {method}
-                                                        </span>
-                                                    ))}
-
-                                            {Order.returnHistory &&
-                                                Order.returnHistory.length > 0 &&
-                                                (() => {
-                                                    const latestReturn =
-                                                        Order.returnHistory[Order.returnHistory.length - 1];
-
-                                                    if (!latestReturn.paymentDetails) return null;
-
-                                                    return Object.entries(latestReturn.paymentDetails)
-                                                        .filter(
-                                                            ([method, amount]) =>
-                                                                method.toLowerCase() !== 'due' &&
-                                                                Number(amount) > 0
-                                                        )
+                                                            return Number(amount) > 0;
+                                                        })
                                                         .map(([method]) => (
                                                             <span
-                                                                key={`exchange-${method}`}
+                                                                key={`original-${method}`}
                                                                 className="text-[8px] uppercase font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100"
                                                             >
                                                                 {method}
                                                             </span>
-                                                        ));
-                                                })()}
+                                                        ))}
+
+                                                {Order.returnHistory &&
+                                                    Order.returnHistory.length > 0 &&
+                                                    (() => {
+                                                        const latestReturn =
+                                                            Order.returnHistory[Order.returnHistory.length - 1];
+
+                                                        if (!latestReturn.paymentDetails) return null;
+
+                                                        return Object.entries(latestReturn.paymentDetails)
+                                                            .filter(
+                                                                ([method, amount]) =>
+                                                                    method.toLowerCase() !== 'due' &&
+                                                                    Number(amount) > 0
+                                                            )
+                                                            .map(([method]) => (
+                                                                <span
+                                                                    key={`exchange-${method}`}
+                                                                    className="text-[8px] uppercase font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100"
+                                                                >
+                                                                    {method}
+                                                                </span>
+                                                            ));
+                                                    })()}
+                                            </div>
 
                                         </div>
                                         <div className="flex justify-between items-start pl-6 mt-1">
@@ -2251,12 +2343,13 @@ const OrdersPage: React.FC = () => {
                     <PaymentModal
                         isOpen={!!showPaymentModal}
                         onClose={() => setShowPaymentModal(null)}
+                        availableCredit={customerCredit} // <--- PASS CREDIT TO MODAL
                         invoice={{
                             id: showPaymentModal.id,
                             invoiceNumber: showPaymentModal.orderId,
-                            amount: currentDue,      //  drawer me updated due
+                            amount: currentDue,
                             partyName: showPaymentModal.userName,
-                            dueAmount: currentDue,   //  same due
+                            dueAmount: currentDue,
                             time: showPaymentModal.time,
                             status: currentDue === 0 ? 'Paid' : 'Unpaid',
                             type: 'Credit',
@@ -2274,17 +2367,26 @@ const OrdersPage: React.FC = () => {
                                     showPaymentModal.id
                                 );
 
-                                const currentMethods =
-                                    showPaymentModal.paymentMethods || {};
+                                const methodKey = method ? method.toUpperCase() : 'CASH';
 
-                                const methodKey = method
-                                    ? method.toUpperCase()
-                                    : 'CASH';
+                                // --- NEW: DEDUCT FROM CUSTOMER DB IF CREDIT NOTE USED ---
+                                if (methodKey === 'CREDIT NOTE' || methodKey === 'CREDIT') {
+                                    const phone = showPaymentModal.userLoginPhone || showPaymentModal.billingDetails?.phone || '';
+                                    const normalizedPhone = phone.replace(/\D/g, '').slice(-10);
 
+                                    if (normalizedPhone) {
+                                        const customerRef = doc(db, 'companies', currentUser.companyId, 'customers', normalizedPhone);
+                                        await updateDoc(customerRef, {
+                                            creditBalance: firebaseIncrement(-amount) // Deduct the used amount
+                                        });
+                                    }
+                                }
+                                // --------------------------------------------------------
+
+                                const currentMethods = showPaymentModal.paymentMethods || {};
                                 const updatedMethods = {
                                     ...currentMethods,
-                                    [methodKey]:
-                                        (currentMethods[methodKey] || 0) + amount,
+                                    [methodKey]: (currentMethods[methodKey] || 0) + amount,
                                 };
 
                                 const newPaidTotal = alreadyPaid + amount;

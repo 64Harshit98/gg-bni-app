@@ -65,7 +65,7 @@ const BillSettings: React.FC = () => {
     });
 
     const formatAddress = (addr: any): string => {
-        if (!addr) return 'Not Set';
+        if (!addr) return '';
         if (typeof addr === 'string') return addr;
         const { streetAddress, city, state, postalCode, zipCode, pincode } = addr;
         const parts = [streetAddress, city, state].filter(part => part && part.trim() !== '');
@@ -165,23 +165,23 @@ const BillSettings: React.FC = () => {
             }
 
             const dataToSave = {
-            // Editable settings
-            upiId: settings.upiId,
-            termsAndConditions: settings.termsAndConditions,
-            printFormat: settings.printFormat,
-            signatureBase64: currentSignature,
+                // Editable settings
+                upiId: settings.upiId,
+                termsAndConditions: settings.termsAndConditions,
+                printFormat: settings.printFormat,
+                signatureBase64: currentSignature,
 
-            // ✅ Always sync from businessInfo so these stay fresh
-            companyGstin: businessInfo.gstin,
-            panNumber: businessInfo.panNumber,
-            msmeNumber: businessInfo.msmeNumber,
-            accountName: businessInfo.accountHolderName,
-            accountNumber: businessInfo.accountNumber,
-            bankName: businessInfo.bankName,
-            ifscCode: businessInfo.ifscCode,
+                // ✅ Always sync from businessInfo so these stay fresh
+                companyGstin: businessInfo.gstin,
+                panNumber: businessInfo.panNumber,
+                msmeNumber: businessInfo.msmeNumber,
+                accountName: businessInfo.accountHolderName,
+                accountNumber: businessInfo.accountNumber,
+                bankName: businessInfo.bankName,
+                ifscCode: businessInfo.ifscCode,
 
-            updatedAt: serverTimestamp()
-        };
+                updatedAt: serverTimestamp()
+            };
 
             const docRef = doc(db, 'companies', currentUser.companyId, 'settings', 'bill');
             await setDoc(docRef, dataToSave, { merge: true });
@@ -301,19 +301,19 @@ const BillSettings: React.FC = () => {
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">GSTIN</label>
                                     <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate">
-                                        {businessInfo.gstin || <span className="text-gray-400">Not set</span>}
+                                        {businessInfo.gstin}
                                     </div>
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">PAN Number</label>
                                     <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium">
-                                        {businessInfo.panNumber || <span className="text-gray-400">Not set</span>}
+                                        {businessInfo.panNumber}
                                     </div>
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">MSME No.</label>
                                     <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate">
-                                        {businessInfo.msmeNumber || <span className="text-gray-400">Not set</span>}
+                                        {businessInfo.msmeNumber}
                                     </div>
                                 </div>
                             </div>
@@ -328,25 +328,25 @@ const BillSettings: React.FC = () => {
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Bank Name</label>
                                     <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate">
-                                        {businessInfo.bankName || <span className="text-gray-400">Not set</span>}
+                                        {businessInfo.bankName}
                                     </div>
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Acc.Holder Name</label>
                                     <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate">
-                                        {businessInfo.accountHolderName || <span className="text-gray-400">Not set</span>}
+                                        {businessInfo.accountHolderName}
                                     </div>
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Account Number</label>
                                     <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate">
-                                        {businessInfo.accountNumber || <span className="text-gray-400">Not set</span>}
+                                        {businessInfo.accountNumber}
                                     </div>
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">IFSC Code</label>
                                     <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium">
-                                        {businessInfo.ifscCode || <span className="text-gray-400">Not set</span>}
+                                        {businessInfo.ifscCode}
                                     </div>
                                 </div>
                             </div>

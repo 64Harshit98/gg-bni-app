@@ -176,7 +176,7 @@ const useCatalogueData = (companyId?: string, catalogueId?: string, userId?: str
           companyLogo: businessData.companyLogo || "",
           msmeUdyamNumber: userData.msmeUdyamNumber || businessData.msmeUdyamNumber || "",
           email: userData.email || "",
-          phone: userData.phone || "",
+          phone: userData.phoneNumber || userData.phone|| "",
         });
 
       } catch (err) {

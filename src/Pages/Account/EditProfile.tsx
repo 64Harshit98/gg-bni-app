@@ -193,7 +193,7 @@ const useProfileData = (userId?: string, companyId?: string) => {
         ...businessData,  // Business data first
         name: userData.name || "",
         email: userData.email || "",
-        phone: userData.phone || "",
+        phone: userData.phoneNumber || userData.phone || "",
         profilePicture: userData.profilePicture || businessData.profilePicture || "",
         panNumber: userData.panNumber || "",
         accountType: userData.accountType || "",
@@ -246,7 +246,7 @@ const useProfileData = (userId?: string, companyId?: string) => {
     // 2. User Doc Update (Sanitize data to ensure no undefined values)
     const userUpdateData: Record<string, any> = {};
     if (name) userUpdateData.name = name;
-    if (phone !== undefined) userUpdateData.phone = phone;
+    if (phone !== undefined) userUpdateData.phoneNumber = phone;
     if (email !== undefined) userUpdateData.email = email;
     if (data.panNumber !== undefined) userUpdateData.panNumber = data.panNumber;
     if (accountType !== undefined) userUpdateData.accountType = accountType;

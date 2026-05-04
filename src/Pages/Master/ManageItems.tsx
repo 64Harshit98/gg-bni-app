@@ -3,7 +3,8 @@ import useItemReport from '../Reports/ItemReportComponents/useItemReport';
 
 import FilterSelect from '../Reports/ItemReportComponents/FilterSelect';
 import { Spinner } from '../../constants/Spinner';
-import { FiEdit2, FiTrash2 } from 'react-icons/fi';
+import { IconClose } from '../../constants/Icons';
+import { FiEdit2, FiTrash2, FiAlertTriangle, FiCheckCircle, FiXCircle } from 'react-icons/fi';
 
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
 import { Modal } from '../../constants/Modal';

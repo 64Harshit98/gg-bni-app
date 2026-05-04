@@ -268,7 +268,21 @@ const ItemReport: React.FC = () => {
       const columnStyles: any = {};
 
       rawHeaders.forEach((key, index) => {
-        if (numericColumns.includes(key)) {
+        if (key === 'purchasePrice') {
+          columnStyles[index] = { cellWidth: 30, halign: 'right' };
+        } else if (key === 'mrp') {
+          columnStyles[index] = { cellWidth: 20, halign: 'right' };
+        } else if (key === 'discount') {
+          columnStyles[index] = { cellWidth: 29, halign: 'right' };
+        } else if (key === 'tax') {
+          columnStyles[index] = { cellWidth: 25, halign: 'right' };
+        } else if (key === 'stock') {
+          columnStyles[index] = { cellWidth: 25, halign: 'right' };
+        } else if (key === 'barcode') {
+          columnStyles[index] = { cellWidth: 40 };
+        } else if (key === 'restockQuantity') {
+          columnStyles[index] = { cellWidth: 30, halign: 'right' };
+        } else if (numericColumns.includes(key)) {
           columnStyles[index] = { halign: 'right' };
         }
       });

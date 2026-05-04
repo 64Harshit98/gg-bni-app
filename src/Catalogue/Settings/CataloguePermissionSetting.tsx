@@ -6,7 +6,7 @@ import React, { useState, useMemo } from 'react';
 import { Cata_Permissions as Permissions } from '../../Catalogue/enum/cata_permissions.enum';
 import { ROLES } from '../../enums';
 // import Loading from '../../Pages/Loading/Loading';
-import { useNavigate } from 'react-router';
+import BackButton from '../../Components/BackButton';
 // import { useAuth } from '../../context/auth-context';
 
 type RolePermissionsMap = Record<string, Permissions[]>;
@@ -125,8 +125,6 @@ const permissionGroups = {
 };
 
 const CataloguePermissionSetting: React.FC = () => {
-    const navigate = useNavigate();
-
     // AUTH DISABLED
     // const { currentUser } = useAuth();
 
@@ -192,12 +190,7 @@ const CataloguePermissionSetting: React.FC = () => {
     return (
         <div className="bg-gray-100 min-h-screen mb-16">
             <div className="flex items-center justify-between p-2 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30 mb-4">
-                <button
-                    onClick={() => navigate(-1)}
-                    className="rounded-full bg-gray-200 p-2 text-gray-700 hover:bg-gray-300"
-                >
-                    ✕
-                </button>
+                <BackButton/>
                 <h1 className="text-center text-2xl md:text-3xl font-bold text-gray-800">
                     Manage Permissions
                 </h1>
@@ -210,7 +203,7 @@ const CataloguePermissionSetting: React.FC = () => {
                             key={role}
                             onClick={() => setSelectedRole(role)}
                             className={`px-6 py-2 rounded-md text-sm font-medium transition-all capitalize m-0.5 ${selectedRole === role
-                                ? 'bg-white text-sky-500 shadow-sm'
+                                ? 'bg-white text-[#F97316] shadow-sm'
                                 : 'text-gray-600 hover:text-gray-900'
                                 }`}
                         >
@@ -237,7 +230,7 @@ const CataloguePermissionSetting: React.FC = () => {
                         <h2 className="text-2xl font-semibold capitalize text-gray-800">
                             {selectedRole} Permissions
                         </h2>
-                        <span className="px-3 py-1 text-xs font-semibold tracking-wide text-blue-800 bg-blue-100 rounded-sm">
+                        <span className="px-3 py-1 text-xs font-semibold tracking-wide text-[#F97316] bg-gray-100 rounded-sm">
                             {rolePermissions[selectedRole]?.length || 0} Active
                         </span>
                     </div>
@@ -261,7 +254,7 @@ const CataloguePermissionSetting: React.FC = () => {
                                         >
                                             <input
                                                 type="checkbox"
-                                                className="h-5 w-5 rounded border-gray-300 text-sky-500"
+                                                className="h-5 w-5 rounded border-gray-300 accent-[#F97316]"
                                                 checked={
                                                     rolePermissions[selectedRole]?.includes(permission) ||
                                                     false
@@ -289,7 +282,7 @@ const CataloguePermissionSetting: React.FC = () => {
             <div className="mt-4 text-center rounded-sm pt-4 sticky bottom-10 bg-transparent pb-4 mx-4">
                 <button
                     onClick={() => handleSaveChanges(selectedRole)}
-                    className="w-auto bg-sky-500 text-white font-bold py-3 px-4 rounded-sm hover:bg-blue-700"
+                    className="w-auto bg-[#F97316] text-white font-bold py-3 px-4 rounded-sm hover:bg-orange-700"
                 >
                     Save Changes for {selectedRole}
                 </button>

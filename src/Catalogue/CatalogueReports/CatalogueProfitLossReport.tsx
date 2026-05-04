@@ -14,6 +14,7 @@ import { formatDate } from '../../Pages/Reports/PNLReportComponents/pnlReport.ut
 import { handleDatePresetChange } from '../../Pages/Reports/PNLReportComponents/pnlReport.utils';
 import DownloadChoiceModal from '../../Pages/Reports/ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
+import BackButton from '../../Components/BackButton';
 //import CataShowWrapper from '../../context/CataShowWrapper';
 //import { Cata_Permissions } from '../enum/cata_permissions.enum';
 
@@ -365,19 +366,14 @@ const CatalogueProfitLossReport: React.FC = () => {
       {/* HEADER */}
       <div className="flex items-center justify-between pb-3 border-b mb-2">
 
-        {/* LEFT (Search Icon) */}
-        <button onClick={() => setShowSearch(true)} className="p-2">
-          <IconSearch />
-        </button>
-
+        <BackButton />
         {/* TITLE */}
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
           Profit & Loss Report
         </h1>
 
-        {/* RIGHT */}
-        <button onClick={() => navigate(-1)} className="p-2">
-          <IconClose width={20} height={20} />
+        <button onClick={() => setShowSearch(true)} className="p-2">
+          <IconSearch />
         </button>
 
       </div>

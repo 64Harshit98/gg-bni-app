@@ -1,5 +1,4 @@
 import React, { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import useItemReport from '../../Pages/Reports/ItemReportComponents/useItemReport';
 
 import FilterSelect from '../../Pages/Reports/ItemReportComponents/FilterSelect';
@@ -12,6 +11,7 @@ import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
 
 import type { Item } from '../../constants/models';
+import BackButton from '../../Components/BackButton';
 
 const UNASSIGNED_GROUP_NAME = 'Uncategorized';
 
@@ -26,7 +26,6 @@ type SortOption =
   | 'VALUE_DESC';
 
 const ManageItems: React.FC = () => {
-  const navigate = useNavigate();
 
   const {
     items,
@@ -159,22 +158,15 @@ const ManageItems: React.FC = () => {
       {/* -------------------- HEADER -------------------- */}
       <div className="flex items-center justify-between bg-white border-b px-4 py-3 shadow-sm">
 
-        {/* LEFT (Search Icon) */}
-        <button onClick={() => setShowSearch(true)} className="p-2">
-          <IconSearch />
-        </button>
+        <BackButton />
 
         {/* TITLE */}
         <h1 className="text-xl font-bold text-gray-800 text-center flex-1">
           Manage Items
         </h1>
 
-        {/* RIGHT */}
-        <button
-          onClick={() => navigate(-1)}
-          className="p-2 rounded-full bg-gray-200 hover:bg-gray-300"
-        >
-          <IconClose width={20} height={20} />
+        <button onClick={() => setShowSearch(true)} className="p-2">
+          <IconSearch />
         </button>
 
       </div>

@@ -1,8 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../../context/auth-context';
 import { PLANS } from '../../enums';
-import { useNavigate } from 'react-router-dom';
-import { IconClose } from '../../constants/Icons';
+import BackButton from '../../Components/BackButton';
 
 // --- HELPER: Feature Descriptions ---
 const FEATURE_DESCRIPTIONS: Record<string, string> = {
@@ -191,7 +190,6 @@ const BOTH_TIERS = [
 
 const SubscriptionPage: React.FC = () => {
     const { currentUser } = useAuth();
-    const navigate = useNavigate();
 
     const [activeTab, setActiveTab] = useState<'pos' | 'catalogue' | 'both'>('pos');
     const [isDetailsOpen] = useState(true);
@@ -282,13 +280,7 @@ const SubscriptionPage: React.FC = () => {
             <div className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-20">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex justify-between h-16 items-center">
-                        <button
-                            onClick={() => navigate(-1)}
-                            className={`flex items-center gap-2 transition-colors ${!isPlanActive ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:text-gray-900'}`}
-                            disabled={!isPlanActive}
-                        >
-                            <IconClose className="w-6 h-6 text-gray-700" />
-                        </button>
+                        <BackButton/>
                         <h1 className="text-xl font-bold text-gray-800">Subscription</h1>
                         <div className="w-10"></div>
                     </div>

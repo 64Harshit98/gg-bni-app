@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
 import {
   doc,
@@ -13,6 +12,7 @@ import { useAuth } from '../../context/auth-context';
 //import { Cata_Permissions } from '../enum/cata_permissions.enum';
 //import CataShowWrapper from '../../context/CataShowWrapper';
 import { InfoTooltip } from '../../Components/InfoToolTip';
+import BackButton from '../../Components/BackButton';
 
 export interface CatalogueSalesSettings {
   companyId: string
@@ -120,7 +120,6 @@ export const ToggleRow: React.FC<ToggleRowProps> = ({
   </div>
 );
 const CatalogueSalesSettings: React.FC = () => {
-  const navigate = useNavigate();
   const { currentUser } = useAuth();
 
   const [settings, setSettings] = useState<CatalogueSalesSettings | null>(null);
@@ -229,12 +228,7 @@ const CatalogueSalesSettings: React.FC = () => {
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
       <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
-        <button
-          onClick={() => navigate(-1)}
-          className="text-2xl font-bold text-gray-600 bg-transparent border-none cursor-pointer p-1"
-        >
-          &times;
-        </button>
+        <BackButton/>
         <h1 className="text-lg font-semibold text-gray-800">Sales Settings</h1>
         <div className="w-6"></div>
       </div>

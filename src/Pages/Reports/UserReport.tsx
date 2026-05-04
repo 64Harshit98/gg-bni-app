@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
 import useUserReport from './UserReportComponents/useUserReport';
+import BackButton from '../../Components/BackButton';
 
 // ─── Donut Chart ───────────────────────────────────────────────────────────────
 const DonutChart: React.FC<{ cash: number; upi: number; card: number; total: number }> = ({
@@ -159,17 +160,10 @@ const UserReport: React.FC = () => {
 
       {/* ── HEADER ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between pb-3 border-b mb-2">
+        <BackButton/>
         <h1 className="flex-1 text-2xl text-center font-bold text-gray-800">
           User Report
         </h1>
-        <button
-          onClick={() => navigate(-1)}
-          className="absolute flex items-center gap-2 rounded-full p-4 bg-gray-200 text-gray-500 hover:text-gray-900 transition-colors"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 12H5M12 5l-7 7 7 7" />
-          </svg>
-        </button>
       </div>
 
       {/* ── STAFF SELECTOR ─────────────────────────────────────────────────── */}

@@ -1,6 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import FilterSelect from '../../Pages/Reports/SalesReportComponents/FilterSelect';
-import { useNavigate } from 'react-router-dom';
 import {
     formatDate,
     formatDateForInput,
@@ -22,6 +21,7 @@ import { DatePreset } from '../../Catalogue/enum/datePreset.enum';
 //import { Cata_Permissions } from '../enum/cata_permissions.enum';
 //import CataShowWrapper from '../../context/CataShowWrapper';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import BackButton from '../../Components/BackButton';
 // 1. Define the strictly 4-column structure
 export interface AggregatedItem {
     id: string;
@@ -32,7 +32,6 @@ export interface AggregatedItem {
 }
 
 const ItemsSoldReport: React.FC = () => {
-    const navigate = useNavigate();
 
     const [datePreset, setDatePreset] = useState<DatePreset>(DatePreset.TODAY);
     const [customStartDate, setCustomStartDate] = useState<string>('');
@@ -379,7 +378,7 @@ const ItemsSoldReport: React.FC = () => {
                         img.onerror = () => resolve();
                     });
                 }
-            } catch {}
+            } catch { }
 
             // ===== GENERATION TAG =====
             const generatedAt = new Date().toLocaleString('en-IN');
@@ -562,19 +561,15 @@ const ItemsSoldReport: React.FC = () => {
             {/* HEADER */}
             <div className="flex items-center justify-between pb-3 border-b mb-2">
 
-                {/* LEFT (Search Icon) */}
-                <button onClick={() => setShowSearch(true)} className="p-2">
-                    <IconSearch />
-                </button>
+                <BackButton />
 
                 {/* TITLE */}
                 <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
                     Items Sold Report
                 </h1>
 
-                {/* RIGHT */}
-                <button onClick={() => navigate(-1)} className="p-2">
-                    <IconClose width={20} height={20} />
+                <button onClick={() => setShowSearch(true)} className="p-2">
+                    <IconSearch />
                 </button>
 
             </div>

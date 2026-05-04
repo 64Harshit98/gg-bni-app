@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { db, storage } from '../lib/Firebase';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -7,6 +6,7 @@ import { useAuth } from '../context/auth-context';
 import { FloatingLabelInput } from '../Components/ui/FloatingLabelInput';
 import { FloatingLabelSelect } from '../Components/FloatingLabelSelect';
 import { FiCamera, FiCheck, FiX } from 'react-icons/fi';
+import BackButton from '../Components/BackButton';
 
 // --- Data Types ---
 interface CatalogueData {
@@ -176,7 +176,7 @@ const useCatalogueData = (companyId?: string, catalogueId?: string, userId?: str
           companyLogo: businessData.companyLogo || "",
           msmeUdyamNumber: userData.msmeUdyamNumber || businessData.msmeUdyamNumber || "",
           email: userData.email || "",
-          phone: userData.phoneNumber || userData.phone|| "",
+          phone: userData.phoneNumber || userData.phone || "",
         });
 
       } catch (err) {
@@ -287,7 +287,6 @@ const LabeledField: React.FC<{ label: string; children: React.ReactNode }> = ({ 
 
 // --- Main Edit Profile Page Component ---
 const EditProfilePage: React.FC = () => {
-  const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
   const { catalogue, loading: dataLoading, error: dataError, saveData } = useCatalogueData(currentUser?.companyId, currentUser?.companyId, currentUser?.uid);
   const [formData, setFormData] = useState<Partial<CatalogueData>>({});
@@ -480,14 +479,8 @@ const EditProfilePage: React.FC = () => {
 
         {/* ── Page Header ── */}
         <div className="flex items-center justify-between mb-1">
+          <BackButton />
           <h1 className="text-xl font-bold text-slate-900 m-0">Edit Profile</h1>
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="w-9 h-9 rounded-sm bg-white border-0 cursor-pointer flex items-center justify-center shadow text-slate-500 hover:text-slate-700 transition-colors"
-          >
-            <FiX size={18} />
-          </button>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-1">
@@ -608,7 +601,7 @@ const EditProfilePage: React.FC = () => {
             <SectionCard title="Business Information" icon=''>
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
-                <FloatingLabelInput type="text" name="businessName" value={formData.businessName || ''} onChange={handleInputChange} label="Business Name" />
+                  <FloatingLabelInput type="text" name="businessName" value={formData.businessName || ''} onChange={handleInputChange} label="Business Name" />
                 </div>
                 <FloatingLabelSelect
                   id="businessType" label="Business Type" value={businessType}

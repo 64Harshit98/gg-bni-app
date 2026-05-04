@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import FilterSelect from './SalesReportComponents/FilterSelect';
-import { useNavigate } from 'react-router-dom';
 import {
   formatDate,
   formatDateForInput,
@@ -15,16 +14,16 @@ import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant, State } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
 
-import { IconClose } from '../../constants/Icons';
 import { getSalesColumns } from '../../constants/TableColoumns';
 import ReportDetails from './SalesReportComponents/ReportDetails';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
 import { useAuth } from '../../context/auth-context';
+import BackButton from '../../Components/BackButton';
 
 
 const SalesReport: React.FC = () => {
-  const navigate = useNavigate();
+
 useAuth();
 
   const {
@@ -381,12 +380,10 @@ useAuth();
 
       {/* HEADER */}
       <div className="flex items-center justify-between pb-3 border-b mb-2 md:mb-4">
+        <BackButton/>
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800 md:text-2xl">
           Sales Report
         </h1>
-        <button onClick={() => navigate(-1)} className="p-2">
-          <IconClose width={20} height={20} />
-        </button>
       </div>
 
       {/* FILTERS */}

@@ -5,8 +5,9 @@ import { db } from '../lib/Firebase';
 import { useAuth } from '../context/auth-context';
 import { botMasterService } from '../Pages/Additional//Whatsapp/WhatsappApi';
 import { CustomCard } from '../Components/CustomCard';
-import { IconChevronDown, IconClose } from '../constants/Icons';
+import { IconChevronDown } from '../constants/Icons';
 import { ROUTES } from '../constants/routes.constants';
+import BackButton from '../Components/BackButton';
 
 const CatalogueAdditionalServices: React.FC = () => {
     const navigate = useNavigate();
@@ -58,13 +59,7 @@ const CatalogueAdditionalServices: React.FC = () => {
             {/* Header */}
             <div className="z-30 bg-white border-b border-gray-100 pb-6 pt-6 px-6 shadow-sm flex-none">
                 <div className="flex items-start gap-4">
-                    <button
-                        onClick={() => navigate(-1)}
-                        className="mt-1 flex items-center justify-center p-2 rounded-full bg-gray-50 text-gray-500 hover:bg-gray-200 hover:text-gray-900 transition-all"
-                        title="Go Back"
-                    >
-                        <IconClose />
-                    </button>
+                    <BackButton/>
                     <div className="flex flex-col">
                         <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
                             Add Ons

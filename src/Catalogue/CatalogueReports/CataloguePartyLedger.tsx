@@ -14,7 +14,6 @@ type LedgerTransaction = {
     type: string;
     paymentHistory: PaymentRecord[];
 };
-import { useNavigate } from 'react-router-dom';
 import { formatDate, formatDateForInput } from '../../Pages/Reports/SalesReportComponents/salesReport.utils';
 import FilterSelect from '../../Pages/Reports/SalesReportComponents/FilterSelect';
 import { useAuth } from '../../context/auth-context';
@@ -22,6 +21,7 @@ import { CustomCard } from '../../Components/CustomCard';
 import { IconClose, IconChevronDown } from '../../constants/Icons';
 import { db } from '../../lib/Firebase';
 import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
+import BackButton from '../../Components/BackButton';
 
 const useOrdersData = (companyId?: string) => {
     const [Orders, setOrders] = React.useState<any[]>([]);
@@ -47,7 +47,6 @@ const useOrdersData = (companyId?: string) => {
 };
 
 const PartyLedger: React.FC = () => {
-    const navigate = useNavigate();
     const { currentUser } = useAuth();
 
     const { Orders } = useOrdersData(
@@ -223,13 +222,11 @@ React.useEffect(() => {
 
             {/* HEADER FOR MASTER LIST ONLY */}
             {!selectedPartyName && (
-                <div className="flex items-center justify-between pb-2 border-b border-gray-200 mb-3">
+                <div className="flex items-center justify-between pb-4 border-b border-gray-200 mb-3">
+                    <BackButton className='mt-2 ml-3'/>
                     <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
                         Party Ledger
                     </h1>
-                    <button onClick={() => navigate(-1)} className="p-2">
-                        <IconClose width={20} height={20} />
-                    </button>
                 </div>
             )}
 

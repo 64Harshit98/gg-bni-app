@@ -8,12 +8,9 @@ import {
   ArrowUpDown,
   Loader2,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
-
-import { IconClose } from '../../constants/Icons';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
@@ -24,10 +21,10 @@ import {
   calculateSummary,
   type ItemDoc,
 } from './RestockReportComponents/restockReport.utils';
+import BackButton from '../../Components/BackButton';
 
 const RestockReportPage: React.FC = () => {
   const { currentUser } = useAuth();
-  const navigate = useNavigate();
   const { items: inventoryItems, loading, error } = useRestockReport();
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -363,12 +360,10 @@ const RestockReportPage: React.FC = () => {
 
       {/* HEADER */}
       <div className="flex items-center justify-between pb-3 border-b mb-2">
+        <BackButton/>
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
           Restock Report
         </h1>
-        <button onClick={() => navigate(-1)} className="p-2">
-          <IconClose width={20} height={20} />
-        </button>
       </div>
 
       {/*SUMMARY CARDS*/}

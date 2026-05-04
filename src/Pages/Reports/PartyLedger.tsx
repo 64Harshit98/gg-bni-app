@@ -1,14 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import FilterSelect from './SalesReportComponents/FilterSelect';
 import { formatDate, formatDateForInput } from './SalesReportComponents/salesReport.utils';
 import usePartyLedger, { type LedgerTransaction, type PaymentRecord } from './PartyLedger/usePartyLedger';
 
 import { CustomCard } from '../../Components/CustomCard';
-import { IconClose, IconChevronDown } from '../../constants/Icons';
+import { IconChevronDown } from '../../constants/Icons';
+import BackButton from '../../Components/BackButton';
 
 const PartyLedger: React.FC = () => {
-    const navigate = useNavigate();
     const {
         isLoading, authLoading, error,
         datePreset, setDatePreset,
@@ -97,13 +96,11 @@ const PartyLedger: React.FC = () => {
 
             {/* HEADER FOR MASTER LIST ONLY */}
             {!selectedPartyName && (
-                <div className="flex items-center justify-between pb-2 border-b border-gray-200 mb-3">
+                <div className="flex items-center justify-between p-3 border-b border-gray-200 mb-3 mt-2">
+                    <BackButton/>
                     <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
                         Party Ledger
                     </h1>
-                    <button onClick={() => navigate(-1)} className="p-2">
-                        <IconClose width={20} height={20} />
-                    </button>
                 </div>
             )}
 
@@ -208,18 +205,10 @@ const PartyLedger: React.FC = () => {
                     <div className="sticky top-0 z-30 pt-2 pb-3 -mx-2 px-2 backdrop-blur-md ">
                         {/* Top Bar with Title and Close */}
                         <div className="flex items-center justify-between pb-2 mb-2">
+                            <BackButton/>
                             <h1 className="flex-1 text-lg text-center font-bold text-gray-800 truncate px-2">
                                 {selectedPartyName} - Ledger
                             </h1>
-                            <button
-                                onClick={() => {
-                                    setSelectedPartyName(null);
-                                    setExpandedBillId(null);
-                                }}
-                                className="p-2 text-gray-500 hover:bg-gray-200 rounded-full transition-colors"
-                            >
-                                <IconClose width={20} height={20} />
-                            </button>
                         </div>
 
                         {/* Summary Card */}

@@ -1,6 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import FilterSelect from './SalesReportComponents/FilterSelect';
-import { useNavigate } from 'react-router-dom';
 import {
     formatDate,
     formatDateForInput,
@@ -15,11 +14,11 @@ import * as XLSX from 'xlsx';
 import { type TableColumn } from '../../Components/CustomTable';
 import { State } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
-import { IconClose } from '../../constants/Icons';
 import ReportDetails from './SalesReportComponents/ReportDetails';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import BackButton from '../../Components/BackButton';
 
 // 1. Define the strictly 4-column structure
 export interface AggregatedItem {
@@ -31,7 +30,6 @@ export interface AggregatedItem {
 }
 
 const ItemsSoldReport: React.FC = () => {
-    const navigate = useNavigate();
 
     const {
         setDatePreset,
@@ -483,12 +481,10 @@ const downloadAsPdf = async () => {
 
             {/* HEADER */}
             <div className="flex items-center justify-between pb-3 border-b mb-2">
+                <BackButton/>
                 <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
                     Items Sold Report
                 </h1>
-                <button onClick={() => navigate(-1)} className="p-2">
-                    <IconClose width={20} height={20} />
-                </button>
             </div>
 
             {/* FILTERS */}

@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
 import {
     doc,
@@ -12,6 +11,7 @@ import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
 import { useAuth } from '../../context/auth-context';
 import { ToggleRow } from '../Settings/CatalogueSalesSetting';
+import BackButton from '../../Components/BackButton';
 export interface ItemSettings {
     companyId?: string;
     settingType: 'item';
@@ -38,7 +38,6 @@ export const getDefaultItemSettings = (companyId: string): ItemSettings => ({
 });
 
 const CatalogueItemSetting: React.FC = () => {
-    const navigate = useNavigate();
     const { currentUser } = useAuth();
 
     const [settings, setSettings] = useState<ItemSettings | null>(null);
@@ -124,7 +123,7 @@ const CatalogueItemSetting: React.FC = () => {
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
             <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
-                <button onClick={() => navigate(-1)} className="text-2xl font-bold text-gray-600 bg-transparent border-none cursor-pointer p-1">&times;</button>
+                <BackButton/>
                 <h1 className="text-lg font-semibold text-gray-800">Item Settings</h1>
                 <div className="w-6"></div>
             </div>

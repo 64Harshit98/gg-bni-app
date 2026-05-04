@@ -1,27 +1,21 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { ROUTES } from '../../constants/routes.constants';
 import ShowWrapper from '../../context/ShowWrapper';
 import { Permissions } from '../../enums';
-import { IconClose } from '../../constants/Icons';
+import BackButton from '../../Components/BackButton';
 
 const Reports = () => {
-    const navigate = useNavigate();
 
     return (
         <div className="flex flex-col w-full bg-gray-100 overflow-hidden font-poppins">
             <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
-                <button
-                    onClick={() => navigate(-1)}
-                    className="flex items-center gap-2 text-gray-500 hover:text-gray-900 transition-colors"
-                >
-                    <IconClose />
-                </button>
+                <BackButton/>
                 <h1 className="text-2xl font-bold text-gray-800 m-0 flex-grow text-center">
                     Item Reports
                 </h1>
             </div>
 
-            <div className="flex grid grid-cols-2 p-4 gap-2 bg-gray-100 box-border">
+            <div className="grid grid-cols-2 p-4 gap-2 bg-gray-100 box-border">
 
                 <>
                     <ShowWrapper requiredPermission={Permissions.ViewItemReport}>

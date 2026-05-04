@@ -4,10 +4,10 @@ import { ROUTES } from '../../constants/routes.constants';
 import { ROLES, Variant } from '../../enums';
 import { useAuth } from '../../context/auth-context';
 import { inviteUser } from '../../lib/AuthOperations';
-import { FiX } from 'react-icons/fi';
 import { FloatingLabelInput } from '../../Components/ui/FloatingLabelInput';
 import { CustomButton } from '../../Components/CustomButton';
 import { ReusableDropdown, type Option } from '../../Components/Dropdown';
+import BackButton from '../../Components/BackButton';
 
 const roleOptions: Option<ROLES>[] = [
   { value: ROLES.SALESMAN, label: 'Salesman' },
@@ -92,13 +92,7 @@ const UserAdd: React.FC = () => {
 
         {/* Header Section */}
         <div className="flex items-start gap-4 border-b border-slate-200 pb-6 mb-8">
-          <button
-            onClick={() => navigate(ROUTES.HOME)}
-            className="mt-1 p-2 -ml-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-colors"
-            aria-label="Go back"
-          >
-            <FiX className="w-6 h-6" />
-          </button>
+          <BackButton/>
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 tracking-tight">Add New User</h1>
             <p className="text-sm text-slate-500 mt-1">Fill in the details below to invite a new team member.</p>

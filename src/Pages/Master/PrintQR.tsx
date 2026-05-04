@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/auth-context';
 import type { Item } from '../../constants/models';
 import { getFirestoreOperations } from '../../lib/ItemsFirebase';
@@ -11,6 +11,7 @@ import QRCodeLib from 'qrcode';
 import JsBarcode from 'jsbarcode';
 import SearchableItemInput from '../../UseComponents/SearchIteminput';
 import { IconClose } from '../../constants/Icons';
+import BackButton from '../../Components/BackButton';
 
 // --- Data Types ---
 type PrintableItem = Item & {
@@ -70,7 +71,6 @@ const QRCodeGeneratorPage: React.FC = () => {
     const [printQueue, setPrintQueue] = useState<PrintableItem[]>([]);
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [isPrinting, setIsPrinting] = useState(false);
-    const navigate = useNavigate();
     const [itemForPreview, setItemForPreview] = useState<PrintableItem | null>(null);
     const [companyName, setCompanyName] = useState<string>('Your Company');
     const [isPreviewOpen, setIsPreviewOpen] = useState(true);
@@ -451,13 +451,7 @@ const QRCodeGeneratorPage: React.FC = () => {
     return (
         <Card className="max-w-4xl mx-auto mb-16">
             <CardHeader className="flex items-center justify-between">
-                <button 
-                    onClick={() => navigate(-1)}
-                    className="rounded-sm w-8 h-8 flex items-center justify-center bg-gray-200 text-gray-900 hover:bg-gray-300"
-                >
-                    <IconClose width={18} height={20} />
-                </button>
-
+                <BackButton/>
                 <CardTitle className="text-lg font-bold text-gray-800 text-center flex-1">
                     Item QR Code Generator
                 </CardTitle>

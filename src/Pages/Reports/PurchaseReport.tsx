@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import usePurchaseReports from './PurchaseReportComponents/usePurchaseReports';
-import { useNavigate } from 'react-router-dom';
 import {
   formatDate,
   formatDateForInput,
@@ -15,15 +14,14 @@ import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant, State } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
 
-import { IconClose } from '../../constants/Icons';
 import { getPurchaseColumns } from '../../constants/TableColoumns';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
 import { useAuth } from '../../context/auth-context';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import BackButton from '../../Components/BackButton';
 
 const PurchaseReport: React.FC = () => {
-  const navigate = useNavigate();
   const { currentUser } = useAuth();
 
   const {
@@ -434,12 +432,10 @@ const PurchaseReport: React.FC = () => {
 
       {/* HEADER */}
       <div className="flex items-center justify-between pb-3 border-b mb-2">
+        <BackButton/>
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
           Purchase Report
         </h1>
-        <button onClick={() => navigate(-1)} className="p-2">
-          <IconClose width={20} height={20} />
-        </button>
       </div>
 
       {/* FILTERS */}

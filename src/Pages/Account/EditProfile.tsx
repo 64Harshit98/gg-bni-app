@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { db, auth, storage } from '../../lib/Firebase';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
@@ -31,6 +30,7 @@ const businessCategoryOptions = [
 import { FiCamera, FiCheck, FiX } from 'react-icons/fi';
 import { invalidateLogoCache } from '../../Catalogue/hooks/useCompanyLogo';
 import { logoCache } from '../../Catalogue/hooks/useCompanyLogo';
+import BackButton from '../../Components/BackButton';
 
 // --- Data Types ---
 interface ProfileData {
@@ -312,7 +312,6 @@ const LabeledField: React.FC<{
 
 // --- Main Edit Profile Page Component ---
 const EditProfilePage: React.FC = () => {
-  const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
   const { profile, loading: dataLoading, error: dataError, saveData, refetch } = useProfileData(currentUser?.uid, currentUser?.companyId);
 
@@ -504,13 +503,7 @@ const EditProfilePage: React.FC = () => {
         {/* ── Page Header ── */}
         <div className="flex items-center justify-between mb-1">
           <h1 className="text-xl font-bold text-slate-900 m-0">Edit Profile</h1>
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="w-9 h-9 rounded-sm bg-white border-0 cursor-pointer flex items-center justify-center shadow text-slate-500 hover:text-slate-700 transition-colors"
-          >
-            <FiX size={18} />
-          </button>
+          <BackButton/>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-1">

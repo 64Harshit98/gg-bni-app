@@ -3,10 +3,10 @@ import { db } from '../../lib/Firebase';
 import { doc, getDoc, setDoc, collection } from 'firebase/firestore';
 import { Permissions, PLANS, ROLES } from '../../enums';
 import Loading from '../Loading/Loading';
-import { useNavigate } from 'react-router';
 import { useAuth } from '../../context/auth-context';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
+import BackButton from '../../Components/BackButton';
 
 type RolePermissionsMap = Record<string, Permissions[]>;
 
@@ -245,7 +245,6 @@ const ManagePermissionsPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
-    const navigate = useNavigate();
     const { currentUser } = useAuth();
     const currentPlan = currentUser?.plan || PLANS.POS_BASIC;
     const isBasicPlan = currentPlan === PLANS.POS_BASIC;
@@ -374,9 +373,7 @@ const ManagePermissionsPage: React.FC = () => {
     return (
         <div className="bg-gray-100 min-h-screen mb-16">
             <div className="flex items-center justify-between p-2 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30 mb-4">
-                <button onClick={() => navigate(-1)} className="rounded-full bg-gray-200 p-2 text-gray-700 hover:bg-gray-300">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
-                </button>
+                <BackButton/>
                 <h1 className="text-center text-2xl md:text-3xl font-bold text-gray-800">Manage Permissions</h1>
             </div>
 

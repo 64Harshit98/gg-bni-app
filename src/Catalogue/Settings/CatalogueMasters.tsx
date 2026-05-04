@@ -1,12 +1,11 @@
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Outlet, useLocation } from 'react-router-dom';
 import { ROUTES } from '../../constants/routes.constants';
-import { IconClose } from '../../constants/Icons';
+import BackButton from '../../Components/BackButton';
 //import CataShowWrapper from '../../context/CataShowWrapper';
 //import { Cata_Permissions } from '../enum/cata_permissions.enum';
 
 const CatalogueMasters = () => {
   const location = useLocation();
-  const navigate = useNavigate();
 
   const isDefaultMastersView =
     location.pathname === '/catalogue-home/cata-masters' || location.pathname === '/catalogue-home/cata-masters/';
@@ -14,12 +13,7 @@ const CatalogueMasters = () => {
   return (
     <div className="flex flex-col h-screen w-full bg-white shadow-lg overflow-hidden font-poppins">
       <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
-        <button
-          onClick={() => navigate(-1)}
-          className="flex items-center gap-2 text-gray-500 hover:text-gray-900 transition-colors"
-        >
-          <IconClose />
-        </button>
+        <BackButton/>
         <h1 className="text-2xl font-bold text-gray-800 m-0 flex-grow text-center">Settings</h1>
       </div>
       <div className="flex-grow p-6 overflow-y-auto bg-gray-100 box-border">

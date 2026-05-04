@@ -1,7 +1,6 @@
 import React, { useMemo } from 'react';
 import useItemReport from './ItemReportComponents/useItemReport';
 import type { Item } from '../../constants/models';
-import { useNavigate } from 'react-router-dom';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -9,7 +8,6 @@ import { Spinner } from '../../constants/Spinner';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
-import { IconClose } from '../../constants/Icons';
 import { getItemColumns } from '../../constants/TableColoumns';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import FilterSelect from './ItemReportComponents/FilterSelect';
@@ -19,12 +17,12 @@ import { useAuth } from '../../context/auth-context'
 // Import your Modal and State
 import { Modal } from '../../constants/Modal'; // Adjust path to where you saved the Modal code
 import { State } from '../../enums';
+import BackButton from '../../Components/BackButton';
 
 const UNASSIGNED_GROUP_NAME = 'Uncategorized';
 // --- Helper Component ---
 
 const ItemReport: React.FC = () => {
-  const navigate = useNavigate();
   const { currentUser } = useAuth();
   const {
     items,
@@ -405,15 +403,10 @@ const ItemReport: React.FC = () => {
       />
 
       <div className="flex items-center justify-between pb-3 border-b mb-2">
+        <BackButton/>
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
           Item Report
         </h1>
-        <button
-          onClick={() => navigate(-1)}
-          className="rounded-full bg-gray-200 p-2 text-gray-900 hover:bg-gray-300"
-        >
-          <IconClose width={20} height={20} />
-        </button>
       </div>
 
       <div className="bg-white p-2 rounded-lg mb-2">

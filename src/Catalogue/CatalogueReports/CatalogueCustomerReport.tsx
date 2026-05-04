@@ -20,6 +20,7 @@ import useCustomerReport from '../hooks/useCustomerReport';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import { collection, onSnapshot, query } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
+import BackButton from '../../Components/BackButton';
 
 
 const CatalogueCustomerReport: React.FC = () => {
@@ -152,9 +153,9 @@ const CatalogueCustomerReport: React.FC = () => {
     );
 
     const totalDue = customerRows.reduce(
-    (sum, c) => sum + Math.max(0, c.totalDue),
-    0
-  );
+      (sum, c) => sum + Math.max(0, c.totalDue),
+      0
+    );
 
     const totalSales = customerRows.reduce(
       (sum, c) => sum + c.totalSales,
@@ -245,7 +246,7 @@ const CatalogueCustomerReport: React.FC = () => {
       }
 
       doc.setFontSize(16);
-      
+
       const pageHeight = doc.internal.pageSize.getHeight();
 
       // ===== CLEAN GENERATION TAG =====
@@ -285,7 +286,7 @@ const CatalogueCustomerReport: React.FC = () => {
 
       // --- 1. BRAND ACCENT BAR ---
       // Uses the #F97316 orange from your UI
-      doc.setFillColor(249, 115, 22); 
+      doc.setFillColor(249, 115, 22);
       doc.rect(0, 0, pageWidth, 6, 'F');
 
       // --- 2. HEADER SECTION ---
@@ -298,11 +299,11 @@ const CatalogueCustomerReport: React.FC = () => {
       doc.setFontSize(10);
       doc.setTextColor(107, 114, 128); // gray-500
       doc.setFont('helvetica', 'normal');
-      
+
       const generationDate = new Date().toLocaleDateString('en-IN', {
         year: 'numeric', month: 'short', day: 'numeric',
       });
-      
+
       let subtitleText = `Generated on: ${generationDate}`;
       if (startDate && endDate) {
         subtitleText += `   |   Period: ${startDate} to ${endDate}`;
@@ -482,19 +483,15 @@ const CatalogueCustomerReport: React.FC = () => {
       {/* HEADER */}
       <div className="flex items-center justify-between pb-3 border-b mb-2">
 
-        {/* LEFT (Search Icon) */}
-        <button onClick={() => setShowSearch(true)} className="p-2">
-          <IconSearch />
-        </button>
+        <BackButton />
 
         {/* TITLE */}
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
           Customer Report
         </h1>
 
-        {/* RIGHT (Back Button) */}
-        <button onClick={() => navigate(-1)} className="p-2">
-          <IconClose width={20} height={20} />
+        <button onClick={() => setShowSearch(true)} className="p-2">
+          <IconSearch />
         </button>
 
       </div>

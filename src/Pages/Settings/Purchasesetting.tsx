@@ -43,7 +43,7 @@ export const getDefaultPurchaseSettings = (companyId: string): PurchaseSettings 
     copyVoucherAfterSaving: false,
     roundingOff: false,
     voucherName: 'Purchase',
-    voucherPrefix: 'PRC',
+    voucherPrefix: 'PUR',
     currentVoucherNumber: 1000,
     purchaseViewType: 'list',
     requireSupplierName: true,
@@ -206,7 +206,7 @@ const PurchaseSettingsPage: React.FC = () => {
             setSettings({
                 ...settings,
                 voucherName: 'Purchase',
-                voucherPrefix: 'PRC',
+                voucherPrefix: 'PUR',
                 currentVoucherNumber: backendCounter
             });
 
@@ -215,7 +215,7 @@ const PurchaseSettingsPage: React.FC = () => {
             setSettings({
                 ...settings,
                 voucherName: 'Purchase',
-                voucherPrefix: 'PRC'
+                voucherPrefix: 'PUR'
             });
         }
     };
@@ -464,7 +464,7 @@ const PurchaseSettingsPage: React.FC = () => {
                             <div>
                                 <div className="flex items-center mb-1 gap-2">
                                     <label htmlFor="voucher-prefix" className="text-sm font-medium text-gray-700">Voucher Prefix</label>
-                                    <InfoTooltip text="Letters added before the purchase invoice number (e.g., PRC-)." />
+                                    <InfoTooltip text="Letters added before the purchase invoice number (e.g., PUR-)." />
                                 </div>
                                 <input
                                     type="text"
@@ -472,7 +472,7 @@ const PurchaseSettingsPage: React.FC = () => {
                                     value={settings.voucherPrefix || ''}
                                     onChange={(e) => handleChange('voucherPrefix', e.target.value)}
                                     className="w-full p-2.5 text-sm border border-gray-300 rounded-sm focus:ring-sky-500 focus:border-sky-500 outline-none"
-                                    placeholder="e.g., PRC"
+                                    placeholder="e.g., PUR"
                                 />
                             </div>
                             <div>

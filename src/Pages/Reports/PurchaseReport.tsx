@@ -8,7 +8,7 @@ import {
 import { jsPDF } from 'jspdf';
 import FilterSelect from './PurchaseReportComponents/FilterSelect';
 import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
+import XLSX from 'xlsx-js-style';
 
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant, State } from '../../enums';
@@ -368,42 +368,244 @@ const PurchaseReport: React.FC = () => {
 
   /* ---------- EXCEL DOWNLOAD ---------- */
   const downloadAsExcel = () => {
-    try {
-      const excelData = filteredPurchases.map((purchase) => ({
-        Date: formatDate(purchase.createdAt),
-        'Supplier Name': purchase.partyName,
-        Items: purchase.items.reduce((sum, i) => sum + i.quantity, 0),
-        Amount: purchase.totalAmount,
-        'Payment Method': Object.entries(purchase.paymentMethods || {})
+  if (!appliedFilters) return;
+  try {
+    const s = (font: any, fill?: any, alignment?: any, border?: any) => ({
+      font: { name: 'Arial', ...font },
+      fill: fill ?? {},
+      alignment: alignment ?? { horizontal: 'center', vertical: 'center', wrapText: true },
+      border: border ?? {},
+    });
+    const solidFill = (rgb: string) => ({ patternType: 'solid', fgColor: { rgb } });
+    const allBorders = {
+      top:    { style: 'thin', color: { rgb: 'CBD5E1' } },
+      bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
+      left:   { style: 'thin', color: { rgb: 'CBD5E1' } },
+      right:  { style: 'thin', color: { rgb: 'CBD5E1' } },
+    };
+    const bblr = {
+      bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
+      left:   { style: 'thin', color: { rgb: 'CBD5E1' } },
+      right:  { style: 'thin', color: { rgb: 'CBD5E1' } },
+    };
+
+    const generationDate = new Date().toLocaleDateString('en-IN', {
+      year: 'numeric', month: 'short', day: 'numeric',
+    });
+    const periodText = `Period: ${formatDate(appliedFilters.start)} → ${formatDate(appliedFilters.end)}`;
+
+    // ── COLUMN DEFINITIONS ──────────────────────────────────────────────
+    const COLS = [
+      { header: '#',              width: 6  },
+      { header: 'Date',           width: 16 },
+      { header: 'Supplier Name',  width: 28 },
+      { header: 'Items',          width: 13 },
+      { header: 'Amount (₹)',    width: 18 },
+      { header: 'Payment Method', width: 22 },
+    ];
+    const colCount = COLS.length;
+
+    // Row layout:
+    // 0  → Title (merged)
+    // 1  → Meta (merged)
+    // 2  → blank spacer
+    // 3  → Summary label (merged)
+    // 4  → Summary values
+    // 5  → blank spacer
+    // 6  → Column headers
+    // 7+ → Data rows
+    // Last → Totals footer
+
+    const dataStartRow = 7;
+    const totalRows = dataStartRow + filteredPurchases.length + 1;
+    const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
+
+    // Row 0 – Title
+    aoa[0][0] = 'Purchase Report';
+
+    // Row 1 – Meta
+    aoa[1][0] = `Generated: ${generationDate}   |   ${periodText}`;
+
+    // Row 3 – Summary label
+    aoa[3][0] = 'SUMMARY';
+
+    // Row 4 – Summary values
+    aoa[4][0] = `Total Orders`;
+    aoa[4][1] = summary.totalOrders;
+    aoa[4][2] = `Items Purchased`;
+    aoa[4][3] = summary.totalItemsPurchased;
+    aoa[4][4] = `Total Cost: ₹${summary.totalPurchases.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+    // Row 6 – Column headers
+    COLS.forEach((c, i) => { aoa[6][i] = c.header; });
+
+    // Rows 7+ – Data
+    filteredPurchases.forEach((purchase, idx) => {
+      const r = dataStartRow + idx;
+      const totalItems = purchase.items.reduce((sum, i) => sum + i.quantity, 0);
+      const paymentMethod =
+        Object.entries(purchase.paymentMethods || {})
           .filter(([_, value]) => value > 0)
-          .map(([key]) => key)
-          .join(', ') || 'N/A',
-      }));
+          .map(([key]) => key.charAt(0).toUpperCase() + key.slice(1))
+          .join(', ') || 'N/A';
 
-      const worksheet = XLSX.utils.json_to_sheet(excelData);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Purchase Report');
+      aoa[r][0] = idx + 1;
+      aoa[r][1] = formatDate(purchase.createdAt);
+      aoa[r][2] = purchase.partyName
+        ? purchase.partyName.charAt(0).toUpperCase() + purchase.partyName.slice(1).toLowerCase()
+        : 'N/A';
+      aoa[r][3] = totalItems;
+      aoa[r][4] = purchase.totalAmount;
+      aoa[r][5] = paymentMethod;
+    });
 
-      XLSX.writeFile(
-        workbook,
-        `purchase_report_${formatDateForInput(new Date())}.xlsx`,
-      );
+    // Footer row
+    const footerRow = dataStartRow + filteredPurchases.length;
+    aoa[footerRow][0] = 'TOTAL';
+    aoa[footerRow][1] = '';
+    aoa[footerRow][2] = '';
+    aoa[footerRow][3] = summary.totalItemsPurchased;
+    aoa[footerRow][4] = summary.totalPurchases;
+    aoa[footerRow][5] = '';
 
-      setIsDownloadModalOpen(false);
-      setFeedbackModal({
-        isOpen: true,
-        type: State.SUCCESS,
-        message: 'Excel downloaded successfully!',
+    // ── BUILD WORKSHEET ──────────────────────────────────────────────────
+    const ws: any = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = COLS.map(c => ({ wch: c.width }));
+    ws['!rows'] = [
+      { hpt: 36 }, // 0 title
+      { hpt: 20 }, // 1 meta
+      { hpt: 8  }, // 2 spacer
+      { hpt: 18 }, // 3 summary label
+      { hpt: 22 }, // 4 summary values
+      { hpt: 8  }, // 5 spacer
+      { hpt: 28 }, // 6 headers
+      ...filteredPurchases.map(() => ({ hpt: 20 })),
+      { hpt: 24 }, // footer
+    ];
+
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
+      { s: { r: 3, c: 0 }, e: { r: 3, c: colCount - 1 } },
+      { s: { r: 4, c: 4 }, e: { r: 4, c: colCount - 1 } }, // Total cost spans last cols
+    ];
+
+    const style = (addr: string, st: any) => {
+      if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+      ws[addr].s = st;
+    };
+
+    // Title
+    style('A1', s(
+      { sz: 16, bold: true, color: { rgb: 'FFFFFF' } },
+      solidFill('2563EB'),
+      { horizontal: 'center', vertical: 'center' },
+    ));
+
+    // Meta
+    style('A2', s(
+      { sz: 9, italic: true, color: { rgb: '475569' } },
+      solidFill('DBEAFE'),
+      { horizontal: 'center', vertical: 'center' },
+    ));
+
+    // Summary label
+    style('A4', s(
+      { sz: 10, bold: true, color: { rgb: '1D4ED8' } },
+      solidFill('EFF6FF'),
+      { horizontal: 'left', vertical: 'center' },
+      allBorders,
+    ));
+
+    // Summary value cells
+    const summaryBg = solidFill('F0FDF4');
+    const summaryLabelStyle = s({ sz: 9,  bold: true, color: { rgb: '15803D' } }, summaryBg, { horizontal: 'left',   vertical: 'center' }, bblr);
+    const summaryValStyle   = s({ sz: 11, bold: true, color: { rgb: '166534' } }, summaryBg, { horizontal: 'center', vertical: 'center' }, bblr);
+    const summaryTotalStyle = s({ sz: 10, bold: true, color: { rgb: '166534' } }, solidFill('DCFCE7'), { horizontal: 'center', vertical: 'center' }, bblr);
+
+    style('A5', summaryLabelStyle);
+    style('B5', summaryValStyle);
+    style('C5', summaryLabelStyle);
+    style('D5', summaryValStyle);
+    style('E5', summaryTotalStyle);
+
+    // Column headers (row index 6)
+    COLS.forEach((_c, i) => {
+      const addr = XLSX.utils.encode_cell({ r: 6, c: i });
+      style(addr, s(
+        { sz: 10, bold: true, color: { rgb: 'FFFFFF' } },
+        solidFill('1E40AF'),
+        { horizontal: i <= 1 ? 'left' : 'center', vertical: 'center' },
+        allBorders,
+      ));
+    });
+
+    // Data rows
+    filteredPurchases.forEach((purchase, idx) => {
+      const r = dataStartRow + idx;
+      const isAlt = idx % 2 === 1;
+      const rowBg = solidFill(isAlt ? 'F8FAFC' : 'FFFFFF');
+      const isNegative = purchase.totalAmount < 0;
+
+      [0, 1, 2, 3, 4, 5].forEach(ci => {
+        const addr = XLSX.utils.encode_cell({ r, c: ci });
+        const isAmount = ci === 4;
+        style(addr, s(
+          {
+            sz: 9,
+            color: { rgb: isAmount && isNegative ? 'DC2626' : '1E293B' },
+            bold: isAmount && isNegative,
+          },
+          rowBg,
+          { horizontal: ci <= 2 ? 'left' : 'center', vertical: 'center' },
+          bblr,
+        ));
+        if (isAmount && ws[addr]) {
+          ws[addr].t = 'n';
+          ws[addr].z = '₹#,##0.00';
+        }
       });
-    } catch (error) {
-      console.error(error);
-      setFeedbackModal({
-        isOpen: true,
-        type: State.ERROR,
-        message: 'Failed to generate Excel file.',
-      });
-    }
-  };
+    });
+
+    // Footer row
+    [0, 1, 2, 3, 4, 5].forEach(ci => {
+      const addr = XLSX.utils.encode_cell({ r: footerRow, c: ci });
+      style(addr, s(
+        { sz: 10, bold: true, color: { rgb: '1E293B' } },
+        solidFill('E2E8F0'),
+        { horizontal: ci <= 2 ? 'left' : 'center', vertical: 'center' },
+        {
+          top:    { style: 'medium', color: { rgb: '1E293B' } },
+          bottom: { style: 'medium', color: { rgb: '1E293B' } },
+          left:   { style: 'thin',   color: { rgb: 'CBD5E1' } },
+          right:  { style: 'thin',   color: { rgb: 'CBD5E1' } },
+        },
+      ));
+      if (ci === 4 && ws[addr]) {
+        ws[addr].t = 'n';
+        ws[addr].z = '₹#,##0.00';
+      }
+    });
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Purchase Report');
+    XLSX.writeFile(wb, `purchase_report_${formatDateForInput(new Date())}.xlsx`);
+
+    setIsDownloadModalOpen(false);
+    setFeedbackModal({
+      isOpen: true,
+      type: State.SUCCESS,
+      message: 'Excel downloaded successfully!',
+    });
+  } catch (error) {
+    console.error(error);
+    setFeedbackModal({
+      isOpen: true,
+      type: State.ERROR,
+      message: 'Failed to generate Excel file.',
+    });
+  }
+};
 
   const tableColumns = useMemo(() => getPurchaseColumns(), []);
 
@@ -488,7 +690,7 @@ const PurchaseReport: React.FC = () => {
           className="py-10"
           variant={CardVariant.Summary}
           title="Total Cost"
-          value={`₹${Math.round(summary.totalPurchases || 0)}`}
+          value={`₹${Math.round(summary.totalPurchases || 0).toLocaleString('en-IN')}`}
         />
         <CustomCard
           className="py-10"
@@ -506,7 +708,7 @@ const PurchaseReport: React.FC = () => {
           className="py-10"
           variant={CardVariant.Summary}
           title="Avg Purchase"
-          value={`₹${Math.round(summary.averagePurchaseValue || 0)}`}
+          value={`₹${Math.round(summary.averagePurchaseValue || 0).toLocaleString('en-IN')}`}
         />
       </div>
 

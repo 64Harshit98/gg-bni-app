@@ -10,7 +10,9 @@ import {
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
+import XLSX from 'xlsx-js-style';
+
+import { IconClose } from '../../constants/Icons';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
@@ -295,28 +297,241 @@ const RestockReportPage: React.FC = () => {
   /* ---------- EXCEL DOWNLOAD ---------- */
   const downloadAsExcel = () => {
     try {
-      const excelData = displayedItems.map((item) => {
-        const currentStock = item.stock ?? 0;
-        const deficit = Math.max((item.restockQuantity ?? 0) - currentStock, 0);
-        return {
-          'Product Name': item.name,
-          'Product ID': item.id,
-          'Stock Level': currentStock,
-          'Restock Threshold': item.restockQuantity ?? 0,
-          Deficit: deficit > 0 ? -deficit : 0,
-          Status:
-            currentStock <= 0 ? 'Urgent' : currentStock <= 5 ? 'Low Stock' : 'In Stock',
-        };
+      const s = (font: any, fill?: any, alignment?: any, border?: any) => ({
+        font: { name: 'Arial', ...font },
+        fill: fill ?? {},
+        alignment: alignment ?? { horizontal: 'center', vertical: 'center', wrapText: true },
+        border: border ?? {},
+      });
+      const solidFill = (rgb: string) => ({ patternType: 'solid', fgColor: { rgb } });
+      const allBorders = {
+        top: { style: 'thin', color: { rgb: 'CBD5E1' } },
+        bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
+        left: { style: 'thin', color: { rgb: 'CBD5E1' } },
+        right: { style: 'thin', color: { rgb: 'CBD5E1' } },
+      };
+      const bblr = {
+        bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
+        left: { style: 'thin', color: { rgb: 'CBD5E1' } },
+        right: { style: 'thin', color: { rgb: 'CBD5E1' } },
+      };
+
+      const generationDate = new Date().toLocaleDateString('en-IN', {
+        year: 'numeric', month: 'short', day: 'numeric',
       });
 
-      const worksheet = XLSX.utils.json_to_sheet(excelData);
+      const activeFilterLabel =
+        activeFilter === 'urgent' ? 'Urgent items only' :
+        activeFilter === 'low'    ? 'Low stock items only' :
+                                    'All items';
+
+      // ── COLUMN DEFINITIONS ─────────────────────────────────────────
+      const COLS = [
+        { header: '#',             width: 6  },
+        { header: 'Product',       width: 30 },
+        { header: 'Stock',         width: 12 },
+        { header: 'Min. Needed',   width: 16 },
+        { header: 'Units Short',   width: 16 },
+        { header: 'Status',        width: 16 },
+      ];
+      const colCount = COLS.length;
+
+      // Row layout:
+      // 0  → Title  (merged)
+      // 1  → Meta   (merged)
+      // 2  → blank spacer
+      // 3  → Summary label (merged)
+      // 4  → Summary values
+      // 5  → blank spacer
+      // 6  → Column headers
+      // 7+ → Data rows
+      // Last → Totals footer
+
+      const dataStartRow = 7;
+      const totalRows = dataStartRow + displayedItems.length + 1;
+      const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
+
+      // Row 0 – Title
+      aoa[0][0] = 'Restock Report';
+
+      // Row 1 – Meta
+      aoa[1][0] = `Generated: ${generationDate}   |   Filter: ${activeFilterLabel}   |   Items: ${displayedItems.length}`;
+
+      // Row 3 – Summary label
+      aoa[3][0] = 'SUMMARY';
+
+      // Row 4 – Summary values
+      aoa[4][0] = 'Need to Restock';
+      aoa[4][1] = totalItemsToRestock;
+      aoa[4][2] = 'Urgent';
+      aoa[4][3] = outOfStockCount;
+      aoa[4][4] = 'Est. Cost';
+      aoa[4][5] = estimatedCostToRestock;
+
+      // Row 6 – Column headers
+      COLS.forEach((c, i) => { aoa[6][i] = c.header; });
+
+      // Rows 7+ – Data
+      displayedItems.forEach((item, idx) => {
+        const r = dataStartRow + idx;
+        const currentStock = item.stock ?? 0;
+        const deficit = Math.max((item.restockQuantity ?? 0) - currentStock, 0);
+        const status =
+          currentStock <= 0 ? 'Urgent' :
+          currentStock <= 5 ? 'Low Stock' :
+                              'In Stock';
+
+        aoa[r][0] = idx + 1;
+        aoa[r][1] = item.name;
+        aoa[r][2] = currentStock;
+        aoa[r][3] = item.restockQuantity ?? 0;
+        aoa[r][4] = deficit > 0 ? -deficit : 0;
+        aoa[r][5] = status;
+      });
+
+      // Footer row
+      const footerRow = dataStartRow + displayedItems.length;
+      aoa[footerRow][0] = 'TOTAL';
+      aoa[footerRow][1] = `${displayedItems.length} items`;
+      aoa[footerRow][2] = '';
+      aoa[footerRow][3] = '';
+      aoa[footerRow][4] = '';
+      aoa[footerRow][5] = `Out of stock: ${outOfStockCount}`;
+
+      // ── BUILD WORKSHEET ────────────────────────────────────────────
+      const worksheet = XLSX.utils.aoa_to_sheet(aoa);
+      worksheet['!cols'] = COLS.map(c => ({ wch: c.width }));
+      worksheet['!rows'] = [
+        { hpt: 36 }, // 0 title
+        { hpt: 20 }, // 1 meta
+        { hpt: 8  }, // 2 spacer
+        { hpt: 18 }, // 3 summary label
+        { hpt: 22 }, // 4 summary values
+        { hpt: 8  }, // 5 spacer
+        { hpt: 28 }, // 6 headers
+        ...displayedItems.map(() => ({ hpt: 20 })),
+        { hpt: 24 }, // footer
+      ];
+
+      worksheet['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
+        { s: { r: 3, c: 0 }, e: { r: 3, c: colCount - 1 } },
+        { s: { r: footerRow, c: 1 }, e: { r: footerRow, c: 4 } },
+      ];
+
+      const style = (addr: string, st: any) => {
+        if (!worksheet[addr]) worksheet[addr] = { t: 's', v: '' };
+        worksheet[addr].s = st;
+      };
+
+      // ── APPLY STYLES ───────────────────────────────────────────────
+
+      // Title (row 0)
+      style('A1', s(
+        { sz: 16, bold: true, color: { rgb: 'FFFFFF' } },
+        solidFill('2563EB'),
+        { horizontal: 'center', vertical: 'center' },
+      ));
+
+      // Meta (row 1)
+      style('A2', s(
+        { sz: 9, italic: true, color: { rgb: '475569' } },
+        solidFill('DBEAFE'),
+        { horizontal: 'center', vertical: 'center' },
+      ));
+
+      // Summary label (row 3)
+      style('A4', s(
+        { sz: 10, bold: true, color: { rgb: '1D4ED8' } },
+        solidFill('EFF6FF'),
+        { horizontal: 'left', vertical: 'center' },
+        allBorders,
+      ));
+
+      // Summary value cells (row 4)
+      const summaryBg = solidFill('F0FDF4');
+      const summaryLabelStyle = s({ sz: 9, bold: true, color: { rgb: '15803D' } }, summaryBg, { horizontal: 'left', vertical: 'center' }, bblr);
+      const summaryValStyle   = s({ sz: 11, bold: true, color: { rgb: '166534' } }, summaryBg, { horizontal: 'center', vertical: 'center' }, bblr);
+
+      style('A5', summaryLabelStyle); // Need to Restock label
+      style('B5', summaryValStyle);   // Need to Restock value
+      style('C5', summaryLabelStyle); // Urgent label
+      style('D5', summaryValStyle);   // Urgent value
+      style('E5', summaryLabelStyle); // Est. Cost label
+      style('F5', s(                  // Est. Cost value
+        { sz: 11, bold: true, color: { rgb: '166534' } },
+        summaryBg,
+        { horizontal: 'center', vertical: 'center' },
+        bblr,
+      ));
+
+      // Format Est. Cost as currency
+      if (worksheet['F5']) { worksheet['F5'].t = 'n'; worksheet['F5'].z = '₹#,##0.00'; }
+
+      // Column headers (row 6)
+      COLS.forEach((_c, i) => {
+        const addr = XLSX.utils.encode_cell({ r: 6, c: i });
+        style(addr, s(
+          { sz: 10, bold: true, color: { rgb: 'FFFFFF' } },
+          solidFill('1E40AF'),
+          { horizontal: i <= 1 ? 'left' : 'center', vertical: 'center' },
+          allBorders,
+        ));
+      });
+
+      // Data rows
+      displayedItems.forEach((item, idx) => {
+        const r = dataStartRow + idx;
+        const isAlt = idx % 2 === 1;
+        const rowBg = solidFill(isAlt ? 'F8FAFC' : 'FFFFFF');
+        const currentStock = item.stock ?? 0;
+
+        for (let ci = 0; ci < colCount; ci++) {
+          const addr = XLSX.utils.encode_cell({ r, c: ci });
+          const isNumeric = ci >= 2 && ci <= 4;
+
+          // Status column color coding
+          let fontColor = '1E293B';
+          if (ci === 5) {
+            const status = aoa[r][5];
+            if (status === 'Urgent')    fontColor = 'DC2626';
+            else if (status === 'Low Stock') fontColor = 'EA580C';
+            else                        fontColor = '16A34A';
+          }
+          // Units Short negative → red
+          if (ci === 4 && typeof aoa[r][4] === 'number' && aoa[r][4] < 0) {
+            fontColor = 'DC2626';
+          }
+
+          style(addr, s(
+            { sz: 9, color: { rgb: fontColor }, bold: (ci === 5 && currentStock <= 5) },
+            rowBg,
+            { horizontal: isNumeric ? 'center' : 'left', vertical: 'center' },
+            bblr,
+          ));
+        }
+      });
+
+      // Footer row
+      for (let ci = 0; ci < colCount; ci++) {
+        const addr = XLSX.utils.encode_cell({ r: footerRow, c: ci });
+        style(addr, s(
+          { sz: 10, bold: true, color: { rgb: '1E293B' } },
+          solidFill('E2E8F0'),
+          { horizontal: ci <= 1 ? 'left' : 'center', vertical: 'center' },
+          {
+            top:    { style: 'medium', color: { rgb: '1E293B' } },
+            bottom: { style: 'medium', color: { rgb: '1E293B' } },
+            left:   { style: 'thin',   color: { rgb: 'CBD5E1' } },
+            right:  { style: 'thin',   color: { rgb: 'CBD5E1' } },
+          },
+        ));
+      }
+
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Restock Report');
-
-      XLSX.writeFile(
-        workbook,
-        `restock_report_${new Date().toISOString().split('T')[0]}.xlsx`,
-      );
+      XLSX.writeFile(workbook, `Restock-Report-${new Date().toISOString().split('T')[0]}.xlsx`);
 
       setIsDownloadModalOpen(false);
       setFeedbackModal({
@@ -324,8 +539,7 @@ const RestockReportPage: React.FC = () => {
         type: State.SUCCESS,
         message: 'Excel downloaded successfully!',
       });
-    } catch (err) {
-      console.error(err);
+    } catch {
       setFeedbackModal({
         isOpen: true,
         type: State.ERROR,

@@ -709,7 +709,14 @@ const PurchasePage: React.FC = () => {
           });
         });
       });
-
+      // ✅ FIX: Update local inventory immediately without requiring refresh
+      setAvailableItems(prev => prev.map(item => {
+        const stockDelta = formattedItemsForDB
+          .filter(i => i.id === item.id)
+          .reduce((sum, i) => sum + (i.quantity || 1), 0);
+        if (stockDelta === 0) return item;
+        return { ...item, stock: (item.stock || 0) + stockDelta };
+      }));
       setIsDrawerOpen(false);
       const savedItemsCopy = [...items];
       localStorage.removeItem('purchase_cart_draft');
@@ -794,6 +801,19 @@ const PurchasePage: React.FC = () => {
 
         transaction.update(purchaseRef, updatedPurchaseData);
       });
+      // ✅ FIX: Update local inventory immediately for edit mode
+      setAvailableItems(prev => prev.map(item => {
+        const oldQty = ((editModeData?.items || []) as PurchaseItem[])
+          .filter(i => (i.productId || i.id) === item.id)
+          .reduce((sum, i) => sum + (i.quantity || 1), 0);
+        const newQty = formattedItemsForDB
+          .filter(i => i.id === item.id)
+          .reduce((sum, i) => sum + (i.quantity || 1), 0);
+        const delta = newQty - oldQty;
+        if (delta === 0) return item;
+        return { ...item, stock: (item.stock || 0) + delta };
+      }));
+
       showSuccessModal('Purchase updated successfully!', ROUTES.JOURNAL);
     } catch (err: any) {
       console.error('Error updating purchase:', err);

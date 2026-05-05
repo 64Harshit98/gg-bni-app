@@ -6,6 +6,10 @@ import { ROUTES } from '../../constants/routes.constants';
 import { CustomButton } from '../../Components';
 import { Variant } from '../../enums';
 import { Spinner } from '../../constants/Spinner';
+import { FiEdit2, FiTrash2 } from 'react-icons/fi';
+import { ItemEditDrawer } from '../../Components/ItemDrawer';
+import { Modal } from '../../constants/Modal';
+import { State } from '../../enums';
 
 // --- Icon Components ---
 const EditIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z"></path></svg>;
@@ -24,6 +28,12 @@ const ItemGroupPage: React.FC = () => {
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editingGroupName, setEditingGroupName] = useState<string>('');
   const [deleteTargetGroup, setDeleteTargetGroup] = useState<ItemGroup | null>(null);
+  const [viewingGroup, setViewingGroup] = useState<ItemGroup | null>(null);
+  const [allItems, setAllItems] = useState<any[]>([]);
+  const [selectedItemForEdit, setSelectedItemForEdit] = useState<any | null>(null);
+  const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
+  const [itemPendingDelete, setItemPendingDelete] = useState<any | null>(null);
+  const [deleteModal, setDeleteModal] = useState<{ message: string; type: State } | null>(null);
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -136,6 +146,7 @@ const ItemGroupPage: React.FC = () => {
           await dbOperations.updateItem(update.itemId, { itemGroupId: update.newGroupId });
         }
       }
+      setAllItems(allItems);
       const counts: Record<string, number> = {};
       let uncategorizedCount = 0;
 
@@ -170,7 +181,52 @@ const ItemGroupPage: React.FC = () => {
     setSuccessMessage(message);
     setTimeout(() => setSuccessMessage(null), 3500);
   };
+  const openEditDrawer = (item: any) => {
+    setSelectedItemForEdit(item);
+    setIsEditDrawerOpen(true);
+  };
 
+  const closeEditDrawer = () => {
+    setIsEditDrawerOpen(false);
+    setTimeout(() => setSelectedItemForEdit(null), 250);
+  };
+
+  const confirmDeleteItem = async () => {
+    if (!itemPendingDelete?.id || !dbOperations) return;
+    try {
+      await dbOperations.deleteItem(itemPendingDelete.id);
+      setAllItems(prev => {
+        const updated = prev.filter(i => i.id !== itemPendingDelete.id);
+
+        // Recalculate groupCounts from the updated list
+        const counts: Record<string, number> = {};
+        let uncategorizedCount = 0;
+        updated.forEach(item => {
+          const groupId = item.itemGroupId;
+          if (groupId && itemGroups.some(g => g.id === groupId)) {
+            counts[groupId] = (counts[groupId] || 0) + 1;
+          } else {
+            uncategorizedCount++;
+          }
+        });
+        setGroupCounts({ ...counts, uncategorized: uncategorizedCount });
+
+        return updated;
+      });
+      setDeleteModal({ message: 'Item deleted successfully', type: State.SUCCESS });
+    } catch {
+      setDeleteModal({ message: 'Failed to delete item', type: State.ERROR });
+    } finally {
+      setItemPendingDelete(null);
+      setTimeout(() => setDeleteModal(null), 1500);
+    }
+  };
+
+  const getStockBadgeClasses = (stock: number) => {
+    if (stock === 0) return 'bg-red-100 text-red-700';
+    if (stock < 10) return 'bg-blue-100 text-blue-700';
+    return 'bg-green-100 text-green-700';
+  };
   const handleAddItemGroup = async () => {
     if (newItemGroupName.trim() === '') return setError('Item group name cannot be empty.');
     if (itemGroups.some(g => g.name.toLowerCase() === newItemGroupName.trim().toLowerCase())) {
@@ -246,7 +302,7 @@ const ItemGroupPage: React.FC = () => {
     <div className="flex flex-col md:flex-row md:justify-between md:items-center bg-gray-100 md:bg-white border-b border-gray-300 shadow-sm flex-shrink-0 p-2 md:px-4 md:py-3 mb-2 md:mb-0">
       <h1 className="text-2xl font-bold text-gray-800 text-center md:text-left mb-2 md:mb-0">Item Groups</h1>
       <div className="flex items-center justify-center gap-6">
-        <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.ITEM_ADD)} active={isActive(ROUTES.ITEM_ADD)}>Item Add</CustomButton>
+        <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.ITEM_ADD)} active={isActive(ROUTES.ITEM_ADD)}>Add Item</CustomButton>
         <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.ITEM_GROUP)} active={isActive(ROUTES.ITEM_GROUP)}>Item Groups</CustomButton>
       </div>
     </div>
@@ -291,7 +347,12 @@ const ItemGroupPage: React.FC = () => {
                   ) : (
                     <>
                       <div className="flex items-center gap-2 overflow-hidden">
-                        <span className="text-gray-800 font-medium truncate">{group.name}</span>
+                        <button
+                          onClick={() => setViewingGroup(group)}
+                          className="text-gray-800 font-medium truncate hover:text-blue-600 hover:underline text-left"
+                        >
+                          {group.name}
+                        </button>
                         <span className={`text-sm px-2 py-0.5 rounded-sm font-medium ${count > 0 ? 'text-blue-900' : 'text-gray-500'}`}>
                           {count} {count === 1 ? 'item' : 'items'}
                         </span>
@@ -359,6 +420,98 @@ const ItemGroupPage: React.FC = () => {
 
           </div>
         </div>
+      )}
+      {viewingGroup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg shadow-lg w-[90%] max-w-lg p-6 flex flex-col max-h-[80vh]">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-semibold text-gray-800">
+                {viewingGroup.name}
+                <span className="ml-2 text-sm font-normal text-gray-500">
+                  ({groupCounts[viewingGroup.id!] || 0} items)
+                </span>
+              </h2>
+              <button
+                onClick={() => setViewingGroup(null)}
+                className="text-gray-400 hover:text-gray-700 text-xl font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 space-y-2">
+              {allItems.filter(item => item.itemGroupId === viewingGroup.id).length === 0 ? (
+                <p className="text-center text-gray-400 py-8">No items in this group.</p>
+              ) : (
+                allItems
+                  .filter(item => item.itemGroupId === viewingGroup.id)
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map(item => {
+                    const stock = item.stock || 0;
+                    const value = stock * (item.purchasePrice || 0);
+                    return (
+                      <div key={item.id} className="bg-white rounded-lg shadow-sm px-3 py-3 space-y-2 border">
+                        {/* ROW 1 */}
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => openEditDrawer(item)}
+                            className="text-blue-600 hover:text-blue-800"
+                          >
+                            <FiEdit2 size={18} />
+                          </button>
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <span className="font-semibold text-gray-800 truncate">{item.name}</span>
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-md whitespace-nowrap ${getStockBadgeClasses(stock)}`}>
+                              {stock === 0 ? 'Out of stock' : `${stock} in stock`}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => setItemPendingDelete(item)}
+                            className="text-red-600 hover:text-red-800"
+                          >
+                            <FiTrash2 size={18} />
+                          </button>
+                        </div>
+                        {/* ROW 2 */}
+                        <div className="flex items-center justify-between text-sm text-gray-600">
+                          <div><span className="font-medium text-gray-700">MRP:</span> ₹{item.mrp ?? 0}</div>
+                          <div><span className="font-medium text-gray-700">Purchase:</span> ₹{item.purchasePrice ?? 0}</div>
+                          <div><span className="font-medium text-gray-700">Value:</span> ₹{value}</div>
+                        </div>
+                      </div>
+                    );
+                  })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ---- Edit Drawer ---- */}
+      <ItemEditDrawer
+        item={selectedItemForEdit}
+        isOpen={isEditDrawerOpen}
+        onClose={closeEditDrawer}
+        onSaveSuccess={() => fetchAndSyncGroups()}
+      />
+
+      {/* ---- Delete Item Confirm ---- */}
+      {itemPendingDelete && (
+        <Modal
+          type={State.ERROR}
+          message={`Are you sure you want to delete "${itemPendingDelete.name}"?`}
+          onClose={() => setItemPendingDelete(null)}
+          onConfirm={confirmDeleteItem}
+          showConfirmButton={true}
+        />
+      )}
+
+      {/* ---- Info / Success Modal ---- */}
+      {deleteModal && (
+        <Modal
+          message={deleteModal.message}
+          type={deleteModal.type}
+          onClose={() => setDeleteModal(null)}
+        />
       )}
     </main>
   );

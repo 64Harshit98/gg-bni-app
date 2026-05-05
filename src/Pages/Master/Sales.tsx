@@ -1275,6 +1275,18 @@ const Sales: React.FC = () => {
                         }
                     });
                 });
+                // ✅ FIX: Update local inventory for edit mode 
+                setAvailableItems(prev => prev.map(item => {
+                    const oldQty = (invoiceToEdit.items || [])
+                        .filter((i: any) => (i.productId || i.id) === item.id)
+                        .reduce((sum: number, i: any) => sum + (i.quantity || 1), 0);
+                    const newQty = items
+                        .filter(i => (i.productId || i.id) === item.id && !i.isCustomAmount)
+                        .reduce((sum, i) => sum + (i.quantity || 1), 0);
+                    const delta = newQty - oldQty; // positive = sold more, negative = sold less
+                    if (delta === 0) return item;
+                    return { ...item, stock: Math.max(0, (item.stock || 0) - delta) };
+                }));
                 showSuccessModal("Invoice Updated", ROUTES.JOURNAL);
             } else {
                 let result: any = null;
@@ -1314,12 +1326,20 @@ const Sales: React.FC = () => {
                         items: finalizedItems
                     };
 
+                    // ✅ FIX: Update local inventory immediately without requiring refresh
+                    setAvailableItems(prev => prev.map(item => {
+                        const stockDelta = items
+                            .filter(i => (i.productId || i.id) === item.id && !i.isCustomAmount)
+                            .reduce((sum, i) => sum + (i.quantity || 1), 0);
+                        if (stockDelta === 0) return item;
+                        return { ...item, stock: Math.max(0, (item.stock || 0) - stockDelta) };
+                    }));
                     setIsDrawerOpen(false);
                     setSavedBillData({ id: result.id, number: result.number, invoiceData: invoiceData });
                     localStorage.removeItem('sales_cart_draft');
                     setItems([]);
                     setStagedCalcInput('');
-                    setCalcInput('');         
+                    setCalcInput('');
                     const nextNum = await peekNextInvoiceNumber(currentUser.companyId);
                     isInvoiceNumberManuallyEdited.current = false;
                     setInvoiceNumber(nextNum);

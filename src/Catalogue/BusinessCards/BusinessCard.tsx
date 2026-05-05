@@ -261,7 +261,7 @@ function BusinessCard() {
                                     <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
                                     <circle cx="12" cy="9" r="2.5" />
                                 </svg>
-                                <span className="truncate">{data.address}</span>
+                                <span className="line-clamp-2 leading-tight">{data.address}</span>
                             </div>
                             {/* Phone */}
                             <div className="flex items-center gap-1">
@@ -337,7 +337,7 @@ function BusinessCard() {
 
                     {/* Footer row */}
                     <div className="mt-auto pt-1.5">
-                        <div className="flex items-center gap-2 text-[8px] font-medium text-gray-600 overflow-hidden">
+                        <div className="flex items-start gap-2 text-[8px] font-medium text-gray-600 overflow-hidden">
                             <svg className="shrink-0" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2.5">
                                 <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.12 1.18 2 2 0 012.1 0h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 14.92v2z" />
                             </svg>
@@ -347,7 +347,7 @@ function BusinessCard() {
                                 <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
                                 <circle cx="12" cy="9" r="2.5" />
                             </svg>
-                            <span className="truncate">{data.address}</span>
+                            <span className="line-clamp-2 leading-tight">{data.address}</span>
                         </div>
                     </div>
                 </div>

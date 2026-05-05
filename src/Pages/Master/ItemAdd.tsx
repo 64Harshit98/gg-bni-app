@@ -422,7 +422,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       requestAnimationFrame(() => {
         successBannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       });
-      setTimeout(() => setSuccess(null), 3000);
+      setTimeout(() => setSuccess(null), 30000);
 
     } catch (err: any) {
       setError('Failed to add item.');
@@ -621,7 +621,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       } else {
         setSuccess(`Imported: ${createdCount} New, ${updatedCount} Updated${skippedCount > 0 ? `, ${skippedCount} Skipped` : ''}.`);
       }
-      setTimeout(() => setSuccess(null), 5000);
+      setTimeout(() => setSuccess(null), 30000);
 
     } catch (err: any) {
       setError("File processing failed. Ensure it is a valid Excel file.");
@@ -778,7 +778,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         Add Item
       </h1>
       <div className="flex items-center justify-center gap-6">
-        <CustomButton variant={Variant.Transparent} onClick={() => navigate(routes.itemAdd)} active={isActive(routes.itemAdd)}>Item Add</CustomButton>
+        <CustomButton variant={Variant.Transparent} onClick={() => navigate(routes.itemAdd)} active={isActive(routes.itemAdd)}>Add Item</CustomButton>
         <CustomButton variant={Variant.Transparent} onClick={() => navigate(routes.itemGroup)} active={isActive(routes.itemGroup)}>Item Groups</CustomButton>
       </div>
     </div>

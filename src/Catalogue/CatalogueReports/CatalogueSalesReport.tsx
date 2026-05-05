@@ -12,7 +12,7 @@ import { useAuth } from '../../context/auth-context';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
-import * as XLSX from 'xlsx';
+import XLSX from 'xlsx-js-style';
 import DownloadChoiceModal from '../../Pages/Reports/ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
@@ -571,31 +571,227 @@ const OrdersReport: React.FC = () => {
 
     const downloadAsExcel = () => {
         try {
-            const worksheet = XLSX.utils.json_to_sheet(
-                filteredSales.map((sale) => ({
-                    Date: formatDate(sale.createdAt),
-                    OrderID: sale.invoiceNumber,
-                    Customer: sale.partyName,
-                    Items: sale.items.reduce((sum, i) => sum + i.quantity, 0),
-                    Amount: sale.totalAmount,
-                }))
-            );
+            const s = (font: any, fill?: any, alignment?: any, border?: any) => ({
+                font: { name: 'Arial', ...font },
+                fill: fill ?? {},
+                alignment: alignment ?? { horizontal: 'center', vertical: 'center', wrapText: true },
+                border: border ?? {},
+            });
+            const solidFill = (rgb: string) => ({ patternType: 'solid', fgColor: { rgb } });
+            const allBorders = {
+                top: { style: 'thin', color: { rgb: 'FED7AA' } },
+                bottom: { style: 'thin', color: { rgb: 'FED7AA' } },
+                left: { style: 'thin', color: { rgb: 'FED7AA' } },
+                right: { style: 'thin', color: { rgb: 'FED7AA' } },
+            };
+            const bblr = {
+                bottom: { style: 'thin', color: { rgb: 'FED7AA' } },
+                left: { style: 'thin', color: { rgb: 'FED7AA' } },
+                right: { style: 'thin', color: { rgb: 'FED7AA' } },
+            };
+
+            const generationDate = new Date().toLocaleDateString('en-IN', {
+                year: 'numeric', month: 'short', day: 'numeric',
+            });
+
+            const periodLabel = appliedFilters
+                ? `Period: ${formatDate(appliedFilters.start)} – ${formatDate(appliedFilters.end)}`
+                : 'Period: All';
+
+            const COLS = [
+                { header: '#', width: 6 },
+                { header: 'Date', width: 16 },
+                { header: 'Order ID', width: 28 },
+                { header: 'Customer', width: 28 },
+                { header: 'Items', width: 14 },
+                { header: 'Amount (₹)', width: 26 },
+            ];
+            const colCount = COLS.length;
+
+            // Row layout:
+            // 0  → Title  (merged)
+            // 1  → Meta   (merged)
+            // 2  → blank spacer
+            // 3  → Summary label (merged)
+            // 4  → Summary values
+            // 5  → blank spacer
+            // 6  → Column headers
+            // 7+ → Data rows
+            // Last → Totals footer
+
+            const dataStartRow = 7;
+            const totalRows = dataStartRow + filteredSales.length + 1;
+            const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
+
+            // Row 0 – Title
+            aoa[0][0] = 'Orders Report';
+
+            // Row 1 – Meta
+            aoa[1][0] = `Generated: ${generationDate}   |   ${periodLabel}   |   Orders: ${summary.totalTransactions}`;
+
+            // Row 3 – Summary label
+            aoa[3][0] = 'SUMMARY';
+
+            // Row 4 – Summary values
+            aoa[4][0] = 'Total Orders';
+            aoa[4][1] = summary.totalTransactions;
+            aoa[4][2] = 'Total Sales';
+            aoa[4][3] = summary.totalSales;
+            aoa[4][4] = 'Items Sold';
+            aoa[4][5] = summary.totalItemsSold;
+
+            // Row 6 – Column headers
+            COLS.forEach((c, i) => { aoa[6][i] = c.header; });
+
+            // Rows 7+ – Data
+            filteredSales.forEach((sale, idx) => {
+                const r = dataStartRow + idx;
+                aoa[r][0] = idx + 1;
+                aoa[r][1] = formatDate(sale.createdAt);
+                aoa[r][2] = sale.invoiceNumber;
+                aoa[r][3] = sale.partyName;
+                aoa[r][4] = sale.items.reduce((sum, i) => sum + i.quantity, 0);
+                aoa[r][5] = Math.round(sale.totalAmount);
+            });
+
+            // Footer row
+            const footerRow = dataStartRow + filteredSales.length;
+            aoa[footerRow][0] = 'TOTAL';
+            aoa[footerRow][1] = `${filteredSales.length} orders`;
+            aoa[footerRow][4] = summary.totalItemsSold;
+            aoa[footerRow][5] = Math.round(summary.totalSales);
+
+            // ── BUILD WORKSHEET ─────────────────────────────────────────────
+            const worksheet = XLSX.utils.aoa_to_sheet(aoa);
+            worksheet['!cols'] = COLS.map(c => ({ wch: c.width }));
+            worksheet['!rows'] = [
+                { hpt: 36 }, // 0 title
+                { hpt: 20 }, // 1 meta
+                { hpt: 8 }, // 2 spacer
+                { hpt: 18 }, // 3 summary label
+                { hpt: 22 }, // 4 summary values
+                { hpt: 8 }, // 5 spacer
+                { hpt: 28 }, // 6 headers
+                ...filteredSales.map(() => ({ hpt: 20 })),
+                { hpt: 24 }, // footer
+            ];
+
+            worksheet['!merges'] = [
+                { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
+                { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
+                { s: { r: 3, c: 0 }, e: { r: 3, c: colCount - 1 } },
+                { s: { r: footerRow, c: 1 }, e: { r: footerRow, c: 3 } },
+            ];
+
+            const style = (addr: string, st: any) => {
+                if (!worksheet[addr]) worksheet[addr] = { t: 's', v: '' };
+                worksheet[addr].s = st;
+            };
+
+            // Title (row 0) — deep orange
+            style('A1', s(
+                { sz: 16, bold: true, color: { rgb: 'FFFFFF' } },
+                solidFill('EA580C'),
+                { horizontal: 'center', vertical: 'center' },
+            ));
+
+            // Meta (row 1) — light orange tint
+            style('A2', s(
+                { sz: 9, italic: true, color: { rgb: '7C2D12' } },
+                solidFill('FFEDD5'),
+                { horizontal: 'center', vertical: 'center' },
+            ));
+
+            // Summary label (row 3)
+            style('A4', s(
+                { sz: 10, bold: true, color: { rgb: 'C2410C' } },
+                solidFill('FFF7ED'),
+                { horizontal: 'left', vertical: 'center' },
+                allBorders,
+            ));
+
+            // Summary value cells (row 4)
+            const summaryBg = solidFill('FFF7ED');
+            const summaryLabelStyle = s({ sz: 9, bold: true, color: { rgb: 'C2410C' } }, summaryBg, { horizontal: 'left', vertical: 'center' }, bblr);
+            const summaryValStyle = s({ sz: 11, bold: true, color: { rgb: '9A3412' } }, summaryBg, { horizontal: 'center', vertical: 'center' }, bblr);
+
+            style('A5', summaryLabelStyle); // Total Orders label
+            style('B5', summaryValStyle);   // Total Orders value
+            style('C5', summaryLabelStyle); // Total Sales label
+            style('D5', summaryValStyle);   // Total Sales value
+            style('E5', summaryLabelStyle); // Items Sold label
+            style('F5', summaryValStyle);   // Items Sold value
+
+            if (worksheet['D5']) { worksheet['D5'].t = 'n'; worksheet['D5'].z = '₹#,##0.00'; }
+
+            // Column headers (row 6) — dark orange header bar
+            COLS.forEach((_c, i) => {
+                const addr = XLSX.utils.encode_cell({ r: 6, c: i });
+                style(addr, s(
+                    { sz: 10, bold: true, color: { rgb: 'FFFFFF' } },
+                    solidFill('C2410C'),
+                    { horizontal: i <= 3 ? 'left' : 'center', vertical: 'center' },
+                    allBorders,
+                ));
+            });
+
+            // Data rows
+            filteredSales.forEach((_sale, idx) => {
+                const r = dataStartRow + idx;
+                const isAlt = idx % 2 === 1;
+                const rowBg = solidFill(isAlt ? 'FFF7ED' : 'FFFFFF');
+
+                for (let ci = 0; ci < colCount; ci++) {
+                    const addr = XLSX.utils.encode_cell({ r, c: ci });
+                    const isNumeric = ci === 4 || ci === 5;
+                    style(addr, s(
+                        { sz: 9, color: { rgb: '1E293B' } },
+                        rowBg,
+                        { horizontal: isNumeric ? 'center' : 'left', vertical: 'center' },
+                        bblr,
+                    ));
+                    if (ci === 5 && worksheet[addr]) {
+                        worksheet[addr].t = 'n';
+                        worksheet[addr].z = '₹#,##0.00';
+                    }
+                }
+            });
+
+            // Footer row
+            for (let ci = 0; ci < colCount; ci++) {
+                const addr = XLSX.utils.encode_cell({ r: footerRow, c: ci });
+                style(addr, s(
+                    { sz: 10, bold: true, color: { rgb: '1E293B' } },
+                    solidFill('FED7AA'),
+                    { horizontal: ci <= 3 ? 'left' : 'center', vertical: 'center' },
+                    {
+                        top: { style: 'medium', color: { rgb: '1E293B' } },
+                        bottom: { style: 'medium', color: { rgb: '1E293B' } },
+                        left: { style: 'thin', color: { rgb: 'FED7AA' } },
+                        right: { style: 'thin', color: { rgb: 'FED7AA' } },
+                    },
+                ));
+                if (ci === 5 && worksheet[addr]) {
+                    worksheet[addr].t = 'n';
+                    worksheet[addr].z = '₹#,##0.00';
+                }
+            }
 
             const workbook = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(workbook, worksheet, 'Orders');
-            XLSX.writeFile(workbook, 'orders_report.xlsx');
+            XLSX.utils.book_append_sheet(workbook, worksheet, 'Orders Report');
+            XLSX.writeFile(workbook, `Orders-Report-${formatDate(appliedFilters!.start)}-to-${formatDate(appliedFilters!.end)}.xlsx`);
 
             setIsDownloadModalOpen(false);
             setFeedbackModal({
                 isOpen: true,
                 type: State.SUCCESS,
-                message: 'Excel file downloaded successfully!'
+                message: 'Excel downloaded successfully!',
             });
-        } catch (err) {
+        } catch {
             setFeedbackModal({
                 isOpen: true,
                 type: State.ERROR,
-                message: 'Failed to generate Excel file.'
+                message: 'Failed to generate Excel file.',
             });
         }
     };

@@ -3,7 +3,7 @@ import useItemReport from './ItemReportComponents/useItemReport';
 import type { Item } from '../../constants/models';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
+import XLSX from 'xlsx-js-style';
 import { Spinner } from '../../constants/Spinner';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
@@ -124,32 +124,32 @@ const ItemReport: React.FC = () => {
       restockQuantity: item.restockQuantity || 0,
     };
   };
-  const prepareExportDataForExcel = (item: Item) => {
-  const salePrice = item.salesPrice ||
-    (item.mrp && item.discount ? parseFloat((item.mrp * (1 - item.discount / 100)).toFixed(2)) : item.mrp || 0);
+  // const prepareExportDataForExcel = (item: Item) => {
+  //   const salePrice = item.salesPrice ||
+  //     (item.mrp && item.discount ? parseFloat((item.mrp * (1 - item.discount / 100)).toFixed(2)) : item.mrp || 0);
 
-  return {
-    name: item.name || '-',
-    barcode: item.barcode || '-',
-    itemGroup: getGroupName(item.itemGroupId),
-    mrp: item.mrp || 0,
-    purchasePrice: item.purchasePrice || 0,
-    purchaseDiscount: item.purchasediscount || 0,
-    salesPrice: salePrice,
-    discount: item.discount || 0,
-    tax: item.tax || 0,
-    taxRate: item.taxRate || 0,
-    gst: item.gst || 0,
-    hsnSac: item.hsnSac || '-',
-    unit: item.unit || '-',
-    packetSize: item.packetSize || 0,
-    unitMultiplier: item.unitMultiplier || 0,
-    moq: item.moq || 0,
-    stock: item.stock || 0,
-    restockQuantity: item.restockQuantity || 0,
-    description: item.description || '-',
-  };
-};
+  //   return {
+  //     name: item.name || '-',
+  //     barcode: item.barcode || '-',
+  //     itemGroup: getGroupName(item.itemGroupId),
+  //     mrp: item.mrp || 0,
+  //     purchasePrice: item.purchasePrice || 0,
+  //     purchaseDiscount: item.purchasediscount || 0,
+  //     salesPrice: salePrice,
+  //     discount: item.discount || 0,
+  //     tax: item.tax || 0,
+  //     taxRate: item.taxRate || 0,
+  //     gst: item.gst || 0,
+  //     hsnSac: item.hsnSac || '-',
+  //     unit: item.unit || '-',
+  //     packetSize: item.packetSize || 0,
+  //     unitMultiplier: item.unitMultiplier || 0,
+  //     moq: item.moq || 0,
+  //     stock: item.stock || 0,
+  //     restockQuantity: item.restockQuantity || 0,
+  //     description: item.description || '-',
+  //   };
+  // };
 
   const downloadAsPdf = async () => {
     try {
@@ -354,13 +354,263 @@ const ItemReport: React.FC = () => {
 
   const downloadAsExcel = () => {
     try {
-      const dataToExport = filteredItems.map(prepareExportDataForExcel);
-      const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+      const s = (font: any, fill?: any, alignment?: any, border?: any) => ({
+        font: { name: 'Arial', ...font },
+        fill: fill ?? {},
+        alignment: alignment ?? { horizontal: 'center', vertical: 'center', wrapText: true },
+        border: border ?? {},
+      });
+      const solidFill = (rgb: string) => ({ patternType: 'solid', fgColor: { rgb } });
+      const allBorders = {
+        top: { style: 'thin', color: { rgb: 'CBD5E1' } },
+        bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
+        left: { style: 'thin', color: { rgb: 'CBD5E1' } },
+        right: { style: 'thin', color: { rgb: 'CBD5E1' } },
+      };
+      const bblr = {
+        bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
+        left: { style: 'thin', color: { rgb: 'CBD5E1' } },
+        right: { style: 'thin', color: { rgb: 'CBD5E1' } },
+      };
+
+      const generationDate = new Date().toLocaleDateString('en-IN', {
+        year: 'numeric', month: 'short', day: 'numeric',
+      });
+
+      const groupLabel = appliedItemGroupId
+        ? `Group: ${itemGroups.find(g => g.id === appliedItemGroupId)?.name ?? appliedItemGroupId}`
+        : 'Group: All';
+
+      // ── COLUMN DEFINITIONS ──────────────────────────────────────────────
+      const COLS = [
+        { header: '#', width: 6 },
+        { header: 'Name', width: 28 },
+        { header: 'Barcode', width: 18 },
+        { header: 'Item Group', width: 20 },
+        { header: 'MRP (₹)', width: 14 },
+        { header: 'Cost Price (₹)', width: 16 },
+        { header: 'Sale Price (₹)', width: 16 },
+        { header: 'Discount (%)', width: 14 },
+        { header: 'Tax (%)', width: 12 },
+        { header: 'GST', width: 10 },
+        { header: 'HSN/SAC', width: 14 },
+        { header: 'Unit', width: 10 },
+        { header: 'Stock', width: 10 },
+        { header: 'Restock Qty', width: 13 },
+      ];
+      const colCount = COLS.length;
+
+      // Row layout:
+      // 0  → Title (merged)
+      // 1  → Meta (merged)
+      // 2  → blank spacer
+      // 3  → Summary label (merged)
+      // 4  → Summary values
+      // 5  → blank spacer
+      // 6  → Column headers
+      // 7+ → Data rows
+      // Last → Totals footer
+
+      const dataStartRow = 7;
+      const totalRows = dataStartRow + filteredItems.length + 1;
+      const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
+
+      // Row 0 – Title
+      aoa[0][0] = 'Detailed Item Report';
+
+      // Row 1 – Meta
+      aoa[1][0] = `Generated: ${generationDate}   |   ${groupLabel}   |   Total Items: ${summary.totalItems}`;
+
+      // Row 3 – Summary label
+      aoa[3][0] = 'SUMMARY';
+
+      // Row 4 – Summary values
+      aoa[4][0] = 'Avg MRP';
+      aoa[4][1] = summary.averageMrp;
+      aoa[4][2] = 'Avg Cost';
+      aoa[4][3] = summary.averagePurchasePrice;
+      aoa[4][4] = `Avg Sale: ₹${summary.averageSalePrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Avg Margin: ₹${summary.averageProfitMargin.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Margin %: ${summary.averageMarginPercentage.toFixed(1)}%`;
+
+      // Row 6 – Column headers
+      COLS.forEach((c, i) => { aoa[6][i] = c.header; });
+
+      // Rows 7+ – Data
+      filteredItems.forEach((item, idx) => {
+        const r = dataStartRow + idx;
+        const salePrice =
+          (item as any).salesPrice ||
+          (item.mrp && item.discount
+            ? parseFloat((item.mrp * (1 - item.discount / 100)).toFixed(2))
+            : item.mrp || 0);
+
+        aoa[r][0] = idx + 1;
+        aoa[r][1] = item.name || '-';
+        aoa[r][2] = item.barcode || '-';
+        aoa[r][3] = getGroupName(item.itemGroupId);
+        aoa[r][4] = item.mrp || 0;
+        aoa[r][5] = item.purchasePrice || 0;
+        aoa[r][6] = salePrice;
+        aoa[r][7] = item.discount || 0;
+        aoa[r][8] = item.tax || 0;
+        aoa[r][9] = (item as any).gst || 0;
+        aoa[r][10] = (item as any).hsnSac || '-';
+        aoa[r][11] = (item as any).unit || '-';
+        aoa[r][12] = item.stock || 0;
+        aoa[r][13] = item.restockQuantity || 0;
+      });
+
+      // Footer row
+      const footerRow = dataStartRow + filteredItems.length;
+      aoa[footerRow][0] = 'TOTAL';
+      aoa[footerRow][1] = `${summary.totalItems} items`;
+      aoa[footerRow][4] = summary.averageMrp;          // avg MRP
+      aoa[footerRow][5] = summary.averagePurchasePrice; // avg cost
+      aoa[footerRow][6] = summary.averageSalePrice;     // avg sale
+
+      // ── BUILD WORKSHEET ──────────────────────────────────────────────────
+      const worksheet = XLSX.utils.aoa_to_sheet(aoa);
+      worksheet['!cols'] = COLS.map(c => ({ wch: c.width }));
+      worksheet['!rows'] = [
+        { hpt: 36 }, // 0 title
+        { hpt: 20 }, // 1 meta
+        { hpt: 8 }, // 2 spacer
+        { hpt: 18 }, // 3 summary label
+        { hpt: 22 }, // 4 summary values
+        { hpt: 8 }, // 5 spacer
+        { hpt: 28 }, // 6 headers
+        ...filteredItems.map(() => ({ hpt: 20 })),
+        { hpt: 24 }, // footer
+      ];
+
+      worksheet['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
+        { s: { r: 3, c: 0 }, e: { r: 3, c: colCount - 1 } },
+        { s: { r: 4, c: 4 }, e: { r: 4, c: colCount - 1 } }, // Summary total spans remaining cols
+        { s: { r: footerRow, c: 1 }, e: { r: footerRow, c: 3 } }, // Footer label spans
+      ];
+
+      const style = (addr: string, st: any) => {
+        if (!worksheet[addr]) worksheet[addr] = { t: 's', v: '' };
+        worksheet[addr].s = st;
+      };
+
+      // ── APPLY STYLES ──────────────────────────────────────────────────────
+
+      // Title (row 0)
+      style('A1', s(
+        { sz: 16, bold: true, color: { rgb: 'FFFFFF' } },
+        solidFill('2563EB'),
+        { horizontal: 'center', vertical: 'center' },
+      ));
+
+      // Meta (row 1)
+      style('A2', s(
+        { sz: 9, italic: true, color: { rgb: '475569' } },
+        solidFill('DBEAFE'),
+        { horizontal: 'center', vertical: 'center' },
+      ));
+
+      // Summary label (row 3)
+      style('A4', s(
+        { sz: 10, bold: true, color: { rgb: '1D4ED8' } },
+        solidFill('EFF6FF'),
+        { horizontal: 'left', vertical: 'center' },
+        allBorders,
+      ));
+
+      // Summary value cells (row 4)
+      const summaryBg = solidFill('F0FDF4');
+      const summaryLabelStyle = s({ sz: 9, bold: true, color: { rgb: '15803D' } }, summaryBg, { horizontal: 'left', vertical: 'center' }, bblr);
+      const summaryValStyle = s({ sz: 11, bold: true, color: { rgb: '166534' } }, summaryBg, { horizontal: 'center', vertical: 'center' }, bblr);
+      const summaryTotalStyle = s({ sz: 10, bold: true, color: { rgb: '166534' } }, solidFill('DCFCE7'), { horizontal: 'center', vertical: 'center' }, bblr);
+
+      style('A5', summaryLabelStyle);
+      style('B5', summaryValStyle);
+      style('C5', summaryLabelStyle);
+      style('D5', summaryValStyle);
+      style('E5', summaryTotalStyle);
+
+      // Format B5 and D5 as currency
+      const b5Addr = 'B5';
+      const d5Addr = 'D5';
+      if (worksheet[b5Addr]) { worksheet[b5Addr].t = 'n'; worksheet[b5Addr].z = '₹#,##0.00'; }
+      if (worksheet[d5Addr]) { worksheet[d5Addr].t = 'n'; worksheet[d5Addr].z = '₹#,##0.00'; }
+
+      // Column headers (row 6)
+      COLS.forEach((_c, i) => {
+        const addr = XLSX.utils.encode_cell({ r: 6, c: i });
+        style(addr, s(
+          { sz: 10, bold: true, color: { rgb: 'FFFFFF' } },
+          solidFill('1E40AF'),
+          { horizontal: i <= 3 ? 'left' : 'center', vertical: 'center' },
+          allBorders,
+        ));
+      });
+
+      // Numeric column indices (for right-align + number formatting)
+      const numericCols = new Set([4, 5, 6, 7, 8, 9, 12, 13]);
+
+      // Data rows
+      filteredItems.forEach((item, idx) => {
+        const r = dataStartRow + idx;
+        const isAlt = idx % 2 === 1;
+        const rowBg = solidFill(isAlt ? 'F8FAFC' : 'FFFFFF');
+        const salePrice =
+          (item as any).salesPrice ||
+          (item.mrp && item.discount
+            ? parseFloat((item.mrp * (1 - item.discount / 100)).toFixed(2))
+            : item.mrp || 0);
+        const isLowMargin = salePrice > 0 && item.purchasePrice
+          ? (salePrice - item.purchasePrice) / salePrice < 0.05
+          : false;
+
+        for (let ci = 0; ci < colCount; ci++) {
+          const addr = XLSX.utils.encode_cell({ r, c: ci });
+          const isNumeric = numericCols.has(ci);
+          style(addr, s(
+            {
+              sz: 9,
+              color: { rgb: isLowMargin && ci === 6 ? 'DC2626' : '1E293B' },
+              bold: isLowMargin && ci === 6,
+            },
+            rowBg,
+            { horizontal: isNumeric ? 'center' : 'left', vertical: 'center' },
+            bblr,
+          ));
+          // Apply number formatting for currency/numeric columns
+          if (worksheet[addr] && isNumeric) {
+            const isCurrency = [4, 5, 6].includes(ci);
+            worksheet[addr].t = 'n';
+            worksheet[addr].z = isCurrency ? '₹#,##0.00' : '#,##0.##';
+          }
+        }
+      });
+
+      // Footer row
+      for (let ci = 0; ci < colCount; ci++) {
+        const addr = XLSX.utils.encode_cell({ r: footerRow, c: ci });
+        style(addr, s(
+          { sz: 10, bold: true, color: { rgb: '1E293B' } },
+          solidFill('E2E8F0'),
+          { horizontal: ci <= 3 ? 'left' : 'center', vertical: 'center' },
+          {
+            top: { style: 'medium', color: { rgb: '1E293B' } },
+            bottom: { style: 'medium', color: { rgb: '1E293B' } },
+            left: { style: 'thin', color: { rgb: 'CBD5E1' } },
+            right: { style: 'thin', color: { rgb: 'CBD5E1' } },
+          },
+        ));
+        if ([4, 5, 6].includes(ci) && worksheet[addr]) {
+          worksheet[addr].t = 'n';
+          worksheet[addr].z = '₹#,##0.00';
+        }
+      }
+
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Items');
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Item Report');
       XLSX.writeFile(workbook, 'item_report.xlsx');
 
-      // Close selection modal and show success modal
       setIsDownloadModalOpen(false);
       setFeedbackModal({
         isOpen: true,
@@ -368,6 +618,7 @@ const ItemReport: React.FC = () => {
         message: 'Excel file downloaded successfully!',
       });
     } catch (e) {
+      console.error(e);
       setFeedbackModal({
         isOpen: true,
         type: State.ERROR,
@@ -445,22 +696,22 @@ const ItemReport: React.FC = () => {
         <CustomCard
           variant={CardVariant.Summary}
           title="Average MRP"
-          value={`₹${Math.round(summary.averageMrp).toFixed(0)}`}
+          value={`₹${Math.round(summary.averageMrp).toLocaleString('en-IN')}`}
         />
         <CustomCard
           variant={CardVariant.Summary}
           title="Avg. Cost Price"
-          value={`₹${Math.round(summary.averagePurchasePrice).toFixed(0)}`}
+          value={`₹${Math.round(summary.averagePurchasePrice).toLocaleString('en-IN')}`}
         />
         <CustomCard
           variant={CardVariant.Summary}
           title="Avg. Sale Price"
-          value={`₹${Math.round(summary.averageSalePrice).toFixed(0)}`}
+          value={`₹${Math.round(summary.averageSalePrice).toLocaleString('en-IN')}`}
         />
         <CustomCard
           variant={CardVariant.Summary}
           title="Avg. Margin"
-          value={`₹${Math.round(summary.averageProfitMargin).toFixed(0)}`}
+          value={`₹${Math.round(summary.averageProfitMargin).toLocaleString('en-IN')}`}
         />
         <CustomCard
           variant={CardVariant.Summary}

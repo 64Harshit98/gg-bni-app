@@ -1776,7 +1776,7 @@ const OrdersPage: React.FC = () => {
                                     exit={{ opacity: 0, y: -20 }}
                                     transition={{ duration: 0.25 }}
                                 >
-                                    <CustomCard key={Order.id} onClick={() => handleOrderClick(Order.id)} className="p-3 mb-3 bg-white shadow-sm border border-gray-100 rounded-sm cursor-pointer relative">
+                                    <CustomCard key={Order.id} onClick={() => handleOrderClick(Order.id)} className="p-4 mb-3 bg-white shadow-sm border border-gray-100 rounded-sm cursor-pointer relative">
                                         {/* 🔁 RETURN METHOD BADGE - TOP LEFT */}
                                         {returnMethods.length > 0 && (
                                             <div className="absolute -top-0.5 left-0 flex flex-wrap gap-1 p-1">
@@ -1808,61 +1808,59 @@ const OrdersPage: React.FC = () => {
                                                 </div>
                                             </button>
                                         )}
-                                        <div className="absolute right-5 top-0 flex gap-1">
-                                            <div className="absolute right-5 top-0 flex gap-1">
-                                                {/* PAYMENT METHOD BADGES (DUE EXCLUDED) */}
-                                                {Order.paymentMethods &&
-                                                    Object.entries(Order.paymentMethods)
-                                                        .filter(([method, amount]) => {
-                                                            if (method.toLowerCase() === 'due') return false;
+                                        <div className="flex right-5 top-0 absolute justify-end gap-1 flex-wrap max-w-[50%] text-right pointer-events-auto">
+                                            {/* PAYMENT METHOD BADGES (DUE EXCLUDED) */}
+                                            {Order.paymentMethods &&
+                                                Object.entries(Order.paymentMethods)
+                                                    .filter(([method, amount]) => {
+                                                        if (method.toLowerCase() === 'due') return false;
 
-                                                            const latestReturn =
-                                                                Order.returnHistory?.[Order.returnHistory.length - 1];
+                                                        const latestReturn =
+                                                            Order.returnHistory?.[Order.returnHistory.length - 1];
 
-                                                            const usedInExchange =
-                                                                latestReturn?.paymentDetails &&
-                                                                Number(latestReturn.paymentDetails[method]) > 0;
+                                                        const usedInExchange =
+                                                            latestReturn?.paymentDetails &&
+                                                            Number(latestReturn.paymentDetails[method]) > 0;
 
-                                                            // agar exchange me use hua hai to blue me mat dikha
-                                                            if (usedInExchange) return false;
+                                                        // agar exchange me use hua hai to blue me mat dikha
+                                                        if (usedInExchange) return false;
 
-                                                            return Number(amount) > 0;
-                                                        })
+                                                        return Number(amount) > 0;
+                                                    })
+                                                    .map(([method]) => (
+                                                        <span
+                                                            key={`original-${method}`}
+                                                            className="text-[8px] uppercase font-bold px-1.5 py-0.5 rounded-sm tracking-wider bg-blue-50 text-blue-600 border border-blue-100"
+                                                        >
+                                                            {method}
+                                                        </span>
+                                                    ))}
+
+                                            {Order.returnHistory &&
+                                                Order.returnHistory.length > 0 &&
+                                                (() => {
+                                                    const latestReturn =
+                                                        Order.returnHistory[Order.returnHistory.length - 1];
+
+                                                    if (!latestReturn.paymentDetails) return null;
+
+                                                    return Object.entries(latestReturn.paymentDetails)
+                                                        .filter(
+                                                            ([method, amount]) =>
+                                                                method.toLowerCase() !== 'due' &&
+                                                                Number(amount) > 0
+                                                        )
                                                         .map(([method]) => (
                                                             <span
-                                                                key={`original-${method}`}
-                                                                className="text-[8px] uppercase font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100"
+                                                                key={`exchange-${method}`}
+                                                                className="text-[8px] uppercase font-bold px-1.5 py-0.5 rounded-sm border tracking-wider bg-blue-50 text-blue-600 border-blue-100 whitespace-nowrap"
                                                             >
                                                                 {method}
                                                             </span>
-                                                        ))}
-
-                                                {Order.returnHistory &&
-                                                    Order.returnHistory.length > 0 &&
-                                                    (() => {
-                                                        const latestReturn =
-                                                            Order.returnHistory[Order.returnHistory.length - 1];
-
-                                                        if (!latestReturn.paymentDetails) return null;
-
-                                                        return Object.entries(latestReturn.paymentDetails)
-                                                            .filter(
-                                                                ([method, amount]) =>
-                                                                    method.toLowerCase() !== 'due' &&
-                                                                    Number(amount) > 0
-                                                            )
-                                                            .map(([method]) => (
-                                                                <span
-                                                                    key={`exchange-${method}`}
-                                                                    className="text-[8px] uppercase font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100"
-                                                                >
-                                                                    {method}
-                                                                </span>
-                                                            ));
-                                                    })()}
-                                            </div>
-
+                                                        ));
+                                                })()}
                                         </div>
+
                                         <div className="flex justify-between items-start pl-6 mt-1">
                                             <div>
                                                 {!isUpcomingStatus && (

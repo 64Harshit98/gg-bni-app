@@ -272,6 +272,14 @@ const CatalogueSalesSettings: React.FC = () => {
           {/* ── Pricing & Tax ───────────────────────────────────────────────── */}
           <SettingsCard title="Pricing & Tax">
             <div className="space-y-3">
+              <ToggleRow
+                id="item-discount"
+                label="Enable Item-wise Discount"
+                description="Allow discount per item."
+                checked={settings.enableItemWiseDiscount ?? false}
+                onChange={(checked) => handleCheckboxChange('enableItemWiseDiscount', checked)}
+                tooltip="Allow discounts to be applied to individual cart items."
+              />
 
               {/* GST Scheme */}
               <div className="rounded-sm bg-gray-50 border border-gray-100 p-3">

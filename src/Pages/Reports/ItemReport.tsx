@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import useItemReport from './ItemReportComponents/useItemReport';
 import type { Item } from '../../constants/models';
 import jsPDF from 'jspdf';
@@ -8,6 +8,7 @@ import { Spinner } from '../../constants/Spinner';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
+import { IconClose, IconSearch } from '../../constants/Icons';
 import { getItemColumns } from '../../constants/TableColoumns';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import FilterSelect from './ItemReportComponents/FilterSelect';
@@ -24,6 +25,8 @@ const UNASSIGNED_GROUP_NAME = 'Uncategorized';
 
 const ItemReport: React.FC = () => {
   const { currentUser } = useAuth();
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const {
     items,
     appliedItemGroupId,
@@ -44,6 +47,10 @@ const ItemReport: React.FC = () => {
 
   const { filteredItems, summary } = useMemo(() => {
     const newFilteredItems = items.filter((item) => {
+      const matchesSearch =
+        !searchQuery ||
+        (item.name && item.name.toLowerCase().includes(searchQuery.toLowerCase()));
+      if (!matchesSearch) return false;
       if (!appliedItemGroupId) return true;
       const itemGroupName = item.itemGroupId || UNASSIGNED_GROUP_NAME;
       return itemGroupName === appliedItemGroupId;
@@ -95,7 +102,7 @@ const ItemReport: React.FC = () => {
         averageMarginPercentage,
       },
     };
-  }, [appliedItemGroupId, sortConfig, items]);
+  }, [appliedItemGroupId, sortConfig, items, searchQuery]);
 
   const handleApplyFilters = () => setAppliedItemGroupId(itemGroupId);
 
@@ -668,11 +675,43 @@ const ItemReport: React.FC = () => {
       />
 
       <div className="flex items-center justify-between pb-3 border-b mb-2">
-        <BackButton/>
+        <button onClick={() => setShowSearch(true)} className="p-2">
+          <IconSearch />
+        </button>
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
           Item Report
         </h1>
+        <button
+          onClick={() => navigate(-1)}
+          className="rounded-full bg-gray-200 p-2 text-gray-900 hover:bg-gray-300"
+        >
+          <IconClose width={20} height={20} />
+        </button>
       </div>
+
+      {showSearch && (
+        <div className="flex justify-center mb-2 px-2">
+          <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-blue-700">
+            <input
+              type="text"
+              placeholder="Search by Name..."
+              className="flex-1 text-base font-light p-2 outline-none bg-transparent text-center"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              autoFocus
+            />
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setShowSearch(false);
+              }}
+              className="p-1 text-gray-500 hover:text-black"
+            >
+              <IconClose />
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white p-2 rounded-lg mb-2">
         <h2 className="text-center text-sm font-semibold text-gray-700 uppercase tracking-wider mb-2">

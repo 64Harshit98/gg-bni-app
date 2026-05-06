@@ -14,6 +14,7 @@ import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant, State } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
 
+import { IconClose, IconSearch } from '../../constants/Icons';
 import { getSalesColumns } from '../../constants/TableColoumns';
 import ReportDetails from './SalesReportComponents/ReportDetails';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
@@ -45,6 +46,8 @@ const SalesReport: React.FC = () => {
   } = useSalesReport();
 
   /* ---------- LOCAL STATES (ADDED) ---------- */
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
   const [feedbackModal, setFeedbackModal] = useState({
     isOpen: false,
@@ -112,11 +115,18 @@ const SalesReport: React.FC = () => {
       };
     }
 
-    const newFilteredSales = sales.filter(
-      (sale) =>
+    const newFilteredSales = sales.filter((sale) => {
+      const matchesDate =
         sale.createdAt >= appliedFilters.start &&
-        sale.createdAt <= appliedFilters.end,
-    );
+        sale.createdAt <= appliedFilters.end;
+
+      const matchesSearch =
+        !searchQuery ||
+        (sale.partyName &&
+          sale.partyName.toLowerCase().includes(searchQuery.toLowerCase()));
+
+      return matchesDate && matchesSearch;
+    });
 
     newFilteredSales.sort((a, b) => {
       const key = sortConfig.key;
@@ -168,7 +178,7 @@ const SalesReport: React.FC = () => {
         averageSaleValue,
       },
     };
-  }, [appliedFilters, sales, sortConfig]);
+  }, [appliedFilters, sales, sortConfig, searchQuery]);
 
   const downloadAsPdf = () => {
     if (!appliedFilters) return;
@@ -586,11 +596,37 @@ const SalesReport: React.FC = () => {
 
       {/* HEADER */}
       <div className="flex items-center justify-between pb-3 border-b mb-2 md:mb-4">
-        <BackButton/>
+        <button onClick={() => setShowSearch(true)} className="p-2">
+          <IconSearch />
+        </button>
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800 md:text-2xl">
           Sales Report
         </h1>
       </div>
+
+      {showSearch && (
+        <div className="flex justify-center mb-2 px-2">
+          <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-[#F97316]">
+            <input
+              type="text"
+              placeholder="Search by Customer..."
+              className="flex-1 text-base font-light p-2 outline-none bg-transparent text-center"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              autoFocus
+            />
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setShowSearch(false);
+              }}
+              className="p-1 text-gray-500 hover:text-black"
+            >
+              <IconClose />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* FILTERS */}
       <div className="bg-white p-2 rounded-lg shadow-md mb-2 md:p-5 md:mb-4 md:rounded-xl">

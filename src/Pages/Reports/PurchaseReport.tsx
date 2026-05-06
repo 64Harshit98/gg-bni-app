@@ -20,7 +20,6 @@ import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
 import { useAuth } from '../../context/auth-context';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
-import BackButton from '../../Components/BackButton';
 
 const PurchaseReport: React.FC = () => {
   const { currentUser } = useAuth();

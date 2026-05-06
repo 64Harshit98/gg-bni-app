@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import FilterSelect from './SalesReportComponents/FilterSelect';
 import {
     formatDate,
@@ -19,7 +20,6 @@ import ReportDetails from './SalesReportComponents/ReportDetails';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
-import BackButton from '../../Components/BackButton';
 
 // 1. Define the strictly 4-column structure
 export interface AggregatedItem {
@@ -60,6 +60,7 @@ const ItemsSoldReport: React.FC = () => {
     });
 
     const { currentUser } = useAuth();
+    const navigate = useNavigate();
     const [itemGroupMap, setItemGroupMap] = useState<Record<string, string>>({});
 
     useEffect(() => {
@@ -683,9 +684,14 @@ const ItemsSoldReport: React.FC = () => {
                 <button onClick={() => setShowSearch(true)} className="p-2">
                     <IconSearch />
                 </button>
+
                 <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
                     Items Sold Report
                 </h1>
+
+                <button onClick={() => navigate(-1)} className="rounded-full bg-gray-200 p-2 text-gray-900 hover:bg-gray-300">
+                    <IconClose />
+                </button>
             </div>
 
             {showSearch && (

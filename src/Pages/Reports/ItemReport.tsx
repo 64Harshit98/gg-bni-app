@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import useItemReport from './ItemReportComponents/useItemReport';
 import type { Item } from '../../constants/models';
 import jsPDF from 'jspdf';
@@ -18,13 +19,13 @@ import { useAuth } from '../../context/auth-context'
 // Import your Modal and State
 import { Modal } from '../../constants/Modal'; // Adjust path to where you saved the Modal code
 import { State } from '../../enums';
-import BackButton from '../../Components/BackButton';
 
 const UNASSIGNED_GROUP_NAME = 'Uncategorized';
 // --- Helper Component ---
 
 const ItemReport: React.FC = () => {
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const {

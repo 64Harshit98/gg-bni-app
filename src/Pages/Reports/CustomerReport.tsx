@@ -17,7 +17,6 @@ import useCustomerReport from './CustomerReportComponents/useCustomerReport';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import { collection, onSnapshot, query } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
-import BackButton from '../../Components/BackButton';
 
 type CustomerRowWithCredit = CustomerRow & {
   id: string;
@@ -666,7 +665,9 @@ const CustomerReport: React.FC = () => {
           <IconSearch />
         </button>
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">Customer Report</h1>
-        <BackButton/>
+        <button onClick={() => navigate(-1)} className="rounded-full bg-gray-200 p-2 text-gray-900 hover:bg-gray-300">
+            <IconClose />
+        </button>
       </div>
 
       {showSearch && (

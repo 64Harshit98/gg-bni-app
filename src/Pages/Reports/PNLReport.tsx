@@ -2,7 +2,6 @@ import React, { useMemo, useState } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import XLSX from 'xlsx-js-style';
-
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant, State } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
@@ -16,7 +15,6 @@ import { handleDatePresetChange } from './PNLReportComponents/pnlReport.utils';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
-import BackButton from '../../Components/BackButton';
 
 const PnlReportPage: React.FC = () => {
   const {
@@ -630,6 +628,9 @@ const PnlReportPage: React.FC = () => {
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
           Profit & Loss Report
         </h1>
+        <button onClick={() => navigate(-1)} className="rounded-full bg-gray-200 p-2 text-gray-900 hover:bg-gray-300">
+            <IconClose />
+        </button>
       </div>
 
       {showSearch && (

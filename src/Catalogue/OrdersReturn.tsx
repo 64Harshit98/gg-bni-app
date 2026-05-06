@@ -270,7 +270,8 @@ const OrdersReturnPage: React.FC = () => {
           if (!id) return null;
 
           const qty = Number(item.quantity) || 0;
-          const price = Number(item.salesPrice ?? item.mrp) || 0;
+          const price =
+            Number(item.customPrice ?? item.unitPrice ?? item.salesPrice ?? item.mrp) || 0;
           const unit = price;
           const total = price * qty;
 
@@ -711,7 +712,9 @@ const OrdersReturnPage: React.FC = () => {
         const safeId = item.id;
         const qty = Number(item.quantity) || 1;
         const total = Number(item.finalPrice || item.amount || 0);
-        const unit = Number(item.salesPrice) || (qty > 0 ? total / qty : 0);
+        const unit =
+          Number(item.customPrice ?? item.unitPrice ?? item.salesPrice) ||
+          (qty > 0 ? total / qty : 0);
 
         originalItemsMap.set(safeId, {
           ...item,

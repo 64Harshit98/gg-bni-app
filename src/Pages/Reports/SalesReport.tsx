@@ -10,6 +10,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import XLSX from 'xlsx-js-style';
 
+import { useNavigate } from 'react-router-dom';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant, State } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
@@ -20,7 +21,6 @@ import ReportDetails from './SalesReportComponents/ReportDetails';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
 import { useAuth } from '../../context/auth-context';
-import BackButton from '../../Components/BackButton';
 
 
 const SalesReport: React.FC = () => {
@@ -54,6 +54,7 @@ const SalesReport: React.FC = () => {
     type: State.INFO,
     message: '',
   });
+   const navigate = useNavigate();
 
   /* ---------- DATE PRESET ---------- */
   const handleDatePresetChange = (preset: string) => {
@@ -602,6 +603,9 @@ const SalesReport: React.FC = () => {
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800 md:text-2xl">
           Sales Report
         </h1>
+         <button onClick={() => navigate(-1)} className="rounded-full bg-gray-200 p-2 text-gray-900 hover:bg-gray-300">
+              <IconClose />
+          </button>
       </div>
 
       {showSearch && (

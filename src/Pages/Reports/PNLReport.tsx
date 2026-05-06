@@ -6,6 +6,7 @@ import XLSX from 'xlsx-js-style';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant, State } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
+import { IconClose, IconSearch } from '../../constants/Icons';
 import { getPnlColumns } from '../../constants/TableColoumns';
 import FilterSelect from './SalesReportComponents/FilterSelect';
 import { usePnlReport, usePnlStates } from './PNLReportComponents/usePnlReport';
@@ -44,6 +45,8 @@ const PnlReportPage: React.FC = () => {
 
   /* ---------- LOCAL STATES (ADDED) ---------- */
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [feedbackModal, setFeedbackModal] = useState({
     isOpen: false,
     type: State.INFO,
@@ -65,18 +68,15 @@ const PnlReportPage: React.FC = () => {
         s.createdAt.getTime() <= endTimestamp,
     );
 
-    const totalRevenue = filteredSales.reduce(
-      (sum, sale) => sum + sale.totalAmount,
-      0,
-    );
-    const totalCostOfGoodsSold = filteredSales.reduce(
-      (sum, sale) => sum + (sale.costOfGoodsSold || 0),
-      0,
-    );
+    // const totalRevenue = filteredSales.reduce(
+    //   (sum, sale) => sum + sale.totalAmount,
+    //   0,
+    // );
+    // const totalCostOfGoodsSold = filteredSales.reduce(
+    //   (sum, sale) => sum + (sale.costOfGoodsSold || 0),
+    //   0,
+    // );
 
-    const grossProfit = totalRevenue - totalCostOfGoodsSold;
-    const grossProfitPercentage =
-      totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
 
     const salesTransactions: TransactionDetail[] = filteredSales.map((s) => {
       const cogs = s.costOfGoodsSold ?? 0;
@@ -92,7 +92,14 @@ const PnlReportPage: React.FC = () => {
       };
     });
 
-    salesTransactions.sort((a, b) => {
+    const searchTerm = searchQuery.trim().toLowerCase();
+    const invoiceFilteredTransactions = searchTerm
+      ? salesTransactions.filter((t) =>
+          (t.invoiceNumber || '').toLowerCase().includes(searchTerm),
+        )
+      : salesTransactions;
+
+    invoiceFilteredTransactions.sort((a, b) => {
       const key = sortConfig.key;
       const direction = sortConfig.direction === 'asc' ? 1 : -1;
       const valA = (a[key] as any) ?? (typeof a[key] === 'number' ? 0 : '');
@@ -112,14 +119,34 @@ const PnlReportPage: React.FC = () => {
 
     return {
       pnlSummary: {
-        totalRevenue,
-        totalCost: totalCostOfGoodsSold,
-        grossProfit,
-        grossProfitPercentage,
+        totalRevenue: invoiceFilteredTransactions.reduce(
+          (sum, t) => sum + t.totalAmount,
+          0,
+        ),
+        totalCost: invoiceFilteredTransactions.reduce(
+          (sum, t) => sum + (t.costOfGoodsSold || 0),
+          0,
+        ),
+        grossProfit: invoiceFilteredTransactions.reduce(
+          (sum, t) => sum + (t.profit || 0),
+          0,
+        ),
+        grossProfitPercentage:
+          invoiceFilteredTransactions.reduce((sum, t) => sum + t.totalAmount, 0) > 0
+            ? (invoiceFilteredTransactions.reduce(
+                (sum, t) => sum + (t.profit || 0),
+                0,
+              ) /
+                invoiceFilteredTransactions.reduce(
+                  (sum, t) => sum + t.totalAmount,
+                  0,
+                )) *
+              100
+            : 0,
       },
-      filteredTransactions: salesTransactions,
+      filteredTransactions: invoiceFilteredTransactions,
     };
-  }, [sales, appliedFilters, sortConfig]);
+  }, [sales, appliedFilters, sortConfig, searchQuery]);
 
   /* ---------- SORT ---------- */
   const handleSort = (key: keyof TransactionDetail) => {
@@ -597,11 +624,37 @@ const PnlReportPage: React.FC = () => {
 
       {/* HEADER */}
       <div className="flex items-center justify-between pb-3 border-b mb-2">
-        <BackButton/>
+        <button onClick={() => setShowSearch(true)} className="p-2">
+          <IconSearch />
+        </button>
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
           Profit & Loss Report
         </h1>
       </div>
+
+      {showSearch && (
+        <div className="flex justify-center mb-2 px-2">
+          <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-blue-700">
+            <input
+              type="text"
+              placeholder="Search by INV Number..."
+              className="flex-1 text-base font-light p-2 outline-none bg-transparent text-center"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              autoFocus
+            />
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setShowSearch(false);
+              }}
+              className="p-1 text-gray-500 hover:text-black"
+            >
+              <IconClose />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* FILTERS */}
       <div className="bg-white p-4 rounded-lg shadow-md mb-2">

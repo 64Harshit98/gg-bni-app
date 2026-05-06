@@ -671,7 +671,7 @@ const CustomerReport: React.FC = () => {
 
       {showSearch && (
         <div className="flex justify-center mb-2 px-2">
-          <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-[#F97316]">
+          <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-blue-700">
             <input
               type="text"
               placeholder="Search by Customer..."

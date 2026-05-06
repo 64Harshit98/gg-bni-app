@@ -12,7 +12,6 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import XLSX from 'xlsx-js-style';
 
-import { IconClose } from '../../constants/Icons';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';

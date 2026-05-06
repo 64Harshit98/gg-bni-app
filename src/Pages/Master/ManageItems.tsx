@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import useItemReport from '../Reports/ItemReportComponents/useItemReport';
 
 import FilterSelect from '../Reports/ItemReportComponents/FilterSelect';
@@ -11,7 +12,6 @@ import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
 
 import type { Item } from '../../constants/models';
-import BackButton from '../../Components/BackButton';
 
 const UNASSIGNED_GROUP_NAME = 'Uncategorized';
 
@@ -27,6 +27,7 @@ type SortOption =
 
 const ManageItems: React.FC = () => {
 
+  const navigate = useNavigate();
   const {
     items,
     itemGroups,

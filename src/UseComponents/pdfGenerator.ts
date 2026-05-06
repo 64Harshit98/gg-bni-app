@@ -255,35 +255,81 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
 
   // --- 3. PARTIES SECTION ---
   const billName = data.billTo.name;
-  const billAddr = doc.splitTextToSize(data.billTo.address, contentWidth - 10);
+  const billAddr = doc.splitTextToSize(data.billTo.address, contentWidth / 2 - 10);
   const billPhone = `Phone.No.  : ${data.billTo.phone || ''}`;
   const billEmail = `E Mail  : ${data.billTo.email || ''}`;
   const billGst = `GST No. : ${data.billTo.gstin || ''}`;
+
+  const shipName = data.shipTo?.name || '';
+  const shipAddr = doc.splitTextToSize(data.shipTo?.address || '', contentWidth / 2 - 10);
+  const shipPhone = `Phone.No.  : ${data.shipTo?.phone || ''}`;
+  const shipGst = `GST No. : ${data.shipTo?.gstin || ''}`;
+
   const lineHeight = 5;
   const padding = 10;
-  const fixedLines = 5;
-  const billLines = fixedLines + billAddr.length;
-  const partyHeight = (billLines * lineHeight) + padding;
+
+  const billLines = 5 + billAddr.length;
+  const shipLines = 4 + shipAddr.length;
+
+  const partyHeight = (Math.max(billLines, shipLines) * lineHeight) + padding;
 
   drawBox(cursorY, partyHeight);
 
+  // Divider line
+  doc.line(pageWidth / 2, cursorY, pageWidth / 2, cursorY + partyHeight);
+
   const headerY = cursorY + 5;
+
+  // Headers
   doc.setFont('helvetica', 'bold');
-  doc.text('Billed to :', startX + 2, headerY);
-  const billedToWidth = doc.getTextWidth('Billed to :');
-  doc.line(startX + 2, headerY + 1, startX + 2 + billedToWidth, headerY + 1);
+  doc.text(isEstimate ? 'Estimate For :' : 'Billed to :', startX + 2, headerY);
+
+  if (!isEstimate) {
+    doc.text('Shipped to :', (pageWidth / 2) + 2, headerY);
+  }
+
   doc.setFont('helvetica', 'normal');
 
-  let currentY = headerY + 6;
-  doc.text(billName, startX + 2, currentY);
-  currentY += lineHeight;
-  doc.text(billAddr, startX + 2, currentY);
-  currentY += (billAddr.length * lineHeight);
-  doc.text(billPhone, startX + 2, currentY);
-  currentY += lineHeight;
-  doc.text(billEmail, startX + 2, currentY);
-  currentY += lineHeight;
-  doc.text(billGst, startX + 2, currentY);
+  //Bill / Estimate
+  let currentYLeft = headerY + 6;
+  doc.text(isEstimate ? shipName : billName, startX + 2, currentYLeft);
+
+  currentYLeft += lineHeight;
+  const leftAddr = isEstimate ? shipAddr : billAddr;
+  doc.text(leftAddr, startX + 2, currentYLeft);
+  currentYLeft += (leftAddr.length * lineHeight);
+
+  doc.text(
+    isEstimate
+      ? `Phone.No.  : ${data.shipTo?.phone || ''}`
+      : billPhone,
+    startX + 2,
+    currentYLeft
+  );
+
+  currentYLeft += lineHeight;
+
+  if (!isEstimate) {
+    doc.text(billEmail, startX + 2, currentYLeft);
+    currentYLeft += lineHeight;
+    doc.text(billGst, startX + 2, currentYLeft);
+  }
+
+  // Shipping
+  if (!isEstimate) {
+    let currentYRight = headerY + 6;
+
+    doc.text(shipName, (pageWidth / 2) + 2, currentYRight);
+    currentYRight += lineHeight;
+
+    doc.text(shipAddr, (pageWidth / 2) + 2, currentYRight);
+    currentYRight += (shipAddr.length * lineHeight);
+
+    doc.text(shipPhone, (pageWidth / 2) + 2, currentYRight);
+    currentYRight += lineHeight;
+
+    doc.text(shipGst, (pageWidth / 2) + 2, currentYRight);
+  }
 
   cursorY += partyHeight;
 

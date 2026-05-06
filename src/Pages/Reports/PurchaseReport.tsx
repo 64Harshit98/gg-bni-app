@@ -14,6 +14,7 @@ import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant, State } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
 
+import { IconClose, IconSearch } from '../../constants/Icons';
 import { getPurchaseColumns } from '../../constants/TableColoumns';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
@@ -45,6 +46,8 @@ const PurchaseReport: React.FC = () => {
 
   /* ---------- LOCAL STATES (ADDED) ---------- */
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [feedbackModal, setFeedbackModal] = useState({
     isOpen: false,
     type: State.INFO,
@@ -110,7 +113,18 @@ const PurchaseReport: React.FC = () => {
     }
 
 
-    const newFilteredPurchases = [...purchases];
+    const newFilteredPurchases = purchases.filter((purchase) => {
+      const matchesDate =
+        purchase.createdAt >= appliedFilters.start &&
+        purchase.createdAt <= appliedFilters.end;
+      const matchesSearch =
+        !searchQuery ||
+        (purchase.partyName &&
+          purchase.partyName
+            .toLowerCase()
+            .includes(searchQuery.toLowerCase()));
+      return matchesDate && matchesSearch;
+    });
 
     newFilteredPurchases.sort((a, b) => {
       const key = sortConfig.key;
@@ -163,7 +177,7 @@ const PurchaseReport: React.FC = () => {
       },
 
     };
-  }, [appliedFilters, purchases, sortConfig]);
+  }, [appliedFilters, purchases, sortConfig, searchQuery]);
 
   /* ---------- PDF DOWNLOAD ---------- */
     const downloadAsPdf = async () => {
@@ -634,11 +648,37 @@ const PurchaseReport: React.FC = () => {
 
       {/* HEADER */}
       <div className="flex items-center justify-between pb-3 border-b mb-2">
-        <BackButton/>
+        <button onClick={() => setShowSearch(true)} className="p-2">
+          <IconSearch />
+        </button>
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
           Purchase Report
         </h1>
       </div>
+
+      {showSearch && (
+        <div className="flex justify-center mb-2 px-2">
+          <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-blue-700">
+            <input
+              type="text"
+              placeholder="Search by Name..."
+              className="flex-1 text-base font-light p-2 outline-none bg-transparent text-center"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              autoFocus
+            />
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setShowSearch(false);
+              }}
+              className="p-1 text-gray-500 hover:text-black"
+            >
+              <IconClose />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* FILTERS */}
       <div className="bg-white p-4 rounded-lg shadow-md mb-2">

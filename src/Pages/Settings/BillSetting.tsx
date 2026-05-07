@@ -13,7 +13,7 @@ export interface BillSettingsData {
     upiId?: string;
     termsAndConditions: string;
     signatureBase64?: string;
-    printFormat?: 'A4' | 'THERMAL58';
+    printFormat?: 'A4' | 'A5' | 'THERMAL58';
 }
 
 interface BusinessInfoData {
@@ -210,7 +210,7 @@ const BillSettings: React.FC = () => {
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
             <div className="flex items-center bg-white border-b border-gray-200 sticky top-0 z-10">
-                <BackButton className='ml-3'/>
+                <BackButton className='ml-3' />
                 <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
                     <h1 className="text-2xl font-bold text-gray-900">Invoice Configuration</h1>
                     <p className="text-sm text-gray-500 mt-1">Manage details printed on your bills.</p>
@@ -391,6 +391,22 @@ const BillSettings: React.FC = () => {
                                 <div className="ml-3">
                                     <span className="block text-sm font-medium text-gray-900">A4 Size</span>
                                     <span className="block text-xs text-gray-500">Standard full-page invoice layout.</span>
+                                </div>
+                            </label>
+
+                            <label className={`flex-1 flex items-center p-4 border rounded-sm cursor-pointer transition-colors ${settings.printFormat === 'A5' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 hover:bg-gray-50'
+                                }`}>
+                                <input
+                                    type="radio"
+                                    name="printFormat"
+                                    value="A5"
+                                    checked={settings.printFormat === 'A5'}
+                                    onChange={handleChange}
+                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                />
+                                <div className="ml-3">
+                                    <span className="block text-sm font-medium text-gray-900">A5 Size</span>
+                                    <span className="block text-xs text-gray-500">Half-page compact invoice layout.</span>
                                 </div>
                             </label>
 

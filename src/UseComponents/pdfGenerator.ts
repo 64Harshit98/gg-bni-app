@@ -5,12 +5,12 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 import QRCode from 'qrcode';
 import { generateThermalReceipt } from './ThermalpdfGenerator';
-
+import { generateA5Invoice } from './A5PdfGenerator';
 export interface InvoiceData {
-  printFormat?: 'A4' | 'THERMAL58';
+  printFormat?: 'A4' | 'THERMAL58' | 'A5';
   gstScheme?: string;
   taxType?: string;
-
+  companyGstType?: string;
   companyName: string;
   companyAddress: string;
   companyContact: string;
@@ -21,6 +21,7 @@ export interface InvoiceData {
   signatureBase64?: string;
   billDiscount?: number;
   upiId?: string;
+  ifscCode?: number;
 
   billTo: {
     name: string;
@@ -50,12 +51,15 @@ export interface InvoiceData {
     name: string;
     hsn: string;
     quantity: number;
+    totalPcs?: number;
     unit: string;
     listPrice: number;
     gstPercent?: number;
     taxRate?: number;
     discountAmount: number;
     amount?: number;
+    gstAmount?: number;
+    imageBase64?: string;
   }[];
   terms: string;
   bankDetails?: {
@@ -64,13 +68,28 @@ export interface InvoiceData {
     bankName?: string;
     gstin?: string;
     ifsc?: string;
+    ifscCode?: string;
   };
 }
 
 export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | ACTION.PRINT | ACTION.BLOB = ACTION.DOWNLOAD): Promise<Blob | void> => {
+  const isEstimate = (data as any).isEstimate === true;
 
   if (data.printFormat === 'THERMAL58') {
     return generateThermalReceipt(data, action);
+  }
+
+  if (data.printFormat === 'A5') {
+
+    data.companyGstType =
+      data.companyGstType ||
+      data.gstScheme;
+
+    return generateA5Invoice(
+      data,
+      isEstimate,
+      action
+    );
   }
 
   const doc = new jsPDF('p', 'mm', 'a4');
@@ -108,8 +127,6 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     ? data.taxType.toUpperCase()
     : 'EXCLUSIVE';
 
-  const isEstimate = (data as any).isEstimate === true;
-  console.log(isEstimate)
 
   const drawBox = (y: number, h: number) => {
     doc.rect(startX, y, contentWidth, h);

@@ -422,7 +422,7 @@ const OrdersPage: React.FC = () => {
     const dbOperations = useDatabase();
     const [_error, setError] = useState<string | null>(null);
     const [availableItems, setAvailableItems] = useState<Item[]>([]);
-    const [billType, setBillType] = useState<'estimate' | 'bill'>('estimate');
+    const [billType, setBillType] = useState<'estimate' | 'bill'>('bill');
     // const [pendingRequestCount, setPendingRequestCount] = useState(0);
 
     const { currentUser } = useAuth();
@@ -2224,7 +2224,7 @@ const OrdersPage: React.FC = () => {
                 <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4" onClick={() => setSelectedOrderForAction(null)}>
                     <div className="bg-white rounded-sm p-6 w-full max-w-sm shadow-xl" onClick={e => e.stopPropagation()}>
                         <div className="flex mb-4 bg-slate-100 rounded-sm p-1">
-                            {['estimate', 'bill'].map((type) => (
+                            {['bill', 'estimate'].map((type) => (
                                 <button
                                     key={type}
                                     onClick={() => setBillType(type as any)}

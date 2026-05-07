@@ -3,6 +3,8 @@ import autoTable from "jspdf-autotable";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../lib/Firebase";
 import { resolveCompanyLogoBase64 } from "../hooks/useCompanyLogo";
+import { generateA5Invoice } from "../../UseComponents/A5PdfGenerator";
+import { ACTION } from "../../enums/index";
 
 export interface CatalogueInvoiceData {
   companyId?: string;
@@ -64,6 +66,134 @@ export const CatalogueBill = async (
   action: "download" | "print" | "blob" = "download"
 ): Promise<Blob | void> => {
 
+  if ((data as any).printFormat === "A5") {
+
+    const a5Data = {
+      companyName: data.companyName,
+      companyAddress: data.companyAddress || "",
+      companyContact: data.companyPhone || "",
+      isEstimate: data.isEstimate === true,
+      companyGstType: data.companyGstType,
+      taxType: data.taxType,
+
+      billTo: {
+        name:
+          data.customer?.billing?.name ||
+          data.customer?.shipping?.name ||
+          "",
+
+        address:
+          data.customer?.billing?.address ||
+          data.customer?.shipping?.address ||
+          "",
+
+        phone:
+          data.customer?.billing?.phone ||
+          data.customer?.shipping?.phone ||
+          "",
+
+        email: "",
+
+        gstin:
+          data.customer?.billing?.gstin ||
+          data.customer?.shipping?.gstin ||
+          ""
+      },
+
+      shipTo: {
+        name:
+          data.customer?.shipping?.name ||
+          data.customer?.billing?.name ||
+          "",
+
+        address:
+          data.customer?.shipping?.address ||
+          data.customer?.billing?.address ||
+          "",
+
+        phone:
+          data.customer?.shipping?.phone ||
+          data.customer?.billing?.phone ||
+          "",
+
+        gstin:
+          data.customer?.shipping?.gstin ||
+          data.customer?.billing?.gstin ||
+          ""
+      },
+
+      invoice: {
+        number: data.order?.orderId || "",
+        date: data.order?.date || ""
+      },
+
+      items: data.items.map((item: any, index: number) => {
+
+        const taxPercent = item.tax ?? item.gst ?? item.taxRate ?? 0;
+        const qty = item.qty || 0;
+        const price = item.price || 0;
+
+        let gstAmount = 0;
+        let subtotal = 0;
+
+        const isTaxEnabled =
+          data.companyGstType === "Regular";
+
+        if (!isTaxEnabled || !taxPercent) {
+
+          subtotal = price * qty;
+          gstAmount = 0;
+
+        }
+        else if (data.taxType === 'inclusive') {
+          const base = price / (1 + taxPercent / 100);
+          subtotal = base * qty;
+          gstAmount = (price - base) * qty;
+        }
+        else {
+          subtotal = price * qty;
+          gstAmount = (subtotal * taxPercent) / 100;
+        }
+        const totalPcs =
+          qty * (item.unitMultiplier ?? 1);
+
+        return {
+          sno: index + 1,
+          name: item.name,
+          hsn: "",
+          quantity: qty,
+          totalPcs,
+          unit: "Pcs",
+          listPrice: price,
+          imageBase64: item.imageBase64 || "",
+          gstPercent: taxPercent,
+          gstAmount: gstAmount,
+          discountAmount: 0,
+          amount: subtotal + gstAmount
+        };
+      }),
+
+      finalAmount: data.grandTotal,
+
+      bankDetails: {
+        accountNumber: data.accountNumber,
+        bankName: data.bankName,
+        accountName: data.accountName,
+        ifscCode: data.ifscCode
+      },
+
+      companyGstin: data.companyGstin,
+      terms: data.termsAndConditions,
+      signatureBase64: data.signatureBase64
+    };
+
+    return generateA5Invoice(
+      a5Data as any,
+      data.isEstimate === true,
+      action === "print" ? ACTION.PRINT : ACTION.DOWNLOAD
+    );
+  }
+
   const isEstimate = data.isEstimate === true;
   const doc = new jsPDF("p", "mm", "a4");
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -108,7 +238,7 @@ export const CatalogueBill = async (
       } catch (e) {
         console.error("Logo render error:", e);
       }
-    }    const now = new Date();
+    } const now = new Date();
     const generatedAt = now.toLocaleString('en-IN', {
       day: '2-digit',
       month: '2-digit',
@@ -129,7 +259,7 @@ export const CatalogueBill = async (
     doc.setFont("helvetica", "bold");
     doc.setFontSize(20);
 
-   const textAreaWidth = pageWidth - (margin * 2) - logoSize - 4;
+    const textAreaWidth = pageWidth - (margin * 2) - logoSize - 4;
     doc.text(
       isEstimate
         ? "ESTIMATE"
@@ -148,7 +278,7 @@ export const CatalogueBill = async (
       const addressLines = doc.splitTextToSize(
         data.companyAddress || "",
         pageWidth - (margin * 2) - logoSize - 6
-);
+      );
 
       doc.text(addressLines, pageWidth / 2, y + 11, { align: "center" });
 
@@ -1088,6 +1218,7 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
 
   return {
     ...invoiceData,
+    printFormat: billSettings.printFormat || "A4",
     logoBase64,
 
     companyName: companyData.name || "",

@@ -10,6 +10,7 @@ import BackButton from '../../Components/BackButton';
 
 // --- Interface for Bill Specific Settings ---
 export interface BillSettingsData {
+    printFormat?: 'A4' | 'THERMAL58' | 'A5';
     upiId?: string;
     termsAndConditions: string;
     signatureBase64?: string;
@@ -59,6 +60,7 @@ const CatalogueBillSettings: React.FC = () => {
     });
 
     const [settings, setSettings] = useState<BillSettingsData>({
+        printFormat: "A4", 
         upiId: '',
         termsAndConditions: '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
         signatureBase64: ''
@@ -116,6 +118,7 @@ const CatalogueBillSettings: React.FC = () => {
                 });
 
                 const loadedSettings: BillSettingsData = {
+                    printFormat: sData.printFormat || "A4",
                     upiId: sData.upiId || bData.upiId || '',
                     termsAndConditions:
                         sData.termsAndConditions ||
@@ -181,6 +184,7 @@ const CatalogueBillSettings: React.FC = () => {
                 upiId: settings.upiId,
                 termsAndConditions: settings.termsAndConditions,
                 signatureBase64: currentSignature,
+                printFormat: settings.printFormat || "A4",
 
                 // ✅ Always sync from businessInfo so these stay fresh
                 companyGstin: businessInfo.gstin,
@@ -224,7 +228,7 @@ const CatalogueBillSettings: React.FC = () => {
 
             {/* --- Page Header --- */}
             <div className="flex items-center bg-white border-b border-gray-200 sticky top-0 z-10">
-                <BackButton className='ml-3'/>
+                <BackButton className='ml-3' />
                 <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
                     <h1 className="text-2xl font-bold text-gray-900">Invoice Configuration</h1>
                     <p className="text-sm text-gray-500 mt-1">Manage details printed on your bills.</p>
@@ -415,6 +419,49 @@ const CatalogueBillSettings: React.FC = () => {
                         </div>
                     </div>
                 </div>
+
+                {/* --- NEW SECTION: Print Preferences --- */}
+                <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden">
+                    <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+                        <h2 className="text-lg font-semibold text-gray-800">Print Preferences</h2>
+                        <p className="text-xs text-gray-500">Choose your default bill format.</p>
+                    </div>
+                    <div className="p-6">
+                        <div className="flex flex-col sm:flex-row gap-4">
+                            <label className={`flex-1 flex items-center p-4 border rounded-sm cursor-pointer transition-colors ${settings.printFormat === 'A4' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 hover:bg-gray-50'}`}>
+                                <input
+                                    type="radio"
+                                    name="printFormat"
+                                    value="A4"
+                                    checked={settings.printFormat === 'A4'}
+                                    onChange={handleChange}
+                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                />
+                                <div className="ml-3">
+                                    <span className="block text-sm font-medium text-gray-900">A4 Size</span>
+                                    <span className="block text-xs text-gray-500">Standard full-page invoice layout.</span>
+                                </div>
+                            </label>
+
+                            <label className={`flex-1 flex items-center p-4 border rounded-sm cursor-pointer transition-colors ${settings.printFormat === 'A5' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 hover:bg-gray-50'
+                                }`}>
+                                <input
+                                    type="radio"
+                                    name="printFormat"
+                                    value="A5"
+                                    checked={settings.printFormat === 'A5'}
+                                    onChange={handleChange}
+                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                />
+                                <div className="ml-3">
+                                    <span className="block text-sm font-medium text-gray-900">A5 Size</span>
+                                    <span className="block text-xs text-gray-500">Half-page compact invoice layout.</span>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                {/* ------------------------------------- */}
 
                 {/* SECTION 3: Digital Signature */}
                 <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden">

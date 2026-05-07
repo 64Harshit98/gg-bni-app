@@ -96,6 +96,7 @@ const OrdersReturnPage: React.FC = () => {
   const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
   const [scannerPurpose, setScannerPurpose] = useState<'sale' | 'item' | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [exchangeBalanceAction, setExchangeBalanceAction] = useState<'Credit Note' | 'Cash Refund'>('Credit Note');
 
   // const isActive = (path: string) => location.pathname === path;
 
@@ -933,7 +934,11 @@ const OrdersReturnPage: React.FC = () => {
       );
 
       // --- 9. CUSTOMER LEDGER ---
-      if (finalPartyNumber.length >= 3 && finalBalance > 0) {
+      const shouldAddCredit =
+        finalBalance > 0 &&
+        (modeOfReturn === 'Credit Note' ||
+          (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Credit Note'));
+      if (finalPartyNumber.length >= 3 && shouldAddCredit) {
         batch.set(
           doc(db, 'companies', companyId, 'customers', finalPartyNumber),
           {
@@ -1095,6 +1100,7 @@ const OrdersReturnPage: React.FC = () => {
   const getBalanceLabel = () => {
     if (finalBalance < 0) return 'Payment Due';
     if (modeOfReturn === 'Cash Refund') return 'Refund Amount';
+    if (modeOfReturn === 'Exchange' && finalBalance > 0 && exchangeBalanceAction === 'Cash Refund') return 'Refund Amount';
     return 'Credit Due';
   };
 
@@ -1232,7 +1238,7 @@ const OrdersReturnPage: React.FC = () => {
                 <div className="space-y-3 mb-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div><label className="block text-xs font-bold text-gray-500 uppercase">Date</label><input type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-[#F97316] outline-none text-sm" /></div>
-                    <div><label className="block text-xs font-bold text-gray-500 uppercase">Party</label><input type="text" value={partyName} onChange={(e) => setPartyName(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-[#F97316] outline-none text-sm" /></div>
+                    <div><label className="block text-xs font-bold text-gray-500 uppercase">Party</label><input type="text" value={partyName} readOnly className="w-full p-1 border-b border-gray-300 focus:border-[#F97316] outline-none text-sm" /></div>
                   </div>
 
                   {/* --- NEW DROPDOWN FOR PARTY NUMBER --- */}
@@ -1241,15 +1247,16 @@ const OrdersReturnPage: React.FC = () => {
                     <input
                       type="text"
                       value={partyNumber}
-                      onChange={(e) => {
-                        const value = e.target.value.replace(/\D/g, '');
-                        if (value.length <= 10) {
-                          setPartyNumber(value);
-                          setPartyName('');
-                          setIsCustomerDropdownOpen(true);
-                        }
-                      }}
-                      onFocus={() => setIsCustomerDropdownOpen(true)}
+                      readOnly
+                      // onChange={(e) => {
+                      //   const value = e.target.value.replace(/\D/g, '');
+                      //   if (value.length <= 10) {
+                      //     setPartyNumber(value);
+                      //     setPartyName('');
+                      //     setIsCustomerDropdownOpen(true);
+                      //   }
+                      // }}
+                      // onFocus={() => setIsCustomerDropdownOpen(true)}
                       className="w-full p-1 border-b border-gray-300 focus:border-[#F97316] outline-none text-sm"
                       autoComplete="off"
                       placeholder="Search customer by number or name..."
@@ -1414,7 +1421,19 @@ const OrdersReturnPage: React.FC = () => {
                 )}
                 <div className="border-t border-gray-200 my-2"></div>
                 <div className={`flex justify-between items-center text-lg font-bold ${finalBalance >= 0 ? 'text-[#F97316]' : 'text-red-600'}`}>
-                  <p>{getBalanceLabel()}</p><p>₹{Math.abs(finalBalance).toFixed(2)}</p>
+                  {modeOfReturn === 'Exchange' && finalBalance > 0 ? (
+                    <select
+                      value={exchangeBalanceAction}
+                      onChange={(e) => setExchangeBalanceAction(e.target.value as any)}
+                      className="bg-transparent border border-gray-300 rounded-sm hover:border-gray-400 focus:border-orange-500 outline-none cursor-pointer py-1 pr-2 text-gray-700 transition-colors"
+                    >
+                      <option value="Credit Note">Credit Due</option>
+                      <option value="Cash Refund">Cash Refund</option>
+                    </select>
+                  ) : (
+                    <p>{getBalanceLabel()}</p>
+                  )}
+                  <p>₹{Math.abs(finalBalance).toFixed(2)}</p>
                 </div>
               </div>
             </>
@@ -1465,7 +1484,18 @@ const OrdersReturnPage: React.FC = () => {
               {/* Final Total */}
               <div className="mt-auto pt-4 border-t border-gray-100">
                 <div className="flex justify-between items-end mb-4">
-                  <span className="text-gray-500 font-medium">{getBalanceLabel()}</span>
+                  {modeOfReturn === 'Exchange' && finalBalance > 0 ? (
+                    <select
+                      value={exchangeBalanceAction}
+                      onChange={(e) => setExchangeBalanceAction(e.target.value as any)}
+                      className="text-gray-500 font-medium bg-transparent border border-gray-200 rounded-sm hover:border-gray-400 focus:border-orange-500 outline-none cursor-pointer pb-1 pr-2 transition-colors"
+                    >
+                      <option value="Credit Note">Credit Due</option>
+                      <option value="Cash Refund">Cash Refund</option>
+                    </select>
+                  ) : (
+                    <span className="text-gray-500 font-medium">{getBalanceLabel()}</span>
+                  )}
                   <span className={`text-3xl font-bold ${finalBalance >= 0 ? 'text-[#F97316]' : 'text-red-600'}`}>
                     ₹{Math.abs(finalBalance).toFixed(2)}
                   </span>

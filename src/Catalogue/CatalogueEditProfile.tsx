@@ -229,6 +229,8 @@ const useCatalogueData = (companyId?: string, catalogueId?: string, userId?: str
         businessDocRef,
         {
           ...cleanBusinessData,
+          ...(phone !== undefined && { phoneNumber: phone }),
+          ...(msmeUdyamNumber !== undefined && { msmeUdyamNumber }),
           updatedAt: serverTimestamp(),
         },
         { merge: true }
@@ -242,7 +244,7 @@ const useCatalogueData = (companyId?: string, catalogueId?: string, userId?: str
           name,
           profilePicture,
           ...(data.email !== undefined && { email: data.email }),
-          ...(data.phone !== undefined && { phone: data.phone }),
+          ...(data.phone !== undefined && { phoneNumber: data.phone }),
           ...(data.msmeUdyamNumber !== undefined && { msmeUdyamNumber }),
         },
         { merge: true }

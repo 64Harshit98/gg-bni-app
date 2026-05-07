@@ -20,6 +20,12 @@ import { GenericCartList } from '../../Components/CartItem';
 import { GenericBillFooter } from '../../Components/Footer';
 import { IconScanCircle } from '../../constants/Icons';
 
+// Removes all undefined values from an object before sending to Firestore
+const sanitizeForFirestore = <T extends Record<string, any>>(obj: T): T => {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([_, v]) => v !== undefined)
+  ) as T;
+};
 interface PurchaseItem extends Omit<SalesItem, 'finalPrice' | 'effectiveUnitPrice' | 'discountPercentage'> {
   purchasePrice: number | string;
   originalPurchasePrice?: number;
@@ -693,7 +699,7 @@ const PurchasePage: React.FC = () => {
         };
 
         const newPurchaseRef = doc(collection(db, 'companies', companyId, 'purchases'));
-        transaction.set(newPurchaseRef, purchaseData);
+        transaction.set(newPurchaseRef, sanitizeForFirestore(purchaseData));
 
         const stockUpdates = new Map<string, number>();
         formattedItemsForDB.forEach(item => {
@@ -733,8 +739,18 @@ const PurchasePage: React.FC = () => {
         setTimeout(() => { setModal(null); }, 1500);
       }
     } catch (err: any) {
-      console.error('Error saving purchase:', err);
-      setModal({ message: `Save failed: ${err.message || 'Unknown error'}`, type: State.ERROR });
+      console.error('Error saving purchase:', err?.code, err?.message);
+      if (err?.code === 'unavailable' || err?.message?.includes('network-request-failed')) {
+        setModal({ message: 'Network lost during save. Please check your connection and try again.', type: State.ERROR });
+      } else if (err?.message?.includes('undefined') || err?.message?.includes('invalid data')) {
+        setModal({ message: 'Save failed due to invalid data. Please refresh and try again.', type: State.ERROR });
+      } else if (err?.code === 'permission-denied') {
+        setModal({ message: 'You do not have permission to complete this action.', type: State.ERROR });
+      } else if (err?.code === 'aborted') {
+        setModal({ message: 'Transaction conflict. Please try again.', type: State.ERROR });
+      } else {
+        setModal({ message: 'Failed to save purchase. Please try again.', type: State.ERROR });
+      }
     }
   };
 
@@ -799,7 +815,7 @@ const PurchasePage: React.FC = () => {
           createdAt: getParsedInvoiceDate(),
         };
 
-        transaction.update(purchaseRef, updatedPurchaseData);
+        transaction.update(purchaseRef, sanitizeForFirestore(updatedPurchaseData));
       });
       // ✅ FIX: Update local inventory immediately for edit mode
       setAvailableItems(prev => prev.map(item => {
@@ -816,8 +832,18 @@ const PurchasePage: React.FC = () => {
 
       showSuccessModal('Purchase updated successfully!', ROUTES.JOURNAL);
     } catch (err: any) {
-      console.error('Error updating purchase:', err);
-      setModal({ message: `Update failed: ${err.message || 'Unknown error'}`, type: State.ERROR });
+      console.error('Error updating purchase:', err?.code, err?.message);
+      if (err?.code === 'unavailable' || err?.message?.includes('network-request-failed')) {
+        setModal({ message: 'Network lost during update. Please check your connection and try again.', type: State.ERROR });
+      } else if (err?.message?.includes('undefined') || err?.message?.includes('invalid data')) {
+        setModal({ message: 'Update failed due to invalid data. Please refresh and try again.', type: State.ERROR });
+      } else if (err?.code === 'permission-denied') {
+        setModal({ message: 'You do not have permission to complete this action.', type: State.ERROR });
+      } else if (err?.code === 'aborted') {
+        setModal({ message: 'Transaction conflict. Please try again.', type: State.ERROR });
+      } else {
+        setModal({ message: 'Failed to update purchase. Please try again.', type: State.ERROR });
+      }
     }
   };
 

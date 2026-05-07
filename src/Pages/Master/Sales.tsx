@@ -1118,7 +1118,8 @@ const Sales: React.FC = () => {
 
                 const lineTotal = toCurrency(effectiveUnitPrice * currentQuantity);
 
-                const itemSpecificTaxRate = (item.tax !== undefined && item.taxRate !== null) ? Number(item.tax) : currentTaxRate;
+                const rawTax = item.tax ?? item.taxRate ?? currentTaxRate;
+                const itemSpecificTaxRate = isNaN(Number(rawTax)) ? 0 : Number(rawTax);
                 let itemTaxableBase = 0, itemTaxAmount = 0, itemFinalPrice = 0;
 
                 if (finalGstScheme === 'regular' && itemSpecificTaxRate > 0 && isTaxEnabled) {
@@ -1150,7 +1151,19 @@ const Sales: React.FC = () => {
 
         const finalInvoiceTotal = finalAmount - completionData.discount + (completionData.extraExpenseAmount || 0);
         const totalInvoiceDiscount = totalDiscount + (completionData.discount || 0);
-
+        const sanitizeForFirestore = (obj: any): any => {
+            if (Array.isArray(obj)) return obj.map(sanitizeForFirestore);
+            if (obj !== null && typeof obj === 'object' && !(obj instanceof Date)) {
+                const cleaned: any = {};
+                for (const [key, value] of Object.entries(obj)) {
+                    if (value === undefined) cleaned[key] = null;
+                    else if (typeof value === 'number' && isNaN(value)) cleaned[key] = 0;
+                    else cleaned[key] = sanitizeForFirestore(value);
+                }
+                return cleaned;
+            }
+            return obj;
+        };
 
         const saveOperation = async (transaction: any, isNew: boolean, existingId?: string) => {
             const customDate = getParsedInvoiceDate();
@@ -1214,7 +1227,7 @@ const Sales: React.FC = () => {
                 const newSaleRef = doc(collection(db, "companies", companyId, "sales"));
 
                 // 4. Set the Sale
-                transaction.set(newSaleRef, saleData);
+                transaction.set(newSaleRef, sanitizeForFirestore(saleData));
 
                 // 5. Increment the Counter
                 if (!isInvoiceNumberManuallyEdited.current) {
@@ -1228,7 +1241,7 @@ const Sales: React.FC = () => {
             } else if (existingId) {
                 const invoiceRef = doc(db, "companies", companyId, "sales", existingId);
                 saleData.createdAt = customDate;
-                transaction.update(invoiceRef, saleData);
+                transaction.update(invoiceRef, sanitizeForFirestore(saleData));
                 return { id: existingId, number: invoiceToEdit.invoiceNumber };
             }
             return null;
@@ -1346,7 +1359,31 @@ const Sales: React.FC = () => {
                 }
             }
         } catch (e: any) {
-            console.error(e); setModal({ message: "Error saving", type: State.ERROR });
+            console.error("Save error:", e?.code, e?.message);
+
+            if (e?.code === 'unavailable' || e?.message?.includes('network-request-failed')) {
+                setModal({
+                    message: 'Network lost during save. Please check your connection and try again.',
+                    type: State.ERROR
+                });
+            } else if (e?.message?.includes('undefined') || e?.message?.includes('invalid data')) {
+                setModal({
+                    message: 'Save failed due to invalid data. Please refresh and try again.',
+                    type: State.ERROR
+                });
+            } else if (e?.code === 'permission-denied') {
+                setModal({
+                    message: 'You do not have permission to complete this action.',
+                    type: State.ERROR
+                });
+            } else if (e?.code === 'aborted') {
+                setModal({
+                    message: 'Transaction conflict. Please try again.',
+                    type: State.ERROR
+                });
+            } else {
+                setModal({ message: 'Failed to save invoice. Please try again.', type: State.ERROR });
+            }
         } finally {
             setIsSaving(false);
         }
@@ -1460,8 +1497,8 @@ const Sales: React.FC = () => {
                 throw new Error("API reported failure.");
             }
         } catch (err: any) {
-            console.error("WhatsApp Send Error:", err);
-            setModal({ message: "Failed to send WhatsApp invoice.", type: State.ERROR });
+            console.error("WhatsApp Send Error:", err?.code, err?.message);
+            setModal({ message: "Failed to send invoice via WhatsApp. Please try again.", type: State.ERROR });
         } finally {
             setSendingPdf(false);
         }

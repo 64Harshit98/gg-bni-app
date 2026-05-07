@@ -1,5 +1,4 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import FilterSelect from './SalesReportComponents/FilterSelect';
 import {
     formatDate,
@@ -19,6 +18,7 @@ import { IconClose, IconSearch } from '../../constants/Icons';
 import ReportDetails from './SalesReportComponents/ReportDetails';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
+import BackButton from '../../Components/BackButton';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 
 // 1. Define the strictly 4-column structure
@@ -60,7 +60,6 @@ const ItemsSoldReport: React.FC = () => {
     });
 
     const { currentUser } = useAuth();
-    const navigate = useNavigate();
     const [itemGroupMap, setItemGroupMap] = useState<Record<string, string>>({});
 
     useEffect(() => {
@@ -681,16 +680,14 @@ const ItemsSoldReport: React.FC = () => {
 
             {/* HEADER */}
             <div className="flex items-center justify-between pb-3 border-b mb-2">
-                <button onClick={() => setShowSearch(true)} className="p-2">
-                    <IconSearch />
-                </button>
+                <BackButton />
 
                 <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
                     Items Sold Report
                 </h1>
 
-                <button onClick={() => navigate(-1)} className="rounded-full bg-gray-200 p-2 text-gray-900 hover:bg-gray-300">
-                    <IconClose />
+                <button onClick={() => setShowSearch(true)} className="p-2">
+                    <IconSearch />
                 </button>
             </div>
 

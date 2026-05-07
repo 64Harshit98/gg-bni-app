@@ -10,11 +10,10 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import XLSX from 'xlsx-js-style';
 
-import { useNavigate } from 'react-router-dom';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant, State } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
-
+import BackButton from '../../Components/BackButton';
 import { IconClose, IconSearch } from '../../constants/Icons';
 import { getSalesColumns } from '../../constants/TableColoumns';
 import ReportDetails from './SalesReportComponents/ReportDetails';
@@ -54,7 +53,6 @@ const SalesReport: React.FC = () => {
     type: State.INFO,
     message: '',
   });
-   const navigate = useNavigate();
 
   /* ---------- DATE PRESET ---------- */
   const handleDatePresetChange = (preset: string) => {
@@ -597,20 +595,18 @@ const SalesReport: React.FC = () => {
 
       {/* HEADER */}
       <div className="flex items-center justify-between pb-3 border-b mb-2 md:mb-4">
-        <button onClick={() => setShowSearch(true)} className="p-2">
-          <IconSearch />
-        </button>
+        <BackButton />
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800 md:text-2xl">
           Sales Report
         </h1>
-         <button onClick={() => navigate(-1)} className="rounded-full bg-gray-200 p-2 text-gray-900 hover:bg-gray-300">
-              <IconClose />
-          </button>
+        <button onClick={() => setShowSearch(true)} className="p-2">
+          <IconSearch />
+        </button>
       </div>
 
       {showSearch && (
         <div className="flex justify-center mb-2 px-2">
-          <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-blue-700">
+          <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-[#F97316]">
             <input
               type="text"
               placeholder="Search by Customer..."

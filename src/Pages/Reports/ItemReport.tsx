@@ -1,5 +1,4 @@
 import React, { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import useItemReport from './ItemReportComponents/useItemReport';
 import type { Item } from '../../constants/models';
 import jsPDF from 'jspdf';
@@ -9,6 +8,7 @@ import { Spinner } from '../../constants/Spinner';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
+import BackButton from '../../Components/BackButton';
 import { IconClose, IconSearch } from '../../constants/Icons';
 import { getItemColumns } from '../../constants/TableColoumns';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
@@ -25,7 +25,6 @@ const UNASSIGNED_GROUP_NAME = 'Uncategorized';
 
 const ItemReport: React.FC = () => {
   const { currentUser } = useAuth();
-  const navigate = useNavigate();
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const {
@@ -676,17 +675,12 @@ const ItemReport: React.FC = () => {
       />
 
       <div className="flex items-center justify-between pb-3 border-b mb-2">
-        <button onClick={() => setShowSearch(true)} className="p-2">
-          <IconSearch />
-        </button>
+        <BackButton />
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
           Item Report
         </h1>
-        <button
-          onClick={() => navigate(-1)}
-          className="rounded-full bg-gray-200 p-2 text-gray-900 hover:bg-gray-300"
-        >
-          <IconClose width={20} height={20} />
+        <button onClick={() => setShowSearch(true)} className="p-2">
+          <IconSearch />
         </button>
       </div>
 

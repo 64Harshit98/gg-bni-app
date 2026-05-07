@@ -653,6 +653,12 @@ const PurchaseReport: React.FC = () => {
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
           Purchase Report
         </h1>
+        <button
+          onClick={() => window.history.back()}
+          className="rounded-full bg-gray-200 p-2 text-gray-900 hover:bg-gray-300"
+        >
+          <IconClose />
+        </button>
       </div>
 
       {showSearch && (

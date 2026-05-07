@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+
 type PaymentRecord = {
     date: string | number | Date;
     method: string;
@@ -14,6 +15,7 @@ type LedgerTransaction = {
     type: string;
     paymentHistory: PaymentRecord[];
 };
+
 import { formatDate, formatDateForInput } from '../../Pages/Reports/SalesReportComponents/salesReport.utils';
 import FilterSelect from '../../Pages/Reports/SalesReportComponents/FilterSelect';
 import { useAuth } from '../../context/auth-context';
@@ -28,51 +30,58 @@ const useOrdersData = (companyId?: string) => {
 
     React.useEffect(() => {
         if (!companyId) return;
-
         const ref = collection(db, 'companies', companyId, 'Orders');
         const q = query(ref, orderBy('createdAt', 'desc'));
-
         const unsub = onSnapshot(q, (snapshot) => {
-            const data = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setOrders(data);
         });
-
         return () => unsub();
     }, [companyId]);
 
     return { Orders };
 };
 
-const PartyLedger: React.FC = () => {
+const CataloguePartyLedger: React.FC = () => {
+    const pageTopRef = useRef<HTMLDivElement | null>(null);
     const { currentUser } = useAuth();
+    const { Orders } = useOrdersData(currentUser?.companyId);
 
-    const { Orders } = useOrdersData(
-        currentUser?.companyId
-    );
     const [selectedPartyName, setSelectedPartyName] = useState<string | null>(null);
     const [isLoading] = useState(false);
     const [authLoading] = useState(false);
     const [error] = useState<string | null>(null);
 
-    const [datePreset, setDatePreset] = useState('today');
+    const [datePreset, setDatePreset] = useState('last30');
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
+    const [appliedStartDate, setAppliedStartDate] = useState('');
+    const [appliedEndDate, setAppliedEndDate] = useState('');
 
     const [expandedBillId, setExpandedBillId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
 
-const [appliedStartDate, setAppliedStartDate] = useState('');
-const [appliedEndDate, setAppliedEndDate] = useState('');
+    // Set default date range on mount
+    useEffect(() => {
+        const start = new Date();
+        start.setDate(start.getDate() - 29);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date();
+        end.setHours(23, 59, 59, 999);
+        const s = formatDateForInput(start);
+        const e = formatDateForInput(end);
+        setCustomStartDate(s);
+        setCustomEndDate(e);
+        setAppliedStartDate(s);
+        setAppliedEndDate(e);
+    }, []);
 
-React.useEffect(() => {
-    if (customStartDate && customEndDate && !appliedStartDate) {
-        setAppliedStartDate(customStartDate);
-        setAppliedEndDate(customEndDate);
-    }
-}, [customStartDate, customEndDate]);
+    useEffect(() => {
+        if (!selectedPartyName) return;
+        requestAnimationFrame(() => {
+            pageTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    }, [selectedPartyName]);
 
     const toggleBillExpansion = (billId: string) => {
         setExpandedBillId(prev => prev === billId ? null : billId);
@@ -80,106 +89,64 @@ React.useEffect(() => {
 
     const handleDatePresetChange = (preset: string) => {
         setDatePreset(preset);
+        if (preset === 'custom') return;
+
         const start = new Date();
         const end = new Date();
 
-    switch (preset) {
-    case 'today':
-        start.setHours(0, 0, 0, 0);
-        end.setHours(23, 59, 59, 999);
-        break;
-
-    case 'yesterday':
-        start.setDate(start.getDate() - 1);
-        end.setDate(end.getDate() - 1);
-        start.setHours(0, 0, 0, 0);
-        end.setHours(23, 59, 59, 999);
-        break;
-
-    case 'last7':
-        start.setDate(start.getDate() - 6);
-        start.setHours(0, 0, 0, 0);
-        end.setHours(23, 59, 59, 999);
-        break;
-
-    case 'last30':
-        start.setDate(start.getDate() - 29);
-        start.setHours(0, 0, 0, 0);
-        end.setHours(23, 59, 59, 999);
-        break;
-
-    case 'thisMonth':
-        start.setDate(1);
-        start.setHours(0, 0, 0, 0);
-        end.setFullYear(end.getFullYear(), end.getMonth() + 1, 0);
-        end.setHours(23, 59, 59, 999);
-        break;
-
-    case 'custom':
-        return;
+        switch (preset) {
+            case 'today':
+                start.setHours(0, 0, 0, 0);
+                end.setHours(23, 59, 59, 999);
+                break;
+            case 'yesterday':
+                start.setDate(start.getDate() - 1);
+                end.setDate(end.getDate() - 1);
+                start.setHours(0, 0, 0, 0);
+                end.setHours(23, 59, 59, 999);
+                break;
+            case 'last7':
+                start.setDate(start.getDate() - 6);
+                start.setHours(0, 0, 0, 0);
+                end.setHours(23, 59, 59, 999);
+                break;
+            case 'last30':
+                start.setDate(start.getDate() - 29);
+                start.setHours(0, 0, 0, 0);
+                end.setHours(23, 59, 59, 999);
+                break;
+            case 'thisMonth':
+                start.setDate(1);
+                start.setHours(0, 0, 0, 0);
+                end.setFullYear(end.getFullYear(), end.getMonth() + 1, 0);
+                end.setHours(23, 59, 59, 999);
+                break;
         }
 
         setCustomStartDate(formatDateForInput(start));
         setCustomEndDate(formatDateForInput(end));
     };
 
+    // ─── FILTERED ORDERS (respects applied date range) ───────────────────────
+    const dateFilteredOrders = useMemo(() => {
+        if (!appliedStartDate && !appliedEndDate) return Orders;
+        const start = appliedStartDate ? new Date(appliedStartDate).setHours(0, 0, 0, 0) : 0;
+        const end = appliedEndDate ? new Date(appliedEndDate).setHours(23, 59, 59, 999) : Date.now();
+        return Orders.filter((order: any) => {
+            const orderDate = order.createdAt?.toDate
+                ? order.createdAt.toDate().getTime()
+                : new Date(order.createdAt).getTime();
+            return orderDate >= start && orderDate <= end;
+        });
+    }, [Orders, appliedStartDate, appliedEndDate]);
 
-    const selectedPartyLedger = useMemo(() => {
-        if (!selectedPartyName) return null;
-
-        const transactions = Orders
-            .filter((order: any) => order.userName === selectedPartyName)
-            .map((order: any) => {
-                const total = Number(order.totalAmount || 0);
-                const paid = Number(order.paidAmount || 0);
-
-                return {
-                    id: order.id,
-                    invoiceNumber: order.orderId,
-                    createdAt: order.createdAt?.toDate ? order.createdAt.toDate() : new Date(),
-                    totalAmount: total,
-                    dueAmount: Math.max(0, total - paid),
-                    type: 'sale',
-                    paymentHistory: [] // can enhance later
-                };
-            });
-
-        const totalBilled = transactions.reduce((sum, t) => sum + t.totalAmount, 0);
-        const totalDue = transactions.reduce((sum, t) => sum + t.dueAmount, 0);
-
-        return {
-            transactions,
-            totalBilled,
-            totalDue
-        };
-    }, [selectedPartyName, Orders]);
-
+    // ─── PARTY LIST (from date-filtered orders) ───────────────────────────────
     const filteredParties = useMemo(() => {
-        // Apply DATE FILTER first
-        let filteredOrders = Orders || [];
-
-        if (appliedStartDate || appliedEndDate) {
-            const start = appliedStartDate ? new Date(appliedStartDate).setHours(0,0,0,0) : 0;
-            const end = appliedEndDate ? new Date(appliedEndDate).setHours(23,59,59,999) : Date.now();
-
-            filteredOrders = filteredOrders.filter((order: any) => {
-                const orderDate = order.createdAt?.toDate
-                    ? order.createdAt.toDate().getTime()
-                    : new Date(order.createdAt).getTime();
-
-                return orderDate >= start && orderDate <= end;
-            });
-        }
-
-        // convert Orders → party summaries
         const map = new Map();
-
-        filteredOrders.forEach((order: any) => {
+        dateFilteredOrders.forEach((order: any) => {
             const name = order.userName || 'Unknown';
             const number = order.userLoginPhone || '';
-
             const key = `${name}-${number}`;
-
             if (!map.has(key)) {
                 map.set(key, {
                     partyName: name,
@@ -187,50 +154,75 @@ React.useEffect(() => {
                     totalBilled: 0,
                     totalDue: 0,
                     totalTransactions: 0,
-                    partyType: 'Customer'
+                    partyType: 'Customer',
                 });
             }
-
             const existing = map.get(key);
-
             const total = Number(order.totalAmount || 0);
             const paid = Number(order.paidAmount || 0);
-            const due = Math.max(0, total - paid);
-
             existing.totalBilled += total;
-            existing.totalDue += due;
+            existing.totalDue += Math.max(0, total - paid);
             existing.totalTransactions += 1;
         });
 
         const partyData = Array.from(map.values());
 
         if (!searchQuery.trim()) return partyData;
-
         const lowerQuery = searchQuery.toLowerCase();
-
         return partyData.filter(party =>
             party.partyName.toLowerCase().includes(lowerQuery) ||
             party.partyNumber.toLowerCase().includes(lowerQuery)
         );
-    }, [searchQuery, Orders, appliedStartDate, appliedEndDate]);
+    }, [dateFilteredOrders, searchQuery]);
+
+    // ─── DETAIL LEDGER (uses same date-filtered orders) ───────────────────────
+    const selectedPartyLedger = useMemo(() => {
+        if (!selectedPartyName) return null;
+
+        const transactions = dateFilteredOrders
+            .filter((order: any) => order.userName === selectedPartyName)
+            .map((order: any) => {
+                const total = Number(order.totalAmount || 0);
+                const paid = Number(order.paidAmount || 0);
+                return {
+                    id: order.id,
+                    invoiceNumber: order.orderId,
+                    createdAt: order.createdAt?.toDate ? order.createdAt.toDate() : new Date(),
+                    totalAmount: total,
+                    dueAmount: Math.max(0, total - paid),
+                    type: 'sale',
+                    paymentHistory: [] as PaymentRecord[],
+                };
+            });
+
+        return {
+            transactions,
+            totalBilled: transactions.reduce((sum, t) => sum + t.totalAmount, 0),
+            totalDue: transactions.reduce((sum, t) => sum + t.dueAmount, 0),
+        };
+    }, [selectedPartyName, dateFilteredOrders]);
+
+    const goBack = () => {
+        setSelectedPartyName(null);
+        setExpandedBillId(null);
+    };
 
     if (isLoading || authLoading) return <div className="p-4 text-center">Loading Ledger...</div>;
     if (error) return <div className="p-4 text-center text-red-500">{error}</div>;
 
     return (
-        <div className="min-h-screen bg-gray-50 pb-16">
+        <div ref={pageTopRef} className="min-h-screen bg-gray-50 pb-16">
 
-            {/* HEADER FOR MASTER LIST ONLY */}
+            {/* HEADER — master list only */}
             {!selectedPartyName && (
                 <div className="flex items-center justify-between pb-4 border-b border-gray-200 mb-3">
-                    <BackButton className='mt-2 ml-3'/>
-                    <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
-                        Party Ledger
-                    </h1>
+                    <BackButton className="mt-2 ml-3" />
+                    <h1 className="flex-1 text-xl text-center font-bold text-gray-800">Party Ledger</h1>
+                    <div className="w-10 mt-2 mr-3" />
                 </div>
             )}
 
-            {/* FILTERS & SEARCH (Hidden when viewing detail) */}
+            {/* FILTERS — master list only */}
             {!selectedPartyName && (
                 <div className="bg-white p-3 rounded-sm shadow-sm border border-gray-200 mb-4">
                     <div className="mb-3">
@@ -239,7 +231,7 @@ React.useEffect(() => {
                             placeholder="Search by Party Name or Number..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full p-2 border border-gray-300 rounded-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                            className="w-full p-2 border border-gray-300 rounded-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm"
                         />
                     </div>
 
@@ -252,14 +244,12 @@ React.useEffect(() => {
                             <option value="thisMonth">This Month</option>
                             <option value="custom">Custom</option>
                         </FilterSelect>
-
                         <div className="grid grid-cols-2 gap-2 sm:gap-4">
                             <input type="date" value={customStartDate} onChange={(e) => { setCustomStartDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border border-gray-200 rounded-sm" />
                             <input type="date" value={customEndDate} onChange={(e) => { setCustomEndDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border border-gray-200 rounded-sm" />
                         </div>
                     </div>
 
-                    {/* APPLY BUTTON */}
                     <div className="mt-3">
                         <button
                             onClick={() => {
@@ -268,7 +258,7 @@ React.useEffect(() => {
                                 setSelectedPartyName(null);
                                 setExpandedBillId(null);
                             }}
-                            className="w-full px-3 py-2 bg-blue-600 text-white text-sm font-semibold rounded-md hover:bg-blue-700 transition-colors"
+                            className="w-full px-3 py-2 bg-orange-500 text-white text-sm font-semibold rounded-md hover:bg-orange-600 transition-colors"
                         >
                             Apply
                         </button>
@@ -278,31 +268,26 @@ React.useEffect(() => {
 
             {/* MAIN VIEW */}
             {!selectedPartyName ? (
-                // VIEW 1: MASTER LIST (Unified List Container with Card-like row layouts)
+                // VIEW 1: MASTER LIST
                 <div className="space-y-2 mt-2">
                     {filteredParties.length === 0 ? (
                         <div className="p-6 text-center text-gray-500 bg-white">No parties found for this period.</div>
                     ) : (
                         filteredParties.map((party) => (
                             <CustomCard
-                                key={party.partyName}
-                                onClick={() => setSelectedPartyName(party.partyName)}
+                                key={`${party.partyName}-${party.partyNumber}`}
+                                onClick={() => {
+                                    setSelectedPartyName(party.partyName);
+                                    setExpandedBillId(null);
+                                }}
                                 className="cursor-pointer transition-shadow hover:shadow-md p-3.5 bg-white"
                             >
-                                {/* Top Row: Badge and Total */}
                                 <div className="flex items-start justify-between mb-1.5">
-                                    <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider whitespace-nowrap ${party.partyType === 'Customer' ? 'bg-blue-50 text-blue-600 border-blue-200' :
-                                        party.partyType === 'Supplier' ? 'bg-purple-50 text-purple-600 border-purple-200' :
-                                            'bg-orange-50 text-orange-600 border-orange-200'
-                                        }`}>
+                                    <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider whitespace-nowrap bg-orange-50 text-orange-600 border-orange-200">
                                         {party.partyType}
                                     </span>
-                                    <p className="text-xs text-slate-400">
-                                        Total: ₹{party.totalBilled.toLocaleString('en-IN')}
-                                    </p>
+                                    <p className="text-xs text-slate-400">Total: ₹{party.totalBilled.toLocaleString('en-IN')}</p>
                                 </div>
-
-                                {/* Bottom Row: Name/Number and Pending Due */}
                                 <div className="flex items-end justify-between">
                                     <div>
                                         <p className="text-base font-semibold text-slate-800">{party.partyName}</p>
@@ -321,22 +306,20 @@ React.useEffect(() => {
                     )}
                 </div>
             ) : (
-                // VIEW 2: DETAILED LEDGER
+                // VIEW 2: DETAIL LEDGER
                 <div className="flex flex-col gap-2">
 
-                    {/* UNIFIED STICKY HEADER: Title + Summary Card */}
-                    <div className="sticky top-0 z-30 pt-2 pb-3 -mx-2 px-2 backdrop-blur-md ">
-                        {/* Top Bar with Title and Close */}
+                    {/* STICKY HEADER */}
+                    <div className="sticky top-0 z-30 pt-2 pb-3 -mx-2 px-2 backdrop-blur-md">
                         <div className="flex items-center justify-between pb-2 mb-2">
+                            <div className="w-10 h-10" />
                             <h1 className="flex-1 text-lg text-center font-bold text-gray-800 truncate px-2">
                                 {selectedPartyName} - Ledger
                             </h1>
                             <button
-                                onClick={() => {
-                                    setSelectedPartyName(null);
-                                    setExpandedBillId(null);
-                                }}
-                                className="p-2 text-gray-500 hover:bg-gray-200 rounded-full transition-colors"
+                                onClick={goBack}
+                                className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-200 transition-colors text-slate-500 hover:text-slate-800"
+                                aria-label="Close"
                             >
                                 <IconClose width={20} height={20} />
                             </button>
@@ -344,7 +327,7 @@ React.useEffect(() => {
 
                         {/* Summary Card */}
                         <div className="rounded-sm border border-slate-200 bg-white overflow-hidden">
-                            <div className="bg-sky-100 border-b border-slate-100 px-4 py-2 flex justify-between items-center">
+                            <div className="bg-orange-50 border-b border-orange-100 px-4 py-2 flex justify-between items-center">
                                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Ledger Summary</span>
                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{selectedPartyLedger?.transactions.length} Bills</span>
                             </div>
@@ -355,7 +338,7 @@ React.useEffect(() => {
                                         ₹{selectedPartyLedger?.totalBilled.toLocaleString('en-IN')}
                                     </span>
                                 </div>
-                                <div className="h-10 w-px bg-slate-200 mx-3"></div>
+                                <div className="h-10 w-px bg-slate-200 mx-3" />
                                 <div className="flex flex-col flex-1 text-right">
                                     <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Total Pending</span>
                                     <span className={`text-lg sm:text-xl font-extrabold truncate ${selectedPartyLedger && selectedPartyLedger.totalDue > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
@@ -368,41 +351,35 @@ React.useEffect(() => {
 
                     {/* Bill Cards */}
                     <div className="px-1 space-y-3">
+                        {selectedPartyLedger?.transactions.length === 0 && (
+                            <div className="p-6 text-center text-gray-500 bg-white rounded-sm">No transactions found for this period.</div>
+                        )}
                         {selectedPartyLedger?.transactions.map((txn: LedgerTransaction) => {
                             const isExpanded = expandedBillId === txn.id;
-
                             return (
                                 <CustomCard key={txn.id} onClick={() => toggleBillExpansion(txn.id)} className="cursor-pointer transition-shadow hover:shadow-md bg-white">
                                     <div className="flex justify-between items-end w-full -mt-5 relative pointer-events-none">
-                                        {/* LEFT: Transaction Type Badge */}
                                         <div className="flex justify-start gap-1 flex-wrap max-w-[50%] pointer-events-auto">
-                                            <span className={`text-[8px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider whitespace-nowrap ${txn.type === 'sale' ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-purple-50 text-purple-600 border-purple-200'}`}>
+                                            <span className="text-[8px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider whitespace-nowrap bg-orange-50 text-orange-600 border-orange-200">
                                                 {txn.type}
                                             </span>
                                         </div>
                                     </div>
 
                                     <div className="flex items-center justify-between mt-2">
-                                        {/* LEFT ALIGNED INFO */}
                                         <div className="flex-1">
                                             <p className="text-base font-semibold text-slate-800">{txn.invoiceNumber || txn.id.slice(0, 8)}</p>
                                             <p className="text-sm text-slate-500 mt-1">{formatDate(txn.createdAt.getTime())}</p>
                                         </div>
 
-                                        {/* CENTER SETTLED BADGE */}
                                         <div className="flex-shrink-0 px-2 sm:px-4 flex items-center justify-center">
                                             {txn.dueAmount <= 0 ? (
-                                                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded uppercase tracking-widest">
-                                                    Settled
-                                                </span>
+                                                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded uppercase tracking-widest">Settled</span>
                                             ) : (
-                                                <span className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded uppercase tracking-widest">
-                                                    Due
-                                                </span>
+                                                <span className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded uppercase tracking-widest">Due</span>
                                             )}
                                         </div>
 
-                                        {/* RIGHT ALIGNED AMOUNTS & CHEVRON */}
                                         <div className="flex items-center justify-end space-x-3 flex-1">
                                             <div className="text-right">
                                                 {txn.dueAmount > 0 ? (
@@ -414,25 +391,18 @@ React.useEffect(() => {
                                                     <p className="text-lg font-bold text-slate-800">{txn.totalAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })}</p>
                                                 )}
                                             </div>
-                                            {IconChevronDown ? (
-                                                <IconChevronDown className={`w-5 h-5 text-slate-400 transition-transform duration-200 flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />
-                                            ) : (
-                                                <div className={`transition-transform duration-200 text-slate-400 flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`}>▼</div>
-                                            )}
+                                            <IconChevronDown className={`w-5 h-5 text-slate-400 transition-transform duration-200 flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />
                                         </div>
                                     </div>
 
                                     {isExpanded && (
                                         <div className="mt-3">
                                             <div className="relative py-2">
-                                                <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                                                    <div className="w-full border-t border-slate-200"></div>
-                                                </div>
+                                                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200" /></div>
                                                 <div className="relative flex justify-center">
                                                     <span className="bg-white px-2 text-xs font-bold text-slate-400 uppercase tracking-widest">Payment History</span>
                                                 </div>
                                             </div>
-
                                             <div className="space-y-1 mt-2">
                                                 {txn.paymentHistory && txn.paymentHistory.length > 0 ? (
                                                     txn.paymentHistory.map((payment: PaymentRecord, index: number) => (
@@ -446,16 +416,13 @@ React.useEffect(() => {
                                                                         {new Date(payment.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
                                                                     </span>
                                                                 </div>
-
-                                                                <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border bg-blue-50 text-blue-600 border-blue-200">
+                                                                <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border bg-orange-50 text-orange-600 border-orange-200">
                                                                     {payment.method === 'upi' ? 'UPI' : payment.method.replace(/_/g, ' ')}
                                                                 </span>
                                                             </div>
-                                                            <div className="text-right">
-                                                                <span className="font-semibold text-emerald-600 text-sm">
-                                                                    + {payment.amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })}
-                                                                </span>
-                                                            </div>
+                                                            <span className="font-semibold text-emerald-600 text-sm">
+                                                                + {payment.amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })}
+                                                            </span>
                                                         </div>
                                                     ))
                                                 ) : (
@@ -474,4 +441,4 @@ React.useEffect(() => {
     );
 };
 
-export default PartyLedger;
+export default CataloguePartyLedger;

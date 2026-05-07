@@ -15,6 +15,7 @@ import { handleDatePresetChange } from './PNLReportComponents/pnlReport.utils';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import BackButton from '../../Components/BackButton';
 
 const PnlReportPage: React.FC = () => {
   const {
@@ -622,14 +623,12 @@ const PnlReportPage: React.FC = () => {
 
       {/* HEADER */}
       <div className="flex items-center justify-between pb-3 border-b mb-2">
-        <button onClick={() => setShowSearch(true)} className="p-2">
-          <IconSearch />
-        </button>
+        <BackButton />
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
           Profit & Loss Report
         </h1>
-        <button onClick={() => navigate(-1)} className="rounded-full bg-gray-200 p-2 text-gray-900 hover:bg-gray-300">
-            <IconClose />
+        <button onClick={() => setShowSearch(true)} className="p-2">
+          <IconSearch />
         </button>
       </div>
 

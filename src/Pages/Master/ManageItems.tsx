@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import useItemReport from '../Reports/ItemReportComponents/useItemReport';
 
 import FilterSelect from '../Reports/ItemReportComponents/FilterSelect';
 import { Spinner } from '../../constants/Spinner';
+import BackButton from '../../Components/BackButton';
 import { IconClose, IconSearch } from '../../constants/Icons';
 import { FiEdit2, FiTrash2 } from 'react-icons/fi';
 
@@ -27,7 +27,6 @@ type SortOption =
 
 const ManageItems: React.FC = () => {
 
-  const navigate = useNavigate();
   const {
     items,
     itemGroups,
@@ -145,17 +144,12 @@ const ManageItems: React.FC = () => {
 
       {/* -------------------- HEADER -------------------- */}
       <div className="flex items-center justify-between bg-white border-b px-4 py-3 shadow-sm">
-        <button onClick={() => setShowSearch(true)} className="p-2">
-          <IconSearch />
-        </button>
+        <BackButton />
         <h1 className="text-xl font-bold text-gray-800 text-center flex-1">
           Manage Items
         </h1>
-        <button
-          onClick={() => navigate(-1)}
-          className="p-2 rounded-full bg-gray-200 hover:bg-gray-300"
-        >
-          <IconClose width={20} height={20} />
+        <button onClick={() => setShowSearch(true)} className="p-2">
+          <IconSearch />
         </button>
       </div>
 

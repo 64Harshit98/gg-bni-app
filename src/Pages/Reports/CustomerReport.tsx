@@ -15,6 +15,7 @@ import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { type CustomerRow } from './CustomerReportComponents/customerReport.utils';
 import useCustomerReport from './CustomerReportComponents/useCustomerReport';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import BackButton from '../../Components/BackButton';
 import { collection, onSnapshot, query } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 
@@ -661,12 +662,10 @@ const CustomerReport: React.FC = () => {
       />
 
       <div className="flex items-center justify-between pb-3 border-b mb-2">
+        <BackButton />
+        <h1 className="flex-1 text-xl text-center font-bold text-gray-800">Customer Report</h1>
         <button onClick={() => setShowSearch(true)} className="p-2">
           <IconSearch />
-        </button>
-        <h1 className="flex-1 text-xl text-center font-bold text-gray-800">Customer Report</h1>
-        <button onClick={() => navigate(-1)} className="rounded-full bg-gray-200 p-2 text-gray-900 hover:bg-gray-300">
-            <IconClose />
         </button>
       </div>
 

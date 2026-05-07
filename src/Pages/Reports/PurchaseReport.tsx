@@ -13,7 +13,7 @@ import XLSX from 'xlsx-js-style';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant, State } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
-
+import BackButton from '../../Components/BackButton';
 import { IconClose, IconSearch } from '../../constants/Icons';
 import { getPurchaseColumns } from '../../constants/TableColoumns';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
@@ -647,17 +647,12 @@ const PurchaseReport: React.FC = () => {
 
       {/* HEADER */}
       <div className="flex items-center justify-between pb-3 border-b mb-2">
-        <button onClick={() => setShowSearch(true)} className="p-2">
-          <IconSearch />
-        </button>
+        <BackButton />
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
           Purchase Report
         </h1>
-        <button
-          onClick={() => window.history.back()}
-          className="rounded-full bg-gray-200 p-2 text-gray-900 hover:bg-gray-300"
-        >
-          <IconClose />
+        <button onClick={() => setShowSearch(true)} className="p-2">
+          <IconSearch />
         </button>
       </div>
 

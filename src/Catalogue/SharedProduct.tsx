@@ -1216,7 +1216,10 @@ const SharedProduct: React.FC = () => {
 
                                     {/*  DISCOUNT BADGE */}
                                     {showDiscountBadge && (
-                                        <div className="absolute top-2 right-2 bg-[#F97316] text-white px-2 py-0.5 rounded-sm text-[10px] font-black uppercase tracking-tight shadow-md">
+                                        <div
+                                            className={`absolute top-2 ${pinnedIds.has(item.id!) ? "right-8" : "right-2"
+                                                } bg-[#F97316] text-white px-2 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-tight shadow-md`}
+                                        >
                                             {discountPercent}% OFF
                                         </div>
                                     )}
@@ -1236,15 +1239,18 @@ const SharedProduct: React.FC = () => {
                                             {!hidePriceEnabled && (!approvalEnabled || isUserApproved) && (
                                                 <>
                                                     {hasBothPrices ? (
-                                                        <>
-                                                            <p className="text-[14px] font-bold text-gray-500 line-through">
+                                                        <div className="flex flex-wrap items-center gap-x-1 leading-tight min-w-0">
+
+                                                            {/* MRP */}
+                                                            <p className="text-[14px] font-bold text-gray-400 line-through whitespace-nowrap shrink-0">
                                                                 ₹{mrp}
                                                             </p>
 
-                                                            <p className="text-[14px] font-black text-[#F97316]">
+                                                            {/* SALE PRICE */}
+                                                            <p className="text-[14px] font-black text-[#F97316] whitespace-nowrap shrink-0">
                                                                 ₹{salePrice}
                                                             </p>
-                                                        </>
+                                                        </div>
                                                     ) : (
                                                         <p className="text-[14px] font-black text-[#F97316]">
                                                             ₹{salePrice}

@@ -136,7 +136,7 @@ const HomePageContent: React.FC = () => {
                     snap.forEach(docSnap => {
                         const o = docSnap.data();
                         const status: string = o.status || 'Upcoming';
-                        const amount: number = o.totalAmount || 0;
+                        // const amount: number = o.totalAmount || 0;
                         const dateKey: string = (o.createdAt as Timestamp).toDate().toLocaleDateString('en-CA');
 
                         const timelineStatus = status === 'Paid' ? 'Completed' : status;
@@ -144,14 +144,17 @@ const HomePageContent: React.FC = () => {
                             orderCounts[timelineStatus] = (orderCounts[timelineStatus] || 0) + 1;
                         }
                         if (status === 'Completed' || status === 'Paid') {
-                            totalSalesAmount += amount;
+                            const paidAmount: number = o.paidAmount || 0;
+                            const refundAmount: number = o.refundAmount || 0;
+                            const effectivePaid = Math.max(0, paidAmount - refundAmount);
+                            totalSalesAmount += effectivePaid;
                             totalSalesCount += 1;
                             if (salesByDate[dateKey]) {
-                                salesByDate[dateKey].sales += amount;
+                                salesByDate[dateKey].sales += effectivePaid;
                                 salesByDate[dateKey].bills += 1;
                             }
                         }
-                        if (status === 'Completed' && Array.isArray(o.items)) {
+                        if ((status === 'Completed' || status === 'Paid') && Array.isArray(o.items)) {
                             o.items.forEach((item: any) => {
                                 if (!item.id || !item.name) return;
                                 const cur = itemStats.get(item.id) || { name: item.name, totalQuantity: 0, totalAmount: 0 };
@@ -222,21 +225,21 @@ const HomePageContent: React.FC = () => {
         <div className="flex min-h-screen w-full flex-col bg-gray-100 mb-16">
 
             {soon && (
-              <div className="w-full text-center py-2 text-sm font-bold text-white shadow-sm transition-colors duration-300 bg-red-300">
-                <ShinyText
-                  text={` Subscription expires ${daysLeft} day${daysLeft === 1 ? '' : 's'}.`}
-                  speed={4}
-                  delay={0}
-                  color="#000000"
-                  shineColor="#ffffff"
-                  spread={100}
-                  direction="left"
-                  yoyo={false}
-                  pauseOnHover={false}
-                  disabled={false}
-                />
-                 <Link to="/subscription" className="text-black ml-2 underline hover:text-gray-100">Renew Now</Link>
-              </div>
+                <div className="w-full text-center py-2 text-sm font-bold text-white shadow-sm transition-colors duration-300 bg-red-300">
+                    <ShinyText
+                        text={` Subscription expires ${daysLeft} day${daysLeft === 1 ? '' : 's'}.`}
+                        speed={4}
+                        delay={0}
+                        color="#000000"
+                        shineColor="#ffffff"
+                        spread={100}
+                        direction="left"
+                        yoyo={false}
+                        pauseOnHover={false}
+                        disabled={false}
+                    />
+                    <Link to="/subscription" className="text-black ml-2 underline hover:text-gray-100">Renew Now</Link>
+                </div>
             )}
 
             {/* ── Header ──────────────────────────────────────────────────── */}

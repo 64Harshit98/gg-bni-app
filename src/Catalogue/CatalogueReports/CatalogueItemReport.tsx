@@ -698,32 +698,32 @@ const CatalogueItemReport: React.FC = () => {
         <CustomCard
           variant={CardVariant.Summary}
           title="Total Items"
-          value={Math.round(summary.totalItems).toString()}
+          value={Math.round(summary.totalItems).toLocaleString('en-IN')}
         />
         <CustomCard
           variant={CardVariant.Summary}
           title="Average MRP"
-          value={`₹${Math.round(summary.averageMrp).toFixed(0)}`}
+          value={`₹${Math.round(summary.averageMrp).toLocaleString('en-IN')}`}
         />
         <CustomCard
           variant={CardVariant.Summary}
           title="Avg. Cost Price"
-          value={`₹${Math.round(summary.averagePurchasePrice).toFixed(0)}`}
+          value={`₹${Math.round(summary.averagePurchasePrice).toLocaleString('en-IN')}`}
         />
         <CustomCard
           variant={CardVariant.Summary}
           title="Avg. Sale Price"
-          value={`₹${Math.round(summary.averageSalePrice).toFixed(0)}`}
+          value={`₹${Math.round(summary.averageSalePrice).toLocaleString('en-IN')}`}
         />
         <CustomCard
           variant={CardVariant.Summary}
           title="Avg. Margin"
-          value={`₹${Math.round(summary.averageProfitMargin).toFixed(0)}`}
+          value={`₹${Math.round(summary.averageProfitMargin).toLocaleString('en-IN')}`}
         />
         <CustomCard
           variant={CardVariant.Summary}
           title="Avg. Margin %"
-          value={`${Math.round(summary.averageMarginPercentage).toFixed(0)} %`}
+          value={`${Math.round(summary.averageMarginPercentage).toLocaleString('en-IN')} %`}
         />
       </div>
 

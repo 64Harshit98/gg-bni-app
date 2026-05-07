@@ -14,7 +14,7 @@ import { useBusinessName } from './hooks/BusinessName';
 import { syncNotifyStock } from "../../src/Catalogue/utils/syncNotifyStock";
 import SearchBar from './SearchBar';
 import { db } from '../lib/Firebase';
-import { doc, getDoc , setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 const StockIndicator: React.FC<{ stock: number }> = ({ stock }) => {
     let colorClass = 'text-green-600 bg-green-100';
@@ -105,32 +105,32 @@ const MyShop: React.FC = () => {
     const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
 
     useEffect(() => {
-    if (!companyId) return;
+        if (!companyId) return;
 
-    const loadPins = async () => {
-        try {
-            const ref = doc(db, 'companies', companyId, 'settings', 'pinned_items');
-            const snap = await getDoc(ref);
-            if (snap.exists()) {
-                const ids: string[] = snap.data().ids || [];
-                setPinnedIds(new Set(ids));
-                // Keep localStorage in sync
-                localStorage.setItem(`pinned_items_${companyId}`, JSON.stringify(ids));
-            } else {
-                // Fallback to localStorage if Firestore doc doesn't exist yet
+        const loadPins = async () => {
+            try {
+                const ref = doc(db, 'companies', companyId, 'settings', 'pinned_items');
+                const snap = await getDoc(ref);
+                if (snap.exists()) {
+                    const ids: string[] = snap.data().ids || [];
+                    setPinnedIds(new Set(ids));
+                    // Keep localStorage in sync
+                    localStorage.setItem(`pinned_items_${companyId}`, JSON.stringify(ids));
+                } else {
+                    // Fallback to localStorage if Firestore doc doesn't exist yet
+                    const saved = localStorage.getItem(`pinned_items_${companyId}`);
+                    if (saved) setPinnedIds(new Set(JSON.parse(saved)));
+                }
+            } catch (err) {
+                console.error("Failed to load pinned items:", err);
+                // Fallback to localStorage on error
                 const saved = localStorage.getItem(`pinned_items_${companyId}`);
                 if (saved) setPinnedIds(new Set(JSON.parse(saved)));
             }
-        } catch (err) {
-            console.error("Failed to load pinned items:", err);
-            // Fallback to localStorage on error
-            const saved = localStorage.getItem(`pinned_items_${companyId}`);
-            if (saved) setPinnedIds(new Set(JSON.parse(saved)));
-        }
-    };
+        };
 
-    loadPins();
-}, [companyId]);
+        loadPins();
+    }, [companyId]);
 
     const generateSlug = (name: string) => {
         return name
@@ -526,12 +526,12 @@ const MyShop: React.FC = () => {
             } else {
                 next.add(id);
             }
-             // Save to localStorage (existing behaviour)
-        localStorage.setItem(`pinned_items_${companyId}`, JSON.stringify([...next]));
+            // Save to localStorage (existing behaviour)
+            localStorage.setItem(`pinned_items_${companyId}`, JSON.stringify([...next]));
 
-        // Save to Firestore
-        const settingsRef = doc(db, 'companies', companyId, 'settings', 'pinned_items');
-        setDoc(settingsRef, { ids: [...next] }, { merge: true });
+            // Save to Firestore
+            const settingsRef = doc(db, 'companies', companyId, 'settings', 'pinned_items');
+            setDoc(settingsRef, { ids: [...next] }, { merge: true });
             return next;
         });
     };
@@ -743,12 +743,16 @@ const MyShop: React.FC = () => {
                                 className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col h-full transition-all duration-300 relative group hover:shadow-md cursor-pointer ${highlightedId === item.id ? 'ring-3 ring-orange-600 shadow-lg scale-110 z-50 border-[#F97316]' : 'border-gray-100'}  ${!isViewMode ? 'ring-1 ring-[#F97316]/10' : ''}`}>
                                 <div className="aspect-square flex items-center justify-center relative overflow-hidden">
                                     {pinnedIds.has(item.id!) && (
-                                        <div className=" absolute top-1.5 right-1.5 z-10 bg-white text-[#F97316] rounded-sm px-1 py-1 flex items-center gap-0.5 shadow-md">
+                                        <div className="absolute top-1.5 right-1.5 z-10 bg-white text-[#F97316] rounded-sm px-1 py-1 flex items-center gap-0.5 shadow-md">
                                             <Pin size={12} className="fill-[#F97316]" />
                                         </div>
                                     )}
+
                                     {showDiscountBadge && (
-                                        <div className="absolute top-2 right-2 bg-[#F97316] text-white px-2 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-tight shadow-md">
+                                        <div
+                                            className={`absolute top-2 ${pinnedIds.has(item.id!) ? "right-8" : "right-2"
+                                                } bg-[#F97316] text-white px-2 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-tight shadow-md`}
+                                        >
                                             {discountPercent}% OFF
                                         </div>
                                     )}
@@ -773,8 +777,8 @@ const MyShop: React.FC = () => {
                                                 <button
                                                     onClick={(e) => handleTogglePin(e, item.id!)}
                                                     className={`p-1 rounded-sm transition-all ${pinnedIds.has(item.id!)
-                                                            ? 'bg-[#F97316]/10 text-[#F97316]'
-                                                            : 'bg-gray-100 text-gray-400 hover:bg-[#F97316] hover:text-white'
+                                                        ? 'bg-[#F97316]/10 text-[#F97316]'
+                                                        : 'bg-gray-100 text-gray-400 hover:bg-[#F97316] hover:text-white'
                                                         }`}
                                                     title={pinnedIds.has(item.id!) ? 'Unpin' : 'Pin to top'}
                                                 >
@@ -794,27 +798,36 @@ const MyShop: React.FC = () => {
                                         )}
                                     </div>
                                     <div className="flex items-center justify-between w-full">
-                                        <div className="flex items-center gap-2 w-full">
+                                        <div className="flex items-center gap-2 w-full min-w-0">
                                             {hasBothPrices ? (
-                                                <>
-                                                    <p className="text-[14px] font-bold text-gray-400 line-through">
+                                                <div className="flex flex-wrap items-center gap-x-1 leading-tight min-w-0">
+
+                                                    {/* MRP */}
+                                                    <p className="text-[14px] font-bold text-gray-400 line-through whitespace-nowrap shrink-0">
                                                         ₹{mrp}
                                                     </p>
 
-                                                    <p className="text-[14px]font-black text-[#F97316]">
+                                                    {/* SALE PRICE */}
+                                                    <p className="text-[14px] font-black text-[#F97316] whitespace-nowrap shrink-0">
                                                         ₹{salePrice}
-                                                        <span className="text-[12px] text-gray-600 font-semibold ml-1">
-                                                            ({multiplier} pcs)
-                                                        </span>
                                                     </p>
-                                                </>
-                                            ) : (
-                                                <p className="text-[14px] font-black text-[#F97316]">
-                                                    ₹{salePrice}
-                                                    <span className="text-[12px] text-gray-600 font-semibold ml-1">
+
+                                                    {/* UNIT */}
+                                                    <span className="text-[11px] text-gray-600 font-semibold whitespace-nowrap">
                                                         ({multiplier} pcs)
                                                     </span>
-                                                </p>
+
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-1 flex-nowrap overflow-hidden min-w-0">
+                                                    <p className="text-[14px] font-black text-[#F97316] whitespace-nowrap truncate max-w-[70%]">
+                                                        ₹{salePrice}
+                                                    </p>
+
+                                                    <span className="text-[12px] text-gray-600 font-semibold whitespace-nowrap shrink-0">
+                                                        ({multiplier} pcs)
+                                                    </span>
+                                                </div>
                                             )}
                                         </div>
                                     </div>

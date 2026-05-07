@@ -502,8 +502,8 @@ const EditProfilePage: React.FC = () => {
 
         {/* ── Page Header ── */}
         <div className="flex items-center justify-between mb-1">
+          <BackButton />
           <h1 className="text-xl font-bold text-slate-900 m-0">Edit Profile</h1>
-          <BackButton/>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-1">

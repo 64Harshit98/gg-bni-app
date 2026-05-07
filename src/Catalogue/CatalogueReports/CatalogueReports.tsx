@@ -12,7 +12,7 @@ const Reports = () => {
         <div className="flex flex-col h-screen w-full bg-gray-100 shadow-lg overflow-hidden font-poppins">
             {/* Header (Unchanged) */}
             <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
-                <BackButton/>
+                <BackButton />
                 <h1 className="text-2xl font-bold text-gray-900 m-0 flex-grow text-center">Reports</h1>
             </div>
 
@@ -92,6 +92,16 @@ const Reports = () => {
 
                         <div className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm border border-gray-200 text-gray-400 cursor-not-allowed opacity-70 relative">
                             <span className="text-lg font-medium">Tax Report</span>
+
+                            <span className="absolute top-2 right-2 text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">
+                                Coming Soon
+                            </span>
+
+                            <span className="text-xl text-gray-400">→</span>
+                        </div>
+
+                        <div className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm border border-gray-200 text-gray-400 cursor-not-allowed opacity-70 relative">
+                            <span className="text-lg font-medium">Restock Report</span>
 
                             <span className="absolute top-2 right-2 text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">
                                 Coming Soon

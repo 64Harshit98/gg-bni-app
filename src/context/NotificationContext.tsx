@@ -59,7 +59,11 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       const detail = (e as CustomEvent).detail;
       let message = "";
 
-      if (detail.status === "OVERDUE") {
+      if (detail.type === "NEW_ORDER") {
+        message = `🔔 New order from ${detail.partyName || "Customer"} (Order ${detail.invoiceNumber || "-"}) — Amount ₹${detail.amount || 0}`;
+      } else if (detail.type === "PAYMENT_RECEIVED") {
+        message = `✅ Payment received from ${detail.partyName || "Customer"} (Order ${detail.invoiceNumber || "-"}) — Amount ₹${detail.amount || 0}`;
+      } else if (detail.status === "OVERDUE") {
         message = `⚠️ Overdue cheque for ${detail.partyName} (Invoice ${detail.invoiceNumber}) — Cheque #${detail.chequeNumber} of ₹${detail.amount} was due on ${detail.chequeDate}`;
       } else if (detail.status === "UPCOMING") {
         message = `🔔 Cheque due soon for ${detail.partyName} (Invoice ${detail.invoiceNumber}) — Cheque #${detail.chequeNumber} of ₹${detail.amount} on ${detail.chequeDate}`;
@@ -68,6 +72,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       }
 
       try {
+        if (!message) return;
         await addDoc(
           collection(db, "companies", currentUser.companyId!, "notifications"),
           {

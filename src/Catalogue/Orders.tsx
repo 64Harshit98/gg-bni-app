@@ -42,6 +42,7 @@ import type { Item } from '../constants/models';
 import { CatalogueBill, prepareCatalogueBillData } from './CatalogueBill/CatalogueBill'
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { app } from '../lib/Firebase';
+import NotificationBell from '../Components/NotificationBell';
 
 export interface OrderItem {
     id: string;
@@ -70,7 +71,7 @@ export interface OrderItem {
 }
 
 // 1. Updated Status Types
-export type OrderStatus = 'Upcoming' | 'Confirmed' | 'Packed' | 'Completed' | 'Paid';
+export type OrderStatus = 'Upcoming' | 'Confirmed' | 'Packed' | 'Completed' | 'Paid' | 'Cancelled';
 
 export interface Order {
     id: string;
@@ -361,13 +362,16 @@ export const useLiveMoqMapHook = (
     return moqMap;
 };
 
+const NOTIFICATION_SEEN_ORDERS_KEY = "seenOrderNotifications";
+
 const OrdersPage: React.FC = () => {
 
     // AUDIO REF
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const seenOrdersRef = useRef<Set<string>>(
-        new Set(JSON.parse(localStorage.getItem("seenOrders") || "[]"))
+        new Set(JSON.parse(localStorage.getItem(NOTIFICATION_SEEN_ORDERS_KEY) || "[]"))
     );
+    const isInitialNotificationLoadRef = useRef(true);
     const navigate = useNavigate();
     const OrderStatuses: OrderStatus[] = ['Upcoming', 'Confirmed', 'Packed', 'Completed'];
 
@@ -485,13 +489,26 @@ const OrdersPage: React.FC = () => {
     );
 
     useEffect(() => {
+        if (isInitialNotificationLoadRef.current) {
+            Orders.forEach(order => {
+                seenOrdersRef.current.add(order.id);
+            });
+            localStorage.setItem(
+                NOTIFICATION_SEEN_ORDERS_KEY,
+                JSON.stringify(Array.from(seenOrdersRef.current))
+            );
+            isInitialNotificationLoadRef.current = false;
+            return;
+        }
+
         let updated = false;
 
         Orders.forEach(order => {
             const isNewOrder = !seenOrdersRef.current.has(order.id);
+            const isActiveOrder = order.status !== 'Cancelled';
 
-            // ONLY NEW ORDER + CONFIRMED
-            if (isNewOrder && order.status === 'Confirmed') {
+            // Trigger once when a new active order first appears.
+            if (isNewOrder && isActiveOrder) {
                 const audio = audioRef.current;
                 if (audio) {
                     audio.currentTime = 0;
@@ -499,6 +516,19 @@ const OrdersPage: React.FC = () => {
                         console.error(err);
                     });
                 }
+
+                window.dispatchEvent(
+                    new CustomEvent('pdc_notification', {
+                        detail: {
+                            type: 'NEW_ORDER',
+                            invoiceNumber: order.orderId,
+                            partyName: order.userName || order.billingDetails?.name || 'Customer',
+                            amount: Number(order.totalAmount || 0),
+                            status: 'UPCOMING',
+                            createdAt: new Date().toISOString(),
+                        },
+                    })
+                );
 
                 // mark as seen
                 seenOrdersRef.current.add(order.id);
@@ -509,7 +539,7 @@ const OrdersPage: React.FC = () => {
         //  localStorage update 
         if (updated) {
             localStorage.setItem(
-                "seenOrders",
+                NOTIFICATION_SEEN_ORDERS_KEY,
                 JSON.stringify(Array.from(seenOrdersRef.current))
             );
         }
@@ -1197,7 +1227,8 @@ const OrdersPage: React.FC = () => {
                 Confirmed: "Packed",
                 Packed: "Completed",
                 Completed: "Completed",
-                Paid: "Paid"
+                Paid: "Paid",
+                Cancelled: 'Cancelled',
             };
 
             let nextStatus = manualNextStatus || nextStatusMap[currentStatus];
@@ -1282,7 +1313,8 @@ const OrdersPage: React.FC = () => {
             Confirmed: "Confirmed",
             Packed: "Confirmed",
             Completed: "Packed",
-            Paid: "Completed"
+            Paid: "Completed",
+            Cancelled: 'Cancelled',
         };
 
         const prevStatus = prevStatusMap[currentStatus];
@@ -1620,8 +1652,11 @@ const OrdersPage: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Right: Filter Icon */}
-                    <div className="w-10 flex justify-end">
+                    {/* Right: Notification Bell + Filter Icon */}
+                    <div className="w-24 flex justify-end items-center gap-2">
+                        <div className="border border-slate-300 rounded-sm p-2 bg-gray-100 shadow-sm flex items-center justify-center">
+                            <NotificationBell />
+                        </div>
                         {/* //<CataShowWrapper permission={Cata_Permissions.ViewFilterbutton}> */}
                         <div className="relative" ref={filterRef}>
                             <button onClick={() => setIsFilterOpen(!isFilterOpen)} className="text-slate-500 hover:text-slate-800 cursor-pointer">
@@ -2415,6 +2450,20 @@ const OrdersPage: React.FC = () => {
                                     status: newStatus,
                                     updatedAt: serverTimestamp(),
                                 });
+
+                                window.dispatchEvent(
+                                    new CustomEvent('pdc_notification', {
+                                        detail: {
+                                            type: 'PAYMENT_RECEIVED',
+                                            invoiceNumber: showPaymentModal.orderId,
+                                            partyName: showPaymentModal.userName || showPaymentModal.billingDetails?.name || 'Customer',
+                                            amount: Number(amount || 0),
+                                            method: methodKey,
+                                            status: newStatus === 'Paid' ? 'PAID' : 'UPCOMING',
+                                            createdAt: new Date().toISOString(),
+                                        },
+                                    })
+                                );
 
                                 setShowPaymentModal(null);
                                 setModal({

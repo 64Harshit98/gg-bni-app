@@ -17,6 +17,7 @@ import { FiRefreshCw, FiLoader } from 'react-icons/fi';
 import { fetchDashboardData, CACHE_DURATION } from '../lib/fetchDashboardData';
 import ShinyText from '../Components/ShinyText';
 import type { WithCacheMeta } from '../lib/fetchDashboardData';
+import NotificationBell from '../Components/NotificationBell';
 
 
 // ─── Shared Types ─────────────────────────────────────────────────────────────
@@ -283,8 +284,11 @@ const HomePageContent: React.FC = () => {
                     <p className="text-sm text-slate-500">{isHeaderLoading ? '...' : businessName}</p>
                 </div>
 
-                {/* Right: toggle button to show or hide sensitive data values */}
-                <div className="w-14 flex justify-end">
+                {/* Right: Notification bell + toggle button */}
+                <div className="w-28 flex justify-end items-center gap-2">
+                    <div className="relative border border-slate-300 rounded-sm p-2 bg-gray-100 shadow-sm">
+                        <NotificationBell />
+                    </div>
                     <ShowWrapper requiredPermission={Permissions.ViewSalescard}>
                         <button
                             onClick={() => setIsDataVisible(!isDataVisible)}

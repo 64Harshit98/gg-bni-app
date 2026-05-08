@@ -10,6 +10,7 @@ import { Share2 } from "lucide-react"; // <-- Add Globe icon
 import { useOrderSound } from '../Catalogue/hooks/useOrderSound';
 import { useConfirmedOrdersCount } from '../Catalogue/hooks/useConfirmedOrdersCount';
 import GlobalCatalogueModal from '../Components/CatalogueShareCard';
+import { NotificationProvider } from '../context/NotificationContext';
 
 // Add Firebase imports for fetching the subdomain
 import { doc, getDoc } from 'firebase/firestore';
@@ -89,6 +90,7 @@ const CatalogueLayout = () => {
     );
 
     return (
+        <NotificationProvider>
         <div className="h-dvh w-screen flex flex-col md:flex-row overflow-hidden bg-gray-100">
             {/* --- DESKTOP SIDEBAR --- */}
             <aside className="hidden md:flex flex-col w-48 bg-white border-r border-slate-200 h-full flex-shrink-0 z-20">
@@ -229,6 +231,7 @@ const CatalogueLayout = () => {
             </nav>
             <GlobalCatalogueModal />
         </div>
+        </NotificationProvider>
     );
 };
 

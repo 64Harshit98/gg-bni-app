@@ -2,10 +2,12 @@ import { useEffect, useRef } from "react";
 import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
 import { db } from "../../lib/Firebase";
 
+const SOUND_SEEN_ORDERS_KEY = "seenOrdersSound";
+
 export const useOrderSound = (companyId?: string) => {
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const seenOrdersRef = useRef<Set<string>>(
-        new Set(JSON.parse(localStorage.getItem("seenOrders") || "[]"))
+        new Set(JSON.parse(localStorage.getItem(SOUND_SEEN_ORDERS_KEY) || "[]"))
     );
 
     const isInitialLoad = useRef(true); 
@@ -67,7 +69,7 @@ export const useOrderSound = (companyId?: string) => {
             });
 
             localStorage.setItem(
-                "seenOrders",
+                SOUND_SEEN_ORDERS_KEY,
                 JSON.stringify(Array.from(seenOrdersRef.current))
             );
         });

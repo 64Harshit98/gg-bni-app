@@ -155,7 +155,7 @@ const DashboardContent = () => {
       return;
     }
     if (!forceRefresh) setLoading(true);
-    const CACHE_KEY = `dashboard_cache_${currentUser.companyId}`;
+    const CACHE_KEY = `dashboard_cache_v2_${currentUser.companyId}`;
     try {
       const cached = localStorage.getItem(CACHE_KEY);
       if (!forceRefresh && cached) {
@@ -186,7 +186,24 @@ const DashboardContent = () => {
       const validSalesmen = new Set<string>();
       snapUsers.docs.forEach(doc => {
         const u = doc.data();
-        if ((u.role || '').toLowerCase() === 'salesman' && u.name) validSalesmen.add(u.name.toLowerCase().trim());
+        const role = String(u.role || '').toLowerCase().trim();
+        const isSalesRole =
+          role.includes('sales') ||
+          role === 'salesman' ||
+          role === 'sales person';
+        if (!isSalesRole) return;
+
+        const possibleNames = [
+          u.name,
+          u.fullName,
+          u.displayName,
+          u.username,
+          u.userName,
+        ]
+          .map((n: any) => String(n || '').trim().toLowerCase())
+          .filter(Boolean);
+
+        possibleNames.forEach((name: string) => validSalesmen.add(name));
       });
 
       snapSales.docs.forEach(doc => {
@@ -273,7 +290,17 @@ const DashboardContent = () => {
       }
 
       const toList = (map: any) => Object.entries(map).map(([name, v]: [string, any]) => ({ name, amount: v.amount, quantity: v.count })).sort((a, b) => b.amount - a.amount).slice(0, 5);
-      const topSalesmen = Object.entries(salesmanMap).filter(([name]) => validSalesmen.has(name.toLowerCase().trim())).map(([name, v]: [string, any]) => ({ name, amount: v.amount, quantity: v.count })).sort((a, b) => b.amount - a.amount).slice(0, 5);
+      const allSalesmen = Object.entries(salesmanMap)
+        .map(([name, v]: [string, any]) => ({ name, amount: v.amount, quantity: v.count }))
+        .sort((a, b) => b.amount - a.amount);
+
+      const filteredSalesmen = allSalesmen.filter((s) =>
+        validSalesmen.has(s.name.toLowerCase().trim())
+      );
+
+      // If user role/name mapping does not align perfectly with sales docs,
+      // prefer showing ranked sales contributors over showing an empty card.
+      const topSalesmen = (filteredSalesmen.length > 0 ? filteredSalesmen : allSalesmen).slice(0, 5);
 
       const finalData = { totalSales: currentTotalSales, totalOrders: currentOrderCount, percentageChange, salesByDate: chartData, paymentMethods: toList(paymentMap), topItems: toList(itemMap), topCustomers: toList(customerMap), topSalesmen, lastUpdated: Date.now(), cacheStart: filters.startDate, cacheEnd: filters.endDate };
       setData(finalData);

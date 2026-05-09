@@ -952,30 +952,41 @@ const OrdersReturnPage: React.FC = () => {
       }
 
       const actualPaid = selectedSale.paidAmount ?? 0;
-      const newStatus =
-        updatedFinalAmount > 0 && actualPaid >= updatedFinalAmount
-          ? 'Paid'
-          : 'Completed';
+      const isUnpaidOrder = actualPaid === 0;
 
-      const isUnpaidOrder = (selectedSale.paidAmount ?? 0) === 0;
+      // Total paid = original paidAmount + any new payment made during this exchange
+      const newPaymentAmount = completionData?.paymentDetails
+        ? Object.entries(completionData.paymentDetails)
+            .filter(([k]) => k.toLowerCase() !== 'due')
+            .reduce((sum, [, v]) => sum + Number(v), 0)
+        : 0;
+
+      const totalPaidAfterReturn = actualPaid + newPaymentAmount;
+
+      // Clamp: paidAmount should never exceed the new bill total
+      const effectivePaid = Math.min(totalPaidAfterReturn, updatedFinalAmount);
+      const effectiveDue = Math.max(0, updatedFinalAmount - effectivePaid);
+
+      // Smart status: if due is 0 (or negligible), mark as Paid
+      const newStatus = effectiveDue <= 0.1 ? 'Paid' : 'Completed';
 
       batch.update(saleRef, {
-        items: newItemsList,
-        totalAmount: updatedFinalAmount,
+          items: newItemsList,
+          totalAmount: updatedFinalAmount,
 
-        manualDiscount: newManualDiscount,
-        paymentMethods: {
-          ...updatedPaymentMethods,
-          due: isUnpaidOrder
-            ? Math.max(0, selectedSale.totalAmount - returnedItemsGrossValue)
-            : updatedPaymentMethods.due
-        },
+          manualDiscount: newManualDiscount,
+          paymentMethods: {
+              ...updatedPaymentMethods,
+              due: isUnpaidOrder
+                  ? Math.max(0, selectedSale.totalAmount - returnedItemsGrossValue)
+                  : effectiveDue,  // ← use effectiveDue, not the incorrectly recalculated one
+          },
 
-        paidAmount: actualPaid,
-        status: isUnpaidOrder ? 'Completed' : newStatus,
+          paidAmount: effectivePaid,
+          status: isUnpaidOrder ? 'Completed' : newStatus,
 
-        returnHistory: arrayUnion(safeReturnHistoryRecord),
-        updatedAt: serverTimestamp()
+          returnHistory: arrayUnion(safeReturnHistoryRecord),
+          updatedAt: serverTimestamp()
       });
       await batch.commit();
       await refreshSelectedOrder(selectedSale.id);

@@ -70,6 +70,8 @@ interface PaymentDrawerProps {
     enableExtraExpense?: boolean;
     enableNarration?: boolean;
     enableCustomerDetails?: boolean;
+    initialPartyAddress?: string;
+    initialPartyGST?: string;
 }
 
 const SESSION_STORAGE_NAME_KEY = 'sessionPartyName';
@@ -116,6 +118,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     enableExtraExpense = false,
     enableNarration = false,
     enableCustomerDetails = true,
+    initialPartyAddress,
+    initialPartyGST,
 }) => {
     const { currentUser } = useAuth();
 
@@ -268,15 +272,15 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
 
         setPartyName(initialName);
         setPartyNumber(initialNumber);
-        setPartyAddress('');
-        setPartyGST('');
+        setPartyAddress(initialPartyAddress || '');
+        setPartyGST(initialPartyGST || '');
         setIsDetailsExpanded(false);
 
         // Auto-search logic on open
         if (isSale && initialNumber) searchParty(initialNumber, 'number');
         if (!isSale && initialName) searchParty(initialName, 'name');
 
-    }, [isOpen, mode, initialDiscount, initialPartyName, initialPartyNumber, initialShippingName, initialShippingNumber, initialShippingAddress, initialShippingGST, initialExpenseName, initialExpenseAmount, initialNarration]);
+    }, [isOpen, mode, initialDiscount, initialPartyName, initialPartyNumber, initialPartyAddress, initialPartyGST, initialShippingName, initialShippingNumber, initialShippingAddress, initialShippingGST, initialExpenseName, initialExpenseAmount, initialNarration]);
 
     useEffect(() => {
         if (isOpen && !isSubmitting && shouldSaveToLocalStorage.current) {

@@ -314,6 +314,25 @@ const ItemsSoldReport: React.FC = () => {
             });
         }
 
+        // SORTING
+        itemsArray.sort((a, b) => {
+            const key = sortConfig.key;
+            const direction = sortConfig.direction === 'asc' ? 1 : -1;
+
+            const valA = a[key];
+            const valB = b[key];
+
+            if (typeof valA === 'string' && typeof valB === 'string') {
+                return valA.localeCompare(valB) * direction;
+            }
+
+            if (typeof valA === 'number' && typeof valB === 'number') {
+                return (valA - valB) * direction;
+            }
+
+            return 0;
+        });
+
         return {
             aggregatedItems: itemsArray,
             summary: {

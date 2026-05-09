@@ -289,6 +289,8 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
             ...businessData,
             companyId: newCompanyId,
             ownerUID: userRecord.uid,
+            phoneNumber: phoneNumber || "",
+            email: email || "",
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
         };
 

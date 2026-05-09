@@ -60,9 +60,16 @@ const CatalogueCustomerReport: React.FC = () => {
     );
   }, [sales, appliedFilters]);
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showSearch, setShowSearch] = useState(false);
-  const [customerCreditMap, setCustomerCreditMap] = useState<Record<string, number>>({});
+const [searchQuery, setSearchQuery] = useState('');
+const [showSearch, setShowSearch] = useState(false);
+const [customerCreditMap, setCustomerCreditMap] = useState<Record<string, number>>({});
+const [sortConfig, setSortConfig] = useState<{
+  key: keyof CustomerRowWithCredit;
+  direction: 'asc' | 'desc';
+}>({
+  key: 'totalSales',
+  direction: 'desc',
+});
 
   useEffect(() => {
     if (!currentUser?.companyId) {
@@ -140,8 +147,26 @@ const CatalogueCustomerReport: React.FC = () => {
       );
     }
 
+    result.sort((a, b) => {
+      const key = sortConfig.key;
+      const direction = sortConfig.direction === 'asc' ? 1 : -1;
+
+      const valA = a[key];
+      const valB = b[key];
+
+      if (typeof valA === 'string' && typeof valB === 'string') {
+        return valA.localeCompare(valB) * direction;
+      }
+
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return (valA - valB) * direction;
+      }
+
+      return 0;
+    });
+
     return result;
-  }, [filteredSales, searchQuery, customerCreditMap]);
+  }, [filteredSales, searchQuery, customerCreditMap, sortConfig]);
 
   /* ---------- SUMMARY METRICS ---------- */
   const metrics = useMemo(() => {
@@ -629,35 +654,48 @@ const CatalogueCustomerReport: React.FC = () => {
     {
       header: 'Customer',
       accessor: 'customerName',
+      sortKey: 'customerName',
     },
     {
       header: 'Contact No',
-      accessor: 'customerNumber'
+      accessor: 'customerNumber',
+      sortKey: 'customerNumber',
     },
     {
       header: 'Bills',
       accessor: 'totalBills',
+      sortKey: 'totalBills',
       className: 'text-right',
     },
     {
       header: 'Total Sales',
       accessor: (row) => `₹${row.totalSales.toLocaleString('en-IN')}`,
       sortKey: 'totalSales',
-      className: 'text-right',
+      className: 'text-center',
     },
     {
       header: 'Total Due',
       accessor: (row) => `₹${Math.max(0, row.totalDue).toLocaleString('en-IN')}`,
       sortKey: 'totalDue',
-      className: 'text-right',
+      className: 'text-center',
     },
     {
       header: 'Credit Note',
       accessor: (row) => `₹${(row.creditNote || 0).toLocaleString('en-IN')}`,
       sortKey: 'creditNote',
-      className: 'text-right',
+      className: 'text-center',
     },
   ];
+
+  const handleSort = (key: keyof CustomerRowWithCredit) => {
+    let direction: 'asc' | 'desc' = 'asc';
+
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+
+    setSortConfig({ key, direction });
+  };
 
   /* ---------- STATES ---------- */
   if (authLoading || loading)
@@ -845,6 +883,8 @@ const CatalogueCustomerReport: React.FC = () => {
           data={customerRows}
           columns={tableColumns}
           keyExtractor={(row) => row.id}
+          sortConfig={sortConfig}
+          onSort={handleSort}
           emptyMessage="No customers found for selected period."
         />
       )}

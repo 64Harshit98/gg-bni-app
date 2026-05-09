@@ -304,173 +304,192 @@ const CatalogueProfitLossReport: React.FC = () => {
 
   /* ---------- EXCEL DOWNLOAD (NEW) ---------- */
   const downloadAsExcel = () => {
-  try {
-    const s = (font: any, fill?: any, alignment?: any, border?: any) => ({
-      font: { name: 'Arial', ...font },
-      fill: fill ?? {},
-      alignment: alignment ?? { horizontal: 'center', vertical: 'center', wrapText: true },
-      border: border ?? {},
-    });
-    const solidFill = (rgb: string) => ({ patternType: 'solid', fgColor: { rgb } });
-    const allBorders = {
-      top: { style: 'thin', color: { rgb: 'FED7AA' } },
-      bottom: { style: 'thin', color: { rgb: 'FED7AA' } },
-      left: { style: 'thin', color: { rgb: 'FED7AA' } },
-      right: { style: 'thin', color: { rgb: 'FED7AA' } },
-    };
-    const bblr = {
-      bottom: { style: 'thin', color: { rgb: 'FED7AA' } },
-      left: { style: 'thin', color: { rgb: 'FED7AA' } },
-      right: { style: 'thin', color: { rgb: 'FED7AA' } },
-    };
+    try {
+      const s = (font: any, fill?: any, alignment?: any, border?: any) => ({
+        font: { name: 'Arial', ...font },
+        fill: fill ?? {},
+        alignment: alignment ?? { horizontal: 'center', vertical: 'center', wrapText: true },
+        border: border ?? {},
+      });
+      const solidFill = (rgb: string) => ({ patternType: 'solid', fgColor: { rgb } });
+      const allBorders = {
+        top: { style: 'thin', color: { rgb: 'FED7AA' } },
+        bottom: { style: 'thin', color: { rgb: 'FED7AA' } },
+        left: { style: 'thin', color: { rgb: 'FED7AA' } },
+        right: { style: 'thin', color: { rgb: 'FED7AA' } },
+      };
+      const bblr = {
+        bottom: { style: 'thin', color: { rgb: 'FED7AA' } },
+        left: { style: 'thin', color: { rgb: 'FED7AA' } },
+        right: { style: 'thin', color: { rgb: 'FED7AA' } },
+      };
 
-    const generationDate = new Date().toLocaleDateString('en-IN', {
-      year: 'numeric', month: 'short', day: 'numeric',
-    });
+      const generationDate = new Date().toLocaleDateString('en-IN', {
+        year: 'numeric', month: 'short', day: 'numeric',
+      });
 
-    const COLS = [
-      { header: '#',            width: 6  },
-      { header: 'Date',         width: 18 },
-      { header: 'Invoice',      width: 28 },
-      { header: 'Sales (₹)',    width: 20 },
-      { header: 'Cost (₹)',     width: 20 },
-      { header: 'Profit (₹)',   width: 20 },
-    ];
-    const colCount = COLS.length;
+      const COLS = [
+        { header: '#', width: 6 },
+        { header: 'Date', width: 18 },
+        { header: 'Invoice', width: 28 },
+        { header: 'Sales (₹)', width: 20 },
+        { header: 'Cost (₹)', width: 20 },
+        { header: 'Profit (₹)', width: 20 },
+      ];
+      const colCount = COLS.length;
 
-    const dataStartRow = 7;
-    const totalRows = dataStartRow + filteredTransactions.length + 1;
-    const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
+      const dataStartRow = 7;
+      const totalRows = dataStartRow + filteredTransactions.length + 1;
+      const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
 
-    // Row 0 – Title
-    aoa[0][0] = 'Profit & Loss Report';
+      // Row 0 – Title
+      aoa[0][0] = 'Profit & Loss Report';
 
-    // Row 1 – Meta
-    aoa[1][0] = `Generated: ${generationDate}   |   Period: ${startDate} to ${endDate}`;
+      // Row 1 – Meta
+      aoa[1][0] = `Generated: ${generationDate}   |   Period: ${startDate} to ${endDate}`;
 
-    // Row 3 – Summary label
-    aoa[3][0] = 'SUMMARY';
+      // Row 3 – Summary label
+      aoa[3][0] = 'SUMMARY';
 
-    // Row 4 – Summary values
-    aoa[4][0] = 'Total Sales';
-    aoa[4][1] = pnlSummary.totalRevenue;
-    aoa[4][2] = 'Total Cost';
-    aoa[4][3] = pnlSummary.totalCost;
-    aoa[4][4] = 'Gross Profit';
-    aoa[4][5] = pnlSummary.grossProfit;
-    aoa[4][6] = 'Gross Margin';
-    aoa[4][7] = `${pnlSummary.grossProfitPercentage.toFixed(2)}%`;
+      // Row 4 – Summary values (single merged cell)
+      aoa[4][0] = `Total Sales: ₹${pnlSummary.totalRevenue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Total Cost: ₹${pnlSummary.totalCost.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Gross Profit: ₹${pnlSummary.grossProfit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Margin: ${pnlSummary.grossProfitPercentage.toFixed(2)}%`;
 
-    // Row 6 – Column headers
-    COLS.forEach((c, i) => { aoa[6][i] = c.header; });
+      // Row 6 – Column headers
+      COLS.forEach((c, i) => { aoa[6][i] = c.header; });
 
-    // Rows 7+ – Data
-    filteredTransactions.forEach((t, idx) => {
-      const r = dataStartRow + idx;
-      aoa[r][0] = idx + 1;
-      aoa[r][1] = formatDate(t.createdAt);
-      aoa[r][2] = t.invoiceNumber || 'N/A';
-      aoa[r][3] = t.totalAmount;
-      aoa[r][4] = t.costOfGoodsSold || 0;
-      aoa[r][5] = t.profit || 0;
-    });
+      // Rows 7+ – Data
+      filteredTransactions.forEach((t, idx) => {
+        const r = dataStartRow + idx;
+        aoa[r][0] = idx + 1;
+        aoa[r][1] = formatDate(t.createdAt);
+        aoa[r][2] = t.invoiceNumber || 'N/A';
+        aoa[r][3] = t.totalAmount;
+        aoa[r][4] = t.costOfGoodsSold || 0;
+        aoa[r][5] = t.profit || 0;
+      });
 
-    // Footer row
-    const footerRow = dataStartRow + filteredTransactions.length;
-    aoa[footerRow][0] = 'TOTAL';
-    aoa[footerRow][1] = `${filteredTransactions.length} transactions`;
-    aoa[footerRow][3] = pnlSummary.totalRevenue;
-    aoa[footerRow][4] = pnlSummary.totalCost;
-    aoa[footerRow][5] = pnlSummary.grossProfit;
+      // Footer row
+      const footerRow = dataStartRow + filteredTransactions.length;
+      aoa[footerRow][0] = 'TOTAL';
+      aoa[footerRow][1] = `${filteredTransactions.length} transactions`;
+      aoa[footerRow][3] = pnlSummary.totalRevenue;
+      aoa[footerRow][4] = pnlSummary.totalCost;
+      aoa[footerRow][5] = pnlSummary.grossProfit;
 
-    // ── BUILD WORKSHEET ──────────────────────────────────────────────
-    const worksheet = XLSX.utils.aoa_to_sheet(aoa);
-    worksheet['!cols'] = COLS.map(c => ({ wch: c.width }));
-    worksheet['!rows'] = [
-      { hpt: 36 }, // 0 title
-      { hpt: 20 }, // 1 meta
-      { hpt: 8  }, // 2 spacer
-      { hpt: 18 }, // 3 summary label
-      { hpt: 22 }, // 4 summary values
-      { hpt: 8  }, // 5 spacer
-      { hpt: 28 }, // 6 headers
-      ...filteredTransactions.map(() => ({ hpt: 20 })),
-      { hpt: 24 }, // footer
-    ];
+      // ── BUILD WORKSHEET ──────────────────────────────────────────────
+      const worksheet = XLSX.utils.aoa_to_sheet(aoa);
+      worksheet['!cols'] = COLS.map(c => ({ wch: c.width }));
+      worksheet['!rows'] = [
+        { hpt: 36 }, // 0 title
+        { hpt: 20 }, // 1 meta
+        { hpt: 8 }, // 2 spacer
+        { hpt: 18 }, // 3 summary label
+        { hpt: 22 }, // 4 summary values
+        { hpt: 8 }, // 5 spacer
+        { hpt: 28 }, // 6 headers
+        ...filteredTransactions.map(() => ({ hpt: 20 })),
+        { hpt: 24 }, // footer
+      ];
 
-    worksheet['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
-      { s: { r: 3, c: 0 }, e: { r: 3, c: colCount - 1 } },
-      { s: { r: footerRow, c: 1 }, e: { r: footerRow, c: 2 } },
-    ];
+      worksheet['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
+        { s: { r: 3, c: 0 }, e: { r: 3, c: colCount - 1 } },
+        { s: { r: 4, c: 0 }, e: { r: 4, c: colCount - 1 } },
+        { s: { r: footerRow, c: 1 }, e: { r: footerRow, c: 2 } },
+      ];
 
-    const style = (addr: string, st: any) => {
-      if (!worksheet[addr]) worksheet[addr] = { t: 's', v: '' };
-      worksheet[addr].s = st;
-    };
+      const style = (addr: string, st: any) => {
+        if (!worksheet[addr]) worksheet[addr] = { t: 's', v: '' };
+        worksheet[addr].s = st;
+      };
 
-    // Title (row 0) — deep orange
-    style('A1', s(
-      { sz: 16, bold: true, color: { rgb: 'FFFFFF' } },
-      solidFill('EA580C'),
-      { horizontal: 'center', vertical: 'center' },
-    ));
+      // Title (row 0) — deep orange
+      style('A1', s(
+        { sz: 16, bold: true, color: { rgb: 'FFFFFF' } },
+        solidFill('EA580C'),
+        { horizontal: 'center', vertical: 'center' },
+      ));
 
-    // Meta (row 1) — light orange tint
-    style('A2', s(
-      { sz: 9, italic: true, color: { rgb: '7C2D12' } },
-      solidFill('FFEDD5'),
-      { horizontal: 'center', vertical: 'center' },
-    ));
+      // Meta (row 1) — light orange tint
+      style('A2', s(
+        { sz: 9, italic: true, color: { rgb: '7C2D12' } },
+        solidFill('FFEDD5'),
+        { horizontal: 'center', vertical: 'center' },
+      ));
 
-    // Summary label (row 3)
-    style('A4', s(
-      { sz: 10, bold: true, color: { rgb: 'C2410C' } },
-      solidFill('FFF7ED'),
-      { horizontal: 'left', vertical: 'center' },
-      allBorders,
-    ));
-
-    // Summary value cells (row 4)
-    const summaryBg = solidFill('FFF7ED');
-    const summaryLabelStyle = s({ sz: 9, bold: true, color: { rgb: 'C2410C' } }, summaryBg, { horizontal: 'left', vertical: 'center' }, bblr);
-    const summaryValStyle   = s({ sz: 11, bold: true, color: { rgb: '9A3412' } }, summaryBg, { horizontal: 'center', vertical: 'center' }, bblr);
-
-    style('A5', summaryLabelStyle);
-    style('B5', summaryValStyle);
-    style('C5', summaryLabelStyle);
-    style('D5', summaryValStyle);
-    style('E5', summaryLabelStyle);
-    style('F5', summaryValStyle);
-    style('G5', summaryLabelStyle);
-    style('H5', summaryValStyle);
-
-    // Column headers (row 6)
-    COLS.forEach((_c, i) => {
-      const addr = XLSX.utils.encode_cell({ r: 6, c: i });
-      style(addr, s(
-        { sz: 10, bold: true, color: { rgb: 'FFFFFF' } },
-        solidFill('C2410C'),
-        { horizontal: i <= 2 ? 'left' : 'center', vertical: 'center' },
+      // Summary label (row 3)
+      style('A4', s(
+        { sz: 10, bold: true, color: { rgb: 'C2410C' } },
+        solidFill('FFF7ED'),
+        { horizontal: 'left', vertical: 'center' },
         allBorders,
       ));
-    });
+      style('A5', s(
+        { sz: 10, bold: true, color: { rgb: '9A3412' } },
+        solidFill('FFF7ED'),
+        { horizontal: 'center', vertical: 'center' },
+        bblr,
+      ));
 
-    // Data rows
-    filteredTransactions.forEach((_t, idx) => {
-      const r = dataStartRow + idx;
-      const isAlt = idx % 2 === 1;
-      const rowBg = solidFill(isAlt ? 'FFF7ED' : 'FFFFFF');
-
-      for (let ci = 0; ci < colCount; ci++) {
-        const addr = XLSX.utils.encode_cell({ r, c: ci });
-        const isNumeric = ci >= 3;
+      // Column headers (row 6)
+      COLS.forEach((_c, i) => {
+        const addr = XLSX.utils.encode_cell({ r: 6, c: i });
         style(addr, s(
-          { sz: 9, color: { rgb: '1E293B' } },
-          rowBg,
-          { horizontal: isNumeric ? 'center' : 'left', vertical: 'center' },
-          bblr,
+          { sz: 10, bold: true, color: { rgb: 'FFFFFF' } },
+          solidFill('C2410C'),
+          { horizontal: i <= 2 ? 'left' : 'center', vertical: 'center' },
+          allBorders,
+        ));
+      });
+
+      // Data rows
+      filteredTransactions.forEach((_t, idx) => {
+        const r = dataStartRow + idx;
+        const isAlt = idx % 2 === 1;
+        const rowBg = solidFill(isAlt ? 'FFF7ED' : 'FFFFFF');
+
+        for (let ci = 0; ci < colCount; ci++) {
+          const addr = XLSX.utils.encode_cell({ r, c: ci });
+          const isNumeric = ci >= 3;
+          style(addr, s(
+            { sz: 9, color: { rgb: '1E293B' } },
+            rowBg,
+            { horizontal: isNumeric ? 'center' : 'left', vertical: 'center' },
+            bblr,
+          ));
+          if ((ci === 3 || ci === 4 || ci === 5) && worksheet[addr]) {
+            worksheet[addr].t = 'n';
+            worksheet[addr].z = '₹#,##0.00';
+          }
+        }
+
+        // Red color for negative profit
+        const profitAddr = XLSX.utils.encode_cell({ r, c: 5 });
+        const profitVal = filteredTransactions[idx].profit || 0;
+        if (profitVal < 0 && worksheet[profitAddr]) {
+          worksheet[profitAddr].s = s(
+            { sz: 9, bold: true, color: { rgb: 'DC2626' } },
+            rowBg,
+            { horizontal: 'center', vertical: 'center' },
+            bblr,
+          );
+        }
+      });
+
+      // Footer row
+      for (let ci = 0; ci < colCount; ci++) {
+        const addr = XLSX.utils.encode_cell({ r: footerRow, c: ci });
+        style(addr, s(
+          { sz: 10, bold: true, color: { rgb: '1E293B' } },
+          solidFill('FED7AA'),
+          { horizontal: ci <= 2 ? 'left' : 'center', vertical: 'center' },
+          {
+            top: { style: 'medium', color: { rgb: '1E293B' } },
+            bottom: { style: 'medium', color: { rgb: '1E293B' } },
+            left: { style: 'thin', color: { rgb: 'FED7AA' } },
+            right: { style: 'thin', color: { rgb: 'FED7AA' } },
+          },
         ));
         if ((ci === 3 || ci === 4 || ci === 5) && worksheet[addr]) {
           worksheet[addr].t = 'n';
@@ -478,57 +497,24 @@ const CatalogueProfitLossReport: React.FC = () => {
         }
       }
 
-      // Red color for negative profit
-      const profitAddr = XLSX.utils.encode_cell({ r, c: 5 });
-      const profitVal = filteredTransactions[idx].profit || 0;
-      if (profitVal < 0 && worksheet[profitAddr]) {
-        worksheet[profitAddr].s = s(
-          { sz: 9, bold: true, color: { rgb: 'DC2626' } },
-          rowBg,
-          { horizontal: 'center', vertical: 'center' },
-          bblr,
-        );
-      }
-    });
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'PNL Report');
+      XLSX.writeFile(workbook, `PNL-Report-${startDate}-to-${endDate}.xlsx`);
 
-    // Footer row
-    for (let ci = 0; ci < colCount; ci++) {
-      const addr = XLSX.utils.encode_cell({ r: footerRow, c: ci });
-      style(addr, s(
-        { sz: 10, bold: true, color: { rgb: '1E293B' } },
-        solidFill('FED7AA'),
-        { horizontal: ci <= 2 ? 'left' : 'center', vertical: 'center' },
-        {
-          top:    { style: 'medium', color: { rgb: '1E293B' } },
-          bottom: { style: 'medium', color: { rgb: '1E293B' } },
-          left:   { style: 'thin',   color: { rgb: 'FED7AA' } },
-          right:  { style: 'thin',   color: { rgb: 'FED7AA' } },
-        },
-      ));
-      if ((ci === 3 || ci === 4 || ci === 5) && worksheet[addr]) {
-        worksheet[addr].t = 'n';
-        worksheet[addr].z = '₹#,##0.00';
-      }
+      setIsDownloadModalOpen(false);
+      setFeedbackModal({
+        isOpen: true,
+        type: State.SUCCESS,
+        message: 'Excel downloaded successfully!',
+      });
+    } catch {
+      setFeedbackModal({
+        isOpen: true,
+        type: State.ERROR,
+        message: 'Failed to generate Excel file.',
+      });
     }
-
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'PNL Report');
-    XLSX.writeFile(workbook, `PNL-Report-${startDate}-to-${endDate}.xlsx`);
-
-    setIsDownloadModalOpen(false);
-    setFeedbackModal({
-      isOpen: true,
-      type: State.SUCCESS,
-      message: 'Excel downloaded successfully!',
-    });
-  } catch {
-    setFeedbackModal({
-      isOpen: true,
-      type: State.ERROR,
-      message: 'Failed to generate Excel file.',
-    });
-  }
-};
+  };
 
   const tableColumns = useMemo(() => getPnlColumns(), []);
 

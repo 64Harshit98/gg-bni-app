@@ -445,12 +445,8 @@ const ItemReport: React.FC = () => {
       // Row 3 – Summary label
       aoa[3][0] = 'SUMMARY';
 
-      // Row 4 – Summary values
-      aoa[4][0] = 'Avg MRP';
-      aoa[4][1] = summary.averageMrp;
-      aoa[4][2] = 'Avg Cost';
-      aoa[4][3] = summary.averagePurchasePrice;
-      aoa[4][4] = `Avg Sale: ₹${summary.averageSalePrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Avg Margin: ₹${summary.averageProfitMargin.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Margin %: ${summary.averageMarginPercentage.toFixed(1)}%`;
+      // Row 4 – Summary values (single merged cell)
+      aoa[4][0] = `Avg MRP: ₹${summary.averageMrp.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Avg Cost: ₹${summary.averagePurchasePrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Avg Sale: ₹${summary.averageSalePrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Avg Margin: ₹${summary.averageProfitMargin.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Margin %: ${summary.averageMarginPercentage.toFixed(1)}%`;
 
       // Row 6 – Column headers
       COLS.forEach((c, i) => { aoa[6][i] = c.header; });
@@ -507,8 +503,8 @@ const ItemReport: React.FC = () => {
         { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
         { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
         { s: { r: 3, c: 0 }, e: { r: 3, c: colCount - 1 } },
-        { s: { r: 4, c: 4 }, e: { r: 4, c: colCount - 1 } }, // Summary total spans remaining cols
-        { s: { r: footerRow, c: 1 }, e: { r: footerRow, c: 3 } }, // Footer label spans
+        { s: { r: 4, c: 0 }, e: { r: 4, c: colCount - 1 } },
+        { s: { r: footerRow, c: 1 }, e: { r: footerRow, c: 3 } },
       ];
 
       const style = (addr: string, st: any) => {
@@ -540,23 +536,12 @@ const ItemReport: React.FC = () => {
         allBorders,
       ));
 
-      // Summary value cells (row 4)
-      const summaryBg = solidFill('F0FDF4');
-      const summaryLabelStyle = s({ sz: 9, bold: true, color: { rgb: '15803D' } }, summaryBg, { horizontal: 'left', vertical: 'center' }, bblr);
-      const summaryValStyle = s({ sz: 11, bold: true, color: { rgb: '166534' } }, summaryBg, { horizontal: 'center', vertical: 'center' }, bblr);
-      const summaryTotalStyle = s({ sz: 10, bold: true, color: { rgb: '166534' } }, solidFill('DCFCE7'), { horizontal: 'center', vertical: 'center' }, bblr);
-
-      style('A5', summaryLabelStyle);
-      style('B5', summaryValStyle);
-      style('C5', summaryLabelStyle);
-      style('D5', summaryValStyle);
-      style('E5', summaryTotalStyle);
-
-      // Format B5 and D5 as currency
-      const b5Addr = 'B5';
-      const d5Addr = 'D5';
-      if (worksheet[b5Addr]) { worksheet[b5Addr].t = 'n'; worksheet[b5Addr].z = '₹#,##0.00'; }
-      if (worksheet[d5Addr]) { worksheet[d5Addr].t = 'n'; worksheet[d5Addr].z = '₹#,##0.00'; }
+      style('A5', s(
+        { sz: 10, bold: true, color: { rgb: '166534' } },
+        solidFill('DCFCE7'),
+        { horizontal: 'center', vertical: 'center' },
+        bblr,
+      ));
 
       // Column headers (row 6)
       COLS.forEach((_c, i) => {

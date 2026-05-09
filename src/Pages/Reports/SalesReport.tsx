@@ -390,13 +390,8 @@ const SalesReport: React.FC = () => {
       // Row 3 – Summary label
       aoa[3][0] = 'SUMMARY';
 
-      // Row 4 – Summary values (spread across columns)
-      aoa[4][0] = `Total Bills`;
-      aoa[4][1] = summary.totalTransactions;
-      aoa[4][2] = `Items Sold`;
-      aoa[4][3] = summary.totalItemsSold;
-      aoa[4][4] = `Total Sales`;
-      aoa[4][5] = summary.totalSales; // raw number so Excel formats it
+      // Row 4 – Summary values (single merged cell)
+      aoa[4][0] = `Total Bills: ${summary.totalTransactions}   |   Items Sold: ${summary.totalItemsSold}   |   Total Sales: ₹${summary.totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
       // Row 6 – Column headers
       COLS.forEach((c, i) => { aoa[6][i] = c.header; });
@@ -440,6 +435,7 @@ const SalesReport: React.FC = () => {
         { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
         { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
         { s: { r: 3, c: 0 }, e: { r: 3, c: colCount - 1 } },
+        { s: { r: 4, c: 0 }, e: { r: 4, c: colCount - 1 } },
       ];
 
       const style = (addr: string, st: any) => {
@@ -469,24 +465,12 @@ const SalesReport: React.FC = () => {
         allBorders,
       ));
 
-      // Summary value cells
-      const summaryBg = solidFill('F0FDF4');
-      const summaryLabelStyle = s({ sz: 9, bold: true, color: { rgb: '15803D' } }, summaryBg, { horizontal: 'left', vertical: 'center' }, bblr);
-      const summaryValStyle = s({ sz: 11, bold: true, color: { rgb: '166534' } }, summaryBg, { horizontal: 'center', vertical: 'center' }, bblr);
-      const summaryTotalStyle = s({ sz: 10, bold: true, color: { rgb: '166534' } }, solidFill('DCFCE7'), { horizontal: 'center', vertical: 'center' }, bblr);
-
-      style('A5', summaryLabelStyle);
-      style('B5', summaryValStyle);
-      style('C5', summaryLabelStyle);
-      style('D5', summaryValStyle);
-      style('E5', summaryLabelStyle);  // "Total Sales" label
-      style('F5', summaryTotalStyle);  // actual number value
-
-      // Also format F5 as a number with ₹ format
-      const f5Addr = 'F5';
-      if (!ws[f5Addr]) ws[f5Addr] = { t: 'n', v: summary.totalSales };
-      ws[f5Addr].t = 'n';
-      ws[f5Addr].z = '₹#,##0.00';
+      style('A5', s(
+        { sz: 10, bold: true, color: { rgb: '166534' } },
+        solidFill('DCFCE7'),
+        { horizontal: 'center', vertical: 'center' },
+        bblr,
+      ));
 
       // Column headers (row index 6)
       const headerColors = ['1E40AF', '1E40AF', '1E40AF', '1E40AF', '1E40AF'];

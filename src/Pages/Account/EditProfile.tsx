@@ -316,6 +316,8 @@ const EditProfilePage: React.FC = () => {
   const { profile, loading: dataLoading, error: dataError, saveData, refetch } = useProfileData(currentUser?.uid, currentUser?.companyId);
 
   const [formData, setFormData] = useState<Partial<ProfileData>>({});
+  const [customBusinessType, setCustomBusinessType] = useState('');
+  const [customBusinessCategory, setCustomBusinessCategory] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
@@ -333,7 +335,18 @@ const EditProfilePage: React.FC = () => {
   const freshUploadRef = useRef<{ profilePicture?: string; companyLogo?: string }>({});
 
   useEffect(() => {
-    setFormData(profile);
+    const isCustomType = profile.businessType &&
+      !businessTypeOptions.some(o => o.value === profile.businessType);
+    const isCustomCategory = profile.businessCategory &&
+      !businessCategoryOptions.some(o => o.value === profile.businessCategory);
+
+    if (isCustomType) setCustomBusinessType(profile.businessType!);
+    if (isCustomCategory) setCustomBusinessCategory(profile.businessCategory!);
+    setFormData({
+      ...profile,
+      businessType: isCustomType ? 'Other' : (profile.businessType || ''),
+      businessCategory: isCustomCategory ? 'Other' : (profile.businessCategory || ''),
+    });
     // Only use profile's URLs if we don't have a freshly uploaded one
     if (profile.profilePicture && !imageFile && !freshUploadRef.current.profilePicture) {
       setPreviewUrl(profile.profilePicture);
@@ -449,8 +462,13 @@ const EditProfilePage: React.FC = () => {
         finalLogoUrl = await getDownloadURL(logoRef);
         logoCache[currentUser.companyId] = finalLogoUrl;
       }
-
-      await saveData({ ...formData, profilePicture: finalPhotoUrl, companyLogo: finalLogoUrl });
+      const finalBusinessType = formData.businessType === 'Other' ? customBusinessType : formData.businessType;
+      const finalBusinessCategory = formData.businessCategory === 'Other' ? customBusinessCategory : formData.businessCategory;
+      await saveData({ ...formData, profilePicture: finalPhotoUrl, companyLogo: finalLogoUrl, businessType: finalBusinessType, businessCategory: finalBusinessCategory });
+      console.log('✅ Saved to Firestore successfully', {
+        businessType: finalBusinessType,
+        businessCategory: finalBusinessCategory
+      });
       refetch(); // Refresh data after save to ensure we have the latest from Firestore
       setFormData(prev => ({ ...prev, profilePicture: finalPhotoUrl, companyLogo: finalLogoUrl }));
       if (finalPhotoUrl) freshUploadRef.current.profilePicture = finalPhotoUrl;
@@ -496,6 +514,9 @@ const EditProfilePage: React.FC = () => {
     : isSubmitting
       ? 'bg-sky-200'
       : 'bg-gradient-to-br from-sky-400 to-sky-600 shadow-sky-200/60';
+
+  console.log('businessType value:', formData.businessType);
+  console.log('is known option:', businessTypeOptions.some(o => o.value === formData.businessType))
   return (
     <div className="min-h-screen bg-slate-100">
       <div className="max-w-7xl mx-auto px-4 py-3 pb-24">
@@ -616,6 +637,7 @@ const EditProfilePage: React.FC = () => {
                     placeholder="Email Address"
                   />
                 </LabeledField>
+                <FloatingLabelInput type="text" name="panNumber" value={formData.panNumber || ''} onChange={handleInputChange} label="PAN No." />
               </div>
             </SectionCard>
 
@@ -625,25 +647,46 @@ const EditProfilePage: React.FC = () => {
                 <div className="col-span-2">
                   <FloatingLabelInput type="text" name="businessName" value={formData.businessName || ''} onChange={handleInputChange} label="Business Name" />
                 </div>
-                <FloatingLabelSelect
-                  id="businessType"
-                  label="Business Type"
-                  value={formData.businessType || ''}  // ✅ read from formData
-                  onChange={(e) => {
-                    setFormData(prev => ({ ...prev, businessType: e.target.value }));
-                  }}
-                  options={businessTypeOptions}
-                />
+                {/* Business Type */}
+                <div className={formData.businessType === 'Other' ? 'col-span-2 sm:col-span-1' : 'col-span-2 sm:col-span-1'}>
+                  <FloatingLabelSelect
+                    id="businessType"
+                    label="Business Type"
+                    value={formData.businessType || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, businessType: e.target.value }))}
+                    options={businessTypeOptions}
+                  />
+                </div>
+                {formData.businessType === 'Other' && (
+                  <div className="col-span-2 sm:col-span-1">
+                    <FloatingLabelInput
+                      label="Specify Type"
+                      name="customBusinessType"
+                      value={customBusinessType}
+                      onChange={(e) => setCustomBusinessType(e.target.value)}
+                    />
+                  </div>
+                )}
 
-                <FloatingLabelSelect
-                  id="businessCategory"
-                  label="Category"
-                  value={formData.businessCategory || ''}  // ✅ read from formData
-                  onChange={(e) => {
-                    setFormData(prev => ({ ...prev, businessCategory: e.target.value }));
-                  }}
-                  options={businessCategoryOptions}
-                />
+                <div className={formData.businessCategory === 'Other' ? 'col-span-2 sm:col-span-1' : 'col-span-2 sm:col-span-1'}>
+                  <FloatingLabelSelect
+                    id="businessCategory"
+                    label="Category"
+                    value={formData.businessCategory || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, businessCategory: e.target.value }))}
+                    options={businessCategoryOptions}
+                  />
+                </div>
+                {formData.businessCategory === 'Other' && (
+                  <div className="col-span-2 sm:col-span-1">
+                    <FloatingLabelInput
+                      label="Specify Category"
+                      name="customBusinessCategory"
+                      value={customBusinessCategory}
+                      onChange={(e) => setCustomBusinessCategory(e.target.value)}
+                    />
+                  </div>
+                )}
                 <FloatingLabelInput
                   type="text" name="gstin" value={formData.gstin || ''}
                   maxLength={15}
@@ -653,8 +696,8 @@ const EditProfilePage: React.FC = () => {
                   }}
                   label="GSTIN"
                 />
-                <FloatingLabelInput type="text" name="panNumber" value={formData.panNumber || ''} maxLength={10} onChange={handleInputChange} label="PAN No." />
-                <FloatingLabelInput type="text" name="msmeUdyamNumber" value={formData.msmeUdyamNumber || ''} maxLength={19} onChange={handleInputChange} label="MSME No." />
+
+                <FloatingLabelInput type="text" name="msmeUdyamNumber" value={formData.msmeUdyamNumber || ''} onChange={handleInputChange} label="MSME No." />
               </div>
             </SectionCard>
 

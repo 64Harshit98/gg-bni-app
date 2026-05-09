@@ -280,7 +280,7 @@ const CatalogueBillSettings: React.FC = () => {
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
                                         COMPANY NAME
                                     </label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium h-[44px] flex items-center">
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium h-[44px] trunacte flex items-center">
                                         {businessInfo.companyName}
                                     </div>
                                 </div>
@@ -288,7 +288,7 @@ const CatalogueBillSettings: React.FC = () => {
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
                                         REGISTERED ADDRESS
                                     </label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium h-[44px] flex items-center">
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium h-[44px] flex truncate items-center">
                                         {businessInfo.address}
                                     </div>
                                 </div>

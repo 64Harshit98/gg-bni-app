@@ -2,10 +2,9 @@ import { useEffect, useState } from "react";
 import { db } from "../../lib/Firebase";
 import {
     collection,
-    getDocs,
     query,
     where,
-    Timestamp
+    onSnapshot
 } from "firebase/firestore";
 
 export const useConfirmedOrdersCount = (companyId?: string) => {
@@ -14,37 +13,51 @@ export const useConfirmedOrdersCount = (companyId?: string) => {
     useEffect(() => {
         if (!companyId) return;
 
-        const fetchCount = async () => {
-            try {
+        const ordersRef = collection(
+            db,
+            "companies",
+            companyId,
+            "Orders"
+        );
+
+        const q = query(
+            ordersRef,
+            where("status", "==", "Confirmed")
+        );
+
+        const unsubscribe = onSnapshot(
+            q,
+            (snapshot) => {
+
+                // sirf aaj ke orders count karenge
                 const todayStart = new Date();
                 todayStart.setHours(0, 0, 0, 0);
 
                 const todayEnd = new Date();
                 todayEnd.setHours(23, 59, 59, 999);
 
-                const ordersRef = collection(
-                    db,
-                    "companies",
-                    companyId,
-                    "Orders"
-                );
+                const todayOrders = snapshot.docs.filter((doc) => {
+                    const data = doc.data();
 
-                const q = query(
-                    ordersRef,
-                    where("status", "==", "Confirmed"),
-                    where("createdAt", ">=", Timestamp.fromDate(todayStart)),
-                    where("createdAt", "<=", Timestamp.fromDate(todayEnd))
-                );
+                    if (!data.createdAt) return false;
 
-                const snapshot = await getDocs(q);
+                    const createdAt = data.createdAt.toDate();
 
-                setCount(snapshot.size); 
-            } catch (err) {
-                console.error("Count fetch error:", err);
+                    return (
+                        createdAt >= todayStart &&
+                        createdAt <= todayEnd
+                    );
+                });
+
+                setCount(todayOrders.length);
+            },
+            (err) => {
+                console.error("Realtime count error:", err);
             }
-        };
+        );
 
-        fetchCount();
+        return () => unsubscribe();
+
     }, [companyId]);
 
     return count;

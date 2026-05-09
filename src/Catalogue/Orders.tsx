@@ -930,7 +930,7 @@ const OrdersPage: React.FC = () => {
 
                 grandTotal: safeOrderData.totalAmount || Order.totalAmount,
                 paidAmount: Number(safeOrderData.paidAmount ?? Order.paidAmount ?? 0),
-                dueAmount: Math.max(                                                    
+                dueAmount: Math.max(
                     0,
                     (safeOrderData.totalAmount || Order.totalAmount) -
                     Number(safeOrderData.paidAmount ?? Order.paidAmount ?? 0)
@@ -1855,56 +1855,37 @@ const OrdersPage: React.FC = () => {
                                             </button>
                                         )}
                                         <div className="flex right-5 top-0 absolute justify-end gap-1 flex-wrap max-w-[50%] text-right pointer-events-auto">
-                                            {/* PAYMENT METHOD BADGES (DUE EXCLUDED) */}
-                                            {Order.paymentMethods &&
-                                                Object.entries(Order.paymentMethods)
-                                                    .filter(([method, amount]) => {
-                                                        if (method.toLowerCase() === 'due') return false;
+                                            {(() => {
+                                                const seen = new Set<string>();
 
-                                                        const latestReturn =
-                                                            Order.returnHistory?.[Order.returnHistory.length - 1];
+                                                // Collect from original payment methods
+                                                if (Order.paymentMethods) {
+                                                    Object.entries(Order.paymentMethods).forEach(([method, amount]) => {
+                                                        if (method.toLowerCase() !== 'due' && Number(amount) > 0) {
+                                                            seen.add(method.toUpperCase());
+                                                        }
+                                                    });
+                                                }
 
-                                                        const usedInExchange =
-                                                            latestReturn?.paymentDetails &&
-                                                            Number(latestReturn.paymentDetails[method]) > 0;
+                                                // Collect from latest return's paymentDetails
+                                                const latestReturn = Order.returnHistory?.[Order.returnHistory.length - 1];
+                                                if (latestReturn?.paymentDetails) {
+                                                    Object.entries(latestReturn.paymentDetails).forEach(([method, amount]) => {
+                                                        if (method.toLowerCase() !== 'due' && Number(amount) > 0) {
+                                                            seen.add(method.toUpperCase());
+                                                        }
+                                                    });
+                                                }
 
-                                                        // agar exchange me use hua hai to blue me mat dikha
-                                                        if (usedInExchange) return false;
-
-                                                        return Number(amount) > 0;
-                                                    })
-                                                    .map(([method]) => (
-                                                        <span
-                                                            key={`original-${method}`}
-                                                            className="text-[8px] uppercase font-bold px-1.5 py-0.5 rounded-sm tracking-wider bg-blue-50 text-blue-600 border border-blue-100"
-                                                        >
-                                                            {method}
-                                                        </span>
-                                                    ))}
-
-                                            {Order.returnHistory &&
-                                                Order.returnHistory.length > 0 &&
-                                                (() => {
-                                                    const latestReturn =
-                                                        Order.returnHistory[Order.returnHistory.length - 1];
-
-                                                    if (!latestReturn.paymentDetails) return null;
-
-                                                    return Object.entries(latestReturn.paymentDetails)
-                                                        .filter(
-                                                            ([method, amount]) =>
-                                                                method.toLowerCase() !== 'due' &&
-                                                                Number(amount) > 0
-                                                        )
-                                                        .map(([method]) => (
-                                                            <span
-                                                                key={`exchange-${method}`}
-                                                                className="text-[8px] uppercase font-bold px-1.5 py-0.5 rounded-sm border tracking-wider bg-blue-50 text-blue-600 border-blue-100 whitespace-nowrap"
-                                                            >
-                                                                {method}
-                                                            </span>
-                                                        ));
-                                                })()}
+                                                return Array.from(seen).map((method) => (
+                                                    <span
+                                                        key={method}
+                                                        className="text-[8px] uppercase font-bold px-1.5 py-0.5 rounded-sm tracking-wider bg-blue-50 text-blue-600 border border-blue-100 whitespace-nowrap"
+                                                    >
+                                                        {method}
+                                                    </span>
+                                                ));
+                                            })()}
                                         </div>
 
                                         <div className="flex justify-between items-start pl-6 mt-1">
@@ -2021,34 +2002,35 @@ const OrdersPage: React.FC = () => {
                                                         <div className="border-t mt-1 p-2 flex items-center justify-between">
                                                             <div className="flex flex-wrap gap-1.5 items-center">
                                                                 {paid > 0 && (
-                                                                    Order.paymentMethods && Object.keys(Order.paymentMethods).length > 0 ? (
-                                                                        Object.entries(Order.paymentMethods)
-                                                                            .filter(([method, amount]) =>
-                                                                                method.toLowerCase() !== 'due' && Number(amount) > 0
-                                                                            )
-                                                                            .map(([method, amount]) => (
-                                                                                <div
-                                                                                    key={method}
-                                                                                    className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-green-100"
-                                                                                >
-                                                                                    <span className="text-[10px] font-bold text-green-800 uppercase">
-                                                                                        {method}
-                                                                                    </span>
-                                                                                    <span className="text-[10px] font-black text-green-600">
-                                                                                        ₹{Number(amount).toFixed(2)}
-                                                                                    </span>
-                                                                                </div>
-                                                                            ))
-                                                                    ) : Order.paymentMethod && paid > 0 ? (
-                                                                        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-green-100">
-                                                                            <span className="text-[8px] font-bold text-green-800 uppercase">
-                                                                                {Order.paymentMethod}
-                                                                            </span>
-                                                                            <span className="text-[9px] font-black text-green-600">
-                                                                                ₹{paid.toFixed(2)}
-                                                                            </span>
-                                                                        </div>
-                                                                    ) : null
+                                                                    (() => {
+                                                                        // Merge all payment sources into one map
+                                                                        const mergedMethods: Record<string, number> = {};
+
+                                                                        if (Order.paymentMethods && Object.keys(Order.paymentMethods).length > 0) {
+                                                                            Object.entries(Order.paymentMethods).forEach(([method, amount]) => {
+                                                                                if (method.toLowerCase() !== 'due' && Number(amount) > 0) {
+                                                                                    const key = method.toUpperCase();
+                                                                                    mergedMethods[key] = (mergedMethods[key] || 0) + Number(amount);
+                                                                                }
+                                                                            });
+                                                                        } else if (Order.paymentMethod && paid > 0) {
+                                                                            mergedMethods[Order.paymentMethod.toUpperCase()] = paid;
+                                                                        }
+
+                                                                        return Object.entries(mergedMethods).map(([method, amount]) => (
+                                                                            <div
+                                                                                key={method}
+                                                                                className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-green-100"
+                                                                            >
+                                                                                <span className="text-[10px] font-bold text-green-800 uppercase">
+                                                                                    {method}
+                                                                                </span>
+                                                                                <span className="text-[10px] font-black text-green-600">
+                                                                                    ₹{Number(amount).toFixed(2)}
+                                                                                </span>
+                                                                            </div>
+                                                                        ));
+                                                                    })()
                                                                 )}
                                                             </div>
 

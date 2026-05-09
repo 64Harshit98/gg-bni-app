@@ -468,7 +468,10 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       const dataStartRow = headerRowNum + 2;
 
       let processedCount = 0, createdCount = 0, updatedCount = 0, failedCount = 0, skippedCount = 0;
-      const totalItems = Math.max(0, worksheet.rowCount - dataStartRow + 1);
+      let totalItems = 0;
+      for (let r = dataStartRow; r <= worksheet.rowCount; r++) {
+        if (worksheet.getRow(r).getCell(1).text?.trim()) totalItems++;
+      }
       setUploadProgress({ current: 0, total: totalItems });
 
       let currentGroups = await dbOperations.getItemGroups();

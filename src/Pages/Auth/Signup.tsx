@@ -73,7 +73,23 @@ const SignUpPage: React.FC = () => {
   };
 
   const handleClearData = () => {
-    localStorage.removeItem(LOCAL_STORAGE_KEY);
+    const existingData = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '{}');
+
+    const clearedStep1Data = {
+      fullName: '',
+      email: '',
+      phoneNumber: '',
+      password: '',
+    };
+
+    localStorage.setItem(
+      LOCAL_STORAGE_KEY,
+      JSON.stringify({
+        ...existingData,
+        ...clearedStep1Data,
+      })
+    );
+
     setFullName('');
     setEmail('');
     setPhoneNumber('');

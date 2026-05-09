@@ -187,10 +187,20 @@ export const CatalogueBill = async (
       signatureBase64: data.signatureBase64
     };
 
+    let finalAction: ACTION;
+
+    if (action === "print") {
+      finalAction = ACTION.PRINT;
+    } else if (action === "blob") {
+      finalAction = ACTION.BLOB;
+    } else {
+      finalAction = ACTION.DOWNLOAD;
+    }
+
     return generateA5Invoice(
       a5Data as any,
       data.isEstimate === true,
-      action === "print" ? ACTION.PRINT : ACTION.DOWNLOAD
+      finalAction
     );
   }
 

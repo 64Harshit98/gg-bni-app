@@ -248,7 +248,7 @@ const DashboardContent = () => {
 
       const chartData = [];
       // FIX 1: Restored to prevStart so the chart has a starting dot to draw the line
-      const itr = new Date(prevStart);
+      const itr = new Date(start);
 
       while (itr <= end) {
         const offset = itr.getTimezoneOffset() * 60000;

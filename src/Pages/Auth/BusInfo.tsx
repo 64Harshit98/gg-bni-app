@@ -106,7 +106,7 @@ const BusinessInfoPage: React.FC = () => {
   })
 
   const handleClearData = () => {
-    setFormData({
+    const clearedFormData = {
       businessName: '',
       businessType: '',
       businessCategory: '',
@@ -118,7 +118,20 @@ const BusinessInfoPage: React.FC = () => {
       city: '',
       state: '',
       postalCode: '',
-    });
+    };
+
+    setFormData(clearedFormData);
+
+    const existingData = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '{}');
+
+    localStorage.setItem(
+      LOCAL_STORAGE_KEY,
+      JSON.stringify({
+        ...existingData,
+        ...clearedFormData,
+      })
+    );
+
     setError(null);
   };
 
@@ -133,9 +146,25 @@ const BusinessInfoPage: React.FC = () => {
 
   useEffect(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+
     if (saved) {
-      setFormData(JSON.parse(saved));
+      const parsed = JSON.parse(saved);
+
+      setFormData({
+        businessName: parsed.businessName || '',
+        businessType: parsed.businessType || '',
+        businessCategory: parsed.businessCategory || '',
+        customBusinessType: parsed.customBusinessType || '',
+        customBusinessCategory: parsed.customBusinessCategory || '',
+        gstType: parsed.gstType || '',
+        gstin: parsed.gstin || '',
+        streetAddress: parsed.streetAddress || '',
+        city: parsed.city || '',
+        state: parsed.state || '',
+        postalCode: parsed.postalCode || '',
+      });
     }
+
     setIsHydrated(true);
   }, []);
 
@@ -180,7 +209,16 @@ const BusinessInfoPage: React.FC = () => {
 
   useEffect(() => {
     if (!isHydrated) return;
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(formData));
+
+    const existingData = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '{}');
+
+    localStorage.setItem(
+      LOCAL_STORAGE_KEY,
+      JSON.stringify({
+        ...existingData,
+        ...formData,
+      })
+    );
   }, [formData, isHydrated]);
 
 

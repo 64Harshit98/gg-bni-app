@@ -447,26 +447,38 @@ const OrderingPage: React.FC = () => {
                                         </div>
                                     )}
                                     {collageImages.length > 0 ? (
-                                        <div className="grid grid-cols-2 grid-rows-2 w-full h-full gap-[2px] p-[2px]">
-                                            {collageImages.map((img, index) => (
-                                                <div key={index} className="w-full h-full overflow-hidden rounded-[2px]">
-                                                    <img
-                                                        src={img}
-                                                        alt={`product-${index}`}
-                                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                                                    />
-                                                </div>
-                                            ))}
+                                        <div
+                                            className={`w-full h-full gap-[2px] p-[2px] ${
+                                                collageImages.length === 1
+                                                    ? 'grid grid-cols-1 grid-rows-1'
+                                                    : collageImages.length === 2
+                                                        ? 'grid grid-cols-2 grid-rows-1'
+                                                        : collageImages.length === 3
+                                                            ? 'grid grid-cols-2 grid-rows-2'
+                                                            : 'grid grid-cols-2 grid-rows-2'
+                                            }`}
+                                        >
+                                            {collageImages.map((img, index) => {
+                                                const isThreeImagesLayout = collageImages.length === 3;
+                                                const isLastImage = index === 2;
 
-                                            {/* filler if less than 4 */}
-                                            {Array.from({ length: 4 - collageImages.length }).map((_, i) => (
-                                                <div
-                                                    key={`empty-${i}`}
-                                                    className="w-full h-full bg-gray-100 flex items-center justify-center"
-                                                >
-                                                    <FiPackage className="h-4 w-4 text-gray-300" />
-                                                </div>
-                                            ))}
+                                                return (
+                                                    <div
+                                                        key={index}
+                                                        className={`w-full h-full overflow-hidden rounded-[2px] ${
+                                                            isThreeImagesLayout && isLastImage
+                                                                ? 'col-span-2'
+                                                                : ''
+                                                        }`}
+                                                    >
+                                                        <img
+                                                            src={img}
+                                                            alt={`product-${index}`}
+                                                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                                                        />
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     ) : (
                                         <div className="w-full h-full flex items-center justify-center">

@@ -31,12 +31,39 @@ export const SalesBarChartReport: React.FC<SalesBarChartProps> = ({ isDataVisibl
 
   // Map Data
   const chartData = useMemo(() => {
-    return data.map(item => ({
+    const mappedData = data.map(item => ({
       date: item.name,
       sales: item.sales,
       previous: item.previousSales || 0,
-      bills: item.count || 0 // <-- FIX: Now using the actual document count instead of the math formula
+      bills: item.count || 0
     }));
+
+    // If only today data exists, prepend yesterday with zero values
+    if (mappedData.length === 1) {
+      const todayItem = mappedData[0];
+
+      const parsedDate = new Date(todayItem.date);
+
+      // Ensure valid date parsing before applying yesterday logic
+      if (!isNaN(parsedDate.getTime())) {
+        const yesterday = new Date(parsedDate);
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        const yesterdayKey = yesterday.toLocaleDateString('en-CA');
+
+        return [
+          {
+            date: yesterdayKey,
+            sales: 0,
+            previous: 0,
+            bills: 0
+          },
+          todayItem
+        ];
+      }
+    }
+
+    return mappedData;
   }, [data]);
 
   // Custom Tooltip to match the clean look

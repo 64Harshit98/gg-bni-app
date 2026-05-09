@@ -396,6 +396,35 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             setModal({ message: `Mismatch: ₹${pendingAmount.toFixed(2)} remaining.`, type: State.ERROR });
             return;
         }
+        // 🚫 Block if non-due payments alone exceed the bill total
+        const nonDuePaymentTotal = Object.entries(selectedPayments).reduce((acc, [key, value]) => {
+            const isDue = key.toLowerCase().includes('due');
+            return isDue ? acc : acc + (value || 0);
+        }, 0);
+        const dueInPayments = Object.entries(selectedPayments).reduce((acc, [key, value]) => {
+            return key.toLowerCase().includes('due') ? acc + (value || 0) : acc;
+        }, 0);
+
+        const activeNonDuePayments = Object.entries(selectedPayments).filter(([key, value]) => {
+            const isDue = key.toLowerCase().includes('due');
+            return !isDue && (value || 0) > 0;
+        });
+
+        if (activeNonDuePayments.length > 1 && nonDuePaymentTotal > netPayable + 0.01) {
+            setModal({
+                message: `Paid amount (₹${nonDuePaymentTotal.toFixed(2)}) exceeds the bill total of ₹${netPayable.toFixed(2)}. Please correct the payment amounts.`,
+                type: State.ERROR
+            });
+            return;
+        }
+
+        if (dueInPayments > 0 && nonDuePaymentTotal + dueInPayments > netPayable + 0.01) {
+            setModal({
+                message: `Total entered (₹${(nonDuePaymentTotal + dueInPayments).toFixed(2)}) exceeds the bill of ₹${netPayable.toFixed(2)}. Reduce Due or other payment amounts.`,
+                type: State.ERROR
+            });
+            return;
+        }
         // ✅ ADD THIS CHECK — block if manual payment already covers full bill but credit is also applied
         if (useCredit && appliedCreditAmount === 0 && partyCredit > 0) {
             setModal({

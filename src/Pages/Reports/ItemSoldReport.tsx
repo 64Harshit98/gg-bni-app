@@ -485,12 +485,8 @@ const ItemsSoldReport: React.FC = () => {
             // Row 3 – Summary label
             aoa[3][0] = 'SUMMARY';
 
-            // Row 4 – Summary values
-            aoa[4][0] = 'Total Qty Sold';
-            aoa[4][1] = summary.totalQuantitySold;
-            aoa[4][2] = 'Total Value';
-            aoa[4][3] = summary.totalValueSold;
-            aoa[4][4] = `Unique Items: ${summary.uniqueItemCount}`;
+            // Row 4 – Summary values (single merged cell)
+            aoa[4][0] = `Total Qty Sold: ${summary.totalQuantitySold}   |   Total Value: ₹${summary.totalValueSold.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Unique Items: ${summary.uniqueItemCount}`;
 
             // Row 6 – Column headers
             COLS.forEach((c, i) => { aoa[6][i] = c.header; });
@@ -531,8 +527,8 @@ const ItemsSoldReport: React.FC = () => {
                 { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
                 { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
                 { s: { r: 3, c: 0 }, e: { r: 3, c: colCount - 1 } },
-                { s: { r: 4, c: 4 }, e: { r: 4, c: colCount - 1 } }, // summary spans remaining cols
-                { s: { r: footerRow, c: 1 }, e: { r: footerRow, c: 2 } }, // footer label spans
+                { s: { r: 4, c: 0 }, e: { r: 4, c: colCount - 1 } },
+                { s: { r: footerRow, c: 1 }, e: { r: footerRow, c: 2 } },
             ];
 
             const style = (addr: string, st: any) => {
@@ -564,21 +560,12 @@ const ItemsSoldReport: React.FC = () => {
                 allBorders,
             ));
 
-            // Summary value cells (row 4)
-            const summaryBg = solidFill('F0FDF4');
-            const summaryLabelStyle = s({ sz: 9, bold: true, color: { rgb: '15803D' } }, summaryBg, { horizontal: 'left', vertical: 'center' }, bblr);
-            const summaryValStyle = s({ sz: 11, bold: true, color: { rgb: '166534' } }, summaryBg, { horizontal: 'center', vertical: 'center' }, bblr);
-            const summaryTotalStyle = s({ sz: 10, bold: true, color: { rgb: '166534' } }, solidFill('DCFCE7'), { horizontal: 'center', vertical: 'center' }, bblr);
-
-            style('A5', summaryLabelStyle);
-            style('B5', summaryValStyle);
-            style('C5', summaryLabelStyle);
-            style('D5', summaryValStyle);
-            style('E5', summaryTotalStyle);
-
-            // Format B5 and D5 as number/currency
-            if (worksheet['B5']) { worksheet['B5'].t = 'n'; worksheet['B5'].z = '#,##0'; }
-            if (worksheet['D5']) { worksheet['D5'].t = 'n'; worksheet['D5'].z = '₹#,##0.00'; }
+            style('A5', s(
+                { sz: 10, bold: true, color: { rgb: '166534' } },
+                solidFill('DCFCE7'),
+                { horizontal: 'center', vertical: 'center' },
+                bblr,
+            ));
 
             // Column headers (row 6)
             COLS.forEach((_c, i) => {

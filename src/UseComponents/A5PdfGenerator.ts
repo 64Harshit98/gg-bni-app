@@ -676,10 +676,15 @@ export const generateA5Invoice = async (
     // reset
     doc.setTextColor(255, 255, 255);
 
-    // --- PRINT / DOWNLOAD ---
+    // --- PRINT / DOWNLOAD / BLOB ---
+
     if (action === ACTION.PRINT) {
         doc.autoPrint();
         window.open(doc.output("bloburl"), "_blank");
+
+    } else if (action === ACTION.BLOB) {
+        return doc.output("blob");
+
     } else {
         doc.save(`Invoice_${data.invoice.number}.pdf`);
     }

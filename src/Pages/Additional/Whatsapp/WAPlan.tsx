@@ -77,12 +77,17 @@ const WhatsAppSubscriptionPage: React.FC = () => {
 
             {/* --- SECTION 1: HEADER (Scrolls Away) --- */}
             <div className="pt-4 pb-6 px-4 text-center max-w-2xl mx-auto relative">
-                <h2 className="flex items-center justify-center gap-4 text-base font-semibold text-emerald-600 tracking-wide uppercase">
-                    <BackButton/>
-                    <span>WhatsApp Marketing</span>
-                </h2>
+                <div className="relative flex items-center justify-center">
+                    <div className="absolute left-0">
+                        <BackButton />
+                    </div>
 
-                <p className="mt-2 text-3xl leading-8 font-extrabold tracking-tight text-gray-900 sm:text-4xl">
+                    <h2 className="mt-2 text-base font-semibold text-emerald-600 tracking-wide uppercase">
+                        WhatsApp Marketing
+                    </h2>
+                </div>
+
+                <p className="mt-4 text-3xl leading-8 font-extrabold tracking-tight text-gray-900 sm:text-4xl">
                     Choose Your Message Plan
                 </p>
             </div>

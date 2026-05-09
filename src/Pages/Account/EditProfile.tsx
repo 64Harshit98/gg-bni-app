@@ -646,14 +646,15 @@ const EditProfilePage: React.FC = () => {
                 />
                 <FloatingLabelInput
                   type="text" name="gstin" value={formData.gstin || ''}
+                  maxLength={15}
                   onChange={(e) => {
                     const val = e.target.value.toUpperCase();
                     if (val.length <= 15) setFormData(prev => ({ ...prev, gstin: val }));
                   }}
                   label="GSTIN"
                 />
-                <FloatingLabelInput type="text" name="panNumber" value={formData.panNumber || ''} onChange={handleInputChange} label="PAN No." />
-                <FloatingLabelInput type="text" name="msmeUdyamNumber" value={formData.msmeUdyamNumber || ''} onChange={handleInputChange} label="MSME No." />
+                <FloatingLabelInput type="text" name="panNumber" value={formData.panNumber || ''} maxLength={10} onChange={handleInputChange} label="PAN No." />
+                <FloatingLabelInput type="text" name="msmeUdyamNumber" value={formData.msmeUdyamNumber || ''} maxLength={19} onChange={handleInputChange} label="MSME No." />
               </div>
             </SectionCard>
 

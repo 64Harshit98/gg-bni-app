@@ -283,7 +283,7 @@ const avatarSrc = user.profilePicture || user.photoURL || '';
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-medium text-gray-500 mb-1">Phone Number</label>
-                                                <input type="tel" name="phoneNumber" value={editFormData.phoneNumber || ''} onChange={handleInputChange}
+                                                <input type="tel" name="phoneNumber" value={editFormData.phoneNumber || ''} onChange={handleInputChange} maxLength={10}
                                                     className="w-full p-2 border border-gray-300 rounded text-sm" />
                                             </div>
                                             <div>

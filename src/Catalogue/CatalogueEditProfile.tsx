@@ -168,7 +168,7 @@ const useCatalogueData = (companyId?: string, catalogueId?: string, userId?: str
           ? userSnap.data()
           : {};
 
-        // 🔥 MERGE DATA (IMPORTANT)
+        //  MERGE DATA (IMPORTANT)
         setCatalogue({
           ...businessData,
           name: userData.name || "",
@@ -615,9 +615,9 @@ const EditProfilePage: React.FC = () => {
                   onChange={(e) => { setBusinessCategory(e.target.value); setFormData(prev => ({ ...prev, businessCategory: e.target.value })); }}
                   options={businessCategoryOptions}
                 />
-                <FloatingLabelInput type="text" name="gstin" value={formData.gstin || ''} onChange={handleInputChange} label="GSTIN" />
-                <FloatingLabelInput type="text" name="panNumber" value={formData.panNumber || ''} onChange={handleInputChange} label="PAN No." />
-                <FloatingLabelInput type="text" name="msmeUdyamNumber" value={formData.msmeUdyamNumber || ''} onChange={handleInputChange} label="MSME No." />
+                <FloatingLabelInput type="text" name="gstin" maxLength={15} value={formData.gstin || ''} onChange={handleInputChange} label="GSTIN" />
+                <FloatingLabelInput type="text" name="panNumber" maxLength={10} value={formData.panNumber || ''} onChange={handleInputChange} label="PAN No." />
+                <FloatingLabelInput type="text" name="msmeUdyamNumber" maxLength={19} value={formData.msmeUdyamNumber || ''} onChange={handleInputChange} label="MSME No." />
               </div>
             </SectionCard>
 

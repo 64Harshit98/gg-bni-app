@@ -383,7 +383,7 @@ const ManagePermissionsPage: React.FC = () => {
                         <button
                             key={role}
                             onClick={() => setSelectedRole(role)}
-                            className={`px-6 py-2 rounded-md text-sm font-medium transition-all capitalize m-0.5 ${selectedRole === role ? 'bg-white text-sky-500 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                            className={`px-6 py-2 rounded-md text-sm font-medium transition-all capitalize m-0.5 ${selectedRole === role ? 'bg-white text-blue-500 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                         >
                             {role}
                         </button>
@@ -445,7 +445,7 @@ const ManagePermissionsPage: React.FC = () => {
                                                     <input
                                                         type="checkbox"
                                                         disabled={isLockedByPlan}
-                                                        className="peer h-5 w-5 appearance-none rounded border border-gray-300 transition-all checked:border-sky-500 checked:bg-sky-500 hover:shadow-sm disabled:bg-gray-200 disabled:border-gray-300"
+                                                        className="peer h-5 w-5 appearance-none rounded border border-gray-300 transition-all checked:border-blue-500 checked:bg-blue-600 hover:shadow-sm disabled:bg-gray-200 disabled:border-gray-300"
                                                         checked={rolePermissions[selectedRole]?.includes(permission) || false}
                                                         onChange={(e) => handlePermissionChange(selectedRole, permission, e.target.checked)}
                                                     />
@@ -495,7 +495,7 @@ const ManagePermissionsPage: React.FC = () => {
                                                     <input
                                                         type="checkbox"
                                                         disabled={isLockedByPlan}
-                                                        className="peer h-5 w-5 appearance-none rounded border border-gray-300 transition-all checked:border-sky-500 checked:bg-sky-500 hover:shadow-sm disabled:bg-gray-200 disabled:border-gray-300"
+                                                        className="peer h-5 w-5 appearance-none rounded border border-gray-300 transition-all checked:border-blue-500 checked:bg-blue-600 hover:shadow-sm disabled:bg-gray-200 disabled:border-gray-300"
                                                         checked={rolePermissions[selectedRole]?.includes(permission) || false}
                                                         onChange={(e) => handlePermissionChange(selectedRole, permission, e.target.checked)}
                                                     />
@@ -534,7 +534,7 @@ const ManagePermissionsPage: React.FC = () => {
             <div className="mt-4 text-center rounded-sm pt-4 sticky bottom-10 bg-transparent pb-4 mx-4">
                 <button
                     onClick={() => handleSaveChanges(selectedRole)}
-                    className="w-auto bg-sky-500 text-white font-bold py-3 px-4 rounded-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-lg transition-transform active:scale-95"
+                    className="w-auto bg-blue-600 text-white font-bold py-3 px-4 rounded-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-lg transition-transform active:scale-95"
                 >
                     Save Changes for {selectedRole}
                 </button>

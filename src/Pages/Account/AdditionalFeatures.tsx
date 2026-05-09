@@ -30,21 +30,21 @@ const SERVICES: ServiceItem[] = [
         title: 'Inventory Management',
         description: 'Track stock levels, manage items, and adjust pricing.',
         route: '/inventory',
-        isLocked: true,
+        isLocked: false,
     },
     {
         id: 'label-design',
         title: 'Label Design',
         description: 'Custom label design for your products. ₹1,100 per design.',
         route: '/label-design',
-        isLocked: true,
+        isLocked: false,
     },
     {
         id: 'bill-design',
         title: 'Bill Design',
         description: 'Custom bill design for your business. ₹1,100 per design.',
         route: '/bill-design',
-        isLocked: true,
+        isLocked: false,
     }
 ];
 
@@ -52,6 +52,8 @@ const AdditionalServices: React.FC = () => {
     const navigate = useNavigate();
     const { currentUser } = useAuth();
     const [isChecking, setIsChecking] = useState(false);
+    const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+    const [selectedPlan, setSelectedPlan] = useState('');
 
     // 1. State to track if the user is on a mobile/tablet device
     const [isMobileDevice, setIsMobileDevice] = useState(false);
@@ -107,6 +109,12 @@ const AdditionalServices: React.FC = () => {
     };
 
     const handleNavigate = (service: ServiceItem) => {
+        if (service.isLocked === false) {
+            setSelectedPlan(service.title);
+            setIsContactModalOpen(true);
+            return;
+        }
+
         if (service.id === 'Whatsapp') {
             handleWhatsappClick(service.route);
         } else {
@@ -119,7 +127,7 @@ const AdditionalServices: React.FC = () => {
             {/* Header */}
             <div className="z-30 bg-white border-b border-gray-100 pb-6 pt-6 px-6 shadow-sm flex-none">
                 <div className="flex items-start gap-4">
-                    <BackButton/>
+                    <BackButton />
                     <div className="flex flex-col">
                         <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
                             Services
@@ -142,9 +150,7 @@ const AdditionalServices: React.FC = () => {
                         <CustomCard
                             key={service.id}
                             // 4. Use effectivelyLocked to prevent clicks
-                            onClick={() => {
-                                if (!effectivelyLocked) handleNavigate(service);
-                            }}
+                            onClick={() => handleNavigate(service)}
                             className={`transition-all ${effectivelyLocked
                                 ? 'cursor-not-allowed opacity-60 bg-slate-50'
                                 : 'cursor-pointer hover:shadow-md active:scale-[0.99]'
@@ -177,7 +183,7 @@ const AdditionalServices: React.FC = () => {
                                 <div className="flex items-center">
                                     <button
                                         className={`w-10 h-10 flex items-center justify-center rounded-full bg-slate-50 ${effectivelyLocked ? 'text-gray-300' : 'text-slate-400'}`}
-                                        disabled={effectivelyLocked}
+                                        disabled={false}
                                     >
                                         {isChecking && service.id === 'Whatsapp' ? (
                                             <div className="h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
@@ -191,6 +197,38 @@ const AdditionalServices: React.FC = () => {
                     );
                 })}
             </div>
+            {isContactModalOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-2xl max-w-md w-full p-6">
+                        <h3 className="text-lg font-bold text-gray-900 mb-4">
+                            Service Unavailable
+                        </h3>
+
+                        <p className="text-gray-700 mb-4">
+                            To access <span className="font-semibold">{selectedPlan}</span>,
+                            please contact our admin:
+                        </p>
+
+                        <div className="bg-gray-50 rounded-md p-4 mb-6 text-center">
+                            <p className="text-sm text-gray-600 mb-2">Call us at:</p>
+
+                            <a
+                                href="tel:9818815838"
+                                className="text-2xl font-bold text-blue-600 hover:text-blue-700"
+                            >
+                                9818815838
+                            </a>
+                        </div>
+
+                        <button
+                            onClick={() => setIsContactModalOpen(false)}
+                            className="w-full py-2 bg-gray-900 text-white rounded-md font-semibold hover:bg-gray-800 transition-colors"
+                        >
+                            OK
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

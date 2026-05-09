@@ -294,13 +294,13 @@ const SubscriptionPage: React.FC = () => {
                     <div className="bg-white p-1 rounded-sm shadow-sm border border-gray-200 inline-flex">
                         <button
                             onClick={() => setActiveTab('pos')}
-                            className={`px-6 py-2 rounded-sm text-sm font-bold transition-all duration-200 ${activeTab === 'pos' ? 'bg-gray-900 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+                            className={`px-6 py-2 rounded-sm text-sm font-bold transition-all duration-200 ${activeTab === 'pos' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
                         >
                             POS
                         </button>
                         <button
                             onClick={() => setActiveTab('catalogue')}
-                            className={`px-6 py-2 rounded-sm text-sm font-bold transition-all duration-200 ${activeTab === 'catalogue' ? 'bg-sky-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+                            className={`px-6 py-2 rounded-sm text-sm font-bold transition-all duration-200 ${activeTab === 'catalogue' ? 'bg-[#F97316] text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
                         >
                             Catalogue
                         </button>
@@ -360,7 +360,7 @@ const SubscriptionPage: React.FC = () => {
                                                     setIsContactModalOpen(true);
                                                 }}
                                                 className={`mt-3 w-full py-1.5 rounded-sm text-xs sm:text-sm font-bold transition-colors ${tier.recommended
-                                                    ? activeTab === 'pos' ? 'bg-gray-900 text-white hover:bg-gray-800' : activeTab === 'catalogue' ? 'bg-sky-600 text-white hover:bg-sky-700' : 'bg-yellow-400 text-black hover:bg-yellow-500'
+                                                    ? activeTab === 'pos' ? 'bg-blue-600 text-white hover:bg-gray-800' : activeTab === 'catalogue' ? 'bg-[#F97316] text-white hover:bg-sky-700' : 'bg-yellow-400 text-black hover:bg-yellow-500'
                                                     : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
                                                     }`}
                                             >

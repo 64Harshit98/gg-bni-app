@@ -1172,7 +1172,7 @@ const Journal: React.FC = () => {
                   {invoice.type === 'Credit' && (
                     <>
                       <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-                        <button onClick={(e) => { e.stopPropagation(); handleSalesReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-sky-500 rounded-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">Return</button>
+                        <button onClick={(e) => { e.stopPropagation(); handleSalesReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">Return</button>
                         <button
                           onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }}
                           disabled={pdfGenerating === invoice.id}
@@ -1187,7 +1187,7 @@ const Journal: React.FC = () => {
                   {invoice.type === 'Debit' && (
                     <>
                       <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-                        <button onClick={(e) => { e.stopPropagation(); handlePurchaseReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-sky-500 rounded-sm hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-colors">Return</button>
+                        <button onClick={(e) => { e.stopPropagation(); handlePurchaseReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-sm hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-colors">Return</button>
                         <button onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-black rounded-sm hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center gap-2">Print</button>
                       </ShowWrapper>
                     </>
@@ -1224,7 +1224,7 @@ const Journal: React.FC = () => {
                   key={type}
                   onClick={() => setBillType(type as any)}
                   className={`flex-1 py-2 text-xs font-bold uppercase rounded-sm transition-all ${billType === type
-                    ? 'bg-white text-sky-600 shadow-sm'
+                    ? 'bg-white text-blue-600 shadow-sm'
                     : 'text-slate-500'
                     }`}
                 >
@@ -1270,7 +1270,7 @@ const Journal: React.FC = () => {
                 </>
               ) : (
                 <>
-                  <button onClick={() => handlePdfAction(invoiceToPrint, ACTION.DOWNLOAD)} className="w-full text-white py-2.5 px-4 rounded-sm font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 bg-sky-500" disabled>
+                  <button onClick={() => handlePdfAction(invoiceToPrint, ACTION.DOWNLOAD)} className="w-full text-white py-2.5 px-4 rounded-sm font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 bg-blue-600" disabled>
                     <IconDownload /> Download PDF
                   </button>
                   <button
@@ -1307,7 +1307,7 @@ const Journal: React.FC = () => {
             <p className="text-center text-sm text-gray-600 mb-4">Scan to download PDF</p>
             <button
               onClick={() => setShowQrModal(null)}
-              className="w-full bg-sky-500 text-white py-3 rounded-sm font-semibold hover:bg-blue-700 transition-colors"
+              className="w-full bg-blue-600 text-white py-3 rounded-sm font-semibold hover:bg-blue-700 transition-colors"
             >
               Close
             </button>

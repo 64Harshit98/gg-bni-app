@@ -584,6 +584,10 @@ export const CatalogueBill = async (
 
   // ================= TABLE DATA =================
   const isTaxEnabled = data.companyGstType === 'Regular';
+  const showMrpColumn =
+    data.items.length === 1
+      ? Number((data.items[0] as any)?.mrp || 0) > 0
+      : !data.items.some((item: any) => Number(item.mrp || 0) === 0);
   const body = data.items.map((item: any) => {
     const totalPcs = item.qty * (item.unitMultiplier ?? 1);
 
@@ -612,34 +616,69 @@ export const CatalogueBill = async (
       gstAmount = (price * taxPercent / 100) * qty;
     }
 
+    const mrp = item.mrp || 0;
+
     return isEstimate
-      ? [
-        item.sno,
-        "",
-        `${item.name}\n(${totalPcs} pcs)`,
-        item.qty,
-        formatAmount(item.mrp || 0),
-        formatAmount(price),
-        formatAmount(item.total),
-      ]
-      : [
-        item.sno,
-        "",
-        `${item.name}\n(${totalPcs} pcs)`,
-        item.qty,
-        taxPercent,
-        formatAmount(item.mrp || 0),
-        formatAmount(price),
-        formatAmount(subtotal),
-        formatAmount(gstAmount),
-        formatAmount(subtotal + gstAmount),
-      ];
+      ? (
+        showMrpColumn
+          ? [
+            item.sno,
+            "",
+            `${item.name}\n(${totalPcs} pcs)`,
+            item.qty,
+            formatAmount(mrp),
+            formatAmount(price),
+            formatAmount(item.total),
+          ]
+          : [
+            item.sno,
+            "",
+            `${item.name}\n(${totalPcs} pcs)`,
+            item.qty,
+            formatAmount(price),
+            formatAmount(item.total),
+          ]
+      )
+      : (
+        showMrpColumn
+          ? [
+            item.sno,
+            "",
+            `${item.name}\n(${totalPcs} pcs)`,
+            item.qty,
+            taxPercent,
+            formatAmount(mrp),
+            formatAmount(price),
+            formatAmount(subtotal),
+            formatAmount(gstAmount),
+            formatAmount(subtotal + gstAmount),
+          ]
+          : [
+            item.sno,
+            "",
+            `${item.name}\n(${totalPcs} pcs)`,
+            item.qty,
+            taxPercent,
+            formatAmount(price),
+            formatAmount(subtotal),
+            formatAmount(gstAmount),
+            formatAmount(subtotal + gstAmount),
+          ]
+      );
   });
 
   // ===== GRAND TOTAL ROW =====
   const foot = isEstimate
-    ? [["", "", "", "", "", "Grand Total", formatAmount(data.grandTotal)]]
-    : [["", "", "", "", "", "", "", "", "Grand Total", formatAmount(data.grandTotal)]];
+    ? [
+      showMrpColumn
+        ? ["", "", "", "", "", "Grand Total", formatAmount(data.grandTotal)]
+        : ["", "", "", "", "Grand Total", formatAmount(data.grandTotal)]
+    ]
+    : [
+      showMrpColumn
+        ? ["", "", "", "", "", "", "", "", "Grand Total", formatAmount(data.grandTotal)]
+        : ["", "", "", "", "", "", "", "Grand Total", formatAmount(data.grandTotal)]
+    ];
 
   const drawBrandingFooter = () => {
 
@@ -711,8 +750,16 @@ export const CatalogueBill = async (
   autoTable(doc, {
     startY: cursorY,
     head: isEstimate
-      ? [["No", "Product", "Item", "Qty", "MRP", "SalePrice", "Total"]]
-      : [["No", "Product", "Item", "Qty", "GST%", "MRP", "SalePrice", "SubTotal", "GSTAmt", "Total"]],
+      ? [
+        showMrpColumn
+          ? ["No", "Product", "Item", "Qty", "MRP", "SalePrice", "Total"]
+          : ["No", "Product", "Item", "Qty", "SalePrice", "Total"]
+      ]
+      : [
+        showMrpColumn
+          ? ["No", "Product", "Item", "Qty", "GST%", "MRP", "SalePrice", "SubTotal", "GSTAmt", "Total"]
+          : ["No", "Product", "Item", "Qty", "GST%", "SalePrice", "SubTotal", "GSTAmt", "Total"]
+      ],
     body,
     foot,
     showFoot: "lastPage",

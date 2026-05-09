@@ -86,20 +86,24 @@ const BillSettings: React.FC = () => {
 
                 const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
                 const settingsDocRef = doc(db, 'companies', companyId, 'settings', 'bill');
+                const userDocRef = currentUser.uid
+                    ? doc(db, 'companies', companyId, 'users', currentUser.uid)
+                    : null;
 
-                const [businessSnap, settingsSnap] = await Promise.all([
+                const [businessSnap, settingsSnap, userSnap] = await Promise.all([
                     getDoc(businessDocRef),
-                    getDoc(settingsDocRef)
+                    getDoc(settingsDocRef),
+                    userDocRef ? getDoc(userDocRef) : Promise.resolve(null)
                 ]);
 
                 const bData = businessSnap.exists() ? businessSnap.data() : {};
                 const sData = settingsSnap.exists() ? settingsSnap.data() : {};
-
+                const uData = userSnap?.exists() ? userSnap.data() : {};
                 setBusinessInfo({
                     companyName: bData.businessName || bData.name || 'Not Set',
                     address: formatAddress(bData),
-                    phone: bData.phoneNumber || bData.phone || 'Not Set',
-                    email: bData.email || 'Not Set',
+                    phone: bData.phoneNumber || bData.phone || uData.phoneNumber || uData.phone || 'Not Set',
+                    email: bData.email || uData.email || 'Not Set',
                     gstin: bData.gstin || '',
                     panNumber: bData.panNumber || '',
                     msmeNumber: bData.msmeUdyamNumber || bData.registrationNumber || '',

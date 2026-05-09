@@ -12,8 +12,9 @@ import { OrderInvoiceNumber } from '../UseComponents/InvoiceCounter';
 import { useNavigate } from 'react-router';
 import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName';
-import SearchBar from './SearchBar';
 import SubdomainClaimModal from '../Components/SubDomainModal';
+import SearchableItemInput from '../UseComponents/SearchIteminput';
+
 const OrderingPage: React.FC = () => {
     // --- States ---
     const navigate = useNavigate()
@@ -347,35 +348,21 @@ const OrderingPage: React.FC = () => {
                 {/* --- STICKY SEARCH BAR --- */}
                 <div className="sticky top-[68px] z-50 flex justify-center">
                     <div className="relative group max-w-md mx-auto w-full">
-                        <SearchBar
+                        <SearchableItemInput
                             items={items}
-                            itemGroups={itemGroups}
                             placeholder="Search products..."
                             onItemSelected={(item) => {
                                 if (!item.id) return;
-                                const group = itemGroups.find(
-                                    g => g.id === item.itemGroupId
-                                );
-
-                                const uncategorizedGroup = itemGroups.find(
-                                    g => g.name.toLowerCase().trim() === "uncategorized"
-                                );
-
+                                const group = itemGroups.find(g => g.id === item.itemGroupId);
+                                const uncategorizedGroup = itemGroups.find(g => g.name.toLowerCase().trim() === "uncategorized");
                                 const slug = group
                                     ? generateSlug(group.name)
                                     : uncategorizedGroup
                                         ? generateSlug(uncategorizedGroup.name)
                                         : "uncategorized";
-
-                                navigate(
-                                    `/catalogue-home/my-shop/${slug}`,
-                                    {
-                                        state: {
-                                            highlightItemId: item.id,
-                                            isUnlisted: !item.isListed
-                                        }
-                                    }
-                                );
+                                navigate(`/catalogue-home/my-shop/${slug}`, {
+                                    state: { highlightItemId: item.id, isUnlisted: !item.isListed }
+                                });
                             }}
                         />
                     </div>

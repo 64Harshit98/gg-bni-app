@@ -156,19 +156,27 @@ const SalesListTable: React.FC<{
 }> = ({ sales, sortConfig, onSort }) => {
     const SortableHeader: React.FC<{ sortKey: keyof OrderRecord; children: React.ReactNode; className?: string; }> = ({ sortKey, children, className }) => {
         const isSorted = sortConfig.key === sortKey;
-        const directionIcon = sortConfig.direction === 'asc' ? '▲' : '▼';
+        const ASC_ICON = '∧';
+        const DESC_ICON = '∨';
+        const directionIcon = sortConfig.direction === 'asc' ? ASC_ICON : DESC_ICON;
 
         return (
-            <th className={`py-2 px-3 ${className || ''}`}>
-                <button onClick={() => onSort(sortKey)} className="flex items-center gap-2 uppercase">
-                    {children}
-                    <span className="w-0">
+            <th className={`py-2 px-3 text-center ${className || ''}`}>
+                <button
+                    onClick={() => onSort(sortKey)}
+                    className="w-full flex items-center justify-center gap-1 uppercase"
+                >
+                    <span>{children}</span>
+
+                    <span className="w-3 flex justify-center">
                         {isSorted ? (
-                            <span className="text-[#F97316] text-xs">{directionIcon}</span>
+                            <span className="text-[#F97316] text-xs leading-none">
+                                {directionIcon}
+                            </span>
                         ) : (
-                            <span className="text-gray-400 hover:text-gray-600 text-xs inline-flex flex-col leading-3">
-                                <span>▲</span>
-                                <span className="-mt-1">▼</span>
+                            <span className="text-gray-400 text-[10px] inline-flex flex-col leading-[8px] opacity-60">
+                                <span>{ASC_ICON}</span>
+                                <span>{DESC_ICON}</span>
                             </span>
                         )}
                     </span>

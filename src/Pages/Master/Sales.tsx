@@ -1237,12 +1237,18 @@ const Sales: React.FC = () => {
                 // Result returned to the UI
                 return { id: newSaleRef.id, number: finalInvNo };
 
-
             } else if (existingId) {
                 const invoiceRef = doc(db, "companies", companyId, "sales", existingId);
+
                 saleData.createdAt = customDate;
+                saleData.invoiceNumber = invoiceNumber;
+
                 transaction.update(invoiceRef, sanitizeForFirestore(saleData));
-                return { id: existingId, number: invoiceToEdit.invoiceNumber };
+
+                return {
+                    id: existingId,
+                    number: invoiceNumber
+                };
             }
             return null;
         };
@@ -2141,6 +2147,8 @@ const Sales: React.FC = () => {
                     requireCustomerName={salesSettings?.requireCustomerName}
                     requireCustomerMobile={salesSettings?.requireCustomerMobile}
                     allowDueBilling={salesSettings?.allowDueBilling ?? false}
+                    initialPartyAddress={isEditMode ? invoiceToEdit?.partyAddress : ''}
+                    initialPartyGST={isEditMode ? invoiceToEdit?.partyGstin : ''}
                 />
                 <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
 
@@ -2487,6 +2495,8 @@ const Sales: React.FC = () => {
                 totalItemDiscount={totalDiscount} totalQuantity={totalQuantity}
                 requireCustomerName={salesSettings?.requireCustomerName}
                 requireCustomerMobile={salesSettings?.requireCustomerMobile}
+                initialPartyAddress={isEditMode ? invoiceToEdit?.partyAddress : ''}
+                initialPartyGST={isEditMode ? invoiceToEdit?.partyGstin : ''}
                 initialShippingName={isEditMode ? invoiceToEdit?.shippingName : ''}
                 initialShippingNumber={isEditMode ? invoiceToEdit?.shippingNumber : ''}
                 initialShippingAddress={isEditMode ? invoiceToEdit?.shippingAddress : ''}

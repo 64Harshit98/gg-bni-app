@@ -322,18 +322,18 @@ const OrderingPage: React.FC = () => {
                 {/* Changed py-8 to py-4 to make the header a normal height */}
                 <div className="max-w-7xl mx-auto px-4 py-4 relative flex items-center justify-between h-16">
 
-                    {/* Center Section - Company Name */}
-                    <h1 className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-lg md:text-lg font-black text-[#1A3B5D] uppercase tracking-tighter text-center whitespace-nowrap">
+                    {/* Company Name */}
+                    <h1 className="absolute left-4 right-28 top-1/2 -translate-y-1/2 text-sm sm:text-lg md:text-lg font-black text-[#1A3B5D] uppercase tracking-tighter text-center leading-tight sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:whitespace-nowrap">
                         {companyName}
                     </h1>
 
-                    {/* Left Spacer (Optional, to keep title centered if needed) */}
+                    {/* Left Spacer */}
                     <div className="w-24"></div>
 
-                    {/* Right Section - Setup Link Button */}
+                    {/* Store Link Button */}
                     <button
                         onClick={() => setIsSubdomainModalOpen(true)}
-                        className="bg-blue-50 text-blue-600 px-3 py-2 rounded-sm text-[10px] font-black uppercase tracking-wider border border-blue-100 hover:bg-blue-100 transition-colors z-10"
+                        className="bg-blue-50 text-blue-600 px-3 py-2 rounded-sm text-[10px] font-black uppercase tracking-wider border border-blue-100 hover:bg-blue-100 transition-colors z-10 shrink-0"
                     >
                         Store Link
                     </button>

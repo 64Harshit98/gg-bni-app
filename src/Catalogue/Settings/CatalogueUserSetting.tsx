@@ -212,6 +212,7 @@ const CatalogueUserSetting: React.FC = () => {
                                                 type="tel"
                                                 id={`phoneNumber-${user.uid}`}
                                                 name="phoneNumber"
+                                                maxLength={10}
                                                 value={editFormData.phoneNumber || ''}
                                                 onChange={handleInputChange}
                                                 className="w-full p-2 border border-gray-300 rounded text-sm"

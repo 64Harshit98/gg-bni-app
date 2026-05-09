@@ -2024,7 +2024,7 @@ const OrdersPage: React.FC = () => {
                                                                 </div>
 
                                                                 <div className="text-right border-r border-slate-200 pr-3">
-                                                                    <p className="text-[7px] font-bold text-blue-600 uppercase tracking-tighter leading-none mb-0.5">Credit</p>
+                                                                    <p className="text-[7px] font-bold text-blue-600 uppercase tracking-tighter leading-none mb-0.5">C.Note</p>
                                                                     <p className="text-[11px] font-black text-blue-700 leading-none">
                                                                         ₹{Number(Order.creditNoteAmount || 0).toFixed(2)}
                                                                     </p>
@@ -2290,11 +2290,16 @@ const OrdersPage: React.FC = () => {
                             >
                                 Print Directly
                             </button>
-                            <button onClick={() => {
-                                setShowQrModal(selectedOrderForAction);
-                                setSelectedOrderForAction(null);
-                            }
-                            } className="w-full bg-gray-900 text-white py-2.5 rounded-sm font-bold">Generate QR Code</button>
+                            <button
+                                disabled
+                                onClick={() => {
+                                    setShowQrModal(selectedOrderForAction);
+                                    setSelectedOrderForAction(null);
+                                }}
+                                className="w-full bg-gray-400 cursor-not-allowed text-white py-2.5 rounded-sm font-bold"
+                            >
+                                Generate QR Code
+                            </button>
                         </div>
                     </div>
                 </div>

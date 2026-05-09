@@ -59,17 +59,17 @@ const ItemAdd: React.FC<ItemAddProps> = ({
 }) => {
   const themeStyles = {
     blue: {
-      primaryBg: 'bg-sky-500',
-      primaryHover: 'hover:bg-sky-600',
-      text: 'text-sky-500',
-      textHover: 'hover:text-sky-700',
-      border: 'border-sky-500',
-      focusRing: 'focus:ring-sky-500',
-      panelBg: 'bg-sky-50',
-      panelBorder: 'border-sky-100',
-      panelHeader: 'text-sky-800',
-      panelSubText: 'text-sky-600',
-      panelBtn: 'text-sky-600 border-sky-200 hover:bg-sky-50',
+      primaryBg: 'bg-blue-600',
+      primaryHover: 'hover:bg-blue-600',
+      text: 'text-blue-500',
+      textHover: 'hover:text-blue-700',
+      border: 'border-blue-500',
+      focusRing: 'focus:ring-blue-500',
+      panelBg: 'bg-blue-50',
+      panelBorder: 'border-blue-100',
+      panelHeader: 'text-blue-800',
+      panelSubText: 'text-blue-600',
+      panelBtn: 'text-blue-600 border-blue-200 hover:bg-blue-50',
     },
     orange: {
       primaryBg: 'bg-[#F97316]',

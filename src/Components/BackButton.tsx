@@ -20,12 +20,7 @@ const BackButton: React.FC<BackButtonProps> = ({ className = "", to }) => {
     <button
       onClick={handleClick}
       title="Back"
-      className={`p-2
-                  text-slate-700 
-                  hover:bg-slate-200 
-                  transition-colors 
-                  ${className}`}
-    >
+      className={`p-2 text-slate-700 cursor-pointer hover:bg-slate-200 transition-colors ${className}`}>
       <svg
         xmlns="http://www.w3.org/2000/svg"
         width="24"

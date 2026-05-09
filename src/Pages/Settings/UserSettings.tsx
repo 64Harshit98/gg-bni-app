@@ -304,9 +304,9 @@ const avatarSrc = user.profilePicture || user.photoURL || '';
                                                 )}
                                             </div>
                                             <p className="text-xs text-gray-500">Email: {user.email || 'N/A'} (Not editable)</p>
-                                            <div className="flex justify-end gap-2 mt-2">
-                                                <CustomButton onClick={handleCancelEdit} variant={Variant.Transparent}>Cancel</CustomButton>
-                                                <CustomButton onClick={handleSaveEdit} variant={Variant.Save} disabled={isSaving}>
+                                            <div className="flex justify-end gap-1.5 mt-2 w-full ">
+                                                <CustomButton onClick={handleCancelEdit} variant={Variant.Transparent} className="flex-1 min-w-0">Cancel</CustomButton>
+                                                <CustomButton onClick={handleSaveEdit} variant={Variant.Save} disabled={isSaving} className="flex-1 min-w-0">
                                                     {isSaving ? <Spinner /> : 'Save'}
                                                 </CustomButton>
                                             </div>

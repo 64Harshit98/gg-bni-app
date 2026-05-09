@@ -444,11 +444,11 @@ const SharedCataloguePage: React.FC = () => {
                                     const slug = generateSlug(group.name);
                                     navigate(subdomain ? `/${slug}` : `/${effectiveCompanyId}/${slug}`);
                                 }}
-                                className="bg-white rounded-sm overflow-hidden shadow-sm border border-gray-100 flex flex-col transition-all group cursor-pointer active:scale-95"
+                                className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col transition-all group cursor-pointer active:scale-95 ${pinnedIds.has(group.id!) ? 'ring-1 ring-[#F97316] shadow-lg border-[#F97316]' : 'border-gray-100'}`}
                             >
                                 <div className="aspect-square bg-[#F8FAFC] relative overflow-hidden">
                                     {pinnedIds.has(group.id!) && (
-                                        <div className="absolute top-1.5 right-1.5 z-10 bg-white text-[#F97316] rounded-sm px-1 py-1 flex items-center gap-0.5 shadow-md">
+                                        <div className="absolute top-1.5 right-1.5 z-10 bg-white text-[#F97316] rounded-sm px-1 py-1 flex items-center gap-0.5 shadow-md border border-[#F97316]">
                                             <Pin size={12} className="fill-[#F97316]" />
                                         </div>
                                     )}

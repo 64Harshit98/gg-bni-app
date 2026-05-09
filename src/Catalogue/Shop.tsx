@@ -423,13 +423,13 @@ const OrderingPage: React.FC = () => {
                                 id={group.id}
                                 key={group.id}
                                 onClick={() => navigate(`/catalogue-home/my-shop/${group.id}`)}
-                                className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col transition-all group cursor-pointer active:scale-95 ${highlightedId === group.id ? 'ring-2 ring-[#F97316] shadow-lg scale-[1.02]' : 'border-gray-100'
+                                className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col transition-all group cursor-pointer active:scale-95 ${highlightedId === group.id ? 'ring-1 ring-[#F97316] shadow-lg scale-[1.02]' : pinnedIds.has(group.id!) ? 'ring-1 ring-[#F97316] shadow-lg border-[#F97316]' : 'border-gray-100'
                                     } ${isVirtual ? 'border-dashed border-gray-300' : ''}`}
                             >
                                 {/* --- IMAGE SECTION WITH TOP BADGE --- */}
                                 <div className="aspect-square bg-[#F8FAFC] relative overflow-hidden">
                                     {pinnedIds.has(group.id!) && (
-                                        <div className="absolute top-1.5 right-1.5 z-10 bg-white text-[#F97316] rounded-sm px-1 py-1 flex items-center gap-0.5 shadow-md">
+                                        <div className="absolute top-1.5 right-1.5 z-10 bg-white text-[#F97316] rounded-sm px-1 py-1 flex items-center gap-0.5 shadow-md border border-[#F97316]">
                                             <Pin size={12} className="fill-[#F97316]" />
                                         </div>
                                     )}
@@ -552,7 +552,7 @@ const OrderingPage: React.FC = () => {
                                                                 }`}
                                                             title={pinnedIds.has(group.id!) ? 'Unpin' : 'Pin to top'}
                                                         >
-                                                            <Pin size={12} className={pinnedIds.has(group.id!) ? 'fill-white' : ''} />
+                                                            <Pin size={12} className={pinnedIds.has(group.id!) ? 'fill-[#F97316]' : ''} />
                                                         </button>
                                                     )}
 

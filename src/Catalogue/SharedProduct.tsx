@@ -1188,14 +1188,16 @@ const SharedProduct: React.FC = () => {
                                 key={item.id}
                                 onClick={() => handleOpenDetailDrawer(item)}
                                 className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col transition-all duration-300 relative group hover:shadow-md cursor-pointer ${activeHighlight === item.id
-                                    ? 'ring-2 ring-orange-600 scale-110 bg-blue-50 border-[#F97316] z-100'
-                                    : 'border-gray-100'
+                                    ? 'ring-1 ring-[#F97316] scale-110 bg-blue-50 border-[#F97316] z-100'
+                                    : pinnedIds.has(item.id!)
+                                        ? 'ring-1 ring-[#F97316] shadow-lg border-[#F97316]'
+                                        : 'border-gray-100'
                                     }`}
                             >
                                 {/* IMAGE */}
                                 <div className="aspect-square bg-[#F8FAFC] flex items-center justify-center relative overflow-hidden">
                                     {pinnedIds.has(item.id!) && (
-                                        <div className="absolute top-1.5 right-1.5 z-10 bg-white text-[#F97316] rounded-sm px-1 py-1 flex items-center gap-0.5 shadow-md">
+                                        <div className="absolute top-1.5 right-1.5 z-10 bg-white text-[#F97316] rounded-sm px-1 py-1 flex items-center gap-0.5 shadow-md border border-[#F97316]">
                                             <Pin size={12} className="fill-[#F97316]" />
                                         </div>
                                     )}

@@ -256,15 +256,8 @@ const CustomerReport: React.FC = () => {
       // Row 3 – Summary label
       aoa[3][0] = 'SUMMARY';
 
-      // Row 4 – Summary values (3 pairs: label + value, across 6 columns)
-      aoa[4][0] = 'Total Customers';
-      aoa[4][1] = summary.totalCustomers;
-      aoa[4][2] = 'Total Sales';
-      aoa[4][3] = summary.totalSales;
-      aoa[4][4] = 'Total Due';
-      aoa[4][5] = summary.totalDue;
-      // 7th column (index 6): avg sale
-      aoa[4][6] = Math.round(summary.averageSalePerCustomer);
+      // Row 4 – Summary values (single merged cell)
+      aoa[4][0] = `Total Customers: ${summary.totalCustomers}   |   Total Sales: ₹${summary.totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Total Due: ₹${summary.totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Avg Sale: ₹${Math.round(summary.averageSalePerCustomer).toLocaleString('en-IN')}`;
 
       // Row 6 – Column headers
       COLS.forEach((c, i) => { aoa[6][i] = c.header; });
@@ -312,7 +305,8 @@ const CustomerReport: React.FC = () => {
         { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
         { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
         { s: { r: 3, c: 0 }, e: { r: 3, c: colCount - 1 } },
-        { s: { r: footerRow, c: 1 }, e: { r: footerRow, c: 2 } }, // footer label spans
+        { s: { r: 4, c: 0 }, e: { r: 4, c: colCount - 1 } },
+        { s: { r: footerRow, c: 1 }, e: { r: footerRow, c: 2 } },
       ];
 
       const style = (addr: string, st: any) => {
@@ -344,28 +338,12 @@ const CustomerReport: React.FC = () => {
         allBorders,
       ));
 
-      // Summary value cells (row 4) — label/value pairs
-      const summaryBg = solidFill('F0FDF4');
-      const summaryLabelStyle = s({ sz: 9, bold: true, color: { rgb: '15803D' } }, summaryBg, { horizontal: 'left', vertical: 'center' }, bblr);
-      const summaryValStyle = s({ sz: 11, bold: true, color: { rgb: '166534' } }, summaryBg, { horizontal: 'center', vertical: 'center' }, bblr);
-
-      style('A5', summaryLabelStyle); // Total Customers label
-      style('B5', summaryValStyle);   // Total Customers value
-      style('C5', summaryLabelStyle); // Total Sales label
-      style('D5', summaryValStyle);   // Total Sales value
-      style('E5', summaryLabelStyle); // Total Due label
-      style('F5', summaryValStyle);   // Total Due value
-      style('G5', s(                  // Avg Sale value (no label col; placed in last col)
-        { sz: 11, bold: true, color: { rgb: '166534' } },
-        summaryBg,
+      style('A5', s(
+        { sz: 10, bold: true, color: { rgb: '166534' } },
+        solidFill('DCFCE7'),
         { horizontal: 'center', vertical: 'center' },
         bblr,
       ));
-
-      // Format numeric summary cells
-      if (worksheet['D5']) { worksheet['D5'].t = 'n'; worksheet['D5'].z = '₹#,##0.00'; }
-      if (worksheet['F5']) { worksheet['F5'].t = 'n'; worksheet['F5'].z = '₹#,##0.00'; }
-      if (worksheet['G5']) { worksheet['G5'].t = 'n'; worksheet['G5'].z = '₹#,##0.00'; }
 
       // Column headers (row 6)
       COLS.forEach((_c, i) => {

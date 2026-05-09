@@ -423,15 +423,8 @@ const CatalogueItemReport: React.FC = () => {
       // Row 3 – Summary label
       aoa[3][0] = 'SUMMARY';
 
-      // Row 4 – Summary values
-      aoa[4][0] = 'Total Items';
-      aoa[4][1] = summary.totalItems;
-      aoa[4][2] = 'Avg MRP';
-      aoa[4][3] = Math.round(summary.averageMrp);
-      aoa[4][4] = 'Avg Sale Price';
-      aoa[4][5] = Math.round(summary.averageSalePrice);
-      aoa[4][6] = 'Avg Margin %';
-      aoa[4][7] = Math.round(summary.averageMarginPercentage);
+      // Row 4 – Summary values (single merged cell)
+      aoa[4][0] = `Total Items: ${summary.totalItems}   |   Avg MRP: ₹${Math.round(summary.averageMrp).toLocaleString('en-IN')}   |   Avg Sale Price: ₹${Math.round(summary.averageSalePrice).toLocaleString('en-IN')}   |   Avg Margin: ${Math.round(summary.averageMarginPercentage)}%`;
 
       // Row 6 – Column headers
       COLS.forEach((c, i) => { aoa[6][i] = c.header; });
@@ -482,6 +475,7 @@ const CatalogueItemReport: React.FC = () => {
         { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
         { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
         { s: { r: 3, c: 0 }, e: { r: 3, c: colCount - 1 } },
+        { s: { r: 4, c: 0 }, e: { r: 4, c: colCount - 1 } },
         { s: { r: footerRow, c: 1 }, e: { r: footerRow, c: 3 } },
       ];
 
@@ -512,19 +506,12 @@ const CatalogueItemReport: React.FC = () => {
         allBorders,
       ));
 
-      // Summary value cells (row 4)
-      const summaryBg = solidFill('FFF7ED');
-      const summaryLabelStyle = s({ sz: 9, bold: true, color: { rgb: 'C2410C' } }, summaryBg, { horizontal: 'left', vertical: 'center' }, bblr);
-      const summaryValStyle = s({ sz: 11, bold: true, color: { rgb: '9A3412' } }, summaryBg, { horizontal: 'center', vertical: 'center' }, bblr);
-
-      style('A5', summaryLabelStyle); // Total Items label
-      style('B5', summaryValStyle);   // Total Items value
-      style('C5', summaryLabelStyle); // Avg MRP label
-      style('D5', summaryValStyle);   // Avg MRP value
-      style('E5', summaryLabelStyle); // Avg Sale Price label
-      style('F5', summaryValStyle);   // Avg Sale Price value
-      style('G5', summaryLabelStyle); // Avg Margin % label
-      style('H5', summaryValStyle);   // Avg Margin % value
+      style('A5', s(
+        { sz: 10, bold: true, color: { rgb: '9A3412' } },
+        solidFill('FFF7ED'),
+        { horizontal: 'center', vertical: 'center' },
+        bblr,
+      ));
 
       // Column headers (row 6) — dark orange header bar
       COLS.forEach((_c, i) => {

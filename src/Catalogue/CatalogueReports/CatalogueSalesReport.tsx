@@ -640,13 +640,8 @@ const OrdersReport: React.FC = () => {
             // Row 3 – Summary label
             aoa[3][0] = 'SUMMARY';
 
-            // Row 4 – Summary values
-            aoa[4][0] = 'Total Orders';
-            aoa[4][1] = summary.totalTransactions;
-            aoa[4][2] = 'Total Sales';
-            aoa[4][3] = summary.totalSales;
-            aoa[4][4] = 'Items Sold';
-            aoa[4][5] = summary.totalItemsSold;
+            // Row 4 – Summary values (single merged cell)
+            aoa[4][0] = `Total Orders: ${summary.totalTransactions}   |   Total Sales: ₹${summary.totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Items Sold: ${summary.totalItemsSold}`;
 
             // Row 6 – Column headers
             COLS.forEach((c, i) => { aoa[6][i] = c.header; });
@@ -688,6 +683,7 @@ const OrdersReport: React.FC = () => {
                 { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
                 { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
                 { s: { r: 3, c: 0 }, e: { r: 3, c: colCount - 1 } },
+                { s: { r: 4, c: 0 }, e: { r: 4, c: colCount - 1 } },
                 { s: { r: footerRow, c: 1 }, e: { r: footerRow, c: 3 } },
             ];
 
@@ -718,19 +714,12 @@ const OrdersReport: React.FC = () => {
                 allBorders,
             ));
 
-            // Summary value cells (row 4)
-            const summaryBg = solidFill('FFF7ED');
-            const summaryLabelStyle = s({ sz: 9, bold: true, color: { rgb: 'C2410C' } }, summaryBg, { horizontal: 'left', vertical: 'center' }, bblr);
-            const summaryValStyle = s({ sz: 11, bold: true, color: { rgb: '9A3412' } }, summaryBg, { horizontal: 'center', vertical: 'center' }, bblr);
-
-            style('A5', summaryLabelStyle); // Total Orders label
-            style('B5', summaryValStyle);   // Total Orders value
-            style('C5', summaryLabelStyle); // Total Sales label
-            style('D5', summaryValStyle);   // Total Sales value
-            style('E5', summaryLabelStyle); // Items Sold label
-            style('F5', summaryValStyle);   // Items Sold value
-
-            if (worksheet['D5']) { worksheet['D5'].t = 'n'; worksheet['D5'].z = '₹#,##0.00'; }
+            style('A5', s(
+                { sz: 10, bold: true, color: { rgb: '9A3412' } },
+                solidFill('FFF7ED'),
+                { horizontal: 'center', vertical: 'center' },
+                bblr,
+            ));
 
             // Column headers (row 6) — dark orange header bar
             COLS.forEach((_c, i) => {

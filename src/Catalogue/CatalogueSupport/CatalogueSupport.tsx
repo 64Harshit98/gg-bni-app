@@ -166,7 +166,7 @@ const CatalogueSupport: React.FC = () => {
             onClick={() => toggleSection('contact-2')}
           >
             <p className="font-medium text-gray-800">Sellar HQ</p>
-            <p>Ground Floor, Harsha City Mall, G-46, Plot number 2B, Shakti Khand 2,</p>
+            <p>2nd Floor, Parsvnath Arcade, Unit 22, Vaibhav khand</p>
             <p> Indirapuram, Ghaziabad, Uttar Pradesh 201014</p>
             <p className="mt-2 text-xs text-gray-400">(Visits by appointment only)</p>
           </AccordionItem>

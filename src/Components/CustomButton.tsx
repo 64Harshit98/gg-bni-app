@@ -24,13 +24,13 @@ const CustomButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
       [Variant.Payment]:
         'bg-emerald-500 hover:bg-emerald-600 text-white font-semibold text-lg py-3 px-8 rounded-sm transition-colors',
       [Variant.Save]:
-        'bg-sky-500 text-white border border-sky-500 border-2 hover:bg-gray-800 ',
+        'bg-blue-600 text-white border border-blue-600 border-2 hover:bg-gray-800 ',
     };
 
     const activeClasses = {
       [Variant.Transparent]: isCataloguePage
         ? 'bg-[#F97316] text-white font-bold border-[#F97316] hover:bg-[#ea580c] hover:border-[#ea580c]'
-        : 'bg-sky-500 text-white font-bold border-sky-500 hover:text-white hover:bg-gray-800 hover:border-gray-800',
+        : 'bg-blue-600 text-white font-bold border-blue-600 hover:text-white hover:bg-gray-800 hover:border-gray-800',
       [Variant.Outline]: '',
       [Variant.Filled]: '',
       [Variant.Payment]: '',

@@ -142,7 +142,7 @@ const ItemSettingsPage: React.FC = () => {
                         </div>
                         <p className="text-sm text-gray-500 mb-3">
                             Select which of the optional fields must be filled out when manually adding a single item.
-                            <br /><span className="text-xs text-red-500 font-medium">* Name, MRP/Sale Price, and Barcode are strictly required by the system and cannot be disabled.</span>
+                            <br /><span className="text-xs text-red-500 font-medium">* Item name, MRP or SalePrice is strictly mandatory and barcode will be auto generated if no input.</span>
                         </p>
 
                         <div className="space-y-1 mt-3">
@@ -213,7 +213,7 @@ const ItemSettingsPage: React.FC = () => {
                         <button
                             type="submit"
                             disabled={isSaving || isLoading}
-                            className="flex-1 flex items-center justify-center bg-sky-500 text-white font-bold py-3 px-4 rounded-sm hover:bg-sky-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                            className="flex-1 flex items-center justify-center bg-blue-600 text-white font-bold py-3 px-4 rounded-sm hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
                         >
                             {isSaving ? <Spinner /> : 'Save Item Settings'}
                         </button>

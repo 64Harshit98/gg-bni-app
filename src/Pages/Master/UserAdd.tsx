@@ -117,6 +117,7 @@ const UserAdd: React.FC = () => {
               id="phoneNumber"
               type="tel"
               label="Phone Number"
+              maxLength={10}
               value={phoneNumber}
               onChange={(e) => setPhoneNumber(e.target.value)}
               required

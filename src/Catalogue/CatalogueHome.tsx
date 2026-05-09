@@ -225,13 +225,13 @@ const HomePageContent: React.FC = () => {
         <div className="flex min-h-screen w-full flex-col bg-gray-100 mb-16">
 
             {soon && (
-                <div className="w-full text-center py-2 text-sm font-bold text-white shadow-sm transition-colors duration-300 bg-red-300">
+                <div className="w-full text-center py-2 text-sm font-bold text-white shadow-sm transition-colors duration-300 ${isUrgent ? 'bg-red-300' : 'bg-amber-200'}">
                     <ShinyText
                         text={` Subscription expires ${daysLeft} day${daysLeft === 1 ? '' : 's'}.`}
                         speed={4}
                         delay={0}
-                        color="#000000"
-                        shineColor="#ffffff"
+                        color="#030303"
+                        shineColor="#faf5f5"
                         spread={100}
                         direction="left"
                         yoyo={false}

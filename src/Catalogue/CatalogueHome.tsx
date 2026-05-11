@@ -213,8 +213,9 @@ const HomePageContent: React.FC = () => {
         return Math.ceil(diff / (1000 * 60 * 60 * 24));
     };
 
-    const soon = isExpiringSoon(expiryDate);
     const daysLeft = (getDaysLeft(expiryDate) ?? 0);
+    const soon = isExpiringSoon(expiryDate);
+    const isUrgent = daysLeft <= 2;
 
     // Format the last-updated timestamp for display in the header
     const formattedLastUpdated = useMemo(() => {
@@ -226,7 +227,7 @@ const HomePageContent: React.FC = () => {
         <div className="flex min-h-screen w-full flex-col bg-gray-100 mb-16">
 
             {soon && (
-                <div className="w-full text-center py-2 text-sm font-bold text-white shadow-sm transition-colors duration-300 ${isUrgent ? 'bg-red-300' : 'bg-amber-200'}">
+                <div className={`w-full text-center py-2 text-sm font-bold text-white shadow-sm transition-colors duration-300 ${isUrgent ? 'bg-red-300' : 'bg-amber-200'}`}>
                     <ShinyText
                         text={` Subscription expires ${daysLeft} day${daysLeft === 1 ? '' : 's'}.`}
                         speed={4}

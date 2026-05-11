@@ -44,7 +44,7 @@ export const getDefaultPurchaseSettings = (companyId: string): PurchaseSettings 
     roundingOff: false,
     voucherName: 'Purchase',
     voucherPrefix: 'PUR',
-    currentVoucherNumber: 1000,
+    currentVoucherNumber: 1,
     purchaseViewType: 'list',
     requireSupplierName: true,
     requireSupplierMobile: false,

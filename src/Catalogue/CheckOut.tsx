@@ -236,10 +236,7 @@ const CartPage: React.FC = () => {
                 if (item.id === id) {
                     const moqQty = item.moq || 1;
 
-                    //  MOQ STEP LOGIC
-                    const stepChange = delta > 0 ? moqQty : -moqQty;
-
-                    let newQty = item.quantity + stepChange;
+                    let newQty = item.quantity + delta;
 
                     // MOQ se neeche lock
                     newQty = Math.max(moqQty, newQty);

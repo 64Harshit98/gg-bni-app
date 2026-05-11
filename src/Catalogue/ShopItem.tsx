@@ -159,7 +159,7 @@ const MyShop: React.FC = () => {
     useEffect(() => {
         setSearchQuery("");
     }, [groupId]);
-
+    
     const addToCart = (item: Item, quantity: number = 1, isFromDrawer: boolean = false) => {
         setCart(prev => {
             const existing = prev.find(i => i.item.id === item.id);

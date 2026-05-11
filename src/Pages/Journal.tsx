@@ -86,6 +86,7 @@ interface Invoice {
   paymentMethods?: DocumentData;
   paymentHistory?: any[];
   returnHistory?: DocumentData[];
+  returnedItemsSnapshot?: any[];
   salesmanId?: string | null;
   salesmanName?: string;
   manualDiscount?: number;
@@ -264,6 +265,7 @@ const useJournalData = (companyId?: string) => {
           dueAmount: dueAmount,
           returnHistory: returnHistory,
           items: items,
+          returnedItemsSnapshot: data.returnedItemsSnapshot || [],
           paymentMethods: paymentMethods,
           paymentHistory: data.paymentHistory || [],
           taxType: data.taxType || '',
@@ -456,15 +458,15 @@ const Journal: React.FC = () => {
 
   useEffect(() => {
     const fetchExpiry = async () => {
-      if(!currentUser?.companyId) return;
+      if (!currentUser?.companyId) return;
       const ref = doc(db, 'companies', currentUser.companyId);
       const snap = await getDoc(ref);
-      if(snap.exists()){
+      if (snap.exists()) {
         const expiry = snap.data().expiryDate;
-        if(!expiry) return;
+        if (!expiry) return;
         const d = expiry.toDate ? expiry.toDate() : new Date(expiry);
-        
-        setDaysRemaining(Math.ceil((d.getTime() - new Date().getTime()) /(1000 * 60 * 60 * 24)))
+
+        setDaysRemaining(Math.ceil((d.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))
       }
     };
     fetchExpiry();
@@ -835,7 +837,7 @@ const Journal: React.FC = () => {
       for (const item of invoiceToDelete.items!) {
         if (item.id && item.quantity > 0) {
           const itemDocRef = doc(db, 'companies', companyId, 'items', item.id);
-          
+
           const itemSnap = await getDoc(itemDocRef);
           if (!itemSnap.exists()) continue;
 
@@ -1069,11 +1071,15 @@ const Journal: React.FC = () => {
                         : item.effectiveUnitPrice
                           ? item.effectiveUnitPrice
                           : (item.quantity > 0 ? (item.finalPrice / item.quantity) : 0);
-
+                    const isReturned = invoice.returnHistory?.some((h: any) =>
+                      h.returnedItems?.some((r: any) => r.originalItemId === item.id)
+                    );
                     return (
                       <div key={index} className="flex justify-between items-center text-slate-700 mb-3">
                         <div className="flex-1 pr-4">
-                          <p className="font-medium">{item.name}</p>
+                          <p className="font-medium" style={{ textDecoration: isReturned ? 'line-through' : 'none', color: isReturned ? '#94a3b8' : 'inherit' }}>
+                            {item.name}
+                          </p>
                           <p className="text-xs text-slate-400 flex items-center gap-1">
                             <span>
                               {item.mrp > 0
@@ -1112,7 +1118,63 @@ const Journal: React.FC = () => {
                         </div>
                       </div>
                     );
-                  }) : <p className="text-xs text-slate-400">No item details available.</p>}
+                  }) : null}
+
+                  {/* Show returned items crossed out */}
+                  {invoice.returnedItemsSnapshot && invoice.returnedItemsSnapshot.length > 0 &&
+                    invoice.returnedItemsSnapshot
+                      .filter((snap: any) => !invoice.items?.some(i => i.id === snap.id))
+                      .map((item: any, index: number) => {
+                        const matchedHistory = invoice.returnHistory?.find((h: any) =>
+                          h.returnedItems?.some((ri: any) =>
+                            String(ri.originalItemId) === String(item.id) ||
+                            String(ri.id) === String(item.id)
+                          )
+                        );
+                        return (
+                          <div key={`returned-${index}`} className="flex justify-between items-center text-slate-400 mb-3">
+                            <div className="flex-1 pr-4">
+                              <p className="font-medium" style={{ textDecoration: 'line-through' }}>
+                                {item.name}
+                              </p>
+                              {/* Return mode badge + date */}
+                              <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                {matchedHistory?.modeOfReturn && (
+                                  <span className={`text-[7px] uppercase font-bold px-1.5 py-0.5 rounded border ${matchedHistory.modeOfReturn === 'EXCHANGE'
+                                      ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                      : matchedHistory.modeOfReturn === 'CASH REFUND'
+                                        ? 'bg-green-50 text-green-700 border-green-200'
+                                        : 'bg-orange-50 text-orange-600 border-orange-200'
+                                    }`}>
+                                    {matchedHistory.modeOfReturn}
+                                  </span>
+                                )}
+                                {matchedHistory?.returnedAt && (
+                                  <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wide">
+                                    {new Date(
+                                      matchedHistory.returnedAt?.toDate
+                                        ? matchedHistory.returnedAt.toDate()
+                                        : matchedHistory.returnedAt
+                                    ).toLocaleDateString('en-GB', {
+                                      day: '2-digit', month: 'short', year: '2-digit'
+                                    })}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-semibold" style={{ textDecoration: 'line-through' }}>
+                                {Number(item.finalPrice).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+                              </p>
+                              <p className="text-xs">Qty: {item.quantity}</p>
+                            </div>
+                          </div>
+                        );
+                      })
+                  }
+                  {invoice.items?.length === 0 && (!invoice.returnedItemsSnapshot || invoice.returnedItemsSnapshot.length === 0) &&
+                    <p className="text-xs text-slate-400">No item details available.</p>
+                  }
                 </div>
 
                 {invoice.manualDiscount && invoice.manualDiscount > 0 ? (

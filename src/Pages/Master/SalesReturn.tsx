@@ -743,6 +743,13 @@ const SalesReturnPage: React.FC = () => {
         partyName: finalPartyName,
         partyNumber: finalPartyNumber,
         items: newItemsList,
+        returnedItemsSnapshot: arrayUnion(...itemsToReturn.map(i => ({
+          id: i.originalItemId,
+          name: i.name,
+          quantity: i.quantity,
+          finalPrice: i.amount,
+          mrp: i.mrp,
+        }))),
         subtotal: updatedTotals.subtotal,
         taxableAmount: updatedTotals.taxableAmount,
         taxAmount: updatedTotals.taxAmount,

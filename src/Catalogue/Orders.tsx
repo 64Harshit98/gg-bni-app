@@ -1891,11 +1891,11 @@ const OrdersPage: React.FC = () => {
                                         <div className="flex justify-between items-start pl-6 mt-1">
                                             <div>
                                                 {!isUpcomingStatus && (
-                                                    <h3 className="text-sm font-bold text-slate-800">
+                                                    <h3 className="text-base font-bold text-slate-800">
                                                         {Order.orderId}
                                                     </h3>
                                                 )}
-                                                <p className="text-black text-xs font-medium">
+                                                <p className="text-black text-sm font-medium">
                                                     {Order.userName}
                                                     {Order.status === "Upcoming" && Order.userLoginPhone && (
                                                         <span className="ml-2 text-[10px] text-black font-semibold border p-1 bg-gray-100">
@@ -1907,7 +1907,7 @@ const OrdersPage: React.FC = () => {
                                             </div>
                                             <div className="text-right flex flex-col items-end">
                                                 <div className="flex items-center gap-2">
-                                                    <p className="text-[18px] font-bold text-black">₹{formatAmount(total)}
+                                                    <p className="text-lg font-bold text-black">₹{formatAmount(total)}
                                                     </p>
                                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}><path d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
                                                 </div>
@@ -1950,53 +1950,134 @@ const OrdersPage: React.FC = () => {
 
                                                         </div>
                                                     )}
-                                                    {Order.items?.map((item, idx) => (
-                                                        <div
-                                                            key={idx}
-                                                            className="p-2 cursor-pointer"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
+                                                    {Order.items?.map((item, idx) => {
+                                                        const isReturned = Order.returnHistory?.some((h: any) =>
+                                                            h.returnedItems?.some((r: any) =>
+                                                                String(r.originalItemId) === String(item.itemId) ||
+                                                                String(r.originalItemId) === String(item.id) ||
+                                                                String(r.id) === String(item.itemId) ||
+                                                                String(r.id) === String(item.id)
+                                                            )
+                                                        );
+                                                        return (
+                                                            <div
+                                                                key={idx}
+                                                                className="p-2 cursor-pointer"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
 
-                                                            }}
-                                                        >
-                                                            <div className="flex justify-between items-start -mb-1">
-                                                                <div className="flex-1">
-                                                                    <p className="text-[11px] font-extrabold text-slate-800 leading-tight mb-1">
-                                                                        {item.name}
-                                                                        <span className="ml-1 text-[9px] font-semibold text-gray-500">
-                                                                            {item.unit || "pcs"}
-                                                                        </span>
-                                                                    </p>
-                                                                    {item.note && (
-                                                                        <p className="text-[9px] leading-tight flex items-baseline gap-1.5 mt-1 opacity-80">
-                                                                            <span className="font-black uppercase tracking-widest font-xs">Note:</span>
-                                                                            <span className="font-xs italic text-slate-600">{item.note}</span>
+                                                                }}
+                                                            >
+                                                                <div className="flex justify-between items-start -mb-1">
+                                                                    <div className="flex-1">
+                                                                        <p className="text-[11px] font-extrabold leading-tight mb-1"
+                                                                            style={{ textDecoration: isReturned ? 'line-through' : 'none', color: isReturned ? '#94a3b8' : '#1e293b' }}>
+                                                                            {item.name}
+                                                                            <span className="ml-1 text-[9px] font-semibold text-gray-500">
+                                                                                {item.unit || "pcs"}
+                                                                            </span>
                                                                         </p>
-                                                                    )}
-                                                                    <p className="text-[10px] text-gray-400">
-                                                                        ₹{formatAmount(
+                                                                        {item.note && (
+                                                                            <p className="text-[9px] leading-tight flex items-baseline gap-1.5 mt-1 opacity-80">
+                                                                                <span className="font-black uppercase tracking-widest font-xs">Note:</span>
+                                                                                <span className="font-xs italic text-slate-600">{item.note}</span>
+                                                                            </p>
+                                                                        )}
+                                                                        <p className="text-[10px] text-gray-400">
+                                                                            ₹{formatAmount(
+                                                                                (item.customPrice ??
+                                                                                    (Number(item.salesPrice || 0) > 0
+                                                                                        ? Number(item.salesPrice)
+                                                                                        : Number(item.mrp)))
+                                                                            )} per {item.unit || "pcs"}
+                                                                        </p>
+                                                                    </div>
+                                                                    <div className="text-right ml-4">
+                                                                        <p className="text-[13px] font-black text-slate-900">₹{formatAmount(
                                                                             (item.customPrice ??
                                                                                 (Number(item.salesPrice || 0) > 0
                                                                                     ? Number(item.salesPrice)
                                                                                     : Number(item.mrp)))
-                                                                        )} per {item.unit || "pcs"}
-                                                                    </p>
-                                                                </div>
-                                                                <div className="text-right ml-4">
-                                                                    <p className="text-[13px] font-black text-slate-900">₹{formatAmount(
-                                                                        (item.customPrice ??
-                                                                            (Number(item.salesPrice || 0) > 0
-                                                                                ? Number(item.salesPrice)
-                                                                                : Number(item.mrp)))
-                                                                        * item.quantity
-                                                                    )}
-                                                                    </p>
-                                                                    <p className="text-[9px] font-bold text-slate-500 bg-white">Qty: {item.quantity}</p>
+                                                                            * item.quantity
+                                                                        )}
+                                                                        </p>
+                                                                        <p className="text-[9px] font-bold text-slate-500 bg-white">Qty: {item.quantity}</p>
+                                                                    </div>
                                                                 </div>
                                                             </div>
-                                                        </div>
-                                                    ))}
+                                                        );
+                                                    })}
+                                                    {/* Show fully removed returned items */}
+                                                    {Order.returnHistory?.flatMap((h: any) => h.returnedItems || [])
+                                                        .filter((r: any) => !Order.items?.some(item =>
+                                                            String(item.itemId) === String(r.originalItemId) ||
+                                                            String(item.id) === String(r.originalItemId)
+                                                        ))
+                                                        .map((r: any, idx: number) => (
+                                                            <div key={`removed-${idx}`} className="p-2">
+                                                                <div className="flex justify-between items-start -mb-1">
+                                                                    <div className="flex-1">
+                                                                        <p className="text-[11px] font-extrabold leading-tight mb-1"
+                                                                            style={{ textDecoration: 'line-through', color: '#94a3b8' }}>
+                                                                            {r.name}
+                                                                            <span className="ml-1 text-[9px] font-semibold text-gray-400">
+                                                                                {r.unit || "pcs"}
+                                                                            </span>
+                                                                        </p>
+                                                                        {/* Return mode badge + date */}
+                                                                        <div className="flex flex-wrap items-center gap-1.5 mt-1 mb-1">
+                                                                            {(() => {
+                                                                                const matchedHistory = Order.returnHistory?.find((h: any) =>
+                                                                                    h.returnedItems?.some((ri: any) =>
+                                                                                        String(ri.originalItemId) === String(r.originalItemId) ||
+                                                                                        String(ri.id) === String(r.originalItemId)
+                                                                                    )
+                                                                                );
+                                                                                return (
+                                                                                    <>
+                                                                                        {matchedHistory?.modeOfReturn && (
+                                                                                            <span className={`text-[7px] uppercase font-bold px-1.5 py-0.5 rounded border ${matchedHistory.modeOfReturn === 'EXCHANGE'
+                                                                                                ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                                                                                : matchedHistory.modeOfReturn === 'CASH REFUND'
+                                                                                                    ? 'bg-green-50 text-green-700 border-green-200'
+                                                                                                    : 'bg-orange-50 text-[#F97316] border-orange-200'
+                                                                                                }`}>
+                                                                                                {matchedHistory.modeOfReturn}
+                                                                                            </span>
+                                                                                        )}
+                                                                                        {matchedHistory?.returnedAt && (
+                                                                                            <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wide">
+                                                                                                {new Date(
+                                                                                                    (matchedHistory.returnedAt as any)?.toDate
+                                                                                                        ? (matchedHistory.returnedAt as any).toDate()
+                                                                                                        : matchedHistory.returnedAt
+                                                                                                ).toLocaleDateString('en-GB', {
+                                                                                                    day: '2-digit', month: 'short', year: '2-digit'
+                                                                                                })}
+                                                                                            </span>
+                                                                                        )}
+                                                                                    </>
+                                                                                );
+                                                                            })()}
+                                                                        </div>
+                                                                        {r.note && (
+                                                                            <p className="text-[9px] leading-tight flex items-baseline gap-1.5 mt-1 opacity-80">
+                                                                                <span className="font-black uppercase tracking-widest">Note:</span>
+                                                                                <span className="italic text-slate-400">{r.note}</span>
+                                                                            </p>
+                                                                        )}
 
+                                                                    </div>
+                                                                    <div className="text-right ml-4">
+                                                                        <p className="text-[13px] font-black" style={{ color: '#94a3b8', textDecoration: 'line-through' }}>
+                                                                            ₹{formatAmount((r.unitPrice ?? r.mrp ?? 0) * r.quantity)}
+                                                                        </p>
+                                                                        <p className="text-[9px] font-bold text-slate-400">Qty: {r.quantity}</p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ))
+                                                    }
                                                     {/* Totals Section */}
                                                     {!isUpcomingStatus && (
                                                         <div className="border-t mt-1 p-2 flex items-center justify-between">

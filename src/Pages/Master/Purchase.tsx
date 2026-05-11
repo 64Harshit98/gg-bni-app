@@ -301,14 +301,20 @@ const PurchasePage: React.FC = () => {
         finalNetPrice = mrp * (1 - (globalDefaultDiscount / 100));
       }
     }
-    else if (masterPurchaseDiscount > 0) {
-      calculatedDiscount = masterPurchaseDiscount;
-      finalNetPrice = 0; // No base price to calculate from
-    }
     else {
-      // Priority 4: No price, no purchase discount -> 0
-      finalNetPrice = 0;
-      calculatedDiscount = 0;
+      // No MRP, no purchase price — fall back to salesPrice as base
+      const salesPriceBase = Number((itemToAdd as any).salesPrice || 0);
+      if (masterPurchaseDiscount > 0 && salesPriceBase > 0) {
+        calculatedDiscount = masterPurchaseDiscount;
+        finalNetPrice = salesPriceBase * (1 - (masterPurchaseDiscount / 100));
+      } else if (globalDefaultDiscount > 0 && salesPriceBase > 0) {
+        calculatedDiscount = globalDefaultDiscount;
+        finalNetPrice = salesPriceBase * (1 - (globalDefaultDiscount / 100));
+      } else {
+        // Truly no data — default to salesPrice as-is or 0
+        calculatedDiscount = 0;
+        finalNetPrice = salesPriceBase;
+      }
     }
 
     const newItemToInsert = {
@@ -1225,18 +1231,26 @@ const PurchasePage: React.FC = () => {
                   const masterPurchaseDiscount = (item as any).purchasediscount || 0;
                   const globalDefaultDiscount = purchaseSettings?.defaultDiscount ?? 0;
 
+                  const salesPriceBase = Number((item as any).salesPrice || 0);
+                  const baseForCalc = masterPurchasePrice > 0 ? masterPurchasePrice
+                    : mrp > 0 ? mrp
+                    : salesPriceBase;
+
                   let effectiveDisplayPrice = 0;
                   let effectiveDiscPct = 0;
 
                   if (lastAddedCartItem) {
+                    // Selected: show cart price and badge vs MRP or salesPrice
                     effectiveDisplayPrice = Number(lastAddedCartItem.purchasePrice ?? 0);
-                    effectiveDiscPct = mrp > 0 && effectiveDisplayPrice < mrp
-                      ? Math.round(((mrp - effectiveDisplayPrice) / mrp) * 100)
+                    const badgeBase = mrp > 0 ? mrp : salesPriceBase;
+                    effectiveDiscPct = badgeBase > 0 && effectiveDisplayPrice < badgeBase
+                      ? Math.round(((badgeBase - effectiveDisplayPrice) / badgeBase) * 100)
                       : 0;
                   } else if (masterPurchasePrice > 0) {
                     effectiveDisplayPrice = masterPurchasePrice;
-                    effectiveDiscPct = mrp > 0 && masterPurchasePrice < mrp
-                      ? Math.round(((mrp - masterPurchasePrice) / mrp) * 100)
+                    const badgeBase = mrp > 0 ? mrp : salesPriceBase;
+                    effectiveDiscPct = badgeBase > 0 && masterPurchasePrice < badgeBase
+                      ? Math.round(((badgeBase - masterPurchasePrice) / badgeBase) * 100)
                       : 0;
                   } else if (mrp > 0) {
                     if (masterPurchaseDiscount > 0) {
@@ -1247,6 +1261,18 @@ const PurchasePage: React.FC = () => {
                       effectiveDiscPct = globalDefaultDiscount;
                     } else {
                       effectiveDisplayPrice = mrp;
+                      effectiveDiscPct = 0;
+                    }
+                  } else if (salesPriceBase > 0) {
+                    // No MRP, no master purchase price — use salesPrice as base
+                    if (masterPurchaseDiscount > 0) {
+                      effectiveDisplayPrice = salesPriceBase * (1 - masterPurchaseDiscount / 100);
+                      effectiveDiscPct = masterPurchaseDiscount;
+                    } else if (globalDefaultDiscount > 0) {
+                      effectiveDisplayPrice = salesPriceBase * (1 - globalDefaultDiscount / 100);
+                      effectiveDiscPct = globalDefaultDiscount;
+                    } else {
+                      effectiveDisplayPrice = salesPriceBase;
                       effectiveDiscPct = 0;
                     }
                   }

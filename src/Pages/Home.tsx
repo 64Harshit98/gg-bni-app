@@ -178,7 +178,7 @@ const DashboardContent = () => {
 
       const currentSalesMap: Record<string, { amount: number, count: number }> = {};
       const paymentMap: Record<string, { amount: number, count: number }> = {};
-      const itemMap: Record<string, { amount: number, count: number }> = {};
+      const itemMap: Record<string, { amount: number, count: number, latestName: string }> = {};
       const customerMap: Record<string, { amount: number, count: number }> = {};
       const salesmanMap: Record<string, { amount: number, count: number }> = {};
       let currentTotalSales = 0, currentOrderCount = 0, prevTotalSales = 0;
@@ -246,12 +246,13 @@ const DashboardContent = () => {
           if (Array.isArray(d.items)) {
             d.items.forEach((item: any) => {
               const name = item.name || item.itemName;
-              if (name) {
+              const id = item.id || item.itemId || item.sku || name;
+              if (id && name) {
                 const qty = parseNum(item.quantity || item.qty || 1);
                 let val = parseNum(item.finalPrice || item.totalAmount || item.total || item.amount);
                 if (val === 0) { const price = parseNum(item.mrp || item.price || item.rate || item.sellingPrice || 0); val = price * qty; }
-                if (!itemMap[name]) itemMap[name] = { amount: 0, count: 0 };
-                itemMap[name].amount += val; itemMap[name].count += qty;
+                if (!itemMap[id]) itemMap[id] = { amount: 0, count: 0, latestName: name };
+                itemMap[id].amount += val; itemMap[id].count += qty;
               }
             });
           }
@@ -289,7 +290,7 @@ const DashboardContent = () => {
         itr.setDate(itr.getDate() + 1);
       }
 
-      const toList = (map: any) => Object.entries(map).map(([name, v]: [string, any]) => ({ name, amount: v.amount, quantity: v.count })).sort((a, b) => b.amount - a.amount).slice(0, 5);
+      const toList = (map: any) => Object.entries(map).map(([key, v]: [string, any]) => ({ name: v.latestName ?? key, amount: v.amount, quantity: v.count })).sort((a, b) => b.amount - a.amount).slice(0, 5);
       const allSalesmen = Object.entries(salesmanMap)
         .map(([name, v]: [string, any]) => ({ name, amount: v.amount, quantity: v.count }))
         .sort((a, b) => b.amount - a.amount);

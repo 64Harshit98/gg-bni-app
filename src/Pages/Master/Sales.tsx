@@ -773,6 +773,20 @@ const Sales: React.FC = () => {
     useEffect(() => {
         if (!isCalculatorView) return;
         const handleKeyDown = (e: KeyboardEvent) => {
+            if (document.activeElement === displayRef.current) {
+                if (e.key === 'Enter' || e.key === '=') {
+                    e.preventDefault();
+                    handleCheckoutClick();
+                } else if (e.key.toLowerCase() === 'c' || e.key === 'Escape') {
+                    e.preventDefault();
+                    if (calcInput === '') {
+                        if (items.length > 0 && window.confirm("Are you sure you want to clear the bill?")) setItems([]);
+                    } else {
+                        setCalcInput('');
+                    }
+                }
+                return;
+            }
             const key = e.key;
             if (/^[0-9*.\-+]$/.test(key)) {
                 setCalcInput(prev => prev + key);

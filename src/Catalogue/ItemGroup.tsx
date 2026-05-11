@@ -164,7 +164,7 @@ const ItemGroupPage: React.FC = () => {
                 }
             });
 
-            setGroupCounts({ ...counts, "uncategorized": uncategorizedCount });
+            setGroupCounts({ ...counts, "virtual-uncategorized": uncategorizedCount });
             // ----------------------
 
             // Final sort for display
@@ -384,9 +384,14 @@ const ItemGroupPage: React.FC = () => {
                             })}
                             <div className="flex items-center justify-between p-3 bg-gray-50 rounded-sm shadow-sm border border-gray-300">
                                 <div className="flex items-center gap-2 overflow-hidden">
-                                    <span className="text-gray-600 font-bold">Uncategorized</span>
+                                    <button
+                                        onClick={() => setViewingGroup({ id: 'virtual-uncategorized', name: 'Uncategorized', description: '', createdAt: 0, updatedAt: 0 })}
+                                        className="text-gray-600 font-bold hover:text-[#F97316] hover:underline text-left"
+                                    >
+                                        Uncategorized
+                                    </button>
                                     <span className="text-sm px-2 py-0.5 rounded-sm font-medium text-[#F97316]">
-                                        {groupCounts["uncategorized"] || 0} items
+                                        {groupCounts["virtual-uncategorized"] || 0} items
                                     </span>
                                 </div>
                             </div>
@@ -452,11 +457,19 @@ const ItemGroupPage: React.FC = () => {
                         </div>
 
                         <div className="overflow-y-auto flex-1 space-y-2">
-                            {allItems.filter(item => item.itemGroupId === viewingGroup.id).length === 0 ? (
+                            {allItems.filter(item =>
+                                viewingGroup.id === 'virtual-uncategorized'
+                                    ? !item.itemGroupId || item.itemGroupId === '' || item.itemGroupId === 'uncategorized' || !itemGroups.some(g => g.id === item.itemGroupId)
+                                    : item.itemGroupId === viewingGroup.id
+                            ).length === 0 ? (
                                 <p className="text-center text-gray-400 py-8">No items in this group.</p>
                             ) : (
                                 allItems
-                                    .filter(item => item.itemGroupId === viewingGroup.id)
+                                    .filter(item =>
+                                        viewingGroup.id === 'virtual-uncategorized'
+                                            ? !item.itemGroupId || item.itemGroupId === '' || item.itemGroupId === 'uncategorized' || !itemGroups.some(g => g.id === item.itemGroupId)
+                                            : item.itemGroupId === viewingGroup.id
+                                    )
                                     .sort((a, b) => a.name.localeCompare(b.name))
                                     .map(item => {
                                         const stock = item.stock || 0;

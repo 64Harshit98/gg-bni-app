@@ -1232,9 +1232,9 @@ const PurchasePage: React.FC = () => {
                   const globalDefaultDiscount = purchaseSettings?.defaultDiscount ?? 0;
 
                   const salesPriceBase = Number((item as any).salesPrice || 0);
-                  const baseForCalc = masterPurchasePrice > 0 ? masterPurchasePrice
-                    : mrp > 0 ? mrp
-                    : salesPriceBase;
+                  // const baseForCalc = masterPurchasePrice > 0 ? masterPurchasePrice
+                  //   : mrp > 0 ? mrp
+                  //   : salesPriceBase;
 
                   let effectiveDisplayPrice = 0;
                   let effectiveDiscPct = 0;

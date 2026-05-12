@@ -18,6 +18,7 @@ export interface CartItem extends Partial<Item> {
 interface GenericCartListProps<T extends CartItem> {
   items: T[];
   availableItems: Item[];
+  scrollRef?: React.RefObject<HTMLDivElement | null>;
   basePriceKey: keyof T;
   priceLabel: string;
   settings: {
@@ -107,6 +108,7 @@ const FloatingInput = ({
 export const GenericCartList = <T extends CartItem>({
   items,
   availableItems,
+  scrollRef,
   basePriceKey,
   priceLabel,
   settings,
@@ -128,7 +130,7 @@ export const GenericCartList = <T extends CartItem>({
 }: GenericCartListProps<T>) => {
 
   return (
-    <div className="flex-1 overflow-y-auto space-y-1 sm:space-y-4 pb-20 px-3 pt-1 sm:pt-4">
+    <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-1 sm:space-y-4 pb-20 px-3 pt-1 sm:pt-4">
       {items.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-40 text-gray-400">
           <p>Cart is empty</p>
@@ -281,7 +283,7 @@ export const GenericCartList = <T extends CartItem>({
                   <div className=" flex items-center border border-slate-300 rounded h-9 w-24 flex-shrink-0">
                     <button
                       onClick={() => {
-                        const step =   1;
+                        const step = 1;
                         const moq = Number(item.moq) || 1;
                         const currentQty = item.quantity || step;
                         const nextQty = currentQty - step;
@@ -309,7 +311,7 @@ export const GenericCartList = <T extends CartItem>({
                     </div>
                     <button
                       onClick={() => {
-                        const step =   1;
+                        const step = 1;
                         onQuantityChange(item.id, (item.quantity || step) + step);
                       }}
                       disabled={!item.isEditable}
@@ -428,7 +430,7 @@ export const GenericCartList = <T extends CartItem>({
                 <div className="flex items-center border border-slate-300 rounded h-9 w-24 flex-shrink-0">
                   <button
                     onClick={() => {
-                      const step =   1;
+                      const step = 1;
                       const moq = Number(item.moq) || 1;
                       const currentQty = item.quantity || step;
 
@@ -457,7 +459,7 @@ export const GenericCartList = <T extends CartItem>({
                   </div>
                   <button
                     onClick={() => {
-                      const step =   1;
+                      const step = 1;
                       onQuantityChange(item.id, (item.quantity || step) + step);
                     }}
                     disabled={!item.isEditable}

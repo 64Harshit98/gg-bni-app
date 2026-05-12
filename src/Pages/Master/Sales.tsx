@@ -390,7 +390,7 @@ const Sales: React.FC = () => {
                 barcode: item.barcode || '',
                 restockQuantity: item.restockQuantity || 0,
                 unit: item.unit || '',                     // ADDED
-                unitMultiplier: item.unitMultiplier || 1,  // ADDED
+                unitMultiplier: 1,  // ADDED
                 packetSize: item.packetSize || null,
             }));
             setItems(nonEditableItems);
@@ -456,7 +456,7 @@ const Sales: React.FC = () => {
             const currentQuantity = cartItem.quantity || 1;
             accumulatorQuantity += currentQuantity;
 
-            let baseForSubtotal = (cartItem.salesPrice > 0) ? cartItem.salesPrice : (cartItem.mrp || 0);
+            let baseForSubtotal = (cartItem.mrp > 0) ? cartItem.mrp : (cartItem.salesPrice || 0);
             const itemSpecificTaxRate = cartItem.tax !== undefined ? Number(cartItem.tax) : taxRate;
 
             if (effectiveTaxMode === 'inclusive' && itemSpecificTaxRate > 0) {
@@ -465,7 +465,7 @@ const Sales: React.FC = () => {
 
             accumulatorSubtotal += baseForSubtotal * currentQuantity;
 
-            const baseForDiscount = (cartItem.salesPrice > 0) ? cartItem.salesPrice : (cartItem.mrp || 0);
+            const baseForDiscount = (cartItem.mrp > 0) ? cartItem.mrp : (cartItem.salesPrice || 0);
             let effectiveUnitPrice = 0;
             if (cartItem.customPrice !== undefined && cartItem.customPrice !== null && cartItem.customPrice !== '') {
                 effectiveUnitPrice = parseFloat(String(cartItem.customPrice));
@@ -818,13 +818,24 @@ const Sales: React.FC = () => {
         const mrp = Number(itemToAdd.mrp || 0);
         const salesPrice = Number(itemToAdd.salesPrice || 0);
         const presetDiscount = Number(itemToAdd.discount || 0);
-        const initialMoq = Number((itemToAdd as any).moq || 1); // Grab MOQ from item master
+        const initialMoq = Number((itemToAdd as any).moq || 1);
 
-        const basePrice = salesPrice > 0 ? salesPrice : mrp;
-        let finalNetPrice = basePrice;
+        let finalNetPrice = 0;
+        let calculatedDiscount = 0;
 
-        if (presetDiscount > 0) {
-            finalNetPrice = basePrice * (1 - (presetDiscount / 100));
+        // --- NEW 3-TIER LOGIC ---
+        if (mrp > 0 && salesPrice > 0) {
+            // Case 1: Both exist. Ignore DB discount. Calculate diff.
+            finalNetPrice = salesPrice;
+            calculatedDiscount = ((mrp - salesPrice) / mrp) * 100;
+        } else if (salesPrice > 0) {
+            // Case 2: Only Sales Price exists. Apply DB discount.
+            calculatedDiscount = presetDiscount;
+            finalNetPrice = salesPrice * (1 - (presetDiscount / 100));
+        } else if (mrp > 0) {
+            // Case 3: Only MRP exists. Apply DB discount.
+            calculatedDiscount = presetDiscount;
+            finalNetPrice = mrp * (1 - (presetDiscount / 100));
         }
 
         const isRoundingEnabled = salesSettings?.enableRounding ?? true;
@@ -836,7 +847,7 @@ const Sales: React.FC = () => {
             id: crypto.randomUUID(),
             productId: itemToAdd.id!,
             quantity: Math.max(1, initialMoq),
-            discount: presetDiscount,
+            discount: calculatedDiscount,
             customPrice: finalNetPrice,
             isEditable: true,
             purchasePrice: itemToAdd.purchasePrice || 0,
@@ -958,7 +969,8 @@ const Sales: React.FC = () => {
         const safeDiscount = isNaN(n) ? 0 : n;
         setItems(prev => prev.map(i => {
             if (i.id === id) {
-                const basePrice = (i.salesPrice > 0) ? i.salesPrice : (i.mrp || 0);
+                // FIXED: Base price is MRP if it exists, otherwise Sales Price
+                const basePrice = (i.mrp > 0) ? i.mrp : (i.salesPrice || 0);
                 let newPrice = basePrice * (1 - safeDiscount / 100);
                 const isRoundingEnabled = salesSettings?.enableRounding ?? true;
                 const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
@@ -975,7 +987,10 @@ const Sales: React.FC = () => {
                 const n = parseFloat(i.customPrice);
                 if (i.customPrice === '' || isNaN(n)) return { ...i, customPrice: undefined };
                 let d = 0;
-                const basePrice = (i.salesPrice > 0) ? i.salesPrice : (i.mrp || 0);
+
+                // FIXED: Base price is MRP if it exists, otherwise Sales Price
+                const basePrice = (i.mrp > 0) ? i.mrp : (i.salesPrice || 0);
+
                 if (basePrice > 0) d = ((basePrice - n) / basePrice) * 100;
                 return { ...i, customPrice: n, discount: parseFloat(d.toFixed(2)) };
             }
@@ -1006,18 +1021,32 @@ const Sales: React.FC = () => {
         setItems(prevCartItems => prevCartItems.map(cartItem => {
             if (cartItem.productId === selectedItemForEdit?.id || cartItem.id === selectedItemForEdit?.id) {
                 const mergedItem = { ...cartItem, ...updateForCart } as SalesItem;
+
                 const mrp = Number(mergedItem.mrp || 0);
                 const salesPrice = Number(mergedItem.salesPrice || 0);
                 const presetDiscount = Number(mergedItem.discount || 0);
-                const basePrice = salesPrice > 0 ? salesPrice : mrp;
-                let finalNetPrice = basePrice;
-                if (presetDiscount > 0) {
-                    finalNetPrice = basePrice * (1 - (presetDiscount / 100));
+
+                let finalNetPrice = 0;
+                let calculatedDiscount = 0;
+
+                // --- NEW 3-TIER LOGIC ---
+                if (mrp > 0 && salesPrice > 0) {
+                    finalNetPrice = salesPrice;
+                    calculatedDiscount = ((mrp - salesPrice) / mrp) * 100;
+                } else if (salesPrice > 0) {
+                    calculatedDiscount = presetDiscount;
+                    finalNetPrice = salesPrice * (1 - (presetDiscount / 100));
+                } else if (mrp > 0) {
+                    calculatedDiscount = presetDiscount;
+                    finalNetPrice = mrp * (1 - (presetDiscount / 100));
                 }
+
                 const isRoundingEnabled = salesSettings?.enableRounding ?? true;
                 const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
                 finalNetPrice = applyRounding(finalNetPrice, isRoundingEnabled, roundingInterval);
+
                 mergedItem.customPrice = finalNetPrice;
+                mergedItem.discount = parseFloat(calculatedDiscount.toFixed(2)); // Make sure discount updates!
 
                 return mergedItem;
             }
@@ -1155,7 +1184,7 @@ const Sales: React.FC = () => {
                     id: item.productId,
                     quantity: currentQuantity, discount: currentDiscount, effectiveUnitPrice, finalPrice: itemFinalPrice,
                     unit: item.unit || '',                     // ADDED
-                    unitMultiplier: item.unitMultiplier || 1,  // ADDED
+                    unitMultiplier: 1,  // ADDED
                     packetSize: item.packetSize || null,
                     taxableAmount: itemTaxableBase, taxAmount: itemTaxAmount, taxRate: isTaxEnabled ? itemSpecificTaxRate : 0,
                     taxType: finalTaxType, discountPercentage: currentDiscount,
@@ -1383,12 +1412,7 @@ const Sales: React.FC = () => {
 
             if (e?.code === 'unavailable' || e?.message?.includes('network-request-failed')) {
                 setModal({
-                    message: 'Network lost during save. Please check your connection and try again.',
-                    type: State.ERROR
-                });
-            } else if (e?.message?.includes('undefined') || e?.message?.includes('invalid data')) {
-                setModal({
-                    message: 'Save failed due to invalid data. Please refresh and try again.',
+                    message: 'Network lost while saving. Please check your connection and try again.',
                     type: State.ERROR
                 });
             } else if (e?.code === 'permission-denied') {
@@ -1402,7 +1426,7 @@ const Sales: React.FC = () => {
                     type: State.ERROR
                 });
             } else {
-                setModal({ message: 'Failed to save invoice. Please try again.', type: State.ERROR });
+                setModal({ message: 'Failed to save invoice. Please refresh the page and try again.', type: State.ERROR });
             }
         } finally {
             setIsSaving(false);
@@ -1813,13 +1837,19 @@ const Sales: React.FC = () => {
                                 const mrp = Number(item.mrp || 0);
                                 const itemSalesPrice = Number(item.salesPrice || 0);
                                 const presetDiscount = Number(item.discount || 0);
-                                const basePrice = itemSalesPrice > 0 ? itemSalesPrice : mrp;
-                                let baseDisplayPrice = basePrice;
+                                let baseDisplayPrice = 0;
 
-                                if (presetDiscount > 0 && allowItemDiscount) {
-                                    baseDisplayPrice = basePrice * (1 - (presetDiscount / 100));
+                                // --- NEW 3-TIER LOGIC FOR GRID CARDS ---
+                                if (mrp > 0 && itemSalesPrice > 0) {
+                                    baseDisplayPrice = itemSalesPrice; // Case 1
+                                } else if (itemSalesPrice > 0) {
+                                    baseDisplayPrice = allowItemDiscount ? itemSalesPrice * (1 - presetDiscount / 100) : itemSalesPrice; // Case 2
+                                } else if (mrp > 0) {
+                                    baseDisplayPrice = allowItemDiscount ? mrp * (1 - presetDiscount / 100) : mrp; // Case 3
                                 }
+
                                 baseDisplayPrice = applyRounding(baseDisplayPrice, isRoundingEnabled, roundingInterval);
+
                                 const effectiveSp = (lastAddedCartItem?.customPrice !== undefined && lastAddedCartItem?.customPrice !== null && lastAddedCartItem?.customPrice !== '')
                                     ? Number(lastAddedCartItem.customPrice)
                                     : baseDisplayPrice;
@@ -1966,8 +1996,12 @@ const Sales: React.FC = () => {
                                                             <button
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
-                                                                    if (quantity > 1) handleQuantityChange(lastAddedCartItem.id, quantity - 1);
-                                                                    else handleDeleteItem(lastAddedCartItem.id);
+                                                                    const moq = Number((item as any).moq) || 1;
+                                                                    if (quantity > moq) {
+                                                                        handleQuantityChange(lastAddedCartItem.id, quantity - 1);
+                                                                    } else {
+                                                                        handleDeleteItem(lastAddedCartItem.id);
+                                                                    }
                                                                 }}
                                                                 className="h-7 flex-1 flex items-center justify-center bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-colors"
                                                             >−</button>
@@ -2090,7 +2124,15 @@ const Sales: React.FC = () => {
                                                         {/* Quantity RIGHT */}
                                                         <div className="flex items-center border border-gray-200 rounded-sm overflow-hidden bg-white flex-shrink-0">
                                                             <button
-                                                                onClick={(e) => { e.stopPropagation(); if (quantity > 1) handleQuantityChange(lastAddedCartItem.id, quantity - 1); else handleDeleteItem(lastAddedCartItem.id); }}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    const moq = Number((item as any).moq) || 1;
+                                                                    if (quantity > moq) {
+                                                                        handleQuantityChange(lastAddedCartItem.id, quantity - 1);
+                                                                    } else {
+                                                                        handleDeleteItem(lastAddedCartItem.id);
+                                                                    }
+                                                                }}
                                                                 className="w-6 h-7 flex items-center justify-center bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-colors"
                                                             >−</button>
                                                             <span className="w-5 text-center text-xs font-semibold text-gray-800">{quantity}</span>
@@ -2153,6 +2195,7 @@ const Sales: React.FC = () => {
                     subtotal={subtotal} billTotal={amountToPayNow}
                     onPaymentComplete={handleSavePayment}
                     isPartyNameEditable={!isEditMode}
+                    originalBillTotal={invoiceToEdit ? (invoiceToEdit.amount + (invoiceToEdit.manualDiscount || 0) - (invoiceToEdit.extraExpenseAmount || 0)) : undefined}
                     initialPartyName={isEditMode ? invoiceToEdit?.partyName : ''}
                     initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : ''}
                     initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined}

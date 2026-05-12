@@ -12,10 +12,15 @@ export const generateThermalReceipt = (
     const contentWidth = paperWidth - margin * 2;
 
     // --- 1. PRE-CALCULATE DATA & HEIGHT ---
+    const isEstimate = (data as any).isEstimate === true;
 
     // Tax Logic calculations
     const safeScheme = (data.gstScheme && data.gstScheme.trim() !== '') ? data.gstScheme.toUpperCase() : 'NONE';
     const safeTaxType = (data.taxType && data.taxType.trim() !== '') ? data.taxType.toUpperCase() : 'EXCLUSIVE';
+
+    // Master Switches (Matching the A4 Bill)
+    const showGstinDetails = !isEstimate && safeScheme !== 'NONE' && safeTaxType !== 'EXEMPT' && safeTaxType !== 'NONE';
+    const showTaxDetails = !isEstimate && safeScheme !== 'NONE' && (safeScheme === 'COMPOSITION' || (safeTaxType !== 'EXEMPT' && safeTaxType !== 'NONE'));
 
     let subTotal = 0;
     let totalTaxAmt = 0;
@@ -27,41 +32,48 @@ export const generateThermalReceipt = (
 
     const processedItems = data.items.map((item) => {
         const qty = Number(item.quantity) || 0;
-        const rate = Number(item.listPrice) || 0;
-        let rowTotal = item.amount !== undefined && item.amount !== null
-            ? Number(item.amount)
-            : (rate * qty) - Number(item.discountAmount || 0);
 
-        let effectiveTaxRate = Number(item.gstPercent || item.taxRate || 0);
-        if (safeScheme === 'COMPOSITION' || safeScheme === 'NONE') effectiveTaxRate = 0;
+        // 1. TRUST EXACT DB SCHEMA
+        let mrp = Number((item as any).mrp || item.listPrice || 0);
+        let finalAmount = Number((item as any).finalPrice || item.amount || (item as any).total || 0);
+        let taxAmt = Number((item as any).taxAmount || item.gstAmount || 0);
+        let taxableAmt = Number((item as any).taxableAmount || (item as any).subtotal || 0);
 
-        let taxableValue = 0;
-        let taxAmt = 0;
-        let netAmount = 0;
-
-        if (effectiveTaxRate === 0) {
-            netAmount = rowTotal;
-            taxableValue = rowTotal;
-        } else {
-            if (safeTaxType === 'EXCLUSIVE') {
-                taxableValue = rowTotal;
-                taxAmt = taxableValue * (effectiveTaxRate / 100);
-                netAmount = taxableValue + taxAmt;
-            } else {
-                netAmount = rowTotal;
-                taxableValue = netAmount / (1 + (effectiveTaxRate / 100));
-                taxAmt = netAmount - taxableValue;
-            }
+        // Safety fallback if taxableAmount is missing
+        if (!taxableAmt && finalAmount > 0) {
+            taxableAmt = finalAmount - taxAmt;
         }
 
-        subTotal += taxableValue;
-        totalTaxAmt += taxAmt;
-        grossTotal += netAmount;
+        // Fallback for discount
+        let discountAmt = Number(item.discountAmount || (item as any).manualDiscount || (item as any).discount || 0);
+        if (discountAmt === 0 && mrp > 0 && taxableAmt > 0) {
+            discountAmt = (mrp * qty) - taxableAmt;
+        }
 
-        if (effectiveTaxRate > 0) {
-            const rateKey = effectiveTaxRate.toString();
+        // --- FIX FOR NEGATIVE DISCOUNT (MARKUP) ---
+        if (discountAmt < 0) {
+            discountAmt = 0;
+            mrp = qty > 0 ? (taxableAmt / qty) : taxableAmt;
+        }
+
+        // 2. Tax Formatting
+        let taxRate = Number(item.taxRate || item.gstPercent || (item as any).tax || 0);
+
+        // Zero out taxes for Exempt/None/Estimate
+        if (!showTaxDetails) {
+            taxRate = 0;
+            taxAmt = 0;
+            finalAmount = taxableAmt; // Drop the tax from the row's final amount
+        }
+
+        subTotal += taxableAmt;
+        totalTaxAmt += taxAmt;
+        grossTotal += finalAmount;
+
+        if (taxRate > 0) {
+            const rateKey = taxRate.toString();
             if (!taxBreakdown[rateKey]) taxBreakdown[rateKey] = { taxable: 0, cgst: 0, sgst: 0 };
-            taxBreakdown[rateKey].taxable += taxableValue;
+            taxBreakdown[rateKey].taxable += taxableAmt;
             taxBreakdown[rateKey].cgst += (taxAmt / 2);
             taxBreakdown[rateKey].sgst += (taxAmt / 2);
         }
@@ -70,16 +82,22 @@ export const generateThermalReceipt = (
         const lines = Math.max(1, Math.ceil(item.name.length / 18));
         itemsAreaHeight += (lines * 3) + 2;
 
-        return { name: item.name, qty, rate, amount: safeTaxType === 'EXCLUSIVE' ? taxableValue : netAmount };
+        return { name: item.name, qty, rate: mrp, amount: finalAmount };
     });
 
     const billDiscount = Number(data.billDiscount) || 0;
     const extraExpense = Number(data.extraExpenseAmount) || 0;
-    const netPayable = grossTotal - billDiscount + extraExpense;
-    const finalRoundTotal = Math.round(netPayable);
+
+    let finalRoundTotal = Number(data.finalAmount || (data as any).grandTotal || 0);
+    const pureCalculated = grossTotal - billDiscount + extraExpense;
+
+    if (!finalRoundTotal) {
+        finalRoundTotal = Math.round(pureCalculated);
+    }
+    const roundOffAmt = finalRoundTotal - pureCalculated;
 
     // Dynamic Height calculation
-    const baseHeight = 70; // Headers & basic layout
+    const baseHeight = 75; // Headers & basic layout
     const taxLinesCount = Object.keys(taxBreakdown).length * 2; // CGST + SGST per rate
     const taxAreaHeight = 15 + (taxLinesCount * 3);
     const narrationHeight = data.narration ? Math.ceil(data.narration.length / 30) * 3 + 5 : 0;
@@ -95,7 +113,6 @@ export const generateThermalReceipt = (
     });
 
     // Helper for dashed lines
-    // Fallback if TS is still being stubborn:
     const drawDashedLine = (y: number) => {
         doc.setLineWidth(0.1);
         (doc as any).setLineDash([1, 1], 0);
@@ -123,12 +140,19 @@ export const generateThermalReceipt = (
         currentY += 3;
     }
 
+    if (showGstinDetails && data.companyGstin) {
+        doc.setFont('helvetica', 'bold');
+        doc.text(`GSTIN: ${data.companyGstin}`, paperWidth / 2, currentY, { align: 'center' });
+        doc.setFont('helvetica', 'normal');
+        currentY += 3;
+    }
+
     currentY += 1;
     drawDashedLine(currentY);
     currentY += 3.5;
 
     // TITLE
-    const title = (safeScheme === 'COMPOSITION' || safeScheme === 'NONE') ? 'BILL OF SUPPLY' : 'TAX INVOICE';
+    const title = isEstimate ? 'ESTIMATE' : ((safeScheme === 'COMPOSITION' || safeScheme === 'NONE') ? 'BILL OF SUPPLY' : 'TAX INVOICE');
     doc.setFont('helvetica', 'bold');
     doc.text(title, paperWidth / 2, currentY, { align: 'center' });
     currentY += 1.5;
@@ -148,6 +172,11 @@ export const generateThermalReceipt = (
         currentY += 3.5;
     }
 
+    if (showGstinDetails && data.billTo?.gstin) {
+        doc.text(`GST No: ${data.billTo.gstin}`, margin, currentY);
+        currentY += 3.5;
+    }
+
     drawDashedLine(currentY);
     currentY += 4;
 
@@ -155,7 +184,7 @@ export const generateThermalReceipt = (
     doc.setFont('helvetica', 'bold');
     doc.text('Particulars', margin, currentY);
     doc.text('Qty', 32, currentY, { align: 'right' });
-    doc.text('Net Price', 43, currentY, { align: 'right' });
+    doc.text('Price', 43, currentY, { align: 'right' });
     doc.text('Amount', 56, currentY, { align: 'right' });
     currentY += 2;
 
@@ -166,15 +195,12 @@ export const generateThermalReceipt = (
     doc.setFont('helvetica', 'normal');
 
     processedItems.forEach((item) => {
-        // 1. Text Wrapping for Long Names
-        const nameLines = doc.splitTextToSize(item.name, 24); // Wrap at 24mm width
+        const nameLines = doc.splitTextToSize(item.name, 24);
 
-        // Draw Qty, Rate, Amount on the first line
         doc.text(item.qty.toString(), 32, currentY, { align: 'right' });
         doc.text(item.rate.toFixed(2), 43, currentY, { align: 'right' });
         doc.text(item.amount.toFixed(2), 56, currentY, { align: 'right' });
 
-        // Draw Name (which might push currentY down multiple lines)
         doc.text(nameLines, margin, currentY);
         currentY += (nameLines.length * 3) + 1;
     });
@@ -182,23 +208,25 @@ export const generateThermalReceipt = (
     currentY += 1;
 
     // --- TAX & TOTALS SECTION ---
-    if (Object.keys(taxBreakdown).length > 0 || billDiscount > 0 || extraExpense > 0) {
+    if (Object.keys(taxBreakdown).length > 0 || billDiscount > 0 || extraExpense > 0 || Math.abs(roundOffAmt) > 0) {
         doc.text('Sub Total :', 43, currentY, { align: 'right' });
         doc.text(subTotal.toFixed(2), 56, currentY, { align: 'right' });
         currentY += 4;
     }
 
     // Taxes
-    Object.keys(taxBreakdown).forEach((rate) => {
-        const tax = taxBreakdown[rate];
-        doc.text(`CGST @${(Number(rate) / 2)}% :`, 43, currentY, { align: 'right' });
-        doc.text(tax.cgst.toFixed(2), 56, currentY, { align: 'right' });
-        currentY += 3.5;
+    if (showTaxDetails) {
+        Object.keys(taxBreakdown).forEach((rate) => {
+            const tax = taxBreakdown[rate];
+            doc.text(`CGST @${(Number(rate) / 2)}% :`, 43, currentY, { align: 'right' });
+            doc.text(tax.cgst.toFixed(2), 56, currentY, { align: 'right' });
+            currentY += 3.5;
 
-        doc.text(`SGST @${(Number(rate) / 2)}% :`, 43, currentY, { align: 'right' });
-        doc.text(tax.sgst.toFixed(2), 56, currentY, { align: 'right' });
-        currentY += 3.5;
-    });
+            doc.text(`SGST @${(Number(rate) / 2)}% :`, 43, currentY, { align: 'right' });
+            doc.text(tax.sgst.toFixed(2), 56, currentY, { align: 'right' });
+            currentY += 3.5;
+        });
+    }
 
     if (extraExpense > 0) {
         doc.text(`${data.extraExpenseName?.substring(0, 10) || 'Extra'} (+) :`, 43, currentY, { align: 'right' });
@@ -209,6 +237,12 @@ export const generateThermalReceipt = (
     if (billDiscount > 0) {
         doc.text('Discount (-) :', 43, currentY, { align: 'right' });
         doc.text(billDiscount.toFixed(2), 56, currentY, { align: 'right' });
+        currentY += 3.5;
+    }
+
+    if (Math.abs(roundOffAmt) > 0.009) {
+        doc.text('Round Off :', 43, currentY, { align: 'right' });
+        doc.text(roundOffAmt.toFixed(2), 56, currentY, { align: 'right' });
         currentY += 3.5;
     }
 
@@ -240,22 +274,16 @@ export const generateThermalReceipt = (
     // --- LEFT-ALIGNED FOOTER TERMS ---
     doc.setFontSize(6);
     doc.setFont('helvetica', 'normal');
-    const termsLines = doc.splitTextToSize(data.terms || 'E.&O.E.', contentWidth);
-
-    // Left aligned terms as requested
-    doc.text(termsLines, margin, currentY);
-    currentY += (termsLines.length * 3) + 4;
+    if (!isEstimate) {
+        const termsLines = doc.splitTextToSize(data.terms || 'E.&O.E.', contentWidth);
+        doc.text(termsLines, margin, currentY);
+        currentY += (termsLines.length * 3) + 4;
+    }
 
     // Final Greetings
     doc.setFont('helvetica', 'bold');
-    doc.text('THANK YOU     Visit Again', paperWidth / 2, currentY, { align: 'center' });
+    doc.text('THANK YOU   Visit Again', paperWidth / 2, currentY, { align: 'center' });
     currentY += 4;
-
-    if (data.companyGstin) {
-        doc.setFont('helvetica', 'normal');
-        doc.text(`GST-${data.companyGstin}`, paperWidth / 2, currentY, { align: 'center' });
-        currentY += 4;
-    }
 
     // Branding
     doc.setFontSize(5);
@@ -267,7 +295,7 @@ export const generateThermalReceipt = (
         doc.autoPrint();
         window.open(doc.output('bloburl'), '_blank');
     } else if (action === ACTION.DOWNLOAD) {
-        doc.save(`Receipt_${data.invoice.number}.pdf`);
+        doc.save(`${isEstimate ? 'Estimate' : 'Receipt'}_${data.invoice.number}.pdf`);
     } else if (action === ACTION.BLOB) {
         return doc.output('blob');
     }

@@ -216,11 +216,13 @@ exports.getPublicCatalogue = functions.https.onRequest(async (req, res) => {
     }
 });
 exports.registerCompanyAndUser = functions.https.onCall(async (data, context) => {
-    // 1. Destructure all incoming data (salesSettings completely removed)
+    // 1. Destructure all incoming data (Add salesSettings back)
     const {
         email, password, name, phoneNumber, role,
         businessData,
-        planDetails
+        planDetails,
+        salesSettings,// <--- ADDED BACK
+        catalogueSalesSettings
     } = data;
 
     // 2. Basic Validation
@@ -231,7 +233,7 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
     }
 
     try {
-        // 3. Generate Company ID
+        // 3. Generate Company ID (Unchanged)
         const counterRef = db.doc("CompanyID/counter");
         const newNumber = await db.runTransaction(async (t) => {
             const counterDoc = await t.get(counterRef);
@@ -247,14 +249,14 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
         const paddedNumber = String(newNumber).padStart(4, "0");
         const newCompanyId = `CMP-${paddedNumber}`;
 
-        // 4. Create Authentication User
+        // 4. Create Authentication User (Unchanged)
         const userRecord = await admin.auth().createUser({
             email: email,
             password: password,
             displayName: name,
         });
 
-        // 5. Set Custom Claims
+        // 5. Set Custom Claims (Unchanged)
         await admin.auth().setCustomUserClaims(userRecord.uid, {
             companyId: newCompanyId,
             role: role,
@@ -265,26 +267,28 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
         const userDocRef = db.doc(`companies/${newCompanyId}/users/${userRecord.uid}`);
         const businessInfoRef = db.doc(`companies/${newCompanyId}/business_info/${newCompanyId}`);
 
+        // ADDED BACK: Reference for Sales Settings
+        const salesSettingsRef = db.doc(`companies/${newCompanyId}/settings/sales-settings`);
+        const catalogueSettingsRef = db.doc(`companies/${newCompanyId}/settings/catalogue-sales-settings`);
+
         // 7. Prepare Data Payloads
         const trialDate = new Date();
         trialDate.setDate(trialDate.getDate() + 7);
         trialDate.setUTCHours(18, 29, 59, 999); // Exactly 23:59:59 IST
 
-        // A. Root Data (Plan & Validity)
+        // A. Root Data (Unchanged)
         const companyRootData = {
             name: businessData.businessName || name,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             ownerUID: userRecord.uid,
             ownerPhoneNumber: phoneNumber || '',
-
-            // Plan Info (Forced to 7-Day Trial)
             pack: "enterprise",
             validity: "active",
             expiryDate: admin.firestore.Timestamp.fromDate(trialDate),
             isTrial: true
         };
 
-        // B. Business Info Data (Name, Address, etc.)
+        // B. Business Info Data (Unchanged)
         const finalBusinessData = {
             ...businessData,
             companyId: newCompanyId,
@@ -293,8 +297,14 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
             email: email || "",
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
         };
+        const finalCatalogueSettings = {
+            ...(catalogueSalesSettings || {}),
+            companyId: newCompanyId,
+            settingType: 'catalogueSales',
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
 
-        // C. User Profile Data
+        // C. User Profile Data (Unchanged)
         const userProfile = {
             name: name,
             phoneNumber: phoneNumber || '',
@@ -304,13 +314,23 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
             companyId: newCompanyId,
         };
 
+        // ADDED BACK: D. Sales Settings Data 
+        const finalSalesSettings = {
+            ...(salesSettings || {}),
+            companyId: newCompanyId,
+            settingType: 'sales',
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
         // 8. Execute Atomic Batch Write
         const batch = db.batch();
         batch.set(companyRootRef, companyRootData);
         batch.set(userDocRef, userProfile);
         batch.set(businessInfoRef, finalBusinessData);
 
-        // Note: salesSettings batch write has been removed!
+        // ADDED BACK: Write the settings
+        batch.set(salesSettingsRef, finalSalesSettings);
+        batch.set(catalogueSettingsRef, finalCatalogueSettings);
 
         await batch.commit();
 

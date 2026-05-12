@@ -191,7 +191,6 @@ const SalesReturnPage: React.FC = () => {
       setIsLoading(true);
       setError(null);
       try {
-        // Optimization: Don't fetch if quota is tight and list is empty
         const salesQuery = query(
           collection(db, 'companies', currentUser.companyId, 'sales'),
           orderBy('createdAt', 'desc'),
@@ -207,7 +206,6 @@ const SalesReturnPage: React.FC = () => {
           specificInvoicePromise = getDoc(specificRef);
         }
 
-        // Check if items are already loaded to save reads
         let allItems = availableItems;
         if (availableItems.length === 0) {
           allItems = await dbOperations.syncItems();
@@ -243,7 +241,6 @@ const SalesReturnPage: React.FC = () => {
 
       } catch (err) {
         console.error('Error fetching data:', err);
-        // setError('Failed to load initial data.'); // Suppress to avoid UI blockage on quota error
       } finally {
         setIsLoading(false);
       }
@@ -300,18 +297,22 @@ const SalesReturnPage: React.FC = () => {
       sale.items.map((item: any) => {
         const itemData = item.data || item;
         const quantity = Number(itemData.quantity) || 1;
-        const finalPrice = Number(itemData.finalPrice) || 0;
-        const unitPrice = quantity > 0 ? finalPrice / quantity : 0;
-        const safeId = itemData.id || itemData.productId || 'UNKNOWN_ID';
+
+        // FIX SCRUM-966: Fetch effectiveUnitPrice (pre-tax) instead of dividing finalPrice
+        const fallbackUnitPrice = quantity > 0 ? Number(itemData.finalPrice) / quantity : 0;
+        const unitPrice = itemData.effectiveUnitPrice !== undefined ? Number(itemData.effectiveUnitPrice) : fallbackUnitPrice;
+
+        // Amount is strictly pre-tax now
+        const amount = unitPrice * quantity;
 
         return {
           id: crypto.randomUUID(),
-          originalItemId: safeId,
+          originalItemId: itemData.id || itemData.productId || 'UNKNOWN_ID',
           name: itemData.name,
           quantity: quantity,
           maxReturnQuantity: quantity,
           unitPrice: unitPrice,
-          amount: finalPrice,
+          amount: amount,
           mrp: itemData.mrp || 0,
           unitMultiplier: itemData.unitMultiplier || 1
         };
@@ -358,11 +359,13 @@ const SalesReturnPage: React.FC = () => {
 
         if (field === 'discount') {
           const discountValue = Number(updatedValue) || 0;
-          const basePrice = (updatedItem.salesPrice && updatedItem.salesPrice > 0) ? updatedItem.salesPrice : (updatedItem.mrp || 0);
+          // FIXED: Base price is MRP if it exists, otherwise Sales Price
+          const basePrice = (updatedItem.mrp && updatedItem.mrp > 0) ? updatedItem.mrp : (updatedItem.salesPrice || 0);
 
           let newPrice = basePrice * (1 - discountValue / 100);
           newPrice = applyRounding(newPrice, isRoundingEnabled, roundingInterval);
           updatedItem.unitPrice = newPrice;
+          updatedItem.customPrice = newPrice;
         }
 
         if (field === 'quantity' || field === 'unitPrice' || field === 'discount') {
@@ -389,11 +392,10 @@ const SalesReturnPage: React.FC = () => {
     navigate(ROUTES.SALES_RETURN);
   };
 
-  // --- FIX: Barcode Scan Trimming ---
   const handleBarcodeScanned = (barcode: string) => {
     const purpose = scannerPurpose;
     setScannerPurpose(null);
-    const cleanBarcode = barcode.trim(); // TRIM WHITESPACE
+    const cleanBarcode = barcode.trim();
 
     if (purpose === 'sale') {
       const foundSale = salesList.find(sale => sale.invoiceNumber === cleanBarcode);
@@ -410,14 +412,21 @@ const SalesReturnPage: React.FC = () => {
     const mrp = Number(itemToAdd.mrp || 0);
     const salesPrice = Number(itemToAdd.salesPrice || 0);
     const presetDiscount = Number(itemToAdd.discount || 0);
-    const initialMoq = Number((itemToAdd as any).moq || 1); // Grab MOQ
+    const initialMoq = Number((itemToAdd as any).moq || 1);
 
-    // NEW LOGIC: Sales Price is the base.
-    const basePrice = salesPrice > 0 ? salesPrice : mrp;
-    let finalExchangePrice = basePrice;
+    let finalExchangePrice = 0;
+    let calculatedDiscount = 0;
 
-    if (presetDiscount > 0) {
-      finalExchangePrice = basePrice * (1 - (presetDiscount / 100));
+    // --- NEW 3-TIER LOGIC ---
+    if (mrp > 0 && salesPrice > 0) {
+      finalExchangePrice = salesPrice;
+      calculatedDiscount = ((mrp - salesPrice) / mrp) * 100;
+    } else if (salesPrice > 0) {
+      calculatedDiscount = presetDiscount;
+      finalExchangePrice = salesPrice * (1 - (presetDiscount / 100));
+    } else if (mrp > 0) {
+      calculatedDiscount = presetDiscount;
+      finalExchangePrice = mrp * (1 - (presetDiscount / 100));
     }
 
     const isRoundingEnabled = salesSettings?.enableRounding ?? true;
@@ -429,13 +438,14 @@ const SalesReturnPage: React.FC = () => {
       originalItemId: itemToAdd.id!,
       name: itemToAdd.name,
       quantity: Math.max(1, initialMoq),
-      unitMultiplier: 1,
+      unitMultiplier: 1, // Kill multiplier math
       moq: initialMoq,
       unitPrice: finalExchangePrice,
       amount: finalExchangePrice,
       mrp: mrp,
       salesPrice: salesPrice,
-      discount: presetDiscount,
+      discount: parseFloat(calculatedDiscount.toFixed(2)),
+      customPrice: finalExchangePrice
     }]);
   };
 
@@ -458,9 +468,10 @@ const SalesReturnPage: React.FC = () => {
   const handleQuantityChange = (id: string, newQuantity: number) => {
     const item = exchangeItems.find(i => i.id === id);
     const moq = item?.moq || 1;
-
+    // Enforce MOQ
     handleListChange(setExchangeItems, id, 'quantity', Math.max(moq, newQuantity));
   };
+
   const handleCustomPriceChange = (id: string, value: string) => {
     if (value === '' || /^[0-9]*\.?[0-9]*$/.test(value)) {
       setExchangeItems(prev => prev.map(item => item.id === id ? { ...item, customPrice: value } : item));
@@ -472,8 +483,13 @@ const SalesReturnPage: React.FC = () => {
       if (item.id === id && item.customPrice !== undefined) {
         const num = parseFloat(String(item.customPrice));
         if (!isNaN(num)) {
+          let d = 0;
+          // FIXED: Base price is MRP if it exists, otherwise Sales Price
+          const basePrice = (item.mrp && item.mrp > 0) ? item.mrp : (item.salesPrice || 0);
+          if (basePrice > 0) d = ((basePrice - num) / basePrice) * 100;
+
           const newAmount = num * item.quantity;
-          return { ...item, unitPrice: num, amount: newAmount, customPrice: undefined };
+          return { ...item, unitPrice: num, amount: newAmount, customPrice: undefined, discount: parseFloat(d.toFixed(2)) };
         }
         return { ...item, customPrice: undefined };
       }
@@ -487,6 +503,8 @@ const SalesReturnPage: React.FC = () => {
       productId: item.originalItemId,
       name: item.name,
       mrp: item.mrp,
+      salesPrice: item.salesPrice || 0,
+      moq: item.moq,
       quantity: item.quantity,
       discount: item.discount,
       isEditable: true,
@@ -498,60 +516,86 @@ const SalesReturnPage: React.FC = () => {
       barcode: '',
       restockQuantity: 0,
       customPrice: item.customPrice ?? item.unitPrice,
-      unitMultiplier: item.unitMultiplier || 1,
-      moq: item.moq,
+      unitMultiplier: 1, // Kill multiplier math
     } as SalesItem));
   }, [exchangeItems]);
 
+  // --- FIXED USEMEMO: Recalculates tax separately for return vs exchange items ---
   const { totalReturnGross, totalReturnValue, totalExchangeValue, finalBalance, discountDeducted } = useMemo(() => {
-    const totalReturnGross = itemsToReturn.reduce((sum, item) => sum + item.amount, 0);
-    const totalExchangeValue = exchangeItems.reduce((sum, item) => sum + item.amount, 0);
+    let returnGross = 0;
+    let returnExclusiveTax = 0;
+
+    itemsToReturn.forEach(returnItem => {
+      returnGross += returnItem.amount;
+      const origItem = selectedSale?.items.find(i => (i.id || (i as any).productId) === returnItem.originalItemId);
+
+      if (origItem) {
+        // Cast to 'any' to bypass strict TypeScript interface checks
+        const extendedItem = origItem as any;
+
+        const taxType = extendedItem.taxType || 'none';
+        const taxRate = Number(extendedItem.taxRate || extendedItem.tax || 0);
+
+        if (taxType === 'exclusive' && taxRate > 0) {
+          returnExclusiveTax += returnItem.amount * (taxRate / 100);
+        }
+      }
+    });
+
+    let exchangeGross = 0;
+    let exchangeExclusiveTax = 0;
+
+    const gstScheme = salesSettings?.gstScheme || 'none';
+    const isTaxEnabled = salesSettings?.enableTax ?? true;
+    const globalTaxType = salesSettings?.taxType ?? 'exclusive';
+    const effectiveTaxMode = (gstScheme === 'regular' && isTaxEnabled) ? globalTaxType : 'none';
+
+    exchangeItems.forEach(exchangeItem => {
+      exchangeGross += exchangeItem.amount;
+      const itemMaster = availableItems.find(i => i.id === exchangeItem.originalItemId);
+      const itemTaxRate = (itemMaster?.tax !== undefined) ? Number(itemMaster.tax) : (salesSettings?.defaultTaxRate ?? 0);
+      if (effectiveTaxMode === 'exclusive' && itemTaxRate > 0) {
+        exchangeExclusiveTax += exchangeItem.amount * (itemTaxRate / 100);
+      }
+    });
 
     let discountDeducted = 0;
-    let returnTax = 0;
-
     if (selectedSale) {
-      const originalInvoiceTotal = selectedSale.items.reduce((sum, item) => {
-        return sum + (item.finalPrice || 0);
-      }, 0);
-
-      const originalManualDiscount = selectedSale.manualDiscount || 0;
-
+      const originalInvoiceTotal = selectedSale.items.reduce((sum, item: any) => sum + (Number(item.finalPrice || 0)), 0);
+      const originalManualDiscount = Number(selectedSale.manualDiscount) || 0;
       if (originalInvoiceTotal > 0 && originalManualDiscount > 0) {
-        const ratio = totalReturnGross / originalInvoiceTotal;
-        discountDeducted = originalManualDiscount * ratio;
-        discountDeducted = Math.round(discountDeducted * 100) / 100;
-      }
-
-      // Calculate tax from items
-      returnTax = selectedSale.items.reduce((sum, item: any) => {
-        const itemFinalPrice = Number(item.finalPrice || 0);
-        const taxRate = Number(item.taxRate || item.tax || 0);
-        const taxType = item.taxType;
-
-        if (taxType === 'inclusive' && taxRate > 0) {
-          const itemTax = itemFinalPrice * (taxRate / 100);
-          return sum + itemTax;
-        }
-
-        return sum;
-      }, 0);
-
-      // proportional tax based on return amount
-      if (returnTax > 0 && originalInvoiceTotal > 0) {
-        const ratio = totalReturnGross / originalInvoiceTotal;
-        returnTax = Math.round(returnTax * ratio * 100) / 100;
+        const ratio = (returnGross + returnExclusiveTax) / originalInvoiceTotal;
+        discountDeducted = Math.round(originalManualDiscount * ratio * 100) / 100;
       }
     }
 
-    const totalReturnValue = totalReturnGross - discountDeducted + returnTax;
-    const finalBalance = totalReturnValue - totalExchangeValue;
+    const totalReturnValue = returnGross + returnExclusiveTax - discountDeducted;
+    const totalExchangeVal = exchangeGross + exchangeExclusiveTax;
+    const finalBalance = totalReturnValue - totalExchangeVal;
 
-    return { totalReturnGross, totalReturnValue, totalExchangeValue, finalBalance: Math.round(finalBalance), discountDeducted };
-  }, [itemsToReturn, exchangeItems, selectedSale]);
+    return {
+      totalReturnGross: returnGross,
+      totalReturnValue,
+      totalExchangeValue: totalExchangeVal,
+      finalBalance: Math.round(finalBalance),
+      discountDeducted
+    };
+  }, [itemsToReturn, exchangeItems, selectedSale, salesSettings, availableItems]);
 
   const saveReturnTransaction = async (completionData?: Partial<PaymentCompletionData>) => {
     if (!currentUser || !currentUser.companyId || !selectedSale) return;
+
+    const finalPartyName = (completionData?.partyName || partyName || selectedSale.partyName || '').trim();
+    const finalPartyNumber = (completionData?.partyNumber || partyNumber || selectedSale.partyNumber || '').trim();
+
+    // --- SCRUM-973 FIX: Hard block at the transaction level ---
+    const shouldAddCredit = finalBalance > 0 &&
+      (modeOfReturn === 'Credit Note' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Credit Note'));
+
+    if (shouldAddCredit && finalPartyNumber.length < 3) {
+      return setModal({ type: State.ERROR, message: 'A valid Customer Number is required to issue a Credit Note.' });
+    }
+
     setIsLoading(true);
     const companyId = currentUser.companyId;
 
@@ -559,21 +603,24 @@ const SalesReturnPage: React.FC = () => {
       const batch = writeBatch(db);
       const saleRef = doc(db, 'companies', companyId, 'sales', selectedSale.id);
 
-      const finalPartyName = (completionData?.partyName || partyName || selectedSale.partyName || '').trim();
-      const finalPartyNumber = (completionData?.partyNumber || partyNumber || selectedSale.partyNumber || '').trim();
-
       const originalItemsMap = new Map(selectedSale.items.map((item: any) => {
         const safeId = item.id || item.productId || 'UNKNOWN_ID';
         const oldQty = Number(item.quantity) || 1;
-        const oldTotal = Number(item.finalPrice || item.amount || 0);
-        const effectiveUnit = oldQty > 0 ? (oldTotal / oldQty) : 0;
+
+        let effectiveUnit = 0;
+        if (item.effectiveUnitPrice !== undefined) {
+          effectiveUnit = Number(item.effectiveUnitPrice);
+        } else {
+          const oldTotal = Number(item.finalPrice || item.amount || 0);
+          effectiveUnit = oldQty > 0 ? (oldTotal / oldQty) : 0;
+        }
+
         return [safeId, { ...item, _effectiveUnitPrice: effectiveUnit }];
       }));
 
       const originalInvoiceTotal = selectedSale.items.reduce((sum, item) => sum + (Number(item.finalPrice || 0)), 0);
       const validInventoryIds = new Set(availableItems.map(i => i.id));
 
-      // Default Tax Logic for NEW items in return
       const gstScheme = salesSettings?.gstScheme || 'none';
       const isTaxEnabled = salesSettings?.enableTax ?? true;
       const currentTaxRate = salesSettings?.defaultTaxRate ?? 0;
@@ -612,7 +659,6 @@ const SalesReturnPage: React.FC = () => {
           const unitPrice = exchangeItem.unitPrice;
           const lineTotal = unitPrice * exchangeItem.quantity;
 
-          // Tax Calc for New Items
           let lineBase = 0;
           let lineTax = 0;
           const itemTaxRate = (itemMaster?.tax !== undefined) ? Number(itemMaster.tax) : currentTaxRate;
@@ -652,7 +698,7 @@ const SalesReturnPage: React.FC = () => {
             restockQuantity: 0,
             isEditable: false,
             _effectiveUnitPrice: unitPrice,
-            unitMultiplier: exchangeItem.unitMultiplier || 1
+            unitMultiplier: 1 // No multiplier math
           } as any);
         }
 
@@ -664,23 +710,40 @@ const SalesReturnPage: React.FC = () => {
         }
       });
 
-      // 4. RECALCULATE BILL TOTALS
+      // 4. RECALCULATE BILL TOTALS (Fixed Tax Recalculation for returns)
       const newItemsList = Array.from(originalItemsMap.values()).map((item: any) => {
         const lineQty = Number(item.quantity);
         const lineUnit = Number(item._effectiveUnitPrice);
-        let lineTotal = lineQty * lineUnit;
+        const lineTotal = lineQty * lineUnit;
+
+        const taxRate = Number(item.taxRate || item.tax || 0);
+        const activeTaxType = item.taxType || effectiveTaxMode;
+
+        let lineTaxableAmount = 0;
+        let lineTaxAmount = 0;
+        let lineFinalPrice = 0;
+
+        if (activeTaxType === 'inclusive' && taxRate > 0) {
+          lineFinalPrice = lineTotal;
+          lineTaxableAmount = toCurrency(lineTotal / (1 + (taxRate / 100)));
+          lineTaxAmount = toCurrency(lineTotal - lineTaxableAmount);
+        } else if (activeTaxType === 'exclusive' && taxRate > 0) {
+          lineTaxableAmount = lineTotal;
+          lineTaxAmount = toCurrency(lineTotal * (taxRate / 100));
+          lineFinalPrice = toCurrency(lineTaxableAmount + lineTaxAmount);
+        } else {
+          lineTaxableAmount = lineTotal;
+          lineTaxAmount = 0;
+          lineFinalPrice = lineTotal;
+        }
 
         const { _effectiveUnitPrice, ...cleanItem } = item;
 
-        cleanItem.finalPrice = lineTotal;
-        // --- FIX: Explicitly save effectiveUnitPrice ---
         cleanItem.effectiveUnitPrice = lineUnit;
+        cleanItem.taxableAmount = lineTaxableAmount;
+        cleanItem.taxAmount = lineTaxAmount;
+        cleanItem.finalPrice = lineFinalPrice;
 
-        if (cleanItem.taxType === 'exclusive') {
-          if (cleanItem.taxableAmount !== undefined && cleanItem.taxAmount !== undefined) {
-            cleanItem.finalPrice = cleanItem.taxableAmount + cleanItem.taxAmount;
-          }
-        }
         return cleanItem;
       });
 
@@ -692,7 +755,6 @@ const SalesReturnPage: React.FC = () => {
         return acc;
       }, { subtotal: 0, taxableAmount: 0, taxAmount: 0, finalTotal: 0 });
 
-      // DISCOUNT LOGIC
       let discountDeductionAmount = 0;
       const originalManualDiscount = Number(selectedSale.manualDiscount) || 0;
       if (originalManualDiscount > 0 && originalInvoiceTotal > 0 && returnedItemsGrossValue > 0) {
@@ -707,13 +769,17 @@ const SalesReturnPage: React.FC = () => {
       const updatedFinalAmount = updatedTotals.finalTotal - newManualDiscount;
       const totalItemDiscount = updatedTotals.subtotal - updatedTotals.finalTotal;
 
-      // 5. MERGE PAYMENTS
+      // 5. MERGE PAYMENTS & Deduct Cash Refund
       let updatedPaymentMethods: any = { ...(selectedSale.paymentMethods || {}) };
       if (completionData?.paymentDetails) {
         Object.entries(completionData.paymentDetails).forEach(([mode, amount]) => {
           if (mode !== 'due') updatedPaymentMethods[mode] = (updatedPaymentMethods[mode] || 0) + Number(amount);
         });
+      } else if (modeOfReturn === 'Cash Refund' && finalBalance > 0) {
+        // If cash refund is processed without opening drawer, deduct it from cash.
+        updatedPaymentMethods['cash'] = (updatedPaymentMethods['cash'] || 0) - finalBalance;
       }
+
       const totalPaidSoFar = Object.entries(updatedPaymentMethods)
         .filter(([k]) => k !== 'due')
         .reduce((sum, [_, val]) => sum + Number(val), 0);
@@ -768,9 +834,6 @@ const SalesReturnPage: React.FC = () => {
         const customerRef = doc(db, 'companies', companyId, 'customers', finalPartyNumber);
         const customerUpdateData: any = { name: finalPartyName, number: finalPartyNumber, companyId, lastUpdatedAt: serverTimestamp() };
 
-        const shouldAddCredit = finalBalance > 0 &&
-          (modeOfReturn === 'Credit Note' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Credit Note'));
-
         if (shouldAddCredit) {
           customerUpdateData.creditBalance = firebaseIncrement(finalBalance);
         }
@@ -795,9 +858,17 @@ const SalesReturnPage: React.FC = () => {
       setModeOfReturn('Exchange');
     }
   }, [isDueSale]);
+
   const handleProcessReturn = () => {
     if (modeOfReturn === 'Exchange' && exchangeItems.length == 0) return setModal({ type: State.ERROR, message: 'No exchange items selected.' });
     if (itemsToReturn.length === 0 && exchangeItems.length === 0) return setModal({ type: State.ERROR, message: 'No items selected.' });
+
+    // --- SCRUM-973 FIX: Block at the UI level ---
+    const isCreditNote = modeOfReturn === 'Credit Note' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Credit Note');
+    if (isCreditNote && finalBalance > 0 && partyNumber.trim().length < 3) {
+      return setModal({ type: State.ERROR, message: 'A valid Customer Number is required to issue a Credit Note.' });
+    }
+
     if (modeOfReturn === 'Cash Refund' && finalBalance > 0) saveReturnTransaction();
     else if (finalBalance >= 0) saveReturnTransaction();
     else setIsDrawerOpen(true);

@@ -43,6 +43,10 @@ import { CatalogueBill, prepareCatalogueBillData } from './CatalogueBill/Catalog
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { app } from '../lib/Firebase';
 import NotificationBell from '../Components/NotificationBell';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { storage } from '../lib/Firebase'; // Ensure 'storage' is exported from your Firebase config
+import { botMasterService } from '../Pages/Additional/Whatsapp/WhatsappApi';
+import { FiSend } from 'react-icons/fi';
 
 export interface OrderItem {
     id: string;
@@ -404,6 +408,7 @@ const OrdersPage: React.FC = () => {
     const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
     const [showQrModal, setShowQrModal] = useState<Order | null>(null);
     const [enableItemWiseDiscount, setEnableItemWiseDiscount] = useState(false);
+    const [sendingPdf, setSendingPdf] = useState(false);
     const [dateRange, setDateRange] = useState<{ start: Date | null, end: Date | null }>(() => {
 
         if (location.state?.startDate && location.state?.endDate) {
@@ -525,7 +530,11 @@ const OrdersPage: React.FC = () => {
                             partyName: order.userName || order.billingDetails?.name || 'Customer',
                             amount: Number(order.totalAmount || 0),
                             status: 'UPCOMING',
-                            createdAt: new Date().toISOString(),
+                            // ❌ REMOVE THIS:
+                            // createdAt: new Date().toISOString(), 
+
+                            // ✅ ADD THIS:
+                            createdAt: order.createdAt ? new Date(order.createdAt).toISOString() : new Date().toISOString(),
                         },
                     })
                 );
@@ -970,6 +979,150 @@ const OrdersPage: React.FC = () => {
         } finally {
             // spinner stop
             setPdfLoadingOrderId(null);
+        }
+    };
+
+    const handleSendWhatsapp = async (Order: Order) => {
+        const phone = Order.userLoginPhone || Order.billingDetails?.phone || '';
+        const name = Order.userName || Order.billingDetails?.name || 'Customer';
+
+        if (!phone) {
+            setModal({ message: "Customer phone number is missing.", type: State.ERROR });
+            return;
+        }
+
+        setSendingPdf(true);
+
+        try {
+            if (!currentUser?.companyId) throw new Error("User context missing.");
+
+            // 1. Check if user has an active WhatsApp Plan
+            const businessDocRef = doc(db, 'companies', currentUser.companyId, 'business_info', currentUser.companyId);
+            const businessSnap = await getDoc(businessDocRef);
+            const { botMasterToken, whatsappNumber } = businessSnap.data() || {};
+
+            if (!botMasterToken || !whatsappNumber) {
+                setSendingPdf(false);
+                setSelectedOrderForAction(null);
+                navigate(ROUTES.WHATSAPP_PLAN || '/whatsapp-plans');
+                return;
+            }
+
+            // 2. Fetch Safe Data from Cloud Function (Same as handlePdfAction)
+            const functions = getFunctions(app);
+            const fetchInvoiceCall = httpsCallable(functions, 'fetchInvoiceData');
+
+            const result = await fetchInvoiceCall({
+                companyId: currentUser.companyId,
+                orderId: Order.id
+            });
+
+            const responseData = result.data as any;
+            if (!responseData.success) {
+                throw new Error("Failed to fetch order data from server");
+            }
+
+            const safeOrderData = responseData.orderData;
+
+            // 3. Construct Raw Bill Data
+            const rawBillData = {
+                companyId: currentUser?.companyId,
+                companyName: companyInfo?.name || "",
+                companyAddress: companyInfo?.address || "",
+                companyPhone: companyInfo?.ownerPhoneNumber || "",
+                specialInstruction: safeOrderData.specialInstruction || Order.specialInstruction || "",
+                customer: {
+                    billing: {
+                        name: safeOrderData.billingDetails?.name || Order.billingDetails?.name || safeOrderData.userName || Order.userName || "Customer",
+                        phone: safeOrderData.billingDetails?.phone || Order.billingDetails?.phone || "",
+                        address: safeOrderData.billingDetails?.address || Order.billingDetails?.address || "",
+                        gstin: safeOrderData.billingDetails?.gstin || Order.billingDetails?.gstin || "",
+                    },
+                    shipping: {
+                        name: safeOrderData.shippingDetails?.name || Order.shippingDetails?.name || safeOrderData.billingDetails?.name || "",
+                        phone: safeOrderData.shippingDetails?.phone || Order.shippingDetails?.phone || "",
+                        address: safeOrderData.shippingDetails?.address || Order.shippingDetails?.address || "",
+                        gstin: safeOrderData.shippingDetails?.gstin || Order.shippingDetails?.gstin || ""
+                    }
+                },
+                order: {
+                    orderId: safeOrderData.orderId || Order.orderId,
+                    date: Order.time,
+                },
+                items: (safeOrderData.items || []).map((item: any, index: number) => {
+                    const mrp = item.mrp || 0;
+                    const salePrice = item.salesPrice || item.mrp || 0;
+                    return {
+                        sno: index + 1,
+                        name: item.name,
+                        qty: item.quantity,
+                        unitMultiplier: item.unitMultiplier ?? 1,
+                        tax: item.tax ?? 0,
+                        mrp: mrp,
+                        price: salePrice,
+                        total: salePrice * item.quantity,
+                        imageBase64: item.imageBase64 || "",
+                    };
+                }),
+                grandTotal: safeOrderData.totalAmount || Order.totalAmount,
+                paidAmount: Number(safeOrderData.paidAmount ?? Order.paidAmount ?? 0),
+                dueAmount: Math.max(0, (safeOrderData.totalAmount || Order.totalAmount) - Number(safeOrderData.paidAmount ?? Order.paidAmount ?? 0)),
+            };
+
+            const preparedData = await prepareCatalogueBillData({
+                ...rawBillData,
+                isEstimate: billType === 'estimate'
+            });
+
+            // 4. Generate Blob (Make sure CatalogueBill supports "blob" or use your generic pdf generator here)
+            const pdfBlob = await CatalogueBill(preparedData, "blob");
+            if (!pdfBlob) throw new Error("Failed to generate PDF Blob.");
+
+            // 5. Upload to Firebase Storage
+            const safeNum = (safeOrderData.orderId || Order.orderId).replace(/[\/\\?%*:|"<>]/g, '-');
+            const cleanName = `${safeNum}.pdf`;
+            const storageRef = ref(storage, cleanName);
+            await uploadBytes(storageRef, pdfBlob);
+
+            const fileUrl = await getDownloadURL(storageRef);
+
+            // 6. Send via BotMaster
+            const amount = safeOrderData.totalAmount || Order.totalAmount;
+            const message = `Hello ${name},\n\nHere is your order bill #${safeOrderData.orderId || Order.orderId}.\nAmount: ${Number(amount).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}\n\nThank you!`;
+
+            const response = await botMasterService.sendPdfFromUrl(
+                botMasterToken,
+                whatsappNumber,
+                phone,
+                message,
+                fileUrl,
+                cleanName
+            );
+
+            // 7. Cleanup & Verify
+            let isSuccess = false;
+            if (Array.isArray(response) && response.length > 0) {
+                const res = response[0];
+                if (res.status === 'sent' || res.status === 'delivered') isSuccess = true;
+            } else if (response.status === 'sent' || response.status === 'success' || response.status === 200) {
+                isSuccess = true;
+            }
+
+            if (isSuccess) {
+                setModal({ message: "Invoice sent! Cleaning up...", type: State.SUCCESS });
+                setTimeout(async () => {
+                    try { await deleteObject(storageRef); } catch (error) { console.warn("Auto-delete failed:", error); }
+                }, 60000); // 1 minute cleanup
+            } else {
+                throw new Error("API reported failure.");
+            }
+
+        } catch (err) {
+            console.error("WhatsApp Send Error:", err);
+            setModal({ message: "Failed to send WhatsApp invoice.", type: State.ERROR });
+        } finally {
+            setSendingPdf(false);
+            setSelectedOrderForAction(null); // Close the modal
         }
     };
 
@@ -1641,7 +1794,7 @@ const OrdersPage: React.FC = () => {
                                 autoFocus
                             />
                         ) : (
-                            <h1 className="text-3xl font-bold text-slate-800">Orders</h1>
+                            <h1 className="text-2xl font-bold text-slate-800">Orders</h1>
                         )}
 
                         {/* Date Filter - Just below Header */}
@@ -2348,13 +2501,17 @@ const OrdersPage: React.FC = () => {
                         </div>
                         <div className="flex flex-col gap-3">
                             <button
-                                onClick={() => {
-                                    setSelectedOrderForAction(null);
-                                    navigate(ROUTES.WHATSAPP_PLAN || '/whatsapp-plans');
-                                }}
-                                className="w-full bg-[#25D366] text-white py-2.5 rounded-sm font-bold"
+                                onClick={() => handleSendWhatsapp(selectedOrderForAction)}
+                                disabled={sendingPdf || pdfLoadingOrderId === selectedOrderForAction.id}
+                                className="w-full bg-[#25D366] text-white py-2.5 rounded-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50"
                             >
-                                Share on WhatsApp
+                                {sendingPdf ? (
+                                    <Spinner />
+                                ) : (
+                                    <>
+                                        <FiSend /> Share on WhatsApp
+                                    </>
+                                )}
                             </button>
                             <button
                                 onClick={() => {

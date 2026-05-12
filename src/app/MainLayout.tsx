@@ -11,7 +11,6 @@ import { Permissions } from '../enums';
 import ShowWrapper from '../context/ShowWrapper';
 import sellarLogo from '../assets/sellar-logo-heading.png';
 import { TutorialStep } from '../Components/TutorialStep';
-import { NotificationProvider } from '../context/NotificationContext';
 
 const MainLayout = () => {
   const location = useLocation();
@@ -97,14 +96,12 @@ const MainLayout = () => {
   );
 
   const sidebarLinkClass = (path: string) =>
-    `flex items-center gap-3 px-4 py-3 rounded-sm text-sm font-medium transition-all ${
-      isActive(path)
-        ? 'bg-sky-50 text-sky-600 shadow-sm border border-sky-100'
-        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent'
+    `flex items-center gap-3 px-4 py-3 rounded-sm text-sm font-medium transition-all ${isActive(path)
+      ? 'bg-sky-50 text-sky-600 shadow-sm border border-sky-100'
+      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent'
     }`;
 
   return (
-    <NotificationProvider>
     <div className="h-dvh w-screen flex flex-col md:flex-row overflow-hidden bg-gray-100">
 
       {/* DESKTOP SIDEBAR */}
@@ -174,9 +171,8 @@ const MainLayout = () => {
             <Link
               key={to}
               to={to}
-              className={`flex-1 flex flex-row items-center justify-center gap-1 py-2 rounded-sm text-sm transition-colors border border-[rgba(0,0,0,0.15)] duration-200 min-w-0 ${
-                isActive(to) ? 'bg-sky-500 text-white' : 'text-black-500 hover:bg-gray-100'
-              }`}
+              className={`flex-1 flex flex-row items-center justify-center gap-1 py-2 rounded-sm text-sm transition-colors border border-[rgba(0,0,0,0.15)] duration-200 min-w-0 ${isActive(to) ? 'bg-sky-500 text-white' : 'text-black-500 hover:bg-gray-100'
+                }`}
             >
               <div className="flex-shrink-0">{icon}</div>
               <span className="font-medium truncate text-xs sm:text-sm">{label}</span>
@@ -186,7 +182,6 @@ const MainLayout = () => {
       </nav>
 
     </div>
-    </NotificationProvider>
   );
 };
 

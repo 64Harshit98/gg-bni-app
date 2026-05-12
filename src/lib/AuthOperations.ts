@@ -26,7 +26,8 @@ export const registerUserWithDetails = async (
   businessData: any, // Goes to business_info
   planDetails: any,  // Goes to Root Doc
   salesSettings: any, // Goes to settings/sales-settings
-  items: any[] = [], 
+  catalogueSalesSettings: any, // Goes to settings/catalogue-sales-settings
+  items: any[] = [],
 ): Promise<any> => {
   try {
     const functions = getFunctions();
@@ -39,10 +40,11 @@ export const registerUserWithDetails = async (
       email,
       password,
       role,
-      businessData, 
-      planDetails, 
+      businessData,
+      planDetails,
       salesSettings, // <--- Passing this to backend
-      items, 
+      catalogueSalesSettings, // <--- Passing this to backend
+      items,
     });
 
     // Auto-Login after success

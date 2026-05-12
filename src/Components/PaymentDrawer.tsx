@@ -48,6 +48,7 @@ interface PaymentDrawerProps {
     subtotal: number;
     totalTax?: number;
     billTotal: number;
+    originalBillTotal?: number;
     totalQuantity?: number;
     totalItemDiscount?: number;
     onPaymentComplete: (data: PaymentCompletionData) => Promise<void>;
@@ -96,6 +97,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     mode = 'sale',
     subtotal,
     billTotal,
+    originalBillTotal,
     totalTax = 0,
     totalQuantity = 0,
     totalItemDiscount = 0,
@@ -215,8 +217,12 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         if (!isOpen) return;
 
         setIsSubmitting(false);
-        setDiscount(initialDiscount || 0);
-        setDiscountPercent(billTotal > 0 ? parseFloat((((initialDiscount || 0) / billTotal) * 100).toFixed(2)) : 0)
+        const baseTotal = originalBillTotal && originalBillTotal > 0 ? originalBillTotal : billTotal;
+        const originalPercent = initialDiscount && baseTotal > 0 ? (initialDiscount / baseTotal) * 100 : 0;
+        const scaledDiscount = billTotal > 0 ? parseFloat(((originalPercent / 100) * billTotal).toFixed(2)) : 0;
+
+        setDiscount(scaledDiscount);
+        setDiscountPercent(parseFloat(originalPercent.toFixed(2)));
         setIsDiscountLocked(true);
         setPartyCredit(0);
         setUseCredit(false);
@@ -280,7 +286,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         if (isSale && initialNumber) searchParty(initialNumber, 'number');
         if (!isSale && initialName) searchParty(initialName, 'name');
 
-    }, [isOpen, mode, initialDiscount, initialPartyName, initialPartyNumber, initialPartyAddress, initialPartyGST, initialShippingName, initialShippingNumber, initialShippingAddress, initialShippingGST, initialExpenseName, initialExpenseAmount, initialNarration]);
+    }, [isOpen, mode, initialDiscount, originalBillTotal, initialPartyName, initialPartyNumber, initialPartyAddress, initialPartyGST, initialShippingName, initialShippingNumber, initialShippingAddress, initialShippingGST, initialExpenseName, initialExpenseAmount, initialNarration]);
 
     useEffect(() => {
         if (isOpen && !isSubmitting && shouldSaveToLocalStorage.current) {

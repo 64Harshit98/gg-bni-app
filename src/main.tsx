@@ -7,17 +7,20 @@ import { store } from './store/store';
 import AppRouter from '../src/routes/routes';
 import './global.css';
 import ErrorBoundary from './context/ErrorBoundary';
+import { NotificationProvider } from './context/NotificationContext';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <ErrorBoundary>
-  <React.StrictMode>
-    <Provider store={store}>
-      <AuthProvider>
-        <SettingsProvider>
-          <AppRouter />
-        </SettingsProvider>
-      </AuthProvider>
-    </Provider>
-  </React.StrictMode>
+    <React.StrictMode>
+      <Provider store={store}>
+        <AuthProvider>
+          <NotificationProvider>
+            <SettingsProvider>
+              <AppRouter />
+            </SettingsProvider>
+          </NotificationProvider>
+        </AuthProvider>
+      </Provider>
+    </React.StrictMode>
   </ErrorBoundary>
 );

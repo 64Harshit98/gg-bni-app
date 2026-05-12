@@ -281,7 +281,7 @@ export const GenericCartList = <T extends CartItem>({
                   <div className=" flex items-center border border-slate-300 rounded h-9 w-24 flex-shrink-0">
                     <button
                       onClick={() => {
-                        const step = item.unitMultiplier || 1;
+                        const step =   1;
                         const moq = Number(item.moq) || 1;
                         const currentQty = item.quantity || step;
                         const nextQty = currentQty - step;
@@ -309,7 +309,7 @@ export const GenericCartList = <T extends CartItem>({
                     </div>
                     <button
                       onClick={() => {
-                        const step = item.unitMultiplier || 1;
+                        const step =   1;
                         onQuantityChange(item.id, (item.quantity || step) + step);
                       }}
                       disabled={!item.isEditable}
@@ -428,7 +428,7 @@ export const GenericCartList = <T extends CartItem>({
                 <div className="flex items-center border border-slate-300 rounded h-9 w-24 flex-shrink-0">
                   <button
                     onClick={() => {
-                      const step = item.unitMultiplier || 1;
+                      const step =   1;
                       const moq = Number(item.moq) || 1;
                       const currentQty = item.quantity || step;
 
@@ -457,7 +457,7 @@ export const GenericCartList = <T extends CartItem>({
                   </div>
                   <button
                     onClick={() => {
-                      const step = item.unitMultiplier || 1;
+                      const step =   1;
                       onQuantityChange(item.id, (item.quantity || step) + step);
                     }}
                     disabled={!item.isEditable}

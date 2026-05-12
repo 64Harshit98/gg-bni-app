@@ -213,6 +213,16 @@ const OrderingPage: React.FC = () => {
 
     // --- Memos ---
     const cartValue = useMemo(() => cart.reduce((acc, item) => acc + (item.mrp * item.quantity), 0), [cart]);
+
+    const itemGroupMap = useMemo(() => {
+        return itemGroups.reduce((acc, group) => {
+            if (group.id) {
+                acc[group.id] = group.name;
+            }
+            return acc;
+        }, {} as Record<string, string>);
+    }, [itemGroups]);
+
     const filteredItems = useMemo(() => {
         const validGroupIds = new Set(itemGroups.map(g => g.id));
         const uncategorizedItems = items.filter(item =>
@@ -351,6 +361,7 @@ const OrderingPage: React.FC = () => {
                         <SearchableItemInput
                             items={items}
                             placeholder="Search products..."
+                            itemGroupMap={itemGroupMap}
                             onItemSelected={(item) => {
                                 if (!item.id) return;
                                 const group = itemGroups.find(g => g.id === item.itemGroupId);
@@ -435,15 +446,14 @@ const OrderingPage: React.FC = () => {
                                     )}
                                     {collageImages.length > 0 ? (
                                         <div
-                                            className={`w-full h-full gap-[2px] p-[2px] ${
-                                                collageImages.length === 1
+                                            className={`w-full h-full gap-[2px] p-[2px] ${collageImages.length === 1
                                                     ? 'grid grid-cols-1 grid-rows-1'
                                                     : collageImages.length === 2
                                                         ? 'grid grid-cols-2 grid-rows-1'
                                                         : collageImages.length === 3
                                                             ? 'grid grid-cols-2 grid-rows-2'
                                                             : 'grid grid-cols-2 grid-rows-2'
-                                            }`}
+                                                }`}
                                         >
                                             {collageImages.map((img, index) => {
                                                 const isThreeImagesLayout = collageImages.length === 3;
@@ -452,11 +462,10 @@ const OrderingPage: React.FC = () => {
                                                 return (
                                                     <div
                                                         key={index}
-                                                        className={`w-full h-full overflow-hidden rounded-[2px] ${
-                                                            isThreeImagesLayout && isLastImage
+                                                        className={`w-full h-full overflow-hidden rounded-[2px] ${isThreeImagesLayout && isLastImage
                                                                 ? 'col-span-2'
                                                                 : ''
-                                                        }`}
+                                                            }`}
                                                     >
                                                         <img
                                                             src={img}

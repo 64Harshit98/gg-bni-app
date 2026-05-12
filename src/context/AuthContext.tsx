@@ -13,6 +13,9 @@ import { getDefaultPurchaseSettings } from '../Pages/Settings/Purchasesetting';
 import { getDefaultSalesSettings } from '../Pages/Settings/SalesSetting';
 import { getDefaultCatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting';
 import { syncCompanyPermissions } from '../context/Permissions';
+import { useDispatch } from 'react-redux';
+import type { AppDispatch } from '../store/store';
+import { setUser, clearUser, setPending, toSerializableUser } from '../store/authSlice';
 
 interface AuthState {
   status: 'pending' | 'authenticated' | 'unauthenticated';
@@ -22,6 +25,7 @@ interface AuthState {
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [authState, setAuthState] = useState<AuthState>({ status: 'pending', user: null });
   const [dbOperations, setDbOperations] = useState<any>(null);
+  const dispatch = useDispatch<AppDispatch>();
 
   // --- INITIALIZE DEFAULTS ---
   const initializeDefaults = async (companyId: string) => {
@@ -51,8 +55,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       try {
         if (!firebaseUser) {
           setAuthState({ status: 'unauthenticated', user: null });
+          dispatch(clearUser());
           return;
         }
+
+        dispatch(setPending());
 
         const idTokenResult = await firebaseUser.getIdTokenResult(true);
         const companyId = idTokenResult.claims.companyId as string | undefined;
@@ -149,10 +156,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         setDbOperations(getFirestoreOperations(companyId));
         setAuthState({ status: 'authenticated', user: userData });
+        dispatch(setUser(toSerializableUser(userData)));
 
       } catch (error) {
         console.error("AUTH_CRASH:", error);
         setAuthState({ status: 'unauthenticated', user: null });
+        dispatch(clearUser());
       }
     });
 

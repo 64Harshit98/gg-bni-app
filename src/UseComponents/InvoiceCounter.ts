@@ -67,9 +67,6 @@ export const OrderInvoiceNumber = async (companyId: string): Promise<string> => 
         throw new Error("A valid companyId must be provided.");
     }
 
-    // --- FIX: Use the multi-tenant path ---
-    // Note: Your original path was 'counter' (singular), I've kept it here.
-    // You may want to standardize on 'counters' (plural).
     const counterRef: DocumentReference = doc(db, 'companies', companyId, 'counters', 'orderInvoice');
 
     try {
@@ -87,8 +84,7 @@ export const OrderInvoiceNumber = async (companyId: string): Promise<string> => 
         });
 
         const paddedNumber = String(newNumber).padStart(4, '0');
-        // --- FIX: Recommend changing prefix to distinguish from sales invoices ---
-        return `ORD-${paddedNumber}`; // e.g., ORD-1001
+        return `ORD-${paddedNumber}`;
 
     } catch (error) {
         console.error("Error generating order invoice number:", error);

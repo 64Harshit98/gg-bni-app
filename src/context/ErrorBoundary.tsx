@@ -5,7 +5,8 @@ import { ROUTES } from '../constants/routes.constants';
 import { useAuth } from '../context/auth-context';
 import dogImage from '../assets/dog-error.png';
 
-const SmartErrorUI: React.FC<{ error?: Error }> = ({ error }) => {
+// --- 1. FUNCTIONAL UI COMPONENT (Can use Hooks!) ---
+const SmartErrorUI: React.FC<{ error?: Error; onReset?: () => void }> = ({ error, onReset }) => {
   const { currentUser } = useAuth();
 
   const handleGoHome = () => {
@@ -43,14 +44,23 @@ const SmartErrorUI: React.FC<{ error?: Error }> = ({ error }) => {
           <span>I crashed !!</span>
         </p>
 
-        {/* Optional: Show error message in dev mode */}
-        {process.env.NODE_ENV === 'development' && error && (
+        {import.meta.env.DEV && error && (
           <div className="mb-6 p-3 bg-red-50 text-red-700 text-xs text-left rounded overflow-auto max-h-32">
             {error.toString()}
           </div>
         )}
 
         <div className="space-y-3">
+          {onReset && (
+            <CustomButton
+              variant={Variant.Filled}
+              onClick={onReset}
+              className="w-full justify-center"
+            >
+              Try Again
+            </CustomButton>
+          )}
+
           <CustomButton
             variant={Variant.Filled}
             onClick={() => window.location.reload()}
@@ -59,7 +69,6 @@ const SmartErrorUI: React.FC<{ error?: Error }> = ({ error }) => {
             Reload Page
           </CustomButton>
 
-          {/* SMART ROUTING BUTTON */}
           <button
             onClick={handleGoHome}
             className="text-sm text-gray-500 hover:text-gray-800 underline block w-full mt-2"
@@ -115,7 +124,7 @@ class ErrorBoundary extends Component<Props, State> {
         return this.props.fallback;
       }
 
-      return <SmartErrorUI error={this.state.error} />;
+      return <SmartErrorUI error={this.state.error} onReset={this.handleReset} />;
     }
 
     return this.props.children;

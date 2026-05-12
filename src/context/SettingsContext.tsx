@@ -2,6 +2,14 @@ import React, { createContext, useContext, useState, useEffect, type ReactNode }
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 import { useAuth } from './auth-context';
+import { useDispatch } from 'react-redux';
+import type { AppDispatch } from '../store/store';
+import {
+    setSalesSettings as reduxSetSalesSettings,
+    setPurchaseSettings as reduxSetPurchaseSettings,
+    setItemSettings as reduxSetItemSettings,
+    clearSettings,
+} from '../store/settingsSlice';
 import { type SalesSettings, getDefaultSalesSettings } from '../Pages/Settings/SalesSetting';
 import { type PurchaseSettings, getDefaultPurchaseSettings } from '../Pages/Settings/Purchasesetting';
 import { type ItemSettings, getDefaultItemSettings } from '../Pages/Settings/ItemSetting';
@@ -19,10 +27,35 @@ interface SettingsContextType {
     isLoadingSettings: boolean;
 }
 
+/**
+ * Recursively converts any Firestore Timestamp (identified by the presence of
+ * `seconds` + `nanoseconds`) to an ISO string so the value is safe to store
+ * in Redux (which requires fully serializable state).
+ */
+function sanitizeForRedux<T>(obj: T): T {
+    if (obj === null || obj === undefined) return obj;
+    if (typeof obj !== 'object') return obj;
+    // Duck-type Firestore Timestamp
+    if (
+        'seconds' in (obj as object) &&
+        'nanoseconds' in (obj as object) &&
+        typeof (obj as any).toDate === 'function'
+    ) {
+        return (obj as any).toDate().toISOString() as unknown as T;
+    }
+    if (Array.isArray(obj)) {
+        return (obj as unknown[]).map(sanitizeForRedux) as unknown as T;
+    }
+    return Object.fromEntries(
+        Object.entries(obj as object).map(([k, v]) => [k, sanitizeForRedux(v)])
+    ) as T;
+}
+
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
 
 export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const { currentUser } = useAuth();
+    const dispatch = useDispatch<AppDispatch>();
 
     const [salesSettings, setSalesSettings] = useState<SalesSettings | null>(null);
     const [purchaseSettings, setPurchaseSettings] = useState<PurchaseSettings | null>(null);
@@ -39,6 +72,7 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
         if (!currentUser?.companyId) {
             setLoadingCatalogueSettings(false);
             setCatalogueSettings(null);
+            dispatch(clearSettings());
             return;
         }
 
@@ -78,12 +112,11 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
         const docRef = doc(db, 'companies', companyId, 'settings', 'sales-settings');
 
         const unsubscribeSales = onSnapshot(docRef, (docSnap) => {
-            if (docSnap.exists()) {
-                setSalesSettings(docSnap.data() as SalesSettings);
-            } else {
-                console.warn(`SettingsProvider: No 'sales' settings found. Using defaults.`);
-                setSalesSettings(getDefaultSalesSettings(companyId));
-            }
+            const value = docSnap.exists()
+                ? (docSnap.data() as SalesSettings)
+                : (console.warn(`SettingsProvider: No 'sales' settings found. Using defaults.`), getDefaultSalesSettings(companyId));
+            setSalesSettings(value);
+            dispatch(reduxSetSalesSettings(sanitizeForRedux(value)));
             setLoadingSalesSettings(false);
         }, (error) => {
             console.error('Error fetching Sales Settings:', error);
@@ -109,12 +142,11 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
         const docRef = doc(db, 'companies', companyId, 'settings', 'purchase-settings');
 
         const unsubscribePurchase = onSnapshot(docRef, (docSnap) => {
-            if (docSnap.exists()) {
-                setPurchaseSettings(docSnap.data() as PurchaseSettings);
-            } else {
-                console.warn(`SettingsProvider: No 'purchase' settings found. Using defaults.`);
-                setPurchaseSettings(getDefaultPurchaseSettings(companyId));
-            }
+            const value = docSnap.exists()
+                ? (docSnap.data() as PurchaseSettings)
+                : (console.warn(`SettingsProvider: No 'purchase' settings found. Using defaults.`), getDefaultPurchaseSettings(companyId));
+            setPurchaseSettings(value);
+            dispatch(reduxSetPurchaseSettings(sanitizeForRedux(value)));
             setLoadingPurchaseSettings(false);
         }, (error) => {
             console.error('Error fetching Purchase Settings:', error);
@@ -140,12 +172,11 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
         const docRef = doc(db, 'companies', companyId, 'settings', 'item-settings');
 
         const unsubscribeItem = onSnapshot(docRef, (docSnap) => {
-            if (docSnap.exists()) {
-                setItemSettings(docSnap.data() as ItemSettings);
-            } else {
-                console.warn(`SettingsProvider: No 'item' settings found. Using defaults.`);
-                setItemSettings(getDefaultItemSettings(companyId));
-            }
+            const value = docSnap.exists()
+                ? (docSnap.data() as ItemSettings)
+                : (console.warn(`SettingsProvider: No 'item' settings found. Using defaults.`), getDefaultItemSettings(companyId));
+            setItemSettings(value);
+            dispatch(reduxSetItemSettings(sanitizeForRedux(value)));
             setLoadingItemSettings(false);
         }, (error) => {
             console.error('Error fetching Item Settings:', error);

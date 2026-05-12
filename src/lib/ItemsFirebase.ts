@@ -136,6 +136,7 @@ export const getFirestoreOperations = (companyId: string) => {
     ): Promise<string> => {
       const payload = {
         ...item,
+        isRestockNeeded: (item.stock ?? 0) <= (item.restockQuantity ?? 0),
         companyId,
         isDeleted: false,
         createdAt: serverTimestamp(),
@@ -153,8 +154,17 @@ export const getFirestoreOperations = (companyId: string) => {
 
     updateItem: async (id: string, updates: Partial<Omit<Item, 'id' | 'createdAt' | 'companyId'>>): Promise<void> => {
       const docRef = doc(itemRef, id);
+      const extra: Partial<Item> = {};
+      if ('stock' in updates || 'restockQuantity' in updates) {
+        const needsFetch = !('stock' in updates) || !('restockQuantity' in updates);
+        const existing = needsFetch ? (await getDoc(docRef)).data() : null;
+        const stock = updates.stock ?? existing?.stock ?? 0;
+        const threshold = updates.restockQuantity ?? existing?.restockQuantity ?? 0;
+        extra.isRestockNeeded = stock <= threshold;
+      }
       await updateDoc(docRef, {
         ...updates,
+        ...extra,
         updatedAt: serverTimestamp()
       });
     },

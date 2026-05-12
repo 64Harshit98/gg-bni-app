@@ -692,6 +692,13 @@ const PurchaseReturnPage: React.FC = () => {
         totalAmount: newTotalAmount,
         manualDiscount: newManualDiscount,
         returnHistory: arrayUnion(returnHistoryRecord),
+        returnedItemsSnapshot: arrayUnion(...itemsToReturn.map(i => ({
+          id: i.originalItemId,
+          name: i.name,
+          quantity: i.quantity,
+          finalPrice: i.amount,
+          mrp: i.mrp,
+        }))),
         paymentMethods: updatedPaymentMethods,
         isReturned: true,
         lastUpdated: serverTimestamp()

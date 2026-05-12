@@ -527,7 +527,7 @@ const Sales: React.FC = () => {
     // Helper to evaluate the current string (e.g., "100*2" -> 200)
 
     const displayRef = useRef<HTMLInputElement>(null);
-
+    const cartListRef = useRef<HTMLDivElement>(null);
     // Injects a number exactly where the user tapped
     const insertAtCursor = (val: string) => {
         const input = displayRef.current;
@@ -863,9 +863,21 @@ const Sales: React.FC = () => {
 
         setItems(prev => {
             const insertionOrder = salesSettings?.cartInsertionOrder || 'top';
-            return insertionOrder === 'top' ? [newSalesItem, ...prev] : [...prev, newSalesItem];
-        });
-    };
+            const newList = insertionOrder === 'top' ? [newSalesItem, ...prev] : [...prev, newSalesItem];
+
+      setTimeout(() => {
+        if (cartListRef.current) {
+          if (insertionOrder === 'bottom') {
+            cartListRef.current.scrollTo({ top: cartListRef.current.scrollHeight, behavior: 'smooth' });
+          } else {
+            cartListRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+          }
+        }
+      }, 50);
+
+      return newList;
+    });
+  };
 
     const [showClearCartConfirm, setShowClearCartConfirm] = useState(false);
 
@@ -2467,6 +2479,7 @@ const Sales: React.FC = () => {
                         <GenericCartList
                             items={displayItems}
                             availableItems={availableItems}
+                            scrollRef={cartListRef}
                             basePriceKey="mrp"
                             priceLabel="MRP"
                             settings={{

@@ -162,9 +162,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const [shippingAddress, setShippingAddress] = useState('');
     const [shippingGST, setShippingGST] = useState('');
 
-    const [isExpenseExpanded, setIsExpenseExpanded] = useState(false);
-    const [expenseName, setExpenseName] = useState('');
-    const [expenseAmount, setExpenseAmount] = useState<number | ''>('');
+    const [expenses, setExpenses] = useState<{ id: number; name: string; amount: number | '' }[]>([]);
     const [narration, setNarration] = useState('');
     const [isNarrationExpanded, setIsNarrationExpanded] = useState(false);
 
@@ -176,7 +174,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         return (totalTax || 0) * ratio;
     }, [totalTax, billTotal, discount]);
 
-    const parsedExpense = parseFloat(expenseAmount.toString()) || 0;
+    const parsedExpense = expenses.reduce((sum, e) => sum + (parseFloat(e.amount.toString()) || 0), 0);
     const netPayable = useMemo(() => Math.round(Math.max(0, billTotal - discount + parsedExpense)), [billTotal, discount, parsedExpense]);
 
     const totalManualPayment = useMemo(() => {
@@ -244,9 +242,11 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         setShippingNumber(initialShippingNumber || '');
         setShippingAddress(initialShippingAddress || '');
         setShippingGST(initialShippingGST || '');
-        setExpenseName(initialExpenseName || '');
-        setExpenseAmount(initialExpenseAmount || '');
-        setIsExpenseExpanded(false);
+        setExpenses(
+            initialExpenseName
+                ? [{ id: Date.now(), name: initialExpenseName, amount: initialExpenseAmount || '' }]
+                : []
+        );
         setNarration(initialNarration || '');
         setIsNarrationExpanded(!!initialNarration);
 
@@ -296,6 +296,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         if (!isSale && initialName) searchParty(initialName, 'name');
 
     }, [isOpen, mode, billTotal, initialDiscount, originalBillTotal, initialPartyName, initialPartyNumber, initialPartyAddress, initialPartyGST, initialShippingName, initialShippingNumber, initialShippingAddress, initialShippingGST, initialExpenseName, initialExpenseAmount, initialNarration]);
+
     useEffect(() => {
         if (isOpen && !isSubmitting && shouldSaveToLocalStorage.current) {
             try {
@@ -314,7 +315,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         const partyRef = collection(db, 'companies', companyId, collectionName);
 
         const termLower = term.toLowerCase();
-
         const termCap = termLower.charAt(0).toUpperCase() + termLower.slice(1);
 
         try {
@@ -487,7 +487,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             const safeShippingNumber = shippingNumber ? shippingNumber.trim() : '';
             const safeShippingAddress = shippingAddress ? shippingAddress.trim() : '';
             const safeShippingGST = shippingGST ? shippingGST.trim() : '';
-            const safeExpenseName = expenseName ? expenseName.trim() : '';
+            const safeExpenseName = expenses.map(e => e.name.trim()).filter(Boolean).join(', ');
             const safeNarration = narration ? narration.trim() : '';
 
             await onPaymentComplete({
@@ -548,7 +548,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
 
             setPartyName(''); setPartyNumber(''); setSelectedPayments({});
             setShippingName(''); setShippingNumber(''); setShippingAddress(''); setShippingGST('');
-            setExpenseName(''); setExpenseAmount('');
+            setExpenses([]);
 
         } catch (error) {
             setModal({ message: (error as Error).message || 'Failed to save.', type: State.ERROR });
@@ -703,8 +703,11 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                             </div>
                                         )}
                                         {isSale && enableExtraExpense && (
-                                            <div onClick={() => setIsExpenseExpanded(!isExpenseExpanded)} className="flex items-center justify-end cursor-pointer text-orange-600 hover:text-orange-700 transition-colors text-xs font-semibold select-none">
-                                                <span>{isExpenseExpanded ? '- Hide' : '+ Add'} Expense</span>
+                                            <div
+                                                onClick={() => setExpenses(prev => [...prev, { id: Date.now(), name: '', amount: '' }])}
+                                                className="flex items-center justify-end cursor-pointer text-orange-600 hover:text-orange-700 transition-colors text-xs font-semibold select-none"
+                                            >
+                                                <span>+ Add Expense</span>
                                             </div>
                                         )}
                                     </div>
@@ -715,10 +718,32 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                             <input type="text" placeholder="Full Address" value={addressType === 'billing' ? partyAddress : shippingAddress} onChange={(e) => { if (addressType === 'billing') { setPartyAddress(e.target.value); } else { setShippingAddress(e.target.value); setIsSameAsBilling(false); } }} className="w-full p-2.5 text-sm rounded-XS border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none" />
                                         </div>
                                     )}
-                                    {isExpenseExpanded && (
-                                        <div className="grid grid-cols-2 gap-3 mt-3 animate-in slide-in-from-top-2 fade-in duration-200 p-2 bg-orange-50 rounded-lg border border-orange-100">
-                                            <input type="text" placeholder="Expense Name (e.g. Freight)" value={expenseName} onChange={(e) => setExpenseName(e.target.value)} className="w-full p-2.5 text-sm rounded-lg border border-orange-200 bg-white focus:border-orange-500 outline-none" />
-                                            <input type="number" placeholder="Amount (₹)" value={expenseAmount} onChange={(e) => setExpenseAmount(parseFloat(e.target.value) || '')} className="w-full p-2.5 text-sm rounded-lg border border-orange-200 bg-white focus:border-orange-500 outline-none" />
+                                    {expenses.length > 0 && (
+                                        <div className="flex flex-col gap-2 mt-3 animate-in slide-in-from-top-2 fade-in duration-200">
+                                            {expenses.map((expense) => (
+                                                <div key={expense.id} className="flex items-center gap-2 p-2 bg-orange-50 rounded-lg border border-orange-100">
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Expense Name (e.g. Freight)"
+                                                        value={expense.name}
+                                                        onChange={(e) => setExpenses(prev => prev.map(ex => ex.id === expense.id ? { ...ex, name: e.target.value } : ex))}
+                                                        className="flex-1 p-2.5 text-sm rounded-lg border border-orange-200 bg-white focus:border-orange-500 outline-none"
+                                                    />
+                                                    <input
+                                                        type="number"
+                                                        placeholder="Amount (₹)"
+                                                        value={expense.amount}
+                                                        onChange={(e) => setExpenses(prev => prev.map(ex => ex.id === expense.id ? { ...ex, amount: parseFloat(e.target.value) || '' } : ex))}
+                                                        className="w-28 p-2.5 text-sm rounded-lg border border-orange-200 bg-white focus:border-orange-500 outline-none"
+                                                    />
+                                                    <button
+                                                        onClick={() => setExpenses(prev => prev.filter(ex => ex.id !== expense.id))}
+                                                        className="p-1.5 rounded-full bg-orange-100 hover:bg-red-100 text-orange-400 hover:text-red-500 transition-colors flex-shrink-0"
+                                                    >
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                                                    </button>
+                                                </div>
+                                            ))}
                                         </div>
                                     )}
                                     {isNarrationExpanded && (
@@ -889,7 +914,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                         <div className="flex-1 flex flex-col items-end justify-center pb-4">
                             {totalTax > 0 && (
                                 <span className="text-sm text-gray-600 font-medium leading-tight mb-1">
-                                    Tax: ₹{liveTax.toFixed(2)}  {/* <--- CHANGED THIS */}
+                                    Tax: ₹{liveTax.toFixed(2)}
                                 </span>
                             )}
                             {totalItemDiscount > 0 && (

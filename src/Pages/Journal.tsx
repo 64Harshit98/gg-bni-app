@@ -1048,10 +1048,18 @@ const Journal: React.FC = () => {
                     const isReturned = invoice.returnHistory?.some((h: any) =>
                       h.returnedItems?.some((r: any) => r.originalItemId === item.id)
                     );
+                    // Add fallback using returnHistory directly
+                    const isReturnedViaHistory = invoice.returnHistory?.some((h: any) =>
+                      h.returnedItems?.some((r: any) =>
+                        r.originalItemId === item.id || r.originalItemId === (item as any).productId
+                      )
+                    );
+
+                    const isReturnedFinal = isReturned || isReturnedViaHistory;
                     return (
                       <div key={index} className="flex justify-between items-center text-slate-700 mb-3">
                         <div className="flex-1 pr-4">
-                          <p className="font-medium" style={{ textDecoration: isReturned ? 'line-through' : 'none', color: isReturned ? '#94a3b8' : 'inherit' }}>
+                          <p className="font-medium" style={{ textDecoration: isReturnedFinal ? 'line-through' : 'none', color: isReturned ? '#94a3b8' : 'inherit' }}>
                             {item.name}
                           </p>
                           <p className="text-xs text-slate-400 flex items-center gap-1">
@@ -1114,12 +1122,12 @@ const Journal: React.FC = () => {
                               {/* Return mode badge + date */}
                               <div className="flex flex-wrap items-center gap-1.5 mt-1">
                                 {matchedHistory?.modeOfReturn && (
-                                  <span className={`text-[7px] uppercase font-bold px-1.5 py-0.5 rounded border ${matchedHistory.modeOfReturn === 'EXCHANGE'
-                                    ? 'bg-purple-50 text-purple-700 border-purple-200'
-                                    : matchedHistory.modeOfReturn === 'CASH REFUND'
-                                      ? 'bg-green-50 text-green-700 border-green-200'
-                                      : 'bg-orange-50 text-orange-600 border-orange-200'
-                                    }`}>
+                                  <span className={`text-[7px] uppercase font-bold px-1.5 py-0.5 rounded border ${(() => {
+                                    const mode = (matchedHistory.modeOfReturn || '').toUpperCase().trim();
+                                    if (mode === 'EXCHANGE') return 'bg-purple-50 text-purple-700 border-purple-200';
+                                    if (mode.includes('CASH') || mode.includes('REFUND')) return 'bg-green-50 text-green-700 border-green-200';
+                                    return 'bg-orange-50 text-orange-600 border-orange-200';
+                                  })()}`}>
                                     {matchedHistory.modeOfReturn}
                                   </span>
                                 )}
@@ -1145,6 +1153,51 @@ const Journal: React.FC = () => {
                           </div>
                         );
                       })
+                  }
+                  {/* ✅ NEW block - fallback for OLD transactions missing returnedItemsSnapshot */}
+                  {(!invoice.returnedItemsSnapshot || invoice.returnedItemsSnapshot.length === 0) &&
+                    invoice.returnHistory?.flatMap((h: any) =>
+                      (h.returnedItems || []).map((ri: any) => ({ ...ri, returnedAt: h.returnedAt, modeOfReturn: h.modeOfReturn }))
+                    )
+                      .filter((ri: any) => !invoice.items?.some(i => i.id === ri.originalItemId))
+                      .map((ri: any, index: number) => (
+                        <div key={`rh-fallback-${index}`} className="flex justify-between items-center text-slate-400 mb-3">
+                          <div className="flex-1 pr-4">
+                            <p className="font-medium" style={{ textDecoration: 'line-through' }}>
+                              {ri.name}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                              {ri.modeOfReturn && (
+                                <span className={`text-[7px] uppercase font-bold px-1.5 py-0.5 rounded border ${(() => {
+                                  const mode = (ri.modeOfReturn || '').toUpperCase().trim();
+                                  if (mode === 'EXCHANGE') return 'bg-purple-50 text-purple-700 border-purple-200';
+                                  if (mode.includes('CASH') || mode.includes('REFUND')) return 'bg-green-50 text-green-700 border-green-200';
+                                  return 'bg-orange-50 text-orange-600 border-orange-200';
+                                })()}`}>
+                                  {ri.modeOfReturn}
+                                </span>
+                              )}
+                              {ri.returnedAt && (
+                                <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wide">
+                                  {new Date(
+                                    ri.returnedAt?.toDate
+                                      ? ri.returnedAt.toDate()
+                                      : ri.returnedAt
+                                  ).toLocaleDateString('en-GB', {
+                                    day: '2-digit', month: 'short', year: '2-digit'
+                                  })}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-semibold" style={{ textDecoration: 'line-through' }}>
+                              {Number(ri.amount).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+                            </p>
+                            <p className="text-xs">Qty: {ri.quantity}</p>
+                          </div>
+                        </div>
+                      ))
                   }
                   {invoice.items?.length === 0 && (!invoice.returnedItemsSnapshot || invoice.returnedItemsSnapshot.length === 0) &&
                     <p className="text-xs text-slate-400">No item details available.</p>

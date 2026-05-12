@@ -499,16 +499,39 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     finalY = margin;
   }
 
-  // --- ADDED: EXTRA EXPENSE ROW ---
-  if (data.extraExpenseAmount && data.extraExpenseAmount > 0) {
+ // --- ADDED: EXTRA EXPENSE ROWS (one per expense) ---
+if (data.extraExpenseName && data.extraExpenseAmount && data.extraExpenseAmount > 0) {
+  const names = data.extraExpenseName.split(',').map(n => n.trim()).filter(Boolean);
+  const totalExpense = data.extraExpenseAmount;
+
+  // Parse individual amounts if stored as "name1:amt1, name2:amt2"
+  // Otherwise split total equally — but we store them as "name1, name2" + single total
+  // So we render each name on its own row, amount only on last row
+  if (names.length <= 1) {
+    // Single expense — original behavior
     const expH = 6;
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
     doc.rect(startX, finalY, contentWidth, expH);
-    doc.text(`Add : ${data.extraExpenseName || 'Extra Expense'} (+)`, endX - 35, finalY + 4);
-    doc.text(data.extraExpenseAmount.toFixed(2), endX - 2, finalY + 4, { align: 'right' });
+    doc.text(`Add : ${names[0] || 'Extra Expense'} (+)`, endX - 30, finalY + 4, { align: 'right' });
+    doc.text(totalExpense.toFixed(2), endX - 2, finalY + 4, { align: 'right' });
     finalY += expH;
+  } else {
+    // Multiple expenses — render each name row, total on last
+    const totalExpenseH = 6 * names.length;
+doc.rect(startX, finalY, contentWidth, totalExpenseH);
+names.forEach((name, idx) => {
+  const expH = 6;
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Add : ${name} (+)`, endX - 30, finalY + 4, { align: 'right' });
+  if (idx === names.length - 1) {
+    doc.text(totalExpense.toFixed(2), endX - 2, finalY + 4, { align: 'right' });
   }
+  finalY += expH;
+});
+  }
+}
 
   // --- ADDED: BILL DISCOUNT ROW ---
   if (billDiscount > 0) {

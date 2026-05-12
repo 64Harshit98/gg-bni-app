@@ -366,16 +366,17 @@ const DashboardContent = () => {
         </TutorialStep>
 
         <div className="flex-1 text-center flex flex-col items-center justify-center">
-          <h1 className="text-3xl font-bold text-slate-800 pl-8">Dashboard</h1>
+          <h1 className="text-2xl font-bold text-slate-800 pl-8">Dashboard</h1>
           <p className="text-sm text-slate-500 pl-8">{nameLoading ? '...' : businessName}</p>
         </div>
 
         {/* Step 2 — Eye / hide button and Notification Bell */}
         <div className="flex items-center gap-3 justify-end">
-          <div className="relative border border-slate-300 rounded-sm p-2 bg-gray-100 shadow-sm">
-            <NotificationBell />
-          </div>
-
+          <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+            <div className="relative border border-slate-300 rounded-sm p-2 bg-gray-100 shadow-sm">
+              <NotificationBell />
+            </div>
+          </ShowWrapper>
           <ShowWrapper requiredPermission={Permissions.ViewHidebutton}>
             <TutorialStep step={2} currentStep={tutorialStep} text="Toggle this to show or hide sensitive sales figures." onNext={() => next(3)} onSkip={skip}>
               <button ref={setTutorialRef(2)} onClick={() => setIsDataVisible(!isDataVisible)} className="p-2 rounded-sm border border-slate-400 hover:bg-slate-200 transition-colors">

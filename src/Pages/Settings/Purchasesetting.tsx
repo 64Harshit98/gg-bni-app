@@ -255,7 +255,7 @@ const PurchaseSettingsPage: React.FC = () => {
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
             <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
-                <BackButton/>
+                <BackButton />
                 <h1 className="text-base md:text-lg font-semibold text-gray-800">Purchase Settings</h1>
                 <div className="w-6"></div>
             </div>

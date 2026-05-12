@@ -65,7 +65,7 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
       <div className={`${isExpanded ? 'block' : 'hidden'} md:block px-5 pb-1 pt-1 md:px-0 md:pb-4 space-y-1.5 text-sm animate-in slide-in-from-bottom-2 duration-200 md:animate-none`}>
 
         <div className="flex justify-between text-gray-600 pt-1">
-          <span>Subtotal</span>
+          <span> MRP Subtotal</span>
           <span className="font-medium">₹{subtotal.toFixed(2)}</span>
         </div>
 

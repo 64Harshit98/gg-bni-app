@@ -1,4 +1,4 @@
-import { Link, Outlet, useLocation} from 'react-router-dom';
+import { Link, Outlet, useLocation } from 'react-router-dom';
 import { ROUTES } from '../constants/routes.constants';
 import ShowWrapper from '../context/ShowWrapper';
 import { Permissions } from '../enums';
@@ -12,7 +12,7 @@ const Reports = () => {
   return (
     <div className="flex flex-col w-full bg-gray-100 overflow-hidden font-poppins">
       <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
-       <BackButton/>
+        <BackButton />
         <h1 className="text-2xl font-bold text-gray-800 m-0 flex-grow text-center">
           Reports
         </h1>
@@ -67,13 +67,19 @@ const Reports = () => {
               </Link>
             </ShowWrapper>
             <ShowWrapper requiredPermission={Permissions.ViewPNLReport}>
-              <Link
-                to={ROUTES.USER_REPORT}
-                className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
+              <div
+                className="flex justify-between items-center bg-gray-50 p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-400 cursor-not-allowed relative overflow-hidden"
               >
-                <span className="text-lg font-medium">User Report</span>
-                <span className="text-xl text-gray-500">→</span>
-              </Link>
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">
+                    Coming Soon
+                  </span>
+                  <span className="text-lg font-medium">User Report</span>
+                </div>
+
+                {/* Optional: Keep the arrow but make it look disabled, or remove it */}
+                <span className="text-xl text-gray-300">→</span>
+              </div>
             </ShowWrapper>
             <ShowWrapper requiredPermission={Permissions.ViewPNLReport}>
               <Link
@@ -85,13 +91,19 @@ const Reports = () => {
               </Link>
             </ShowWrapper>
             <ShowWrapper requiredPermission={Permissions.ViewPNLReport}>
-              <Link
-                to={ROUTES.RESTOCK_REPORT}
-                className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
+              <div
+                className="flex justify-between items-center bg-gray-50 p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-400 cursor-not-allowed relative overflow-hidden"
               >
-                <span className="text-lg font-medium">Restock Report</span>
-                <span className="text-xl text-gray-500">→</span>
-              </Link>
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">
+                    Coming Soon
+                  </span>
+                  <span className="text-lg font-medium">Restock Report</span>
+                </div>
+
+                {/* Optional: Keep the arrow but make it look disabled, or remove it */}
+                <span className="text-xl text-gray-300">→</span>
+              </div>
             </ShowWrapper>
             <ShowWrapper requiredPermission={Permissions.ViewPNLReport}>
               <div

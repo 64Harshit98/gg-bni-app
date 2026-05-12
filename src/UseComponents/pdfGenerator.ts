@@ -127,6 +127,9 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     ? data.taxType.toUpperCase()
     : 'EXCLUSIVE';
 
+  const showGstinDetails = !isEstimate && safeScheme !== 'NONE' && safeTaxType !== 'EXEMPT' && safeTaxType !== 'NONE';
+
+  const showTaxColumns = !isEstimate;
 
   const drawBox = (y: number, h: number) => {
     doc.rect(startX, y, contentWidth, h);
@@ -163,7 +166,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   const headerHeight = 25 + addressOffset;
   drawBox(cursorY, headerHeight);
 
-  if (qrBase64) {
+  if (qrBase64 && !isEstimate) {
     // Draw image at X: startX + 2, Y: cursorY + 2. Size: 18x18 mm
     doc.addImage(qrBase64, 'PNG', startX + 2, cursorY + 2, 18, 18);
     doc.setFontSize(6);
@@ -218,7 +221,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     doc.text(`Phone : ${data.companyContact}`, pageWidth / 2, cursorY + 20, { align: 'center' });
   }
 
-  if (!isEstimate && safeScheme !== 'NONE') {
+  if (showGstinDetails) {
     doc.setFont('helvetica', 'bold');
     const gstText = `GSTIN : ${data.companyGstin || ''}  (${safeScheme})`;
     doc.text(gstText, pageWidth / 2, cursorY + 24 + addressOffset, { align: 'center' });
@@ -239,7 +242,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   const posVal = data.billTo.address.split(',').pop()?.trim() || '';
   doc.text(`Place of Supply : ${posVal}`, (pageWidth / 2) + 2, cursorY + 5);
 
-  if (!isEstimate && safeScheme !== 'NONE') {
+  if (showGstinDetails) {
     let schemeInfo = `GST Type: ${safeScheme}`;
     if (safeScheme === 'REGULAR') {
       schemeInfo += ` (${safeTaxType})`;
@@ -257,13 +260,10 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   const billName = data.billTo.name;
   const billAddr = doc.splitTextToSize(data.billTo.address, contentWidth / 2 - 10);
   const billPhone = `Phone.No.  : ${data.billTo.phone || ''}`;
-  const billEmail = `E Mail  : ${data.billTo.email || ''}`;
-  const billGst = `GST No. : ${data.billTo.gstin || ''}`;
 
   const shipName = data.shipTo?.name || '';
   const shipAddr = doc.splitTextToSize(data.shipTo?.address || '', contentWidth / 2 - 10);
   const shipPhone = `Phone.No.  : ${data.shipTo?.phone || ''}`;
-  const shipGst = `GST No. : ${data.shipTo?.gstin || ''}`;
 
   const lineHeight = 5;
   const padding = 10;
@@ -310,9 +310,10 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   currentYLeft += lineHeight;
 
   if (!isEstimate) {
-    doc.text(billEmail, startX + 2, currentYLeft);
     currentYLeft += lineHeight;
-    doc.text(billGst, startX + 2, currentYLeft);
+    if (showGstinDetails && data.billTo.gstin) {
+      doc.text(`GST No. : ${data.billTo.gstin}`, startX + 2, currentYLeft);
+    }
   }
 
   // Shipping
@@ -328,152 +329,122 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     doc.text(shipPhone, (pageWidth / 2) + 2, currentYRight);
     currentYRight += lineHeight;
 
-    doc.text(shipGst, (pageWidth / 2) + 2, currentYRight);
+    if (showGstinDetails && data.shipTo?.gstin) {
+      doc.text(`GST No. : ${data.shipTo.gstin}`, (pageWidth / 2) + 2, currentYRight);
+    }
   }
 
   cursorY += partyHeight;
 
-  // --- 4. ITEM TABLE ---
   let totalQty = 0;
   let totalTaxable = 0;
   let totalTaxAmt = 0;
   let grossTotal = 0;
 
   // --- Determine price column header ---
-  const hasZeroMrp = data.items.some(item => !item.listPrice || item.listPrice === 0);
+  const hasZeroMrp = data.items.some(item => !item.listPrice && !(item as any).mrp);
   const priceHeader = hasZeroMrp ? 'Sales Price' : 'MRP';
 
   const taxBreakdown: Record<string, { taxable: number, cgst: number, sgst: number }> = {};
 
   const tableBody = data.items.map(item => {
     const qty = Number(item.quantity) || 0;
-    let mrp = Number(item.listPrice) || 0;
 
-    if (mrp === 0) {
-      const salesPrice = Number((item as any).price || (item as any).rate || 0);
+    // 1. TRUST THE EXACT DB SCHEMA
+    let mrp = Number((item as any).mrp || item.listPrice || 0);
+    let finalAmount = Number((item as any).finalPrice || item.amount || (item as any).total || 0);
+    let taxAmt = Number((item as any).taxAmount || item.gstAmount || 0);
+    let taxableAmt = Number((item as any).taxableAmount || (item as any).subtotal || 0);
 
-      if (salesPrice > 0) {
-        mrp = salesPrice;
-      } else if (qty > 0) {
-        mrp = Number(item.amount || 0) / qty;
-      }
+    // Safety fallback if taxableAmount is missing
+    if (!taxableAmt && finalAmount > 0) {
+      taxableAmt = finalAmount - taxAmt;
     }
 
-    // --- DETERMINE ROW TOTAL & DISCOUNT ---
-    const grossRowAmount = mrp * qty;
-    let calculatedDiscountAmount = 0;
-    let rowTotal = 0;
-    const discountPercentage = Number(item.discountAmount) || 0;
-
-    // PRIORITY 1: Explicit 100% Free Items 
-    // (Bypasses the frontend bug where 'amount' comes in as the gross value instead of 0)
-    if (discountPercentage === 100) {
-      rowTotal = 0;
-      calculatedDiscountAmount = grossRowAmount;
-    }
-    // PRIORITY 2: Trust the exact final amount sent by the UI 
-    // (This perfectly preserves the UI's rounded numbers like 40 and 50)
-    else if (item.amount !== undefined && item.amount !== null && Number(item.amount) >= 0) {
-      rowTotal = Number(item.amount);
-      calculatedDiscountAmount = grossRowAmount - rowTotal;
-    }
-    // PRIORITY 3: Fallback percentage calculation
-    else if (discountPercentage > 0) {
-      calculatedDiscountAmount = grossRowAmount * (discountPercentage / 100);
-      rowTotal = grossRowAmount - calculatedDiscountAmount;
-    }
-    // PRIORITY 4: No discount, no final amount
-    else {
-      rowTotal = grossRowAmount;
+    // Fallback for discount if it's not saved as a direct currency amount
+    let discountAmt = Number(item.discountAmount || (item as any).manualDiscount || (item as any).discount || 0);
+    if (discountAmt === 0 && mrp > 0 && taxableAmt > 0) {
+      discountAmt = (mrp * qty) - taxableAmt;
     }
 
-    // Final safety bounds to prevent negative numbers on edge cases
-    if (calculatedDiscountAmount < 0) calculatedDiscountAmount = 0;
-    if (rowTotal < 0) rowTotal = 0;
-
-    // --- TAX RATE ---
-    let effectiveTaxRate = isEstimate
-      ? 0
-      : Number(item.gstPercent || item.taxRate || 0);
-
-    if (safeScheme === 'COMPOSITION' || safeScheme === 'NONE') {
-      effectiveTaxRate = 0;
+    // --- FIX FOR NEGATIVE DISCOUNT (MARKUP) ---
+    // If the item was sold for more than MRP, zero out the discount 
+    // and bump the printed MRP up to match the actual sales price per unit.
+    if (discountAmt < 0) {
+      discountAmt = 0;
+      mrp = qty > 0 ? (taxableAmt / qty) : taxableAmt;
     }
 
-    // --- CALCULATION LOGIC ---
-    let taxableValue = 0;
-    let taxAmt = 0;
-    let netAmount = 0;
+    // 2. Tax Formatting
+    let taxRate = Number(item.taxRate || item.gstPercent || (item as any).tax || 0);
 
-    if (isEstimate) {
-      netAmount = rowTotal;
-      taxableValue = rowTotal;
-      taxAmt = 0;
-    }
-    else if (safeScheme === 'NONE' || safeScheme === 'COMPOSITION') {
-      netAmount = rowTotal;
-      taxableValue = rowTotal;
-      taxAmt = 0;
-    }
-    else {
-      if (safeTaxType === 'EXCLUSIVE') {
-        taxableValue = rowTotal;
-        taxAmt = taxableValue * (effectiveTaxRate / 100);
-        netAmount = taxableValue + taxAmt;
-      } else {
-        netAmount = rowTotal;
-        taxableValue = netAmount / (1 + (effectiveTaxRate / 100));
-        taxAmt = netAmount - taxableValue;
-      }
+    // FIX: Zero out taxes for Exempt/None, but keep the columns visible!
+    const isExempt = safeScheme === 'NONE' || safeTaxType === 'EXEMPT' || safeTaxType === 'NONE';
+
+    if (isEstimate || isExempt) {
+      taxRate = 0;
+      taxAmt = 0; // Force tax amount to 0.00
+      finalAmount = taxableAmt; // Drop the tax from the row's final amount
     }
 
     totalQty += qty;
-    totalTaxable += taxableValue;
+    totalTaxable += taxableAmt;
     totalTaxAmt += taxAmt;
-    grossTotal += netAmount;
+    grossTotal += finalAmount;
 
-    if (effectiveTaxRate > 0) {
-      const rateKey = effectiveTaxRate.toString();
+    if (taxRate > 0) {
+      const rateKey = taxRate.toString();
       if (!taxBreakdown[rateKey]) {
         taxBreakdown[rateKey] = { taxable: 0, cgst: 0, sgst: 0 };
       }
-      taxBreakdown[rateKey].taxable += taxableValue;
+      taxBreakdown[rateKey].taxable += taxableAmt;
       taxBreakdown[rateKey].cgst += (taxAmt / 2);
       taxBreakdown[rateKey].sgst += (taxAmt / 2);
     }
 
-    return [
+    // FIX: Only return the tax columns if showTaxColumns is true
+    return showTaxColumns ? [
       item.sno,
       item.name,
-      item.hsn,
+      item.hsn || (item as any).hsnSac || '',
       qty,
       item.unit || 'PCS',
       mrp.toFixed(2),
-      calculatedDiscountAmount.toFixed(2), // <--- UPDATE THIS LINE
-      taxableValue.toFixed(2),
-      `${(effectiveTaxRate / 2)}%`,
+      discountAmt.toFixed(2),
+      taxableAmt.toFixed(2),
+      `${(taxRate / 2)}%`,
       (taxAmt / 2).toFixed(2),
-      `${(effectiveTaxRate / 2)}%`,
+      `${(taxRate / 2)}%`,
       (taxAmt / 2).toFixed(2),
-      netAmount.toFixed(2)
+      finalAmount.toFixed(2)
+    ] : [
+      item.sno,
+      item.name,
+      item.hsn || (item as any).hsnSac || '',
+      qty,
+      item.unit || 'PCS',
+      mrp.toFixed(2),
+      discountAmt.toFixed(2),
+      finalAmount.toFixed(2)
     ];
   });
 
-  // --- UPDATED GRAND TOTAL CALCULATION ---
   const billDiscount = Number(data.billDiscount) || 0;
   const extraExpense = Number(data.extraExpenseAmount) || 0;
 
-  // Subtract bill discount AND add the extra expense
-  const netPayable = grossTotal - billDiscount + extraExpense;
+  let finalRoundTotal = Number(data.finalAmount || (data as any).grandTotal || 0);
+  const pureCalculated = grossTotal - billDiscount + extraExpense;
 
-  const finalRoundTotal = Math.round(netPayable);
-  const roundOffAmt = finalRoundTotal - netPayable;
+  if (!finalRoundTotal) {
+    finalRoundTotal = Math.round(pureCalculated);
+  }
+  const roundOffAmt = finalRoundTotal - pureCalculated;
 
   autoTable(doc, {
     startY: cursorY,
-    head: [isEstimate
-      ? ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Amount']
-      : ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Subtotal', 'CGST', 'CGST Amt', 'SGST', 'SGST Amt', 'Amount']
+    head: [showTaxColumns
+      ? ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Subtotal', 'CGST', 'CGST Amt', 'SGST', 'SGST Amt', 'Amount']
+      : ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Amount']
     ],
     body: tableBody,
     theme: 'grid',
@@ -493,11 +464,16 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
       lineWidth: 0.1,
       lineColor: lineColor
     },
-    columnStyles: {
+    columnStyles: showTaxColumns ? {
       0: { cellWidth: 8 },
       1: { cellWidth: 'auto', halign: 'left' },
       2: { cellWidth: 15 },
       12: { cellWidth: 20, halign: 'right' }
+    } : {
+      0: { cellWidth: 8 },
+      1: { cellWidth: 'auto', halign: 'left' },
+      2: { cellWidth: 15 },
+      7: { cellWidth: 20, halign: 'right' }
     },
     margin: { left: margin, right: margin },
   });
@@ -518,7 +494,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
     doc.rect(startX, finalY, contentWidth, expH);
-    doc.text(`Add : ${data.extraExpenseName || 'Extra Expense'} (+)`, endX - 35, finalY + 4);
+    doc.text(`Add : ${data.extraExpenseName || 'Extra Expense'} (+)`, endX - 30, finalY + 4, { align: 'right' });
     doc.text(data.extraExpenseAmount.toFixed(2), endX - 2, finalY + 4, { align: 'right' });
     finalY += expH;
   }
@@ -529,7 +505,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
     doc.rect(startX, finalY, contentWidth, discH);
-    doc.text('Less :Bill Discount (-)', endX - 35, finalY + 4);
+    doc.text('Less : Bill Discount (-)', endX - 30, finalY + 4, { align: 'right' });
     doc.text(billDiscount.toFixed(2), endX - 2, finalY + 4, { align: 'right' });
     finalY += discH;
   }
@@ -539,10 +515,9 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   doc.rect(startX, finalY, contentWidth, roundOffH);
-  doc.text('Add : Rounded off (+)', endX - 35, finalY + 4);
+  doc.text('Add : Rounded off (+)', endX - 30, finalY + 4, { align: 'right' });
   doc.text(roundOffAmt.toFixed(2), endX - 2, finalY + 4, { align: 'right' });
   finalY += roundOffH;
-
   // 2. GRAND TOTAL
   const grandTotalH = 8;
   doc.setFontSize(9);
@@ -560,24 +535,19 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   if (data.narration && data.narration.trim() !== '') {
     doc.setFontSize(8);
 
-    // Calculate how many lines the narration will take (accounting for the label's width)
     const narrationLines = doc.splitTextToSize(data.narration, contentWidth - 18);
     const narrationH = (narrationLines.length * 4) + 4;
 
-    // Check if we need a new page
     if (finalY + narrationH > pageHeight - margin) {
       doc.addPage();
       finalY = margin;
     }
 
-    // Draw the box
     doc.rect(startX, finalY, contentWidth, narrationH);
 
-    // Print "Remarks:" in BOLD
     doc.setFont('helvetica', 'bold');
     doc.text('Remarks:', startX + 2, finalY + 4);
 
-    // Print the actual narration in NORMAL text, perfectly indented next to the label
     doc.setFont('helvetica', 'normal');
     doc.text(narrationLines, startX + 16, finalY + 4);
 
@@ -585,7 +555,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   }
 
   // 3. TAX TABLE
-  if (!isEstimate) {
+  if (showTaxColumns) {
     const taxHeaders = [['Tax Rate', 'Taxable Amt.', 'CGST', 'SGST', 'Total Tax']];
     const taxBody = Object.keys(taxBreakdown).map(rate => {
       const d = taxBreakdown[rate];
@@ -714,14 +684,12 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
 
-  // --- Split text to link and underline "SELLAR.IN" ---
   const pbText = 'Powered by ';
   const linkText = 'SELLAR.IN';
 
   const pbWidth = doc.getTextWidth(pbText);
   const linkWidth = doc.getTextWidth(linkText);
 
-  // Calculate Start X to center the combined text
   let brandingX = (pageWidth / 2) - ((pbWidth + linkWidth) / 2);
 
   // 1. Print "Powered by " (Black)
@@ -842,7 +810,6 @@ export const preparePdfData = async (invoiceData: any) => {
     try {
       const companyDoc = await getDoc(doc(db, 'companies', invoiceData.companyId));
       if (companyDoc.exists()) {
-        // Merge with defaults to ensure no field is undefined
         companyData = { ...companyData, ...companyDoc.data() };
       }
       // **NEW: Fetch company logo from business_info**
@@ -875,8 +842,6 @@ export const preparePdfData = async (invoiceData: any) => {
     }
   }
 
-  // 2. Return Data with "Bulletproof" Defaults
-  // We add defaults for ANY field that might be .toUpperCase()'d
   return {
     ...invoiceData,
     companyLogoBase64,

@@ -597,8 +597,11 @@ const PurchaseReturnPage: React.FC = () => {
     const finalSupplierName = (completionData?.partyName || supplierName || selectedPurchase.partyName || '').trim();
     const finalSupplierNumber = (completionData?.partyNumber || supplierNumber || selectedPurchase.partyNumber || '').trim();
 
-    if (modeOfReturn === 'Debit Note' && !finalSupplierNumber) {
-      setModal({ type: State.ERROR, message: 'Cannot create Debit Note: Party Number is missing.' });
+    // --- UPDATED CHECK: Validates both Name and Number for Debit Notes ---
+    const isCreatingDebitNote = modeOfReturn === 'Debit Note' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Debit Note' && finalBalance > 0);
+
+    if (isCreatingDebitNote && (!finalSupplierName || !finalSupplierNumber)) {
+      setModal({ type: State.ERROR, message: 'Cannot create Debit Note: Both Party Name and Party Number are required.' });
       return;
     }
 

@@ -88,21 +88,21 @@ const Account: React.FC = () => {
 
   const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
 
-useEffect(() => {
-  const fetchExpiry = async () => {
-    if (!currentUser?.companyId) return;
-    const ref = doc(db, 'companies', currentUser.companyId);
-    const snap = await getDoc(ref);
-    if (snap.exists()) {
-      const expiry = snap.data().expiryDate;
-      if (!expiry) return;
-      const d = expiry.toDate ? expiry.toDate() : new Date(expiry);
-      const diff = d.getTime() - new Date().getTime();
-      setDaysRemaining(Math.ceil(diff / (1000 * 60 * 60 * 24)));
-    }
-  };
-  fetchExpiry();
-}, [currentUser?.companyId]);
+  useEffect(() => {
+    const fetchExpiry = async () => {
+      if (!currentUser?.companyId) return;
+      const ref = doc(db, 'companies', currentUser.companyId);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const expiry = snap.data().expiryDate;
+        if (!expiry) return;
+        const d = expiry.toDate ? expiry.toDate() : new Date(expiry);
+        const diff = d.getTime() - new Date().getTime();
+        setDaysRemaining(Math.ceil(diff / (1000 * 60 * 60 * 24)));
+      }
+    };
+    fetchExpiry();
+  }, [currentUser?.companyId]);
 
   const showBadge = daysRemaining !== null && daysRemaining <= 7 && daysRemaining >= 0;
   const isUrgent = daysRemaining !== null && daysRemaining <= 2;
@@ -179,15 +179,17 @@ useEffect(() => {
       <div className="bg-gray-100 p-2 border-b border-gray-300 mb-4 flex items-center justify-between">
         <div className="w-10" />
 
-        <h1 className="text-3xl font-bold text-center text-slate-800">Account</h1>
+        <h1 className="text-2xl font-bold text-center text-slate-800">Account</h1>
 
         {/* Notification Bell */}
-        <div className="relative border border-slate-300 rounded-sm p-2 bg-gray-100 shadow-sm">
-          <NotificationBell />
-        </div>
+        <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+          <div className="relative border border-slate-300 rounded-sm p-2 bg-gray-100 shadow-sm">
+            <NotificationBell />
+          </div>
+        </ShowWrapper>
       </div>
 
-      {/* Step 1 — Profile photo + edit */ }
+      {/* Step 1 — Profile photo + edit */}
       <div ref={profileRef} className="flex flex-col items-center py-3 pb-4">
         <TutorialStep
           step={1}
@@ -253,7 +255,7 @@ useEffect(() => {
                   text="View detailed sales and business reports here."
                   onNext={() => next(4)}
                   onSkip={skip}
-                  mobileArrowAlign="left" 
+                  mobileArrowAlign="left"
                 >
                   <Link to={ROUTES.REPORTS} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-2 border border-gray-200 text-gray-800 hover:shadow-lg">
                     <span className="text-lg font-medium">Reports</span>
@@ -288,7 +290,7 @@ useEffect(() => {
                 text="View and manage your subscription plan here."
                 onNext={() => next(6)}
                 onSkip={skip}
-                mobileArrowAlign="left" 
+                mobileArrowAlign="left"
               >
                 <Link to={ROUTES.SUBSCRIPTION_PAGE} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-2 border border-gray-200 text-gray-800 hover:shadow-lg">
                   <span className="text-lg font-medium">Plans</span>

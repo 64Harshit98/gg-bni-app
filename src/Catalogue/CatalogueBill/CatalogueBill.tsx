@@ -128,34 +128,48 @@ export const CatalogueBill = async (
       },
 
       items: data.items.map((item: any, index: number) => {
-
-        const taxPercent = item.tax ?? item.gst ?? item.taxRate ?? 0;
         const qty = item.qty || 0;
-        const price = item.price || 0;
 
-        let gstAmount = 0;
+        // Trust exact DB schema
+        let mrp = Number(item.mrp || item.price || item.salesPrice || 0);
+        const rawPrice = item.salesPrice || item.price || mrp;
+        const taxPercent = item.tax ?? item.gst ?? item.taxRate ?? 0;
+
+        const safeScheme = (data.companyGstType || '').toUpperCase();
+        const safeTaxType = (data.taxType || '').toUpperCase();
+
+        // Enable tax if Composition OR (Regular but NOT Exempt/None)
+        const isTaxEnabled = safeScheme === "REGULAR" && safeTaxType !== "EXEMPT" && safeTaxType !== "NONE";
+        const effectiveTaxRate = isTaxEnabled ? taxPercent : 0;
+
         let subtotal = 0;
+        let gstAmount = 0;
+        let finalRowTotal = 0;
 
-        const isTaxEnabled =
-          data.companyGstType === "Regular";
-
-        if (!isTaxEnabled || !taxPercent) {
-
-          subtotal = price * qty;
+        // RESTORED: Proper Inclusive vs Exclusive math
+        if (effectiveTaxRate === 0) {
+          subtotal = rawPrice * qty;
           gstAmount = 0;
+          finalRowTotal = subtotal;
+        } else if (data.taxType === 'inclusive') {
+          finalRowTotal = rawPrice * qty;
+          subtotal = finalRowTotal / (1 + (effectiveTaxRate / 100));
+          gstAmount = finalRowTotal - subtotal;
+        } else {
+          // EXCLUSIVE
+          subtotal = rawPrice * qty;
+          gstAmount = subtotal * (effectiveTaxRate / 100);
+          finalRowTotal = subtotal + gstAmount;
+        }
 
+        // Fix for negative discount (Markup)
+        let discountAmt = (mrp * qty) - (rawPrice * qty);
+        if (discountAmt < 0) {
+          discountAmt = 0;
+          mrp = rawPrice;
         }
-        else if (data.taxType === 'inclusive') {
-          const base = price / (1 + taxPercent / 100);
-          subtotal = base * qty;
-          gstAmount = (price - base) * qty;
-        }
-        else {
-          subtotal = price * qty;
-          gstAmount = (subtotal * taxPercent) / 100;
-        }
-        const totalPcs =
-          qty * (item.unitMultiplier ?? 1);
+
+        const totalPcs = qty * (item.unitMultiplier ?? 1);
 
         return {
           sno: index + 1,
@@ -164,12 +178,12 @@ export const CatalogueBill = async (
           quantity: qty,
           totalPcs,
           unit: "Pcs",
-          listPrice: price,
+          listPrice: rawPrice,
           imageBase64: item.imageBase64 || "",
-          gstPercent: taxPercent,
+          gstPercent: effectiveTaxRate,
           gstAmount: gstAmount,
-          discountAmount: 0,
-          amount: subtotal + gstAmount
+          discountAmount: discountAmt,
+          amount: finalRowTotal
         };
       }),
 
@@ -211,9 +225,13 @@ export const CatalogueBill = async (
   const margin = 8;
 
   // ================= FORMATTERS =================
-  const formatAmount = (num: number) =>
-    `${num.toLocaleString("en-IN")}`;
-
+  const formatAmount = (num: number) => {
+    const validNum = Number(num) || 0;
+    return validNum.toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  };
   const formatDateTime = (dateStr: string) => {
     if (!dateStr) return "";
 
@@ -298,27 +316,26 @@ export const CatalogueBill = async (
 
       let nextY = phoneY + 4;
 
-      // GST TYPE
-      if (data.companyGstType && data.companyGstType.trim() !== "") {
+      // --- MASTER SWITCH: Hide GST info if Unregistered/None ---
+      const safeScheme = (data.companyGstType || '').toUpperCase();
+      const safeTaxType = (data.taxType || '').toUpperCase();
+      const showGstinDetails = !isEstimate && safeScheme !== 'UNREGISTERED' && safeScheme !== 'NONE' && safeScheme !== '' && safeTaxType !== 'EXEMPT' && safeTaxType !== 'NONE';
 
-        let gstText = data.companyGstType;
+      if (showGstinDetails) {
+        let gstText = data.companyGstType || '';
 
-        // sirf tab add karna jab Regular ho
         if (data.companyGstType === "Regular" && data.taxType) {
-          const taxLabel =
-            data.taxType === "inclusive" ? "Inclusive" : "Exclusive";
-
+          const taxLabel = data.taxType === "inclusive" ? "Inclusive" : "Exclusive";
           gstText += ` (${taxLabel})`;
         }
 
         doc.text(`GST Type: ${gstText}`, pageWidth / 2, nextY, { align: "center" });
         nextY += 4;
-      }
 
-      // GSTIN ONLY FOR INVOICE (NOT ESTIMATE)
-      if (!isEstimate && data.companyGstin) {
-        doc.text(`GSTIN: ${data.companyGstin}`, pageWidth / 2, nextY, { align: "center" });
-        nextY += 4;
+        if (data.companyGstin) {
+          doc.text(`GSTIN: ${data.companyGstin}`, pageWidth / 2, nextY, { align: "center" });
+          nextY += 4;
+        }
       }
 
       dividerY = nextY;
@@ -496,15 +513,46 @@ export const CatalogueBill = async (
     doc.text(`Phone : ${data.customer.billing?.phone || ""}`, billX, textY);
     doc.text(`Phone : ${data.customer.shipping?.phone || ""}`, shipX, textY);
 
-    // GSTIN only for real bill
-    if (data.customer.billing?.gstin) {
+    const safeScheme = (data.companyGstType || '').toUpperCase();
+    const safeTaxType = (data.taxType || '').toUpperCase();
+    const showGstinDetails = !isEstimate && safeScheme !== 'UNREGISTERED' && safeScheme !== 'NONE' && safeScheme !== '' && safeTaxType !== 'EXEMPT' && safeTaxType !== 'NONE';
+
+    // GSTIN only for real bill AND if the company is registered
+    if (showGstinDetails && data.customer.billing?.gstin) {
       doc.text(`GSTIN : ${data.customer.billing.gstin}`, billX, textY + 5);
     }
 
-    if (data.customer.shipping?.gstin) {
+    if (showGstinDetails && data.customer.shipping?.gstin) {
       doc.text(`GSTIN : ${data.customer.shipping.gstin}`, shipX, textY + 5);
     }
   }
+
+  // ================= PRE-CALCULATE EXACT GRAND TOTAL =================
+  const precalcSafeScheme = (data.companyGstType || '').toUpperCase();
+  const precalcSafeTaxType = (data.taxType || '').toUpperCase();
+
+  // FIX: Unique variable name, and enforces that Composition/Exempt = 0% tax
+  const isPrecalcTaxEnabled = precalcSafeScheme === "REGULAR" && precalcSafeTaxType !== "EXEMPT" && precalcSafeTaxType !== "NONE";
+
+  let preCalculatedGrandTotal = 0;
+
+  data.items.forEach((item: any) => {
+    const qty = Number(item.qty) || 0;
+    let mrp = Number(item.mrp || item.price || item.salesPrice || 0);
+    const rawPrice = Number(item.salesPrice || item.price || mrp);
+    const taxPercent = Number(item.tax ?? item.gst ?? item.taxRate ?? 0);
+    const effectiveTaxRate = (isEstimate || !isPrecalcTaxEnabled) ? 0 : taxPercent;
+
+    if (effectiveTaxRate === 0 || data.taxType?.toLowerCase() === 'inclusive') {
+      preCalculatedGrandTotal += rawPrice * qty;
+    } else {
+      // EXCLUSIVE MATH
+      const subtotal = rawPrice * qty;
+      preCalculatedGrandTotal += subtotal + (subtotal * (effectiveTaxRate / 100));
+    }
+  });
+
+  const finalTotalAmountToPrint = preCalculatedGrandTotal;
 
   // ================= TOTAL BOX =================
 
@@ -524,8 +572,9 @@ export const CatalogueBill = async (
     { align: "center" }
   );
 
+  // FIX: Use the mathematically correct total instead of the raw DB total
   doc.text(
-    formatAmount(data.grandTotal),
+    formatAmount(finalTotalAmountToPrint),
     totalBoxX + totalBoxWidth / 2,
     totalBoxY + 16,
     { align: "center" }
@@ -593,40 +642,55 @@ export const CatalogueBill = async (
   }
 
   // ================= TABLE DATA =================
-  const isTaxEnabled = data.companyGstType === 'Regular';
+  const safeScheme = (data.companyGstType || '').toUpperCase();
+  const safeTaxType = (data.taxType || '').toUpperCase();
+
+  // Tax is enabled if Composition OR (Regular but NOT Exempt/None)
+  const isTaxEnabled = safeScheme === "REGULAR" && safeTaxType !== "EXEMPT" && safeTaxType !== "NONE";
   const showMrpColumn =
     data.items.length === 1
       ? Number((data.items[0] as any)?.mrp || 0) > 0
       : !data.items.some((item: any) => Number(item.mrp || 0) === 0);
+
+  let calculatedGrandTotal = 0;
+
   const body = data.items.map((item: any) => {
     const totalPcs = item.qty * (item.unitMultiplier ?? 1);
-
-    const taxPercent = item.tax ?? item.gst ?? item.taxRate ?? 0;
-
-    const price = item.price || item.salesPrice || item.mrp || 0;
-
-    let gstAmount = 0;
-    let subtotal = 0;
-
-    // APPLY SETTINGS LOGIC
     const qty = item.qty || 0;
 
-    if (!isTaxEnabled || !taxPercent) {
-      subtotal = price * qty;
+    let mrp = Number(item.mrp || item.price || item.salesPrice || 0);
+    const rawPrice = item.salesPrice || item.price || mrp;
+    const taxPercent = item.tax ?? item.gst ?? item.taxRate ?? 0;
+
+    const effectiveTaxRate = isTaxEnabled ? taxPercent : 0;
+    let subtotal = 0;
+    let gstAmount = 0;
+    let finalRowTotal = 0;
+
+    // RESTORED: Proper Inclusive vs Exclusive math
+    if (effectiveTaxRate === 0) {
+      subtotal = rawPrice * qty;
       gstAmount = 0;
+      finalRowTotal = subtotal;
+    } else if (data.taxType === 'inclusive') {
+      finalRowTotal = rawPrice * qty;
+      subtotal = finalRowTotal / (1 + (effectiveTaxRate / 100));
+      gstAmount = finalRowTotal - subtotal;
+    } else {
+      // EXCLUSIVE
+      subtotal = rawPrice * qty;
+      gstAmount = subtotal * (effectiveTaxRate / 100);
+      finalRowTotal = subtotal + gstAmount;
     }
-    else if (data.taxType === 'inclusive') {
-      const base = price / (1 + taxPercent / 100);
 
-      subtotal = base * qty;              // taxable value
-      gstAmount = (price - base) * qty;   // gst
-    }
-    else {
-      subtotal = price * qty;             // taxable
-      gstAmount = (price * taxPercent / 100) * qty;
+    // Fix for negative discount (Markup)
+    let discountAmt = (mrp * qty) - (rawPrice * qty);
+    if (discountAmt < 0) {
+      discountAmt = 0;
+      mrp = rawPrice;
     }
 
-    const mrp = item.mrp || 0;
+    calculatedGrandTotal += finalRowTotal;
 
     return isEstimate
       ? (
@@ -635,18 +699,18 @@ export const CatalogueBill = async (
             item.sno,
             "",
             `${item.name}\n(${totalPcs} pcs)`,
-            item.qty,
+            qty,
             formatAmount(mrp),
-            formatAmount(price),
-            formatAmount(item.total),
+            formatAmount(rawPrice),
+            formatAmount(finalRowTotal),
           ]
           : [
             item.sno,
             "",
             `${item.name}\n(${totalPcs} pcs)`,
-            item.qty,
-            formatAmount(price),
-            formatAmount(item.total),
+            qty,
+            formatAmount(rawPrice),
+            formatAmount(finalRowTotal),
           ]
       )
       : (
@@ -655,24 +719,24 @@ export const CatalogueBill = async (
             item.sno,
             "",
             `${item.name}\n(${totalPcs} pcs)`,
-            item.qty,
-            taxPercent,
+            qty,
+            effectiveTaxRate,
             formatAmount(mrp),
-            formatAmount(price),
+            formatAmount(rawPrice),
             formatAmount(subtotal),
             formatAmount(gstAmount),
-            formatAmount(subtotal + gstAmount),
+            formatAmount(finalRowTotal),
           ]
           : [
             item.sno,
             "",
             `${item.name}\n(${totalPcs} pcs)`,
-            item.qty,
-            taxPercent,
-            formatAmount(price),
+            qty,
+            effectiveTaxRate,
+            formatAmount(rawPrice),
             formatAmount(subtotal),
             formatAmount(gstAmount),
-            formatAmount(subtotal + gstAmount),
+            formatAmount(finalRowTotal),
           ]
       );
   });
@@ -681,13 +745,13 @@ export const CatalogueBill = async (
   const foot = isEstimate
     ? [
       showMrpColumn
-        ? ["", "", "", "", "", "Grand Total", formatAmount(data.grandTotal)]
-        : ["", "", "", "", "Grand Total", formatAmount(data.grandTotal)]
+        ? ["", "", "", "", "", "Grand Total", formatAmount(finalTotalAmountToPrint)]
+        : ["", "", "", "", "Grand Total", formatAmount(finalTotalAmountToPrint)]
     ]
     : [
       showMrpColumn
-        ? ["", "", "", "", "", "", "", "", "Grand Total", formatAmount(data.grandTotal)]
-        : ["", "", "", "", "", "", "", "Grand Total", formatAmount(data.grandTotal)]
+        ? ["", "", "", "", "", "", "", "", "Grand Total", formatAmount(finalTotalAmountToPrint)]
+        : ["", "", "", "", "", "", "", "Grand Total", formatAmount(finalTotalAmountToPrint)]
     ];
 
   const drawBrandingFooter = () => {
@@ -762,13 +826,13 @@ export const CatalogueBill = async (
     head: isEstimate
       ? [
         showMrpColumn
-          ? ["No", "Product", "Item", "Qty", "MRP", "SalePrice", "Total"]
-          : ["No", "Product", "Item", "Qty", "SalePrice", "Total"]
+          ? ["No", "Product", "Item", "Qty", "MRP", "Price", "Total"]
+          : ["No", "Product", "Item", "Qty", "Price", "Total"]
       ]
       : [
         showMrpColumn
-          ? ["No", "Product", "Item", "Qty", "GST%", "MRP", "SalePrice", "SubTotal", "GSTAmt", "Total"]
-          : ["No", "Product", "Item", "Qty", "GST%", "SalePrice", "SubTotal", "GSTAmt", "Total"]
+          ? ["No", "Product", "Item", "Qty", "GST%", "MRP", "Price", "SubTotal", "GSTAmt", "Total"]
+          : ["No", "Product", "Item", "Qty", "GST%", "Price", "SubTotal", "GSTAmt", "Total"]
       ],
     body,
     foot,
@@ -900,7 +964,7 @@ export const CatalogueBill = async (
     doc.setFontSize(9);
 
     doc.text(
-      `Amount in Words : ${convertNumberToWords(Math.round(data.grandTotal))}`,
+      `Amount in Words : ${convertNumberToWords(Math.round(finalTotalAmountToPrint))}`,
       margin + 4,
       finalY + 5.5
     );

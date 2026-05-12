@@ -98,6 +98,7 @@ export const getFirestoreOperations = (companyId: string) => {
       if (lastSyncTime) {
         const lastDate = new Date(lastSyncTime);
         itemsQuery = query(itemRef, where('updatedAt', '>', lastDate));
+        lastDate.setMinutes(lastDate.getMinutes() - 1);
         // Query our tombstones for anything deleted since last sync
         deletedQuery = query(collection(companyRef, 'deletedItems'), where('deletedAt', '>', lastDate));
       } else {

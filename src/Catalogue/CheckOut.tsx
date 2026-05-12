@@ -48,7 +48,9 @@ interface Address {
 
 const useBusinessName = (effectiveCompanyId?: string) => {
     const [businessName, setBusinessName] = useState<string>('');
+    const [socialLinks, setSocialLinks] = useState<any>({});
     const [loading, setLoading] = useState(true);
+
     useEffect(() => {
         if (!effectiveCompanyId) {
             setLoading(false);
@@ -58,7 +60,14 @@ const useBusinessName = (effectiveCompanyId?: string) => {
             try {
                 const docRef = doc(db, 'companies', effectiveCompanyId, 'business_info', effectiveCompanyId);
                 const docSnap = await getDoc(docRef);
-                setBusinessName(docSnap.exists() ? docSnap.data().businessName || 'Catalogue' : 'Catalogue');
+
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    setBusinessName(data.businessName || 'Catalogue');
+                    setSocialLinks(data);
+                } else {
+                    setBusinessName('Catalogue');
+                }
             } catch (err) {
                 setBusinessName('Catalogue');
             } finally {
@@ -68,7 +77,7 @@ const useBusinessName = (effectiveCompanyId?: string) => {
         fetchBusinessInfo();
     }, [effectiveCompanyId]);
 
-    return { businessName, loading };
+    return { businessName, loading, socialLinks };
 };
 
 const CartPage: React.FC = () => {
@@ -139,7 +148,7 @@ const CartPage: React.FC = () => {
     // 4. Point the effective ID to the newly resolved state
     const effectiveCompanyId = resolvedCompanyId;
 
-    const { businessName: companyName } = useBusinessName(effectiveCompanyId || "");
+    const { businessName: companyName, socialLinks } = useBusinessName(effectiveCompanyId || "");
     const [salesSettings, setSalesSettings] = useState<CatalogueSalesSettings | null>(null);
     const [shipping, setShipping] = useState<Address>({ name: '', phone: '', city: '', state: '', address: '', gstin: '' });
     const [billing, setBilling] = useState<Address>({ name: '', phone: '', city: '', state: '', address: '', gstin: '' });
@@ -1104,7 +1113,13 @@ const CartPage: React.FC = () => {
                 </main>
 
                 <div className="mt-10 lg:mt-20 w-full">
-                    <Footer companyName={companyName} />
+                    <Footer
+                        companyName={companyName}
+                        instagram={socialLinks?.instagram}
+                        facebook={socialLinks?.facebook}
+                        twitter={socialLinks?.twitter}
+                        gmail={socialLinks?.gmail}
+                    />
                     <div className="h-24 lg:hidden"></div>
                 </div>
 

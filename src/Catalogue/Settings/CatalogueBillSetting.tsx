@@ -60,7 +60,7 @@ const CatalogueBillSettings: React.FC = () => {
     });
 
     const [settings, setSettings] = useState<BillSettingsData>({
-        printFormat: "A4", 
+        printFormat: "A4",
         upiId: '',
         termsAndConditions: '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
         signatureBase64: ''
@@ -451,6 +451,7 @@ const CatalogueBillSettings: React.FC = () => {
                                     value="A5"
                                     checked={settings.printFormat === 'A5'}
                                     onChange={handleChange}
+                                    disabled={true}
                                     className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
                                 />
                                 <div className="ml-3">

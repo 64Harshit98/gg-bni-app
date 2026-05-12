@@ -196,7 +196,7 @@ const SalesReport: React.FC = () => {
       doc.setFontSize(22);
       doc.setTextColor(17, 24, 39); // gray-900
       doc.setFont('helvetica', 'bold');
-      doc.text('Completed Orders Report', 14, 24);
+      doc.text('Sales Report', 14, 24);
 
       // Dynamic Subtitle with Date Range
       doc.setFontSize(10);

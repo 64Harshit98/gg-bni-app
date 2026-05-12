@@ -43,7 +43,6 @@ const CHome = lazy(() => import('../Catalogue/CatalogueHome'));
 const CatalogueAccounts = lazy(() => import('../Catalogue/CatalougeAccount'));
 const OrderDetails = lazy(() => import('../Catalogue/Orders'));
 const RequestPage = lazy(() => import('../Catalogue/RequestPage'));
-const CatItemGroup = lazy(() => import('../Catalogue/ItemGroup'));
 const CatalogueReports = lazy(() => import('../Catalogue/CatalogueReports/CatalogueReports'));
 const CatalogueSales = lazy(() => import('../Catalogue/CatalogueReports/CatalogueSalesReport'));
 const CatalogueProfitLoss = lazy(() => import('../Catalogue/CatalogueReports/CatalogueProfitLossReport'));
@@ -55,7 +54,6 @@ const CatalogueEditProfile = lazy(() => import('../Catalogue/CatalogueEditProfil
 const CatalogueMasters = lazy(() => import('../Catalogue/Settings/CatalogueMasters'));
 const CatalogueSalesSettings = lazy(() => import('../Catalogue/Settings/CatalogueSalesSetting'));
 const CatalogueBillSetting = lazy(() => import('../Catalogue/Settings/CatalogueBillSetting'));
-const CatalogueItemSetting = lazy(() => import('../Catalogue/Settings/CatalogueItemSetting'));
 const CatalogueUserSetting = lazy(() => import('../Catalogue/Settings/CatalogueUserSetting'));
 const CataloguePermissionSetting = lazy(() => import('../Catalogue/Settings/CataloguePermissionSetting'));
 const Order = lazy(() => import('../Catalogue/Shop'));
@@ -67,6 +65,13 @@ const CataloguePartyLedger = lazy(() => import('../Catalogue/CatalogueReports/Ca
 const CatlogueManageItems = lazy(() => import('../Catalogue/CatalogueReports/CatalogueManageItems'));
 const CatlogueSoldReport = lazy(() => import('../Catalogue/CatalogueReports/CatalogueSoldReport'));
 const CatalogueAdditionalServices = lazy(() => import('../Catalogue/CatalogueAdditionalServices'));
+const PosItemSettingWrapper = (props: any) => (
+    <ItemSetting {...props} theme="blue" />
+);
+
+const CatalogueItemSettingWrapper = (props: any) => (
+    <ItemSetting {...props} theme="orange" />
+);
 const PosItemAddWrapper = (props: any) => (
     <ItemAdd
         {...props}
@@ -82,6 +87,51 @@ const CatalogueItemAddWrapper = (props: any) => (
         routes={{
             itemAdd: `${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`,
             itemGroup: `${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`
+        }}
+    />
+);
+const PosItemGroupWrapper = (props: any) => (
+    <ItemGroup
+        {...props}
+        routes={{
+            addItem: ROUTES.ITEM_ADD,
+            itemGroups: ROUTES.ITEM_GROUP,
+        }}
+        theme={{
+            primaryBg: 'bg-sky-500',
+            primaryHoverBg: 'hover:bg-blue-700',
+            primaryDisabledBg: 'disabled:bg-blue-300',
+            primaryText: 'text-blue-900',
+            primaryHoverText: 'hover:text-blue-600',
+            primaryBorder: 'border-blue-500',
+            focusRing: 'focus:ring-blue-500',
+            deleteButtonBg: 'bg-red-500',
+            deleteButtonHoverBg: 'hover:bg-red-600',
+            editIconText: 'text-blue-600',
+            editIconHoverText: 'hover:text-blue-800',
+        }}
+    />
+);
+
+const CatalogueItemGroupWrapper = (props: any) => (
+    <ItemGroup
+        {...props}
+        routes={{
+            addItem: `${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`,
+            itemGroups: `${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`,
+        }}
+        theme={{
+            primaryBg: 'bg-[#F97316]',
+            primaryHoverBg: 'hover:bg-[#ea580c]',
+            primaryDisabledBg: 'disabled:bg-[#F97316]/40',
+            primaryText: 'text-[#F97316]',
+            primaryHoverText: 'hover:text-[#F97316]',
+            primaryBorder: 'border-[#F97316]',
+            focusRing: 'focus:ring-[#F97316]',
+            deleteButtonBg: 'bg-orange-400',
+            deleteButtonHoverBg: 'hover:bg-orange-500',
+            editIconText: 'text-[#F97316]',
+            editIconHoverText: 'hover:text-orange-700',
         }}
     />
 );
@@ -119,7 +169,7 @@ export const AppRegistry: AppModule[] = [
             { path: ROUTES.PURCHASE_RETURN, component: PurchaseReturn, permission: Permissions.CreatePurchaseReturn },
             { path: ROUTES.PRINTQR, component: PrintQR, permission: Permissions.PrintQR },
             { path: ROUTES.ITEM_ADD, component: PosItemAddWrapper, permission: Permissions.ManageItems },
-            { path: ROUTES.ITEM_GROUP, component: ItemGroup, permission: Permissions.ManageItemGroup },
+            { path: ROUTES.ITEM_GROUP, component: PosItemGroupWrapper, permission: Permissions.ManageItemGroup },
             { path: ROUTES.MANAGE_ITEMS, component: ManageItems, permission: Permissions.ManageItemGroup },
             { path: ROUTES.USER_ADD, component: UserAdd, permission: Permissions.CreateUsers },
             { path: ROUTES.REPORTS.substring(1), component: Reports, permission: Permissions.ViewReports },
@@ -131,7 +181,7 @@ export const AppRegistry: AppModule[] = [
             { path: ROUTES.SALESETTING, component: SalesSettingsPage, permission: null },
             { path: ROUTES.PURCHASESETTING, component: PurchaseSettingsPage, permission: null },
             { path: ROUTES.USERSETTING, component: UserSetting, permission: null },
-            { path: ROUTES.ITEMSETTING, component: ItemSetting, permission: null },
+            { path: ROUTES.ITEMSETTING, component: PosItemSettingWrapper, permission: null },
             { path: ROUTES.BILLSETTING, component: BillSettings, permission: null },
             { path: ROUTES.SUPPORT_PAGE, component: SupportPage, permission: null },
             { path: ROUTES.ADDITIONAL_FEATURES, component: AdditionalServices, permission: Permissions.ViewItemReport },
@@ -143,7 +193,7 @@ export const AppRegistry: AppModule[] = [
             { path: ROUTES.PARTY_LEDGER, component: PartyLedger, permission: Permissions.ViewPurchaseReport },
             { path: ROUTES.GALLA_HISAAB_TOOL, component: GallaHisaabTool, permission: Permissions.ViewPurchaseReport },
             { path: ROUTES.ITEM_SOLD_REPORT, component: ItemSoldReport, permission: Permissions.ViewItemReport },
-            { path: ROUTES.USER_REPORT, component: UserReport, permission: Permissions.ViewItemReport},
+            { path: ROUTES.USER_REPORT, component: UserReport, permission: Permissions.ViewItemReport },
         ],
     },
     {
@@ -157,7 +207,7 @@ export const AppRegistry: AppModule[] = [
             { path: ROUTES.ORDERDETAILS, component: OrderDetails, permission: null },
             { path: ROUTES.ITEM_ADD, component: CatalogueItemAddWrapper, permission: Permissions.ManageItems },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`, component: RequestPage, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`, component: CatItemGroup, permission: null },
+            { path: `${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`, component: CatalogueItemGroupWrapper, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_REPORTS}`, component: CatalogueReports, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_ITEMS}`, component: CatlogueItems, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_PARTY_LEDGER}`, component: CataloguePartyLedger, permission: null },
@@ -173,7 +223,7 @@ export const AppRegistry: AppModule[] = [
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_MASTERS}`, component: CatalogueMasters, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_SALE_SETTING}`, component: CatalogueSalesSettings, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_BILL_SETTING}`, component: CatalogueBillSetting, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATA_ITEM_SETTING}`, component: CatalogueItemSetting, permission: null },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATA_ITEM_SETTING}`, component: CatalogueItemSettingWrapper, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_USER_SETTING}`, component: CatalogueUserSetting, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_PERMISSION_SETTING}`, component: CataloguePermissionSetting, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.ORDER}`, component: Order, permission: null },

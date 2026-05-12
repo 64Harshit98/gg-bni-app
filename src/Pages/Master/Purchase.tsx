@@ -348,12 +348,22 @@ const PurchasePage: React.FC = () => {
     setItems((prevItems) => {
       // Check the setting, default to 'top' if undefined
       const order = purchaseSettings?.cartInsertionOrder || 'top';
+      const newList = order === 'bottom'
+        ? [...prevItems, newItemToInsert]
+        : [newItemToInsert, ...prevItems];
 
-      if (order === 'bottom') {
-        return [...prevItems, newItemToInsert];
-      } else {
-        return [newItemToInsert, ...prevItems];
-      }
+      // Auto-scroll after state update
+      setTimeout(() => {
+        if (cartListRef.current) {
+          if (order === 'bottom') {
+            cartListRef.current.scrollTo({ top: cartListRef.current.scrollHeight, behavior: 'smooth' });
+          } else {
+            cartListRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+          }
+        }
+      }, 50);
+
+      return newList;
     });
   };
 
@@ -731,7 +741,7 @@ const PurchasePage: React.FC = () => {
           });
         });
       });
-
+      // ✅ FIX: Update local inventory immediately without requiring refresh
       setAvailableItems(prev => prev.map(item => {
         const stockDelta = formattedItemsForDB
           .filter(i => i.id === item.id)
@@ -745,8 +755,8 @@ const PurchasePage: React.FC = () => {
 
       if (!purchaseSettings?.copyVoucherAfterSaving) {
         setItems([]);
-
-        isInvoiceNumberManuallyEdited.current = false;
+        const nextNum = await peekNextPurchaseNumber(companyId);
+        setInvoiceNumber(nextNum);
       }
       if (purchaseSettings?.enableBarcodePrinting) {
         setShowPrintQrModal(savedItemsCopy);
@@ -757,13 +767,15 @@ const PurchasePage: React.FC = () => {
     } catch (err: any) {
       console.error('Error saving purchase:', err?.code, err?.message);
       if (err?.code === 'unavailable' || err?.message?.includes('network-request-failed')) {
-        setModal({ message: 'Network lost while saving. Please check your connection and try again.', type: State.ERROR });
+        setModal({ message: 'Network lost during save. Please check your connection and try again.', type: State.ERROR });
+      } else if (err?.message?.includes('undefined') || err?.message?.includes('invalid data')) {
+        setModal({ message: 'Save failed due to invalid data. Please refresh and try again.', type: State.ERROR });
       } else if (err?.code === 'permission-denied') {
         setModal({ message: 'You do not have permission to complete this action.', type: State.ERROR });
       } else if (err?.code === 'aborted') {
         setModal({ message: 'Transaction conflict. Please try again.', type: State.ERROR });
       } else {
-        setModal({ message: 'Failed to save purchase. Please refresh the page and try again.', type: State.ERROR });
+        setModal({ message: 'Failed to save purchase. Please try again.', type: State.ERROR });
       }
     }
   };
@@ -898,7 +910,7 @@ const PurchasePage: React.FC = () => {
   };
 
   const handleCloseQrModal = () => { setShowPrintQrModal(null); };
-
+  const cartListRef = useRef<HTMLDivElement>(null);
   const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
   const [isItemDrawerOpen, setIsItemDrawerOpen] = useState(false);
   const handleOpenEditDrawer = (item: Item) => { setSelectedItemForEdit(item); setIsItemDrawerOpen(true); };
@@ -1052,10 +1064,7 @@ const PurchasePage: React.FC = () => {
           <input
             type="text"
             value={invoiceNumber}
-            onChange={(e) => {
-              isInvoiceNumberManuallyEdited.current = true; // ADD THIS
-              setInvoiceNumber(e.target.value);
-            }}
+            onChange={(e) => setInvoiceNumber(e.target.value)}
             className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-24 text-sm outline-none transition-colors"
           />
           <span className="text-[9px] text-gray-400 uppercase tracking-wide mt-0.5">Inv No</span>
@@ -1073,10 +1082,7 @@ const PurchasePage: React.FC = () => {
             <input
               type="text"
               value={invoiceNumber}
-              onChange={(e) => {
-                isInvoiceNumberManuallyEdited.current = true; // ADD THIS
-                setInvoiceNumber(e.target.value);
-              }}
+              onChange={(e) => setInvoiceNumber(e.target.value)}
               className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-24 text-sm outline-none transition-colors"
             />
           </div>
@@ -1695,7 +1701,7 @@ const PurchasePage: React.FC = () => {
             </div>
           </div>
 
-          <div className='flex-grow overflow-y-auto p-2 bg-gray-100'>
+          <div ref={cartListRef} className='flex-grow overflow-y-auto p-2 bg-gray-100'>
             <div className="flex justify-between items-center px-2 mb-2 border-b pt-1">
               <h3 className="text-gray-700 text-lg font-medium">Cart</h3>
               {items.length > 0 && (
@@ -1779,7 +1785,6 @@ const PurchasePage: React.FC = () => {
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
         subtotal={subtotal}
-        originalBillTotal={editModeData ? (editModeData.totalAmount + (editModeData.manualDiscount || 0) - (editModeData.extraExpenseAmount || 0)) : undefined}
         totalTax={taxAmount}
         billTotal={finalAmount}
         onPaymentComplete={handleSavePurchase}

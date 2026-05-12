@@ -297,10 +297,60 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
             email: email || "",
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
         };
+        const defaultSalesSettings = {
+            settingType: 'sales',
+            enableRounding: true,
+            roundingInterval: 1,
+            taxType: 'exclusive', // This will be overwritten if user selects Inclusive
+            enableItemWiseDiscount: true,
+            allowDueBilling: true,
+            requireCustomerName: true,
+            requireCustomerMobile: false,
+            salesViewType: 'list',
+        };
+
+        // --- FULL DEFAULTS FOR CATALOGUE SALES SETTINGS ---
+        const defaultCatalogueSettings = {
+            settingType: 'catalogueSales',
+            allowNegativeInventory: true,
+            enableOutOfStockNotification: false,
+            priceDisplayMode: 'both',
+            showDiscountBadge: true,
+            defaultCartQuantity: 1,
+            allowQuantityDecreaseToZero: false,
+            enableLeadPopup: false,
+            minimumOrderValue: 0,
+            voucherPrefix: 'ORD-',
+            currentVoucherNumber: 1,
+            copyVoucherAfterSaving: false,
+            gstScheme: 'none', // Overwritten by frontend
+            taxType: 'inclusive', // Overwritten by frontend
+            lockTaxToggle: false,
+            enableRounding: true,
+            roundingInterval: 1,
+            enforceExactMRP: false,
+            hidePrice: false,
+            cartInsertionOrder: 'top',
+            requireApproval: false,
+            enableItemWiseDiscount: false,
+            hideOutOfStock: false
+        };
+
+        // --- MERGE LOGIC ---
+
+        // Final Sales Settings (Defaults + Frontend Input + System Data)
+        const finalSalesSettings = {
+            ...defaultSalesSettings,
+            ...(salesSettings || {}),
+            companyId: newCompanyId,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        // Final Catalogue Settings (Defaults + Frontend Input + System Data)
         const finalCatalogueSettings = {
+            ...defaultCatalogueSettings,
             ...(catalogueSalesSettings || {}),
             companyId: newCompanyId,
-            settingType: 'catalogueSales',
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         };
 
@@ -314,13 +364,6 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
             companyId: newCompanyId,
         };
 
-        // ADDED BACK: D. Sales Settings Data 
-        const finalSalesSettings = {
-            ...(salesSettings || {}),
-            companyId: newCompanyId,
-            settingType: 'sales',
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        };
 
         // 8. Execute Atomic Batch Write
         const batch = db.batch();

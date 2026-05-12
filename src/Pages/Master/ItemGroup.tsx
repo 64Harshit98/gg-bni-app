@@ -335,7 +335,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
               <Spinner />
               <p className="text-gray-500 ml-2">Syncing and Loading Groups...</p>
             </div>
-          ) : itemGroups.length === 0 ? (
+          ) : itemGroups.length === 0 && (groupCounts["virtual-uncategorized"] || 0) === 0 ? (
             <p className="text-gray-500 text-center py-8">No item groups found.</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">

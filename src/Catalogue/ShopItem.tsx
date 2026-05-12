@@ -12,7 +12,7 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName';
 import { syncNotifyStock } from "../../src/Catalogue/utils/syncNotifyStock";
-import SearchBar from './SearchBar';
+import SearchableItemInput from '../UseComponents/SearchIteminput';
 import { db } from '../lib/Firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
@@ -159,7 +159,7 @@ const MyShop: React.FC = () => {
     useEffect(() => {
         setSearchQuery("");
     }, [groupId]);
-    
+
     const addToCart = (item: Item, quantity: number = 1, isFromDrawer: boolean = false) => {
         setCart(prev => {
             const existing = prev.find(i => i.item.id === item.id);
@@ -392,6 +392,15 @@ const MyShop: React.FC = () => {
 
         fetchData();
     }, [authLoading, currentUser, dbOperations, companyId]);
+
+    const itemGroupMap = useMemo(() => {
+        return allItemGroups.reduce((acc, group) => {
+            if (group.id) {
+                acc[group.id] = group.name;
+            }
+            return acc;
+        }, {} as Record<string, string>);
+    }, [allItemGroups]);
 
     const filteredItems = useMemo(() => {
         const activeCat = resolvedGroupId || selectedCategory;
@@ -643,32 +652,22 @@ const MyShop: React.FC = () => {
                         }`}
                 >
                     <div className="relative group md:max-w-md md:mx-auto w-full">
-                        <SearchBar
+                        <SearchableItemInput
                             items={allItems}
-                            itemGroups={allItemGroups}
                             placeholder="Search products..."
+                            itemGroupMap={itemGroupMap}
                             onItemSelected={(item) => {
                                 if (!item.id) return;
-                                setSearchQuery("");
-
-                                const group = allItemGroups.find(
-                                    g => g.id === item.itemGroupId
-                                );
-
-                                // Navigate to the group slug, or 'uncategorized' if it has no valid group
+                                const group = allItemGroups.find(g => g.id === item.itemGroupId);
+                                const uncategorizedGroup = allItemGroups.find(g => g.name.toLowerCase().trim() === "uncategorized");
                                 const slug = group
                                     ? generateSlug(group.name)
-                                    : "uncategorized";
-
-                                navigate(
-                                    `/catalogue-home/my-shop/${slug}`,
-                                    {
-                                        state: {
-                                            highlightItemId: item.id,
-                                            trigger: Date.now()
-                                        }
-                                    }
-                                );
+                                    : uncategorizedGroup
+                                        ? generateSlug(uncategorizedGroup.name)
+                                        : "uncategorized";
+                                navigate(`/catalogue-home/my-shop/${slug}`, {
+                                    state: { highlightItemId: item.id, isUnlisted: !item.isListed }
+                                });
                             }}
                         />
                     </div>

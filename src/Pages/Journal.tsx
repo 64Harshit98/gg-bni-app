@@ -573,6 +573,9 @@ const Journal: React.FC = () => {
 
     const dbOps = getFirestoreOperations(currentUser.companyId);
 
+    // --- RESTORED: Identify if it's a purchase bill so we use purchasePrice ---
+    const isPurchase = invoice.type === 'Debit';
+
     const [businessInfo, fetchedItems, billSettingsSnap, companyLogoBase64] = await Promise.all([
       dbOps.getBusinessInfo(),
       dbOps.syncItems(),
@@ -582,25 +585,21 @@ const Journal: React.FC = () => {
 
     const billSettings = billSettingsSnap.exists() ? billSettingsSnap.data() : {};
 
-
     const populatedItems = (invoice.items || []).map((item: any, index: number) => {
       const fullItem: any = fetchedItems.find((fi: any) => fi.id === item.id) || {};
       const finalTaxRate = item.taxRate || item.tax || item.gstPercent || fullItem.tax || 0;
       const resolvedTaxType = item.taxType || invoice.taxType || salesSettings?.taxType || '';
 
-      // 1. EXACT DB VALUES
-      // Trust the numbers exactly as they were saved in the invoice snapshot
-      const finalAmount = Number(item.finalPrice || item.amount || 0);
-      const originalMrp = Number(item.mrp || fullItem.mrp || 0);
-      const taxAmt = Number(item.taxAmount || 0);
-      const taxableAmt = Number(item.taxableAmount || 0);
-
-      // Extract raw discount from the item
-      let discountAmt = Number(item.discountAmount || item.manualDiscount || item.discount || 0);
-
-      // If discount isn't saved as a flat amount but we have the base numbers, deduce it
-      if (discountAmt === 0 && originalMrp > 0 && taxableAmt > 0) {
-        discountAmt = (originalMrp * (Number(item.quantity) || 1)) - taxableAmt;
+      // --- RESTORED: Bulletproof Line Amount Calculation ---
+      let itemAmount = 0;
+      if (resolvedTaxType === 'Exclusive' && item.taxableAmount) {
+        itemAmount = item.taxableAmount;
+      } else if (item.effectiveUnitPrice && item.effectiveUnitPrice > 0) {
+        itemAmount = item.effectiveUnitPrice * (Number(item.quantity) || 1);
+      } else if (item.finalPrice !== undefined && item.finalPrice !== null && item.finalPrice > 0) {
+        itemAmount = item.finalPrice;
+      } else {
+        itemAmount = (Number(item.mrp) || 0) * (Number(item.quantity) || 1);
       }
 
       return {
@@ -610,20 +609,23 @@ const Journal: React.FC = () => {
         unit: fullItem.unit || item.unit || "Pcs",
         hsn: fullItem.hsnSac || item.hsnSac || "N/A",
 
-        // Send the exact DB values to the PDF generator untouched
-        mrp: originalMrp,
-        listPrice: originalMrp,
-        amount: finalAmount,
-        finalPrice: finalAmount,
-        taxAmount: taxAmt,
-        taxableAmount: taxableAmt,
-        discountAmount: discountAmt,
+        // --- RESTORED: Correct Price based on Sales vs Purchase ---
+        listPrice: isPurchase ? (item.purchasePrice || item.mrp) : (item.mrp || 0),
 
-        gstPercent: finalTaxRate,
-        taxRate: finalTaxRate,
+        // --- RESTORED: Safely fetch the exact discount amount without flawed math ---
+        discountAmount: isPurchase
+          ? (item.purchasediscount || item.discount || item.manualDiscount || 0)
+          : (item.discount || item.manualDiscount || 0),
+
+        amount: itemAmount,
         taxType: resolvedTaxType,
+        taxAmount: item.taxAmount || 0,
+        taxableAmount: item.taxableAmount || 0,
+        gstPercent: finalTaxRate,
+        taxRate: finalTaxRate
       };
     });
+
     return {
       printFormat: billSettings.printFormat || 'A4',
       gstScheme: salesSettings?.gstScheme || '',

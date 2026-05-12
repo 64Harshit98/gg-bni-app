@@ -28,17 +28,28 @@ interface ItemAddProps {
 const formatImageUrl = (url: string | null | undefined): string | null => {
   if (!url) return null;
   let cleanUrl = url.trim();
+
   if (cleanUrl.includes('drive.google.com')) {
     let fileId = null;
     const matchFileD = cleanUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+
     if (matchFileD) {
       fileId = matchFileD[1];
     } else {
       const matchIdParam = cleanUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
       if (matchIdParam) fileId = matchIdParam[1];
     }
-    if (fileId) return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`;
+
+    // THE FIX: Use Google's lh3 image CDN endpoint
+    if (fileId) {
+      return `https://lh3.googleusercontent.com/d/${fileId}`;
+    }
   }
+
+  if (cleanUrl.includes('dropbox.com')) {
+    return cleanUrl.replace('dl=0', 'raw=1').replace('www.dropbox.com', 'dl.dropboxusercontent.com');
+  }
+
   return cleanUrl;
 };
 
@@ -530,9 +541,26 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         const row = worksheet.getRow(rowNum);
 
         // Helper to securely grab raw values regardless of cell formatting
+        // Helper to securely grab raw values regardless of cell formatting
         const getVal = (colIdx: number) => {
           const val = row.getCell(colIdx).value;
-          return val !== null && val !== undefined ? val.toString().trim() : "";
+
+          if (val === null || val === undefined) return "";
+
+          // 1. Handle Excel Hyperlink objects (This fixes your [object Object] bug)
+          if (typeof val === 'object' && 'hyperlink' in val) {
+            // @ts-ignore - exceljs types can be finicky here
+            return (val.hyperlink || val.text || "").toString().trim();
+          }
+
+          // 2. Handle Excel Rich Text objects (Just in case users copy-paste weirdly formatted text)
+          if (typeof val === 'object' && 'richText' in val) {
+            // @ts-ignore
+            return val.richText.map((rt: any) => rt.text).join('').trim();
+          }
+
+          // 3. Handle standard strings and numbers
+          return val.toString().trim();
         };
 
         const rawName = getVal(1);

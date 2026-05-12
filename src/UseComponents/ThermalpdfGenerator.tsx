@@ -36,7 +36,7 @@ export const generateThermalReceipt = (
         // 1. TRUST EXACT DB SCHEMA
         let mrp = Number((item as any).mrp || item.listPrice || 0);
         let finalAmount = Number((item as any).finalPrice || item.amount || (item as any).total || 0);
-        let taxAmt = Number((item as any).taxAmount || item.gstAmount || 0);
+        let taxAmt = Number((item as any).taxAmount || 0);
         let taxableAmt = Number((item as any).taxableAmount || (item as any).subtotal || 0);
 
         // Safety fallback if taxableAmount is missing

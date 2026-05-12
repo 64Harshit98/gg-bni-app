@@ -38,9 +38,10 @@ const businessCategoryOptions = [
 ];
 
 const gstTypeOptions = [
-  { value: 'Regular', label: 'Regular' },
-  { value: 'NA', label: 'Not Registered / NA' },
+  { value: 'Regular-Inclusive', label: 'Regular (Tax Inclusive)' },
+  { value: 'Regular-Exclusive', label: 'Regular (Tax Exclusive)' },
   { value: 'Composite', label: 'Composite' },
+  { value: 'NA', label: 'Not Registered / NA' },
 ];
 
 const indianStates = [
@@ -185,7 +186,7 @@ const BusinessInfoPage: React.FC = () => {
       return false;
     }
 
-    if (formData.gstType === 'Regular' || formData.gstType === 'Composite') {
+    if (formData.gstType.startsWith('Regular') || formData.gstType === 'Composite') {
       if (!formData.gstin.trim() || formData.gstin.length !== 15) {
         setError('Valid 15-character GSTIN is required.');
         return false;
@@ -259,16 +260,26 @@ const BusinessInfoPage: React.FC = () => {
         isTrial: true
       };
 
-      // 3. Inject Default Sales Settings (Replaces deleted configuration step)
+      let mappedGstScheme = 'none';
+      let mappedTaxType = 'exclusive'; // default fallback
+
+      if (formData.gstType === 'Composite') {
+        mappedGstScheme = 'composition';
+      } else if (formData.gstType.startsWith('Regular')) {
+        mappedGstScheme = 'regular';
+        mappedTaxType = formData.gstType === 'Regular-Inclusive' ? 'inclusive' : 'exclusive';
+      }
+
+      // Send the mapped values in your payloads
       const salesSettingsPayload = {
-        gstScheme: formData.gstType,
-        taxType: formData.gstType === 'Regular' ? 'exclusive' : 'exclusive',
-        enableItemWiseDiscount: true,
-        allowDueBilling: true,
-        requireCustomerName: true,
-        requireCustomerMobile: false,
-        salesViewType: 'list',
-        settingType: 'sales',
+        gstScheme: mappedGstScheme,
+        gstin: finalGstin,
+        taxType: mappedTaxType,
+      };
+
+      const catalogueSalesSettingsPayload = {
+        gstScheme: mappedGstScheme,
+        taxType: mappedTaxType,
       };
 
       // 4. Create User in Auth & Firestore
@@ -281,6 +292,7 @@ const BusinessInfoPage: React.FC = () => {
         businessInfoPayload,
         planPayload,
         salesSettingsPayload,
+        catalogueSalesSettingsPayload,
         [] // No initial staff
       );
 
@@ -503,7 +515,7 @@ const BusinessInfoPage: React.FC = () => {
                       onChange={(e) => {
                         if (e.target.value.length <= 15) handleChange('gstin', e.target.value.toUpperCase());
                       }}
-                      required={formData.gstType === "Regular" || formData.gstType === "Composite"}
+                      required={formData.gstType.startsWith("Regular") || formData.gstType === "Composite"}
                       disabled={formData.gstType === "NA"}
                       className={`pl-12 py-2.5 border border-[#7D7777A3] shadow-sm bg-white ${formData.gstType === "NA" ? "cursor-not-allowed" : ""
                         }`}

@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import type { Item, SalesItem } from '../../constants/models';
 import { ROUTES } from '../../constants/routes.constants';
 import { db } from '../../lib/Firebase';
-import { collection, serverTimestamp, doc, increment as firebaseIncrement, getDoc, runTransaction, query, where, getDocs } from 'firebase/firestore';
+import { collection, serverTimestamp, doc, increment as firebaseIncrement, getDoc, runTransaction, query, where, getDocs, onSnapshot } from 'firebase/firestore';
 import { useAuth, useDatabase } from '../../context/auth-context';
 import BarcodeScanner from '../../UseComponents/BarcodeScanner';
 import PaymentDrawer, { type PaymentCompletionData } from '../../Components/PaymentDrawer';
@@ -65,6 +65,7 @@ interface PurchaseDocumentData {
   roundingOff?: number;
   manualDiscount?: number;
   updatedAt?: any;
+  extraExpenseAmount?: number;
 }
 type Purchase = PurchaseDocumentData & { id: string };
 
@@ -106,6 +107,7 @@ const PurchasePage: React.FC = () => {
   const [isScannerOpen, setIsScannerOpen] = useState(false);
 
   const [invoiceNumber, setInvoiceNumber] = useState<string>('');
+  const isInvoiceNumberManuallyEdited = useRef(false);
   const [invoiceDate, setInvoiceDate] = useState<string>(() => {
     const today = new Date();
     const yyyy = today.getFullYear();
@@ -154,17 +156,26 @@ const PurchasePage: React.FC = () => {
       }
     };
 
-    const fetchInvoiceNumber = async () => {
-      if (!purchaseIdToEdit) {
-        try {
-          // FIX: Only PEEK, don't increment yet
-          const nextNum = await peekNextPurchaseNumber(companyId);
-          setInvoiceNumber(nextNum);
-        } catch (e) {
-          console.error("Error fetching preview number", e);
+    let unsubscribeCounter: () => void = () => { };
+
+    if (!purchaseIdToEdit) {
+      const counterRef = doc(db, 'companies', companyId, 'counters', 'purchaseCounter'); // Ensure 'purchaseCounter' matches your DB
+
+      unsubscribeCounter = onSnapshot(counterRef, (docSnap) => {
+        // Prevent overwriting if the user is typing their own number
+        if (isInvoiceNumberManuallyEdited.current) return;
+
+        // Note: If you use a dynamic prefix for purchases, you can fetch it from purchaseSettings here
+        const prefix = purchaseSettings?.voucherPrefix || 'PUR';
+
+        if (docSnap.exists()) {
+          const nextNum = docSnap.data().currentNumber || 1;
+          setInvoiceNumber(`${prefix}-${nextNum}`);
+        } else {
+          setInvoiceNumber(`${prefix}-1`);
         }
-      }
-    };
+      });
+    }
 
     findSettingsDocId();
 
@@ -237,7 +248,6 @@ const PurchasePage: React.FC = () => {
           }
         } else {
           setEditModeData(null);
-          fetchInvoiceNumber();
         }
         setError(null);
       } catch (err: any) {
@@ -248,6 +258,7 @@ const PurchasePage: React.FC = () => {
     };
 
     initializePage();
+    return () => unsubscribeCounter();
   }, [dbOperations, currentUser, purchaseIdToEdit, pageIsLoading, navigate]);
 
   const cartItemsAdapter = useMemo(() => {
@@ -721,7 +732,7 @@ const PurchasePage: React.FC = () => {
           });
         });
       });
-      // ✅ FIX: Update local inventory immediately without requiring refresh
+
       setAvailableItems(prev => prev.map(item => {
         const stockDelta = formattedItemsForDB
           .filter(i => i.id === item.id)
@@ -735,8 +746,8 @@ const PurchasePage: React.FC = () => {
 
       if (!purchaseSettings?.copyVoucherAfterSaving) {
         setItems([]);
-        const nextNum = await peekNextPurchaseNumber(companyId);
-        setInvoiceNumber(nextNum);
+
+        isInvoiceNumberManuallyEdited.current = false;
       }
       if (purchaseSettings?.enableBarcodePrinting) {
         setShowPrintQrModal(savedItemsCopy);
@@ -747,15 +758,13 @@ const PurchasePage: React.FC = () => {
     } catch (err: any) {
       console.error('Error saving purchase:', err?.code, err?.message);
       if (err?.code === 'unavailable' || err?.message?.includes('network-request-failed')) {
-        setModal({ message: 'Network lost during save. Please check your connection and try again.', type: State.ERROR });
-      } else if (err?.message?.includes('undefined') || err?.message?.includes('invalid data')) {
-        setModal({ message: 'Save failed due to invalid data. Please refresh and try again.', type: State.ERROR });
+        setModal({ message: 'Network lost while saving. Please check your connection and try again.', type: State.ERROR });
       } else if (err?.code === 'permission-denied') {
         setModal({ message: 'You do not have permission to complete this action.', type: State.ERROR });
       } else if (err?.code === 'aborted') {
         setModal({ message: 'Transaction conflict. Please try again.', type: State.ERROR });
       } else {
-        setModal({ message: 'Failed to save purchase. Please try again.', type: State.ERROR });
+        setModal({ message: 'Failed to save purchase. Please refresh the page and try again.', type: State.ERROR });
       }
     }
   };
@@ -1044,7 +1053,10 @@ const PurchasePage: React.FC = () => {
           <input
             type="text"
             value={invoiceNumber}
-            onChange={(e) => setInvoiceNumber(e.target.value)}
+            onChange={(e) => {
+              isInvoiceNumberManuallyEdited.current = true; // ADD THIS
+              setInvoiceNumber(e.target.value);
+            }}
             className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-24 text-sm outline-none transition-colors"
           />
           <span className="text-[9px] text-gray-400 uppercase tracking-wide mt-0.5">Inv No</span>
@@ -1062,7 +1074,10 @@ const PurchasePage: React.FC = () => {
             <input
               type="text"
               value={invoiceNumber}
-              onChange={(e) => setInvoiceNumber(e.target.value)}
+              onChange={(e) => {
+                isInvoiceNumberManuallyEdited.current = true; // ADD THIS
+                setInvoiceNumber(e.target.value);
+              }}
               className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-24 text-sm outline-none transition-colors"
             />
           </div>
@@ -1771,6 +1786,7 @@ const PurchasePage: React.FC = () => {
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
         subtotal={subtotal}
+        originalBillTotal={editModeData ? (editModeData.totalAmount + (editModeData.manualDiscount || 0) - (editModeData.extraExpenseAmount || 0)) : undefined}
         totalTax={taxAmount}
         billTotal={finalAmount}
         onPaymentComplete={handleSavePurchase}

@@ -119,7 +119,6 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
-  const [showOverwritePrompt, setShowOverwritePrompt] = useState(false);
 
   const [isImageCompressing, setIsImageCompressing] = useState(false);
   const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -127,12 +126,20 @@ const ItemAdd: React.FC<ItemAddProps> = ({
 
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
-
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importMode, setImportMode] = useState<'create_update' | 'update_only'>('create_update');
+  const [updateFields, setUpdateFields] = useState({
+    mrp: true,
+    salesPrice: true,
+    purchasePrice: true,
+    stock: true,
+    category: true,
+    discount: true,
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const successBannerRef = useRef<HTMLDivElement>(null);
-  const pendingDuplicateCountRef = useRef<number>(0);
-  const overwritePromptResolverRef = useRef<((choice: boolean) => void) | null>(null);
 
   useEffect(() => {
     const draft = sessionStorage.getItem(DRAFT_STORAGE_KEY);
@@ -179,25 +186,6 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     return '1 pcs';
   };
 
-  const requestBulkOverwriteChoice = (duplicateCount: number): Promise<boolean> => {
-    return new Promise((resolve) => {
-      pendingDuplicateCountRef.current = duplicateCount;
-      overwritePromptResolverRef.current = resolve;
-      setShowOverwritePrompt(true);
-    });
-  };
-
-  const handleConfirmOverwrite = () => {
-    overwritePromptResolverRef.current?.(true);
-    overwritePromptResolverRef.current = null;
-    setShowOverwritePrompt(false);
-  };
-
-  const handleCancelOverwrite = () => {
-    overwritePromptResolverRef.current?.(false);
-    overwritePromptResolverRef.current = null;
-    setShowOverwritePrompt(false);
-  };
 
   useEffect(() => {
     setPageIsLoading(authLoading || loadingItemSettings || !dbOperations);
@@ -315,9 +303,12 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       setModal({ message: 'App not ready.', type: State.ERROR }); return;
     }
     setError(null); setSuccess(null); setModal(null);
+    if (!itemName.trim()) {
+      setModal({ message: 'Item Name is required.', type: State.ERROR }); return;
+    }
 
-    if (!itemName.trim() || !itemBarcode.trim()) {
-      setModal({ message: 'Item Name and Barcode are required.', type: State.ERROR }); return;
+    if (itemSettings.requireBarcode && !itemBarcode.trim()) {
+      setModal({ message: 'Barcode is required.', type: State.ERROR }); return;
     }
 
     const mrpValue = parseFloat(itemMRP) || 0;
@@ -331,8 +322,20 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       setModal({ message: 'Sales Price cannot be greater than MRP', type: State.ERROR }); return;
     }
 
+    if (itemSettings.requireImage && !imageFile && !imageUrl.trim()) {
+      setModal({ message: 'Product Image is required.', type: State.ERROR }); return;
+    }
+    if (itemSettings.requireCategory && !selectedCategory) {
+      setModal({ message: 'Category is required.', type: State.ERROR }); return;
+    }
     if (itemSettings.requirePurchasePrice && !itemPurchasePrice.trim()) {
       setModal({ message: 'Purchase Price is required.', type: State.ERROR }); return;
+    }
+    if (itemSettings.requireSaleDiscount && !itemDiscount.trim()) {
+      setModal({ message: 'Sale Discount is required.', type: State.ERROR }); return;
+    }
+    if (itemSettings.requirePurchaseDiscount && !PurchaseDiscount.trim()) {
+      setModal({ message: 'Purchase Discount is required.', type: State.ERROR }); return;
     }
     if (itemSettings.requireDiscount && !itemDiscount.trim() && !PurchaseDiscount.trim()) {
       setModal({ message: 'Discount is required.', type: State.ERROR }); return;
@@ -340,9 +343,22 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     if (itemSettings.requireTax && !itemTax.trim()) {
       setModal({ message: 'Tax is required.', type: State.ERROR }); return;
     }
+    if (itemSettings.requireHsnCode && !hsnCode.trim()) {
+      setModal({ message: 'HSN Code is required.', type: State.ERROR }); return;
+    }
+    if (itemSettings.requireStock && !itemAmount.trim()) {
+      setModal({ message: 'Opening Stock is required.', type: State.ERROR }); return;
+    }
     if (itemSettings.requireRestockQuantity && !restockQuantity.trim()) {
       setModal({ message: 'Restock Level is required.', type: State.ERROR }); return;
     }
+    if (itemSettings.requireMoq && !moq.trim()) {
+      setModal({ message: 'MOQ is required.', type: State.ERROR }); return;
+    }
+    if (itemSettings.requireUnit && !itemUnit.trim()) {
+      setModal({ message: 'Unit is required.', type: State.ERROR }); return;
+    }
+
     if (itemUnit === 'pkt' && (!packetSize.trim() || parseInt(packetSize, 10) <= 0)) {
       setModal({ message: 'Please enter a valid quantity for the Packet.', type: State.ERROR }); return;
     }
@@ -432,22 +448,30 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     }
   };
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file || !dbOperations || !currentUser || !itemSettings || !currentUser.companyId) return;
+    if (!file) return;
+    setPendingFile(file);
+    setShowImportModal(true); // Open the modal instead of uploading right away
+  };
 
+  const executeImport = async () => {
+    if (!pendingFile || !dbOperations || !currentUser || !itemSettings || !currentUser.companyId) return;
+
+    setShowImportModal(false);
     setIsUploading(true);
     setUploadProgress(null);
     setError(null); setSuccess(null); setModal(null);
 
     try {
-      const arrayBuffer = await file.arrayBuffer();
+      const arrayBuffer = await pendingFile.arrayBuffer();
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(arrayBuffer);
 
       const worksheet = workbook.worksheets[0];
       if (!worksheet) throw new Error("Excel file is empty.");
 
+      // --- ADD THIS BLOCK BACK IN ---
       const images = worksheet.getImages();
       const rowImageMap = new Map<number, any>();
       for (const image of images) {
@@ -455,8 +479,9 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         const imgData = workbook.getImage(Number(image.imageId));
         rowImageMap.set(rowIndex, imgData);
       }
+      // ------------------------------
 
-      let headerRowNum = 1; // fallback
+      let headerRowNum = 1;
       for (let r = 1; r <= Math.min(worksheet.rowCount, 15); r++) {
         const firstCell = worksheet.getRow(r).getCell(1).text?.trim().toLowerCase();
         if (firstCell && (firstCell.includes('item name') || firstCell === 'name')) {
@@ -464,7 +489,6 @@ const ItemAdd: React.FC<ItemAddProps> = ({
           break;
         }
       }
-      // Data starts 2 rows after header (skip the notes/hint row right below headers)
       const dataStartRow = headerRowNum + 2;
 
       let processedCount = 0, createdCount = 0, updatedCount = 0, failedCount = 0, skippedCount = 0;
@@ -474,112 +498,97 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       }
       setUploadProgress({ current: 0, total: totalItems });
 
+      // --- 1. Fetch Existing Groups & Items for Mapping ---
       let currentGroups = await dbOperations.getItemGroups();
       const groupMap = new Map<string, string>();
       currentGroups.forEach(g => groupMap.set(g.name.toLowerCase().trim(), g.id!));
 
-      let duplicateCount = 0;
-      let needsBarcodeCount = 0;
-      const itemsRef = collection(db, 'companies', currentUser.companyId, 'items');
+      // CRITICAL FIX: Fetch all items to get their true Document IDs
+      const allExistingItems = await dbOperations.syncItems();
+      const itemMapByBarcode = new Map<string, any>();
+      const itemMapByName = new Map<string, any>();
 
-      for (let r = dataStartRow; r <= worksheet.rowCount; r++) {
-        const row = worksheet.getRow(r);
-        const rowBarcode = row.getCell(2).text?.trim();
-        const rawName = row.getCell(1).text;
-
-        if (!rawName) continue;
-        if (!rowBarcode) {
-          needsBarcodeCount++;
-        } else {
-          const q = query(itemsRef, where('barcode', '==', rowBarcode), limit(1));
-          const snap = await getDocs(q);
-          if (!snap.empty) duplicateCount++;
-        }
-      }
-
-      let shouldOverwriteExisting: boolean | null = null;
-      if (duplicateCount > 0) {
-        shouldOverwriteExisting = await requestBulkOverwriteChoice(duplicateCount);
-      }
+      allExistingItems.forEach(item => {
+        if (item.barcode) itemMapByBarcode.set(item.barcode.trim(), item);
+        if (item.name) itemMapByName.set(item.name.toLowerCase().trim(), item);
+      });
 
       let nextSeqNumber = 0;
-      if (needsBarcodeCount > 0) {
-        nextSeqNumber = await reserveSequenceBlock(needsBarcodeCount);
+      if (importMode === 'create_update') {
+        // Only reserve barcodes if we are actually creating items
+        let needsBarcodeCount = 0;
+        for (let r = dataStartRow; r <= worksheet.rowCount; r++) {
+          if (!worksheet.getRow(r).getCell(2).text?.trim() && worksheet.getRow(r).getCell(1).text?.trim()) {
+            needsBarcodeCount++;
+          }
+        }
+        if (needsBarcodeCount > 0) nextSeqNumber = await reserveSequenceBlock(needsBarcodeCount);
       }
 
+      // --- 2. Process Rows ---
       for (let rowNum = dataStartRow; rowNum <= worksheet.rowCount; rowNum++) {
         const row = worksheet.getRow(rowNum);
 
-        const rawName = row.getCell(1).text;
-        if (!rawName) continue;
+        // Helper to securely grab raw values regardless of cell formatting
+        const getVal = (colIdx: number) => {
+          const val = row.getCell(colIdx).value;
+          return val !== null && val !== undefined ? val.toString().trim() : "";
+        };
+
+        const rawName = getVal(1);
+        if (!rawName || rawName.toLowerCase().includes('full product name')) continue;
 
         await new Promise(resolve => setTimeout(resolve, 0));
         setUploadProgress({ current: processedCount + 1, total: totalItems });
 
-        const rowBarcodeStr = row.getCell(2).text?.trim();
-        const rowMRP = parseFloat(row.getCell(3).text) || 0;
-        const rowSale = parseFloat(row.getCell(4).text) || 0;
-        const rowPurchase = parseFloat(row.getCell(5).text) || 0;
-        const rowSaleDiscount = parseFloat(row.getCell(6).text) || 0;
-        const rowPurchaseDiscount = parseFloat(row.getCell(7).text) || 0;
-        const rowTax = parseFloat(row.getCell(8).text) || 0;
-        const rowHsn = row.getCell(9).text?.trim() || "";
-        const csvCategoryValue = (row.getCell(10).text || "Uncategorized").trim();
-        const stockVal = parseInt(row.getCell(11).text) || 0;
-        const rowRestock = parseInt(row.getCell(12).text) || 0;
-        const rowMoq = parseInt(row.getCell(13).text) || 1;
-        const rowImageUrlStr = row.getCell(14).text?.trim() || "";
+        const rowBarcodeStr = getVal(2);
+        const rowMRP = parseFloat(getVal(3)) || 0;
+        const rowSale = parseFloat(getVal(4)) || 0;
+        const rowPurchase = parseFloat(getVal(5)) || 0;
+        const rowSaleDiscount = parseFloat(getVal(6)) || 0;
+        const rowPurchaseDiscount = parseFloat(getVal(7)) || 0;
+        const rowTax = parseFloat(getVal(8)) || 0;
+        const rowHsn = getVal(9);
+        const csvCategoryValue = getVal(10);
+        const stockVal = parseInt(getVal(11)) || 0;
+        const rowRestock = parseInt(getVal(12)) || 0;
+        const rowMoq = parseInt(getVal(13)) || 1;
+        const rowImageUrlStr = getVal(14);
 
-        if (rowMRP === 0 && rowSale === 0) { failedCount++; continue; }
-
-        const categoryLower = csvCategoryValue.toLowerCase();
+        // Determine Category ID if needed
         let targetGroupId = "";
-        if (groupMap.has(categoryLower)) {
-          targetGroupId = groupMap.get(categoryLower)!;
-        } else {
-          try {
-            const newGroupId = await dbOperations.createItemGroup({ name: csvCategoryValue, description: 'Auto-created via Bulk Import' });
-            if (newGroupId && typeof newGroupId === 'string') {
-              groupMap.set(categoryLower, newGroupId);
-              targetGroupId = newGroupId;
-            }
-          } catch (grpErr) {
-            targetGroupId = selectedCategory;
+        if (csvCategoryValue && (importMode === 'create_update' || updateFields.category)) {
+          const categoryLower = csvCategoryValue.toLowerCase();
+          if (groupMap.has(categoryLower)) {
+            targetGroupId = groupMap.get(categoryLower)!;
+          } else if (importMode === 'create_update') {
+            try {
+              const newGroupId = await dbOperations.createItemGroup({ name: csvCategoryValue, description: 'Auto-created via Bulk Import' });
+              if (typeof newGroupId === 'string') {
+                groupMap.set(categoryLower, newGroupId);
+                targetGroupId = newGroupId;
+              }
+            } catch (e) { /* fallback */ }
           }
         }
 
-        let isUpdate = false;
-        let finalRowBarcode = rowBarcodeStr;
-
-        if (finalRowBarcode) {
-          const q = query(itemsRef, where('barcode', '==', finalRowBarcode), limit(1));
-          const snapshot = await getDocs(q);
-          if (!snapshot.empty) isUpdate = true;
-        } else {
-          const qName = query(itemsRef, where('name', '==', rawName.trim()), limit(1));
-          const snapshotName = await getDocs(qName);
-          if (!snapshotName.empty) {
-            isUpdate = true;
-            finalRowBarcode = snapshotName.docs[0].data().barcode;
-          } else {
-            finalRowBarcode = String(nextSeqNumber);
-            nextSeqNumber++;
-          }
+        // --- MATCHING LOGIC ---
+        let existingItem = null;
+        if (rowBarcodeStr && itemMapByBarcode.has(rowBarcodeStr)) {
+          existingItem = itemMapByBarcode.get(rowBarcodeStr);
+        } else if (itemMapByName.has(rawName.toLowerCase())) {
+          existingItem = itemMapByName.get(rawName.toLowerCase());
         }
 
-        if (isUpdate && !shouldOverwriteExisting) {
-          skippedCount++;
-          processedCount++;
-          continue;
-        }
-
+        // --- ADD IMAGE UPLOAD LOGIC BACK IN ---
         let finalUploadedImageUrl = null;
         const embeddedImageData = rowImageMap.get(rowNum - 1);
 
         if (embeddedImageData) {
           try {
+            const tempBarcode = rowBarcodeStr || String(nextSeqNumber);
             const imageBlob = new Blob([embeddedImageData.buffer], { type: `image/${embeddedImageData.extension}` });
-            const storageRef = ref(storage, `companies/${currentUser.companyId}/items/${finalRowBarcode}_${Date.now()}.${embeddedImageData.extension}`);
+            const storageRef = ref(storage, `companies/${currentUser.companyId}/items/${tempBarcode}_${Date.now()}.${embeddedImageData.extension}`);
             await uploadBytes(storageRef, imageBlob);
             finalUploadedImageUrl = await getDownloadURL(storageRef);
           } catch (uploadErr) {
@@ -589,48 +598,95 @@ const ItemAdd: React.FC<ItemAddProps> = ({
           finalUploadedImageUrl = formatImageUrl(rowImageUrlStr);
         }
 
-        const itemData: any = {
-          name: rawName.trim(),
-          mrp: rowMRP,
-          salesPrice: rowSale,
-          purchasePrice: rowPurchase,
-          discount: rowSaleDiscount,
-          purchasediscount: rowPurchaseDiscount,
-          tax: rowTax,
-          hsnSac: rowHsn,
-          itemGroupId: targetGroupId,
-          stock: stockVal,
-          amount: stockVal,
-          barcode: finalRowBarcode,
-          restockQuantity: rowRestock,
-          moq: rowMoq,
-          imageUrl: finalUploadedImageUrl,
-          isDeleted: false,
-        };
+        if (importMode === 'update_only') {
+          if (!existingItem) {
+            skippedCount++;
+            processedCount++;
+            continue; // Skip if we are strictly updating and no match is found
+          }
 
-        try {
-          await dbOperations.createItem(itemData, finalRowBarcode);
-          if (isUpdate) updatedCount++;
-          else createdCount++;
-          processedCount++;
-        } catch (e) {
-          failedCount++;
+          // Selectively update fields based on user selection
+          const updates: any = {};
+          if (updateFields.mrp) updates.mrp = rowMRP;
+          if (updateFields.salesPrice) updates.salesPrice = rowSale;
+          if (updateFields.purchasePrice) updates.purchasePrice = rowPurchase;
+          if (updateFields.stock) { updates.stock = stockVal; updates.amount = stockVal; }
+          if (updateFields.category && targetGroupId) updates.itemGroupId = targetGroupId;
+          if (updateFields.discount) { updates.discount = rowSaleDiscount; updates.purchasediscount = rowPurchaseDiscount; }
+          if (updateFields.discount) { updates.discount = rowSaleDiscount; updates.purchasediscount = rowPurchaseDiscount; }
+          if (finalUploadedImageUrl) updates.imageUrl = finalUploadedImageUrl; // <-- ADD THIS
+
+          try {
+            // CRITICAL FIX: Use the existing document ID
+            await dbOperations.updateItem(existingItem.id, updates);
+            updatedCount++;
+          } catch (e) {
+            failedCount++;
+          }
+
+        } else {
+          // Mode: Create & Update All (Standard)
+          let finalRowBarcode = rowBarcodeStr;
+
+          if (!existingItem && !finalRowBarcode) {
+            finalRowBarcode = String(nextSeqNumber);
+            nextSeqNumber++;
+          } else if (existingItem) {
+            finalRowBarcode = existingItem.barcode; // Persist the barcode if updating
+          }
+
+          const itemData: any = {
+            name: rawName,
+            mrp: rowMRP,
+            salesPrice: rowSale,
+            purchasePrice: rowPurchase,
+            discount: rowSaleDiscount,
+            purchasediscount: rowPurchaseDiscount,
+            tax: rowTax,
+            hsnSac: rowHsn,
+            itemGroupId: targetGroupId,
+            stock: stockVal,
+            amount: stockVal,
+            barcode: finalRowBarcode,
+            restockQuantity: rowRestock,
+            moq: rowMoq,
+            imageUrl: finalUploadedImageUrl || (existingItem ? existingItem.imageUrl : null),
+            isDeleted: false,
+          };
+
+          try {
+            if (existingItem) {
+              // CRITICAL FIX: Use the true document ID to update
+              await dbOperations.updateItem(existingItem.id, itemData);
+              updatedCount++;
+            } else {
+              // Create completely new item, forcing the document ID to match the barcode for new items
+              await dbOperations.createItem(itemData, finalRowBarcode);
+              createdCount++;
+            }
+          } catch (e) {
+            failedCount++;
+          }
         }
+        processedCount++;
       }
 
       await fetchGroups();
+      await fetchNextBarcode(); // Refresh UI Counter
+
       if (failedCount > 0) {
-        setModal({ message: `Imported with errors. ${failedCount} rows failed. Please check for missing required fields.`, type: State.ERROR });
+        setModal({ message: `Imported with errors. ${failedCount} rows failed.`, type: State.ERROR });
       } else {
-        setSuccess(`Imported: ${createdCount} New, ${updatedCount} Updated${skippedCount > 0 ? `, ${skippedCount} Skipped` : ''}.`);
+        setSuccess(`Completed: ${createdCount} New, ${updatedCount} Updated, ${skippedCount} Skipped.`);
       }
-      setTimeout(() => setSuccess(null), 30000);
+      setTimeout(() => setSuccess(null), 10000);
 
     } catch (err: any) {
       setError("File processing failed. Ensure it is a valid Excel file.");
     } finally {
       setIsUploading(false);
       setUploadProgress(null);
+      setPendingFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -792,16 +848,6 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
-      {showOverwritePrompt && (
-        <Modal
-          message={`${pendingDuplicateCountRef.current} item${pendingDuplicateCountRef.current > 1 ? 's' : ''} with matching barcodes already exist. Overwrite them with the new data?`}
-          onClose={handleCancelOverwrite}
-          onConfirm={handleConfirmOverwrite}
-          showConfirmButton={true}
-          type={State.INFO}
-        />
-      )}
-
       {uploadProgress && (
         <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center">
           <div className="bg-white p-8 rounded-sm shadow-xl w-80 text-center">
@@ -818,6 +864,55 @@ const ItemAdd: React.FC<ItemAddProps> = ({
           </div>
         </div>
       )}
+      {showImportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6 flex flex-col">
+            <h2 className="text-xl font-bold text-gray-800 mb-4">Bulk Import Settings</h2>
+
+            <div className="mb-6 space-y-3">
+              <label className="flex items-start gap-3 p-3 border rounded-md cursor-pointer hover:bg-gray-50 transition-colors">
+                <input type="radio" name="mode" className="mt-1 w-4 h-4 text-sky-500" checked={importMode === 'create_update'} onChange={() => setImportMode('create_update')} />
+                <div>
+                  <span className="block font-semibold text-gray-800">Add New & Update All</span>
+                  <span className="text-xs text-gray-500">Creates new items if they don't exist. Fully updates existing items.</span>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 p-3 border rounded-md cursor-pointer hover:bg-gray-50 transition-colors">
+                <input type="radio" name="mode" className="mt-1 w-4 h-4 text-sky-500" checked={importMode === 'update_only'} onChange={() => setImportMode('update_only')} />
+                <div>
+                  <span className="block font-semibold text-gray-800">Update Existing Inventory Only</span>
+                  <span className="text-xs text-gray-500">Skips new items. Matches by Barcode or Name. Select which fields to update below.</span>
+                </div>
+              </label>
+            </div>
+
+            {importMode === 'update_only' && (
+              <div className="mb-6 bg-gray-50 p-4 rounded-md border border-gray-200">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">Fields to Update</h3>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  {Object.entries(updateFields).map(([key, value]) => (
+                    <label key={key} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="rounded text-sky-500 focus:ring-sky-500"
+                        checked={value}
+                        onChange={(e) => setUpdateFields(prev => ({ ...prev, [key]: e.target.checked }))}
+                      />
+                      <span className="capitalize text-gray-700">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 mt-auto">
+              <button onClick={() => { setShowImportModal(false); setPendingFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }} className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-sm hover:bg-gray-200">Cancel</button>
+              <button onClick={executeImport} className={`px-6 py-2 text-sm font-bold text-white ${activeTheme.primaryBg} rounded-sm hover:${activeTheme.primaryBg}`}>Start Import</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {renderHeader()}
 
@@ -831,7 +926,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
           <div className="md:hidden bg-white p-2 rounded-sm shadow-md mb-4 mt-4">
             <div className="flex flex-col items-center justify-center mb-4">
               <h2 className="text-lg font-semibold text-gray-700 mb-2">Bulk Import</h2>
-              <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".xlsx, .xls, .csv" />
+              <input type="file" ref={fileInputRef} onChange={handleFileSelected} className="hidden" accept=".xlsx, .xls, .csv" />
               <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className={`w-full max-w-xs ${activeTheme.primaryBg} text-white py-2 px-4 rounded-sm ${activeTheme.primaryHover} disabled:bg-gray-400 flex items-center justify-center gap-2`}>
                 {isUploading ? <Spinner /> : 'Import from Excel'}
               </button>
@@ -872,189 +967,145 @@ const ItemAdd: React.FC<ItemAddProps> = ({
             </div>
 
             <div className="space-y-4">
-              <div className="flex flex-col">
+
+              {/* --- Name Row (Full Width) --- */}
+              <div>
                 <div className="flex items-center mb-1">
-                  <label className="text-sm font-medium text-gray-600 after:content-['*'] after:ml-0.5 after:text-red-500 mr-2">Item Name</label>
+                  <label className="text-sm font-medium leading-none block after:content-['*'] after:ml-0.5 after:text-red-500 mr-2">Item Name</label>
                   <InfoTooltip text="The name of the product being added." />
                 </div>
-                <input type="text" value={itemName} onChange={(e) => setItemName(e.target.value)} className={`w-full p-3 border border-gray-300 rounded-sm ${activeTheme.focusRing} outline-none`} placeholder="e.g. Apple" />
+                <input type="text" value={itemName} onChange={(e) => setItemName(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50" placeholder="e.g. Apple" />
               </div>
 
-              <div className="flex flex-col">
+              {/* --- Barcode Row (Full Width) --- */}
+              <div>
                 <div className="flex items-center mb-1">
-                  <label className={`text-sm font-medium text-gray-600 ${itemSettings?.requireBarcode ? reqClasses : ''} mr-2`}>
-                    Barcode
-                  </label>
+                  <label className={`text-sm font-medium leading-none block ${itemSettings?.requireBarcode ? reqClasses : ''} mr-2`}>Barcode</label>
                   <InfoTooltip text="Unique identifier for scanning the product." />
                 </div>
                 <div className="flex gap-2">
-                  <input type="text" value={itemBarcode} onChange={(e) => setItemBarcode(e.target.value)} className={`flex-grow p-3 border border-gray-300 rounded-sm ${activeTheme.focusRing} outline-none`} placeholder="Scan or Type" />
-                  <button type="button" onClick={() => setIsScannerOpen(true)} className="bg-gray-700 text-white p-3 rounded-sm"><IconScanCircle width={20} height={20} /></button>
+                  <input type="text" value={itemBarcode} onChange={(e) => setItemBarcode(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50" placeholder="Scan or Type" />
+                  <button type="button" onClick={() => setIsScannerOpen(true)} className="bg-gray-700 text-white px-4 rounded-sm flex items-center justify-center h-10"><IconScanCircle width={20} height={20} /></button>
                 </div>
-                <p className="text-xs text-gray-400 mt-1">This is the next available number. You can change it if needed.</p>
+                <p className="text-[10px] text-gray-400 mt-1">This is the next available number. You can change it if needed.</p>
               </div>
 
-              <div className='grid grid-cols-2 gap-x-3 gap-y-4'>
-                <div className="flex flex-col">
+              {/* --- MRP & Category Row --- */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
                   <div className="flex items-center mb-1">
-                    <label className="text-sm font-medium text-gray-600 mr-2">{`MRP (for ${getUnitLabel()})`}</label>
+                    <label className="text-sm font-medium leading-none block mr-2">{`MRP (${getUnitLabel()})`}</label>
                     <InfoTooltip text="Maximum Retail Price printed on the product." />
                   </div>
-                  <input
-                    type="number"
-                    value={itemMRP}
-                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                    onChange={(e) => setItemMRP(e.target.value)}
-                    className={`w-full p-3 border border-gray-300 rounded-sm ${activeTheme.focusRing}`}
-                    placeholder="0.00"
-                  />
+                  <input type="number" value={itemMRP} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemMRP(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="0.00" />
                   <p className="text-[10px] text-gray-400 mt-1">Required if Sale Price is empty</p>
                 </div>
-
-                <div className="flex flex-col">
+                <div>
                   <div className="flex items-center mb-1">
-                    <label className={`text-sm font-medium text-gray-600 ${(itemSettings as any)?.requireCategory ? reqClasses : ''} mr-2`}>Category</label>
+                    <label className={`text-sm font-medium leading-none block ${(itemSettings as any)?.requireCategory ? reqClasses : ''} mr-2`}>Category</label>
                     <InfoTooltip text="Group this item belongs to (e.g., Electronics)." />
                   </div>
-                  <select value={selectedCategory} onChange={(e) => { if (e.target.value === 'ADD_NEW_GROUP') { navigate(routes.itemGroup); } else { setSelectedCategory(e.target.value); } }} className={`w-full p-3 border border-gray-300 rounded-sm bg-white ${activeTheme.focusRing}`}>
+                  <select value={selectedCategory} onChange={(e) => { if (e.target.value === 'ADD_NEW_GROUP') { navigate(routes.itemGroup); } else { setSelectedCategory(e.target.value); } }} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500">
                     <option value="">Uncategorized</option>
                     <option value="ADD_NEW_GROUP" className="font-semibold bg-gray-100">+ Add New Group</option>
                     {itemGroups.map(g => (<option key={g.id} value={g.id!}>{g.name}</option>))}
                   </select>
                 </div>
-
-                {/* --- Sales Price --- */}
-                <div className="flex flex-col">
-                  <div className="flex items-center mb-1">
-                    <label className="text-sm font-medium text-gray-600 after:content-['*'] after:text-red-500 mr-2">{`Sales Price (for ${getUnitLabel()})`}</label>
-                    <InfoTooltip text="The price you are selling this item for." />
-                  </div>
-                  <input
-                    type="number"
-                    value={itemSalesPrice}
-                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                    onChange={(e) => setItemSalesPrice(e.target.value)}
-                    className={`w-full p-3 border border-gray-300 rounded-sm ${activeTheme.focusRing}`}
-                    placeholder="0.00"
-                  />
-                  <p className="text-[10px] text-gray-400 mt-1">Required if MRP is empty</p>
-                </div>
-
-                {/* --- Purchase Price --- */}
-                <div className="flex flex-col">
-                  <div className="flex items-center mb-1">
-                    <label className={`text-sm font-medium text-gray-600 ${itemSettings?.requirePurchasePrice ? reqClasses : ''} mr-2`}>
-                      Purchase Price
-                    </label>
-                    <InfoTooltip text="The price you paid to acquire this item." />
-                  </div>
-                  <input
-                    type="number"
-                    value={itemPurchasePrice}
-                    onChange={(e) => setItemPurchasePrice(e.target.value)}
-                    className={`w-full p-3 border border-gray-300 rounded-sm ${activeTheme.focusRing}`}
-                    placeholder="0.00"
-                  />
-                </div>
-
-                {/* --- Sale Disc (%) --- */}
-                <div className="flex flex-col">
-                  <div className="flex items-center mb-1">
-                    <label className={`text-sm font-medium text-gray-600 ${itemSettings?.requireSaleDiscount ? reqClasses : ''} mr-2`}>
-                      Sale Disc (%)
-                    </label>
-                    <InfoTooltip text="Default discount percentage given to customers." />
-                  </div>
-                  <input
-                    type="number"
-                    value={itemDiscount}
-                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                    onChange={(e) => setItemDiscount(e.target.value)}
-                    className={`w-full p-3 border border-gray-300 rounded-sm ${activeTheme.focusRing}`}
-                    placeholder="0"
-                  />
-                </div>
-                {/* --- Purchase Disc (%) --- */}
-                <div className="flex flex-col">
-                  <div className="flex items-center mb-1">
-                    <label className={`text-sm font-medium text-gray-600 ${itemSettings?.requirePurchaseDiscount ? reqClasses : ''} mr-2`}>
-                      Purchase Disc (%)
-                    </label>
-                    <InfoTooltip text="Discount percentage received from the supplier." />
-                  </div>
-                  <input
-                    type="number"
-                    value={PurchaseDiscount}
-                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                    onChange={(e) => setPurchaseDiscount(e.target.value)}
-                    className={`w-full p-3 border border-gray-300 rounded-sm ${activeTheme.focusRing}`}
-                    placeholder="0"
-                  />
-                </div>
-
-                <div className="flex flex-col">
-                  <div className="flex items-center mb-1">
-                    <label className={`text-sm font-medium text-gray-600 ${itemSettings?.requireTax ? reqClasses : ''} mr-2`}>
-                      Tax (%)
-                    </label>
-                    <InfoTooltip text="Applicable tax percentage for this item." />
-                  </div>
-                  <input type="number" value={itemTax} onChange={(e) => setItemTax(e.target.value)} className={`w-full p-3 border border-gray-300 rounded-sm ${activeTheme.focusRing}`} placeholder="0" />
-                </div>
-
-                <div className="flex flex-col">
-                  <div className="flex items-center mb-1">
-                    <label className="text-sm font-medium text-gray-600 mr-2">HSN Code</label>
-                    <InfoTooltip text="Harmonized System Nomenclature code for taxation." />
-                  </div>
-                  <input type="text" value={hsnCode} onChange={(e) => setHsnCode(e.target.value)} className={`w-full p-3 border border-gray-300 rounded-sm ${activeTheme.focusRing}`} placeholder="e.g. 123456" />
-                </div>
-
-                <div className="flex flex-col">
-                  <div className="flex items-center mb-1">
-                    <label className="text-sm font-medium text-gray-600 mr-2">Stock</label>
-                    <InfoTooltip text="Current available quantity in your inventory." />
-                  </div>
-                  <input type="number" value={itemAmount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemAmount(e.target.value)} className={`w-full p-3 border border-gray-300 rounded-sm ${activeTheme.focusRing}`} placeholder="0" />
-                </div>
-
-                <div className="flex flex-col">
-                  <div className="flex items-center mb-1">
-                    <label className={`text-sm font-medium text-gray-600 ${itemSettings?.requireRestockQuantity ? reqClasses : ''} mr-2`}>
-                      Restock Level
-                    </label>
-                    <InfoTooltip text="Minimum stock level to trigger a reorder alert." />
-                  </div>
-                  <input type="number" onWheel={(e) => (e.target as HTMLInputElement).blur()} value={restockQuantity} onChange={(e) => setRestockQuantity(e.target.value)} className={`w-full p-3 border border-gray-300 rounded-sm ${activeTheme.focusRing}`} placeholder="0" />
-                </div>
-
-                <div className="flex flex-col">
-                  <div className="flex items-center mb-1">
-                    <label className="text-sm font-medium text-gray-600 mr-2">MOQ</label>
-                    <InfoTooltip text="Minimum Item Quantity to be ordered." />
-                  </div>
-                  <input type="number" value={moq} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setMoq(e.target.value)} className={`w-full p-3 border border-gray-300 rounded-sm ${activeTheme.focusRing}`} placeholder="1" />
-                </div>
-
-                {/* Empty block to balance grid */}
-                <div className="flex flex-col"></div>
               </div>
 
-              <div className="flex flex-col">
-                <div className="mb-1 flex flex-col">
-                  <div className="flex items-center">
-                    <label className={`text-sm font-medium text-gray-600 ${(itemSettings as any)?.requireUnit ? reqClasses : ''} mr-2`}>
-                      Unit
-                    </label>
+              {/* --- Sales Price & Purchase Price Row --- */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="flex items-center mb-1">
+                    <label className="text-sm font-medium leading-none block after:content-['*'] after:text-red-500 mr-2">{`Sales Price (${getUnitLabel()})`}</label>
+                    <InfoTooltip text="The price you are selling this item for." />
+                  </div>
+                  <input type="number" value={itemSalesPrice} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemSalesPrice(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="0.00" />
+                  <p className="text-[10px] text-gray-400 mt-1">Required if MRP is empty</p>
+                </div>
+                <div>
+                  <div className="flex items-center mb-1">
+                    <label className={`text-sm font-medium leading-none block ${itemSettings?.requirePurchasePrice ? reqClasses : ''} mr-2`}>Purchase Price</label>
+                    <InfoTooltip text="The price you paid to acquire this item." />
+                  </div>
+                  <input type="number" value={itemPurchasePrice} onChange={(e) => setItemPurchasePrice(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="0.00" />
+                </div>
+              </div>
+
+              {/* --- Sale Disc & Purchase Disc Row --- */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="flex items-center mb-1">
+                    <label className={`text-sm font-medium leading-none block ${itemSettings?.requireSaleDiscount ? reqClasses : ''} mr-2`}>Sale Disc (%)</label>
+                    <InfoTooltip text="Default discount percentage given to customers." />
+                  </div>
+                  <input type="number" value={itemDiscount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemDiscount(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="0" />
+                </div>
+                <div>
+                  <div className="flex items-center mb-1">
+                    <label className={`text-sm font-medium leading-none block ${itemSettings?.requirePurchaseDiscount ? reqClasses : ''} mr-2`}>Purchase Disc (%)</label>
+                    <InfoTooltip text="Discount percentage received from the supplier." />
+                  </div>
+                  <input type="number" value={PurchaseDiscount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setPurchaseDiscount(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="0" />
+                </div>
+              </div>
+
+              {/* --- Tax & HSN Code Row --- */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="flex items-center mb-1">
+                    <label className={`text-sm font-medium leading-none block ${itemSettings?.requireTax ? reqClasses : ''} mr-2`}>Tax (%)</label>
+                    <InfoTooltip text="Applicable tax percentage for this item." />
+                  </div>
+                  <input type="number" value={itemTax} onChange={(e) => setItemTax(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="0" />
+                </div>
+                <div>
+                  <div className="flex items-center mb-1">
+                    <label className="text-sm font-medium leading-none block mr-2">HSN Code</label>
+                    <InfoTooltip text="Harmonized System Nomenclature code for taxation." />
+                  </div>
+                  <input type="text" value={hsnCode} onChange={(e) => setHsnCode(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="e.g. 123456" />
+                </div>
+              </div>
+
+              {/* --- Stock & Restock Level Row --- */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="flex items-center mb-1">
+                    <label className="text-sm font-medium leading-none block mr-2">Stock</label>
+                    <InfoTooltip text="Current available quantity in your inventory." />
+                  </div>
+                  <input type="number" value={itemAmount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemAmount(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="0" />
+                </div>
+                <div>
+                  <div className="flex items-center mb-1">
+                    <label className={`text-sm font-medium leading-none block ${itemSettings?.requireRestockQuantity ? reqClasses : ''} mr-2`}>Restock Level</label>
+                    <InfoTooltip text="Minimum stock level to trigger a reorder alert." />
+                  </div>
+                  <input type="number" onWheel={(e) => (e.target as HTMLInputElement).blur()} value={restockQuantity} onChange={(e) => setRestockQuantity(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="0" />
+                </div>
+              </div>
+
+              {/* --- MOQ & Unit Row --- */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="flex items-center mb-1">
+                    <label className="text-sm font-medium leading-none block mr-2">MOQ</label>
+                    <InfoTooltip text="Minimum Item Quantity to be ordered." />
+                  </div>
+                  <input type="number" value={moq} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setMoq(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="1" />
+                </div>
+                <div>
+                  <div className="flex items-center mb-1">
+                    <label className={`text-sm font-medium leading-none block ${(itemSettings as any)?.requireUnit ? reqClasses : ''} mr-2`}>Unit</label>
                     <InfoTooltip text="Measurement unit (e.g., pieces, box, kg)." />
                   </div>
-                  <p className='text-[10px] text-gray-500 mt-0.5'>(Number of items to be added per single stock unit. E.g. 1 for pcs, 10 for box, etc.)</p>
-                </div>
-                <div className="flex gap-2">
-                  <select value={itemUnit} onChange={(e) => { setItemUnit(e.target.value); if (e.target.value !== 'pkt') setPacketSize(''); }} className={`p-3 border border-gray-300 rounded-sm bg-white ${activeTheme.focusRing} ${itemUnit === 'pkt' ? 'w-1/2' : 'w-full'}`}>
-                    {UNIT_OPTIONS.map(unit => (<option key={unit.value} value={unit.value}>{unit.label}</option>))}
-                  </select>
-                  {itemUnit === 'pkt' && (<input type="number" value={packetSize} onChange={(e) => setPacketSize(e.target.value)} className={`w-1/2 p-3 border border-gray-300 rounded-sm ${activeTheme.focusRing}`} placeholder="Qty per pkt" min="1" />)}
+                  <div className="flex gap-2">
+                    <select value={itemUnit} onChange={(e) => { setItemUnit(e.target.value); if (e.target.value !== 'pkt') setPacketSize(''); }} className={`flex h-10 rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${itemUnit === 'pkt' ? 'w-1/2' : 'w-full'}`}>
+                      {UNIT_OPTIONS.filter(u => u.value !== '').map(unit => (<option key={unit.value} value={unit.value}>{unit.label}</option>))}
+                    </select>
+                    {itemUnit === 'pkt' && (<input type="number" value={packetSize} onChange={(e) => setPacketSize(e.target.value)} className="flex h-10 w-1/2 rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="Qty per pkt" min="1" />)}
+                  </div>
                 </div>
               </div>
 

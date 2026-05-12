@@ -5,24 +5,20 @@ import { ROUTES } from '../constants/routes.constants';
 import { useAuth } from '../context/auth-context';
 import dogImage from '../assets/dog-error.png';
 
-// --- 1. FUNCTIONAL UI COMPONENT (Can use Hooks!) ---
 const SmartErrorUI: React.FC<{ error?: Error }> = ({ error }) => {
   const { currentUser } = useAuth();
 
   const handleGoHome = () => {
-    // If we don't know who they are, send them to the login/landing page
     if (!currentUser) {
       window.location.href = ROUTES.LANDING || '/';
       return;
     }
-
-    // 1. Identify if they are a Catalogue-Only user
+    const isEnterprise = currentUser.plan === 'enterprise';
     const isCatalogueOnly =
       currentUser.plan === PLANS.CATALOGUE_BASIC ||
       currentUser.plan === PLANS.CATALOGUE_PRO;
 
-    // 2. Hard redirect to the correct dashboard (clears crashed React state)
-    if (isCatalogueOnly) {
+    if (isCatalogueOnly && !isEnterprise) {
       window.location.href = ROUTES.CHOME;
     } else {
       window.location.href = ROUTES.HOME;
@@ -77,7 +73,6 @@ const SmartErrorUI: React.FC<{ error?: Error }> = ({ error }) => {
   );
 };
 
-// --- 2. THE CLASS COMPONENT (Catches the error) ---
 interface Props {
   children?: ReactNode;
   fallback?: ReactNode;
@@ -99,6 +94,16 @@ class ErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
+
+    const errorMessage = error?.message?.toLowerCase() || '';
+    const isChunkLoadError =
+      errorMessage.includes('failed to fetch dynamically imported module') ||
+      errorMessage.includes('expected a javascript') ||
+      errorMessage.includes('text/html');
+
+    if (isChunkLoadError) {
+      window.location.reload();
+    }
   }
 
   public handleReset = () => {
@@ -111,7 +116,6 @@ class ErrorBoundary extends Component<Props, State> {
         return this.props.fallback;
       }
 
-      // Render the smart functional component instead of hardcoding UI here
       return <SmartErrorUI error={this.state.error} />;
     }
 

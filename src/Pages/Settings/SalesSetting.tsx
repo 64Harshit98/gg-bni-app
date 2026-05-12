@@ -72,7 +72,7 @@ export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     lockTaxToggle: false,
     enableRounding: false,
     roundingInterval: 1,
-    cartInsertionOrder: 'bottom',
+    cartInsertionOrder: 'top',
     hideMrp: false,
     enableItemWiseDiscount: true,
     lockDiscountEntry: false,
@@ -84,7 +84,7 @@ export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     requireCustomerMobile: false,
     voucherName: 'Invoice',
     voucherPrefix: 'INV',
-    currentVoucherNumber: 1000,
+    currentVoucherNumber: 1,
     copyVoucherAfterSaving: false,
     enableShippingDetails: false,
     enableExtraExpense: false,
@@ -117,7 +117,7 @@ export interface ToggleRowProps {
     disabled?: boolean;
 }
 
-export const ToggleRow: React.FC<ToggleRowProps> = ({ id, label, description, checked, onChange, tooltip, disabled = false,  }) => (
+export const ToggleRow: React.FC<ToggleRowProps> = ({ id, label, description, checked, onChange, tooltip, disabled = false, }) => (
     <div className={`flex items-start justify-between gap-4 rounded-sm bg-gray-50/60 border border-gray-100 p-3.5 md:p-4 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
         <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -327,7 +327,7 @@ const SalesSettingsPage: React.FC = () => {
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
             <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
-                <BackButton/>
+                <BackButton />
                 <h1 className="text-base md:text-lg font-semibold text-gray-800">Sales Settings</h1>
                 <div className="w-6"></div>
             </div>

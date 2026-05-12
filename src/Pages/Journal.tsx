@@ -572,7 +572,6 @@ const Journal: React.FC = () => {
     if (!currentUser?.companyId) return null;
 
     const dbOps = getFirestoreOperations(currentUser.companyId);
-    const isPurchase = invoice.type === 'Debit';
 
     const [businessInfo, fetchedItems, billSettingsSnap, companyLogoBase64] = await Promise.all([
       dbOps.getBusinessInfo(),
@@ -589,69 +588,42 @@ const Journal: React.FC = () => {
       const finalTaxRate = item.taxRate || item.tax || item.gstPercent || fullItem.tax || 0;
       const resolvedTaxType = item.taxType || invoice.taxType || salesSettings?.taxType || '';
 
-      // 1. Get the Discount Percentage
-      const discountPercent = Number(
-        isPurchase
-          ? (item.purchasediscount || item.discountPercentage || item.discount || fullItem.purchasediscount || 0)
-          : (item.discountPercentage || item.discount || fullItem.discountPercentage || fullItem.discount || 0)
-      );
+      // 1. EXACT DB VALUES
+      // Trust the numbers exactly as they were saved in the invoice snapshot
+      const finalAmount = Number(item.finalPrice || item.amount || 0);
+      const originalMrp = Number(item.mrp || fullItem.mrp || 0);
+      const taxAmt = Number(item.taxAmount || 0);
+      const taxableAmt = Number(item.taxableAmount || 0);
 
-      // 2. Get the Final Target Amount (What the user actually paid)
-      let itemAmount = Number(item.finalPrice);
-      if (!itemAmount) {
-        if (resolvedTaxType === 'Exclusive' && item.taxableAmount) {
-          itemAmount = Number(item.taxableAmount);
-        } else {
-          itemAmount = Number(item.effectiveUnitPrice) * Number(item.quantity) || 0;
-        }
+      // Extract raw discount from the item
+      let discountAmt = Number(item.discountAmount || item.manualDiscount || item.discount || 0);
+
+      // If discount isn't saved as a flat amount but we have the base numbers, deduce it
+      if (discountAmt === 0 && originalMrp > 0 && taxableAmt > 0) {
+        discountAmt = (originalMrp * (Number(item.quantity) || 1)) - taxableAmt;
       }
-
-      // 3. Reverse-Engineer the True Base Price
-      // This completely ignores the catalog and forces the math to match what happened at POS.
-      let unitPrice = 0;
-      const qty = Number(item.quantity) || 1;
-      const amountPerUnit = itemAmount / qty;
-
-      if (discountPercent > 0 && discountPercent < 100) {
-        unitPrice = amountPerUnit / (1 - (discountPercent / 100));
-      } else {
-        // If 0% discount, the base price IS the final price (handles your 200 YoYo markup perfectly)
-        unitPrice = amountPerUnit;
-      }
-
-      // Fallback only if unitPrice is somehow 0
-      if (!unitPrice) {
-        unitPrice = Number(isPurchase
-          ? (item.purchasePrice || fullItem.purchasePrice || item.mrp)
-          : (item.salesPrice || fullItem.salesPrice || item.mrp || 0)
-        );
-      }
-
-      unitPrice = Math.round(unitPrice * 100) / 100;
 
       return {
         sno: index + 1,
         name: item.name,
-        quantity: qty,
+        quantity: Number(item.quantity) || 1,
         unit: fullItem.unit || item.unit || "Pcs",
+        hsn: fullItem.hsnSac || item.hsnSac || "N/A",
 
-        // Flood all possible price keys with the mathematically correct unit price
-        listPrice: unitPrice,
-        mrp: unitPrice,
-        rate: unitPrice,
-        salesPrice: unitPrice,
-        effectiveUnitPrice: unitPrice,
+        // Send the exact DB values to the PDF generator untouched
+        mrp: originalMrp,
+        listPrice: originalMrp,
+        amount: finalAmount,
+        finalPrice: finalAmount,
+        taxAmount: taxAmt,
+        taxableAmount: taxableAmt,
+        discountAmount: discountAmt,
 
         gstPercent: finalTaxRate,
-        hsn: fullItem.hsnSac || item.hsnSac || "N/A",
-        discountAmount: discountPercent,
-        amount: itemAmount,
+        taxRate: finalTaxRate,
         taxType: resolvedTaxType,
-        taxAmount: item.taxAmount,
-        taxableAmount: item.taxableAmount
       };
     });
-
     return {
       printFormat: billSettings.printFormat || 'A4',
       gstScheme: salesSettings?.gstScheme || '',
@@ -1141,10 +1113,10 @@ const Journal: React.FC = () => {
                               <div className="flex flex-wrap items-center gap-1.5 mt-1">
                                 {matchedHistory?.modeOfReturn && (
                                   <span className={`text-[7px] uppercase font-bold px-1.5 py-0.5 rounded border ${matchedHistory.modeOfReturn === 'EXCHANGE'
-                                      ? 'bg-purple-50 text-purple-700 border-purple-200'
-                                      : matchedHistory.modeOfReturn === 'CASH REFUND'
-                                        ? 'bg-green-50 text-green-700 border-green-200'
-                                        : 'bg-orange-50 text-orange-600 border-orange-200'
+                                    ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                    : matchedHistory.modeOfReturn === 'CASH REFUND'
+                                      ? 'bg-green-50 text-green-700 border-green-200'
+                                      : 'bg-orange-50 text-orange-600 border-orange-200'
                                     }`}>
                                     {matchedHistory.modeOfReturn}
                                   </span>
@@ -1399,9 +1371,11 @@ const Journal: React.FC = () => {
             ref={filterRef}
             className="absolute top-4 right-4 flex items-center gap-2 z-30"
           >
-            <div className="border border-slate-300 rounded-sm p-2 bg-gray-100 shadow-sm flex items-center justify-center">
-              <NotificationBell />
-            </div>
+            <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+              <div className="border border-slate-300 rounded-sm p-2 bg-gray-100 shadow-sm flex items-center justify-center">
+                <NotificationBell />
+              </div>
+            </ShowWrapper>
 
             <TutorialStep
               step={3}
@@ -1447,7 +1421,7 @@ const Journal: React.FC = () => {
           </div>
 
           <div className="flex-1 flex flex-col items-center relative">
-            <h1 className="text-3xl font-bold text-slate-800">Transactions</h1>
+            <h1 className="text-2xl font-bold text-slate-800">Transactions</h1>
 
             {/* Step 2 — date label */}
             <TutorialStep
@@ -1490,7 +1464,7 @@ const Journal: React.FC = () => {
                   }}
                   className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 cursor-pointer hover:bg-gray-200 px-3 py-1 rounded-sm transition-colors select-none"
                 >
-                  <p className='text-center text-lg font-light text-slate-600'>{selectedPeriodText}</p>
+                  <p className='text-center text-md font-light text-slate-600'>{selectedPeriodText}</p>
                   <IconChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${showCustomPicker ? 'rotate-180' : ''}`} />
                 </div>
 

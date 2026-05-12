@@ -406,6 +406,7 @@ const BillSettings: React.FC = () => {
                                     value="A5"
                                     checked={settings.printFormat === 'A5'}
                                     onChange={handleChange}
+                                    disabled
                                     className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
                                 />
                                 <div className="ml-3">

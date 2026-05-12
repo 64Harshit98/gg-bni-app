@@ -11,6 +11,7 @@ import { getPackPermissions, normalizePlan } from './Plan';
 import { getDefaultItemSettings } from '../Pages/Settings/ItemSetting';
 import { getDefaultPurchaseSettings } from '../Pages/Settings/Purchasesetting';
 import { getDefaultSalesSettings } from '../Pages/Settings/SalesSetting';
+import { getDefaultCatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting';
 import { syncCompanyPermissions } from '../context/Permissions';
 
 interface AuthState {
@@ -28,7 +29,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const settingsToCreate = [
         { id: 'sales-settings', generator: getDefaultSalesSettings },
         { id: 'purchase-settings', generator: getDefaultPurchaseSettings },
-        { id: 'item-settings', generator: getDefaultItemSettings }
+        { id: 'item-settings', generator: getDefaultItemSettings },
+        { id: 'catalogue-sales-settings', generator: getDefaultCatalogueSalesSettings }
       ];
 
       for (const setting of settingsToCreate) {

@@ -889,6 +889,20 @@ const OrdersReturnPage: React.FC = () => {
         );
       }
 
+      // --- NEW FIX: Add Credit/Refund amounts to paymentMethods for OrdersPage badges ---
+      let creditAmountToAdd = 0;
+      let refundAmountToAdd = 0;
+
+      if (finalBalance > 0) {
+        if (modeOfReturn === 'Credit Note' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Credit Note')) {
+          creditAmountToAdd = finalBalance;
+          updatedPaymentMethods['CREDIT NOTE'] = (updatedPaymentMethods['CREDIT NOTE'] || 0) + finalBalance;
+        } else if (modeOfReturn === 'Cash Refund' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Cash Refund')) {
+          refundAmountToAdd = finalBalance;
+          updatedPaymentMethods['CASH REFUND'] = (updatedPaymentMethods['CASH REFUND'] || 0) + finalBalance;
+        }
+      }
+
 
       const paid = Object.entries(updatedPaymentMethods)
         .filter(([k]) => k !== 'due')
@@ -957,8 +971,8 @@ const OrdersReturnPage: React.FC = () => {
       // Total paid = original paidAmount + any new payment made during this exchange
       const newPaymentAmount = completionData?.paymentDetails
         ? Object.entries(completionData.paymentDetails)
-            .filter(([k]) => k.toLowerCase() !== 'due')
-            .reduce((sum, [, v]) => sum + Number(v), 0)
+          .filter(([k]) => k.toLowerCase() !== 'due')
+          .reduce((sum, [, v]) => sum + Number(v), 0)
         : 0;
 
       const totalPaidAfterReturn = actualPaid + newPaymentAmount;
@@ -971,22 +985,27 @@ const OrdersReturnPage: React.FC = () => {
       const newStatus = effectiveDue <= 0.1 ? 'Paid' : 'Completed';
 
       batch.update(saleRef, {
-          items: newItemsList,
-          totalAmount: updatedFinalAmount,
+        items: newItemsList,
+        totalAmount: updatedFinalAmount,
 
-          manualDiscount: newManualDiscount,
-          paymentMethods: {
-              ...updatedPaymentMethods,
-              due: isUnpaidOrder
-                  ? Math.max(0, selectedSale.totalAmount - returnedItemsGrossValue)
-                  : effectiveDue,  // ← use effectiveDue, not the incorrectly recalculated one
-          },
+        manualDiscount: newManualDiscount,
+        paymentMethods: {
+          ...updatedPaymentMethods,
+          due: isUnpaidOrder
+            ? Math.max(0, selectedSale.totalAmount - returnedItemsGrossValue)
+            : effectiveDue,
+        },
 
-          paidAmount: effectivePaid,
-          status: isUnpaidOrder ? 'Completed' : newStatus,
+        paidAmount: effectivePaid,
+        status: isUnpaidOrder ? 'Completed' : newStatus,
 
-          returnHistory: arrayUnion(safeReturnHistoryRecord),
-          updatedAt: serverTimestamp()
+        returnHistory: arrayUnion(safeReturnHistoryRecord),
+
+        // --- NEW FIX: Update root fields for OrdersPage summary totals ---
+        ...(creditAmountToAdd > 0 && { creditNoteAmount: firebaseIncrement(creditAmountToAdd) }),
+        ...(refundAmountToAdd > 0 && { refundAmount: firebaseIncrement(refundAmountToAdd) }),
+
+        updatedAt: serverTimestamp()
       });
       await batch.commit();
       await refreshSelectedOrder(selectedSale.id);

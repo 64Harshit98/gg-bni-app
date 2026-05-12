@@ -148,7 +148,7 @@ const Account: React.FC = () => {
 
                 {/* Centre — identical to Dashboard */}
                 <div className="flex-1 text-center flex flex-col items-center justify-center">
-                    <h1 className="text-3xl font-bold text-slate-800">Account</h1>
+                    <h1 className="text-2xl font-bold text-slate-800">Account</h1>
                 </div>
 
                 <div className="relative border border-slate-300 rounded-sm p-2 bg-gray-100 shadow-sm">

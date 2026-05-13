@@ -28,10 +28,6 @@ import {
     setDoc
 } from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
-//import CataShowWrapper from '../context/CataShowWrapper';
-//import { Cata_Permissions } from './enum/cata_permissions.enum';
-//import CataShowWrapper from '../context/CataShowWrapper';
-//import { Cata_Permissions } from './enum/cata_permissions.enum';
 import { CustomCard } from '../Components/CustomCard';
 import { Spinner } from '../constants/Spinner';
 import { Modal, PaymentModal } from '../constants/Modal';
@@ -1649,7 +1645,6 @@ const OrdersPage: React.FC = () => {
     //         </div>
     //     )
     // }
-
     // --- Adjustment Handlers ---
     const handleCreditNote = async () => {
         if (!editingOrder || !currentUser?.companyId || !pendingAdjustment) return;
@@ -2104,59 +2099,113 @@ const OrdersPage: React.FC = () => {
                                                         </div>
                                                     )}
                                                     {Order.items?.map((item, idx) => {
-                                                        const isReturned = Order.returnHistory?.some((h: any) =>
-                                                            h.returnedItems?.some((r: any) =>
-                                                                String(r.originalItemId) === String(item.itemId) ||
-                                                                String(r.originalItemId) === String(item.id) ||
-                                                                String(r.id) === String(item.itemId) ||
-                                                                String(r.id) === String(item.id)
-                                                            )
-                                                        );
-                                                        return (
-                                                            <div
-                                                                key={idx}
-                                                                className="p-2 cursor-pointer"
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
+                                                        // const returnedQty = getReturnedQuantityForItem(item, Order);
 
-                                                                }}
-                                                            >
-                                                                <div className="flex justify-between items-start -mb-1">
-                                                                    <div className="flex-1">
-                                                                        <p className="text-[11px] font-extrabold leading-tight mb-1"
-                                                                            style={{ textDecoration: isReturned ? 'line-through' : 'none', color: isReturned ? '#94a3b8' : '#1e293b' }}>
-                                                                            {item.name}
-                                                                            <span className="ml-1 text-[9px] font-semibold text-gray-500">
-                                                                                {item.unit || "pcs"}
-                                                                            </span>
-                                                                        </p>
-                                                                        {item.note && (
-                                                                            <p className="text-[9px] leading-tight flex items-baseline gap-1.5 mt-1 opacity-80">
-                                                                                <span className="font-black uppercase tracking-widest font-xs">Note:</span>
-                                                                                <span className="font-xs italic text-slate-600">{item.note}</span>
+                                                        // Collect per-return-event entries for this item
+                                                        const returnedEntries: { qty: number; modeOfReturn: string; returnedAt: any }[] = [];
+                                                        (Order.returnHistory || []).forEach((h: any) => {
+                                                            (h.returnedItems || []).forEach((r: any) => {
+                                                                const matches =
+                                                                    String(r.originalItemId) === String(item.itemId) ||
+                                                                    String(r.originalItemId) === String(item.id) ||
+                                                                    String(r.id) === String(item.itemId) ||
+                                                                    String(r.id) === String(item.id);
+                                                                if (matches) {
+                                                                    returnedEntries.push({
+                                                                        qty: Number(r.quantity || 0),
+                                                                        modeOfReturn: h.modeOfReturn || '',
+                                                                        returnedAt: h.returnedAt,
+                                                                    });
+                                                                }
+                                                            });
+                                                        });
+                                                        const totalReturnedFromHistory = returnedEntries.reduce((sum, e) => sum + e.qty, 0);
+                                                        // item.quantity may already reflect post-return qty, so add back returned qty to get original
+                                                        const originalQty = Number(item.quantity || 0) + totalReturnedFromHistory;
+                                                        const remainingQty = originalQty - totalReturnedFromHistory; // = item.quantity
+                                                        const unitPrice = item.customPrice ??
+                                                            (Number(item.salesPrice || 0) > 0 ? Number(item.salesPrice) : Number(item.mrp));
+
+                                                        return (
+                                                            <div key={idx} className="p-2 cursor-pointer">
+                                                                {/* REMAINING QUANTITY ROW */}
+                                                                {remainingQty > 0 && (
+                                                                    <div className="flex justify-between items-start -mb-1">
+                                                                        <div className="flex-1">
+                                                                            <p className="text-[11px] font-extrabold leading-tight mb-1" style={{ color: '#1e293b' }}>
+                                                                                {item.name}
+                                                                                <span className="ml-1 text-[9px] font-semibold text-gray-500">
+                                                                                    {item.unit || "pcs"}
+                                                                                </span>
                                                                             </p>
-                                                                        )}
-                                                                        <p className="text-[10px] text-gray-400">
-                                                                            ₹{formatAmount(
-                                                                                (item.customPrice ??
-                                                                                    (Number(item.salesPrice || 0) > 0
-                                                                                        ? Number(item.salesPrice)
-                                                                                        : Number(item.mrp)))
-                                                                            )} per {item.unit || "pcs"}
-                                                                        </p>
+                                                                            {item.note && (
+                                                                                <p className="text-[9px] leading-tight flex items-baseline gap-1.5 mt-1 opacity-80">
+                                                                                    <span className="font-black uppercase tracking-widest font-xs">Note:</span>
+                                                                                    <span className="font-xs italic text-slate-600">{item.note}</span>
+                                                                                </p>
+                                                                            )}
+                                                                            <p className="text-[10px] text-gray-400">
+                                                                                ₹{formatAmount(unitPrice)} per {item.unit || "pcs"}
+                                                                            </p>
+                                                                        </div>
+                                                                        <div className="text-right ml-4">
+                                                                            <p className="text-[13px] font-black text-slate-900">
+                                                                                ₹{formatAmount(unitPrice * remainingQty)}
+                                                                            </p>
+                                                                            <p className="text-[9px] font-bold text-slate-500 bg-white">
+                                                                                Qty: {remainingQty}
+                                                                            </p>
+                                                                        </div>
                                                                     </div>
-                                                                    <div className="text-right ml-4">
-                                                                        <p className="text-[13px] font-black text-slate-900">₹{formatAmount(
-                                                                            (item.customPrice ??
-                                                                                (Number(item.salesPrice || 0) > 0
-                                                                                    ? Number(item.salesPrice)
-                                                                                    : Number(item.mrp)))
-                                                                            * item.quantity
-                                                                        )}
-                                                                        </p>
-                                                                        <p className="text-[9px] font-bold text-slate-500 bg-white">Qty: {item.quantity}</p>
-                                                                    </div>
-                                                                </div>
+                                                                )}
+
+                                                                {/* RETURNED ENTRIES — one crossed-out row per return event */}
+                                                                {returnedEntries.map((entry, rIdx) => (
+                                                                    entry.qty > 0 && (
+                                                                        <div key={rIdx} className="flex justify-between items-start mt-1 -mb-1">
+                                                                            <div className="flex-1">
+                                                                                <p className="text-[11px] font-extrabold leading-tight mb-1"
+                                                                                    style={{ textDecoration: 'line-through', color: '#94a3b8' }}>
+                                                                                    {item.name}
+                                                                                    <span className="ml-1 text-[9px] font-semibold text-gray-400">
+                                                                                        {item.unit || "pcs"}
+                                                                                    </span>
+                                                                                </p>
+                                                                                <div className="flex flex-wrap items-center gap-1.5 mt-0.5 mb-1">
+                                                                                    {entry.modeOfReturn && (
+                                                                                        <span className={`text-[7px] uppercase font-bold px-1.5 py-0.5 rounded border ${entry.modeOfReturn.toUpperCase() === 'EXCHANGE'
+                                                                                            ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                                                                            : entry.modeOfReturn.toUpperCase().includes('CASH') || entry.modeOfReturn.toUpperCase().includes('REFUND')
+                                                                                                ? 'bg-green-50 text-green-700 border-green-200'
+                                                                                                : 'bg-orange-50 text-[#F97316] border-orange-200'
+                                                                                            }`}>
+                                                                                            {entry.modeOfReturn}
+                                                                                        </span>
+                                                                                    )}
+                                                                                    {entry.returnedAt && (
+                                                                                        <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wide">
+                                                                                            {new Date(
+                                                                                                entry.returnedAt?.toDate
+                                                                                                    ? entry.returnedAt.toDate()
+                                                                                                    : entry.returnedAt
+                                                                                            ).toLocaleDateString('en-GB', {
+                                                                                                day: '2-digit', month: 'short', year: '2-digit'
+                                                                                            })}
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="text-right ml-4">
+                                                                                <p className="text-[13px] font-black" style={{ color: '#94a3b8', textDecoration: 'line-through' }}>
+                                                                                    ₹{formatAmount(unitPrice * entry.qty)}
+                                                                                </p>
+                                                                                <p className="text-[9px] font-bold text-slate-400">
+                                                                                    Qty: {entry.qty}
+                                                                                </p>
+                                                                            </div>
+                                                                        </div>
+                                                                    )
+                                                                ))}
                                                             </div>
                                                         );
                                                     })}

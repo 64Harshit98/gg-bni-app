@@ -476,8 +476,9 @@ const MyShop: React.FC = () => {
             const nameB = b.name || "";
             if (sortOrder === 'A-Z') return nameA.localeCompare(nameB);
             if (sortOrder === 'Z-A') return nameB.localeCompare(nameA);
-            if (sortOrder === 'Price: Low-High') return (a.mrp || 0) - (b.mrp || 0);
-            if (sortOrder === 'Price: High-Low') return (b.mrp || 0) - (a.mrp || 0);
+            if (sortOrder === 'Price: Low-High') return (a.salesPrice || a.mrp || 0) - (b.salesPrice || b.mrp || 0);
+            if (sortOrder === 'Price: High-Low') return (b.salesPrice || b.mrp || 0) - (a.salesPrice || a.mrp || 0);
+
             return 0;
         });
     }, [
@@ -768,7 +769,7 @@ const MyShop: React.FC = () => {
                                 id={item.id}
                                 key={item.id}
                                 onClick={() => handleOpenDetailDrawer(item)}
-                                className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col h-full transition-all duration-300 relative group hover:shadow-md cursor-pointer ${highlightedId === item.id ? 'ring-1 ring-[#F97316] shadow-lg scale-[1.02]' : pinnedIds.has(item.id!) ? 'ring-1 ring-[#F97316] shadow-lg border-[#F97316]' : 'border-gray-100'}`}>
+                                className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col h-full transition-all duration-300 relative group hover:shadow-md cursor-pointer ${highlightedId === item.id ? 'ring-3 ring-[#F97316] shadow-lg scale-[1.02]' : pinnedIds.has(item.id!) ? 'ring-1 ring-[#F97316] shadow-lg border-[#F97316]' : 'border-gray-100'}`}>
                                 <div className="aspect-square flex items-center justify-center relative overflow-hidden">
                                     {pinnedIds.has(item.id!) && (
                                         <div className="absolute top-1.5 right-1.5 z-10 bg-white text-[#F97316] rounded-sm px-1 py-1 flex items-center gap-0.5 shadow-md">

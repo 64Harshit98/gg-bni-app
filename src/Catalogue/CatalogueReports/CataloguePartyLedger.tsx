@@ -20,7 +20,7 @@ import { formatDate, formatDateForInput } from '../../Pages/Reports/SalesReportC
 import FilterSelect from '../../Pages/Reports/SalesReportComponents/FilterSelect';
 import { useAuth } from '../../context/auth-context';
 import { CustomCard } from '../../Components/CustomCard';
-import { IconClose, IconChevronDown } from '../../constants/Icons';
+import { IconChevronDown } from '../../constants/Icons';
 import { db } from '../../lib/Firebase';
 import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
 import BackButton from '../../Components/BackButton';
@@ -310,19 +310,13 @@ const CataloguePartyLedger: React.FC = () => {
                 <div className="flex flex-col gap-2">
 
                     {/* STICKY HEADER */}
-                    <div className="sticky top-0 z-30 pt-2 pb-3 -mx-2 px-2 backdrop-blur-md">
+                    <div className="sticky top-0 z-30 pt-2 pb-3 -mx-2 px-2 bg-gray-50">
                         <div className="flex items-center justify-between pb-2 mb-2">
-                            <div className="w-10 h-10" />
+                            <BackButton onClick={goBack} />
                             <h1 className="flex-1 text-lg text-center font-bold text-gray-800 truncate px-2">
                                 {selectedPartyName} - Ledger
                             </h1>
-                            <button
-                                onClick={goBack}
-                                className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-200 transition-colors text-slate-500 hover:text-slate-800"
-                                aria-label="Close"
-                            >
-                                <IconClose width={20} height={20} />
-                            </button>
+                            <div className="w-10 h-10" />
                         </div>
 
                         {/* Summary Card */}

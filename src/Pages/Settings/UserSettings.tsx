@@ -40,18 +40,18 @@ const getInitials = (name?: string): string => {
 };
 
 const AVATAR_COLORS: { bg: string; text: string }[] = [
-    { bg: 'bg-blue-100',   text: 'text-blue-700'   },
-    { bg: 'bg-green-100',  text: 'text-green-700'  },
     { bg: 'bg-blue-100', text: 'text-blue-700' },
-    { bg: 'bg-amber-100',  text: 'text-amber-700'  },
-    { bg: 'bg-pink-100',   text: 'text-pink-700'   },
-    { bg: 'bg-teal-100',   text: 'text-teal-700'   },
+    { bg: 'bg-green-100', text: 'text-green-700' },
+    { bg: 'bg-blue-100', text: 'text-blue-700' },
+    { bg: 'bg-amber-100', text: 'text-amber-700' },
+    { bg: 'bg-pink-100', text: 'text-pink-700' },
+    { bg: 'bg-teal-100', text: 'text-teal-700' },
 ];
 
 const avatarColor = (uid: string) =>
     AVATAR_COLORS[
-        uid.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) %
-        AVATAR_COLORS.length
+    uid.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) %
+    AVATAR_COLORS.length
     ];
 
 const ManageUsersPage: React.FC = () => {
@@ -253,7 +253,7 @@ const ManageUsersPage: React.FC = () => {
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
             <div className="flex items-center justify-between p-3 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
-                <BackButton/>
+                <BackButton />
                 <h1 className="text-lg font-semibold text-gray-800 ml-2">Manage Users</h1>
                 <CustomButton onClick={handleAddUser} variant={Variant.Save} className='flex justify-right ml-8'>
                     Add User
@@ -261,7 +261,7 @@ const ManageUsersPage: React.FC = () => {
             </div>
 
 
-           <main className="flex-grow p-3 overflow-y-auto">
+            <main className="flex-grow p-3 overflow-y-auto">
                 {users.length === 0 ? (
                     <div className="text-center py-10 text-gray-500">No users found for this company.</div>
                 ) : (
@@ -269,7 +269,7 @@ const ManageUsersPage: React.FC = () => {
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                         {users.map((user) => {
                             const { bg, text } = avatarColor(user.uid);   // ← NEW
-const avatarSrc = user.profilePicture || user.photoURL || '';
+                            const avatarSrc = user.profilePicture || user.photoURL || '';
                             return (
                                 <div key={user.uid} className="bg-white rounded-sm shadow border p-3 flex flex-col items-center">
 
@@ -279,21 +279,21 @@ const avatarSrc = user.profilePicture || user.photoURL || '';
                                             <div>
                                                 <label className="block text-xs font-medium text-gray-500 mb-1">Name</label>
                                                 <input type="text" name="name" value={editFormData.name || ''} onChange={handleInputChange}
-                                                    className="w-full p-2 border border-gray-300 rounded text-sm" />
+                                                    className="w-full px-1.5 py-1 border border-gray-300 rounded text-sm" />
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-medium text-gray-500 mb-1">Phone Number</label>
                                                 <input type="tel" name="phoneNumber" value={editFormData.phoneNumber || ''} onChange={handleInputChange} maxLength={10}
-                                                    className="w-full p-2 border border-gray-300 rounded text-sm" />
+                                                    className="w-full px-1.5 py-1 border border-gray-300 rounded text-sm" />
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-medium text-gray-500 mb-1">Role</label>
                                                 {user.role === ROLES.OWNER ? (
                                                     <input type="text" value={user.role || 'OWNER'} readOnly
-                                                        className="w-full p-2 border border-gray-300 rounded text-sm bg-gray-200 cursor-not-allowed" />
+                                                        className="w-full px-1.5 py-1 border border-gray-300 rounded text-sm bg-gray-200 cursor-not-allowed" />
                                                 ) : (
                                                     <select name="role" value={editFormData.role || ''} onChange={handleInputChange}
-                                                        className="w-full p-2 border border-gray-300 rounded text-sm bg-white">
+                                                        className="w-full px-1.5 py-1 border border-gray-300 rounded text-sm bg-white">
                                                         <option value="" disabled>Select Role</option>
                                                         {availableRoles.map(role => (
                                                             <option key={role} value={role}>
@@ -303,15 +303,22 @@ const avatarSrc = user.profilePicture || user.photoURL || '';
                                                     </select>
                                                 )}
                                             </div>
-                                            <p className="text-xs text-gray-500">Email: {user.email || 'N/A'} (Not editable)</p>
-                                            <div className="flex justify-end gap-1.5 mt-2 w-full ">
-                                                <CustomButton onClick={handleCancelEdit} variant={Variant.Transparent} className="flex-1 min-w-0">Cancel</CustomButton>
-                                                <CustomButton onClick={handleSaveEdit} variant={Variant.Save} disabled={isSaving} className="flex-1 min-w-0">
+                                            <p className="text-[10px] text-gray-500 break-all leading-tight w-full">Email: {user.email || 'N/A'} (Not editable)</p>
+                                            <div className="flex gap-1.5 mt-2 w-full">
+                                                <button
+                                                    onClick={handleCancelEdit}
+                                                    className="flex-1 py-1 text-[10px] bg-white text-black border-2 border-gray-300 hover:bg-gray-100 rounded-sm">
+                                                    Cancel
+                                                </button>
+                                                <button
+                                                    onClick={handleSaveEdit}
+                                                    disabled={isSaving}
+                                                    className="flex-1 py-1 text-[10px] bg-white text-blue-600 border-2 border-blue-300 hover:bg-blue-50 hover:text-blue-700 rounded-sm">
                                                     {isSaving ? <Spinner /> : 'Save'}
-                                                </CustomButton>
+                                                </button>
                                             </div>
                                         </div>
-                                     ) : (
+                                    ) : (
                                         <>
                                             {/* Avatar — uses profilePicture first, then photoURL, then initials */}
                                             {avatarSrc ? (
@@ -325,12 +332,12 @@ const avatarSrc = user.profilePicture || user.photoURL || '';
                                                     {getInitials(user.name)}
                                                 </div>
                                             )}
- 
+
                                             {/* Name */}
                                             <p className="font-semibold text-gray-900 text-xs text-center leading-tight truncate w-full">
                                                 {user.name || 'No Name'}
                                             </p>
- 
+
                                             {/* Role badge */}
                                             <span className={`mt-1 text-[10px] px-1.5 py-0.5 rounded-sm font-medium
                                                 ${user.role === ROLES.OWNER
@@ -338,13 +345,13 @@ const avatarSrc = user.profilePicture || user.photoURL || '';
                                                     : 'bg-gray-100 text-gray-600'}`}>
                                                 {user.role || 'No role'}
                                             </span>
- 
+
                                             {/* Contact */}
                                             <div className="mt-1.5 w-full border-t border-gray-100 pt-1.5 space-y-0.5">
                                                 <p className="text-[10px] text-gray-500 truncate text-center">{user.email || '—'}</p>
                                                 <p className="text-[10px] text-gray-400 text-center">{user.phoneNumber || 'No phone'}</p>
                                             </div>
- 
+
                                             {/* Actions */}
                                             <div className="flex gap-1.5 mt-2 w-full">
                                                 <button
@@ -372,5 +379,5 @@ const avatarSrc = user.profilePicture || user.photoURL || '';
         </div>
     );
 };
- 
+
 export default ManageUsersPage;

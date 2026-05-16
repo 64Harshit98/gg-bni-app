@@ -13,7 +13,7 @@ import SearchableItemInput from '../../UseComponents/SearchIteminput';
 import { CustomButton } from '../../Components';
 import { incrementPurchaseCounter, peekNextPurchaseNumber } from '../../UseComponents/InvoiceCounter';
 import { Spinner } from '../../constants/Spinner';
-import { FiTrash2, FiEdit, FiCamera, FiX, FiChevronDown } from 'react-icons/fi';
+import { FiTrash2, FiEdit, FiCamera, FiX, FiChevronDown, FiSearch, FiMenu } from 'react-icons/fi';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
 import { usePurchaseSettings } from '../../context/SettingsContext';
 import { GenericCartList } from '../../Components/CartItem';
@@ -88,7 +88,8 @@ const PurchasePage: React.FC = () => {
   const isEditMode = !!purchaseIdToEdit;
 
   const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
-
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isSortOpen, setIsSortOpen] = useState(false);
   const [items, setItems] = useState<PurchaseItem[]>(() => {
     if (isEditMode) return [];
     try {
@@ -1141,7 +1142,110 @@ const PurchasePage: React.FC = () => {
         <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
           <div className="flex flex-col w-full md:w-3/4 h-full relative min-w-0 border-r border-gray-200 overflow-hidden">
             <div className="flex-shrink-0 bg-gray-50 border-b border-gray-200">
-              <div className="p-3 bg-white  flex gap-2 items-center">
+
+              {/* ── MOBILE: single toolbar row ── */}
+              <div className="flex md:hidden items-center gap-2 px-3 py-2 bg-white border-b border-gray-200">
+
+                {/* Search toggle icon */}
+                <button
+                  onClick={() => setIsSearchOpen(prev => !prev)}
+                  className={`p-2 rounded-sm border transition-colors flex-shrink-0 ${isSearchOpen ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-100 text-gray-600 border-gray-300'}`}
+                  title="Search"
+                >
+                  <FiSearch size={16} />
+                </button>
+
+                {/* Category pills - scrollable, fills remaining space */}
+                <div className="flex gap-1.5 overflow-x-auto flex-1 scrollbar-hide">
+                  {categories.map((cat) => (
+                    <button
+                      key={cat}
+                      onClick={() => setSelectedCategory(cat)}
+                      className={`px-2.5 py-1 rounded-sm text-xs whitespace-nowrap border transition flex-shrink-0
+            ${selectedCategory === cat
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'bg-gray-100 text-gray-700 border-gray-300'
+                        }`}
+                    >
+                      {cat === 'All' ? 'All' : itemGroupMap[cat] || 'uncategorized'}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Sort menu icon - rightmost, with dropdown */}
+                <div className="relative flex-shrink-0">
+                  <button
+                    onClick={() => setIsSortOpen(prev => !prev)}
+                    className={`p-2 rounded-sm border transition-colors ${isSortOpen ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-100 text-gray-600 border-gray-300'}`}
+                    title="Sort"
+                  >
+                    <FiMenu size={16} />
+                  </button>
+
+                  {/* Sort dropdown */}
+                  {isSortOpen && (
+                    <>
+                      {/* backdrop to close on outside tap */}
+                      <div className="fixed inset-0 z-10" onClick={() => setIsSortOpen(false)} />
+                      <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-sm shadow-lg z-20 min-w-[100px]">
+                        {([
+                          { value: 'az', label: 'A-Z' },
+                          { value: 'za', label: 'Z-A' },
+                          { value: 'price_asc', label: 'Price ↑' },
+                          { value: 'price_desc', label: 'Price ↓' },
+                        ] as const).map(opt => (
+                          <button
+                            key={opt.value}
+                            onClick={() => { setSortOrder(opt.value); setIsSortOpen(false); }}
+                            className={`w-full text-left px-3 py-2 text-xs font-medium transition-colors
+                  ${sortOrder === opt.value
+                                ? 'bg-blue-50 text-blue-600 font-semibold'
+                                : 'text-gray-700 hover:bg-gray-50'
+                              }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* ── MOBILE: expandable search bar + camera (below toolbar row) ── */}
+              {isSearchOpen && (
+                <div className="flex md:hidden gap-2 items-center px-3 py-2 bg-white border-b border-gray-200">
+                  <div className="flex-grow relative">
+                    <input
+                      type="text"
+                      value={gridSearchQuery}
+                      onChange={(e) => setGridSearchQuery(e.target.value)}
+                      placeholder="Search items by name or barcode..."
+                      className="w-full border border-gray-300 rounded-sm px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-8"
+                      autoComplete="off"
+                      autoFocus
+                    />
+                    {gridSearchQuery && (
+                      <button
+                        onClick={() => setGridSearchQuery('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        <FiX size={14} />
+                      </button>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setIsScannerOpen(true)}
+                    className='bg-blue-600 text-white p-3 rounded-sm hover:bg-blue-700 transition-colors flex-shrink-0'
+                    title="Scan Barcode"
+                  >
+                    <IconScanCircle width={22} height={22} />
+                  </button>
+                </div>
+              )}
+
+              {/* ── DESKTOP: original search bar (unchanged) ── */}
+              <div className="hidden md:flex p-3 bg-white gap-2 items-center">
                 <div className="flex-grow relative">
                   <input
                     type="text"
@@ -1169,13 +1273,14 @@ const PurchasePage: React.FC = () => {
                 </button>
               </div>
 
-              <div className="flex gap-2 overflow-x-auto px-3 pb-3 bg-white border-b border-gray-300">
+              {/* ── DESKTOP: category pills (unchanged) ── */}
+              <div className="hidden md:flex gap-2 overflow-x-auto px-3 pb-3 bg-white border-b border-gray-300">
                 {categories.map((cat) => (
                   <button
                     key={cat}
                     onClick={() => setSelectedCategory(cat)}
                     className={`px-3 py-1 rounded-sm text-xs whitespace-nowrap border transition
-                      ${selectedCategory === cat
+          ${selectedCategory === cat
                         ? 'bg-blue-600 text-white border-blue-600'
                         : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'
                       }`}
@@ -1184,8 +1289,9 @@ const PurchasePage: React.FC = () => {
                   </button>
                 ))}
               </div>
-              {/* Sort Bar */}
-              <div className="flex gap-1.5 items-center px-3 py-2 bg-white border-b border-gray-200 overflow-x-auto flex-shrink-0">
+
+              {/* ── DESKTOP: sort bar (unchanged) ── */}
+              <div className="hidden md:flex gap-1.5 items-center px-3 py-2 bg-white border-b border-gray-200 overflow-x-auto flex-shrink-0">
                 <span className="text-xs text-gray-400 font-medium uppercase tracking-wide whitespace-nowrap flex-shrink-0">Sort:</span>
                 {([
                   { value: 'az', label: 'A → Z' },

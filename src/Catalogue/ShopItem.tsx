@@ -258,9 +258,14 @@ const MyShop: React.FC = () => {
 
         try {
             const activeCat = resolvedGroupId || selectedCategory;
-            const itemsToUpdate = allItems.filter(item =>
-                activeCat === 'All' || item.itemGroupId === activeCat
-            );
+            const itemsToUpdate = allItems.filter(item => {
+                if (activeCat === 'All') return true;
+                const allIds = [
+                    ...(item.itemGroupId ? [item.itemGroupId] : []),
+                    ...(item.itemGroupIds || []),
+                ];
+                return allIds.includes(activeCat);
+            });
 
             const updates = itemsToUpdate.map(item =>
                 dbOperations.updateItem(item.id!, { isListed: newState })
@@ -269,11 +274,14 @@ const MyShop: React.FC = () => {
             await Promise.all(updates);
 
             setAllItems(prev =>
-                prev.map(item =>
-                    (activeCat === 'All' || item.itemGroupId === activeCat)
-                        ? { ...item, isListed: newState }
-                        : item
-                )
+                prev.map(item => {
+                    if (activeCat === 'All') return { ...item, isListed: newState };
+                    const allIds = [
+                        ...(item.itemGroupId ? [item.itemGroupId] : []),
+                        ...(item.itemGroupIds || []),
+                    ];
+                    return allIds.includes(activeCat) ? { ...item, isListed: newState } : item;
+                })
             );
         } catch (err) {
             console.error("Bulk toggle failed:", err);
@@ -331,9 +339,14 @@ const MyShop: React.FC = () => {
         }
 
         const activeCat = resolvedGroupId || selectedCategory;
-        const filtered = allItems.filter(item =>
-            activeCat === 'All' || item.itemGroupId === activeCat
-        );
+        const filtered = allItems.filter(item => {
+            if (activeCat === 'All') return true;
+            const allIds = [
+                ...(item.itemGroupId ? [item.itemGroupId] : []),
+                ...(item.itemGroupIds || []),
+            ];
+            return allIds.includes(activeCat);
+        });
 
         const allLive = filtered.length > 0 && filtered.every(item => item.isListed === true);
         setIsAllLive(allLive);
@@ -434,11 +447,17 @@ const MyShop: React.FC = () => {
             } else if (activeCat === 'All') {
                 matchesCategory = true;
             } else if (activeCat === 'uncategorized') {
-                // Show item if it has no group ID OR its group ID doesn't exist in DB anymore
-                matchesCategory = !item.itemGroupId || !validGroupIds.has(item.itemGroupId);
+                const allIds = [
+                    ...(item.itemGroupId ? [item.itemGroupId] : []),
+                    ...(item.itemGroupIds || []),
+                ];
+                matchesCategory = allIds.length === 0 || allIds.every(id => !validGroupIds.has(id));
             } else {
-                // Standard category match
-                matchesCategory = item.itemGroupId === activeCat;
+                const allIds = [
+                    ...(item.itemGroupId ? [item.itemGroupId] : []),
+                    ...(item.itemGroupIds || []),
+                ];
+                matchesCategory = allIds.includes(activeCat);
             }
 
             const itemName = item.name?.toLowerCase() || "";

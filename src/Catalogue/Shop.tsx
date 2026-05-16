@@ -268,14 +268,22 @@ const OrderingPage: React.FC = () => {
         const imgs = items
             .filter(item => {
                 if (groupId === 'uncategorized') {
-                    return !item.itemGroupId || !validGroupIds.has(item.itemGroupId);
+                    const allIds = [
+                        ...(item.itemGroupId ? [item.itemGroupId] : []),
+                        ...(item.itemGroupIds || []),
+                    ];
+                    return allIds.length === 0 || allIds.every(id => !validGroupIds.has(id));
                 }
-                return item.itemGroupId === groupId;
+                const allIds = [
+                    ...(item.itemGroupId ? [item.itemGroupId] : []),
+                    ...(item.itemGroupIds || []),
+                ];
+                return allIds.includes(groupId);
             })
             .map(item => item.imageUrl)
             .filter(Boolean) as string[];
 
-        return imgs.slice(0, 4); // max 4 images
+        return imgs.slice(0, 4);
     };
 
     // --- Order Logic ---
@@ -420,11 +428,16 @@ const OrderingPage: React.FC = () => {
                     {filteredItems.map(group => {
                         const validGroupIds = new Set(itemGroups.map(g => g.id));
                         const isVirtual = group.id === 'uncategorized';
-                        const itemCount = items.filter(item =>
-                            isVirtual
-                                ? (!item.itemGroupId || !validGroupIds.has(item.itemGroupId))
-                                : (item.itemGroupId === group.id)
-                        ).length;
+                        const itemCount = items.filter(item => {
+                            const allIds = [
+                                ...(item.itemGroupId ? [item.itemGroupId] : []),
+                                ...(item.itemGroupIds || []),
+                            ];
+                            if (isVirtual) {
+                                return allIds.length === 0 || allIds.every(id => !validGroupIds.has(id));
+                            }
+                            return allIds.includes(group.id!);
+                        }).length;
                         const collageImages = getGroupImages(group.id!);
 
                         return (

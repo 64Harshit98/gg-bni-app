@@ -102,11 +102,14 @@ const SharedCataloguePage: React.FC = () => {
     const [catalogueSettings, setCatalogueSettings] = useState<CatalogueSalesSettings | null>(null);
     const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
     const liveItems = useMemo(() => {
-        return allItems.filter(item =>
-            item.isListed &&
-            item.itemGroupId &&
-            item.itemGroupId !== 'uncategorized'
-        );
+        return allItems.filter(item => {
+            if (!item.isListed) return false;
+            const allIds = [
+                ...(item.itemGroupId ? [item.itemGroupId] : []),
+                ...(item.itemGroupIds || []),
+            ];
+            return allIds.length > 0 && allIds.some(id => id !== 'uncategorized');
+        });
     }, [allItems]);
     // const cartIconRef = useRef<HTMLButtonElement | null>(null);
     const cartCount = useMemo(() => cart.reduce((acc, curr) => acc + curr.quantity, 0), [cart]);
@@ -244,24 +247,34 @@ const SharedCataloguePage: React.FC = () => {
 
     const getGroupImages = (groupId: string): string[] => {
         const imgs = allItems
-            .filter(item => item.itemGroupId === groupId)
+            .filter(item => {
+                const allIds = [
+                    ...(item.itemGroupId ? [item.itemGroupId] : []),
+                    ...(item.itemGroupIds || []),
+                ];
+                return allIds.includes(groupId);
+            })
             .map(item => item.imageUrl)
             .filter(Boolean) as string[];
 
-        return imgs.slice(0, 4); // max 4 images
+        return imgs.slice(0, 4);
     };
 
     const filteredItems = useMemo(() => {
+        const getItemsForGroup = (groupId: string) =>
+            allItems.filter(item => {
+                const allIds = [
+                    ...(item.itemGroupId ? [item.itemGroupId] : []),
+                    ...(item.itemGroupIds || []),
+                ];
+                return allIds.includes(groupId);
+            });
         if (!searchQuery.trim()) {
-            return itemGroups.filter(group => {
-                if (!group.id) return false;
-
-                const itemCount = allItems.filter(
-                    item => item.itemGroupId === group.id
-                ).length;
-
-                return itemCount > 0;
-            })
+            return itemGroups
+                .filter(group => {
+                    if (!group.id) return false;
+                    return getItemsForGroup(group.id).length > 0;
+                })
                 .sort((a, b) => {
                     const aPinned = pinnedIds.has(a.id!);
                     const bPinned = pinnedIds.has(b.id!);
@@ -277,20 +290,12 @@ const SharedCataloguePage: React.FC = () => {
         return itemGroups
             .filter((group: ItemGroup) => {
                 if (!group.id) return false;
-
-                const groupItems = allItems.filter(
-                    (item) => item.itemGroupId === group.id
-                );
-
+                const groupItems = getItemsForGroup(group.id);
                 if (groupItems.length === 0) return false;
-
                 const catalogueMatch = fuzzyMatch(group.name, lowerQuery);
-
-                const itemMatch =
-                    groupItems.some((item: Item) =>
-                        fuzzyMatch(item.name, lowerQuery)
-                    ) ?? false;
-
+                const itemMatch = groupItems.some((item: Item) =>
+                    fuzzyMatch(item.name, lowerQuery)
+                );
                 return catalogueMatch || itemMatch;
             })
             .sort((a, b) => {
@@ -433,9 +438,13 @@ const SharedCataloguePage: React.FC = () => {
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-0.5">
                     {filteredItems.map(group => {
-                        const itemCount = allItems.filter(
-                            item => item.itemGroupId === group.id
-                        ).length;
+                        const itemCount = allItems.filter(item => {
+                            const allIds = [
+                                ...(item.itemGroupId ? [item.itemGroupId] : []),
+                                ...(item.itemGroupIds || []),
+                            ];
+                            return allIds.includes(group.id!);
+                        }).length;
                         const collageImages = getGroupImages(group.id!);
                         return (
                             <div

@@ -97,14 +97,14 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
       const uniqueNamesToCreate = new Set<string>();
 
       allItems.forEach(item => {
-        if (!item.itemGroupId) return;
-        const idOrName = item.itemGroupId;
-        if (groupMapById.has(idOrName)) return;
-
-        const lowerName = idOrName.toLowerCase().trim();
+        // Only process string itemGroupId, skip arrays (legacy guard)
+        const itemGroupId = Array.isArray(item.itemGroupId) ? item.itemGroupId[0] : item.itemGroupId;
+        if (!itemGroupId) return;
+        if (groupMapById.has(itemGroupId)) return;
+        const lowerName = itemGroupId.toLowerCase().trim();
         if (groupMapByName.has(lowerName)) return;
-
-        if (idOrName.length < 20) {
+        // Only create if it looks like a name, not a Firestore ID (IDs are 20+ chars)
+        if (itemGroupId.length < 20) {
           uniqueNamesToCreate.add(lowerName);
         }
       });
@@ -131,10 +131,12 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
       const itemsToUpdate: { itemId: string, newGroupId: string }[] = [];
 
       allItems.forEach(item => {
-        if (!item.itemGroupId) return;
-        if (groupMapById.has(item.itemGroupId)) return;
+        // Normalize: handle legacy array saves
+        const rawGroupId = Array.isArray(item.itemGroupId) ? item.itemGroupId[0] : item.itemGroupId;
+        if (!rawGroupId || typeof rawGroupId !== 'string') return;
+        if (groupMapById.has(rawGroupId)) return;
 
-        const lowerName = item.itemGroupId.toLowerCase().trim();
+        const lowerName = rawGroupId.toLowerCase().trim();
         const targetGroup = groupMapByName.get(lowerName);
 
         if (targetGroup && targetGroup.id) {
@@ -154,9 +156,15 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
       let uncategorizedCount = 0;
 
       allItems.forEach(item => {
-        const groupId = item.itemGroupId;
-        if (groupId && groupMapById.has(groupId)) {
-          counts[groupId] = (counts[groupId] || 0) + 1;
+        const groupIds: string[] = [
+          ...(Array.isArray(item.itemGroupIds) ? item.itemGroupIds : []),
+          ...(item.itemGroupId && !Array.isArray(item.itemGroupId) ? [item.itemGroupId] : []),
+        ].filter((id, index, self) => id && groupMapById.has(id) && self.indexOf(id) === index);
+
+        if (groupIds.length > 0) {
+          groupIds.forEach(gid => {
+            counts[gid] = (counts[gid] || 0) + 1;
+          });
         } else {
           uncategorizedCount++;
         }
@@ -231,8 +239,8 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
         const counts: Record<string, number> = {};
         let uncategorizedCount = 0;
         updated.forEach(item => {
-          const groupId = item.itemGroupId;
-          if (groupId && itemGroups.some(g => g.id === groupId)) {
+          const groupId = Array.isArray(item.itemGroupId) ? item.itemGroupId[0] : item.itemGroupId;
+          if (groupId && typeof groupId === 'string' && itemGroups.some(g => g.id === groupId)) {
             counts[groupId] = (counts[groupId] || 0) + 1;
           } else {
             uncategorizedCount++;
@@ -439,19 +447,30 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
             </div>
 
             <div className="overflow-y-auto flex-1 space-y-2">
-              {allItems.filter(item =>
-                viewingGroup.id === 'uncategorized'
-                  ? !item.itemGroupId || item.itemGroupId === '' || item.itemGroupId === 'uncategorized' || !itemGroups.some(g => g.id === item.itemGroupId)
-                  : item.itemGroupId === viewingGroup.id
-              ).length === 0 ? (
+              {allItems.filter(item => {
+                const ids: string[] = [
+                  ...(Array.isArray(item.itemGroupIds) ? item.itemGroupIds : []),
+                  ...(item.itemGroupId && !Array.isArray(item.itemGroupId) ? [item.itemGroupId] : []),
+                ].filter((id, index, self) => id && self.indexOf(id) === index);
+
+                if (viewingGroup.id === 'virtual-uncategorized') {
+                  return ids.length === 0 || !ids.some(id => itemGroups.some(g => g.id === id));
+                }
+                return ids.includes(viewingGroup.id!);
+              }).length === 0 ? (
                 <p className="text-center text-gray-400 py-8">No items in this group.</p>
               ) : (
-                allItems
-                  .filter(item =>
-                    viewingGroup.id === 'uncategorized'
-                      ? !item.itemGroupId || item.itemGroupId === '' || item.itemGroupId === 'uncategorized' || !itemGroups.some(g => g.id === item.itemGroupId)
-                      : item.itemGroupId === viewingGroup.id
-                  )
+                allItems.filter(item => {
+                  const ids: string[] = [
+                    ...(Array.isArray(item.itemGroupIds) ? item.itemGroupIds : []),
+                    ...(item.itemGroupId && !Array.isArray(item.itemGroupId) ? [item.itemGroupId] : []),
+                  ].filter((id, index, self) => id && self.indexOf(id) === index);
+
+                  if (viewingGroup.id === 'virtual-uncategorized') {
+                    return ids.length === 0 || !ids.some(id => itemGroups.some(g => g.id === id));
+                  }
+                  return ids.includes(viewingGroup.id!);
+                })
                   .sort((a, b) => a.name.localeCompare(b.name))
                   .map(item => {
                     const stock = item.stock || 0;

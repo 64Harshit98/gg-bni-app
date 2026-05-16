@@ -48,6 +48,8 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
     const cameraInputRef = useRef<HTMLInputElement>(null);
     const dbOperations = useDatabase();
     const [formData, setFormData] = useState<Partial<Item>>({});
+    const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+    const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
 
     const [isFetching, setIsFetching] = useState(false);
@@ -120,7 +122,9 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                     setImagePreview(liveData.imageUrl || null);
                     setImageFile(null);
                     setUploadProgress(null);
-
+                    const existingIds: string[] = liveData.itemGroupIds as string[] ||
+                        (liveData.itemGroupId ? [liveData.itemGroupId as string] : []);
+                    setSelectedCategories(existingIds);
                     setTimeout(() => {
                         firstInputRef.current?.focus();
                     }, 100);
@@ -140,6 +144,8 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 setImagePreview(null);
                 setUploadProgress(null);
                 setUnitChangeWarning(false);
+                setSelectedCategories([]);
+                setShowCategoryDropdown(false);
             }
         };
 
@@ -267,7 +273,8 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 taxRate: Number(formData.tax || 0),
                 hsnSac: String(formData.hsnSac || ''),
                 discount: Number(formData.discount || 0),
-                itemGroupId: String(formData.itemGroupId || ''),
+                itemGroupId: selectedCategories[0] || '',
+                itemGroupIds: selectedCategories,
                 barcode: String(formData.barcode || ''),
                 isListed: formData.isListed ?? false,
                 imageUrl: newImageUrl,
@@ -419,25 +426,17 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                     />
                                 </div>
-
-                                {/* --- Category --- */}
                                 <div>
-                                    <label className="text-sm font-medium mb-1 block">Category</label>
-                                    <select
-                                        name="itemGroupId"
-                                        value={formData.itemGroupId || ''}
-                                        onChange={handleChange}
+                                    <label htmlFor="edit-barcode" className="text-sm font-medium mb-1 block">Barcode</label>
+                                    <input
+                                        type="text" id="edit-barcode" name="barcode"
+                                        value={formData.barcode || ''} onChange={handleChange}
                                         className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                    >
-                                        <option value="" disabled>Select category</option>
-                                        <option value="uncategorized">Uncategorized</option>
-                                        {itemGroups.map((group) => (
-                                            <option key={group.id} value={group.id}>
-                                                {group.name}
-                                            </option>
-                                        ))}
-                                    </select>
+                                        disabled={isSaving}
+                                    />
                                 </div>
+
+
 
                                 {/* --- Sales Price --- */}
                                 <div>
@@ -456,7 +455,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
 
                                 {/* --- Purchase Price --- */}
                                 <div>
-                                    <label className="text-sm font-medium mb-1 block">Purchase (₹)</label>
+                                    <label className="text-sm font-medium mb-1 block">Purchase Price (₹)</label>
                                     <input
                                         type="number"
                                         name="purchasePrice"
@@ -522,78 +521,73 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                     />
                                 </div>
                             </div>
-                            <div>
-                                <label className="text-sm font-medium leading-none mb-1 block">MOQ</label>
-                                <input
-                                    type="number"
-                                    name="moq"
-                                    value={formData.moq ?? ''}
-                                    onChange={handleChange}
-                                    className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                    disabled={isSaving}
-                                />
-                            </div>
-                            <div>
-                                {unitChangeWarning && (
-                                    <div className="mb-2 flex items-start gap-2 rounded-sm border border-yellow-300 bg-yellow-50 px-3 py-2 text-sm text-yellow-800">
-                                        <span>⚠️</span>
-                                        <span>Unit changed — MRP and Sales Price are still the same values. Please review and update them for the new unit.</span>
-                                        <button onClick={() => setUnitChangeWarning(false)} className="ml-auto text-yellow-600 hover:text-yellow-900">
-                                            <FiX size={14} />
-                                        </button>
-                                    </div>
-                                )}
-                                <label htmlFor="edit-unit" className="text-sm font-medium leading-none mb-1 block">Unit</label>
-                                <div className="flex gap-2">
-                                    <select
-                                        id="edit-unit"
-                                        name="unit"
-                                        value={formData.unit || ''}
-                                        onChange={(e) => {
-                                            handleChange(e);
-                                            // Clear the packet size if they switch away from 'pkt'
-                                            if (e.target.value !== 'pkt') {
-                                                setFormData(prev => ({ ...prev, packetSize: undefined }));
-                                            }
-                                            if (e.target.value && e.target.value !== '') {
-                                                setUnitChangeWarning(true);
-                                            }
-                                        }}
-                                        className={`flex h-10 rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50 ${formData.unit === 'pkt' ? 'w-1/2' : 'w-full'}`}
-                                        disabled={isSaving}
-                                    >
-                                        {UNIT_OPTIONS.map(u => (
-                                            <option key={u.value} value={u.value} disabled={u.value === ''}>
-                                                {u.label}
-                                            </option>
-                                        ))}
-                                    </select>
 
-                                    {formData.unit === 'pkt' && (
-                                        <input
-                                            type="number"
-                                            name="packetSize"
-                                            value={formData.packetSize ?? ''}
-                                            onChange={handleChange}
-                                            placeholder="Qty per pkt"
-                                            className="flex h-10 w-1/2 rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
-                                            disabled={isSaving}
-                                            min="1"
-                                        />
-                                    )}
-                                </div>
-                            </div>
-                            {/* --- Discount & Barcode Row --- */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label htmlFor="edit-barcode" className="text-sm font-medium leading-none mb-1 block">Barcode</label>
+                                    <label className="text-sm font-medium leading-none mb-1 block">MOQ</label>
                                     <input
-                                        type="text" id="edit-barcode" name="barcode"
-                                        value={formData.barcode || ''} onChange={handleChange}
+                                        type="number"
+                                        name="moq"
+                                        value={formData.moq ?? ''}
+                                        onChange={handleChange}
                                         className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         disabled={isSaving}
                                     />
                                 </div>
+                                <div>
+                                    {unitChangeWarning && (
+                                        <div className="mb-2 flex items-start gap-2 rounded-sm border border-yellow-300 bg-yellow-50 px-3 py-2 text-sm text-yellow-800">
+                                            <span>⚠️</span>
+                                            <span>Unit changed — MRP and Sales Price are still the same values. Please review and update them for the new unit.</span>
+                                            <button onClick={() => setUnitChangeWarning(false)} className="ml-auto text-yellow-600 hover:text-yellow-900">
+                                                <FiX size={14} />
+                                            </button>
+                                        </div>
+                                    )}
+                                    <label htmlFor="edit-unit" className="text-sm font-medium leading-none mb-1 block">Unit</label>
+                                    <div className="flex gap-2">
+                                        <select
+                                            id="edit-unit"
+                                            name="unit"
+                                            value={formData.unit || ''}
+                                            onChange={(e) => {
+                                                handleChange(e);
+                                                // Clear the packet size if they switch away from 'pkt'
+                                                if (e.target.value !== 'pkt') {
+                                                    setFormData(prev => ({ ...prev, packetSize: undefined }));
+                                                }
+                                                if (e.target.value && e.target.value !== '') {
+                                                    setUnitChangeWarning(true);
+                                                }
+                                            }}
+                                            className={`flex h-10 rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50 ${formData.unit === 'pkt' ? 'w-1/2' : 'w-full'}`}
+                                            disabled={isSaving}
+                                        >
+                                            {UNIT_OPTIONS.map(u => (
+                                                <option key={u.value} value={u.value} disabled={u.value === ''}>
+                                                    {u.label}
+                                                </option>
+                                            ))}
+                                        </select>
+
+                                        {formData.unit === 'pkt' && (
+                                            <input
+                                                type="number"
+                                                name="packetSize"
+                                                value={formData.packetSize ?? ''}
+                                                onChange={handleChange}
+                                                placeholder="Qty per pkt"
+                                                className="flex h-10 w-1/2 rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
+                                                disabled={isSaving}
+                                                min="1"
+                                            />
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                            {/* --- Stock & Description Row --- */}
+                            <div className="grid grid-cols-2 gap-4">
+
                                 <div>
                                     <label htmlFor="edit-stock" className="text-sm font-medium leading-none mb-1 block">Stock</label>
                                     <input
@@ -608,15 +602,103 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         disabled={isSaving}
                                     />
                                 </div>
+                                <div>
+                                    <label htmlFor="edit-description" className="text-sm font-medium leading-none mb-1 block">Description</label>
+                                    <input
+                                        type="text" id="edit-description" name="description"
+                                        value={formData.description || ''} onChange={handleChange}
+                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        disabled={isSaving}
+                                    />
+                                </div>
                             </div>
+
+                            {/* --- Category --- */}
                             <div>
-                                <label htmlFor="edit-description" className="text-sm font-medium leading-none mb-1 block">Description</label>
-                                <input
-                                    type="text" id="edit-description" name="description"
-                                    value={formData.description || ''} onChange={handleChange}
-                                    className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                <label className="text-sm font-medium mb-1 block">Category</label>
+
+                                {/* Primary category dropdown */}
+                                <select
+                                    value={selectedCategories[0] || ''}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setSelectedCategories(prev => {
+                                            const rest = prev.slice(1);
+                                            return val ? [val, ...rest] : rest;
+                                        });
+                                    }}
                                     disabled={isSaving}
-                                />
+                                    className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    <option value="">Select category</option>
+                                    <option value="uncategorized">Uncategorized</option>
+                                    {itemGroups.map((group) => (
+                                        <option key={group.id} value={group.id}>
+                                            {group.name}
+                                        </option>
+                                    ))}
+                                </select>
+
+                                {/* Extra category chips */}
+                                {selectedCategories.length > 1 && (
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                        {selectedCategories.slice(1).map((catId) => {
+                                            const group = itemGroups.find(g => g.id === catId);
+                                            if (!group) return null;
+                                            return (
+                                                <span key={catId} className="inline-flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-700 text-xs px-2 py-1 rounded-full">
+                                                    {group.name}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSelectedCategories(prev => prev.filter(id => id !== catId))}
+                                                        className="ml-1 text-blue-400 hover:text-red-500 font-bold leading-none"
+                                                    >×</button>
+                                                </span>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+
+                                {/* Add more category */}
+                                {!showCategoryDropdown ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowCategoryDropdown(true)}
+                                        className="mt-2 text-sm text-sky-500 hover:underline"
+                                    >
+                                        + Add more category
+                                    </button>
+                                ) : (
+                                    <div className="mt-2 flex gap-2 items-center">
+                                        <select
+                                            defaultValue=""
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                if (!val) return;
+                                                if (!selectedCategories.includes(val)) {
+                                                    setSelectedCategories(prev => [...prev, val]);
+                                                }
+                                                setShowCategoryDropdown(false);
+                                            }}
+                                            className="flex-1 min-w-0 h-10 rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                                            disabled={isSaving}
+                                        >
+                                            <option value="">Add more</option>
+                                            {itemGroups
+                                                .filter(g => !selectedCategories.includes(g.id!))
+                                                .map(g => (
+                                                    <option key={g.id} value={g.id!}>{g.name}</option>
+                                                ))}
+                                        </select>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowCategoryDropdown(false)}
+                                            className="text-xs text-gray-400 hover:text-gray-600"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                )}
                             </div>
 
                             <ShowWrapper requiredPermission={Permissions.ViewCatalogue}>

@@ -13,6 +13,7 @@ interface CartItem {
     id: string | number
     name: string
     category: string
+    groupId?: string
     mrp: number
     salesPrice: number
     quantity: number
@@ -156,7 +157,6 @@ const CartPage: React.FC = () => {
     const [approvalError, setApprovalError] = useState<string | null>(null);
     const [specialInstruction, setSpecialInstruction] = useState("");
 
-
     useEffect(() => {
         const savedCart = localStorage.getItem('temp_cart');
         console.log("Saved:", savedCart)
@@ -166,7 +166,8 @@ const CartPage: React.FC = () => {
                 const formattedItems: CartItem[] = parsedCart.map((entry: any) => ({
                     id: entry.item.id,
                     name: entry.item.name,
-                    category: entry.item.groupId || entry.item.category || 'Product',
+                    category: entry.item.groupId || entry.item.groupid || entry.item.category || 'Product',
+                    groupId: entry.item.groupId || entry.item.groupid || '',
                     mrp: entry.item.mrp || 0,
                     salesPrice: entry.item.salesPrice || entry.item.mrp || 0,
                     quantity: entry.quantity,
@@ -183,7 +184,6 @@ const CartPage: React.FC = () => {
             }
         }
     }, []);
-
 
     useEffect(() => {
         if (!effectiveCompanyId) return;
@@ -261,14 +261,10 @@ const CartPage: React.FC = () => {
         return totalPay >= (salesSettings.minimumOrderValue || 0);
     };
 
-
-    // Add a parameter to control if we actually increment
     const isUserApproved = leadStatus === "approved";
     const hidePriceEnabled = salesSettings?.hidePrice === true;
     const approvalEnabled = salesSettings?.requireApproval === true;
     const shouldShowPrice = !hidePriceEnabled && (!approvalEnabled || isUserApproved);
-
-    // 1. Remove syncToUpcoming from your component scope entirely.
 
     const placeOrder = async () => {
         // Immediate lock to prevent double-clicks
@@ -321,6 +317,8 @@ const CartPage: React.FC = () => {
                     specialInstruction: specialInstruction || "",
                     items: cartItems.map(i => ({
                         id: String(i.id),
+                        itemId: String(i.id),
+                        groupId: i.groupId || i.category,
                         name: i.name,
                         quantity: Number(i.quantity),
                         mrp: Number(i.mrp),
@@ -383,8 +381,6 @@ const CartPage: React.FC = () => {
         }
     };
 
-    // Update these existing functions to remove the sync call:
-
     const updateQuantity = (id: string | number, delta: number) => {
         const updatedItems = cartItems
             .map(item => {
@@ -403,7 +399,6 @@ const CartPage: React.FC = () => {
             item: { ...i },
             quantity: i.quantity
         }))));
-        // syncToUpcoming(updatedItems); <-- REMOVED
     };
 
     const removeFromCart = (id: string | number) => {
@@ -413,7 +408,6 @@ const CartPage: React.FC = () => {
             item: { ...i },
             quantity: i.quantity
         }))));
-        // syncToUpcoming(updatedCart); <-- REMOVED
     };
 
     useEffect(() => {
@@ -444,6 +438,7 @@ const CartPage: React.FC = () => {
             setIsDrawerOpen(false);
         }
     };
+
     if (domainResolveError) {
         return (
             <div className="flex flex-col items-center justify-center h-screen bg-[#E9F0F7] text-[#1A3B5D]">

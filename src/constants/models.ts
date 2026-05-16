@@ -20,7 +20,8 @@ export interface Item {
   purchasediscount?: number;
   tax: number;
   taxRate?: number;
-  itemGroupId: string;
+  itemGroupId?: string;
+  itemGroupIds?: string[];
   isDeleted?: boolean;
   salesPrice: number;
   stock: number;

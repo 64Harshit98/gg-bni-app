@@ -51,8 +51,17 @@ const CatalogueItemReport: React.FC = () => {
   const { filteredItems, summary } = useMemo(() => {
     let newFilteredItems = items.filter((item) => {
       if (!appliedItemGroupId) return true;
-      const itemGroupName = item.itemGroupId || UNASSIGNED_GROUP_NAME;
-      return itemGroupName === appliedItemGroupId;
+      if (appliedItemGroupId === UNASSIGNED_GROUP_NAME) {
+        const hasNoGroup =
+          (!item.itemGroupIds || item.itemGroupIds.length === 0) && !item.itemGroupId;
+        return hasNoGroup;
+      }
+      const groupIds: string[] = item.itemGroupIds?.length
+        ? item.itemGroupIds
+        : item.itemGroupId
+          ? [item.itemGroupId]
+          : [];
+      return groupIds.includes(appliedItemGroupId);
     });
 
     //  SEARCH 
@@ -140,7 +149,9 @@ const CatalogueItemReport: React.FC = () => {
     return {
       name: item.name || '-',
       barcode: item.barcode || '-',
-      itemGroup: getGroupName(item.itemGroupId),
+      itemGroup: item.itemGroupIds?.length
+        ? item.itemGroupIds.map((id) => getGroupName(id)).join(', ')
+        : getGroupName(item.itemGroupId),
       mrp: item.mrp || 0,
       purchasePrice: item.purchasePrice || 0,
       purchaseDiscount: item.purchasediscount || 0,
@@ -263,7 +274,9 @@ const CatalogueItemReport: React.FC = () => {
         body: filteredItems.map((item) => {
           return [
             item.name || 'N/A',
-            getGroupName(item.itemGroupId),
+            item.itemGroupIds?.length
+              ? item.itemGroupIds.map((id) => getGroupName(id)).join(', ')
+              : getGroupName(item.itemGroupId),
             (item.stock ?? 0).toString(),
             (item.mrp ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
             `${((item.mrp && item.purchasePrice) ? (((item.mrp - item.purchasePrice) / item.mrp) * 100) : 0).toFixed(2)}%`,

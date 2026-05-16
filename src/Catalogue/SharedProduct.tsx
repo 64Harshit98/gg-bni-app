@@ -394,7 +394,7 @@ const SharedProduct: React.FC = () => {
                 unitMultiplier: item.unitMultiplier || 1,
                 mrp: (item.mrp || 0),
                 salesPrice: ((item.salesPrice ?? item.mrp) || 0),
-                groupid: item.itemGroupId
+                groupid: resolvedGroupId || item.itemGroupId,
             };
             const newCart = existing
                 ? prev.map(i =>
@@ -410,7 +410,7 @@ const SharedProduct: React.FC = () => {
                     newCart.map(c => ({
                         item: {
                             ...c.item,
-                            groupId: c.item.itemGroupId
+                            groupId: (c.item as any).groupid || c.item.itemGroupId  // preserve the captured group context
                         },
                         quantity: c.quantity
                     }))
@@ -800,7 +800,11 @@ const SharedProduct: React.FC = () => {
                 return false;
             }
 
-            const matchesGroup = item.itemGroupId === resolvedGroupId;
+            const allIds = [
+                ...(item.itemGroupId ? [item.itemGroupId] : []),
+                ...(item.itemGroupIds || []),
+            ];
+            const matchesGroup = allIds.includes(resolvedGroupId!);
 
             return (
                 matchesGroup &&

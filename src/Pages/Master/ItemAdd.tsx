@@ -113,7 +113,8 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   const [itemTax, setItemTax] = useState<string>('');
   const [itemAmount, setItemAmount] = useState<string>('');
   const [restockQuantity, setRestockQuantity] = useState<string>('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState<boolean>(false);
   const [itemBarcode, setItemBarcode] = useState<string>('');
   const [fetchedAutoBarcode, setFetchedAutoBarcode] = useState<string>('');
   const [hsnCode, setHsnCode] = useState<string>('');
@@ -170,7 +171,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         if (parsed.itemTax) setItemTax(parsed.itemTax);
         if (parsed.itemAmount) setItemAmount(parsed.itemAmount);
         if (parsed.restockQuantity) setRestockQuantity(parsed.restockQuantity);
-        if (parsed.selectedCategory) setSelectedCategory(parsed.selectedCategory);
+        if (parsed.selectedCategories) setSelectedCategories(parsed.selectedCategories);
         if (parsed.itemBarcode) setItemBarcode(parsed.itemBarcode);
         if (parsed.hsnCode) setHsnCode(parsed.hsnCode);
         if (parsed.itemUnit) setItemUnit(parsed.itemUnit);
@@ -186,11 +187,11 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   useEffect(() => {
     const draft = {
       itemName, itemMRP, itemSalesPrice, itemPurchasePrice, itemDiscount,
-      PurchaseDiscount, itemTax, itemAmount, restockQuantity, selectedCategory,
+      PurchaseDiscount, itemTax, itemAmount, restockQuantity, selectedCategories,
       itemBarcode, hsnCode, itemUnit, packetSize, moq, imageUrl
     };
     sessionStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
-  }, [itemName, itemMRP, itemSalesPrice, itemPurchasePrice, itemDiscount, PurchaseDiscount, itemTax, itemAmount, restockQuantity, selectedCategory, itemBarcode, hsnCode, itemUnit, packetSize, moq, imageUrl]);
+  }, [itemName, itemMRP, itemSalesPrice, itemPurchasePrice, itemDiscount, PurchaseDiscount, itemTax, itemAmount, restockQuantity, selectedCategories, itemBarcode, hsnCode, itemUnit, packetSize, moq, imageUrl]);
 
   const getUnitLabel = () => {
     if (itemUnit === 'box') return '10 pcs';
@@ -214,7 +215,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       setLoading(true);
       const groups = await dbOperations.getItemGroups();
       setItemGroups(groups);
-      if (groups.length === 0) setSelectedCategory('');
+      if (groups.length === 0) setSelectedCategories([]);
     } catch (err) {
       setError('Failed to load item categories.');
     } finally {
@@ -267,11 +268,12 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     setHsnCode('');
     setItemUnit('pcs');
     setPacketSize('');
-    setSelectedCategory(itemGroups.length > 0 ? itemGroups[0].id! : '');
     setImageUrl('');
     setImageFile(null);
     setImagePreview(null);
     setMoq('1');
+    setSelectedCategories([]);
+    setShowCategoryDropdown(false);
     sessionStorage.removeItem(DRAFT_STORAGE_KEY);
     if (imageInputRef.current) imageInputRef.current.value = '';
     fetchNextBarcode();
@@ -340,7 +342,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     if (itemSettings.requireImage && !imageFile && !imageUrl.trim()) {
       setModal({ message: 'Product Image is required.', type: State.ERROR }); return;
     }
-    if (itemSettings.requireCategory && !selectedCategory) {
+    if (itemSettings.requireCategory && selectedCategories.length === 0) {
       setModal({ message: 'Category is required.', type: State.ERROR }); return;
     }
     if (itemSettings.requirePurchasePrice && !itemPurchasePrice.trim()) {
@@ -424,7 +426,8 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         purchasediscount: finalPurchaseDiscount,
         tax: parseFloat(itemTax) || 0,
         hsnSac: hsnCode.trim(),
-        itemGroupId: selectedCategory,
+        itemGroupId: selectedCategories[0] || '',
+        itemGroupIds: selectedCategories,
         stock: parseInt(itemAmount, 10) || 0,
         amount: parseInt(itemAmount, 10) || 0,
         barcode: finalBarcode,
@@ -643,7 +646,10 @@ const ItemAdd: React.FC<ItemAddProps> = ({
           if (updateFields.salesPrice) updates.salesPrice = rowSale;
           if (updateFields.purchasePrice) updates.purchasePrice = rowPurchase;
           if (updateFields.stock) { updates.stock = stockVal; updates.amount = stockVal; }
-          if (updateFields.category && targetGroupId) updates.itemGroupId = targetGroupId;
+          if (updateFields.category && targetGroupId) {
+            updates.itemGroupId = targetGroupId;
+            updates.itemGroupIds = [targetGroupId];
+          }
           if (updateFields.discount) { updates.discount = rowSaleDiscount; updates.purchasediscount = rowPurchaseDiscount; }
           if (updateFields.discount) { updates.discount = rowSaleDiscount; updates.purchasediscount = rowPurchaseDiscount; }
           if (finalUploadedImageUrl) updates.imageUrl = finalUploadedImageUrl; // <-- ADD THIS
@@ -680,7 +686,8 @@ const ItemAdd: React.FC<ItemAddProps> = ({
             purchasediscount: rowPurchaseDiscount,
             tax: rowTax,
             hsnSac: rowHsn,
-            itemGroupId: targetGroupId,
+            itemGroupId: targetGroupId || '',
+            itemGroupIds: targetGroupId ? [targetGroupId] : [],
             stock: stockVal,
             amount: stockVal,
             barcode: finalRowBarcode,
@@ -1013,18 +1020,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                 <input type="text" value={itemName} onChange={(e) => setItemName(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50" placeholder="e.g. Apple" />
               </div>
 
-              {/* --- Barcode Row (Full Width) --- */}
-              <div>
-                <div className="flex items-center mb-1">
-                  <label className={`text-sm font-medium leading-none block ${itemSettings?.requireBarcode ? reqClasses : ''} mr-2`}>Barcode</label>
-                  <InfoTooltip text="Unique identifier for scanning the product." />
-                </div>
-                <div className="flex gap-2">
-                  <input type="text" value={itemBarcode} onChange={(e) => setItemBarcode(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50" placeholder="Scan or Type" />
-                  <button type="button" onClick={() => setIsScannerOpen(true)} className="bg-gray-700 text-white px-4 rounded-sm flex items-center justify-center h-10"><IconScanCircle width={20} height={20} /></button>
-                </div>
-                <p className="text-[10px] text-gray-400 mt-1">This is the next available number. You can change it if needed.</p>
-              </div>
+
 
               {/* --- MRP & Category Row --- */}
               <div className="grid grid-cols-2 gap-4">
@@ -1036,17 +1032,19 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                   <input type="number" value={itemMRP} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemMRP(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="0.00" />
                   <p className="text-[10px] text-gray-400 mt-1">Required if Sale Price is empty</p>
                 </div>
+                {/* --- Barcode --- */}
                 <div>
                   <div className="flex items-center mb-1">
-                    <label className={`text-sm font-medium leading-none block ${(itemSettings as any)?.requireCategory ? reqClasses : ''} mr-2`}>Category</label>
-                    <InfoTooltip text="Group this item belongs to (e.g., Electronics)." />
+                    <label className={`text-sm font-medium leading-none block ${itemSettings?.requireBarcode ? reqClasses : ''} mr-2`}>Barcode</label>
+                    <InfoTooltip text="Unique identifier for scanning the product." />
                   </div>
-                  <select value={selectedCategory} onChange={(e) => { if (e.target.value === 'ADD_NEW_GROUP') { navigate(routes.itemGroup); } else { setSelectedCategory(e.target.value); } }} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500">
-                    <option value="">Uncategorized</option>
-                    <option value="ADD_NEW_GROUP" className="font-semibold bg-gray-100">+ Add New Group</option>
-                    {itemGroups.map(g => (<option key={g.id} value={g.id!}>{g.name}</option>))}
-                  </select>
+                  <div className="flex gap-2">
+                    <input type="text" value={itemBarcode} onChange={(e) => setItemBarcode(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50" placeholder="Scan or Type" />
+                    <button type="button" onClick={() => setIsScannerOpen(true)} className="bg-gray-700 text-white px-4 rounded-sm flex items-center justify-center h-10"><IconScanCircle width={20} height={20} /></button>
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-1">This is the next available number. You can change it if needed.</p>
                 </div>
+
               </div>
 
               {/* --- Sales Price & Purchase Price Row --- */}
@@ -1144,7 +1142,92 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                   </div>
                 </div>
               </div>
+              <div>
+                <div className="flex items-center mb-1">
+                  <label className={`text-sm font-medium text-gray-600 ${(itemSettings as any)?.requireCategory ? reqClasses : ''} mr-2`}>
+                    Category
+                  </label>
+                  <InfoTooltip text="Select a primary category. Add more as catalogue-only tags below." />
+                </div>
 
+                {/* Primary category dropdown — always visible */}
+                <select
+                  value={selectedCategories[0] || ''}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === 'ADD_NEW_GROUP') { navigate(routes.itemGroup); return; }
+                    setSelectedCategories(prev => {
+                      const rest = prev.slice(1); // keep extra categories
+                      return val ? [val, ...rest] : rest;
+                    });
+                  }}
+                  className={`flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500`}
+                >
+                  <option value="">Select category</option>
+                  <option value="ADD_NEW_GROUP" className="font-semibold bg-gray-100">+ Add New Group</option>
+                  {itemGroups.map(g => (
+                    <option key={g.id} value={g.id!}>{g.name}</option>
+                  ))}
+                </select>
+
+                {/* Extra categories as "Catalogue only" chips */}
+                {selectedCategories.length > 1 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {selectedCategories.slice(1).map((catId) => {
+                      const group = itemGroups.find(g => g.id === catId);
+                      if (!group) return null;
+                      return (
+                        <span key={catId} className={`inline-flex items-center gap-1 ${activeTheme.panelBg} border ${activeTheme.panelBorder} ${activeTheme.panelHeader} text-xs px-2 py-1 rounded-full`}>
+                          {group.name}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedCategories(prev => prev.filter(id => id !== catId))}
+                            className={`ml-1 ${activeTheme.panelSubText} hover:text-red-500 font-bold leading-none`}
+                          >×</button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Add more category link */}
+                {!showCategoryDropdown ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowCategoryDropdown(true)}
+                    className={`mt-2 text-sm ${activeTheme.text} hover:underline`}
+                  >
+                    + Add more category
+                  </button>
+                ) : (
+                  <div className="mt-2 flex gap-2 items-center">
+                    <select
+                      defaultValue=""
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (!val) return;
+                        if (val === 'ADD_NEW_GROUP') { navigate(routes.itemGroup); return; }
+                        if (!selectedCategories.includes(val)) {
+                          setSelectedCategories(prev => [...prev, val]);
+                        }
+                        setShowCategoryDropdown(false);
+                      }}
+                      className={`flex-1 min-w-0 p-2 border border-gray-300 rounded-sm bg-white text-sm ${activeTheme.focusRing}`}
+                    >
+                      <option value="">Add more</option>
+                      <option value="ADD_NEW_GROUP" className="font-semibold bg-gray-100">+ Add New Group</option>
+                      {itemGroups
+                        .filter(g => !selectedCategories.includes(g.id!))
+                        .map(g => (<option key={g.id} value={g.id!}>{g.name}</option>))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setShowCategoryDropdown(false)}
+                      className="text-xs text-gray-400 hover:text-gray-600"
+                    >Cancel</button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

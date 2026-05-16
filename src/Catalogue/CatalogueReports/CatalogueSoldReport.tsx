@@ -27,6 +27,7 @@ export interface AggregatedItem {
     id: string;
     name: string;
     itemGroup: string;
+    groupId: string;
     quantitySold: number;
     valueSold: number;
 }
@@ -257,30 +258,42 @@ const ItemsSoldReport: React.FC = () => {
                 .filter((item: any) => item && item.quantity > 0)
                 .forEach((item: any) => {
                     const id = item.productId || item.id || 'unknown';
+                    console.log('Order item raw:', {
+                        name: item.name,
+                        groupId: item.groupId,
+                        itemGroupId: item.itemGroupId,
+                        groupid: item.groupid,
+                        category: item.category,
+                        allKeys: Object.keys(item)
+                    });
+                    console.log('itemGroupMap:', itemGroupMap);
                     const groupId =
                         item.groupId ||
                         item.itemGroupId ||
                         item.groupid ||
-                        item.itemGroup ||
                         item.group?.id ||
                         null;
+                    const resolvedGroupName =
+                        (groupId && itemGroupMap[groupId]) ||   // ID → name (normal case)
+                        item.groupName ||
+                        (groupId) ||                             // groupId IS the name (your current data)
+                        item.category ||
+                        'Uncategorized';
 
-                    if (!itemMap.has(id)) {
-                        itemMap.set(id, {
-                            id,
+                    const compositeKey = `${id}__${groupId || 'uncategorized'}`;
+
+                    if (!itemMap.has(compositeKey)) {
+                        itemMap.set(compositeKey, {
+                            id: compositeKey,
                             name: item.name || 'Unknown Item',
-                            //itemGroup: itemGroupMap[item.itemGroupId] || item.category || 'Uncategorized',
-                            itemGroup:
-                                (groupId && itemGroupMap[groupId]) ||
-                                item.groupName ||
-                                item.category ||
-                                'Uncategorized',
+                            groupId: groupId || '',
+                            itemGroup: resolvedGroupName,
                             quantitySold: 0,
                             valueSold: 0,
                         });
                     }
 
-                    const existingItem = itemMap.get(id)!;
+                    const existingItem = itemMap.get(compositeKey)!;
                     const qty = item.quantity || 1;
 
                     const pricePerItem = item.effectiveUnitPrice || item.customPrice || item.salesPrice || item.mrp || 0;

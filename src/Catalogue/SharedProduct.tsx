@@ -818,8 +818,8 @@ const SharedProduct: React.FC = () => {
             if (aPinned !== bPinned) return aPinned ? -1 : 1;
             if (sortOrder === 'A-Z') return a.name.localeCompare(b.name);
             if (sortOrder === 'Z-A') return b.name.localeCompare(a.name);
-            if (sortOrder === 'Price: Low-High') return (a.mrp || 0) - (b.mrp || 0);
-            if (sortOrder === 'Price: High-Low') return (b.mrp || 0) - (a.mrp || 0);
+            if (sortOrder === 'Price: Low-High') return (a.salesPrice || a.mrp || 0) - (b.salesPrice || b.mrp || 0);
+            if (sortOrder === 'Price: High-Low') return (b.salesPrice || b.mrp || 0) - (a.salesPrice || a.mrp || 0);
             return 0;
         });
     }, [allItems, searchQuery, sortOrder, resolvedGroupId, catalogueSettings, pinnedIds]);
@@ -1192,7 +1192,7 @@ const SharedProduct: React.FC = () => {
                                 key={item.id}
                                 onClick={() => handleOpenDetailDrawer(item)}
                                 className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col transition-all duration-300 relative group hover:shadow-md cursor-pointer ${activeHighlight === item.id
-                                    ? 'ring-1 ring-[#F97316] scale-110 bg-blue-50 border-[#F97316] z-100'
+                                    ? 'ring-3 ring-[#F97316] scale-110 bg-blue-50 border-[#F97316] z-100'
                                     : pinnedIds.has(item.id!)
                                         ? 'ring-1 ring-[#F97316] shadow-lg border-[#F97316]'
                                         : 'border-gray-100'

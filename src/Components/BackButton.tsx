@@ -3,12 +3,17 @@ import { useNavigate } from "react-router";
 interface BackButtonProps {
   className?: string;
   to?: string; // optional route (like ORDERDETAILS)
+  onClick?: () => void;
 }
 
-const BackButton: React.FC<BackButtonProps> = ({ className = "", to }) => {
+const BackButton: React.FC<BackButtonProps> = ({ className = "", to, onClick }) => {
   const navigate = useNavigate();
 
   const handleClick = () => {
+    if (onClick) {
+      onClick();
+      return;
+    }
     if (to) {
       navigate(to);
     } else {

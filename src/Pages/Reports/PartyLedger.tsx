@@ -202,10 +202,10 @@ const PartyLedger: React.FC = () => {
                 <div className="flex flex-col gap-2">
 
                     {/* UNIFIED STICKY HEADER: Title + Summary Card */}
-                    <div className="sticky top-0 z-30 pt-2 pb-3 -mx-2 px-2 backdrop-blur-md ">
+                    <div className="sticky top-0 z-30 pt-2 pb-3 -mx-2 px-2 bg-gray-50">
                         {/* Top Bar with Title and Close */}
                         <div className="flex items-center justify-between pb-2 mb-2">
-                            <BackButton/>
+                            <BackButton onClick={() => { setSelectedPartyName(null); setExpandedBillId(null); }} />
                             <h1 className="flex-1 text-lg text-center font-bold text-gray-800 truncate px-2">
                                 {selectedPartyName} - Ledger
                             </h1>

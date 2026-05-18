@@ -150,9 +150,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     return () => unsub();
   }, [currentUser?.companyId]);
 
-  // ------------------------------------------------------------------
-  // 3. EVENT BUS LISTENER (Writes everything to the database)
-  // ------------------------------------------------------------------
   useEffect(() => {
     if (!currentUser?.companyId) return;
 
@@ -177,20 +174,21 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
         const exactTimestamp = detail.createdAt ? new Date(detail.createdAt) : null;
 
-        // ✅ 1. Create a predictable ID if we have an orderDocId, 
-        // otherwise generate a random one for manual events.
-        const notifRef = detail.orderDocId
-          ? doc(db, "companies", currentUser.companyId, "notifications", `notif_${detail.type}_${detail.orderDocId}`)
-          : doc(collection(db, "companies", currentUser.companyId, "notifications"));
+        // 🔥 THE FIX: Create a guaranteed unique string. 
+        // We use orderDocId first. If that's missing, we fall back to the invoiceNumber (e.g., SLS-183).
+        // If BOTH are missing, only then do we use Date.now() to prevent random string clutter.
+        const uniqueIdentifier = detail.orderDocId || detail.invoiceNumber || Date.now().toString();
+        const docIdToUse = `notif_${detail.type}_${uniqueIdentifier}`;
 
-        // ✅ 2. Use setDoc with merge: true
+        const notifRef = doc(db, "companies", currentUser.companyId, "notifications", docIdToUse);
+
+        // ✅ Because we are using a predictable docIdToUse, { merge: true } will 
+        // successfully overwrite any duplicates instead of stacking them!
         await setDoc(
           notifRef,
           {
             message,
             status: detail.status || detail.type,
-            // Only set 'read' to false if the document is brand new. 
-            // merge: true ensures we don't accidentally mark it unread if another tab already clicked it!
             read: false,
             createdAt: exactTimestamp ? Timestamp.fromDate(exactTimestamp) : serverTimestamp(),
             amount: detail.amount || 0,

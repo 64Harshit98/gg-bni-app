@@ -162,7 +162,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
         }
       });
 
-      setGroupCounts({ ...counts, "virtual-uncategorized": uncategorizedCount });
+      setGroupCounts({ ...counts, "uncategorized": uncategorizedCount });
       setItemGroups(prev => [...prev].sort((a, b) => a.name.localeCompare(b.name)));
 
     } catch (err) {
@@ -238,7 +238,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
             uncategorizedCount++;
           }
         });
-        setGroupCounts({ ...counts, "virtual-uncategorized": uncategorizedCount });
+        setGroupCounts({ ...counts, "uncategorized": uncategorizedCount });
         return updated;
       });
       setDeleteModal({ message: 'Item deleted successfully', type: State.SUCCESS });
@@ -335,7 +335,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
               <Spinner />
               <p className="text-gray-500 ml-2">Syncing and Loading Groups...</p>
             </div>
-          ) : itemGroups.length === 0 && (groupCounts["virtual-uncategorized"] || 0) === 0 ? (
+          ) : itemGroups.length === 0 && (groupCounts["uncategorized"] || 0) === 0 ? (
             <p className="text-gray-500 text-center py-8">No item groups found.</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -384,13 +384,13 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
               <div className="flex items-center justify-between p-3 bg-gray-50 rounded-sm shadow-sm border border-gray-300">
                 <div className="flex items-center gap-2 overflow-hidden">
                   <button
-                    onClick={() => setViewingGroup({ id: 'virtual-uncategorized', name: 'Uncategorized', description: '', createdAt: 0, updatedAt: 0 })}
+                    onClick={() => setViewingGroup({ id: 'uncategorized', name: 'Uncategorized', description: '', createdAt: 0, updatedAt: 0 })}
                     className={`text-gray-600 font-bold hover:underline text-left ${theme.primaryHoverText}`}
                   >
                     Uncategorized
                   </button>
                   <span className={`text-sm px-2 py-0.5 rounded-sm font-medium ${theme.primaryText}`}>
-                    {groupCounts["virtual-uncategorized"] || 0} items
+                    {groupCounts["uncategorized"] || 0} items
                   </span>
                 </div>
               </div>
@@ -440,7 +440,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
 
             <div className="overflow-y-auto flex-1 space-y-2">
               {allItems.filter(item =>
-                viewingGroup.id === 'virtual-uncategorized'
+                viewingGroup.id === 'uncategorized'
                   ? !item.itemGroupId || item.itemGroupId === '' || item.itemGroupId === 'uncategorized' || !itemGroups.some(g => g.id === item.itemGroupId)
                   : item.itemGroupId === viewingGroup.id
               ).length === 0 ? (
@@ -448,7 +448,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
               ) : (
                 allItems
                   .filter(item =>
-                    viewingGroup.id === 'virtual-uncategorized'
+                    viewingGroup.id === 'uncategorized'
                       ? !item.itemGroupId || item.itemGroupId === '' || item.itemGroupId === 'uncategorized' || !itemGroups.some(g => g.id === item.itemGroupId)
                       : item.itemGroupId === viewingGroup.id
                   )

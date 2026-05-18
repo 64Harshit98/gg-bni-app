@@ -64,7 +64,7 @@
   },
   "apphosting": [
     {
-      "backendId": "my-web-app",
+      "backendId": "newapp",
       "rootDir": "/",
       "ignore": [
         "node_modules",
@@ -75,7 +75,7 @@
       ]
     },
     {
-      "backendId": "newapp",
+      "backendId": "my-web-app",
       "rootDir": "/",
       "ignore": [
         "node_modules",

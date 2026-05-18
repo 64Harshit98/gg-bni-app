@@ -256,17 +256,32 @@ export const CatalogueBill = async (
     const y = margin;
     // ===== LOGO (top-left) =====
     const logoSize = 10;
-    const logoX = pageWidth - margin - logoSize;
+    const logoX = margin;
     const logoY = y;
 
     if (data.logoBase64 && data.logoBase64.startsWith("data:image")) {
       try {
-        const format = data.logoBase64.includes("png") ? "PNG" : "JPEG";
+        // 1. Better MIME type detection
+        const mimeMatch = data.logoBase64.match(/data:image\/([a-zA-Z0-9]+);base64/);
+        let format = "JPEG"; // Default fallback
+
+        if (mimeMatch && mimeMatch[1]) {
+          const type = mimeMatch[1].toUpperCase();
+          if (type === "PNG") format = "PNG";
+          else if (type === "WEBP") format = "WEBP";
+          else if (type === "JPEG" || type === "JPG") format = "JPEG";
+        }
+
         doc.addImage(data.logoBase64, format, logoX, logoY, logoSize, logoSize);
       } catch (e) {
-        console.error("Logo render error:", e);
+        console.error("jsPDF Logo render error:", e);
       }
-    } const now = new Date();
+    } else {
+      // 2. Added a warning so you can see if the base64 is even arriving!
+      console.warn("Logo skipped: Invalid or missing Base64 string.", data.logoBase64 ? "Starts with: " + data.logoBase64.substring(0, 30) : "It is empty/undefined.");
+    }
+
+    const now = new Date();
     const generatedAt = now.toLocaleString('en-IN', {
       day: '2-digit',
       month: '2-digit',
@@ -275,6 +290,7 @@ export const CatalogueBill = async (
       minute: '2-digit'
     });
 
+    // ===== DATE TEXT (top-right) =====
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
     doc.text(
@@ -284,17 +300,20 @@ export const CatalogueBill = async (
       { align: "right" }
     );
 
+    // ===== COMPANY NAME (perfect center) =====
     doc.setFont("helvetica", "bold");
     doc.setFontSize(20);
 
-    const textAreaWidth = pageWidth - (margin * 2) - logoSize - 4;
+    // Give a safe max width so it doesn't overlap the logo or right-side text
+    const safeMaxWidth = pageWidth - (margin * 2) - (logoSize * 2) - 10;
+
     doc.text(
       isEstimate
         ? "ESTIMATE"
         : (data.companyName || "COMPANY NAME").toUpperCase(),
-      margin + textAreaWidth / 2,
+      pageWidth / 2, // Perfectly centered on the page width
       y + 5,
-      { align: "center", maxWidth: textAreaWidth }
+      { align: "center", maxWidth: safeMaxWidth }
     );
 
     let dividerY = y + 10; // default for estimate
@@ -305,7 +324,7 @@ export const CatalogueBill = async (
 
       const addressLines = doc.splitTextToSize(
         data.companyAddress || "",
-        pageWidth - (margin * 2) - logoSize - 6
+        safeMaxWidth
       );
 
       doc.text(addressLines, pageWidth / 2, y + 11, { align: "center" });

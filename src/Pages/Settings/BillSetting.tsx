@@ -14,6 +14,8 @@ export interface BillSettingsData {
     termsAndConditions: string;
     signatureBase64?: string;
     printFormat?: 'A4' | 'A5' | 'THERMAL58';
+    whatsappExtraMessage?: string;
+
 }
 
 interface BusinessInfoData {
@@ -21,16 +23,13 @@ interface BusinessInfoData {
     address: string;
     phone: string;
     email: string;
-    // Tax
     gstin: string;
     panNumber: string;
     msmeNumber: string;
-    // Bank
     bankName: string;
     accountHolderName: string;
     accountNumber: string;
     ifscCode: string;
-    // Branding
     companyLogo: string;
 }
 
@@ -61,7 +60,8 @@ const BillSettings: React.FC = () => {
         upiId: '',
         termsAndConditions: '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
         signatureBase64: '',
-        printFormat: 'A4'
+        printFormat: 'A4',
+        whatsappExtraMessage: '' // <-- ADD THIS LINE
     });
 
     const formatAddress = (addr: any): string => {
@@ -119,6 +119,7 @@ const BillSettings: React.FC = () => {
                     termsAndConditions: sData.termsAndConditions || '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
                     signatureBase64: sData.signatureBase64 || '',
                     printFormat: sData.printFormat || 'A4',
+                    whatsappExtraMessage: sData.whatsappExtraMessage || '', // <-- ADD THIS LINE
                 };
 
                 setSettings(loadedSettings);
@@ -183,7 +184,7 @@ const BillSettings: React.FC = () => {
                 accountNumber: businessInfo.accountNumber,
                 bankName: businessInfo.bankName,
                 ifscCode: businessInfo.ifscCode,
-
+                whatsappExtraMessage: settings.whatsappExtraMessage, // <-- ADD THIS LINE
                 updatedAt: serverTimestamp()
             };
 
@@ -469,6 +470,24 @@ const BillSettings: React.FC = () => {
                         )}
                     </div>
                 </div>
+
+                <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden mb-6">
+                    <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+                        <h2 className="text-lg font-semibold text-gray-800">WhatsApp Message</h2>
+                        <p className="text-xs text-gray-500">Add an extra message to send along with your invoices on WhatsApp.</p>
+                    </div>
+                    <div className="p-6">
+                        <textarea
+                            name="whatsappExtraMessage"
+                            value={settings.whatsappExtraMessage || ''}
+                            onChange={handleChange}
+                            placeholder="e.g., Thank you for shopping with us! Please leave a Google review."
+                            rows={3}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-blue-500 focus:border-blue-500 outline-none text-sm leading-relaxed"
+                        />
+                    </div>
+                </div>
+
 
                 {/* ── SECTION 4: Terms & Conditions ── */}
                 <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden mb-20">

@@ -90,7 +90,6 @@ const SalesReturnPage: React.FC = () => {
   const dbOperations = useDatabase();
   const { state } = useLocation();
   const { invoiceId } = useParams();
-  const location = useLocation();
 
   const { salesSettings } = useSalesSettings();
 
@@ -123,8 +122,6 @@ const SalesReturnPage: React.FC = () => {
 
   const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
   const [isItemDrawerOpen, setIsItemDrawerOpen] = useState(false);
-
-  const isActive = (path: string) => location.pathname === path;
 
   const [isDiscountLocked, setIsDiscountLocked] = useState(true);
   const [discountInfo, setDiscountInfo] = useState<string | null>(null);
@@ -886,10 +883,6 @@ const SalesReturnPage: React.FC = () => {
   const renderHeader = () => (
     <div className="flex flex-col md:flex-row md:justify-between md:items-center bg-gray-100 md:bg-white border-b border-gray-300 shadow-sm flex-shrink-0 p-2 md:px-4 md:py-3 mb-2 md:mb-0">
       <h1 className="text-2xl font-bold text-gray-800 text-center md:text-left mb-2 md:mb-0">Sales Return</h1>
-      <div className="flex items-center justify-center gap-6">
-        <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.SALES)} active={isActive(ROUTES.SALES)}>Sales</CustomButton>
-        <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.SALES_RETURN)} active={isActive(ROUTES.SALES_RETURN)}>Sales Return</CustomButton>
-      </div>
     </div>
   );
 

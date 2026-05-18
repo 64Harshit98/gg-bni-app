@@ -108,14 +108,13 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     ? data.taxType.toUpperCase()
     : 'EXCLUSIVE';
 
-  // 1. Check if the user explicitly requested an Estimate
   const isExplicitEstimate = (data as any).isEstimate === true;
 
-  // 2. Check if the bill is Tax Exempt
-  const isTaxExempt = safeTaxType === 'NONE' || safeTaxType === 'EXEMPT' || safeScheme === 'NONE' || safeScheme === 'EXEMPT';
-
-  // 3. Force the simplified Estimate layout if EITHER is true
-  const isEstimate = isExplicitEstimate || isTaxExempt;
+  // Decide if we use the simplified 8-column layout.
+  // RULE: If it's Composition, ALWAYS keep the full 13-column table (isEstimate = false).
+  // RULE: Otherwise, if tax/scheme is NONE or EXEMPT, use the simplified table.
+  const isEstimate = isExplicitEstimate ||
+    (safeScheme !== 'COMPOSITION' && (safeTaxType === 'NONE' || safeTaxType === 'EXEMPT' || safeScheme === 'NONE' || safeScheme === 'EXEMPT'));
 
   const drawBox = (y: number, h: number) => {
     doc.rect(startX, y, contentWidth, h);
@@ -144,80 +143,79 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   );
 
   // --- 1. HEADER SECTION ---
+  // --- 1. HEADER SECTION ---
   doc.setFontSize(9);
   const addressLines = doc.splitTextToSize(data.companyAddress, contentWidth - 50);
   const extraAddressLines = Math.max(0, addressLines.length - 1);
   const addressOffset = extraAddressLines * 4;
 
-  const headerHeight = 25 + addressOffset;
+  // Shrink the header height if it's just an Estimate to remove dead space
+  const headerHeight = isExplicitEstimate ? 20 : 25 + addressOffset;
   drawBox(cursorY, headerHeight);
 
-  if (qrBase64) {
-    // Draw image at X: startX + 2, Y: cursorY + 2. Size: 18x18 mm
-    doc.addImage(qrBase64, 'PNG', startX + 2, cursorY + 2, 18, 18);
-    doc.setFontSize(6);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Scan to Pay', startX + 11, cursorY + 22, { align: 'center' });
-  }
+  if (isExplicitEstimate) {
+    // ONLY print "ESTIMATE" perfectly centered
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text('ESTIMATE', pageWidth / 2, cursorY + 12, { align: 'center' });
 
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
+  } else {
+    // --- NORMAL INVOICE / BILL OF SUPPLY HEADER ---
 
-  // 4. Set the correct Title based on the exact status
-  const title = isExplicitEstimate
-    ? 'ESTIMATE'
-    : isTaxExempt
-      ? 'BILL OF SUPPLY'
-      : 'TAX INVOICE';
-  doc.text(title, pageWidth / 2, cursorY + 5, { align: 'center' });
-
-  doc.setFontSize(8);
-  if (!isEstimate) {
-    doc.text(`Msme No ${data.msmeNumber || ''}`, endX - 2, cursorY + 5, { align: 'right' });
-  }
-
-  // Company Logo placeholder (below MSME number, top-right)
-  const logoW = 18;
-  const logoH = 14;
-  const logoX = endX - logoW - 2;
-  const logoY = cursorY + 7;
-  if (data.companyLogoBase64) {
-    try {
-      doc.addImage(data.companyLogoBase64, 'PNG', logoX, logoY, logoW, logoH);
-    } catch (e) {
-      console.error("Error adding company logo", e);
-      doc.rect(logoX, logoY, logoW, logoH);
+    // 1. QR Code
+    if (qrBase64) {
+      doc.addImage(qrBase64, 'PNG', startX + 2, cursorY + 2, 18, 18);
       doc.setFontSize(6);
       doc.setFont('helvetica', 'normal');
-      doc.text('LOGO', logoX + logoW / 2, logoY + logoH / 2 + 1, { align: 'center' });
+      doc.text('Scan to Pay', startX + 11, cursorY + 22, { align: 'center' });
     }
-  } else {
-    doc.rect(logoX, logoY, logoW, logoH);
-    doc.setFontSize(6);
-    doc.setFont('helvetica', 'normal');
-    doc.text('LOGO', logoX + logoW / 2, logoY + logoH / 2 + 1, { align: 'center' });
-  }
 
-  doc.setFontSize(16);
-  doc.text(data.companyName.toUpperCase(), pageWidth / 2, cursorY + 11, { align: 'center' });
-
-  // 3. Print the dynamic address
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  if (!isEstimate) {
-    const addressLines = doc.splitTextToSize(data.companyAddress, contentWidth - 50);
-    doc.text(addressLines, pageWidth / 2, cursorY + 16, { align: 'center' });
-  }
-
-  if (!isEstimate) {
-    doc.text(`Phone : ${data.companyContact}`, pageWidth / 2, cursorY + 20, { align: 'center' });
-  }
-
-  if (!isEstimate && safeScheme !== 'NONE') {
+    // 2. Document Title
+    doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    const gstText = `GSTIN : ${data.companyGstin || ''}  (${safeScheme})`;
-    doc.text(gstText, pageWidth / 2, cursorY + 24 + addressOffset, { align: 'center' });
+
+    const title = (safeScheme === 'COMPOSITION' || safeScheme === 'NONE' || safeScheme === 'EXEMPT' || safeTaxType === 'NONE' || safeTaxType === 'EXEMPT')
+      ? 'BILL OF SUPPLY'
+      : 'TAX INVOICE';
+    doc.text(title, pageWidth / 2, cursorY + 5, { align: 'center' });
+
+    // 3. MSME Number
+    doc.setFontSize(8);
+    doc.text(`Msme No ${data.msmeNumber || ''}`, endX - 2, cursorY + 5, { align: 'right' });
+
+    // 4. Company Logo
+    const logoW = 18;
+    const logoH = 14;
+    const logoX = endX - logoW - 2;
+    const logoY = cursorY + 7;
+    if (data.companyLogoBase64) {
+      try {
+        doc.addImage(data.companyLogoBase64, 'PNG', logoX, logoY, logoW, logoH);
+      } catch (e) {
+        console.error("Error adding company logo", e);
+        doc.rect(logoX, logoY, logoW, logoH);
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'normal');
+        doc.text('LOGO', logoX + logoW / 2, logoY + logoH / 2 + 1, { align: 'center' });
+      }
+    }
+
+    // 5. Company Name & Contact Details
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text(data.companyName.toUpperCase(), pageWidth / 2, cursorY + 11, { align: 'center' });
+
+    doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
+    doc.text(addressLines, pageWidth / 2, cursorY + 16, { align: 'center' });
+    doc.text(`Phone : ${data.companyContact}`, pageWidth / 2, cursorY + 20 + addressOffset, { align: 'center' });
+
+    if (safeScheme !== 'NONE' && safeScheme !== 'EXEMPT') {
+      doc.setFont('helvetica', 'bold');
+      const gstText = `GSTIN : ${data.companyGstin || ''}  (${safeScheme})`;
+      doc.text(gstText, pageWidth / 2, cursorY + 24 + addressOffset, { align: 'center' });
+      doc.setFont('helvetica', 'normal');
+    }
   }
 
   cursorY += headerHeight;
@@ -499,13 +497,21 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     finalY = margin;
   }
 
+  // Set the exact width for the final value column to match the table's "Amount" column
+  const valueBoxW = 25;
+  const valueBoxX = endX - valueBoxW;
+
   // --- ADDED: EXTRA EXPENSE ROW ---
   if (data.extraExpenseAmount && data.extraExpenseAmount > 0) {
     const expH = 6;
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
     doc.rect(startX, finalY, contentWidth, expH);
-    doc.text(`Add : ${data.extraExpenseName || 'Extra Expense'} (+)`, endX - 35, finalY + 4);
+    doc.line(valueBoxX, finalY, valueBoxX, finalY + expH); // Vertical separator
+
+    // Right-align the label just before the separator
+    doc.text(`Add : ${data.extraExpenseName || 'Extra Expense'} (+)`, valueBoxX - 2, finalY + 4, { align: 'right' });
+    // Right-align the value
     doc.text(data.extraExpenseAmount.toFixed(2), endX - 2, finalY + 4, { align: 'right' });
     finalY += expH;
   }
@@ -516,7 +522,9 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
     doc.rect(startX, finalY, contentWidth, discH);
-    doc.text('Less :Bill Discount (-)', endX - 35, finalY + 4);
+    doc.line(valueBoxX, finalY, valueBoxX, finalY + discH); // Vertical separator
+
+    doc.text('Less : Bill Discount (-)', valueBoxX - 2, finalY + 4, { align: 'right' });
     doc.text(billDiscount.toFixed(2), endX - 2, finalY + 4, { align: 'right' });
     finalY += discH;
   }
@@ -526,7 +534,9 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   doc.rect(startX, finalY, contentWidth, roundOffH);
-  doc.text('Add : Rounded off (+)', endX - 35, finalY + 4);
+  doc.line(valueBoxX, finalY, valueBoxX, finalY + roundOffH); // Vertical separator
+
+  doc.text('Add : Rounded off (+)', valueBoxX - 2, finalY + 4, { align: 'right' });
   doc.text(roundOffAmt.toFixed(2), endX - 2, finalY + 4, { align: 'right' });
   finalY += roundOffH;
 

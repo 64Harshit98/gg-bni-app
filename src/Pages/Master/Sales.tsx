@@ -208,7 +208,6 @@ const Sales: React.FC = () => {
     const [itemGroupMap, setItemGroupMap] = useState<Record<string, string>>({});
     const [isFooterExpanded, setIsFooterExpanded] = useState(false);
 
-    const isActive = (path: string) => location.pathname === path;
     const userRole = currentUser?.role || '';
     const isManager = userRole === ROLES.MANAGER || userRole === ROLES.OWNER;
     const hideMrp = (salesSettings as any)?.hideMrp ?? false;
@@ -430,7 +429,7 @@ const Sales: React.FC = () => {
 
     const gstSchemeDisplay = salesSettings?.gstScheme;
 
-    const { subtotal, totalDiscount, roundOff, taxableAmount, taxAmount, finalAmount, totalQuantity } = useMemo(() => {
+    const { subtotal, totalDiscount, taxAmount, finalAmount, totalQuantity } = useMemo(() => {
         let accumulatorSubtotal = 0;
         let accumulatorTaxable = 0;
         let accumulatorTax = 0;
@@ -1102,25 +1101,26 @@ const Sales: React.FC = () => {
         let finalGstScheme = salesSettings?.gstScheme || 'none';
         let finalTaxType = activeTaxMode === 'exempt' ? 'none' : activeTaxMode;
 
-        const isTaxEnabled = salesSettings?.enableTax ?? true;
         const currentTaxRate = salesSettings?.defaultTaxRate ?? 0;
         const isRoundingEnabled = salesSettings?.enableRounding ?? true;
         const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
 
+        // --- NEW VARIABLES FOR PROPORTIONAL TAX ---
+        const finalInvoiceTotal = completionData.finalAmount;
+        const totalInvoiceDiscount = totalDiscount + (completionData.discount || 0);
+
+        // Calculate proportional scale: (Total Before Drawer Discount - Drawer Discount) / Total Before Drawer Discount
+        const billRatio = finalAmount > 0 ? Math.max(0, (finalAmount - (completionData.discount || 0)) / finalAmount) : 1;
+
         const getParsedInvoiceDate = () => {
             try {
                 if (!invoiceDate) return new Date();
-
-                const parts = invoiceDate.split('-'); // [YYYY, MM, DD]
-
+                const parts = invoiceDate.split('-');
                 if (parts.length === 3) {
                     const year = parseInt(parts[0], 10);
                     const month = parseInt(parts[1], 10) - 1;
                     const day = parseInt(parts[2], 10);
-
                     if (isEditMode && invoiceToEdit?.createdAt) {
-                        // In edit mode: restore the original timestamp exactly,
-                        // but allow the date portion to reflect any user change.
                         const originalDate = new Date(invoiceToEdit.createdAt);
                         if (!isNaN(originalDate.getTime())) {
                             originalDate.setFullYear(year);
@@ -1129,8 +1129,6 @@ const Sales: React.FC = () => {
                             return originalDate; // keeps original HH:MM:SS
                         }
                     }
-
-                    // New invoice: use selected date + current time
                     const finalDate = new Date();
                     finalDate.setFullYear(year);
                     finalDate.setMonth(month);
@@ -1145,8 +1143,8 @@ const Sales: React.FC = () => {
 
         const formatItemsForDB = (itemsToFormat: SalesItem[]) => {
             return itemsToFormat.map(({ isEditable, customPrice, ...item }) => {
-                const currentDiscount = item.discount || 0;
-                const currentQuantity = item.quantity || 1;
+                const currentDiscount = Number(item.discount) || 0;
+                const currentQuantity = Number(item.quantity) || 1;
 
                 let effectiveUnitPrice = 0;
                 if (customPrice !== undefined && customPrice !== null && customPrice !== '') {
@@ -1161,12 +1159,20 @@ const Sales: React.FC = () => {
 
                 const lineTotal = toCurrency(effectiveUnitPrice * currentQuantity);
 
+                // MATCH UI EXACTLY: Rely purely on finalGstScheme and finalTaxType
+                let effectiveTaxMode = 'none';
+                if (finalGstScheme === 'regular') {
+                    effectiveTaxMode = finalTaxType === 'exempt' ? 'none' : finalTaxType;
+                }
+
+                // Extract tax safely
                 const rawTax = item.tax ?? item.taxRate ?? currentTaxRate;
                 const itemSpecificTaxRate = isNaN(Number(rawTax)) ? 0 : Number(rawTax);
+
                 let itemTaxableBase = 0, itemTaxAmount = 0, itemFinalPrice = 0;
 
-                if (finalGstScheme === 'regular' && itemSpecificTaxRate > 0 && isTaxEnabled) {
-                    if (finalTaxType === 'inclusive') {
+                if (effectiveTaxMode !== 'none' && itemSpecificTaxRate > 0) {
+                    if (effectiveTaxMode === 'inclusive') {
                         itemFinalPrice = lineTotal;
                         itemTaxableBase = toCurrency(lineTotal / (1 + (itemSpecificTaxRate / 100)));
                         itemTaxAmount = toCurrency(lineTotal - itemTaxableBase);
@@ -1176,24 +1182,33 @@ const Sales: React.FC = () => {
                         itemFinalPrice = toCurrency(itemTaxableBase + itemTaxAmount);
                     }
                 } else {
-                    itemTaxableBase = lineTotal; itemFinalPrice = lineTotal;
+                    itemTaxableBase = lineTotal;
+                    itemFinalPrice = lineTotal;
                 }
+
+                // APPLY PROPORTIONAL DISCOUNT TO THE TAX VALUES ONLY
+                const scaledTaxableBase = toCurrency(itemTaxableBase * billRatio);
+                const scaledTaxAmount = toCurrency(itemTaxAmount * billRatio);
 
                 return {
                     ...item,
-                    id: item.productId,
-                    quantity: currentQuantity, discount: currentDiscount, effectiveUnitPrice, finalPrice: itemFinalPrice,
-                    unit: item.unit || '',                     // ADDED
-                    unitMultiplier: 1,  // ADDED
+                    id: item.productId || item.id,
+                    quantity: currentQuantity,
+                    discount: currentDiscount,
+                    effectiveUnitPrice: effectiveUnitPrice,
+                    finalPrice: itemFinalPrice,
+                    unit: item.unit || '',
+                    unitMultiplier: 1,
                     packetSize: item.packetSize || null,
-                    taxableAmount: itemTaxableBase, taxAmount: itemTaxAmount, taxRate: isTaxEnabled ? itemSpecificTaxRate : 0,
-                    taxType: finalTaxType, discountPercentage: currentDiscount,
+                    taxableAmount: scaledTaxableBase,
+                    taxAmount: scaledTaxAmount,
+                    taxRate: itemSpecificTaxRate,     // FIX: Forces the DB to save the actual percentage!
+                    taxType: finalTaxType,
+                    discountPercentage: currentDiscount,
                 };
             });
         };
 
-        const finalInvoiceTotal = finalAmount - completionData.discount + (completionData.extraExpenseAmount || 0);
-        const totalInvoiceDiscount = totalDiscount + (completionData.discount || 0);
         const sanitizeForFirestore = (obj: any): any => {
             if (Array.isArray(obj)) return obj.map(sanitizeForFirestore);
             if (obj !== null && typeof obj === 'object' && !(obj instanceof Date)) {
@@ -1208,17 +1223,28 @@ const Sales: React.FC = () => {
             return obj;
         };
 
+        // 2. Generate finalized items WITH the proportional discount applied
+        const finalizedItems = formatItemsForDB(items);
+
+        // 3. Re-calculate total Tax and Taxable Amount from the finalized items
+        const newTaxableAmount = toCurrency(finalizedItems.reduce((acc, item) => acc + item.taxableAmount, 0));
+        const newTaxAmount = toCurrency(finalizedItems.reduce((acc, item) => acc + item.taxAmount, 0));
+
+        // 4. Calculate perfect roundOff to ensure Database matches UI exactly
+        const rawInvoiceTotal = newTaxableAmount + newTaxAmount + (completionData.extraExpenseAmount || 0);
+        const finalRoundOff = toCurrency(finalInvoiceTotal - rawInvoiceTotal);
+
         const saveOperation = async (transaction: any, isNew: boolean, existingId?: string) => {
             const customDate = getParsedInvoiceDate();
             const saleData: any = {
-                items: formatItemsForDB(items),
+                items: finalizedItems,
                 subtotal,
                 discount: totalInvoiceDiscount,
                 manualDiscount: completionData.discount || 0,
                 revDiscount: completionData.revDiscount || 0,
-                roundOff: roundOff,
-                taxableAmount,
-                taxAmount,
+                roundOff: finalRoundOff,
+                taxableAmount: newTaxableAmount,
+                taxAmount: newTaxAmount,
                 gstScheme: finalGstScheme,
                 taxType: finalTaxType,
                 totalAmount: finalInvoiceTotal,
@@ -1230,8 +1256,6 @@ const Sales: React.FC = () => {
                 salesmanId: finalSalesman.uid,
                 salesmanName: finalSalesman.name,
                 updatedAt: serverTimestamp(),
-
-                // --- EXPLICITLY MAP NEW FIELDS HERE ---
                 shippingName: completionData.shippingName || '',
                 shippingNumber: completionData.shippingNumber || '',
                 shippingAddress: completionData.shippingAddress || '',
@@ -1241,14 +1265,10 @@ const Sales: React.FC = () => {
                 narration: completionData.narration || '',
             };
 
-            // 2. Handle New vs Edit behavior
             if (isNew) {
-                // 1. References
                 const counterRef = doc(db, 'companies', companyId, 'counters', 'invoiceCounter');
                 const settingsRef = doc(db, 'companies', companyId, 'settings', 'sales-settings');
 
-                // 2. FRESH FETCH INSIDE THE LOCK (Transaction)
-                // This makes sure this tab sees exactly what's in the DB right now
                 const [counterDoc, settingsDoc] = await Promise.all([
                     transaction.get(counterRef),
                     transaction.get(settingsRef)
@@ -1256,11 +1276,8 @@ const Sales: React.FC = () => {
 
                 const prefix = settingsDoc.exists() ? (settingsDoc.data().voucherPrefix || 'INV') : 'INV';
                 const nextNumber = counterDoc.exists() ? (counterDoc.data().currentNumber || 1) : 1;
-                const finalInvNo = isInvoiceNumberManuallyEdited.current
-                    ? invoiceNumber  // Use what the user typed
-                    : `${prefix}-${nextNumber}`;
+                const finalInvNo = isInvoiceNumberManuallyEdited.current ? invoiceNumber : `${prefix}-${nextNumber}`;
 
-                // 3. Assign the "Database Truth" number to the sale
                 saleData.createdAt = customDate;
                 saleData.invoiceNumber = finalInvNo;
                 saleData.userId = currentUser.uid;
@@ -1268,30 +1285,19 @@ const Sales: React.FC = () => {
                 saleData.voucherName = salesSettings?.voucherName ?? 'Sales';
 
                 const newSaleRef = doc(collection(db, "companies", companyId, "sales"));
-
-                // 4. Set the Sale
                 transaction.set(newSaleRef, sanitizeForFirestore(saleData));
 
-                // 5. Increment the Counter
                 if (!isInvoiceNumberManuallyEdited.current) {
                     transaction.set(counterRef, { currentNumber: nextNumber + 1 }, { merge: true });
                 }
-
-                // Result returned to the UI
                 return { id: newSaleRef.id, number: finalInvNo };
 
             } else if (existingId) {
                 const invoiceRef = doc(db, "companies", companyId, "sales", existingId);
-
                 saleData.createdAt = customDate;
                 saleData.invoiceNumber = invoiceNumber;
-
                 transaction.update(invoiceRef, sanitizeForFirestore(saleData));
-
-                return {
-                    id: existingId,
-                    number: invoiceNumber
-                };
+                return { id: existingId, number: invoiceNumber };
             }
             return null;
         };
@@ -1301,11 +1307,10 @@ const Sales: React.FC = () => {
                 await runTransaction(db, async (transaction) => {
                     await saveOperation(transaction, false, invoiceToEdit.id);
 
-                    // 1. Calculate the original quantities from the saved invoice
                     const oldQuantities = new Map<string, number>();
                     (invoiceToEdit.items || []).forEach((oldItem: any) => {
                         const pid = oldItem.productId || oldItem.id;
-                        const oldQty = oldItem.quantity || 1; // Multiplier removed.
+                        const oldQty = oldItem.quantity || 1;
                         oldQuantities.set(pid, (oldQuantities.get(pid) || 0) + oldQty);
                     });
 
@@ -1313,23 +1318,20 @@ const Sales: React.FC = () => {
                     items.forEach(newItem => {
                         const pid = newItem.productId || newItem.id;
                         if (pid) {
-                            const newQty = newItem.quantity || 1; // Multiplier removed.
+                            const newQty = newItem.quantity || 1;
                             newQuantities.set(pid, (newQuantities.get(pid) || 0) + newQty);
                         }
                     });
 
-                    // 3. Compare and apply the difference to Firestore
                     const allProductIds = new Set([...oldQuantities.keys(), ...newQuantities.keys()]);
 
                     allProductIds.forEach(pid => {
                         const oldTotal = oldQuantities.get(pid) || 0;
                         const newTotal = newQuantities.get(pid) || 0;
-                        const difference = newTotal - oldTotal; // How many MORE we are selling
+                        const difference = newTotal - oldTotal;
 
-                        // Only run the update if the quantity actually changed
                         if (difference !== 0) {
                             const itemRef = doc(db, "companies", companyId, "items", pid);
-                            // -difference: If we sell 1 more, deduct 1. If we remove 1, add 1 back.
                             transaction.update(itemRef, {
                                 stock: firebaseIncrement(-difference),
                                 updatedAt: serverTimestamp()
@@ -1337,7 +1339,7 @@ const Sales: React.FC = () => {
                         }
                     });
                 });
-                // ✅ FIX: Update local inventory for edit mode 
+
                 setAvailableItems(prev => prev.map(item => {
                     const oldQty = (invoiceToEdit.items || [])
                         .filter((i: any) => (i.productId || i.id) === item.id)
@@ -1345,17 +1347,17 @@ const Sales: React.FC = () => {
                     const newQty = items
                         .filter(i => (i.productId || i.id) === item.id && !i.isCustomAmount)
                         .reduce((sum, i) => sum + (i.quantity || 1), 0);
-                    const delta = newQty - oldQty; // positive = sold more, negative = sold less
+                    const delta = newQty - oldQty;
                     if (delta === 0) return item;
                     return { ...item, stock: Math.max(0, (item.stock || 0) - delta) };
                 }));
                 showSuccessModal("Invoice Updated", ROUTES.JOURNAL);
+
             } else {
                 let result: any = null;
                 await runTransaction(db, async (transaction) => {
                     result = await saveOperation(transaction, true);
 
-                    // Existing logic for New Invoices stays exactly the same
                     items.forEach(i => {
                         const pid = i.productId || i.id;
                         if (pid && !i.isCustomAmount) {
@@ -1370,10 +1372,8 @@ const Sales: React.FC = () => {
                         transaction.update(settingsRef, { currentVoucherNumber: firebaseIncrement(1) });
                     }
                 });
+
                 if (result) {
-
-                    const finalizedItems = formatItemsForDB(items);
-
                     const invoiceData = {
                         id: result.id,
                         invoiceNumber: result.number,
@@ -1388,7 +1388,6 @@ const Sales: React.FC = () => {
                         items: finalizedItems
                     };
 
-                    // ✅ FIX: Update local inventory immediately without requiring refresh
                     setAvailableItems(prev => prev.map(item => {
                         const stockDelta = items
                             .filter(i => (i.productId || i.id) === item.id && !i.isCustomAmount)
@@ -1396,6 +1395,7 @@ const Sales: React.FC = () => {
                         if (stockDelta === 0) return item;
                         return { ...item, stock: Math.max(0, (item.stock || 0) - stockDelta) };
                     }));
+
                     setIsDrawerOpen(false);
                     setSavedBillData({ id: result.id, number: result.number, invoiceData: invoiceData });
                     localStorage.removeItem('sales_cart_draft');
@@ -1521,8 +1521,15 @@ const Sales: React.FC = () => {
             await uploadBytes(storageRef, pdfBlob);
 
             const fileUrl = await getDownloadURL(storageRef);
-            const message = `Hello ${invoice.partyName},\n\nHere is your invoice #${invoice.invoiceNumber}.\nAmount: ${invoice.amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}\n\nThank you!`;
+            // --- NEW: Fetch the extra message from bill settings ---
+            const billSettingsSnap = await getDoc(doc(db, 'companies', currentUser.companyId, 'settings', 'bill'));
+            const extraMsg = billSettingsSnap.exists() && billSettingsSnap.data().whatsappExtraMessage
+                ? `\n\n${billSettingsSnap.data().whatsappExtraMessage}`
+                : '';
+            // -------------------------------------------------------
 
+            // Append the extraMsg to the end of your standard message
+            const message = `Hello ${invoice.partyName},\n\nHere is your invoice #${invoice.invoiceNumber}.\nAmount: ${invoice.amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}\n\nThank you!${extraMsg}`;
             const response = await botMasterService.sendPdfFromUrl(botMasterToken, whatsappNumber, invoice.partyNumber, message, fileUrl, cleanName);
 
             let isSuccess = false;
@@ -1684,15 +1691,16 @@ const Sales: React.FC = () => {
                 </div>
 
                 {/* Sales / Sales Return buttons */}
-                {!isEditMode && (
-                    <div className="flex items-center justify-center md:justify-end gap-3">
-                        <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.SALES)} active={isActive(ROUTES.SALES)}>Sales</CustomButton>
-                        <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.SALES_RETURN)} active={isActive(ROUTES.SALES_RETURN)}>Sales Return</CustomButton>
-                    </div>
-                )}
+
             </div>
         </>
     );
+
+    const calculatedOriginalTotal = invoiceToEdit ?
+        (Number(invoiceToEdit.totalAmount ?? invoiceToEdit.amount ?? 0) +
+            Number(invoiceToEdit.manualDiscount || 0) -
+            Number(invoiceToEdit.extraExpenseAmount || 0))
+        : undefined;
 
     if (isCardView) {
         return (
@@ -2195,7 +2203,7 @@ const Sales: React.FC = () => {
                     subtotal={subtotal} billTotal={amountToPayNow}
                     onPaymentComplete={handleSavePayment}
                     isPartyNameEditable={!isEditMode}
-                    originalBillTotal={invoiceToEdit ? (invoiceToEdit.amount + (invoiceToEdit.manualDiscount || 0) - (invoiceToEdit.extraExpenseAmount || 0)) : undefined}
+                    originalBillTotal={calculatedOriginalTotal}
                     initialPartyName={isEditMode ? invoiceToEdit?.partyName : ''}
                     initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : ''}
                     initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined}
@@ -2333,6 +2341,7 @@ const Sales: React.FC = () => {
                 <PaymentDrawer
                     mode='calculator'
                     isOpen={isDrawerOpen}
+                    originalBillTotal={calculatedOriginalTotal}
                     onClose={() => {
                         setIsDrawerOpen(false);
                         if (stagedCalcInput) {
@@ -2542,6 +2551,7 @@ const Sales: React.FC = () => {
                 onClose={() => setIsDrawerOpen(false)}
                 subtotal={subtotal} billTotal={amountToPayNow}
                 totalTax={taxAmount}
+                originalBillTotal={calculatedOriginalTotal}
                 onPaymentComplete={handleSavePayment}
                 initialDiscount={invoiceToEdit?.manualDiscount}
                 allowDueBilling={salesSettings?.allowDueBilling ?? false}

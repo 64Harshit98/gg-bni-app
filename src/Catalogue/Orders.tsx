@@ -40,8 +40,6 @@ import { FiSearch, FiX } from 'react-icons/fi';
 import { IconEdit, IconFilter } from '../constants/Icons';
 import type { Item } from '../constants/models';
 import { CatalogueBill, prepareCatalogueBillData } from './CatalogueBill/CatalogueBill'
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { app } from '../lib/Firebase';
 import NotificationBell from '../Components/NotificationBell';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { storage } from '../lib/Firebase'; // Ensure 'storage' is exported from your Firebase config
@@ -225,7 +223,6 @@ export const useOrdersData = (
                                 const finalPrice =
                                     i.customPrice ??
                                     (salesPrice > 0 ? salesPrice : mrp);
-                                // console.log("Item:", i.name, "MOQ :", i.moq);
 
                                 return {
                                     id: i.id,
@@ -343,9 +340,6 @@ export const useLiveMoqMapHook = (
 
                         if (itemSnap.exists()) {
                             const data = itemSnap.data();
-                            console.log(
-                                `[MOQ] item "${item.name}" (${itemId}) → moq from DB: ${data.moq}`
-                            );
                             return [item.id, Number(data.moq ?? 0)];
                         }
                     } catch (err) {
@@ -378,6 +372,7 @@ const OrdersPage: React.FC = () => {
     const isInitialNotificationLoadRef = useRef(true);
     const navigate = useNavigate();
     const OrderStatuses: OrderStatus[] = ['Upcoming', 'Confirmed', 'Packed', 'Completed'];
+
 
     const filterRef = useRef<HTMLDivElement>(null);
     const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -512,40 +507,49 @@ const OrdersPage: React.FC = () => {
             const isNewOrder = !seenOrdersRef.current.has(order.id);
             const isActiveOrder = order.status !== 'Cancelled';
 
-            // Trigger once when a new active order first appears.
             if (isNewOrder && isActiveOrder) {
+                // ✅ KEEP THIS: Play the sound
                 const audio = audioRef.current;
                 if (audio) {
                     audio.currentTime = 0;
                     audio.play().catch((err) => {
-                        console.error(err);
+                        console.error("Audio play failed:", err);
                     });
                 }
+                if (isNewOrder && isActiveOrder) {
+                    const audio = audioRef.current;
+                    if (audio) {
+                        audio.currentTime = 0;
+                        audio.play().catch((err) => {
+                            console.error(err);
+                        });
+                    }
 
-                window.dispatchEvent(
-                    new CustomEvent('pdc_notification', {
-                        detail: {
-                            type: 'NEW_ORDER',
-                            invoiceNumber: order.orderId,
-                            partyName: order.userName || order.billingDetails?.name || 'Customer',
-                            amount: Number(order.totalAmount || 0),
-                            status: 'UPCOMING',
-                            // ❌ REMOVE THIS:
-                            // createdAt: new Date().toISOString(), 
+                    window.dispatchEvent(
+                        new CustomEvent('pdc_notification', {
+                            detail: {
+                                type: 'NEW_ORDER',
+                                invoiceNumber: order.orderId,
+                                partyName: order.userName || order.billingDetails?.name || 'Customer',
+                                amount: Number(order.totalAmount || 0),
+                                status: 'UPCOMING',
+                                createdAt: order.createdAt ? new Date(order.createdAt).toISOString() : new Date().toISOString(),
 
-                            // ✅ ADD THIS:
-                            createdAt: order.createdAt ? new Date(order.createdAt).toISOString() : new Date().toISOString(),
-                        },
-                    })
-                );
+                                // 🔥 ADD THIS LINE TO PREVENT DUPLICATES 🔥
+                                orderDocId: order.id,
+                            },
+                        })
+                    );
 
-                // mark as seen
+                    seenOrdersRef.current.add(order.id);
+                    updated = true;
+                }
                 seenOrdersRef.current.add(order.id);
                 updated = true;
             }
         });
 
-        //  localStorage update 
+        // Update local storage
         if (updated) {
             localStorage.setItem(
                 NOTIFICATION_SEEN_ORDERS_KEY,
@@ -866,122 +870,144 @@ const OrdersPage: React.FC = () => {
 
     //     fetchPendingRequests();
     // }, [currentUser?.companyId]);
+    // Helper to convert product image URLs to Base64 for jsPDF
+    // Helper to convert product image URLs to Base64 for jsPDF
+    // Helper to convert product image URLs to Base64 for jsPDF
+    // Helper to convert Blob to Base64
+    const blobToBase64 = (blob: Blob): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    };
 
+    const convertImageUrlToBase64 = async (url: string, itemName: string): Promise<string> => {
+        if (!url) {
+            console.warn(`⚠️ [${itemName}] No Image URL provided in the database.`);
+            return "";
+        }
+
+        try {
+            const cacheBuster = url + (url.includes('?') ? '&' : '?') + 'cb=' + new Date().getTime();
+            const response = await fetch(cacheBuster, { mode: 'cors' });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const blob = await response.blob();
+            return await blobToBase64(blob);
+        } catch (err) {
+            console.warn(`⚠️ [${itemName}] Direct fetch blocked. Trying Proxy...`);
+            try {
+                const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+                const proxyResponse = await fetch(proxyUrl);
+                if (!proxyResponse.ok) throw new Error(`Proxy HTTP ${proxyResponse.status}`);
+                const blob = await proxyResponse.blob();
+                return await blobToBase64(blob);
+            } catch (proxyErr) {
+                console.error(`❌ [${itemName}] Both direct and proxy fetch failed.`);
+                return "";
+            }
+        }
+    };
     const handlePdfAction = async (Order: Order, action: ACTION) => {
-        console.log("FULL ORDER:", Order);
         setPdfLoadingOrderId(Order.id);
 
         try {
-            const functions = getFunctions(app);
-            // Call our new data-gathering cloud function
-            const fetchInvoiceCall = httpsCallable(functions, 'fetchInvoiceData');
+            const itemsWithBase64 = await Promise.all((Order.items || []).map(async (item: any, index: number) => {
+                const mrp = Number(item.mrp || 0);
+                const salesPrice = Number(item.salesPrice || 0);
+                const actualPrice = item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
 
-            // 1. Get the safe data (with CORS-free images) from the server
-            const result = await fetchInvoiceCall({
-                companyId: currentUser?.companyId,
-                orderId: Order.id
-            });
+                // --- THE MAGIC FALLBACK ---
+                let targetImageUrl = item.imageUrl;
 
-            const responseData = result.data as any;
+                // If the order item lacks the image, search the master catalog!
+                if (!targetImageUrl) {
+                    const catalogItem = availableItems.find(master => String(master.id) === String(item.itemId || item.id));
+                    if (catalogItem && catalogItem.imageUrl) {
+                        targetImageUrl = catalogItem.imageUrl;
+                    }
+                }
+                // --------------------------
 
-            if (!responseData.success) {
-                throw new Error("Failed to fetch order data from server");
-            }
 
-            const safeOrderData = responseData.orderData;
+                let base64Image = "";
+                if (targetImageUrl) {
+                    base64Image = await convertImageUrlToBase64(targetImageUrl, item.name);
+                } else {
+                    console.warn(`⚠️ 3. Item [${item.name}] has NO imageUrl in both Order AND Catalog.`);
+                }
 
-            // 2. Construct the raw bill data using the safe server data
+                return {
+                    sno: index + 1,
+                    name: item.name,
+                    qty: item.quantity,
+                    unitMultiplier: item.unitMultiplier ?? 1,
+                    tax: item.tax ?? 0,
+                    mrp: mrp,
+                    price: actualPrice,
+                    total: actualPrice * item.quantity,
+                    imageBase64: base64Image,
+                };
+            }));
+
+
             const rawBillData = {
                 companyId: currentUser?.companyId,
-
                 companyName: companyInfo?.name || "",
                 companyAddress: companyInfo?.address || "",
                 companyPhone: companyInfo?.ownerPhoneNumber || "",
-                specialInstruction: safeOrderData.specialInstruction || Order.specialInstruction || "",
+                specialInstruction: Order.specialInstruction || "",
 
                 customer: {
                     billing: {
-                        name: safeOrderData.billingDetails?.name || Order.billingDetails?.name || safeOrderData.userName || Order.userName || "Customer",
-                        phone: safeOrderData.billingDetails?.phone || Order.billingDetails?.phone || "",
-                        address: safeOrderData.billingDetails?.address || Order.billingDetails?.address || "",
-                        gstin: safeOrderData.billingDetails?.gstin || Order.billingDetails?.gstin || "",
+                        name: Order.billingDetails?.name || Order.userName || "Customer",
+                        phone: Order.billingDetails?.phone || "",
+                        address: Order.billingDetails?.address || "",
+                        gstin: Order.billingDetails?.gstin || "",
                     },
                     shipping: {
-                        name: safeOrderData.shippingDetails?.name || Order.shippingDetails?.name || safeOrderData.billingDetails?.name || "",
-                        phone: safeOrderData.shippingDetails?.phone || Order.shippingDetails?.phone || "",
-                        address: safeOrderData.shippingDetails?.address || Order.shippingDetails?.address || "",
-                        gstin: safeOrderData.shippingDetails?.gstin || Order.shippingDetails?.gstin || ""
+                        name: Order.shippingDetails?.name || Order.billingDetails?.name || "",
+                        phone: Order.shippingDetails?.phone || "",
+                        address: Order.shippingDetails?.address || "",
+                        gstin: Order.shippingDetails?.gstin || ""
                     }
                 },
 
                 order: {
-                    orderId: safeOrderData.orderId || Order.orderId,
-                    date: Order.time, // Using your formatted time from the frontend
+                    orderId: Order.orderId,
+                    date: Order.time,
                 },
 
-                // The items now have the imageBase64 safely attached by the server!
-                items: (safeOrderData.items || []).map((item: any, index: number) => {
-                    const mrp = item.mrp || 0;
-                    const salePrice = item.salesPrice || item.mrp || 0;
+                items: itemsWithBase64,
 
-                    return {
-                        sno: index + 1,
-                        name: item.name,
-                        qty: item.quantity,
-                        unitMultiplier: item.unitMultiplier ?? 1,
-                        tax: item.tax ?? 0,
-                        mrp: mrp,
-                        price: salePrice,
-                        total: salePrice * item.quantity,
-                        imageBase64: item.imageBase64 || "", // The golden ticket!
-                    };
-                }),
-
-                grandTotal: safeOrderData.totalAmount || Order.totalAmount,
-                paidAmount: Number(safeOrderData.paidAmount ?? Order.paidAmount ?? 0),
-                dueAmount: Math.max(
-                    0,
-                    (safeOrderData.totalAmount || Order.totalAmount) -
-                    Number(safeOrderData.paidAmount ?? Order.paidAmount ?? 0)
-                ),
+                grandTotal: Order.totalAmount,
+                paidAmount: Number(Order.paidAmount || 0),
+                dueAmount: Math.max(0, Order.totalAmount - Number(Order.paidAmount || 0)),
             };
 
-            let preparedData;
+            const preparedData = await prepareCatalogueBillData({
+                ...rawBillData,
+                isEstimate: billType === 'estimate'
+            });
 
-            // 3. Prepare the settings (using your existing frontend function)
-            if (billType === 'estimate') {
-                preparedData = await prepareCatalogueBillData({
-                    ...rawBillData,
-                    isEstimate: true
-                });
-            } else {
-                preparedData = await prepareCatalogueBillData({
-                    ...rawBillData,
-                    isEstimate: false
-                });
-            }
 
-            // 4. Generate the PDF purely on the frontend!
             if (action === ACTION.PRINT) {
                 await CatalogueBill(preparedData, "print");
-            }
-
-            if (action === ACTION.DOWNLOAD) {
+            } else if (action === ACTION.DOWNLOAD) {
                 await CatalogueBill(preparedData, "download");
             }
 
         } catch (err) {
-            console.error("Catalogue bill error:", err);
+            console.error("❌ Catalogue bill error:", err);
             setModal({
                 message: "Bill generation failed. Check console.",
                 type: State.ERROR,
             });
         } finally {
-            // spinner stop
             setPdfLoadingOrderId(null);
         }
     };
-
     const handleSendWhatsapp = async (Order: Order) => {
         const phone = Order.userLoginPhone || Order.billingDetails?.phone || '';
         const name = Order.userName || Order.billingDetails?.name || 'Customer';
@@ -996,7 +1022,6 @@ const OrdersPage: React.FC = () => {
         try {
             if (!currentUser?.companyId) throw new Error("User context missing.");
 
-            // 1. Check if user has an active WhatsApp Plan
             const businessDocRef = doc(db, 'companies', currentUser.companyId, 'business_info', currentUser.companyId);
             const businessSnap = await getDoc(businessDocRef);
             const { botMasterToken, whatsappNumber } = businessSnap.data() || {};
@@ -1008,65 +1033,54 @@ const OrdersPage: React.FC = () => {
                 return;
             }
 
-            // 2. Fetch Safe Data from Cloud Function (Same as handlePdfAction)
-            const functions = getFunctions(app);
-            const fetchInvoiceCall = httpsCallable(functions, 'fetchInvoiceData');
+            // 1. Convert Images
+            const itemsWithBase64 = await Promise.all((Order.items || []).map(async (item: any, index: number) => {
+                const mrp = Number(item.mrp || 0);
+                const salesPrice = Number(item.salesPrice || 0);
+                const actualPrice = item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+                const base64Image = item.imageUrl ? await convertImageUrlToBase64(item.imageUrl, item.name) : "";
+                return {
+                    sno: index + 1,
+                    name: item.name,
+                    qty: item.quantity,
+                    unitMultiplier: item.unitMultiplier ?? 1,
+                    tax: item.tax ?? 0,
+                    mrp: mrp,
+                    price: actualPrice,
+                    total: actualPrice * item.quantity,
+                    imageBase64: base64Image,
+                };
+            }));
 
-            const result = await fetchInvoiceCall({
-                companyId: currentUser.companyId,
-                orderId: Order.id
-            });
-
-            const responseData = result.data as any;
-            if (!responseData.success) {
-                throw new Error("Failed to fetch order data from server");
-            }
-
-            const safeOrderData = responseData.orderData;
-
-            // 3. Construct Raw Bill Data
+            // 2. Construct Raw Bill Data
             const rawBillData = {
                 companyId: currentUser?.companyId,
                 companyName: companyInfo?.name || "",
                 companyAddress: companyInfo?.address || "",
                 companyPhone: companyInfo?.ownerPhoneNumber || "",
-                specialInstruction: safeOrderData.specialInstruction || Order.specialInstruction || "",
+                specialInstruction: Order.specialInstruction || "",
                 customer: {
                     billing: {
-                        name: safeOrderData.billingDetails?.name || Order.billingDetails?.name || safeOrderData.userName || Order.userName || "Customer",
-                        phone: safeOrderData.billingDetails?.phone || Order.billingDetails?.phone || "",
-                        address: safeOrderData.billingDetails?.address || Order.billingDetails?.address || "",
-                        gstin: safeOrderData.billingDetails?.gstin || Order.billingDetails?.gstin || "",
+                        name: Order.billingDetails?.name || Order.userName || "Customer",
+                        phone: Order.billingDetails?.phone || "",
+                        address: Order.billingDetails?.address || "",
+                        gstin: Order.billingDetails?.gstin || "",
                     },
                     shipping: {
-                        name: safeOrderData.shippingDetails?.name || Order.shippingDetails?.name || safeOrderData.billingDetails?.name || "",
-                        phone: safeOrderData.shippingDetails?.phone || Order.shippingDetails?.phone || "",
-                        address: safeOrderData.shippingDetails?.address || Order.shippingDetails?.address || "",
-                        gstin: safeOrderData.shippingDetails?.gstin || Order.shippingDetails?.gstin || ""
+                        name: Order.shippingDetails?.name || Order.billingDetails?.name || "",
+                        phone: Order.shippingDetails?.phone || "",
+                        address: Order.shippingDetails?.address || "",
+                        gstin: Order.shippingDetails?.gstin || ""
                     }
                 },
                 order: {
-                    orderId: safeOrderData.orderId || Order.orderId,
+                    orderId: Order.orderId,
                     date: Order.time,
                 },
-                items: (safeOrderData.items || []).map((item: any, index: number) => {
-                    const mrp = item.mrp || 0;
-                    const salePrice = item.salesPrice || item.mrp || 0;
-                    return {
-                        sno: index + 1,
-                        name: item.name,
-                        qty: item.quantity,
-                        unitMultiplier: item.unitMultiplier ?? 1,
-                        tax: item.tax ?? 0,
-                        mrp: mrp,
-                        price: salePrice,
-                        total: salePrice * item.quantity,
-                        imageBase64: item.imageBase64 || "",
-                    };
-                }),
-                grandTotal: safeOrderData.totalAmount || Order.totalAmount,
-                paidAmount: Number(safeOrderData.paidAmount ?? Order.paidAmount ?? 0),
-                dueAmount: Math.max(0, (safeOrderData.totalAmount || Order.totalAmount) - Number(safeOrderData.paidAmount ?? Order.paidAmount ?? 0)),
+                items: itemsWithBase64,
+                grandTotal: Order.totalAmount,
+                paidAmount: Number(Order.paidAmount || 0),
+                dueAmount: Math.max(0, Order.totalAmount - Number(Order.paidAmount || 0)),
             };
 
             const preparedData = await prepareCatalogueBillData({
@@ -1074,21 +1088,21 @@ const OrdersPage: React.FC = () => {
                 isEstimate: billType === 'estimate'
             });
 
-            // 4. Generate Blob (Make sure CatalogueBill supports "blob" or use your generic pdf generator here)
+            // 3. Generate Blob
             const pdfBlob = await CatalogueBill(preparedData, "blob");
             if (!pdfBlob) throw new Error("Failed to generate PDF Blob.");
 
-            // 5. Upload to Firebase Storage
-            const safeNum = (safeOrderData.orderId || Order.orderId).replace(/[\/\\?%*:|"<>]/g, '-');
+            // 4. Upload to Firebase Storage
+            const safeNum = Order.orderId.replace(/[\/\\?%*:|"<>]/g, '-');
             const cleanName = `${safeNum}.pdf`;
             const storageRef = ref(storage, cleanName);
             await uploadBytes(storageRef, pdfBlob);
 
             const fileUrl = await getDownloadURL(storageRef);
 
-            // 6. Send via BotMaster
-            const amount = safeOrderData.totalAmount || Order.totalAmount;
-            const message = `Hello ${name},\n\nHere is your order bill #${safeOrderData.orderId || Order.orderId}.\nAmount: ${Number(amount).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}\n\nThank you!`;
+            // 5. Send via BotMaster
+            const amount = Order.totalAmount;
+            const message = `Hello ${name},\n\nHere is your order bill #${Order.orderId}.\nAmount: ${Number(amount).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}\n\nThank you!`;
 
             const response = await botMasterService.sendPdfFromUrl(
                 botMasterToken,
@@ -1099,7 +1113,7 @@ const OrdersPage: React.FC = () => {
                 cleanName
             );
 
-            // 7. Cleanup & Verify
+            // 6. Cleanup & Verify
             let isSuccess = false;
             if (Array.isArray(response) && response.length > 0) {
                 const res = response[0];
@@ -1122,7 +1136,7 @@ const OrdersPage: React.FC = () => {
             setModal({ message: "Failed to send WhatsApp invoice.", type: State.ERROR });
         } finally {
             setSendingPdf(false);
-            setSelectedOrderForAction(null); // Close the modal
+            setSelectedOrderForAction(null);
         }
     };
 
@@ -1294,7 +1308,6 @@ const OrdersPage: React.FC = () => {
             const orderData = orderSnap.data();
             const items = orderData.items || [];
 
-            console.log("🧾 Restoring stock for items:", items);
 
             // Restore stock
             for (const item of items) {
@@ -1320,16 +1333,19 @@ const OrdersPage: React.FC = () => {
                 }
 
                 const currentStock = Number(itemSnap.data().stock || 0);
-                const restoreQty =
-                    Number(item.quantity || 0);
-
-                console.log(
-                    `🔄 Restoring Stock → ${itemId}: ${currentStock} + ${restoreQty}`
-                );
+                const restoreQty = Number(item.quantity || 0) * Number(item.unitMultiplier || 1);
 
                 await updateDoc(itemRef, {
                     stock: currentStock + restoreQty,
                 });
+
+                // Tell MyShop to increase the stock in the UI
+                window.dispatchEvent(new CustomEvent('local_stock_update', {
+                    detail: {
+                        itemId: String(itemId),
+                        delta: restoreQty
+                    }
+                }));
             }
 
             // Delete order
@@ -1420,7 +1436,6 @@ const OrdersPage: React.FC = () => {
 
                             const snap = await getDoc(itemRef);
                             if (!snap.exists()) {
-                                console.log(" Item not found:", itemId);
                                 return;
                             }
 
@@ -1429,8 +1444,6 @@ const OrdersPage: React.FC = () => {
                             const deductQty =
                                 Number(item.quantity || 0) *
                                 Number(item.unitMultiplier || 1);
-
-                            console.log("STOCK DECREASE:", itemId, currentStock, "-", deductQty);
 
                             await updateDoc(itemRef, {
                                 stock: currentStock - deductQty
@@ -1807,7 +1820,7 @@ const OrdersPage: React.FC = () => {
 
                     {/* Right: Notification Bell + Filter Icon */}
                     <div className="w-24 flex justify-end items-center gap-2">
-                        <div className="border border-slate-300 rounded-sm p-2 bg-gray-100 shadow-sm flex items-center justify-center">
+                        <div className="border border-slate-300 rounded-sm bg-gray-100 shadow-sm flex items-center justify-center">
                             <NotificationBell />
                         </div>
                         {/* //<CataShowWrapper permission={Cata_Permissions.ViewFilterbutton}> */}

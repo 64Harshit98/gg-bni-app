@@ -741,8 +741,15 @@ const Journal: React.FC = () => {
 
       const fileUrl = await getDownloadURL(storageRef);
 
-      const message = `Hello ${invoice.partyName},\n\nHere is your invoice #${invoice.invoiceNumber}.\nAmount: ${invoice.amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}\n\nThank you!`;
+      // --- NEW: Fetch the extra message from bill settings ---
+      const billSettingsSnap = await getDoc(doc(db, 'companies', currentUser.companyId, 'settings', 'bill'));
+      const extraMsg = billSettingsSnap.exists() && billSettingsSnap.data().whatsappExtraMessage
+        ? `\n\n${billSettingsSnap.data().whatsappExtraMessage}`
+        : '';
+      // -------------------------------------------------------
 
+      // Append the extraMsg to the end of your standard message
+      const message = `Hello ${invoice.partyName},\n\nHere is your invoice #${invoice.invoiceNumber}.\nAmount: ${invoice.amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}\n\nThank you!${extraMsg}`;
       const response = await botMasterService.sendPdfFromUrl(
         botMasterToken,
         whatsappNumber,

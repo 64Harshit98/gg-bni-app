@@ -6,8 +6,6 @@ import { db } from '../lib/Firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { ROUTES } from '../constants/routes.constants';
 import BusinessCard from './BusinessCards/BusinessCard';
-import { Permissions } from '../enums/permissions.enum';
-import ShowWrapper from '../context/ShowWrapper';
 import ShinyText from '../Components/ShinyText';
 import NotificationBell from '../Components/NotificationBell';
 
@@ -209,22 +207,18 @@ const Account: React.FC = () => {
                     <BusinessCard />
                     <div className="w-full grid grid-cols-2 gap-4 justify-center mt-2 space-y-2 flex-col">
 
-                        <ShowWrapper
-                            requiredPermission={Permissions.ViewPNLReport}
-                        >
-                            <Link
-                                to={`${ROUTES.CHOME}/${ROUTES.CATALOGUE_REPORTS}`}
-                                className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-border border-gray-200 text-gray-800 hover:shadow-lg">
-                                <span className="text-lg font-medium">Reports</span>
-                                <span className="text-xl text-gray-600">→</span>
-                            </Link>
-                            <Link
-                                to={`${ROUTES.CHOME}/${ROUTES.CATA_MASTERS}`}
-                                className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-border border-gray-200 text-gray-800 hover:shadow-lg">
-                                <span className="text-lg font-medium">Settings</span>
-                                <span className="text-xl text-gray-600">→</span>
-                            </Link>
-                        </ShowWrapper>
+                        <Link
+                            to={`${ROUTES.CHOME}/${ROUTES.CATALOGUE_REPORTS}`}
+                            className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-border border-gray-200 text-gray-800 hover:shadow-lg">
+                            <span className="text-lg font-medium">Reports</span>
+                            <span className="text-xl text-gray-600">→</span>
+                        </Link>
+                        <Link
+                            to={`${ROUTES.CHOME}/${ROUTES.CATA_MASTERS}`}
+                            className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-border border-gray-200 text-gray-800 hover:shadow-lg">
+                            <span className="text-lg font-medium">Settings</span>
+                            <span className="text-xl text-gray-600">→</span>
+                        </Link>
                         <Link
                             to={ROUTES.SUBSCRIPTION_PAGE}
                             className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-border border-gray-200 text-gray-800 hover:shadow-lg">

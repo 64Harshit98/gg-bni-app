@@ -15,7 +15,6 @@ const SmartErrorUI: React.FC<{ error?: Error }> = ({ error }) => {
     }
     const isEnterprise = currentUser.plan === 'enterprise';
     const isCatalogueOnly =
-      currentUser.plan === PLANS.CATALOGUE_BASIC ||
       currentUser.plan === PLANS.CATALOGUE_PRO;
 
     if (isCatalogueOnly && !isEnterprise) {

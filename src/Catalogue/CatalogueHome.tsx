@@ -136,25 +136,29 @@ const HomePageContent: React.FC = () => {
                     snap.forEach(docSnap => {
                         const o = docSnap.data();
                         const status: string = o.status || 'Upcoming';
-                        // const amount: number = o.totalAmount || 0;
                         const dateKey: string = (o.createdAt as Timestamp).toDate().toLocaleDateString('en-CA');
 
+                        // 1. Update order journey counts
                         const timelineStatus = status === 'Paid' ? 'Completed' : status;
                         if (timelineStatus in orderCounts) {
                             orderCounts[timelineStatus] = (orderCounts[timelineStatus] || 0) + 1;
                         }
-                        if (status === 'Completed' || status === 'Paid') {
-                            const paidAmount: number = o.paidAmount || 0;
-                            const refundAmount: number = o.refundAmount || 0;
-                            const effectivePaid = Math.max(0, paidAmount - refundAmount);
-                            totalSalesAmount += effectivePaid;
-                            totalSalesCount += 1;
-                            if (salesByDate[dateKey]) {
-                                salesByDate[dateKey].sales += effectivePaid;
-                                salesByDate[dateKey].bills += 1;
-                            }
+
+                        // 2. Calculate Total Sales Amount irrespective of status
+                        // Note: Using o.totalAmount here so even unpaid/upcoming orders show their value. 
+                        // If you only want actual cash received, change this back to (o.paidAmount || 0) - (o.refundAmount || 0)
+                        const effectiveAmount: number = o.totalAmount || 0;
+
+                        totalSalesAmount += effectiveAmount;
+                        totalSalesCount += 1;
+
+                        if (salesByDate[dateKey]) {
+                            salesByDate[dateKey].sales += effectiveAmount;
+                            salesByDate[dateKey].bills += 1;
                         }
-                        if ((status === 'Completed' || status === 'Paid') && Array.isArray(o.items)) {
+
+                        // 3. Calculate Item Stats irrespective of status
+                        if (Array.isArray(o.items)) {
                             o.items.forEach((item: any) => {
                                 if (!item.id || !item.name) return;
                                 const cur = itemStats.get(item.id) || { name: item.name, totalQuantity: 0, totalAmount: 0 };
@@ -251,7 +255,7 @@ const HomePageContent: React.FC = () => {
                     <button
                         disabled={!hasCataloguePermission}
                         onClick={() => setIsMenuOpen(!isMenuOpen)}
-                        className={`flex min-w-28 items-center justify-between gap-2 rounded-sm border border-slate-400 p-2 text-sm font-medium text-slate-700 transition-colors whitespace-nowrap
+                        className={`flex min-w-20 items-center justify-between rounded-sm border border-slate-400 p-2 text-sm font-medium text-slate-700 transition-colors whitespace-nowrap
                             ${!hasCataloguePermission ? 'opacity-50 cursor-not-allowed bg-gray-100' : 'hover:bg-slate-200 cursor-pointer'}`}
                     >
                         <span className="font-medium">{currentLabel}</span>
@@ -286,7 +290,7 @@ const HomePageContent: React.FC = () => {
 
                 {/* Right: Notification bell + toggle button */}
                 <div className="w-28 flex justify-end items-center gap-2">
-                    <div className="relative border border-slate-300 rounded-sm p-2 bg-gray-100 shadow-sm">
+                    <div className="border border-slate-300 rounded-sm bg-gray-100 shadow-sm">
                         <NotificationBell />
                     </div>
                     <button

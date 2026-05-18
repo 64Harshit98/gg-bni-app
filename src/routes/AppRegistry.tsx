@@ -156,7 +156,7 @@ export const AppRegistry: AppModule[] = [
         id: 'pos',
         name: 'Point of Sale & Billing',
         layout: 'MAIN',
-        requiredPlans: [PLANS.POS_BASIC, PLANS.POS_PRO, PLANS.ENTERPRISE],
+        requiredPlans: [PLANS.POS_BASIC, PLANS.POS_PRO, PLANS.ENTERPRISE, PLANS.CALC_CATALOG],
         routes: [
             { component: Home, permission: Permissions.ViewDashboard, isIndex: true },
             { path: ROUTES.ACCOUNT.substring(1), component: Account, permission: Permissions.ManageEditProfile },
@@ -200,7 +200,7 @@ export const AppRegistry: AppModule[] = [
         id: 'catalogue',
         name: 'Online Store Catalogue',
         layout: 'CATALOGUE',
-        requiredPlans: [PLANS.CATALOGUE_BASIC, PLANS.CATALOGUE_PRO, PLANS.ENTERPRISE],
+        requiredPlans: [PLANS.CALC_CATALOG, PLANS.CATALOGUE_PRO, PLANS.ENTERPRISE],
         routes: [
             { path: ROUTES.CHOME, component: CHome, permission: null },
             { path: ROUTES.CATALOGUE_ACCOUNTS, component: CatalogueAccounts, permission: null },
@@ -229,7 +229,7 @@ export const AppRegistry: AppModule[] = [
             { path: `${ROUTES.CHOME}/${ROUTES.ORDER}`, component: Order, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`, component: OrdersReturnPage, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.MYSHOP}/:groupId`, component: MyShop, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`, component: CatalogueItemAddWrapper, permission: Permissions.ManageItems },
+            { path: `${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`, component: CatalogueItemAddWrapper, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`, component: RequestPage, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_SUPPORT}`, component: Catasupport, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_ADDITIONAL_SERVICES}`, component: CatalogueAdditionalServices, permission: null },

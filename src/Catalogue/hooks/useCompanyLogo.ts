@@ -8,31 +8,45 @@ export const logoCache: Record<string, string> = {};
 const logoBase64Cache: Record<string, string> = {};
 
 // ── Helper: convert any image URL → base64 data URL ──────────────
+// ── Helper: convert any image URL → base64 data URL ──────────────
 const urlToBase64 = (url: string): Promise<string> => {
   return new Promise((resolve, reject) => {
-    // Route Firebase Storage URLs through the Vite dev proxy
-    // to avoid CORS + cached-response-without-CORS-headers issues
-    const proxiedUrl = url.replace(
-      'https://firebasestorage.googleapis.com',
-      '/firebase-image'
-    );
+    if (!url) {
+      console.warn("⚠️ urlToBase64 was given an empty URL. Check Firestore database!");
+      return resolve("");
+    }
+
+    console.log("🔄 Attempting to convert logo URL to Base64:", url);
 
     const img = new Image();
-    // No crossOrigin needed — same-origin request via proxy
+    // CRITICAL for Canvas export
+    img.crossOrigin = "Anonymous";
+
     img.onload = () => {
       const canvas = document.createElement('canvas');
       canvas.width = img.naturalWidth;
       canvas.height = img.naturalHeight;
       const ctx = canvas.getContext('2d');
       if (!ctx) { reject(new Error('Canvas context unavailable')); return; }
+
       ctx.drawImage(img, 0, 0);
-      resolve(canvas.toDataURL('image/png'));
+      const base64Str = canvas.toDataURL('image/png');
+
+      console.log("✅ Successfully converted logo to Base64!");
+      resolve(base64Str);
     };
-    img.onerror = () => reject(new Error(`Failed to load image: ${proxiedUrl}`));
-    img.src = proxiedUrl;
+
+    img.onerror = (err) => {
+      console.error("❌ Image failed to load for canvas conversion. This is almost always a Firebase CORS configuration issue.", err);
+      resolve(""); // Resolve empty so it doesn't crash the whole app
+    };
+
+    // CACHE BUSTER: This forces the browser to fetch a fresh copy from Firebase
+    // ensuring it gets the correct CORS headers, ignoring any non-CORS cached version.
+    const cacheBusterUrl = url + (url.includes('?') ? '&' : '?') + 'cb=' + new Date().getTime();
+    img.src = cacheBusterUrl;
   });
 };
-
 // ── For React components ──────────────────────────────────────────
 export const useCompanyLogo = (companyId?: string): string => {
   const [logo, setLogo] = useState<string>(

@@ -304,7 +304,7 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
             taxType: 'exclusive', // This will be overwritten if user selects Inclusive
             enableItemWiseDiscount: true,
             allowDueBilling: true,
-            requireCustomerName: true,
+            requireCustomerName: false,
             requireCustomerMobile: false,
             salesViewType: 'list',
         };

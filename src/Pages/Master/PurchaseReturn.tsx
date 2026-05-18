@@ -88,7 +88,6 @@ const PurchaseReturnPage: React.FC = () => {
   const dbOperations = useDatabase();
   const { purchaseId } = useParams();
   const { state } = useLocation();
-  const location = useLocation();
 
   const [supplierName, setSupplierName] = useState<string>('');
   const [supplierNumber, setSupplierNumber] = useState<string>('');
@@ -99,8 +98,6 @@ const PurchaseReturnPage: React.FC = () => {
   const [exchangeBalanceAction, setExchangeBalanceAction] = useState<'Debit Note' | 'Cash Refund'>('Debit Note');
   const [newItemsReceived, setNewItemsReceived] = useState<ReturnCartItem[]>([]);
   const [returnDate, setReturnDate] = useState<string>(new Date().toISOString().split('T')[0]);
-
-  const isActive = (path: string) => location.pathname === path;
 
   const [originalPurchaseItems, setOriginalPurchaseItems] = useState<TransactionItem[]>([]);
   const [selectedReturnIds, setSelectedReturnIds] = useState<Set<string>>(new Set());
@@ -797,10 +794,6 @@ const PurchaseReturnPage: React.FC = () => {
       <h1 className="text-2xl font-bold text-gray-800 text-center md:text-left mb-2 md:mb-0">
         Purchase Return
       </h1>
-      <div className="flex justify-center gap-x-6">
-        <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.PURCHASE)} active={isActive(ROUTES.PURCHASE)}>Purchase</CustomButton>
-        <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.PURCHASE_RETURN)} active={isActive(ROUTES.PURCHASE_RETURN)}>Purchase Return</CustomButton>
-      </div>
     </div>
   );
 

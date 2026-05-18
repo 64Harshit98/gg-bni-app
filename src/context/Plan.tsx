@@ -41,10 +41,24 @@ export const PACK_LIMITS: Record<PLANS, Permissions[]> = {
         Permissions.ViewSalesReport,
         Permissions.CreateUsers
     ],
+    [PLANS.CALC_CATALOG]: [
+        Permissions.ViewDashboard,
+        Permissions.ViewSalescard,
+        Permissions.ManageEditProfile,
+        Permissions.CreateSales,
+        Permissions.ViewTransactions,
+        Permissions.ViewHidebutton,
+        Permissions.ViewFilter,
+        Permissions.ViewSalesbarchart,
+        Permissions.ViewPaymentmethods,
+        Permissions.ViewReports,
+        Permissions.ViewSalesReport,
+        Permissions.CreateUsers,
+        Permissions.ViewCatalogue
+    ],
     [PLANS.POS_PRO]: Object.values(Permissions).filter(
         (p) => !PRO_EXCLUDED_PERMISSIONS.includes(p)
     ),
-    [PLANS.CATALOGUE_BASIC]: [],
     [PLANS.CATALOGUE_PRO]: [],
     [PLANS.ENTERPRISE]: Object.values(Permissions)
 };

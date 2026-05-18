@@ -8,9 +8,9 @@ interface Props {
   onSkip: () => void;
   children: React.ReactNode;
   isLast?: boolean;
-  position?: 'top' | 'bottom'; // prop, default bottom
-  arrowAlign?: 'left' | 'right'; // desktop
-  mobileArrowAlign?: 'left' | 'right'; // mobile
+  position?: 'top' | 'bottom';
+  arrowAlign?: 'left' | 'right';
+  mobileArrowAlign?: 'left' | 'right';
 }
 
 export const TutorialStep: React.FC<Props> = ({
@@ -48,14 +48,13 @@ export const TutorialStep: React.FC<Props> = ({
     if (isActive) updateRect();
   }, [isActive]);
 
-  // ✅ Compute tooltip top position based on prop
   const getTooltipStyle = (rect: DOMRect) => {
-    const tooltipHeight = 110; // approximate
+    const tooltipHeight = 110;
     const gap = 12;
 
     const top = position === 'top'
-      ? rect.top - tooltipHeight - gap        // above the element
-      : rect.bottom + gap;                    // below the element
+      ? rect.top - tooltipHeight - gap
+      : rect.bottom + gap;
 
     const left = Math.max(rect.right - 256, 8);
 
@@ -73,9 +72,18 @@ export const TutorialStep: React.FC<Props> = ({
 
       {isActive && rect && (
         <>
-          {/* Overlay */}
+          {/* ✅ NEW: Invisible Shield to block ALL clicks from reaching the highlighted element */}
           <div
             className="fixed inset-0 z-40 pointer-events-auto"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+          />
+
+          {/* Overlay (Visually unchanged, but pointer events pass through to the shield) */}
+          <div
+            className="fixed inset-0 z-40 pointer-events-none"
             style={{
               background: "rgba(0,0,0,0.55)",
               clipPath: `polygon(
@@ -98,7 +106,6 @@ export const TutorialStep: React.FC<Props> = ({
             className="fixed z-50 bg-white rounded-sm shadow-xl p-4 w-64"
             style={getTooltipStyle(rect)}
           >
-            {/* Arrow: points DOWN if tooltip is above, UP if below */}
             {position === 'top' ? (
               <div className={`absolute -bottom-2 ${computedArrowAlign === 'left' ? 'left-6' : 'right-6'} w-4 h-4 bg-white border-r border-b border-gray-100 rotate-45`} />
             ) : (

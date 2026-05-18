@@ -1,6 +1,4 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ROUTES } from '../../constants/routes.constants';
 import { ROLES, Variant } from '../../enums';
 import { useAuth } from '../../context/auth-context';
 import { inviteUser } from '../../lib/AuthOperations';
@@ -15,7 +13,6 @@ const roleOptions: Option<ROLES>[] = [
   { value: ROLES.OWNER, label: 'Owner' }
 ];
 const UserAdd: React.FC = () => {
-  const navigate = useNavigate();
   const { currentUser, loading } = useAuth();
   const [fullName, setFullName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -65,7 +62,6 @@ const UserAdd: React.FC = () => {
 
       setTimeout(() => {
         setSuccess(null);
-        navigate(ROUTES.MASTERS);
       }, 2000);
 
     } catch (err: any) {
@@ -92,7 +88,7 @@ const UserAdd: React.FC = () => {
 
         {/* Header Section */}
         <div className="flex items-start gap-4 border-b border-slate-200 pb-6 mb-8">
-          <BackButton/>
+          <BackButton />
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 tracking-tight">Add New User</h1>
             <p className="text-sm text-slate-500 mt-1">Fill in the details below to invite a new team member.</p>

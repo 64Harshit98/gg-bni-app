@@ -74,7 +74,6 @@ const OrderingPage: React.FC = () => {
 
         const fetchData = async () => {
             if (!companyId) return;
-            console.log("COMPANY ID:", companyId);
             try {
                 setPageIsLoading(true);
 
@@ -330,21 +329,20 @@ const OrderingPage: React.FC = () => {
             )}
 
             <header className="sticky top-0 z-[100] bg-white border-b border-gray-100 shadow-sm w-full">
-                {/* Changed py-8 to py-4 to make the header a normal height */}
                 <div className="max-w-7xl mx-auto px-4 py-4 relative flex items-center justify-between h-16">
 
-                    {/* Company Name */}
-                    <h1 className="absolute left-4 right-28 top-1/2 -translate-y-1/2 text-sm sm:text-lg md:text-lg font-black text-[#1A3B5D] uppercase tracking-tighter text-center leading-tight sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:whitespace-nowrap">
+                    {/* Left Spacer (matches width of right button to help balance if you ever switch from absolute positioning) */}
+                    <div className="w-[88px] hidden sm:block"></div>
+
+                    {/* Company Name - Now perfectly centered on all devices */}
+                    <h1 className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-sm sm:text-lg md:text-lg font-black text-[#1A3B5D] uppercase tracking-tighter text-center leading-tight whitespace-nowrap truncate max-w-[55%] sm:max-w-[70%]">
                         {companyName}
                     </h1>
-
-                    {/* Left Spacer */}
-                    <div className="w-24"></div>
 
                     {/* Store Link Button */}
                     <button
                         onClick={() => setIsSubdomainModalOpen(true)}
-                        className="bg-blue-50 text-blue-600 px-3 py-2 rounded-sm text-[10px] font-black uppercase tracking-wider border border-blue-100 hover:bg-blue-100 transition-colors z-10 shrink-0"
+                        className="bg-blue-50 text-blue-600 px-3 py-2 rounded-sm text-[10px] font-black uppercase tracking-wider border border-blue-100 hover:bg-blue-100 transition-colors z-10 shrink-0 ml-auto"
                     >
                         Store Link
                     </button>
@@ -447,12 +445,12 @@ const OrderingPage: React.FC = () => {
                                     {collageImages.length > 0 ? (
                                         <div
                                             className={`w-full h-full gap-[2px] p-[2px] ${collageImages.length === 1
-                                                    ? 'grid grid-cols-1 grid-rows-1'
-                                                    : collageImages.length === 2
-                                                        ? 'grid grid-cols-2 grid-rows-1'
-                                                        : collageImages.length === 3
-                                                            ? 'grid grid-cols-2 grid-rows-2'
-                                                            : 'grid grid-cols-2 grid-rows-2'
+                                                ? 'grid grid-cols-1 grid-rows-1'
+                                                : collageImages.length === 2
+                                                    ? 'grid grid-cols-2 grid-rows-1'
+                                                    : collageImages.length === 3
+                                                        ? 'grid grid-cols-2 grid-rows-2'
+                                                        : 'grid grid-cols-2 grid-rows-2'
                                                 }`}
                                         >
                                             {collageImages.map((img, index) => {
@@ -463,8 +461,8 @@ const OrderingPage: React.FC = () => {
                                                     <div
                                                         key={index}
                                                         className={`w-full h-full overflow-hidden rounded-[2px] ${isThreeImagesLayout && isLastImage
-                                                                ? 'col-span-2'
-                                                                : ''
+                                                            ? 'col-span-2'
+                                                            : ''
                                                             }`}
                                                     >
                                                         <img

@@ -127,7 +127,6 @@ const PurchasePage: React.FC = () => {
   const [editModeData, setEditModeData] = useState<Purchase | null>(null);
   const [_settingsDocId, setSettingsDocId] = useState<string | null>(null);
 
-  const isActive = (path: string) => location.pathname === path;
 
   useEffect(() => {
     if (!isEditMode) {
@@ -1095,12 +1094,6 @@ const PurchasePage: React.FC = () => {
       </div>
 
       {/* Purchase / Purchase Return buttons*/}
-      {!editModeData && (
-        <div className="flex items-center justify-center md:justify-end gap-3">
-          <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.PURCHASE)} active={isActive(ROUTES.PURCHASE)}>Purchase</CustomButton>
-          <CustomButton variant={Variant.Transparent} onClick={() => navigate(ROUTES.PURCHASE_RETURN)} active={isActive(ROUTES.PURCHASE_RETURN)}>Purchase Return</CustomButton>
-        </div>
-      )}
     </div>
   );
 

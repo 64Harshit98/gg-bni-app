@@ -183,7 +183,7 @@ const DashboardContent = () => {
       const salesmanMap: Record<string, { amount: number, count: number }> = {};
       let currentTotalSales = 0, currentOrderCount = 0, prevTotalSales = 0;
 
-      const validSalesmen = new Set<string>();
+      const validSalesmen = new Map<string, string>();
       snapUsers.docs.forEach(doc => {
         const u = doc.data();
         const role = String(u.role || '').toLowerCase().trim();
@@ -193,6 +193,13 @@ const DashboardContent = () => {
           role === 'sales person';
         if (!isSalesRole) return;
 
+        // Grab the best available display name
+        const displayName = u.name || u.fullName || u.displayName || u.username || u.userName || 'Unknown Salesperson';
+
+        // Map the Document ID (the "gibberish") to the display name
+        validSalesmen.set(doc.id, displayName);
+
+        // Also map name variations just in case the sales doc stores names directly
         const possibleNames = [
           u.name,
           u.fullName,
@@ -203,7 +210,7 @@ const DashboardContent = () => {
           .map((n: any) => String(n || '').trim().toLowerCase())
           .filter(Boolean);
 
-        possibleNames.forEach((name: string) => validSalesmen.add(name));
+        possibleNames.forEach((name: string) => validSalesmen.set(name, displayName));
       });
 
       snapSales.docs.forEach(doc => {
@@ -238,10 +245,19 @@ const DashboardContent = () => {
           if (!customerMap[cust]) customerMap[cust] = { amount: 0, count: 0 };
           customerMap[cust].amount += amount; customerMap[cust].count++;
 
-          let sm = d.salesmanName || d.salesman || 'Admin';
+          let sm = d.salesmanName || d.salesman || d.salesmanId || 'Admin';
           if (typeof sm === 'object' && sm.name) sm = sm.name;
-          if (!salesmanMap[sm]) salesmanMap[sm] = { amount: 0, count: 0 };
-          salesmanMap[sm].amount += amount; salesmanMap[sm].count++;
+
+          const smStr = String(sm);
+          // Translate the ID (or Name) into the official Display Name
+          const resolvedName = validSalesmen.get(smStr) || validSalesmen.get(smStr.toLowerCase().trim());
+
+          // Strictly filter: Only track if they have the salesman role
+          if (resolvedName) {
+            if (!salesmanMap[resolvedName]) salesmanMap[resolvedName] = { amount: 0, count: 0 };
+            salesmanMap[resolvedName].amount += amount;
+            salesmanMap[resolvedName].count++;
+          }
 
           if (Array.isArray(d.items)) {
             d.items.forEach((item: any) => {
@@ -265,8 +281,9 @@ const DashboardContent = () => {
       else if (currentTotalSales > 0) percentageChange = 100;
 
       const chartData = [];
-      // FIX 1: Restored to prevStart so the chart has a starting dot to draw the line
+
       const itr = new Date(start);
+      itr.setDate(itr.getDate() - 1);
 
       while (itr <= end) {
         const offset = itr.getTimezoneOffset() * 60000;
@@ -291,17 +308,10 @@ const DashboardContent = () => {
       }
 
       const toList = (map: any) => Object.entries(map).map(([key, v]: [string, any]) => ({ name: v.latestName ?? key, amount: v.amount, quantity: v.count })).sort((a, b) => b.amount - a.amount).slice(0, 5);
-      const allSalesmen = Object.entries(salesmanMap)
+      const topSalesmen = Object.entries(salesmanMap)
         .map(([name, v]: [string, any]) => ({ name, amount: v.amount, quantity: v.count }))
-        .sort((a, b) => b.amount - a.amount);
-
-      const filteredSalesmen = allSalesmen.filter((s) =>
-        validSalesmen.has(s.name.toLowerCase().trim())
-      );
-
-      // If user role/name mapping does not align perfectly with sales docs,
-      // prefer showing ranked sales contributors over showing an empty card.
-      const topSalesmen = (filteredSalesmen.length > 0 ? filteredSalesmen : allSalesmen).slice(0, 5);
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 5);
 
       const finalData = { totalSales: currentTotalSales, totalOrders: currentOrderCount, percentageChange, salesByDate: chartData, paymentMethods: toList(paymentMap), topItems: toList(itemMap), topCustomers: toList(customerMap), topSalesmen, lastUpdated: Date.now(), cacheStart: filters.startDate, cacheEnd: filters.endDate };
       setData(finalData);

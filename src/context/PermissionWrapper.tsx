@@ -20,7 +20,6 @@ const PermissionWrapper = () => {
         if (currentUser) {
             // 1. Identify if they are a Catalogue-Only user
             const isCatalogueOnly =
-                currentUser.plan === PLANS.CATALOGUE_BASIC ||
                 currentUser.plan === PLANS.CATALOGUE_PRO;
 
             // 2. Sort them into the correct dashboard

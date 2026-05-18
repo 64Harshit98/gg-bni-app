@@ -126,7 +126,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const { currentUser } = useAuth();
 
     // --- COMPUTED PROPERTIES BASED ON MODE ---
-    const isSale = mode === 'sale';
+    const isSale = mode === 'sale' || mode === 'calculator';
     const collectionName = isSale ? 'customers' : 'suppliers';
     const partyLabel = isSale ? 'Customer' : 'Supplier';
     const isCalculator = mode === 'calculator';
@@ -169,8 +169,15 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const [isNarrationExpanded, setIsNarrationExpanded] = useState(false);
 
     // --- CALCULATIONS ---
+    // Calculates proportional tax drop live as discount is typed
+    const liveTax = useMemo(() => {
+        if (!billTotal || billTotal <= 0) return totalTax || 0;
+        const ratio = Math.max(0, (billTotal - discount) / billTotal);
+        return (totalTax || 0) * ratio;
+    }, [totalTax, billTotal, discount]);
+
     const parsedExpense = parseFloat(expenseAmount.toString()) || 0;
-    const netPayable = useMemo(() => Math.max(0, billTotal - discount + parsedExpense), [billTotal, discount, parsedExpense]);
+    const netPayable = useMemo(() => Math.round(Math.max(0, billTotal - discount + parsedExpense)), [billTotal, discount, parsedExpense]);
 
     const totalManualPayment = useMemo(() => {
         const sum = Object.values(selectedPayments).reduce((acc, amount) => acc + (amount || 0), 0);
@@ -219,7 +226,9 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         setIsSubmitting(false);
         const baseTotal = originalBillTotal && originalBillTotal > 0 ? originalBillTotal : billTotal;
         const originalPercent = initialDiscount && baseTotal > 0 ? (initialDiscount / baseTotal) * 100 : 0;
-        const scaledDiscount = billTotal > 0 ? parseFloat(((originalPercent / 100) * billTotal).toFixed(2)) : 0;
+
+        // Use Math.round here instead of parseFloat to completely eliminate decimals in the discount
+        const scaledDiscount = billTotal > 0 ? Math.round((originalPercent / 100) * billTotal) : 0;
 
         setDiscount(scaledDiscount);
         setDiscountPercent(parseFloat(originalPercent.toFixed(2)));
@@ -286,8 +295,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         if (isSale && initialNumber) searchParty(initialNumber, 'number');
         if (!isSale && initialName) searchParty(initialName, 'name');
 
-    }, [isOpen, mode, initialDiscount, originalBillTotal, initialPartyName, initialPartyNumber, initialPartyAddress, initialPartyGST, initialShippingName, initialShippingNumber, initialShippingAddress, initialShippingGST, initialExpenseName, initialExpenseAmount, initialNarration]);
-
+    }, [isOpen, mode, billTotal, initialDiscount, originalBillTotal, initialPartyName, initialPartyNumber, initialPartyAddress, initialPartyGST, initialShippingName, initialShippingNumber, initialShippingAddress, initialShippingGST, initialExpenseName, initialExpenseAmount, initialNarration]);
     useEffect(() => {
         if (isOpen && !isSubmitting && shouldSaveToLocalStorage.current) {
             try {
@@ -559,7 +567,14 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     };
 
     const handleDiscountPercentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const pct = parseFloat(e.target.value) || 0;
+        // 1. Get the value and parse it
+        let pct = parseFloat(e.target.value) || 0;
+
+        // 2. Clamp the value between 0 and 100
+        if (pct > 100) pct = 100;
+        if (pct < 0) pct = 0;
+
+        // 3. Update states
         setDiscountPercent(pct);
         setDiscount(parseFloat(((pct / 100) * billTotal).toFixed(2)));
     };
@@ -867,14 +882,14 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                 Total Payable
                             </span>
                             <span className="text-3xl font-extrabold text-blue-600">
-                                ₹{netPayable.toFixed(2)}
+                                ₹{netPayable.toFixed(0)}
                             </span>
                         </div>
 
                         <div className="flex-1 flex flex-col items-end justify-center pb-4">
                             {totalTax > 0 && (
                                 <span className="text-sm text-gray-600 font-medium leading-tight mb-1">
-                                    Tax: ₹{totalTax.toFixed(2)}
+                                    Tax: ₹{liveTax.toFixed(2)}  {/* <--- CHANGED THIS */}
                                 </span>
                             )}
                             {totalItemDiscount > 0 && (

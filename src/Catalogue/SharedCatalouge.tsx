@@ -9,7 +9,7 @@ import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName.tsx';
 import SearchBar from './SearchBar.tsx';
 // import LeadPopUp from './PopUp.tsx';
-import { doc, getDoc, collection, query, where, getDocs , onSnapshot} from "firebase/firestore";
+import { doc, getDoc, collection, query, where, getDocs, onSnapshot } from "firebase/firestore";
 import { db } from "../lib/Firebase";
 import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting';
 
@@ -230,18 +230,18 @@ const SharedCataloguePage: React.FC = () => {
         };
     }, []);
     useEffect(() => {
-    if (!effectiveCompanyId) return;
-    const ref = doc(db, 'companies', effectiveCompanyId, 'settings', 'pinned_categories');
-    const unsubscribe = onSnapshot(ref, (snap) => {
-        if (snap.exists()) {
-            setPinnedIds(new Set(snap.data().ids || []));
-        } else {
-            setPinnedIds(new Set());
-        }
-    });
-    return () => unsubscribe();
-}, [effectiveCompanyId]);
-    
+        if (!effectiveCompanyId) return;
+        const ref = doc(db, 'companies', effectiveCompanyId, 'settings', 'pinned_categories');
+        const unsubscribe = onSnapshot(ref, (snap) => {
+            if (snap.exists()) {
+                setPinnedIds(new Set(snap.data().ids || []));
+            } else {
+                setPinnedIds(new Set());
+            }
+        });
+        return () => unsubscribe();
+    }, [effectiveCompanyId]);
+
     const getGroupImages = (groupId: string): string[] => {
         const imgs = allItems
             .filter(item => item.itemGroupId === groupId)

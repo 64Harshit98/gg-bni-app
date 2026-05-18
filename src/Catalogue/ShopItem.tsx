@@ -339,6 +339,7 @@ const MyShop: React.FC = () => {
         setIsAllLive(allLive);
     }, [allItems, resolvedGroupId, selectedCategory]);
 
+    // 1. One-time fetch (Saves Firestore Reads)
     useEffect(() => {
         if (authLoading || !currentUser || !dbOperations || !companyId) {
             if (!authLoading && (!currentUser || !dbOperations)) {
@@ -355,33 +356,25 @@ const MyShop: React.FC = () => {
                 const fetchedItemGroups = await dbOperations.getItemGroups();
                 const fetchedItems = await dbOperations.syncItems();
 
-                let groups = fetchedItemGroups || [];
-                setAllItemGroups(groups);
-                setAllItems(
-                    (fetchedItems || []).map(item => ({
-                        ...item,
-                        isListed: item.isListed ?? false
-                    }))
-                );
+                setAllItemGroups(fetchedItemGroups || []);
 
-                if (Array.isArray(fetchedItems) && fetchedItems.length > 0) {
-                    const allLive = fetchedItems.every(item => item?.isListed === true);
-                    setIsAllLive(allLive);
-                } else {
-                    setIsAllLive(false);
+                const processedItems = (fetchedItems || []).map(item => ({
+                    ...item,
+                    isListed: item.isListed ?? false
+                }));
+                setAllItems(processedItems);
+
+                if (processedItems.length > 0) {
+                    setIsAllLive(processedItems.every(item => item.isListed === true));
                 }
 
                 const businessRef = doc(db, "companies", companyId, "business_info", companyId);
                 const businessSnap = await getDoc(businessRef);
-                if (businessSnap.exists()) {
-                    setSocialLinks(businessSnap.data());
-                }
+                if (businessSnap.exists()) setSocialLinks(businessSnap.data());
 
                 const settingsRef = doc(db, 'companies', companyId, 'settings', 'catalogue-sales-settings');
                 const settingsSnap = await getDoc(settingsRef);
-                if (settingsSnap.exists()) {
-                    setCatalogueSettings(settingsSnap.data() as CatalogueSalesSettings);
-                }
+                if (settingsSnap.exists()) setCatalogueSettings(settingsSnap.data() as CatalogueSalesSettings);
 
             } catch (err: any) {
                 setError(err.message || "Failed to load initial data.");
@@ -392,6 +385,23 @@ const MyShop: React.FC = () => {
 
         fetchData();
     }, [authLoading, currentUser, dbOperations, companyId]);
+
+    // 2. Listen for free local updates
+    useEffect(() => {
+        const handleLocalStockUpdate = (e: CustomEvent) => {
+            const { itemId, delta } = e.detail;
+            setAllItems(prevItems => prevItems.map(item => {
+                if (item.id === itemId) {
+                    // 👇 FIX: Removed Math.max here too
+                    return { ...item, stock: Number(item.stock || 0) + delta };
+                }
+                return item;
+            }));
+        };
+
+        window.addEventListener('local_stock_update' as any, handleLocalStockUpdate);
+        return () => window.removeEventListener('local_stock_update' as any, handleLocalStockUpdate);
+    }, []);
 
     const itemGroupMap = useMemo(() => {
         return allItemGroups.reduce((acc, group) => {

@@ -147,6 +147,10 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     stock: true,
     category: true,
     discount: true,
+    tax: true,
+    hsnCode: true,
+    restockQuantity: true,
+    moq: true,
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -589,7 +593,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
           const categoryLower = csvCategoryValue.toLowerCase();
           if (groupMap.has(categoryLower)) {
             targetGroupId = groupMap.get(categoryLower)!;
-          } else if (importMode === 'create_update') {
+          } else {
             try {
               const newGroupId = await dbOperations.createItemGroup({ name: csvCategoryValue, description: 'Auto-created via Bulk Import' });
               if (typeof newGroupId === 'string') {
@@ -643,6 +647,10 @@ const ItemAdd: React.FC<ItemAddProps> = ({
           if (updateFields.discount) { updates.discount = rowSaleDiscount; updates.purchasediscount = rowPurchaseDiscount; }
           if (updateFields.discount) { updates.discount = rowSaleDiscount; updates.purchasediscount = rowPurchaseDiscount; }
           if (finalUploadedImageUrl) updates.imageUrl = finalUploadedImageUrl; // <-- ADD THIS
+          if (updateFields.tax) updates.tax = rowTax;
+          if (updateFields.hsnCode) updates.hsnSac = rowHsn;
+          if (updateFields.restockQuantity) updates.restockQuantity = rowRestock;
+          if (updateFields.moq) updates.moq = rowMoq;
 
           try {
             // CRITICAL FIX: Use the existing document ID

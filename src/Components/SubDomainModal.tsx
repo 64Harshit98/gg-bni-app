@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, query, where, getDocs, doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 import { Loader2, CheckCircle, AlertCircle, X, Copy, Check } from 'lucide-react';
 
@@ -117,6 +117,7 @@ export default function SubdomainClaimModal({ companyId, forceOpen, onClose }: S
     }, [subdomain, existingSubdomain]);
 
     // 4. Save and Update Document
+    // 4. Save and Update Document
     const handleClaimSubdomain = async () => {
         if (availability !== 'available' || !companyId) return;
 
@@ -124,10 +125,27 @@ export default function SubdomainClaimModal({ companyId, forceOpen, onClose }: S
         try {
             const companyDocRef = doc(db, 'companies', companyId);
 
-            // We use updateDoc to keep the old domain in aliases and set the new one as primary
+            // 1. Fetch the current document to get the existing aliases
+            const docSnap = await getDoc(companyDocRef);
+            let updatedAliases = [subdomain];
+
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                const currentAliases = data.domainAliases || [];
+
+                // 2. Filter out the old subdomain so it is released for others
+                updatedAliases = currentAliases.filter((alias: string) => alias !== existingSubdomain);
+
+                // 3. Ensure the newly claimed subdomain is in the array
+                if (!updatedAliases.includes(subdomain)) {
+                    updatedAliases.push(subdomain);
+                }
+            }
+
+            // 4. Update the database with the cleaned array
             await updateDoc(companyDocRef, {
                 subdomain: subdomain,
-                domainAliases: arrayUnion(subdomain)
+                domainAliases: updatedAliases
             });
 
             closeModal();
@@ -138,7 +156,6 @@ export default function SubdomainClaimModal({ companyId, forceOpen, onClose }: S
             setIsSaving(false);
         }
     };
-
     const closeModal = () => {
         sessionStorage.setItem('subdomainDismissed', 'true');
         setIsVisible(false);

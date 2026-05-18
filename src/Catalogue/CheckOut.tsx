@@ -2,14 +2,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { ChevronLeft, Trash2, Check, ChevronUp, X } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Footer from './Footer';
-import { doc, getDoc, setDoc, serverTimestamp, deleteDoc, collection, onSnapshot, query, where, increment, updateDoc, runTransaction, getDocs } from 'firebase/firestore';
+import { doc, getDoc, serverTimestamp, collection, onSnapshot, query, where, increment, runTransaction, getDocs } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 import { FiPackage } from 'react-icons/fi';
-import { useAuth } from '../context/auth-context';
 import LeadPopUp from './PopUp';
-// import { getCompressedBase64 } from './utils/imageCache';
-import { CatalogueBill, prepareCatalogueBillData } from './CatalogueBill/CatalogueBill'
-import { ACTION } from '../enums';
 import { indianStates } from '../Components/IndianStates';
 
 
@@ -81,7 +77,6 @@ const useBusinessName = (effectiveCompanyId?: string) => {
 };
 
 const CartPage: React.FC = () => {
-    const { currentUser } = useAuth();
     const navigate = useNavigate();
     const { companyId: pathId } = useParams<{ companyId: string }>();
 
@@ -160,56 +155,6 @@ const CartPage: React.FC = () => {
     const [leadStatus, setLeadStatus] = useState<"approved" | "pending" | "declined" | null>(null);
     const [approvalError, setApprovalError] = useState<string | null>(null);
     const [specialInstruction, setSpecialInstruction] = useState("");
-    const getUpcomingDocId = () => {
-        const upcomingKey =
-            localStorage.getItem("upcoming_user_key");
-
-        if (!upcomingKey) return null;
-
-        return `upcoming_${upcomingKey}`;
-    };
-
-    const syncToUpcoming = async (updatedCart: CartItem[]) => {
-        if (!effectiveCompanyId) return;
-
-        const docId = getUpcomingDocId();
-        if (!docId) return;
-        const orderRef = doc(db, 'companies', effectiveCompanyId, 'Orders', docId);
-        if (updatedCart.length === 0) {
-            await deleteDoc(orderRef);
-            return;
-        }
-
-        const itemsForFirebase = updatedCart.map(item => ({
-            id: String(item.id),
-            name: item.name,
-            quantity: item.quantity,
-            mrp: item.mrp,
-            salesPrice: item.salesPrice,
-            unit: item.unit ?? "pcs",
-            unitMultiplier: item.unitMultiplier ?? 1,
-            note: item.note || '',
-            groupId: item.category
-        }));
-        const totalAmount = itemsForFirebase.reduce(
-            (sum, i) => sum + i.salesPrice * i.quantity,
-            0
-        );
-        await setDoc(
-            orderRef,
-            {
-                orderId: docId,
-                status: 'Upcoming',
-                totalAmount,
-                paidAmount: 0,
-                items: itemsForFirebase,
-                updatedAt: serverTimestamp(),
-                createdAt: serverTimestamp(),
-                userId: currentUser?.uid || null
-            },
-            { merge: true } // VERY IMPORTANT
-        );
-    };
 
 
     useEffect(() => {
@@ -239,49 +184,6 @@ const CartPage: React.FC = () => {
         }
     }, []);
 
-    const updateQuantity = (id: string | number, delta: number) => {
-        const updatedItems = cartItems
-            .map(item => {
-                if (item.id === id) {
-                    const moqQty = item.moq || 1;
-
-                    let newQty = item.quantity + delta;
-
-                    // MOQ se neeche lock
-                    newQty = Math.max(moqQty, newQty);
-
-                    return { ...item, quantity: newQty };
-                }
-                return item;
-            })
-            .filter(item => item.quantity > 0);
-
-        setCartItems(updatedItems);
-
-        // localStorage sync (IMPORTANT)
-        localStorage.setItem(
-            'temp_cart',
-            JSON.stringify(
-                updatedItems.map(i => ({
-                    item: {
-                        id: i.id,
-                        groupId: (i as any).itemGroupId || i.category, // groupId
-                        name: i.name,
-                        mrp: i.mrp,
-                        salesPrice: i.salesPrice,
-                        tax: i.tax || 0,
-                        imageUrl: i.imageUrl || '',
-                        moq: i.moq || 1,
-                        unit: i.unit,
-                        unitMultiplier: i.unitMultiplier
-                    },
-                    quantity: i.quantity
-                }))
-            )
-        );
-
-        syncToUpcoming(updatedItems);
-    };
 
     useEffect(() => {
         if (!effectiveCompanyId) return;
@@ -359,260 +261,166 @@ const CartPage: React.FC = () => {
         return totalPay >= (salesSettings.minimumOrderValue || 0);
     };
 
-    const isAddressValid = (addr: Address) => {
-        return (
-            addr.name?.trim() &&
-            addr.phone?.trim() &&
-            addr.phone.length === 10 &&
-            addr.city?.trim() &&
-            addr.state?.trim() &&
-            addr.address?.trim()
-        );
-    };
 
-    const generateCatalogueInvoiceNumber = async (): Promise<string> => {
-        if (!effectiveCompanyId) throw new Error("Missing effectiveCompanyId");
-
-        const settingsRef = doc(
-            db,
-            "companies",
-            effectiveCompanyId,
-            "settings",
-            "catalogue-sales-settings"
-        );
-
-        const finalInvoice = await runTransaction(db, async (transaction) => {
-            const snap = await transaction.get(settingsRef);
-
-            let prefix = "ORD-";
-            let currentNumber = 1001;
-
-            if (snap.exists()) {
-                const data = snap.data() as CatalogueSalesSettings;
-                prefix = data.voucherPrefix || "ORD-";
-                currentNumber = data.currentVoucherNumber || 1001;
-            }
-
-            const invoice = `${prefix}${currentNumber}`;
-
-            transaction.set(
-                settingsRef,
-                {
-                    updatedAt: serverTimestamp(),
-                },
-                { merge: true }
-            );
-
-            return invoice;
-        });
-
-        return finalInvoice;
-    };
-
+    // Add a parameter to control if we actually increment
     const isUserApproved = leadStatus === "approved";
     const hidePriceEnabled = salesSettings?.hidePrice === true;
     const approvalEnabled = salesSettings?.requireApproval === true;
     const shouldShowPrice = !hidePriceEnabled && (!approvalEnabled || isUserApproved);
 
+    // 1. Remove syncToUpcoming from your component scope entirely.
+
     const placeOrder = async () => {
-        if (isPlacing) return;
+        // Immediate lock to prevent double-clicks
+        if (isPlacing || cartItems.length === 0) return;
 
-        let guestId = localStorage.getItem("upcoming_user_key");
-
-        if (!currentUser?.uid && !guestId) {
-            guestId = crypto.randomUUID();
-            localStorage.setItem("upcoming_user_key", guestId);
-        }
-
-        if (!effectiveCompanyId) {
-            alert("Invalid checkout link. Please go back to the catalogue.");
-            return;
-        }
-        // 2. MOV CHECK
-        if (!isMovValid()) {
-            const required = salesSettings?.minimumOrderValue || 0;
-            const short = required - totalPay;
-            setMovError(`Minimum order value is ₹${required}. Please add ₹${short} more.`);
-            return;
-        }
-
-        // 3. ADDRESS VALIDATION
-        const billingValid = isAddressValid(billing);
-        const shippingValid = isSameAsShipping ? billingValid : isAddressValid(shipping);
+        // Basic address validation
+        const billingValid = billing.name?.trim() && billing.phone?.length === 10 && billing.address?.trim();
+        const shippingValid = isSameAsShipping ? billingValid : (shipping.name?.trim() && shipping.phone?.length === 10 && shipping.address?.trim());
 
         if (!billingValid || !shippingValid) {
             setShowAlert(true);
             return;
         }
-        const isValidGST = (gst?: string) =>
-            !gst || gst.length === 15;
 
-        if (!isValidGST(billing.gstin) || !isValidGST(shipping.gstin)) {
-            alert("GSTIN must be exactly 15 characters.");
-            return;
-        }
         setIsPlacing(true);
+
         try {
-            // 4. GENERATE INVOICE (Atomic Transaction)
-            const orderInvoiceNumber = await generateCatalogueInvoiceNumber();
+            const settingsRef = doc(db, "companies", effectiveCompanyId!, "settings", "catalogue-sales-settings");
+            const ordersRef = collection(db, 'companies', effectiveCompanyId!, 'Orders');
 
-            // 5. CREATE CONFIRMED ORDER
-            const orderDocRef = doc(collection(db, 'companies', effectiveCompanyId, 'Orders'));
+            // ATOMIC TRANSACTION: Only one place where the number increases
+            // ATOMIC TRANSACTION: Create order, increment voucher, deduct stock
+            const finalInvoiceNumber = await runTransaction(db, async (transaction) => {
+                const settingsSnap = await transaction.get(settingsRef);
 
-            await setDoc(orderDocRef, {
-                orderId: orderInvoiceNumber,
-                invoiceNumber: orderInvoiceNumber,
-                status: 'Confirmed',
-                totalAmount: totalPay,
-                paidAmount: 0,
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp(),
-                specialInstruction: specialInstruction || "",
-                items: cartItems.map(i => {
-                    const mrp = i.mrp;
-                    const salePrice = i.salesPrice;
+                // 1. READ ALL ITEMS FIRST (Firestore Transaction Rule)
+                const itemRefs = cartItems.map(item => doc(db, 'companies', effectiveCompanyId!, 'items', String(item.id)));
+                const itemSnaps = await Promise.all(itemRefs.map(ref => transaction.get(ref)));
 
-                    return {
+                let prefix = "SLS-";
+                let currentNumber = 1001;
+
+                if (settingsSnap.exists()) {
+                    const sData = settingsSnap.data();
+                    prefix = sData.voucherPrefix || "SLS-";
+                    currentNumber = sData.currentVoucherNumber || 1001;
+                }
+
+                const invoice = `${prefix}${currentNumber}`;
+                const newOrderDoc = doc(ordersRef);
+
+                // 2. WRITE: Create the final order
+                transaction.set(newOrderDoc, {
+                    orderId: invoice,
+                    invoiceNumber: invoice,
+                    status: 'Confirmed',
+                    totalAmount: totalPay,
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp(),
+                    specialInstruction: specialInstruction || "",
+                    items: cartItems.map(i => ({
                         id: String(i.id),
-                        itemId: String(i.id),
-                        groupId: (i as any).itemGroupId || i.category,
                         name: i.name,
-                        quantity: Number(i.quantity || 0),
-                        mrp: Number(mrp || 0),
-                        salesPrice: Number(salePrice || 0),
-                        tax: Number(i.tax ?? 0),
-                        unit: i.unit ?? "pcs",
-                        unitMultiplier: Number(i.unitMultiplier ?? 1),
-                        finalPrice: Number(salePrice || 0) * Number(i.quantity || 0),
-                        note: i.note || '',
-                        imageUrl: i.imageUrl || ""
-                    };
-                }),
-                billingDetails: billing,
-                shippingDetails: isSameAsShipping ? billing : shipping,
-                userLoginPhone: billing.phone,
-                userName: billing.name,
-                // Track who placed it (User or Guest)
-                orderedBy: currentUser?.uid || guestId,
-                isGuestOrder: !currentUser?.uid
-            });
+                        quantity: Number(i.quantity),
+                        mrp: Number(i.mrp),
+                        salesPrice: Number(i.salesPrice),
+                        image: i.imageUrl || "",
+                        finalPrice: Number(i.salesPrice) * Number(i.quantity),
+                        unit: i.unit || "pcs",
+                        unitMultiplier: i.unitMultiplier || 1
+                    })),
+                    billingDetails: billing,
+                    shippingDetails: isSameAsShipping ? billing : shipping,
+                    orderedBy: localStorage.getItem("upcoming_user_key"),
+                });
 
-            // 6. UPDATE STOCK
-            for (const item of cartItems) {
-                const docId = (item as any).firestoreDocId || item.id;
-                if (!docId) continue;
-
-                const itemRef = doc(db, "companies", effectiveCompanyId, "items", String(docId));
-                await updateDoc(itemRef, {
-                    stock: increment(-item.quantity),
+                // 3. WRITE: Increment the counter
+                transaction.update(settingsRef, {
+                    currentVoucherNumber: increment(1),
                     updatedAt: serverTimestamp()
                 });
-            }
 
-            // 7. CLEANUP UPCOMING & LOCAL STORAGE
-            const upcomingDocId = getUpcomingDocId();
-            if (upcomingDocId) {
-                await deleteDoc(doc(db, "companies", effectiveCompanyId, "Orders", upcomingDocId));
-            }
+                // 4. WRITE: Deduct the stock for each item (Using raw quantity)
+                itemSnaps.forEach((snap, index) => {
+                    if (snap.exists()) {
+                        const currentStock = Number(snap.data().stock || 0);
+                        const deductQty = Number(cartItems[index].quantity);
 
+                        transaction.update(snap.ref, {
+                            // 👇 FIX: Allow negative stock numbers
+                            stock: currentStock - deductQty,
+                            updatedAt: serverTimestamp()
+                        });
+                    }
+                });
+
+                return invoice;
+            });
+
+            // SUCCESS CLEANUP
             localStorage.removeItem('temp_cart');
-            setCartItems([]);
-            setPlacedOrderId(orderInvoiceNumber);
+            setPlacedOrderId(finalInvoiceNumber);
             setOrderSuccess(true);
 
-            // 8. GENERATE PDF BILL
-            try {
-                const rawBillData = {
-                    companyId: effectiveCompanyId,
-                    isEstimate: false,
-                    specialInstruction: specialInstruction || "",
+            // Tell MyShop to decrease the stock in the UI (Zero Firebase Reads!)
+            cartItems.forEach(item => {
+                window.dispatchEvent(new CustomEvent('local_stock_update', {
+                    detail: {
+                        itemId: String(item.id),
+                        delta: -Number(item.quantity)
+                    }
+                }));
+            });
 
-                    customer: {
-                        billing: {
-                            name: billing.name,
-                            phone: billing.phone,
-                            address: billing.address,
-                            gstin: billing.gstin || "",
-                        },
-                        shipping: {
-                            name: isSameAsShipping ? billing.name : shipping.name,
-                            phone: isSameAsShipping ? billing.phone : shipping.phone,
-                            address: isSameAsShipping ? billing.address : shipping.address,
-                            gstin: isSameAsShipping
-                                ? billing.gstin || ""
-                                : shipping.gstin || "",
-                        },
-                    },
-
-                    order: {
-                        orderId: orderInvoiceNumber,
-                        date: new Date().toLocaleString(),
-                    },
-
-                    items: cartItems.map((item, index) => ({
-                        sno: index + 1,
-                        name: item.name,
-                        qty: item.quantity,
-                        mrp: Number(item.mrp || 0),
-                        price: Number(item.salesPrice || 0),
-                        salesPrice: Number(item.salesPrice || 0),
-                        tax: Number(item.tax || 0),
-                        unit: item.unit || "pcs",
-                        unitMultiplier: Number(item.unitMultiplier || 1),
-                        total: Number(item.salesPrice || 0) * Number(item.quantity || 0),
-                        imageBase64: item.imageUrl || "",
-                    })),
-
-                    grandTotal: totalPay,
-                };
-                const preparedData = await prepareCatalogueBillData(rawBillData);
-                await CatalogueBill(preparedData, ACTION.BLOB);
-            } catch (e) {
-                console.error("PDF generation failed", e);
-            }
+            setCartItems([]);
 
         } catch (e) {
-            console.error("Order Placement Error:", e);
-            alert("Failed to place order. Please check your internet connection.");
+            console.error("Critical Transaction Error:", e);
+            alert("Failed to place order. No numbers were skipped.");
         } finally {
             setIsPlacing(false);
         }
     };
 
+    // Update these existing functions to remove the sync call:
+
+    const updateQuantity = (id: string | number, delta: number) => {
+        const updatedItems = cartItems
+            .map(item => {
+                if (item.id === id) {
+                    const moqQty = item.moq || 1;
+                    let newQty = item.quantity + delta;
+                    newQty = Math.max(moqQty, newQty);
+                    return { ...item, quantity: newQty };
+                }
+                return item;
+            })
+            .filter(item => item.quantity > 0);
+
+        setCartItems(updatedItems);
+        localStorage.setItem('temp_cart', JSON.stringify(updatedItems.map(i => ({
+            item: { ...i },
+            quantity: i.quantity
+        }))));
+        // syncToUpcoming(updatedItems); <-- REMOVED
+    };
+
+    const removeFromCart = (id: string | number) => {
+        const updatedCart = cartItems.filter(item => item.id !== id);
+        setCartItems(updatedCart);
+        localStorage.setItem('temp_cart', JSON.stringify(updatedCart.map(i => ({
+            item: { ...i },
+            quantity: i.quantity
+        }))));
+        // syncToUpcoming(updatedCart); <-- REMOVED
+    };
 
     useEffect(() => {
         if (isSameAsShipping) {
             setShipping({ ...billing });
         }
     }, [isSameAsShipping, billing]);
-
-    const removeFromCart = (id: string | number) => {
-        const updatedCart = cartItems.filter(item => item.id !== id);
-        setCartItems(updatedCart);
-
-        localStorage.setItem(
-            'temp_cart',
-            JSON.stringify(
-                updatedCart.map(i => ({
-                    item: {
-                        id: i.id,
-                        name: i.name,
-                        mrp: i.mrp,
-                        salesPrice: i.salesPrice,
-                        tax: i.tax || 0,
-                        imageUrl: i.imageUrl || '',
-                        moq: i.moq || 1,
-                        unit: i.unit,
-                        unitMultiplier: i.unitMultiplier
-                    },
-                    quantity: i.quantity
-                }))
-            )
-        );
-
-        //  UPCOMING LIVE UPDATE / DELETE
-        syncToUpcoming(updatedCart);
-    };
 
     const handleDrawerAction = () => {
         if (cartItems.length === 0) return;

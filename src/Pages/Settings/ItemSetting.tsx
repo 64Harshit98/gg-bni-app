@@ -209,10 +209,10 @@ const SharedItemSettings: React.FC<SharedItemSettingsProps> = ({ theme = 'blue' 
                     {/* Header & Reset Button */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white rounded-sm border border-gray-200 shadow-sm p-4 md:p-6 gap-4">
                         <div>
-                            <h2 className="text-base md:text-lg font-semibold text-gray-800">Global Requirements</h2>
-                            <p className="text-sm text-gray-500 mt-1">
+                            <h2 className="text-base md:text-lg font-semibold text-gray-800">Mandatory Fields</h2>
+                            <span className="text-xs text-red-500 font-medium">* Item name and MRP (or Sale Price) are always mandatory.</span>
+                            <br /><p className="text-sm text-gray-500 mt-1">
                                 Select which optional fields must be filled out when manually adding a single item.
-                                <br /><span className="text-xs text-red-500 font-medium">* Item name and MRP (or Sale Price) are always mandatory.</span>
                             </p>
                         </div>
                         <ResetSettingsButton<ItemSettings>

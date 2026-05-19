@@ -153,6 +153,26 @@ const CustomerReport: React.FC = () => {
       );
     }
 
+    if (sortConfig?.key) {
+      customerRows.sort((a, b) => {
+        const key = sortConfig.key as keyof CustomerRowWithCredit;
+
+        const aValue = a[key];
+        const bValue = b[key];
+
+        if (typeof aValue === 'string' && typeof bValue === 'string') {
+          const comparison = aValue.localeCompare(bValue);
+          return sortConfig.direction === 'asc' ? comparison : -comparison;
+        }
+
+        const numA = Number(aValue || 0);
+        const numB = Number(bValue || 0);
+
+        const comparison = numA - numB;
+        return sortConfig.direction === 'asc' ? comparison : -comparison;
+      });
+    }
+
     /* ---------- SUMMARY METRICS ---------- */
     const totalCustomers = customerRows.length;
     const totalBills = newFilteredSales.length;
@@ -176,7 +196,7 @@ const CustomerReport: React.FC = () => {
         averageSalePerCustomer,
       },
     };
-  }, [sales, appliedFilters, searchQuery, customerCreditMap]);
+  }, [sales, appliedFilters, searchQuery, customerCreditMap, sortConfig]);
 
   const handleApplyFilters = () => {
     const start = new Date(startDate);
@@ -585,16 +605,19 @@ const CustomerReport: React.FC = () => {
     {
       header: 'Customer',
       accessor: 'customerName',
+      sortKey: 'customerName',
       className: 'py-3 text-center w-1/5',
     },
     {
       header: 'Phone Number',
       accessor: 'customerNumber',
+      sortKey: 'customerNumber',
       className: 'py-3 text-center w-1/4',
     },
     {
       header: 'Bills',
       accessor: 'totalBills',
+      sortKey: 'totalBills',
       className: 'py-3 text-center w-1/5',
     },
     {

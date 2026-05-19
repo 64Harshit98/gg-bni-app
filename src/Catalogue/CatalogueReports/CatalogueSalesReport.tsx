@@ -288,7 +288,7 @@ const OrdersReport: React.FC = () => {
                         const data = doc.data();
                         return {
                             id: doc.id,
-                            partyName: data.userName || 'N/A', // Use userName from Order
+                            partyName: data.userName|| data.billingDetails?.name || 'N/A', // Use userName from Order
                             totalAmount: data.totalAmount || 0,
                             status: data.status || "",
                             paymentMethods: data.paymentMethods || {}, // Use paymentMethods from Order

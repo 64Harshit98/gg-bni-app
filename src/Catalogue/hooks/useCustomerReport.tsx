@@ -75,9 +75,9 @@ export default function useCustomerReport() {
 
               return {
                 id: doc.id,
-                partyName: data.userName || 'N/A',
-                partyNumber: data.userLoginPhone
-                  ? String(data.userLoginPhone)
+                partyName: data.userName || data.billingDetails?.name || 'N/A',
+                partyNumber: data.userLoginPhone || data.billingDetails?.phone
+                  ? String(data.userLoginPhone || data.billingDetails?.phone)
                   : 'N/A',
                 totalAmount,
                 paidAmount,

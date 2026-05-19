@@ -325,6 +325,8 @@ const CartPage: React.FC = () => {
                         quantity: Number(i.quantity),
                         mrp: Number(i.mrp),
                         salesPrice: Number(i.salesPrice),
+                        tax:i.tax,
+                        note:i.note,
                         image: i.imageUrl || "",
                         finalPrice: Number(i.salesPrice) * Number(i.quantity),
                         unit: i.unit || "pcs",

@@ -1052,59 +1052,88 @@ const Journal: React.FC = () => {
                         : item.effectiveUnitPrice
                           ? item.effectiveUnitPrice
                           : (item.quantity > 0 ? (item.finalPrice / item.quantity) : 0);
-                    const isReturned = invoice.returnHistory?.some((h: any) =>
-                      h.returnedItems?.some((r: any) => r.originalItemId === item.id)
-                    );
-                    // Add fallback using returnHistory directly
-                    const isReturnedViaHistory = invoice.returnHistory?.some((h: any) =>
-                      h.returnedItems?.some((r: any) =>
-                        r.originalItemId === item.id || r.originalItemId === (item as any).productId
-                      )
-                    );
 
-                    const isReturnedFinal = isReturned || isReturnedViaHistory;
+                    // --- Collect ALL returned qty for this item across all return entries ---
+                    const returnedEntries: { qty: number; modeOfReturn: string; returnedAt: any }[] = [];
+                    (invoice.returnHistory || []).forEach((h: any) => {
+                      (h.returnedItems || []).forEach((r: any) => {
+                        if (r.originalItemId === item.id || r.originalItemId === (item as any).productId) {
+                          returnedEntries.push({
+                            qty: Number(r.quantity) || Number(r.qty) || 0,
+                            modeOfReturn: h.modeOfReturn || '',
+                            returnedAt: h.returnedAt,
+                          });
+                        }
+                      });
+                    });
+
+                    // const totalReturnedQty = returnedEntries.reduce((sum, e) => sum + e.qty, 0);
+                    const remainingQty = item.quantity;
+
+                    const renderPriceRow = (qty: number) => {
+                      const amt = netUnitPrice * qty;
+                      return amt.toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
+                    };
+
+                    const priceLabel = item.mrp > 0
+                      ? `MRP: ${item.mrp.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}`
+                      : `Sales Price: ${(item.effectiveUnitPrice || (item.quantity > 0 ? item.finalPrice / item.quantity : 0)).toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}`;
+
                     return (
-                      <div key={index} className="flex justify-between items-center text-slate-700 mb-3">
-                        <div className="flex-1 pr-4">
-                          <p className="font-medium" style={{ textDecoration: isReturnedFinal ? 'line-through' : 'none', color: isReturned ? '#94a3b8' : 'inherit' }}>
-                            {item.name}
-                          </p>
-                          <p className="text-xs text-slate-400 flex items-center gap-1">
-                            <span>
-                              {item.mrp > 0
-                                ? `MRP: ${item.mrp.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}`
-                                : `Sales Price: ${(
-                                  item.effectiveUnitPrice ||
-                                  (item.quantity > 0 ? item.finalPrice / item.quantity : 0)
-                                ).toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })
-                                }`
-                              }
-                            </span>
-                            <span className="text-slate-400">|</span>
-                            <span className="text-slate-400 font-medium">
-                              Net: {netUnitPrice.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}
-                            </span>
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          {(() => {
-                            const netUnitPrice =
-                              item.taxableAmount && item.quantity > 0
-                                ? item.taxableAmount / item.quantity
-                                : item.effectiveUnitPrice
-                                  ? item.effectiveUnitPrice
-                                  : (item.quantity > 0 ? item.finalPrice / item.quantity : 0);
+                      <div key={index} className="mb-3 space-y-1.5">
 
-                            const baseAmount = netUnitPrice * item.quantity;
-
-                            return (
-                              <p className="font-semibold">
-                                {baseAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+                        {/* REMAINING QTY ROW — shown only if some qty is not returned */}
+                        {remainingQty > 0 && (
+                          <div className="flex justify-between items-center text-slate-700">
+                            <div className="flex-1 pr-4">
+                              <p className="font-medium">{item.name}</p>
+                              <p className="text-xs text-slate-400 flex items-center gap-1">
+                                <span>{priceLabel}</span>
+                                <span className="text-slate-400">|</span>
+                                <span className="font-medium">Net: {netUnitPrice.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}</span>
                               </p>
-                            );
-                          })()}
-                          <p className="text-xs text-slate-400">Qty: {item.quantity}</p>
-                        </div>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-semibold">{renderPriceRow(remainingQty)}</p>
+                              <p className="text-xs text-slate-400">Qty: {remainingQty}</p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* RETURNED QTY ROW — one crossed-out row per return event */}
+                        {returnedEntries.map((entry, rIdx) => (
+                          entry.qty > 0 && (
+                            <div key={rIdx} className="flex justify-between items-center text-slate-400">
+                              <div className="flex-1 pr-4">
+                                <p className="font-medium line-through">{item.name}</p>
+                                <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                                  {entry.modeOfReturn && (
+                                    <span className={`text-[7px] uppercase font-bold px-1.5 py-0.5 rounded border ${(() => {
+                                      const mode = entry.modeOfReturn.toUpperCase().trim();
+                                      if (mode === 'EXCHANGE') return 'bg-purple-50 text-purple-700 border-purple-200';
+                                      if (mode.includes('CASH') || mode.includes('REFUND')) return 'bg-green-50 text-green-700 border-green-200';
+                                      return 'bg-orange-50 text-orange-600 border-orange-200';
+                                    })()}`}>
+                                      {entry.modeOfReturn}
+                                    </span>
+                                  )}
+                                  {entry.returnedAt && (
+                                    <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wide">
+                                      {new Date(
+                                        entry.returnedAt?.toDate ? entry.returnedAt.toDate() : entry.returnedAt
+                                      ).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' })}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-semibold line-through">{renderPriceRow(entry.qty)}</p>
+                                <p className="text-xs">Qty: {entry.qty}</p>
+                              </div>
+                            </div>
+                          )
+                        ))}
+
                       </div>
                     );
                   }) : null}

@@ -995,7 +995,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
               </div>
               <div className="flex-1 w-full space-y-2">
                 <div className="flex flex-col">
-                  <label className="block text-sm font-medium text-gray-600 mb-1">Or paste Image URL</label>
+                  <label className={`text-sm font-medium leading-none block ${itemSettings?.requireImage ? reqClasses : ''} mb-1`}>Or paste Image URL</label>
                   <input type="text" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} disabled={!!imageFile} className={`w-full p-3 border border-gray-300 rounded-sm ${activeTheme.focusRing} outline-none disabled:bg-gray-100 disabled:text-gray-400`} placeholder="https://example.com/image.jpg" />
                 </div>
                 {imageFile && <button onClick={() => { setImageFile(null); setImagePreview(null); if (imageInputRef.current) imageInputRef.current.value = ''; }} className="text-xs text-red-500 hover:underline">Remove Selected Image</button>}
@@ -1097,7 +1097,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                 </div>
                 <div>
                   <div className="flex items-center mb-1">
-                    <label className="text-sm font-medium leading-none block mr-2">HSN Code</label>
+                    <label className={`text-sm font-medium leading-none block ${itemSettings?.requireHsnCode ? reqClasses : ''} mr-2`}>HSN Code</label>
                     <InfoTooltip text="Harmonized System Nomenclature code for taxation." />
                   </div>
                   <input type="text" value={hsnCode} onChange={(e) => setHsnCode(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="e.g. 123456" />
@@ -1108,7 +1108,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <div className="flex items-center mb-1">
-                    <label className="text-sm font-medium leading-none block mr-2">Stock</label>
+                    <label className={`text-sm font-medium leading-none block ${itemSettings?.requireStock ? reqClasses : ''} mr-2`}>Stock</label>
                     <InfoTooltip text="Current available quantity in your inventory." />
                   </div>
                   <input type="number" value={itemAmount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemAmount(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="0" />
@@ -1126,7 +1126,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <div className="flex items-center mb-1">
-                    <label className="text-sm font-medium leading-none block mr-2">MOQ</label>
+                    <label className={`text-sm font-medium leading-none block ${itemSettings?.requireMoq ? reqClasses : ''} mr-2`}>MOQ</label>
                     <InfoTooltip text="Minimum Item Quantity to be ordered." />
                   </div>
                   <input type="number" value={moq} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setMoq(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="1" />

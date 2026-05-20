@@ -913,6 +913,21 @@ const OrdersPage: React.FC = () => {
         setPdfLoadingOrderId(Order.id);
 
         try {
+
+            const businessDocRef = doc(
+                db,
+                'companies',
+                currentUser?.companyId || '',
+                'business_info',
+                currentUser?.companyId || ''
+            );
+
+            const businessSnap = await getDoc(businessDocRef);
+
+            const businessData = businessSnap.exists()
+                ? businessSnap.data()
+                : {};
+
             const itemsWithBase64 = await Promise.all((Order.items || []).map(async (item: any, index: number) => {
                 const mrp = Number(item.mrp || 0);
                 const salesPrice = Number(item.salesPrice || 0);
@@ -957,6 +972,16 @@ const OrdersPage: React.FC = () => {
                 companyName: companyInfo?.name || "",
                 companyAddress: companyInfo?.address || "",
                 companyPhone: companyInfo?.ownerPhoneNumber || "",
+
+                companyGstin: businessData.gstin || "",
+                panNumber: businessData.panNumber || "",
+                msmeNumber: businessData.msmeUdyamNumber || "",
+
+                bankName: businessData.bankName || "",
+                accountName: businessData.accountHolderName || "",
+                accountNumber: businessData.accountNumber || "",
+                ifscCode: businessData.ifscCode || "",
+
                 specialInstruction: Order.specialInstruction || "",
 
                 customer: {
@@ -1020,11 +1045,17 @@ const OrdersPage: React.FC = () => {
         setSendingPdf(true);
 
         try {
+
             if (!currentUser?.companyId) throw new Error("User context missing.");
 
             const businessDocRef = doc(db, 'companies', currentUser.companyId, 'business_info', currentUser.companyId);
             const businessSnap = await getDoc(businessDocRef);
-            const { botMasterToken, whatsappNumber } = businessSnap.data() || {};
+
+            const businessData = businessSnap.exists()
+                ? businessSnap.data()
+                : {};
+
+            const { botMasterToken, whatsappNumber } = businessData || {};
 
             if (!botMasterToken || !whatsappNumber) {
                 setSendingPdf(false);
@@ -1058,6 +1089,16 @@ const OrdersPage: React.FC = () => {
                 companyName: companyInfo?.name || "",
                 companyAddress: companyInfo?.address || "",
                 companyPhone: companyInfo?.ownerPhoneNumber || "",
+
+                companyGstin: businessData.gstin || "",
+                panNumber: businessData.panNumber || "",
+                msmeNumber: businessData.msmeUdyamNumber || "",
+
+                bankName: businessData.bankName || "",
+                accountName: businessData.accountHolderName || "",
+                accountNumber: businessData.accountNumber || "",
+                ifscCode: businessData.ifscCode || "",
+
                 specialInstruction: Order.specialInstruction || "",
                 customer: {
                     billing: {

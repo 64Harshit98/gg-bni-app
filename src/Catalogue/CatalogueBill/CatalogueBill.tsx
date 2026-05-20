@@ -1369,14 +1369,41 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
       : (gstTypeFromSales || companyData.gstType || ""),
     taxType: salesSettings?.taxType || 'exclusive',
     // BILL SETTINGS
-    companyGstin: companyData.gstin || billSettings.companyGstin || "",
-    msmeNumber: billSettings.msmeNumber || "",
-    panNumber: billSettings.panNumber || "",
+    companyGstin:
+      invoiceData.companyGstin ||
+      companyData.gstin ||
+      billSettings.companyGstin ||
+      "",
 
-    bankName: billSettings.bankName || "",
-    accountName: billSettings.accountName || "",
-    accountNumber: billSettings.accountNumber || "",
-    ifscCode: billSettings.ifscCode || "",
+    msmeNumber:
+      invoiceData.msmeNumber ||
+      billSettings.msmeNumber ||
+      "",
+
+    panNumber:
+      invoiceData.panNumber ||
+      billSettings.panNumber ||
+      "",
+
+    bankName:
+      invoiceData.bankName ||
+      billSettings.bankName ||
+      "",
+
+    accountName:
+      invoiceData.accountName ||
+      billSettings.accountName ||
+      "",
+
+    accountNumber:
+      invoiceData.accountNumber ||
+      billSettings.accountNumber ||
+      "",
+
+    ifscCode:
+      invoiceData.ifscCode ||
+      billSettings.ifscCode ||
+      "",
 
     termsAndConditions: billSettings.termsAndConditions || "",
     signatureBase64: billSettings.signatureBase64 || ""

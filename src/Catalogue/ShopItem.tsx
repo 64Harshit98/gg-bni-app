@@ -86,6 +86,7 @@ const MyShop: React.FC = () => {
     const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
     const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
     const [selectedItemForDetails, setSelectedItemForDetails] = useState<Item | null>(null);
+    const [variantGroupIds, setVariantGroupIds] = useState<string[]>([]);
     const [catalogueSettings, setCatalogueSettings] = useState<CatalogueSalesSettings | null>(null);
 
     const observerRef = useRef<IntersectionObserver | null>(null);
@@ -550,11 +551,66 @@ const MyShop: React.FC = () => {
         setIsDrawerOpen(true);
     };
 
-    const handleOpenDetailDrawer = (item: Item) => {
-        setSelectedItemForDetails(item);
-        setIsDetailDrawerOpen(true);
+    const resolveVariantGroup = (item: Item): string[] => {
+        const itemId = String(item.id!);
+        // const linkedVariants: string[] = ((item as any).variants || []).map(String);
+
+        // Find the true root: the item whose variants array is the largest
+        // (since all items store a back-reference to root, root has ALL variants)
+        const findTrueRoot = (startId: string): Item | null => {
+            // Collect all candidate "roots" by following variant links in both directions
+            const visited = new Set<string>();
+            const queue = [startId];
+            let bestRoot: Item | null = null;
+            let bestCount = -1;
+
+            while (queue.length > 0) {
+                const currentId = queue.shift()!;
+                if (visited.has(currentId)) continue;
+                visited.add(currentId);
+
+                const currentItem = allItems.find(i => String(i.id) === currentId);
+                if (!currentItem) continue;
+
+                const currentVariants: string[] = ((currentItem as any).variants || []).map(String);
+
+                // Track whichever item has the most variants (that's the true root)
+                if (currentVariants.length > bestCount) {
+                    bestCount = currentVariants.length;
+                    bestRoot = currentItem;
+                }
+
+                // Explore this item's variants
+                currentVariants.forEach(vid => { if (!visited.has(vid)) queue.push(vid); });
+
+                // Also explore any item that lists currentId as a variant
+                allItems.forEach(i => {
+                    const iVariants: string[] = ((i as any).variants || []).map(String);
+                    if (iVariants.includes(currentId) && !visited.has(String(i.id))) {
+                        queue.push(String(i.id));
+                    }
+                });
+            }
+
+            return bestRoot;
+        };
+
+        const trueRoot = findTrueRoot(itemId);
+
+        if (trueRoot) {
+            const rootId = String(trueRoot.id!);
+            const rootVariants: string[] = ((trueRoot as any).variants || []).map(String);
+            return [rootId, ...rootVariants];
+        }
+
+        return [itemId];
     };
 
+    const handleOpenDetailDrawer = (item: Item) => {
+        setSelectedItemForDetails(item);
+        setVariantGroupIds(resolveVariantGroup(item));
+        setIsDetailDrawerOpen(true);
+    };
     const handleTogglePin = (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
         if (!companyId) return;
@@ -1046,6 +1102,12 @@ const MyShop: React.FC = () => {
                 onAddToCart={addToCart}
                 initialQuantity={cart.find(i => i.item.id === selectedItemForDetails?.id)?.quantity || 0}
                 onUpdateQuantity={updateQuantity}
+                companyId={companyId}
+                variantGroupIds={variantGroupIds}
+                onVariantSelect={(variantItem) => {
+                    setSelectedItemForDetails(variantItem as Item);
+                    setVariantGroupIds(resolveVariantGroup(variantItem as Item));
+                }}
             />
 
             <Footer

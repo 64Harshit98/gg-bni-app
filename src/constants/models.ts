@@ -42,6 +42,7 @@ export interface Item {
   packetSize?: number;
   unitMultiplier?: number;
   moq?:number;
+  variants?: string[];
 }
 
 export interface ItemGroup {

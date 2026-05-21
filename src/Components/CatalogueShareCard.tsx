@@ -83,7 +83,8 @@ const GlobalCatalogueModal = () => {
                             if (navigator.share) {
                                 try {
                                     await navigator.share({
-                                        title: "Check out my store",
+                                        title: "Check out my online store!",
+                                        text: "Discover our complete range of products and exclusive offers. View our digital catalog here:",
                                         url: shareUrl,
                                     });
                                     return;

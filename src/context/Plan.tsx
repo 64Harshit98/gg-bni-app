@@ -39,7 +39,8 @@ export const PACK_LIMITS: Record<PLANS, Permissions[]> = {
         Permissions.ViewPaymentmethods,
         Permissions.ViewReports,
         Permissions.ViewSalesReport,
-        Permissions.CreateUsers
+        Permissions.CreateUsers,
+        Permissions.ManageUsers
     ],
     [PLANS.CALC_CATALOG]: [
         Permissions.ViewDashboard,

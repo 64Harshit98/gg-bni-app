@@ -1824,8 +1824,8 @@ const OrdersPage: React.FC = () => {
             <div className="bg-white shadow-sm sticky top-0 z-[100] px-4 py-2">
                 {/* Main Header Row */}
                 <div className="flex items-center justify-between">
-                    {/* Left: Search Icon */}
-                    <div className="w-10">
+                    {/* Left: Search Icon - Changed w-10 to w-24 and added flex justify-start */}
+                    <div className="w-24 flex justify-start">
                         <button onClick={() => setShowSearch(!showSearch)} className="text-slate-500">
                             {showSearch ? <FiX className="w-6 h-6" /> : <FiSearch className="w-6 h-6" />}
                         </button>

@@ -180,7 +180,7 @@ export const AppRegistry: AppModule[] = [
             { path: ROUTES.PERMSETTING, component: Permissionsetting, permission: null },
             { path: ROUTES.SALESETTING, component: SalesSettingsPage, permission: null },
             { path: ROUTES.PURCHASESETTING, component: PurchaseSettingsPage, permission: null },
-            { path: ROUTES.USERSETTING, component: UserSetting, permission: null },
+            { path: ROUTES.USERSETTING, component: UserSetting, permission: Permissions.ManageUsers },
             { path: ROUTES.ITEMSETTING, component: PosItemSettingWrapper, permission: null },
             { path: ROUTES.BILLSETTING, component: BillSettings, permission: null },
             { path: ROUTES.SUPPORT_PAGE, component: SupportPage, permission: null },

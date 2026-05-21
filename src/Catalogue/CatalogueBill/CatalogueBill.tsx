@@ -5,6 +5,7 @@ import { db } from "../../lib/Firebase";
 import { resolveCompanyLogoBase64 } from "../hooks/useCompanyLogo";
 import { generateA5Invoice } from "../../UseComponents/A5PdfGenerator";
 import { ACTION } from "../../enums/index";
+import QRCode from 'qrcode';
 
 export interface CatalogueInvoiceData {
   companyId?: string;
@@ -28,7 +29,7 @@ export interface CatalogueInvoiceData {
   termsAndConditions?: string;
   signatureBase64?: string;
   taxType?: 'inclusive' | 'exclusive';
-
+  upiId?: string;
   customer: {
     billing: {
       name: string;
@@ -224,6 +225,17 @@ export const CatalogueBill = async (
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 8;
 
+  let qrBase64: string | null = null;
+  if (data.upiId && !isEstimate) {
+    const upiString = `upi://pay?pa=${data.upiId}&pn=${encodeURIComponent(data.companyName)}&cu=INR`;
+    try {
+      // Need top-level await or a quick async resolution
+      qrBase64 = await QRCode.toDataURL(upiString, { width: 80, margin: 0 });
+    } catch (err) {
+      console.error("Failed to generate QR code", err);
+    }
+  }
+
   // ================= FORMATTERS =================
   const formatAmount = (num: number) => {
     const validNum = Number(num) || 0;
@@ -253,118 +265,111 @@ export const CatalogueBill = async (
 
   // ================= HEADER =================
   const drawHeader = () => {
-    const y = margin;
-    // ===== LOGO (top-left) =====
-    const logoSize = 10;
-    const logoX = margin;
-    const logoY = y;
+    let cursorY = margin;
+    const safeMaxWidth = pageWidth - (margin * 2) - 50; // Keep text from hitting QR/Logo
 
-    if (data.logoBase64 && data.logoBase64.startsWith("data:image")) {
-      try {
-        // 1. Better MIME type detection
-        const mimeMatch = data.logoBase64.match(/data:image\/([a-zA-Z0-9]+);base64/);
-        let format = "JPEG"; // Default fallback
-
-        if (mimeMatch && mimeMatch[1]) {
-          const type = mimeMatch[1].toUpperCase();
-          if (type === "PNG") format = "PNG";
-          else if (type === "WEBP") format = "WEBP";
-          else if (type === "JPEG" || type === "JPG") format = "JPEG";
-        }
-
-        doc.addImage(data.logoBase64, format, logoX, logoY, logoSize, logoSize);
-      } catch (e) {
-        console.error("jsPDF Logo render error:", e);
-      }
-    } else {
-      // 2. Added a warning so you can see if the base64 is even arriving!
-      console.warn("Logo skipped: Invalid or missing Base64 string.", data.logoBase64 ? "Starts with: " + data.logoBase64.substring(0, 30) : "It is empty/undefined.");
-    }
-
+    // ===== 1. GENERATED TIMESTAMP (Top Right) =====
+    const y = margin - 2;
     const now = new Date();
     const generatedAt = now.toLocaleString('en-IN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
     });
-
-    // ===== DATE TEXT (top-right) =====
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
-    doc.text(
-      `Bill generated on ${generatedAt}`,
-      pageWidth - margin,
-      y + 2,
-      { align: "right" }
-    );
+    doc.text(`Bill generated on ${generatedAt}`, pageWidth - margin, y, { align: "right" });
 
-    // ===== COMPANY NAME (perfect center) =====
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(20);
+    if (isEstimate) {
+      // ONLY print "ESTIMATE" perfectly centered
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.text('ESTIMATE', pageWidth / 2, cursorY + 12, { align: 'center' });
+      cursorY += 20;
+    } else {
+      // --- NORMAL INVOICE HEADER ---
 
-    // Give a safe max width so it doesn't overlap the logo or right-side text
-    const safeMaxWidth = pageWidth - (margin * 2) - (logoSize * 2) - 10;
+      // ===== 2. QR CODE (Left) =====
+      if (qrBase64) {
+        doc.addImage(qrBase64, 'PNG', margin + 2, cursorY + 2, 18, 18);
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Scan to Pay', margin + 11, cursorY + 22, { align: 'center' });
+      }
 
-    doc.text(
-      isEstimate
-        ? "ESTIMATE"
-        : (data.companyName || "COMPANY NAME").toUpperCase(),
-      pageWidth / 2, // Perfectly centered on the page width
-      y + 5,
-      { align: "center", maxWidth: safeMaxWidth }
-    );
+      // ===== 3. DOCUMENT TITLE (Center) =====
+      const safeScheme = (data.companyGstType || '').toUpperCase();
+      const safeTaxType = (data.taxType || '').toUpperCase();
 
-    let dividerY = y + 10; // default for estimate
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      const title = (safeScheme === 'COMPOSITION' || safeScheme === 'UNREGISTERED' || safeScheme === 'NONE' || safeTaxType === 'NONE' || safeTaxType === 'EXEMPT')
+        ? 'BILL OF SUPPLY'
+        : 'TAX INVOICE';
+      doc.text(title, pageWidth / 2, cursorY + 5, { align: 'center' });
 
-    if (!isEstimate) {
+      // ===== 4. MSME NUMBER (Right) =====
+      if (data.msmeNumber) {
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Msme No ${data.msmeNumber}`, pageWidth - margin - 2, cursorY + 5, { align: 'right' });
+      }
+
+      // ===== 5. LOGO (Right) =====
+      const logoW = 18;
+      const logoH = 14;
+      const logoX = pageWidth - margin - logoW - 2;
+      const logoY = cursorY + 7;
+
+      if (data.logoBase64 && data.logoBase64.startsWith("data:image")) {
+        try {
+          const mimeMatch = data.logoBase64.match(/data:image\/([a-zA-Z0-9]+);base64/);
+          let format = "JPEG";
+          if (mimeMatch && mimeMatch[1]) {
+            const type = mimeMatch[1].toUpperCase();
+            if (type === "PNG") format = "PNG";
+            else if (type === "WEBP") format = "WEBP";
+            else if (type === "JPEG" || type === "JPG") format = "JPEG";
+          }
+          doc.addImage(data.logoBase64, format, logoX, logoY, logoW, logoH);
+        } catch (e) {
+          console.error("jsPDF Logo render error:", e);
+        }
+      }
+
+      // ===== 6. COMPANY DETAILS (Center) =====
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.text((data.companyName || "COMPANY NAME").toUpperCase(), pageWidth / 2, cursorY + 11, { align: "center", maxWidth: safeMaxWidth });
+
       doc.setFontSize(9);
-      doc.setFont("helvetica", "normal");
+      doc.setFont('helvetica', 'normal');
+      const addressLines = doc.splitTextToSize(data.companyAddress || "", safeMaxWidth);
+      doc.text(addressLines, pageWidth / 2, cursorY + 16, { align: "center" });
 
-      const addressLines = doc.splitTextToSize(
-        data.companyAddress || "",
-        safeMaxWidth
-      );
-
-      doc.text(addressLines, pageWidth / 2, y + 11, { align: "center" });
-
-      const phoneY = y + 11 + (addressLines.length * 4);
-
-      doc.text(data.companyPhone || "", pageWidth / 2, phoneY, { align: "center" });
+      const phoneY = cursorY + 16 + (addressLines.length * 4);
+      doc.text(`Phone : ${data.companyPhone || ""}`, pageWidth / 2, phoneY, { align: "center" });
 
       let nextY = phoneY + 4;
 
-      // --- MASTER SWITCH: Hide GST info if Unregistered/None ---
-      const safeScheme = (data.companyGstType || '').toUpperCase();
-      const safeTaxType = (data.taxType || '').toUpperCase();
-      const showGstinDetails = !isEstimate && safeScheme !== 'UNREGISTERED' && safeScheme !== 'NONE' && safeScheme !== '' && safeTaxType !== 'EXEMPT' && safeTaxType !== 'NONE';
+      const showGstinDetails = safeScheme !== 'UNREGISTERED' && safeScheme !== 'NONE' && safeScheme !== '' && safeTaxType !== 'EXEMPT' && safeTaxType !== 'NONE';
 
       if (showGstinDetails) {
-        let gstText = data.companyGstType || '';
-
-        if (data.companyGstType === "Regular" && data.taxType) {
-          const taxLabel = data.taxType === "inclusive" ? "Inclusive" : "Exclusive";
-          gstText += ` (${taxLabel})`;
-        }
-
-        doc.text(`GST Type: ${gstText}`, pageWidth / 2, nextY, { align: "center" });
+        doc.setFont('helvetica', 'bold');
+        let gstText = `GSTIN : ${data.companyGstin || ''}  (${data.companyGstType || ''})`;
+        doc.text(gstText, pageWidth / 2, nextY, { align: "center" });
+        doc.setFont('helvetica', 'normal');
         nextY += 4;
-
-        if (data.companyGstin) {
-          doc.text(`GSTIN: ${data.companyGstin}`, pageWidth / 2, nextY, { align: "center" });
-          nextY += 4;
-        }
       }
 
-      dividerY = nextY;
+      // Ensure cursor clears whichever is taller: the center text or the QR/Logo
+      cursorY = Math.max(cursorY + 25, nextY);
     }
 
     doc.setDrawColor(0);
     doc.setLineWidth(0.6);
-    doc.line(margin, dividerY, pageWidth - margin, dividerY);
+    doc.line(margin, cursorY, pageWidth - margin, cursorY);
 
-    return dividerY + 7;
+    return cursorY + 5;
   };
 
   let cursorY = drawHeader();
@@ -1404,7 +1409,7 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
       invoiceData.ifscCode ||
       billSettings.ifscCode ||
       "",
-
+    upiId: billSettings.upiId || companyData.upiId || "",
     termsAndConditions: billSettings.termsAndConditions || "",
     signatureBase64: billSettings.signatureBase64 || ""
   };

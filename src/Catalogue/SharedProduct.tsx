@@ -1432,7 +1432,7 @@ const handleOpenDetailDrawer = (item: Item) => {
                                 {cartCount} Item{cartCount > 1 ? 's' : ''}
                             </span>
                             <span className="text-[15px] font-bold">
-                                ₹{cartTotal}
+                                ₹{cartTotal.toFixed(2)}
                             </span>
                         </div>
 

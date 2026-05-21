@@ -60,13 +60,31 @@ const ManageItems: React.FC = () => {
 
   /* -------------------- FILTER + SORT -------------------- */
   const filteredItems = useMemo(() => {
+    // 1. Create a quick lookup list of all currently valid category IDs
+    const validGroupIds = new Set(itemGroups.map((group) => group.id));
+
     let result = items.filter((item) => {
+      // Search logic
       const matchesSearch =
         !searchQuery ||
         (item.name && item.name.toLowerCase().includes(searchQuery.toLowerCase()));
+
       if (!matchesSearch) return false;
+
+      // If no category filter is applied, show everything
       if (!appliedItemGroupId) return true;
-      return (item.itemGroupId || UNASSIGNED_GROUP_NAME) === appliedItemGroupId;
+
+      // If "Uncategorized" is selected, catch all unassigned AND orphaned items
+      if (appliedItemGroupId === UNASSIGNED_GROUP_NAME) {
+        return (
+          !item.itemGroupId ||
+          item.itemGroupId === UNASSIGNED_GROUP_NAME ||
+          !validGroupIds.has(item.itemGroupId)
+        );
+      }
+
+      // If a specific, valid category is selected
+      return item.itemGroupId === appliedItemGroupId;
     });
 
     result = [...result].sort((a, b) => {
@@ -93,7 +111,7 @@ const ManageItems: React.FC = () => {
     });
 
     return result;
-  }, [items, appliedItemGroupId, sortOption, searchQuery]);
+  }, [items, itemGroups, appliedItemGroupId, sortOption, searchQuery]);
 
   const applyFilters = () => {
     setAppliedItemGroupId(itemGroupId);

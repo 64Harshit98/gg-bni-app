@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { ShoppingCart, X, Minus, Plus, Trash2, Send, Pin } from 'lucide-react';
-import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting'
+import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting';
 import { ROUTES } from '../constants/routes.constants';
 import { useAuth, useDatabase } from '../context/auth-context';
 import type { Item, ItemGroup } from '../constants/models';
@@ -14,7 +14,7 @@ import { useBusinessName } from './hooks/BusinessName';
 import { syncNotifyStock } from "../../src/Catalogue/utils/syncNotifyStock";
 import SearchableItemInput from '../UseComponents/SearchIteminput';
 import { db } from '../lib/Firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, onSnapshot } from 'firebase/firestore';
 
 const StockIndicator: React.FC<{ stock: number }> = ({ stock }) => {
     let colorClass = 'text-green-600 bg-green-100';
@@ -115,16 +115,13 @@ const MyShop: React.FC = () => {
                 if (snap.exists()) {
                     const ids: string[] = snap.data().ids || [];
                     setPinnedIds(new Set(ids));
-                    // Keep localStorage in sync
                     localStorage.setItem(`pinned_items_${companyId}`, JSON.stringify(ids));
                 } else {
-                    // Fallback to localStorage if Firestore doc doesn't exist yet
                     const saved = localStorage.getItem(`pinned_items_${companyId}`);
                     if (saved) setPinnedIds(new Set(JSON.parse(saved)));
                 }
             } catch (err) {
                 console.error("Failed to load pinned items:", err);
-                // Fallback to localStorage on error
                 const saved = localStorage.getItem(`pinned_items_${companyId}`);
                 if (saved) setPinnedIds(new Set(JSON.parse(saved)));
             }
@@ -181,18 +178,16 @@ const MyShop: React.FC = () => {
 
         const group = allItemGroups.find((g) => g.id === item.itemGroupId);
         const categorySlug = group ? generateSlug(group.name) : item.itemGroupId;
+        const itemSlug = generateSlug(item.name || "product");
 
-        // 1. Safe fallback just in case
-        let shareUrl = `${window.location.origin}/${companyId}/${categorySlug}?itemId=${item.id}`;
+        let shareUrl = `${window.location.origin}/${companyId}/${categorySlug}?product=${itemSlug}&itemId=${item.id}`;
 
         try {
-            // 2. Fetch their official subdomain instantly on click
             const docRef = doc(db, 'companies', companyId);
             const snap = await getDoc(docRef);
 
             if (snap.exists() && snap.data().subdomain) {
-                // 3. Overwrite with the beautiful public URL, keeping the itemId attached!
-                shareUrl = `https://${snap.data().subdomain}.sellar.in/${categorySlug}?itemId=${item.id}`;
+                shareUrl = `https://${snap.data().subdomain}.sellar.in/${categorySlug}?product=${itemSlug}&itemId=${item.id}`;
             }
         } catch (error) {
             console.error("Error fetching subdomain for sharing:", error);
@@ -200,18 +195,29 @@ const MyShop: React.FC = () => {
 
         try {
             if (navigator.share) {
-                await navigator.share({
+                const shareData: ShareData = {
                     title: `${companyName} - ${item.name}`,
-                    // I slightly updated the text here so it includes the actual item name!
                     text: `Check out ${item.name} from ${companyName}`,
                     url: shareUrl,
-                });
+                };
+
+                if (item.imageUrl && navigator.canShare) {
+                    try {
+                        const imageResponse = await fetch(item.imageUrl);
+                        const blob = await imageResponse.blob();
+                        const file = new File([blob], `${itemSlug}.jpg`, { type: blob.type });
+
+                        if (navigator.canShare({ files: [file] })) {
+                            shareData.files = [file];
+                        }
+                    } catch (imageError) {
+                        console.warn("Could not fetch image for native sharing, falling back to text only.", imageError);
+                    }
+                }
+
+                await navigator.share(shareData);
             } else {
                 await navigator.clipboard.writeText(shareUrl);
-
-                // If you have your `setModal` state in this file, use it! 
-                // Otherwise, you can safely leave this as an alert.
-                // setModal({ message: "Product link copied to clipboard!", type: State.SUCCESS });
                 alert("Product link copied to clipboard!");
             }
         } catch (error) {
@@ -353,7 +359,7 @@ const MyShop: React.FC = () => {
         setIsAllLive(allLive);
     }, [allItems, resolvedGroupId, selectedCategory]);
 
-    // 1. One-time fetch (Saves Firestore Reads)
+    // Live Sync Listener
     useEffect(() => {
         if (authLoading || !currentUser || !dbOperations || !companyId) {
             if (!authLoading && (!currentUser || !dbOperations)) {
@@ -362,25 +368,14 @@ const MyShop: React.FC = () => {
             return;
         }
 
-        const fetchData = async () => {
+        setPageIsLoading(true);
+        setError(null);
+        let unsubscribeItems = () => { };
+
+        const setupLiveSync = async () => {
             try {
-                setPageIsLoading(true);
-                setError(null);
-
                 const fetchedItemGroups = await dbOperations.getItemGroups();
-                const fetchedItems = await dbOperations.syncItems();
-
                 setAllItemGroups(fetchedItemGroups || []);
-
-                const processedItems = (fetchedItems || []).map(item => ({
-                    ...item,
-                    isListed: item.isListed ?? false
-                }));
-                setAllItems(processedItems);
-
-                if (processedItems.length > 0) {
-                    setIsAllLive(processedItems.every(item => item.isListed === true));
-                }
 
                 const businessRef = doc(db, "companies", companyId, "business_info", companyId);
                 const businessSnap = await getDoc(businessRef);
@@ -390,32 +385,42 @@ const MyShop: React.FC = () => {
                 const settingsSnap = await getDoc(settingsRef);
                 if (settingsSnap.exists()) setCatalogueSettings(settingsSnap.data() as CatalogueSalesSettings);
 
+                const itemsRef = collection(db, "companies", companyId, "items");
+                unsubscribeItems = onSnapshot(itemsRef, (snapshot) => {
+                    const liveItemsList: Item[] = [];
+                    snapshot.forEach((docSnap) => {
+                        const data = docSnap.data();
+                        liveItemsList.push({
+                            ...data,
+                            id: docSnap.id,
+                            stock: data.stock !== undefined && data.stock !== null ? Number(data.stock) : 0,
+                            isListed: data.isListed ?? false
+                        } as Item);
+                    });
+
+                    setAllItems(liveItemsList);
+
+                    if (liveItemsList.length > 0) {
+                        setIsAllLive(liveItemsList.every(item => item.isListed === true));
+                    }
+
+                    setPageIsLoading(false);
+                }, (err) => {
+                    console.error("Live items sync failed:", err);
+                    setError("Real-time inventory synchronization lost.");
+                    setPageIsLoading(false);
+                });
+
             } catch (err: any) {
                 setError(err.message || "Failed to load initial data.");
-            } finally {
                 setPageIsLoading(false);
             }
         };
 
-        fetchData();
+        setupLiveSync();
+
+        return () => unsubscribeItems();
     }, [authLoading, currentUser, dbOperations, companyId]);
-
-    // 2. Listen for free local updates
-    useEffect(() => {
-        const handleLocalStockUpdate = (e: CustomEvent) => {
-            const { itemId, delta } = e.detail;
-            setAllItems(prevItems => prevItems.map(item => {
-                if (item.id === itemId) {
-                    // 👇 FIX: Removed Math.max here too
-                    return { ...item, stock: Number(item.stock || 0) + delta };
-                }
-                return item;
-            }));
-        };
-
-        window.addEventListener('local_stock_update' as any, handleLocalStockUpdate);
-        return () => window.removeEventListener('local_stock_update' as any, handleLocalStockUpdate);
-    }, []);
 
     const itemGroupMap = useMemo(() => {
         return allItemGroups.reduce((acc, group) => {
@@ -428,7 +433,7 @@ const MyShop: React.FC = () => {
 
     const filteredItems = useMemo(() => {
         const activeCat = resolvedGroupId || selectedCategory;
-        const validGroupIds = new Set(allItemGroups.map(g => g.id)); // For fast checking
+        const validGroupIds = new Set(allItemGroups.map(g => g.id));
 
         const result = allItems.filter(item => {
             if (!item) return false;
@@ -439,11 +444,9 @@ const MyShop: React.FC = () => {
                 return false;
             }
 
-            // --- VIRTUAL CATEGORY LOGIC ---
             let matchesCategory = false;
 
             if (isSearching) {
-                // If user is searching, ignore the category filter
                 matchesCategory = true;
             } else if (activeCat === 'All') {
                 matchesCategory = true;
@@ -546,19 +549,10 @@ const MyShop: React.FC = () => {
         return () => observerRef.current?.disconnect();
     }, [hasMoreItems, loadMoreItems]);
 
-    const handleOpenEditDrawer = (item: Item) => {
-        setSelectedItemForEdit(item);
-        setIsDrawerOpen(true);
-    };
-
     const resolveVariantGroup = (item: Item): string[] => {
         const itemId = String(item.id!);
-        // const linkedVariants: string[] = ((item as any).variants || []).map(String);
 
-        // Find the true root: the item whose variants array is the largest
-        // (since all items store a back-reference to root, root has ALL variants)
         const findTrueRoot = (startId: string): Item | null => {
-            // Collect all candidate "roots" by following variant links in both directions
             const visited = new Set<string>();
             const queue = [startId];
             let bestRoot: Item | null = null;
@@ -574,16 +568,13 @@ const MyShop: React.FC = () => {
 
                 const currentVariants: string[] = ((currentItem as any).variants || []).map(String);
 
-                // Track whichever item has the most variants (that's the true root)
                 if (currentVariants.length > bestCount) {
                     bestCount = currentVariants.length;
                     bestRoot = currentItem;
                 }
 
-                // Explore this item's variants
                 currentVariants.forEach(vid => { if (!visited.has(vid)) queue.push(vid); });
 
-                // Also explore any item that lists currentId as a variant
                 allItems.forEach(i => {
                     const iVariants: string[] = ((i as any).variants || []).map(String);
                     if (iVariants.includes(currentId) && !visited.has(String(i.id))) {
@@ -606,11 +597,17 @@ const MyShop: React.FC = () => {
         return [itemId];
     };
 
+    const handleOpenEditDrawer = (item: Item) => {
+        setSelectedItemForEdit(item);
+        setIsDrawerOpen(true);
+    };
+
     const handleOpenDetailDrawer = (item: Item) => {
         setSelectedItemForDetails(item);
         setVariantGroupIds(resolveVariantGroup(item));
         setIsDetailDrawerOpen(true);
     };
+
     const handleTogglePin = (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
         if (!companyId) return;
@@ -621,10 +618,8 @@ const MyShop: React.FC = () => {
             } else {
                 next.add(id);
             }
-            // Save to localStorage (existing behaviour)
             localStorage.setItem(`pinned_items_${companyId}`, JSON.stringify([...next]));
 
-            // Save to Firestore
             const settingsRef = doc(db, 'companies', companyId, 'settings', 'pinned_items');
             setDoc(settingsRef, { ids: [...next] }, { merge: true });
             return next;
@@ -653,7 +648,6 @@ const MyShop: React.FC = () => {
 
     return (
         <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative">
-            {/* --- HEADER SECTION --- */}
             <header className="sticky top-0 z-[100] bg-white border-b border-gray-100 shadow-sm w-full">
                 <div className="max-w-7xl mx-auto px-4 h-[68px] relative flex items-center justify-between">
 
@@ -886,29 +880,21 @@ const MyShop: React.FC = () => {
                                         <div className="flex items-center gap-2 w-full min-w-0">
                                             {hasBothPrices ? (
                                                 <div className="flex flex-wrap items-center gap-x-1 leading-tight min-w-0">
-
-                                                    {/* MRP */}
                                                     <p className="text-[14px] font-bold text-gray-400 line-through whitespace-nowrap shrink-0">
                                                         ₹{mrp}
                                                     </p>
-
-                                                    {/* SALE PRICE */}
                                                     <p className="text-[14px] font-black text-[#F97316] whitespace-nowrap shrink-0">
                                                         ₹{salePrice}
                                                     </p>
-
-                                                    {/* UNIT */}
                                                     <span className="text-[11px] text-gray-600 font-semibold whitespace-nowrap">
                                                         ({multiplier} pcs)
                                                     </span>
-
                                                 </div>
                                             ) : (
                                                 <div className="flex items-center gap-1 flex-nowrap overflow-hidden min-w-0">
                                                     <p className="text-[14px] font-black text-[#F97316] whitespace-nowrap truncate max-w-[70%]">
                                                         ₹{salePrice}
                                                     </p>
-
                                                     <span className="text-[12px] text-gray-600 font-semibold whitespace-nowrap shrink-0">
                                                         ({multiplier} pcs)
                                                     </span>
@@ -1027,13 +1013,18 @@ const MyShop: React.FC = () => {
                     setAllItems(prev =>
                         prev.map(i =>
                             i.id === selectedItemForEdit?.id
-                                ? { ...i, ...updated, moq: updated.moq ?? i.moq ?? 1 }
+                                ? {
+                                    ...i,
+                                    ...updated,
+                                    stock: updated.stock !== undefined ? Number(updated.stock) : i.stock,
+                                    moq: updated.moq ?? i.moq ?? 1
+                                }
                                 : i
                         )
                     );
 
                     if (companyId && selectedItemForEdit) {
-                        const newStock = updated.stock ?? selectedItemForEdit.stock ?? 0;
+                        const newStock = updated.stock !== undefined ? Number(updated.stock) : (selectedItemForEdit.stock ?? 0);
                         const isNowInStock = newStock > 0;
                         await syncNotifyStock(companyId, selectedItemForEdit.id!, isNowInStock);
                     }

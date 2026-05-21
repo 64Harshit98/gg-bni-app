@@ -35,6 +35,7 @@ export interface Item {
   unit?: string;
   companyId?: string | null;
   restockQuantity: number;
+  isRestockNeeded?: boolean;
   isListed?: boolean;
   imageUrl?: string | null;
   description?: string;

@@ -8,16 +8,16 @@ const GlobalError: React.FC = () => {
     const error = useRouteError();
     const navigate = useNavigate();
 
+    console.error("Route Error Caught:", error);
 
-    console.error("Global Error Caught:", error);
+    const message = error instanceof Error ? error.message : String(error);
 
     return (
         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gray-50 p-6 text-center font-poppins overflow-hidden">
             <div className="bg-white p-8 rounded-lg shadow-md max-w-md w-full border border-red-100">
                 <div className="flex justify-center mx-auto mb-4">
-
                     <img
-                        src={dogImage} // Replace with your actual image path
+                        src={dogImage}
                         alt="Sad Dog"
                         className="w-60 h-24 object-contain"
                     />
@@ -27,6 +27,13 @@ const GlobalError: React.FC = () => {
                 <p className="text-gray-500 mb-6 text-sm flex flex-col items-center gap-2">
                     <span>I crashed !!</span>
                 </p>
+
+                {import.meta.env.DEV && message && (
+                    <div className="mb-6 p-3 bg-red-50 text-red-700 text-xs text-left rounded overflow-auto max-h-32">
+                        {message}
+                    </div>
+                )}
+
                 <div className="space-y-3">
                     <CustomButton
                         variant={Variant.Filled}

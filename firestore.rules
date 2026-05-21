@@ -33,38 +33,41 @@ service cloud.firestore {
 
     // --- Tenant Data (Company Specific) ---
     match /companies/{companyId} {
-      
-      // Default rule: Must be a member to read/update the company doc itself
-      allow read: if true;
+
+      // Company doc: authenticated members only
+      allow get: if isCompanyMember(companyId);
       allow update: if isCompanyMember(companyId);
 
       // =========================================================
-      // PUBLIC READ ACCESS (For QR Bill Download)
+      // PUBLIC READ ACCESS (For QR Bill Download & Catalogue)
+      // allow get = single-document fetch only; list/query requires auth.
+      // This prevents unauthenticated enumeration of all records.
       // =========================================================
-      
-      // 1. Sales: Public needs to read the invoice details
-      match /sales/{document=**} {
-        allow read: if true;
-        allow write: if isCompanyMember(companyId);
+
+      // 1. Sales: QR share link fetches a specific invoice by ID
+      match /sales/{saleId} {
+        allow get: if true;
+        allow list, write: if isCompanyMember(companyId);
       }
 
-      // 3. Business Info: Public needs Company Address/Logo for the PDF header
-      match /business_info/{document=**} {
-        allow read: if true;
-        allow write: if isCompanyMember(companyId);
+      // 2. Business Info: PDF header needs company address/logo
+      match /business_info/{docId} {
+        allow get: if true;
+        allow list, write: if isCompanyMember(companyId);
       }
 
-      // 4. Sales Settings: Public needs to know if "Salesman Name" should be hidden
+      // 3. Sales Settings: PDF rendering needs tax/salesman display config
       match /settings/sales-settings {
-        allow read: if true;
+        allow get: if true;
         allow write: if isCompanyMember(companyId);
       }
-             match /settings/bill {
-        allow read: if true;
+
+      // 4. Bill settings: public PDF download
+      match /settings/bill {
+        allow get: if true;
         allow write: if isCompanyMember(companyId);
       }
-      // =========================
-      
+
       // =========================================================
       // AUTHENTICATED ONLY SECTIONS
       // =========================================================
@@ -74,12 +77,12 @@ service cloud.firestore {
         allow create, update: if isSelf(companyId, userId);
         allow delete: if false;
       }
-      
+
       match /users/{userId}/artifacts/{appId}/{collectionId}/{document=**} {
         allow read, write: if isSelf(companyId, userId);
       }
-      
-      // General Settings (catch-all for other settings like Purchase, etc.)
+
+      // General Settings catch-all
       match /settings/{settingId} {
         allow read, write: if isCompanyMember(companyId);
       }
@@ -87,54 +90,56 @@ service cloud.firestore {
       match /counters/{counterId} {
         allow read, write: if isCompanyMember(companyId);
       }
-      
+
+      // Legacy 'counter' path — read-only during migration period
       match /counter/{counterId} {
-        allow read, write: if isCompanyMember(companyId);
+        allow read: if isCompanyMember(companyId);
+        allow write: if false;
       }
-      
+
       match /attendance/{document=**} {
         allow read, write: if isCompanyMember(companyId);
       }
-      
 
-      // Public can read items that are listed
+      // Items: public get for catalogue browsing; only members can write
       match /items/{itemId} {
-        allow read: if true;
-        // Allows public to decrement stock but NOT change price/name
-        allow update: if true; 
+        allow get: if true;
+        allow list: if isCompanyMember(companyId);
         allow write: if isCompanyMember(companyId);
       }
 
-      // 2. Orders: Public needs to CREATE, READ, and DELETE (for upcoming orders)
+      // Catalogue Orders: public can place and track their own orders
       match /Orders/{orderId} {
-        allow create, read, delete: if true; 
-        allow update: if true; 
+        allow create, read: if true;
+        allow delete, update: if isCompanyMember(companyId);
       }
 
-      // 3. Catalogue Settings: Ensure this is EXACTLY like this
+      // Catalogue Sales Settings: members write; public can only read the doc
       match /settings/catalogue-sales-settings {
-        allow read: if true;
-        allow update: if true; // CRITICAL for the transaction to increment voucher
+        allow get: if true;
+        allow write: if isCompanyMember(companyId);
       }
-      
-      // 4. Notify Requests: You'll need this for the "Notify Me" button
+
+      // Notify Requests: public can create/read (no PII write risk)
       match /NotifyRequests/{requestId} {
-        allow read, create, update: if true;
+        allow read, create: if true;
+        allow update, delete: if isCompanyMember(companyId);
       }
-      
-      // Public can read item groups (categories)
+
+      // Item Groups: public get for catalogue category browsing
       match /itemGroups/{groupId} {
-        allow read: if true;
+        allow get: if true;
+        allow list, write: if isCompanyMember(companyId);
       }
-      
+
       match /AuthorizedUser/{userId} {
-        allow read: if true;
-        allow create: if true;
+        allow read, create: if true;
+        allow update, delete: if isCompanyMember(companyId);
       }
-      
+
       match /permissions/{role} {
-         allow read: if isCompanyMember(companyId);
-         allow write: if isCompanyMember(companyId); 
+        allow read: if isCompanyMember(companyId);
+        allow write: if isCompanyMember(companyId);
       }
 
       // Purchases remain private

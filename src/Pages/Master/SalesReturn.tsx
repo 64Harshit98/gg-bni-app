@@ -311,7 +311,8 @@ const SalesReturnPage: React.FC = () => {
           unitPrice: unitPrice,
           amount: amount,
           mrp: itemData.mrp || 0,
-          unitMultiplier: itemData.unitMultiplier || 1
+          unitMultiplier: itemData.unitMultiplier || 1,
+          unit: itemData.unit || ''
         };
       })
     );

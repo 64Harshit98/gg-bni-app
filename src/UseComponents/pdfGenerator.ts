@@ -47,6 +47,9 @@ export interface InvoiceData {
     roNumber?: string;
   };
   finalAmount?: number;
+   previousBalance?: number;
+  advance?: number;
+  due?: number;
   items: {
     sno: number;
     name: string;
@@ -430,9 +433,10 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
 
   const billDiscount = Number(data.billDiscount) || 0;
   const extraExpense = Number(data.extraExpenseAmount) || 0;
+  const advance = Number(data.advance) || 0;
 
   let finalRoundTotal = Number(data.finalAmount || (data as any).grandTotal || 0);
-  const pureCalculated = grossTotal - billDiscount + extraExpense;
+  const pureCalculated = grossTotal - billDiscount + extraExpense- advance;;
 
   if (!finalRoundTotal) {
     finalRoundTotal = Math.round(pureCalculated);
@@ -490,7 +494,32 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   const valueBoxW = 25;
   const valueBoxX = endX - valueBoxW;
 
-  // --- ADDED: EXTRA EXPENSE ROWS (Merged array logic with your vertical separators) ---
+  
+  // --- ADDED: BILL DISCOUNT ROW ---
+  if (billDiscount > 0) {
+    const discH = 6;
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.rect(startX, finalY, contentWidth, discH);
+    doc.line(valueBoxX, finalY, valueBoxX, finalY + discH); // Vertical separator
+
+    doc.text('Less : Bill Discount (-)', valueBoxX - 2, finalY + 4, { align: 'right' });
+     doc.text(formatNumberWithCommas(billDiscount), endX - 2, finalY + 4, { align: 'right' });
+    finalY += discH;
+  }
+
+  if (advance > 0) {
+    const advH = 6;
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.rect(startX, finalY, contentWidth, advH);
+    doc.line(valueBoxX, finalY, valueBoxX, finalY + advH); // Vertical separator
+    doc.text('Advance Paid (-):', valueBoxX - 2, finalY + 4, { align: 'right' });
+    doc.text(formatNumberWithCommas(advance), endX - 2, finalY + 4, { align: 'right' });
+    finalY += advH;
+  }
+
+ // --- ADDED: EXTRA EXPENSE ROW ---
   if (data.extraExpenseName && data.extraExpenseAmount && data.extraExpenseAmount > 0) {
     const names = data.extraExpenseName.split(',').map(n => n.trim()).filter(Boolean);
     const totalExpense = data.extraExpenseAmount;
@@ -523,19 +552,6 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     }
   }
 
-  // --- ADDED: BILL DISCOUNT ROW ---
-  if (billDiscount > 0) {
-    const discH = 6;
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    doc.rect(startX, finalY, contentWidth, discH);
-    doc.line(valueBoxX, finalY, valueBoxX, finalY + discH); // Vertical separator
-
-    doc.text('Less : Bill Discount (-)', valueBoxX - 2, finalY + 4, { align: 'right' });
-    doc.text(billDiscount.toFixed(2), endX - 2, finalY + 4, { align: 'right' });
-    finalY += discH;
-  }
-
   // 1. ROUNDED OFF
   const roundOffH = 6;
   doc.setFontSize(8);
@@ -548,18 +564,19 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   finalY += roundOffH;
 
   // 2. GRAND TOTAL
-  const grandTotalH = 8;
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'bold');
-  doc.rect(startX, finalY, contentWidth, grandTotalH);
+const grandTotalAfterAdvance = finalRoundTotal - advance; // ✅ subtract advance
+const grandTotalH = 8;
+doc.setFontSize(9);
+doc.setFont('helvetica', 'bold');
+doc.rect(startX, finalY, contentWidth, grandTotalH);
 
-  doc.text('Grand Total', pageWidth / 6, finalY + 5.5);
-  doc.text(`${totalQty.toFixed(3)} Unit`, pageWidth / 3, finalY + 5.5);
-  doc.text('Rs.', endX - 35, finalY + 5.5);
+doc.text('Grand Total', pageWidth / 6, finalY + 5.5);
+doc.text(`${totalQty.toFixed(3)} Unit`, pageWidth / 3, finalY + 5.5);
+doc.text('Rs.', endX - 35, finalY + 5.5);
 
-  doc.rect(endX - 30, finalY, 30, grandTotalH);
-  doc.text(finalRoundTotal.toFixed(2), endX - 2, finalY + 5.5, { align: 'right' });
-  finalY += grandTotalH;
+doc.rect(endX - 30, finalY, 30, grandTotalH);
+doc.text(formatNumberWithCommas(grandTotalAfterAdvance), endX - 2, finalY + 5.5, { align: 'right' }); // ✅ use new value
+finalY += grandTotalH;
 
   if (data.narration && data.narration.trim() !== '') {
     doc.setFontSize(8);
@@ -582,16 +599,16 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
 
     finalY += narrationH;
   }
-
+  
   // 3. TAX TABLE
   if (showTaxColumns) {
     const taxHeaders = [['Tax Rate', 'Taxable Amt.', 'CGST', 'SGST', 'Total Tax']];
     const taxBody = Object.keys(taxBreakdown).map(rate => {
       const d = taxBreakdown[rate];
-      return [`${rate}%`, d.taxable.toFixed(2), d.cgst.toFixed(2), d.sgst.toFixed(2), (d.cgst + d.sgst).toFixed(2)];
+      return [`${rate}%`, formatNumberWithCommas(d.taxable), formatNumberWithCommas(d.cgst), formatNumberWithCommas(d.sgst), formatNumberWithCommas(d.cgst + d.sgst)];
     });
 
-    taxBody.push(['TOTAL', totalTaxable.toFixed(2), (totalTaxAmt / 2).toFixed(2), (totalTaxAmt / 2).toFixed(2), totalTaxAmt.toFixed(2)]);
+    taxBody.push(['TOTAL', formatNumberWithCommas(totalTaxable), formatNumberWithCommas(totalTaxAmt / 2), formatNumberWithCommas(totalTaxAmt / 2), formatNumberWithCommas(totalTaxAmt)]);
 
     autoTable(doc, {
       startY: finalY + 2,
@@ -626,13 +643,38 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     finalY = Math.max(taxTableEnd + 2, finalY + 25);
   }
 
-  // 4. AMOUNT IN WORDS
-  const wordsH = 8;
+  // 4. AMOUNT IN WORDS + PREVIOUS BALANCE / TOTAL DUE (same row, after tax table)
+  const prevBal = Number(data.previousBalance) || 0;
+  const currentDue = Number(data.due) || 0;
+  const totalDue = prevBal + currentDue;
+  const hasPrevOrDue = prevBal > 0 || currentDue > 0;
+
+  const wordsH = hasPrevOrDue ? 12 : 8;
+  const rightColW = hasPrevOrDue ? 70 : 0;
+  const leftColW = contentWidth - rightColW;
+
   doc.rect(startX, finalY, contentWidth, wordsH);
-  doc.setFontSize(9);
+
+  doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
-  const amountWords = convertNumberToWords(finalRoundTotal);
-  doc.text(`Rs. ${amountWords}`, startX + 2, finalY + 5.5);
+  const amountWords = convertNumberToWords(grandTotalAfterAdvance);
+  doc.text(`Rs. ${amountWords}`, startX + 2, finalY + (hasPrevOrDue ? 7 : 5.5));
+
+  if (hasPrevOrDue) {
+    const dividerX = startX + leftColW;
+    doc.line(dividerX, finalY, dividerX, finalY + wordsH);
+    doc.line(dividerX, finalY + 6, endX, finalY + 6);
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Previous Balance :', dividerX + 2, finalY + 4.5);
+    doc.text(formatNumberWithCommas(prevBal), endX - 2, finalY + 4.5, { align: 'right' });
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('Balance Due :', dividerX + 2, finalY + 10);
+    doc.text(formatNumberWithCommas(totalDue), endX - 2, finalY + 10, { align: 'right' });
+  }
+
   finalY += wordsH;
 
   // 5. BANK DETAILS
@@ -779,7 +821,12 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     return doc.output('blob');
   }
 };
-
+const formatNumberWithCommas = (num: number): string => {
+  return num.toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+};
 const convertNumberToWords = (amount: number): string => {
   const units = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"];
   const teens = ["Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
@@ -898,6 +945,8 @@ export const preparePdfData = async (invoiceData: any) => {
     subtotal: invoiceData.subtotal || 0,
     taxAmount: invoiceData.taxAmount || 0,
     roundOff: invoiceData.roundOff || 0,
+    advance: invoiceData.advance || invoiceData.advanceAmount || 0,
+    due: invoiceData.due || invoiceData.dueAmount || invoiceData.balanceDue || 0,
 
     // --- ARRAYS ---
     items: (invoiceData.items || []).map((item: any) => ({

@@ -4,24 +4,34 @@ import { formatDate, formatDateForInput } from './SalesReportComponents/salesRep
 import usePartyLedger, { type LedgerTransaction, type PaymentRecord } from './PartyLedger/usePartyLedger';
 
 import { CustomCard } from '../../Components/CustomCard';
+import { PaymentModal } from '../../constants/Modal';
 import { IconChevronDown } from '../../constants/Icons';
 import BackButton from '../../Components/BackButton';
 
 const PartyLedger: React.FC = () => {
     const {
-        isLoading, authLoading, error,
+        companyId, isLoading, authLoading, error,
         datePreset, setDatePreset,
         customStartDate, setCustomStartDate,
         customEndDate, setCustomEndDate,
         setAppliedFilters, partySummaries,
         selectedPartyName, setSelectedPartyName,
         selectedPartyLedger,
+        updateTransactionLocally,
     } = usePartyLedger();
 
     const [expandedBillId, setExpandedBillId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [partyTypeFilter, setPartyTypeFilter] = useState<'all' | 'Customer' | 'Supplier'>('all');
+    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+    const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<any | null>(null);
+    const [statusFilter, setStatusFilter] = useState<'all' | 'due' | 'settled'>('all');
+    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
+    const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 3500);
+    };
     useEffect(() => {
         // Set default to last 30 days (acts as last month)
         handleDatePresetChange('last30');
@@ -71,6 +81,109 @@ const PartyLedger: React.FC = () => {
         setSelectedPartyName(null);
         setExpandedBillId(null);
     };
+    // ✅ FIXED: Complete rewrite of handleSettlePayment
+    const handleSettlePayment = async (
+        invoice: any,
+        amount: number,
+        method: string,
+        chequeNumber?: string,
+        chequeDate?: string
+    ) => {
+        try {
+            // ✅ Validation: Check companyId exists
+            if (!companyId) {
+                throw new Error('Company ID not found. Please log in again.');
+            }
+
+            // ✅ Validation: Check amount is valid
+            if (amount <= 0) {
+                throw new Error('Payment amount must be greater than 0.');
+            }
+
+            // ✅ Validation: Check invoice has required fields
+            if (!invoice.id || !invoice.type) {
+                throw new Error('Invalid invoice data.');
+            }
+
+            const { db } = await import('../../lib/Firebase');
+            const { doc, runTransaction } = await import('firebase/firestore');
+
+            // ✅ Use correct collection based on invoice type
+            const collectionName = invoice.type === 'sale' ? 'sales' : 'purchases';
+            const docRef = doc(db, 'companies', companyId, collectionName, invoice.id);
+
+            await runTransaction(db, async (transaction) => {
+                const sfDoc = await transaction.get(docRef);
+
+                // ✅ Verify document exists
+                if (!sfDoc.exists()) {
+                    throw new Error('Invoice not found in database.');
+                }
+
+                const data = sfDoc.data();
+
+                // ✅ Safely get current due amount from multiple sources
+                const currentPaymentMethods = data.paymentMethods || {};
+                const currentDue = currentPaymentMethods.due || data.dueAmount || 0;
+
+                // ✅ Prevent overpayment
+                if (amount > currentDue) {
+                    throw new Error(`Payment amount (₹${amount}) exceeds due amount (₹${currentDue}).`);
+                }
+
+                const newDue = currentDue - amount;
+
+                // ✅ Build new payment methods object
+                const newPaymentMethods = {
+                    ...currentPaymentMethods,
+                    [method.toLowerCase()]: (currentPaymentMethods[method.toLowerCase()] || 0) + amount,
+                    due: Math.max(0, newDue), // Ensure due never goes negative
+                };
+
+                // ✅ Create payment record with proper structure
+                const paymentRecord = {
+                    amount,
+                    method: method.toLowerCase(), // Normalize method name
+                    date: new Date().toISOString(),
+                    timestamp: Date.now(),
+                    ...(method.toUpperCase() === 'PDC' && {
+                        chequeNumber: chequeNumber || '',
+                        chequeDate: chequeDate || '',
+                    }),
+                };
+
+                // ✅ Update document with new payment info
+                transaction.update(docRef, {
+                    paymentMethods: newPaymentMethods,
+                    dueAmount: Math.max(0, newDue), // Also update dueAmount field for consistency
+                    paymentHistory: [...(data.paymentHistory || []), paymentRecord],
+                });
+            });
+
+            // ✅ Update local state immediately — no refresh needed
+            const paymentRecord: PaymentRecord = {
+                amount,
+                method: method.toLowerCase(),
+                date: new Date().toISOString(),
+                timestamp: Date.now(),
+                ...(method.toUpperCase() === 'PDC' && {
+                    chequeNumber: chequeNumber || '',
+                    chequeDate: chequeDate || '',
+                }),
+            };
+            updateTransactionLocally(invoice.id, amount, paymentRecord);
+
+            setIsPaymentModalOpen(false);
+            setSelectedInvoiceForPayment(null);
+            showToast(`Payment of ₹${amount} settled successfully via ${method}!`, 'success');
+
+        } catch (error) {
+            console.error('Error settling payment:', error);
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+            showToast(`Failed to settle payment: ${errorMessage}`, 'error');
+            throw error;
+        }
+    };
 
     const filteredParties = useMemo(() => {
         const lowerQuery = searchQuery.toLowerCase();
@@ -84,20 +197,36 @@ const PartyLedger: React.FC = () => {
                 partyTypeFilter === 'all' ||
                 party.partyType === partyTypeFilter;
 
-            return matchesSearch && matchesType;
+            const matchesStatus =
+                statusFilter === 'all' ||
+                (statusFilter === 'due' && party.totalDue > 0) ||
+                (statusFilter === 'settled' && party.totalDue === 0);
+
+            return matchesSearch && matchesType && matchesStatus;
         });
-    }, [searchQuery, partyTypeFilter, partySummaries]);
+    }, [searchQuery, partyTypeFilter, partySummaries, statusFilter]);
 
     if (isLoading || authLoading) return <div className="p-4 text-center">Loading Ledger...</div>;
     if (error) return <div className="p-4 text-center text-red-500">{error}</div>;
 
     return (
         <div className="min-h-screen bg-gray-50 pb-16">
-
+            {toast && (
+                <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-md shadow-lg text-sm font-semibold text-white transition-all
+                ${toast.type === 'success' ? 'bg-blue-500' : 'bg-red-500'}`}>
+                    {toast.message}
+                </div>
+            )}
+            <PaymentModal
+                isOpen={isPaymentModalOpen}
+                onClose={() => { setIsPaymentModalOpen(false); setSelectedInvoiceForPayment(null); }}
+                invoice={selectedInvoiceForPayment}
+                onSubmit={handleSettlePayment}
+            />
             {/* HEADER FOR MASTER LIST ONLY */}
             {!selectedPartyName && (
                 <div className="flex items-center justify-between p-3 border-b border-gray-200 mb-3 mt-2">
-                    <BackButton/>
+                    <BackButton />
                     <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
                         Party Ledger
                     </h1>
@@ -134,19 +263,33 @@ const PartyLedger: React.FC = () => {
                     <button onClick={handleApplyFilters} className="w-full mt-3 px-3 py-2 bg-blue-600 text-white text-sm font-semibold rounded-sm hover:bg-blue-700 transition-colors">
                         Apply
                     </button>
-                    <div className="flex justify-center mt-3">
-                        <div className="flex bg-gray-100 rounded-sm p-1 text-sm">
+                    <div className="flex flex-col items-center gap-2 mt-3">
+                        <div className="flex border border-gray-200 rounded-sm overflow-hidden text-sm w-1/2">
                             <button
-                                onClick={() => setPartyTypeFilter('Customer')}
-                                className={`px-4 py-1.5 rounded-sm transition ${partyTypeFilter === 'Customer' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600'}`}
+                                onClick={() => setPartyTypeFilter(prev => prev === 'Customer' ? 'all' : 'Customer')}
+                                className={`flex-1 px-3 py-1.5 transition font-medium ${partyTypeFilter === 'Customer' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
                             >
                                 Customer
                             </button>
                             <button
-                                onClick={() => setPartyTypeFilter('Supplier')}
-                                className={`px-4 py-1.5 rounded-sm transition ${partyTypeFilter === 'Supplier' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600'}`}
+                                onClick={() => setPartyTypeFilter(prev => prev === 'Supplier' ? 'all' : 'Supplier')}
+                                className={`flex-1 px-3 py-1.5 transition font-medium border-l border-gray-200 ${partyTypeFilter === 'Supplier' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
                             >
                                 Supplier
+                            </button>
+                        </div>
+                        <div className="flex bg-gray-100 rounded-sm p-1 text-sm">
+                            <button
+                                onClick={() => setStatusFilter(prev => prev === 'due' ? 'all' : 'due')}
+                                className={`px-3 py-1.5 rounded-sm transition ${statusFilter === 'due' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600'}`}
+                            >
+                                Due
+                            </button>
+                            <button
+                                onClick={() => setStatusFilter(prev => prev === 'settled' ? 'all' : 'settled')}
+                                className={`px-3 py-1.5 rounded-sm transition ${statusFilter === 'settled' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600'}`}
+                            >
+                                Settled
                             </button>
                         </div>
                     </div>
@@ -163,7 +306,7 @@ const PartyLedger: React.FC = () => {
                         filteredParties.map((party) => (
                             <CustomCard
                                 key={party.partyName}
-                                onClick={() => setSelectedPartyName(party.partyName)}
+                                onClick={() => setSelectedPartyName(party.partyNumber || party.partyName)}
                                 className="cursor-pointer transition-shadow hover:shadow-md p-3.5 bg-white"
                             >
                                 {/* Top Row: Badge and Total */}
@@ -331,6 +474,33 @@ const PartyLedger: React.FC = () => {
                                                     <p className="text-xs text-slate-400 text-center py-3">No payment records found.</p>
                                                 )}
                                             </div>
+                                            {/* ✅ FIXED: Settle button with corrected invoice object */}
+                                            {txn.dueAmount > 0 && (
+                                                <div className="mt-3 pt-3 border-t border-slate-200">
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+
+                                                            // ✅ Pass all necessary fields with correct structure
+                                                            setSelectedInvoiceForPayment({
+                                                                id: txn.id, // ✅ Keep original ID
+                                                                invoiceNumber: txn.invoiceNumber,
+                                                                type: txn.type, // ✅ Keep original type ('sale' or 'purchase')
+                                                                totalAmount: txn.totalAmount,
+                                                                dueAmount: txn.dueAmount,
+                                                                partyName: selectedPartyName,
+                                                                partyNumber: txn.partyNumber,
+                                                                createdAt: txn.createdAt,
+                                                            });
+
+                                                            setIsPaymentModalOpen(true);
+                                                        }}
+                                                        className="w-full px-4 py-2 text-sm font-semibold text-white bg-blue-500 rounded-sm hover:bg-blue-600 transition-colors"
+                                                    >
+                                                        Settle Payment
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </CustomCard>

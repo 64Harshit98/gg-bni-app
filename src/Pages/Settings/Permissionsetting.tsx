@@ -90,18 +90,18 @@ const PERMISSION_DESCRIPTIONS: Partial<Record<Permissions, string>> = {
     [Permissions.CreateUsers]: 'Invite and create new staff accounts.',
     [Permissions.HiddenProFeatures]: 'Unlocks all advanced Pro-tier features across the app.',
     [Permissions.ViewReports]: 'Access the reports section in the navigation.',
-    [Permissions.ViewFilterbutton]:        'Use date and category filters on dashboard widgets.',
-    [Permissions.ViewPurchaseTransactions]:'View the purchase-side transaction history.',
-    [Permissions.ViewEditReturn]:          'View and edit processed return entries.',
-    [Permissions.ViewDownloadPDF]:         'Download transaction receipts and reports as PDF.',
-    [Permissions.SalesmanwiseBilling]:     'Assign a specific salesperson to each sale at billing.',
-    [Permissions.ItemwiseDiscount]:        'Apply different discount rates per item in a sale.',
-    [Permissions.PurchaseTaxtype]:         'Choose the tax type applied on purchase entries.',
-    [Permissions.ViewAddons]:              'Access and manage addon/plugin features.',
-    [Permissions.ChangeViewtype]:          'Switch between list and grid view on item screens.',
-    [Permissions.RoundingOff]:             'Automatically round off the final bill amount.',
-    [Permissions.LockDiscountPrice]:       'Prevent cashiers from manually editing discounted prices.',
-    [Permissions.AllowDueBilling]:         'Allow saving a sale with a pending/due payment.',
+    [Permissions.ViewFilterbutton]: 'Use date and category filters on dashboard widgets.',
+    [Permissions.ViewPurchaseTransactions]: 'View the purchase-side transaction history.',
+    [Permissions.ViewEditReturn]: 'View and edit processed return entries.',
+    [Permissions.ViewDownloadPDF]: 'Download transaction receipts and reports as PDF.',
+    [Permissions.SalesmanwiseBilling]: 'Assign a specific salesperson to each sale at billing.',
+    [Permissions.ItemwiseDiscount]: 'Apply different discount rates per item in a sale.',
+    [Permissions.PurchaseTaxtype]: 'Choose the tax type applied on purchase entries.',
+    [Permissions.ViewAddons]: 'Access and manage addon/plugin features.',
+    [Permissions.ChangeViewtype]: 'Switch between list and grid view on item screens.',
+    [Permissions.RoundingOff]: 'Automatically round off the final bill amount.',
+    [Permissions.LockDiscountPrice]: 'Prevent cashiers from manually editing discounted prices.',
+    [Permissions.AllowDueBilling]: 'Allow saving a sale with a pending/due payment.',
 };
 export const getDefaultPermissions = (role: string): Permissions[] => {
     // @ts-ignore - allows string indexing if ROLES enum types mismatch slightly
@@ -154,7 +154,7 @@ const permissionGroups = {
         permissions: [
             Permissions.CreateSales,
             Permissions.CreateSalesReturn,
-            Permissions.SalesmanwiseBilling,       
+            Permissions.SalesmanwiseBilling,
         ],
     },
     purchases: {
@@ -189,12 +189,12 @@ const permissionGroups = {
             Permissions.ManageUsers,
         ],
     },
-    
+
     Account: {
         title: 'Account',
         permissions: [
             Permissions.ManageEditProfile,
-            Permissions.ViewAddons, 
+            Permissions.ViewAddons,
         ],
     },
     billing: {
@@ -210,7 +210,7 @@ const permissionGroups = {
             Permissions.ViewPurchaseTransactions,
         ],
     },
-     stockControl: {
+    stockControl: {
         title: 'Stock Control',
         permissions: [
             Permissions.AllownegativeStock,
@@ -373,7 +373,7 @@ const ManagePermissionsPage: React.FC = () => {
     return (
         <div className="bg-gray-100 min-h-screen mb-16">
             <div className="flex items-center justify-between p-2 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30 mb-4">
-                <BackButton/>
+                <BackButton />
                 <h1 className="text-center text-2xl md:text-3xl font-bold text-gray-800">Manage Permissions</h1>
             </div>
 
@@ -531,13 +531,15 @@ const ManagePermissionsPage: React.FC = () => {
                 </div>
             </div>
 
-            <div className="mt-4 text-center rounded-sm pt-4 sticky bottom-10 bg-transparent pb-4 mx-4">
-                <button
-                    onClick={() => handleSaveChanges(selectedRole)}
-                    className="w-auto bg-blue-600 text-white font-bold py-3 px-4 rounded-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-lg transition-transform active:scale-95"
-                >
-                    Save Changes for {selectedRole}
-                </button>
+            <div className="fixed inset-x-0 bottom-16 md:bottom-0 z-40 bg-transparent px-4 pb-2 md:p-4 pointer-events-none">
+                <div className="max-w-2xl mx-auto flex justify-center gap-4 pointer-events-auto">
+                    <button
+                        onClick={() => handleSaveChanges(selectedRole)}
+                        className="w-auto bg-blue-600 text-white font-bold py-3 px-4 rounded-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-lg transition-transform active:scale-95"
+                    >
+                        Save Changes for {selectedRole}
+                    </button>
+                </div>
             </div>
         </div>
     );

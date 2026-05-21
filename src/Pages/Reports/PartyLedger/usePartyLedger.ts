@@ -180,12 +180,12 @@ export default function usePartyLedger() {
     // Group all transactions (Sales & Purchases) by party name
     const partySummaries = useMemo(() => {
         const grouped = transactions.reduce((acc, txn) => {
-            const name = txn.partyName;
+             const key = txn.partyNumber?.trim() || txn.partyName;
             const currentTxnType = txn.type === 'sale' ? 'Customer' : 'Supplier';
 
-            if (!acc[name]) {
-                acc[name] = {
-                    partyName: name || 'N/A',
+            if (!acc[key]) {
+                acc[key] = {
+                    partyName: txn.partyName || 'N/A',
                     partyNumber: txn.partyNumber || 'N/A',
                     partyType: currentTxnType, // Set initial type
                     totalBilled: 0,
@@ -194,16 +194,19 @@ export default function usePartyLedger() {
                     transactions: [],
                 };
             } else {
-                // If they already exist, check if we need to update them to "Both"
-                if (acc[name].partyType !== currentTxnType && acc[name].partyType !== 'Both') {
-                    acc[name].partyType = 'Both';
-                }
+            // ✅ Use the latest non-empty name encountered
+            if (txn.partyName && txn.partyName !== 'N/A') {
+                acc[key].partyName = txn.partyName;
             }
+            if (acc[key].partyType !== currentTxnType && acc[key].partyType !== 'Both') {
+                acc[key].partyType = 'Both';
+            }
+        }
 
-            acc[name].totalBilled += txn.totalAmount;
-            acc[name].totalDue += txn.dueAmount;
-            acc[name].totalTransactions += 1;
-            acc[name].transactions.push(txn);
+            acc[key].totalBilled += txn.totalAmount;
+            acc[key].totalDue += txn.dueAmount;
+            acc[key].totalTransactions += 1;
+            acc[key].transactions.push(txn);
 
             return acc;
         }, {} as Record<string, PartySummary>);
@@ -213,11 +216,28 @@ export default function usePartyLedger() {
 
     const selectedPartyLedger = useMemo(() => {
         if (!selectedPartyName) return null;
-        return partySummaries.find(p => p.partyName === selectedPartyName) || null;
+        return (
+        partySummaries.find(p => p.partyNumber === selectedPartyName) ||
+        partySummaries.find(p => p.partyName === selectedPartyName) ||
+        null
+    );
     }, [selectedPartyName, partySummaries]);
-
+const updateTransactionLocally = (invoiceId: string, amountPaid: number, paymentRecord: PaymentRecord) => {
+    setTransactions(prev =>
+        prev.map(txn => {
+            if (txn.id !== invoiceId) return txn;
+            return {
+                ...txn,
+                dueAmount: Math.max(0, txn.dueAmount - amountPaid),
+                paymentHistory: [...txn.paymentHistory, paymentRecord],
+            };
+        })
+    );
+};
     return {
         isLoading, authLoading, error,
+        companyId: currentUser?.companyId,
+        updateTransactionLocally,
         datePreset, setDatePreset,
         customStartDate, setCustomStartDate,
         customEndDate, setCustomEndDate,

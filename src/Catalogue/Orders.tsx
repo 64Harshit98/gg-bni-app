@@ -395,6 +395,8 @@ const OrdersPage: React.FC = () => {
     const [editingOrder, setEditingOrder] = useState<Order | null>(null);
     const [pendingAdjustment, setPendingAdjustment] = useState<{ amount: number } | null>(null);
     const [showAdjustmentPopup, setShowAdjustmentPopup] = useState(false);
+    const [showZeroAmountModal, setShowZeroAmountModal] = useState(false);
+    const [pendingZeroOrderId, setPendingZeroOrderId] = useState<string | null>(null);
     const [selectedOrderForConfirm, setSelectedOrderForConfirm] = useState<string | null>(null);
     const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
     const [showQrModal, setShowQrModal] = useState<Order | null>(null);
@@ -605,15 +607,12 @@ const OrdersPage: React.FC = () => {
 
     const calculatedEditTotal = useMemo(() => {
         if (!editingOrder?.items) return 0;
-
         return editingOrder.items.reduce((sum, item) => {
             const salesPrice = Number(item.salesPrice || 0);
             const mrp = Number(item.mrp || 0);
-
             const price =
                 item.customPrice ??
                 (salesPrice > 0 ? salesPrice : mrp);
-
             return sum + price * Number(item.quantity || 0);
         }, 0);
     }, [editingOrder?.items]);
@@ -962,7 +961,50 @@ const OrdersPage: React.FC = () => {
                 };
             }));
 
-
+            // Fetch previous balance for this customer
+            let previousBalance = 0;
+            const customerPhone = Order.billingDetails?.phone || Order.userLoginPhone || '';
+            if (currentUser?.companyId && customerPhone) {
+                try {
+                    const { getDocs, collection, query, where } = await import('firebase/firestore');
+                    const salesRef = collection(db, 'companies', currentUser.companyId, 'Orders');
+                    const snap = await getDocs(query(
+                        salesRef,
+                        where('userLoginPhone', '==', customerPhone)
+                    ));
+                    snap.forEach(d => {
+                        if (d.id !== Order.id) {
+                            const data = d.data();
+                            const total = Number(data.totalAmount || 0);
+                            const paid = Number(data.paidAmount || 0);
+                            const due = Math.max(0, total - paid);
+                            previousBalance += due;
+                        }
+                    });
+                } catch (e) { console.error('Previous balance fetch error:', e); }
+            }
+            // Fetch previous balance for this customer
+            let wpPreviousBalance = 0;
+            const wpCustomerPhone = Order.billingDetails?.phone || Order.userLoginPhone || '';
+            if (currentUser?.companyId && wpCustomerPhone) {
+                try {
+                    const { getDocs, collection, query, where } = await import('firebase/firestore');
+                    const salesRef = collection(db, 'companies', currentUser.companyId, 'Orders');
+                    const snap = await getDocs(query(
+                        salesRef,
+                        where('userLoginPhone', '==', wpCustomerPhone)
+                    ));
+                    snap.forEach(d => {
+                        if (d.id !== Order.id) {
+                            const data = d.data();
+                            const total = Number(data.totalAmount || 0);
+                            const paid = Number(data.paidAmount || 0);
+                            const due = Math.max(0, total - paid);
+                            wpPreviousBalance += due;
+                        }
+                    });
+                } catch (e) { console.error('Previous balance fetch error:', e); }
+            }
             const rawBillData = {
                 companyId: currentUser?.companyId,
                 companyName: companyInfo?.name || "",
@@ -1004,7 +1046,9 @@ const OrdersPage: React.FC = () => {
 
                 grandTotal: Order.totalAmount,
                 paidAmount: Number(Order.paidAmount || 0),
+                advancePaid: Number(Order.paidAmount || 0),
                 dueAmount: Math.max(0, Order.totalAmount - Number(Order.paidAmount || 0)),
+                previousBalance: wpPreviousBalance,
             };
 
             const preparedData = await prepareCatalogueBillData({
@@ -1117,6 +1161,7 @@ const OrdersPage: React.FC = () => {
                 items: itemsWithBase64,
                 grandTotal: Order.totalAmount,
                 paidAmount: Number(Order.paidAmount || 0),
+                advancePaid: Number(Order.paidAmount || 0),
                 dueAmount: Math.max(0, Order.totalAmount - Number(Order.paidAmount || 0)),
             };
 
@@ -1326,11 +1371,14 @@ const OrdersPage: React.FC = () => {
         setExpandedorderId(prevId => (prevId === uiKey ? null : uiKey));
     };
 
-    const handleDeleteOrder = async (orderId: string) => {
-        const confirmDelete = window.confirm(
-            "Are you sure you want to delete this entire Order?"
-        );
-        if (!confirmDelete || !currentUser?.companyId) return;
+    const handleDeleteOrder = async (orderId: string, skipConfirm = false) => {
+        if (!skipConfirm) {
+            const confirmDelete = window.confirm(
+                "Are you sure you want to delete this entire Order?"
+            );
+            if (!confirmDelete) return;
+        }
+        if (!currentUser?.companyId) return;
 
         try {
             const companyId = currentUser.companyId;
@@ -1540,7 +1588,20 @@ const OrdersPage: React.FC = () => {
 
     const handleSaveChanges = async () => {
         if (!editingOrder || !currentUser?.companyId) return;
+        // ── Zero-amount guard ──────────────────────────────────────────────────
+         const preCheckTotal = (editingOrder.items || []).reduce((sum, item) => {
+        const salesPrice = Number(item.salesPrice || 0);
+        const mrp = Number(item.mrp || 0);
+        const unitPrice = item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+        return sum + Number(unitPrice || 0) * Number(item.quantity || 0);
+    }, 0);
 
+        if (preCheckTotal <= 0) {
+            setPendingZeroOrderId(editingOrder.id);
+            setShowZeroAmountModal(true);
+            return;
+        }
+        // ──────────────────────────────────────────────────────────────────────
         try {
             const companyId = currentUser.companyId;
             const orderRef = doc(db, 'companies', companyId, 'Orders', editingOrder.id);
@@ -2392,7 +2453,6 @@ const OrdersPage: React.FC = () => {
                                                                         </p>
                                                                     </div>
                                                                 )}
-
                                                                 <div className="text-right">
                                                                     <p className="text-[7px] font-bold text-red-600 uppercase tracking-tighter leading-none mb-0.5">Due</p>
                                                                     <p className="text-[11px] font-black text-red-700 leading-none">₹{due.toFixed(2)}</p>
@@ -2832,7 +2892,7 @@ const OrdersPage: React.FC = () => {
 
                             {/* Close Button */}
                             <button
-                                onClick={() => setEditingOrder(null)}
+                                onClick={() => setEditingOrder(null) }
                                 className="p-1.5 hover:bg-gray-200 rounded-sm transition-colors"
                             >
                                 <FiX size={20} />
@@ -3078,6 +3138,7 @@ const OrdersPage: React.FC = () => {
                         <div className="px-6 py-4 bg-slate-50 border-t flex gap-3">
                             <button
                                 onClick={() => setEditingOrder(null)}
+
                                 className="flex-1 py-2.5 bg-gray-400 text-black text-sm font-bold hover:bg-slate-300 rounded-sm transition-colors"
                             >
                                 Discard
@@ -3122,7 +3183,42 @@ const OrdersPage: React.FC = () => {
                     </div>
                 </div>
             )}
-
+            {/* Zero Amount Modal */}
+            {showZeroAmountModal && pendingZeroOrderId && (
+                <div className="fixed inset-0 z-[4000] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white w-[360px] rounded-sm shadow-xl border border-slate-200 p-5">
+                        <p className="text-center text-[11px] font-black uppercase tracking-widest text-slate-500 mb-2">
+                            Order Amount is ₹0
+                        </p>
+                        <p className="text-center text-sm text-slate-600 mb-5 leading-snug">
+                            All items have been removed. Do you want to <span className="text-red-600 font-bold">delete this order</span> entirely?
+                        </p>
+                        <div className="flex gap-3">
+                            <button
+                                className="flex-1 py-2.5 bg-slate-200 text-slate-800 text-xs font-black rounded-sm hover:bg-slate-300 transition"
+                                onClick={() => {
+                                    setShowZeroAmountModal(false);
+                                    setPendingZeroOrderId(null);
+                                }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                className="flex-1 py-2.5 bg-red-600 text-white text-xs font-black rounded-sm hover:bg-red-700 transition"
+                                onClick={async () => {
+                                    const orderId = pendingZeroOrderId;
+                                    setShowZeroAmountModal(false);
+                                    setPendingZeroOrderId(null);
+                                    setEditingOrder(null);
+                                    await handleDeleteOrder(orderId, true);
+                                }}
+                            >
+                                Delete Order
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {/* Adjustment Popup */}
             {showAdjustmentPopup && pendingAdjustment && (
                 <div className="fixed inset-0 z-[4000] flex items-center justify-center bg-black/50 backdrop-blur-sm">

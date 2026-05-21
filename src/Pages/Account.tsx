@@ -183,7 +183,7 @@ const Account: React.FC = () => {
 
         {/* Notification Bell */}
         <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-          <div className="relative border border-slate-300 rounded-sm p-2 bg-gray-100 shadow-sm">
+          <div className="relative border border-slate-300 rounded-sm bg-gray-100 shadow-sm">
             <NotificationBell />
           </div>
         </ShowWrapper>

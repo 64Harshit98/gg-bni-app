@@ -21,7 +21,7 @@ import { useAuth } from '../context/auth-context';
 import { CustomToggle, CustomToggleItem } from '../Components/CustomToggle';
 import { CustomCard } from '../Components/CustomCard';
 import { CustomButton } from '../Components/CustomButton';
-import { Variant, State, ACTION } from '../enums';
+import { Variant, State, ACTION, PLANS } from '../enums';
 import { Spinner } from '../constants/Spinner';
 import { ROUTES } from '../constants/routes.constants';
 import { Modal, PaymentModal } from '../constants/Modal';
@@ -602,21 +602,36 @@ const Journal: React.FC = () => {
         itemAmount = (Number(item.mrp) || 0) * (Number(item.quantity) || 1);
       }
 
+      // --- BUG FIXES (SCRUM-1044 & SCRUM-1054) ---
+      const qty = Number(item.quantity) || 1;
+
+      // 1. Find the ACTUAL mrp to tell the PDF generator if it should change the header
+      const actualMrp = isPurchase
+        ? (Number(item.purchasePrice) || 0)
+        : (Number(item.mrp) || 0);
+
+      // 2. Determine the base price for calculation (fallback to salesPrice if mrp is 0)
+      const basePrice = actualMrp > 0
+        ? actualMrp
+        : (Number(item.salesPrice) || 0);
+
+      // 3. Calculate absolute currency discount dynamically
+      let absoluteDiscount = (basePrice * qty) - itemAmount;
+      if (absoluteDiscount < 0) absoluteDiscount = 0;
+
       return {
         sno: index + 1,
         name: item.name,
-        quantity: Number(item.quantity) || 1,
+        quantity: qty,
         unit: fullItem.unit || item.unit || "Pcs",
         hsn: fullItem.hsnSac || item.hsnSac || "N/A",
 
-        // --- RESTORED: Correct Price based on Sales vs Purchase ---
-        listPrice: isPurchase ? (item.purchasePrice || item.mrp) : (item.mrp || 0),
+        // KEY FIX: Send the real MRP (even if 0) so the PDF generator renames the column
+        listPrice: actualMrp,
+        // Pass basePrice as 'price' so the PDF generator uses it for the math when listPrice is 0
+        price: basePrice,
 
-        // --- RESTORED: Safely fetch the exact discount amount without flawed math ---
-        discountAmount: isPurchase
-          ? (item.purchasediscount || item.discount || item.manualDiscount || 0)
-          : (item.discount || item.manualDiscount || 0),
-
+        discountAmount: absoluteDiscount,
         amount: itemAmount,
         taxType: resolvedTaxType,
         taxAmount: item.taxAmount || 0,
@@ -732,6 +747,7 @@ const Journal: React.FC = () => {
         isEstimate: billType === 'estimate'
       } as any);
       if (!dataForPdf) throw new Error("Failed to prepare invoice data.");
+
       const pdfBlob = await generatePdfBlob(dataForPdf);
 
       const safeNum = invoice.invoiceNumber.replace(/[\/\\?%*:|"<>]/g, '-');
@@ -799,7 +815,11 @@ const Journal: React.FC = () => {
 
   const promptDeleteInvoice = (invoice: Invoice) => {
     setInvoiceToDelete(invoice);
-    setModal({ message: "Are you sure you want to delete this invoice? This action cannot be undone and will restore item stock.", type: State.INFO });
+    if (currentUser?.plan !== PLANS.POS_BASIC) {
+      setModal({ message: "Are you sure you want to delete this invoice? This action cannot be undone and will restore item stock.", type: State.INFO });
+      return;
+    }
+    setModal({ message: "Are you sure you want to delete this invoice? This action cannot be undone.", type: State.INFO });
   };
 
   const confirmDeleteInvoice = async () => {
@@ -1463,7 +1483,7 @@ const Journal: React.FC = () => {
             className="absolute top-4 right-4 flex items-center gap-2 z-30"
           >
             <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-              <div className="border border-slate-300 rounded-sm p-2 bg-gray-100 shadow-sm flex items-center justify-center">
+              <div className="border border-slate-300 rounded-sm bg-gray-100 shadow-sm flex items-center justify-center">
                 <NotificationBell />
               </div>
             </ShowWrapper>
@@ -1555,7 +1575,7 @@ const Journal: React.FC = () => {
                   }}
                   className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 cursor-pointer hover:bg-gray-200 px-3 py-1 rounded-sm transition-colors select-none"
                 >
-                  <p className='text-center text-md font-light text-slate-600'>{selectedPeriodText}</p>
+                  <p className='text-center text-sm font-light text-slate-600'>{selectedPeriodText}</p>
                   <IconChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${showCustomPicker ? 'rotate-180' : ''}`} />
                 </div>
 

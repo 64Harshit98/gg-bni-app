@@ -254,7 +254,7 @@ const CartPage: React.FC = () => {
         (acc, item) => acc + item.salesPrice * item.quantity,
         0
     );
-    const totalPay = subtotal;
+    const totalPay = Math.round(subtotal);
 
     const isMovValid = () => {
         if (!salesSettings) return true;

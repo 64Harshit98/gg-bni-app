@@ -341,8 +341,8 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   let grossTotal = 0;
 
   // --- Determine price column header ---
-  const hasZeroMrp = data.items.some(item => !item.listPrice && !(item as any).mrp);
-  const priceHeader = hasZeroMrp ? 'Sales Price' : 'MRP';
+  const hasZeroMrp = data.items.some(item => !item.listPrice || item.listPrice === 0);
+  const priceHeader = hasZeroMrp ? 'Sale Price' : 'MRP';
 
   const taxBreakdown: Record<string, { taxable: number, cgst: number, sgst: number }> = {};
 

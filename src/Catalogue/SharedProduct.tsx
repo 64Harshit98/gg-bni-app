@@ -110,6 +110,7 @@ const SharedProduct: React.FC = () => {
     const [_isLeadFilled, setIsLeadFilled] = useState(false);
     const [forceLeadOpen, setForceLeadOpen] = useState(false);
     const [selectedItemForDetails, setSelectedItemForDetails] = useState<Item | null>(null);
+     const [variantGroupIds, setVariantGroupIds] = useState<string[]>([]);
     const [socialLinks, setSocialLinks] = useState<any>({});
     const observerRef = useRef<IntersectionObserver | null>(null);
     const loadMoreRef = useRef<HTMLDivElement | null>(null);
@@ -934,10 +935,67 @@ const SharedProduct: React.FC = () => {
         setSearchQuery("")
     }, [resolvedGroupId])
 
-    const handleOpenDetailDrawer = (item: Item) => {
-        setSelectedItemForDetails(item);
-        setIsDetailDrawerOpen(true);
+    const resolveVariantGroup = (item: Item): string[] => {
+    const itemId = String(item.id!);
+
+    // Only consider listed items for public catalogue
+    const listedItems = allItems.filter(i => i.isListed === true);
+
+    const findTrueRoot = (startId: string): Item | null => {
+        const visited = new Set<string>();
+        const queue = [startId];
+        let bestRoot: Item | null = null;
+        let bestCount = -1;
+
+        while (queue.length > 0) {
+            const currentId = queue.shift()!;
+            if (visited.has(currentId)) continue;
+            visited.add(currentId);
+
+            const currentItem = listedItems.find(i => String(i.id) === currentId);
+            if (!currentItem) continue;
+
+            const currentVariants: string[] = ((currentItem as any).variants || [])
+                .map(String)
+                // Only include variants that are listed
+                .filter((vid: string) => listedItems.some(i => String(i.id) === vid));
+
+            if (currentVariants.length > bestCount) {
+                bestCount = currentVariants.length;
+                bestRoot = currentItem;
+            }
+
+            currentVariants.forEach((vid: string) => { if (!visited.has(vid)) queue.push(vid); });
+
+            listedItems.forEach(i => {
+                const iVariants: string[] = ((i as any).variants || []).map(String);
+                if (iVariants.includes(currentId) && !visited.has(String(i.id))) {
+                    queue.push(String(i.id));
+                }
+            });
+        }
+
+        return bestRoot;
     };
+
+    const trueRoot = findTrueRoot(itemId);
+    if (trueRoot) {
+        const rootId = String(trueRoot.id!);
+        const rootVariants: string[] = ((trueRoot as any).variants || [])
+            .map(String)
+            // Final filter: only return IDs of listed items
+            .filter((vid: string) => listedItems.some(i => String(i.id) === vid));
+        return [rootId, ...rootVariants];
+    }
+
+    return [itemId];
+};
+
+const handleOpenDetailDrawer = (item: Item) => {
+    setSelectedItemForDetails(item);
+    setVariantGroupIds(resolveVariantGroup(item));
+    setIsDetailDrawerOpen(true);
+};
 
     if (domainResolveError) {
         return (
@@ -1403,6 +1461,12 @@ const SharedProduct: React.FC = () => {
                     setForceLeadOpen(true);
                 }}
                 onUpdateQuantity={updateQuantity}
+                companyId={effectiveCompanyId || ''}
+                variantGroupIds={variantGroupIds}
+                onVariantSelect={(variantItem) => {
+                    setSelectedItemForDetails(variantItem as Item);
+                    setVariantGroupIds(resolveVariantGroup(variantItem as Item));
+                }}
             />
         </div>
     );

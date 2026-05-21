@@ -16,6 +16,7 @@ import ExcelJS from 'exceljs';
 import { db, storage } from '../../lib/Firebase';
 import imageCompression from 'browser-image-compression';
 import { InfoTooltip } from '../../Components/InfoToolTip';
+import { VariantPicker } from '../../Components/VariantPicker';
 
 interface ItemAddProps {
   theme?: 'blue' | 'orange';
@@ -121,11 +122,12 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   const [itemUnit, setItemUnit] = useState<string>('pcs');
   const [packetSize, setPacketSize] = useState<string>('');
   const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
+  const [allItems, setAllItems] = useState<any[]>([]);
   const [moq, setMoq] = useState<string>('1');
   const [imageUrl, setImageUrl] = useState<string>('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-
+const [itemVariants, setItemVariants] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [pageIsLoading, setPageIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -216,6 +218,8 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       const groups = await dbOperations.getItemGroups();
       setItemGroups(groups);
       if (groups.length === 0) setSelectedCategories([]);
+      const items = await dbOperations.syncItems();
+      setAllItems(items || []);
     } catch (err) {
       setError('Failed to load item categories.');
     } finally {
@@ -274,6 +278,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     setMoq('1');
     setSelectedCategories([]);
     setShowCategoryDropdown(false);
+    setItemVariants([]);
     sessionStorage.removeItem(DRAFT_STORAGE_KEY);
     if (imageInputRef.current) imageInputRef.current.value = '';
     fetchNextBarcode();
@@ -438,6 +443,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         packetSize: itemUnit === 'pkt' ? parseInt(packetSize, 10) : null,
         imageUrl: finalUploadedImageUrl,
         isDeleted: false,
+        variants: itemVariants,
       };
 
       await dbOperations.createItem(newItemData, finalBarcode);
@@ -1149,7 +1155,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                   </label>
                   <InfoTooltip text="Select a primary category. Add more as catalogue-only tags below." />
                 </div>
-
+              
                 {/* Primary category dropdown — always visible */}
                 <select
                   value={selectedCategories[0] || ''}
@@ -1227,6 +1233,20 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                     >Cancel</button>
                   </div>
                 )}
+              </div>
+              {/* --- Variants --- */}
+              <div>
+                <div className="flex items-center mb-1">
+                  <label className="text-sm font-medium leading-none block mr-2">Variants</label>
+                  <InfoTooltip text="Link other items as variants (e.g. different sizes or colors)." />
+                </div>
+                <VariantPicker
+                  allItems={allItems}
+                  selectedIds={itemVariants}
+                  currentItemBarcode={itemBarcode}
+                  onChange={setItemVariants}
+                  activeTheme={activeTheme}
+                />
               </div>
             </div>
           </div>

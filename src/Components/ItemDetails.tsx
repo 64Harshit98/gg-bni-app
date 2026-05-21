@@ -3,7 +3,8 @@ import type { Item } from '../constants/models';
 import { X, ShoppingCart, Plus, Minus } from 'lucide-react';
 import { Spinner } from '../constants/Spinner';
 import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting'
-
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../lib/Firebase';
 interface ItemDetailDrawerProps {
     item: Item | null;
     isOpen: boolean;
@@ -14,6 +15,9 @@ interface ItemDetailDrawerProps {
     catalogueSettings?: CatalogueSalesSettings | null;
     isCustomerApproved?: boolean;
     onRequireLead?: () => void;
+    companyId?: string;
+    onVariantSelect?: (item: Item) => void;
+    variantGroupIds?: string[];
 }
 
 export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
@@ -24,16 +28,50 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
     onAddToCart,
     catalogueSettings,
     initialQuantity = 0,
+    companyId,
+    onVariantSelect,
+    variantGroupIds = [],
     // isCustomerApproved = true,
     // onRequireLead
 }) => {
     const [quantity, setQuantity] = useState(initialQuantity || 0);
     const [isAdding, setIsAdding] = useState(false);
+    const [variantItems, setVariantItems] = useState<Item[]>([]);
+    const [variantLoading, setVariantLoading] = useState(false);
+
     useEffect(() => {
         if (isOpen) {
             setQuantity(initialQuantity || 0);
         }
     }, [isOpen, initialQuantity]);
+
+    useEffect(() => {
+        const fetchVariants = async () => {
+            const idsToFetch = variantGroupIds.filter(id => String(id) !== String(item?.id));
+            if (!isOpen || !item || !companyId || !idsToFetch.length) {
+                setVariantItems([]);
+                return;
+            }
+            setVariantLoading(true);
+            try {
+                const results: Item[] = [];
+                for (const id of idsToFetch) {
+                    const snap = await getDoc(doc(db, 'companies', companyId, 'items', id));
+                    console.log(`Fetching id: "${id}" | exists: ${snap.exists()}`);
+                    if (snap.exists()) results.push({ id: snap.id, ...snap.data() } as Item);
+                }
+                console.log("variantGroupIds:", variantGroupIds);
+                console.log("idsToFetch:", idsToFetch);
+                console.log("results found:", results.map(r => r.name));
+                setVariantItems(results);
+            } catch (e) {
+                console.error('Failed to load variants', e);
+            } finally {
+                setVariantLoading(false);
+            }
+        };
+        fetchVariants();
+    }, [isOpen, item?.id, companyId, variantGroupIds]);
 
     if (!item) return null;
     const multiplier = (item as any).unitMultiplier || 1;
@@ -52,7 +90,7 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
     //  discount logic
     const hasDiscount = salePrice < mrp;
 
-   const discountPercent = mrp && hasDiscount ? Math.round(((mrp - salePrice) / mrp) * 100) : 0;
+    const discountPercent = mrp && hasDiscount ? Math.round(((mrp - salePrice) / mrp) * 100) : 0;
     const showDiscountBadge =
         !hidePriceEnabled &&
         catalogueSettings?.showDiscountBadge &&
@@ -198,6 +236,47 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
                                     {item.description ? item.description : 'No description available for this item.'}
                                 </p>
                             </div>
+                            {/* --- VARIANTS STRIP --- */}
+                            {(variantLoading || variantItems.length > 0) && (
+                                <div className="mt-3">
+                                    <h4 className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-2">Variants</h4>
+                                    {variantLoading ? (
+                                        <div className="flex gap-2">
+                                            {[1, 2, 3].map(n => (
+                                                <div key={n} className="w-16 h-20 bg-gray-100 rounded-sm animate-pulse flex-shrink-0" />
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollbarWidth: 'none' }}>
+                                            {[...variantItems.filter(v => String(v.id) !== String(item.id)), item]
+                                                .sort((a, b) => variantGroupIds.indexOf(String(a.id)) - variantGroupIds.indexOf(String(b.id)))
+                                                .map(v => {
+                                                    const isSelected = String(v.id) === String(item.id);
+                                                    return (
+                                                        <button
+                                                            key={v.id}
+                                                            onClick={() => !isSelected && onVariantSelect?.(v)}
+                                                            className={`flex-shrink-0 flex flex-col items-center gap-1 p-1.5 rounded-sm border-2 transition-all active:scale-95 ${isSelected
+                                                                    ? 'border-[#F97316] bg-[#F97316]/5 text-[#F97316]'
+                                                                    : 'border-gray-200 bg-white text-gray-700 hover:border-[#F97316] hover:bg-[#F97316]/5'
+                                                                }`}
+                                                        >
+                                                            {v.imageUrl
+                                                                ? <img src={v.imageUrl} alt={v.name} className="w-10 h-10 object-cover rounded-sm" />
+                                                                : <div className={`w-10 h-10 rounded-sm ${isSelected ? 'bg-orange-100' : 'bg-gray-100'}`} />
+                                                            }
+                                                            <span className="text-[9px] font-black max-w-[52px] truncate text-center leading-tight">{v.name}</span>
+                                                            <span className={`text-[9px] font-bold ${isSelected ? 'text-[#F97316]' : 'text-gray-500'}`}>
+                                                                ₹{v.salesPrice || v.mrp}
+                                                            </span>
+                                                        </button>
+                                                    );
+                                                })
+                                            }
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         {/* 3. QUANTITY SECTION - Tightened padding */}

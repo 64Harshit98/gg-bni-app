@@ -10,6 +10,7 @@ import imageCompression from 'browser-image-compression';
 import ShowWrapper from '../context/ShowWrapper';
 import { Permissions, State } from '../enums';
 import { Modal } from '../constants/Modal';
+import { VariantPicker } from './VariantPicker';
 
 interface ItemEditDrawerProps {
     item: Item | null;
@@ -63,6 +64,8 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
     const [imagePreview, setImagePreview] = useState<string | null>(null);
     const [uploadProgress, setUploadProgress] = useState<number | null>(null);
     const [unitChangeWarning, setUnitChangeWarning] = useState(false);
+    const [variantIds, setVariantIds] = useState<string[]>([]);
+    const [allItemsForVariants, setAllItemsForVariants] = useState<any[]>([]);
 
     useEffect(() => {
         const fetchGroups = async () => {
@@ -80,7 +83,19 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
         };
         fetchGroups();
     }, [isOpen, dbOperations]);
-
+    useEffect(() => {
+        const loadAllItems = async () => {
+            if (isOpen && dbOperations) {
+                try {
+                    const items = await dbOperations.syncItems();
+                    setAllItemsForVariants(items || []);
+                } catch (e) {
+                    console.error("Failed to load items for variant picker", e);
+                }
+            }
+        };
+        loadAllItems();
+    }, [isOpen, dbOperations]);
     useEffect(() => {
         const fetchLiveItemData = async () => {
             if (isOpen && item && item.id && item.companyId) {
@@ -118,7 +133,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                         packetSize: (liveData as any).packetSize ?? undefined,
                         moq: (liveData as any).moq ?? 1,
                     });
-
+                    setVariantIds((liveData as any).variants || []);
                     setImagePreview(liveData.imageUrl || null);
                     setImageFile(null);
                     setUploadProgress(null);
@@ -146,6 +161,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 setUnitChangeWarning(false);
                 setSelectedCategories([]);
                 setShowCategoryDropdown(false);
+                setVariantIds([]);
             }
         };
 
@@ -282,11 +298,41 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 unit: String(formData.unit || ''),
                 unitMultiplier: currentMultiplier,
                 packetSize: formData.unit === 'pkt' ? parseInt(String(formData.packetSize), 10) : null,
-                moq: Number(formData.moq || 1)
+                moq: Number(formData.moq || 1),
+                variants: variantIds,
             };
 
             await dbOperations.updateItem(item.id, dataToUpdate);
+            // Sync variants bidirectionally
+            const previousVariantIds: string[] = (item as any).variants || [];
+            const allVariantIds = Array.from(new Set([...variantIds, ...previousVariantIds]));
 
+            for (const variantId of allVariantIds) {
+                if (variantId === item.id) continue;
+
+                const variantRef = doc(db, 'companies', companyId, 'items', variantId);
+                const variantSnap = await getDoc(variantRef);
+                if (!variantSnap.exists()) continue;
+
+                const variantData = variantSnap.data();
+                const existingVariants: string[] = variantData.variants || [];
+
+                let updatedVariants: string[];
+
+                if (variantIds.includes(variantId)) {
+                    // Add current item to this variant's variants list
+                    if (!existingVariants.includes(item.id)) {
+                        updatedVariants = [...existingVariants, item.id];
+                    } else {
+                        continue; // no change needed
+                    }
+                } else {
+                    // Removed from current item — remove current item from their list too
+                    updatedVariants = existingVariants.filter(id => id !== item.id);
+                }
+
+                await dbOperations.updateItem(variantId, { variants: updatedVariants });
+            }
             const dataForLocalState: Partial<Item> = {
                 ...dataToUpdate,
                 companyId: companyId,
@@ -700,7 +746,16 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                     </div>
                                 )}
                             </div>
-
+                            <div>
+                                <label className="text-sm font-medium leading-none mb-1 block">Variants</label>
+                                <VariantPicker
+                                    allItems={allItemsForVariants}
+                                    selectedIds={variantIds}
+                                    currentItemBarcode={formData.barcode || ''}
+                                    onChange={setVariantIds}
+                                    activeTheme={{ text: 'text-sky-500', border: 'border-sky-500', primaryBg: 'bg-sky-500', focusRing: 'focus:ring-sky-500' } as any}
+                                />
+                            </div>
                             <ShowWrapper requiredPermission={Permissions.ViewCatalogue}>
                                 <div className="flex items-center space-x-2 pt-2">
                                     <input

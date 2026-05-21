@@ -22,6 +22,7 @@ import { CustomToggle, CustomToggleItem } from '../Components/CustomToggle';
 import { CustomCard } from '../Components/CustomCard';
 import { CustomButton } from '../Components/CustomButton';
 import { Variant, State, ACTION, PLANS } from '../enums';
+import { normalizePlan } from '../context/Plan';
 import { Spinner } from '../constants/Spinner';
 import { ROUTES } from '../constants/routes.constants';
 import { Modal, PaymentModal } from '../constants/Modal';
@@ -146,6 +147,9 @@ interface PdfData {
   items: any[];
   terms: string;
   finalAmount: number;
+  advance?: number;
+  due?: number;
+  previousBalance?: number;
   isEstimate?: boolean;
   bankDetails: {
     accountName: string;
@@ -359,7 +363,6 @@ const Journal: React.FC = () => {
 
   // ─── Tutorial state (mirrors Home.tsx pattern) ────────────────────────────
   const [tutorialStep, setTutorialStep] = useState(0);
-
   // Bill type toggle for action modal
   const [billType, setBillType] = useState<'estimate' | 'bill'>('bill');
 
@@ -455,22 +458,25 @@ const Journal: React.FC = () => {
   const navigate = useNavigate();
 
   const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
-
-  useEffect(() => {
-    const fetchExpiry = async () => {
-      if (!currentUser?.companyId) return;
-      const ref = doc(db, 'companies', currentUser.companyId);
-      const snap = await getDoc(ref);
-      if (snap.exists()) {
-        const expiry = snap.data().expiryDate;
-        if (!expiry) return;
+  const [isPosBasicPlan, setIsPosBasicPlan] = useState(false);
+useEffect(() => {
+  const fetchExpiry = async () => {
+    if (!currentUser?.companyId) return;
+    const companyRef = doc(db, 'companies', currentUser.companyId);
+    const snap = await getDoc(companyRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      const expiry = data.expiryDate;
+      if (expiry) {
         const d = expiry.toDate ? expiry.toDate() : new Date(expiry);
-
-        setDaysRemaining(Math.ceil((d.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))
+        setDaysRemaining(Math.ceil((d.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)));
       }
-    };
-    fetchExpiry();
-  }, [currentUser?.companyId]);
+      const normalizedPlan = normalizePlan(data.pack);
+      setIsPosBasicPlan(normalizedPlan === PLANS.POS_BASIC);
+    }
+  };
+  fetchExpiry();
+}, [currentUser?.companyId]);
 
 
   const showBadge = daysRemaining !== null && daysRemaining <= 7 && daysRemaining >= 0;
@@ -568,7 +574,7 @@ const Journal: React.FC = () => {
     setExpandedInvoiceId(prevId => (prevId === invoiceId ? null : invoiceId));
   };
 
-  const preparePdfData = async (invoice: Invoice): Promise<PdfData | null> => {
+  const preparePdfData = async (invoice: Invoice, forcePosPrint: boolean = false): Promise<PdfData | null> => {
     if (!currentUser?.companyId) return null;
 
     const dbOps = getFirestoreOperations(currentUser.companyId);
@@ -642,7 +648,7 @@ const Journal: React.FC = () => {
     });
 
     return {
-      printFormat: billSettings.printFormat || 'A4',
+      printFormat: (forcePosPrint ||  isPosBasicPlan) ? 'THERMAL58' : (billSettings.printFormat || 'A4'),
       gstScheme: salesSettings?.gstScheme || '',
       taxType: invoice.taxType || salesSettings?.taxType || '',
       companyName: businessInfo?.name || '',
@@ -680,6 +686,33 @@ const Journal: React.FC = () => {
         billedBy: salesSettings?.enableSalesmanSelection ? (invoice.salesmanName || 'N/A') : '',
         roNumber: '',
       },
+      advance: (() => {
+        const pm = invoice.paymentMethods || {};
+        const total = Object.entries(pm)
+          .filter(([k]) => k !== 'due')
+          .reduce((s, [, v]) => s + (Number(v) || 0), 0);
+        return total > 0 ? total : 0;
+      })(),
+      due: invoice.dueAmount || 0,
+      previousBalance: await (async () => {
+        if (!currentUser?.companyId || !invoice.partyNumber) return 0;
+        try {
+          const { getDocs, collection, query, where } = await import('firebase/firestore');
+          const salesRef = collection(db, 'companies', currentUser.companyId, 'sales');
+          const snap = await getDocs(query(
+            salesRef,
+            where('partyNumber', '==', invoice.partyNumber)
+          ));
+          let total = 0;
+          snap.forEach(d => {
+            // Exclude current invoice, sum all other dues
+            if (d.id !== invoice.id) {
+              total += Number(d.data().paymentMethods?.due ?? 0);
+            }
+          });
+          return total;
+        } catch { return 0; }
+      })(),
       items: populatedItems,
       terms: billSettings.termsAndConditions || 'Goods once sold will not be taken back.',
       finalAmount: invoice.amount,
@@ -707,7 +740,7 @@ const Journal: React.FC = () => {
       const dataForPdf = await preparePdfData({
         ...invoice,
         isEstimate: billType === 'estimate'
-      } as any);
+      } as any,  isPosBasicPlan);
       if (dataForPdf) {
         await generatePdf(dataForPdf, action);
       } else {
@@ -745,7 +778,7 @@ const Journal: React.FC = () => {
       const dataForPdf = await preparePdfData({
         ...invoice,
         isEstimate: billType === 'estimate'
-      } as any);
+      } as any, isPosBasicPlan);
       if (!dataForPdf) throw new Error("Failed to prepare invoice data.");
 
       const pdfBlob = await generatePdfBlob(dataForPdf);
@@ -1318,14 +1351,15 @@ const Journal: React.FC = () => {
                     <>
                       <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
                         <button onClick={(e) => { e.stopPropagation(); handleSalesReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">Return</button>
-                        <button
+                        
+                      </ShowWrapper>
+                      <button
                           onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }}
                           disabled={pdfGenerating === invoice.id}
                           className="px-4 py-2 text-sm font-medium text-white bg-black rounded-sm hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {pdfGenerating === invoice.id ? <Spinner /> : 'Print'}
                         </button>
-                      </ShowWrapper>
                     </>
                   )}
 
@@ -1363,24 +1397,28 @@ const Journal: React.FC = () => {
               </button>
             </div>
             {/* Bill type toggle */}
-            <div className="flex mb-4 bg-slate-100 rounded-sm p-1">
-              {['bill', 'estimate'].map((type) => (
-                <button
-                  key={type}
-                  onClick={() => setBillType(type as any)}
-                  className={`flex-1 py-2 text-xs font-bold uppercase rounded-sm transition-all ${billType === type
-                    ? 'bg-white text-blue-600 shadow-sm'
-                    : 'text-slate-500'
-                    }`}
-                >
-                  {type}
-                </button>
-              ))}
-            </div>
+            {!isPosBasicPlan && (
+              <div className="flex mb-4 bg-slate-100 rounded-sm p-1">
+                {['bill', 'estimate'].map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => setBillType(type as any)}
+                    className={`flex-1 py-2 text-xs font-bold uppercase rounded-sm transition-all ${billType === type
+                      ? 'bg-white text-blue-600 shadow-sm'
+                      : 'text-slate-500'
+                      }`}
+                  >
+                    {type}
+                  </button>
+                ))}
+              </div>
+            )}
             <p className="text-gray-600 mb-6">Choose how you want to provide the bill.</p>
+            
             <div className="flex flex-col gap-3">
               {invoiceToPrint.type === 'Credit' ? (
                 <>
+                <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
                   <button
                     onClick={() => handleSendWhatsapp({
                       ...invoiceToPrint,
@@ -1391,6 +1429,7 @@ const Journal: React.FC = () => {
                   >
                     {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
                   </button>
+                  </ShowWrapper>
                   <button
                     onClick={() => handlePdfAction({
                       ...invoiceToPrint,
@@ -1409,15 +1448,18 @@ const Journal: React.FC = () => {
                   >
                     <IconPrint /> Print Directly
                   </button>
+                  <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
                   <button onClick={() => handleShowQr(invoiceToPrint)} className="w-full bg-gray-900 text-white py-2.5 px-4 rounded-sm font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2">
                     <IconScanCircle width={20} height={20} /> Generate QR Code
                   </button>
+                  </ShowWrapper>
                 </>
               ) : (
                 <>
                   <button onClick={() => handlePdfAction(invoiceToPrint, ACTION.DOWNLOAD)} className="w-full text-white py-2.5 px-4 rounded-sm font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 bg-blue-600" disabled>
                     <IconDownload /> Download PDF
                   </button>
+                   
                   <button
                     onClick={() => {
                       handlePrintQr(invoiceToPrint);
@@ -1427,6 +1469,7 @@ const Journal: React.FC = () => {
                   >
                     <IconPrint /> Print QR
                   </button>
+                  
                 </>
               )}
             </div>

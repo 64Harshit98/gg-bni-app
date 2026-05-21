@@ -15,6 +15,7 @@ import sellarHeading from '../../assets/sellar-logo-heading.png';
 import { registerUserWithDetails } from '../../lib/AuthOperations';
 import { saveLeadProgress } from '../../lib/Lead';
 import { auth } from '../../lib/Firebase';
+import RegistrationLoading from '../Loading/BusinessInfoPage';
 
 const LOCAL_STORAGE_KEY = 'sellar_onboarding_data';
 
@@ -90,7 +91,7 @@ const BusinessInfoPage: React.FC = () => {
 
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [statusMessage, setStatusMessage] = useState('Creating Account...');
+  const [showLoadingScreen, setShowLoadingScreen] = useState(false);
 
   const [formData, setFormData] = useState({
     businessName: '',
@@ -230,7 +231,7 @@ const BusinessInfoPage: React.FC = () => {
     if (!validateForm()) return;
 
     setIsSubmitting(true);
-    setStatusMessage('Configuring Dashboard...');
+    setShowLoadingScreen(true);
 
     const finalBusinessType = formData.businessType === 'Other' ? formData.customBusinessType : formData.businessType;
     const finalBusinessCategory = formData.businessCategory === 'Other' ? formData.customBusinessCategory : formData.businessCategory;
@@ -323,7 +324,7 @@ const BusinessInfoPage: React.FC = () => {
       navigate(ROUTES.SIGNUP, { state: previousData });
     }
   };
-
+if (showLoadingScreen) return <RegistrationLoading />;
   return (
     <div className="flex h-screen overflow-hidden bg-gray-200">
       {/* Left visual (Figma style) */}
@@ -595,7 +596,7 @@ const BusinessInfoPage: React.FC = () => {
               {isSubmitting ? (
                 <div className="flex items-center justify-center gap-2">
                   <Spinner />
-                  <span>{statusMessage}</span>
+                  <span>Setting up...</span>
                 </div>
               ) : (
                 <div className="flex items-center justify-center gap-2">

@@ -866,19 +866,19 @@ const Sales: React.FC = () => {
             const insertionOrder = salesSettings?.cartInsertionOrder || 'top';
             const newList = insertionOrder === 'top' ? [newSalesItem, ...prev] : [...prev, newSalesItem];
 
-      setTimeout(() => {
-        if (cartListRef.current) {
-          if (insertionOrder === 'bottom') {
-            cartListRef.current.scrollTo({ top: cartListRef.current.scrollHeight, behavior: 'smooth' });
-          } else {
-            cartListRef.current.scrollTo({ top: 0, behavior: 'smooth' });
-          }
-        }
-      }, 50);
+            setTimeout(() => {
+                if (cartListRef.current) {
+                    if (insertionOrder === 'bottom') {
+                        cartListRef.current.scrollTo({ top: cartListRef.current.scrollHeight, behavior: 'smooth' });
+                    } else {
+                        cartListRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+                    }
+                }
+            }, 50);
 
-      return newList;
-    });
-  };
+            return newList;
+        });
+    };
 
     const [showClearCartConfirm, setShowClearCartConfirm] = useState(false);
 
@@ -2318,6 +2318,7 @@ const Sales: React.FC = () => {
                 <PaymentDrawer
                     mode='sale' isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)}
                     subtotal={subtotal} billTotal={amountToPayNow}
+                    totalTax={taxAmount}
                     onPaymentComplete={handleSavePayment}
                     isPartyNameEditable={!isEditMode}
                     originalBillTotal={calculatedOriginalTotal}
@@ -2331,6 +2332,16 @@ const Sales: React.FC = () => {
                     allowDueBilling={salesSettings?.allowDueBilling ?? false}
                     initialPartyAddress={isEditMode ? invoiceToEdit?.partyAddress : ''}
                     initialPartyGST={isEditMode ? invoiceToEdit?.partyGstin : ''}
+                    initialShippingName={isEditMode ? invoiceToEdit?.shippingName : ''}
+                    initialShippingNumber={isEditMode ? invoiceToEdit?.shippingNumber : ''}
+                    initialShippingAddress={isEditMode ? invoiceToEdit?.shippingAddress : ''}
+                    initialShippingGST={isEditMode ? invoiceToEdit?.shippingGST : ''}
+                    initialExpenseName={isEditMode ? invoiceToEdit?.extraExpenseName : ''}
+                    initialExpenseAmount={isEditMode ? invoiceToEdit?.extraExpenseAmount : ''}
+                    initialNarration={isEditMode ? invoiceToEdit?.narration : ''}
+                    enableShippingDetails={salesSettings?.enableShippingDetails}
+                    enableExtraExpense={salesSettings?.enableExtraExpense}
+                    enableNarration={salesSettings?.enableNarration}
                 />
                 <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
 

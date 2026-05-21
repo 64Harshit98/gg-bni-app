@@ -24,6 +24,7 @@ import { IconChevronDown } from '../../constants/Icons';
 import { db } from '../../lib/Firebase';
 import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
 import BackButton from '../../Components/BackButton';
+import { PaymentModal } from '../../constants/Modal';
 
 const useOrdersData = (companyId?: string) => {
     const [Orders, setOrders] = React.useState<any[]>([]);
@@ -46,8 +47,30 @@ const CataloguePartyLedger: React.FC = () => {
     const pageTopRef = useRef<HTMLDivElement | null>(null);
     const { currentUser } = useAuth();
     const { Orders } = useOrdersData(currentUser?.companyId);
+    useEffect(() => {
+        setLocalPaidOverrides(prev => {
+            const updated = { ...prev };
+            Orders.forEach((order: any) => {
+                if (updated[order.id] !== undefined) {
+                    // Firestore has caught up — remove the local override
+                    delete updated[order.id];
+                }
+            });
+            return updated;
+        });
 
+        setLocalPaymentHistories(prev => {
+            const updated = { ...prev };
+            Orders.forEach((order: any) => {
+                if (updated[order.id] !== undefined) {
+                    delete updated[order.id];
+                }
+            });
+            return updated;
+        });
+    }, [Orders]);
     const [selectedPartyName, setSelectedPartyName] = useState<string | null>(null);
+    const [selectedPartyNumber, setSelectedPartyNumber] = useState<string>('');
     const [isLoading] = useState(false);
     const [authLoading] = useState(false);
     const [error] = useState<string | null>(null);
@@ -60,7 +83,98 @@ const CataloguePartyLedger: React.FC = () => {
 
     const [expandedBillId, setExpandedBillId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const [statusFilter, setStatusFilter] = useState<'all' | 'due' | 'settled'>('all');
+    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+    const [localPaidOverrides, setLocalPaidOverrides] = useState<Record<string, number>>({});
+    const [localPaymentHistories, setLocalPaymentHistories] = useState<Record<string, PaymentRecord[]>>({});
+    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+    const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<any | null>(null);
 
+    const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 3500);
+    };
+    const handleSettlePayment = async (
+        invoice: any,
+        amount: number,
+        method: string,
+        chequeNumber?: string,
+        chequeDate?: string
+    ) => {
+        try {
+            if (!currentUser?.companyId) throw new Error('Company ID not found. Please log in again.');
+            if (amount <= 0) throw new Error('Payment amount must be greater than 0.');
+            if (!invoice.id) throw new Error('Invalid invoice data.');
+
+            const { doc, runTransaction } = await import('firebase/firestore');
+            const docRef = doc(db, 'companies', currentUser.companyId, 'Orders', invoice.id);
+
+            await runTransaction(db, async (transaction) => {
+                const sfDoc = await transaction.get(docRef);
+                if (!sfDoc.exists()) throw new Error('Order not found in database.');
+
+                const data = sfDoc.data();
+                const currentPaid = Number(data.paidAmount || 0);
+                const currentTotal = Number(data.totalAmount || 0);
+                const currentDue = currentTotal - currentPaid;
+
+                if (amount > currentDue) {
+                    throw new Error(`Payment amount (₹${amount}) exceeds due amount (₹${currentDue.toFixed(0)}).`);
+                }
+
+                const newPaid = currentPaid + amount;
+                const paymentRecord = {
+                    amount,
+                    method: method.toLowerCase(),
+                    date: new Date().toISOString(),
+                    timestamp: Date.now(),
+                    ...(method.toUpperCase() === 'PDC' && {
+                        chequeNumber: chequeNumber || '',
+                        chequeDate: chequeDate || '',
+                    }),
+                };
+
+                const newStatus = newPaid >= currentTotal ? 'Paid' : data.status;
+
+                transaction.update(docRef, {
+                    paidAmount: newPaid,
+                    paymentHistory: [...(data.paymentHistory || []), paymentRecord],
+                    status: newStatus,
+                    updatedAt: new Date(),
+                });
+            });
+
+            // ✅ Update local state instantly — no refresh needed
+            setLocalPaidOverrides(prev => ({
+                ...prev,
+                [invoice.id]: (prev[invoice.id] ?? Number(
+                    Orders.find((o: any) => o.id === invoice.id)?.paidAmount || 0
+                )) + amount,
+            }));
+            const newPaymentRecord: PaymentRecord = {
+                amount,
+                method: method.toLowerCase(),
+                date: new Date().toISOString(),
+                ...(method.toUpperCase() === 'PDC' && {
+                    chequeNumber: chequeNumber || '',
+                    chequeDate: chequeDate || '',
+                }),
+            };
+            setLocalPaymentHistories(prev => ({
+                ...prev,
+                [invoice.id]: [...(prev[invoice.id] ?? []), newPaymentRecord],
+            }));
+
+            setIsPaymentModalOpen(false);
+            setSelectedInvoiceForPayment(null);
+            showToast(`Payment of ₹${amount} settled successfully!`, 'success');
+
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+            showToast(`Failed to settle payment: ${errorMessage}`, 'error');
+            throw error;
+        }
+    };
     // Set default date range on mount
     useEffect(() => {
         const start = new Date();
@@ -82,6 +196,18 @@ const CataloguePartyLedger: React.FC = () => {
             pageTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
     }, [selectedPartyName]);
+    useEffect(() => {
+        const duplicateOrders = new Map();
+        Orders.forEach(order => {
+            if (duplicateOrders.has(order.orderId)) {
+                console.warn('Duplicate Order Found:', order.orderId, {
+                    first: duplicateOrders.get(order.orderId),
+                    second: { name: order.userName, phone: order.userLoginPhone }
+                });
+            }
+            duplicateOrders.set(order.orderId, { name: order.userName, phone: order.userLoginPhone });
+        });
+    }, [Orders]);
 
     const toggleBillExpansion = (billId: string) => {
         setExpandedBillId(prev => prev === billId ? null : billId);
@@ -144,9 +270,19 @@ const CataloguePartyLedger: React.FC = () => {
     const filteredParties = useMemo(() => {
         const map = new Map();
         dateFilteredOrders.forEach((order: any) => {
-            const name = order.userName || 'Unknown';
-            const number = order.userLoginPhone || '';
-            const key = `${name}-${number}`;
+            const name = order.userName
+                || order.billingDetails?.name
+                || order.shippingDetails?.name
+                || 'Unknown';
+            const rawNumber = order.userLoginPhone
+                || order.billingDetails?.phone
+                || order.shippingDetails?.phone;
+
+            const number = (rawNumber || '').toString().trim();
+            const key = number
+                ? number
+                : `NO_PHONE_${name.toLowerCase().replace(/\s+/g, '_')}`;
+
             if (!map.has(key)) {
                 map.set(key, {
                     partyName: name,
@@ -156,10 +292,17 @@ const CataloguePartyLedger: React.FC = () => {
                     totalTransactions: 0,
                     partyType: 'Customer',
                 });
+            } else {
+                const existing = map.get(key);
+                if (name.length > existing.partyName.length) {
+                    existing.partyName = name;
+                }
             }
             const existing = map.get(key);
             const total = Number(order.totalAmount || 0);
-            const paid = Number(order.paidAmount || 0);
+            const paid = localPaidOverrides[order.id] !== undefined
+                ? localPaidOverrides[order.id]
+                : Number(order.paidAmount || 0);
             existing.totalBilled += total;
             existing.totalDue += Math.max(0, total - paid);
             existing.totalTransactions += 1;
@@ -167,23 +310,59 @@ const CataloguePartyLedger: React.FC = () => {
 
         const partyData = Array.from(map.values());
 
-        if (!searchQuery.trim()) return partyData;
         const lowerQuery = searchQuery.toLowerCase();
-        return partyData.filter(party =>
-            party.partyName.toLowerCase().includes(lowerQuery) ||
-            party.partyNumber.toLowerCase().includes(lowerQuery)
-        );
-    }, [dateFilteredOrders, searchQuery]);
+        return partyData.filter(party => {
+            const matchesSearch =
+                !searchQuery.trim() ||
+                party.partyName.toLowerCase().includes(lowerQuery) ||
+                party.partyNumber.toLowerCase().includes(lowerQuery);
+
+            const matchesStatus =
+                statusFilter === 'all' ||
+                (statusFilter === 'due' && party.totalDue > 0) ||
+                (statusFilter === 'settled' && party.totalDue === 0);
+
+            return matchesSearch && matchesStatus;
+        });
+    }, [dateFilteredOrders, searchQuery, localPaidOverrides, statusFilter]);
 
     // ─── DETAIL LEDGER (uses same date-filtered orders) ───────────────────────
     const selectedPartyLedger = useMemo(() => {
         if (!selectedPartyName) return null;
 
         const transactions = dateFilteredOrders
-            .filter((order: any) => order.userName === selectedPartyName)
+            .filter((order: any) => {
+                const orderPhone = (
+                    order.userLoginPhone
+                    || order.billingDetails?.phone
+                    || order.shippingDetails?.phone
+                    || ''
+                ).toString().trim();
+
+                const selectedPhone = (selectedPartyNumber || '').toString().trim();
+
+                // ✅ Phone number hai toh sirf number se match karo (name ignore)
+                if (selectedPhone) {
+                    return orderPhone === selectedPhone;
+                }
+
+                // ✅ Phone nahi hai toh name se match karo (no-phone parties)
+                const orderName = order.userName
+                    || order.billingDetails?.name
+                    || order.shippingDetails?.name
+                    || 'Unknown';
+
+                return orderName === selectedPartyName && (
+                    !order.userLoginPhone &&
+                    !order.billingDetails?.phone &&
+                    !order.shippingDetails?.phone
+                );
+            })
             .map((order: any) => {
                 const total = Number(order.totalAmount || 0);
-                const paid = Number(order.paidAmount || 0);
+                const paid = localPaidOverrides[order.id] !== undefined
+                    ? localPaidOverrides[order.id]
+                    : Number(order.paidAmount || 0);
                 return {
                     id: order.id,
                     invoiceNumber: order.orderId,
@@ -191,7 +370,8 @@ const CataloguePartyLedger: React.FC = () => {
                     totalAmount: total,
                     dueAmount: Math.max(0, total - paid),
                     type: 'sale',
-                    paymentHistory: [] as PaymentRecord[],
+                    paymentHistory: localPaymentHistories[order.id]
+                        ?? (order.paymentHistory as PaymentRecord[] || []),
                 };
             });
 
@@ -200,10 +380,11 @@ const CataloguePartyLedger: React.FC = () => {
             totalBilled: transactions.reduce((sum, t) => sum + t.totalAmount, 0),
             totalDue: transactions.reduce((sum, t) => sum + t.dueAmount, 0),
         };
-    }, [selectedPartyName, dateFilteredOrders]);
+    }, [selectedPartyName, selectedPartyNumber, dateFilteredOrders, localPaidOverrides, localPaymentHistories, filteredParties]);
 
     const goBack = () => {
         setSelectedPartyName(null);
+        setSelectedPartyNumber('');
         setExpandedBillId(null);
     };
 
@@ -212,7 +393,18 @@ const CataloguePartyLedger: React.FC = () => {
 
     return (
         <div ref={pageTopRef} className="min-h-screen bg-gray-50 pb-16">
-
+            {toast && (
+                <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-md shadow-lg text-sm font-semibold text-white transition-all
+                ${toast.type === 'success' ? 'bg-[#F97316]' : 'bg-red-600'}`}>
+                    {toast.message}
+                </div>
+            )}
+            <PaymentModal
+                isOpen={isPaymentModalOpen}
+                onClose={() => { setIsPaymentModalOpen(false); setSelectedInvoiceForPayment(null); }}
+                invoice={selectedInvoiceForPayment}
+                onSubmit={handleSettlePayment}
+            />
             {/* HEADER — master list only */}
             {!selectedPartyName && (
                 <div className="flex items-center justify-between pb-4 border-b border-gray-200 mb-3">
@@ -263,6 +455,22 @@ const CataloguePartyLedger: React.FC = () => {
                             Apply
                         </button>
                     </div>
+                    <div className="flex justify-center mt-3">
+                        <div className="flex bg-gray-100 rounded-sm p-1 text-sm">
+                            <button
+                                onClick={() => setStatusFilter(prev => prev === 'due' ? 'all' : 'due')}
+                                className={`px-3 py-1.5 rounded-sm transition ${statusFilter === 'due' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-600'}`}
+                            >
+                                Due
+                            </button>
+                            <button
+                                onClick={() => setStatusFilter(prev => prev === 'settled' ? 'all' : 'settled')}
+                                className={`px-3 py-1.5 rounded-sm transition ${statusFilter === 'settled' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-600'}`}
+                            >
+                                Settled
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
 
@@ -277,7 +485,9 @@ const CataloguePartyLedger: React.FC = () => {
                             <CustomCard
                                 key={`${party.partyName}-${party.partyNumber}`}
                                 onClick={() => {
+                                    console.log('Selected Party:', party.partyName, '| Number:', party.partyNumber);
                                     setSelectedPartyName(party.partyName);
+                                    setSelectedPartyNumber(party.partyNumber);
                                     setExpandedBillId(null);
                                 }}
                                 className="cursor-pointer transition-shadow hover:shadow-md p-3.5 bg-white"
@@ -423,6 +633,28 @@ const CataloguePartyLedger: React.FC = () => {
                                                     <p className="text-xs text-slate-400 text-center py-3">No payment records found.</p>
                                                 )}
                                             </div>
+                                            {/* ✅ Settle Payment Button */}
+                                            {txn.dueAmount > 0 && (
+                                                <div className="mt-3 pt-3 border-t border-slate-200">
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setSelectedInvoiceForPayment({
+                                                                id: txn.id,
+                                                                invoiceNumber: txn.invoiceNumber,
+                                                                type: 'sale',
+                                                                totalAmount: txn.totalAmount,
+                                                                dueAmount: txn.dueAmount,
+                                                                partyName: selectedPartyName,
+                                                            });
+                                                            setIsPaymentModalOpen(true);
+                                                        }}
+                                                        className="w-full px-4 py-2 text-sm font-semibold text-white bg-[#F97316] rounded-sm hover:bg-[#F97316] transition-colors"
+                                                    >
+                                                        Settle Payment
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </CustomCard>

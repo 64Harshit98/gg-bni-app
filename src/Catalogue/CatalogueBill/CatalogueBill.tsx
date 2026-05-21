@@ -60,6 +60,8 @@ export interface CatalogueInvoiceData {
   }[];
   specialInstruction?: string
   grandTotal: number;
+  advancePaid?: number;
+  previousBalance?: number;
 }
 
 export const CatalogueBill = async (
@@ -765,18 +767,7 @@ export const CatalogueBill = async (
       );
   });
 
-  // ===== GRAND TOTAL ROW =====
-  const foot = isEstimate
-    ? [
-      showMrpColumn
-        ? ["", "", "", "", "", "Grand Total", formatAmount(finalTotalAmountToPrint)]
-        : ["", "", "", "", "Grand Total", formatAmount(finalTotalAmountToPrint)]
-    ]
-    : [
-      showMrpColumn
-        ? ["", "", "", "", "", "", "", "", "Grand Total", formatAmount(finalTotalAmountToPrint)]
-        : ["", "", "", "", "", "", "", "Grand Total", formatAmount(finalTotalAmountToPrint)]
-    ];
+  const foot: any[] = [];
 
   const drawBrandingFooter = () => {
 
@@ -860,8 +851,8 @@ export const CatalogueBill = async (
       ],
     body,
     foot,
-    showFoot: "lastPage",
-    margin: { left: 7, right: 7 },
+    showFoot: "never",
+    margin: { left: margin, right: margin },
     theme: "grid",
 
     headStyles: {
@@ -968,9 +959,46 @@ export const CatalogueBill = async (
 
   // table end position
   // @ts-ignore
+  // @ts-ignore
   if (!isEstimate) {
-    let finalY = (doc as any).lastAutoTable.finalY + 4;
-    const wordsH = 8;
+    let finalY = (doc as any).lastAutoTable.finalY;
+
+    const advancePaid = (data as any).advancePaid || 0;
+    const previousBalance = Number((data as any).previousBalance) || 0;
+
+    // Calculate the grand total after deducting advance
+    const grandTotalAfterAdvance = finalTotalAmountToPrint - advancePaid;
+
+    const currentDue = grandTotalAfterAdvance;
+    const totalDue = previousBalance + currentDue;
+    const hasPrevOrDue = previousBalance > 0 || currentDue > 0;
+
+    const valueBoxW = 30;
+    const valueBoxX = (pageWidth - margin) - valueBoxW;
+
+    // ── Advance Paid row BEFORE Grand Total ──
+    if (advancePaid > 0) {
+      const advH = 6;
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      doc.rect(margin, finalY, pageWidth - margin * 2, advH);
+      doc.line(valueBoxX, finalY, valueBoxX, finalY + advH);
+      doc.text('Advance Paid (-)', valueBoxX - 2, finalY + 4, { align: 'right' });
+      doc.text(formatAmount(advancePaid), pageWidth - margin - 2, finalY + 4, { align: 'right' });
+      finalY += advH;
+    }
+
+    // ── Grand Total Row (shows amount after advance deduction) ──
+    const grandTotalH = 8;
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.rect(margin, finalY, pageWidth - margin * 2, grandTotalH);
+    doc.rect(valueBoxX, finalY, valueBoxW, grandTotalH);
+    doc.text('Grand Total', margin + (pageWidth - margin * 2) / 6, finalY + 5.5);
+    doc.text('Rs.', valueBoxX - 5, finalY + 5.5, { align: 'right' });
+    doc.text(formatAmount(grandTotalAfterAdvance), pageWidth - margin - 2, finalY + 5.5, { align: 'right' });
+    finalY += grandTotalH + 4;
+    const wordsH = 12;
     const bankH = 12;
     const footerH = 32;
 
@@ -982,18 +1010,38 @@ export const CatalogueBill = async (
       finalY = margin;
     }
 
-    doc.rect(margin, finalY, pageWidth - margin * 2, wordsH);
+    const wordsText = `Amount in Words : ${convertNumberToWords(Math.round(grandTotalAfterAdvance))}`;
+    const rightColW = 70;
+    const leftColW = pageWidth - margin * 2 - rightColW;
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
+    const wordsLines = doc.splitTextToSize(wordsText, leftColW - 4);
 
-    doc.text(
-      `Amount in Words : ${convertNumberToWords(Math.round(finalTotalAmountToPrint))}`,
-      margin + 4,
-      finalY + 5.5
-    );
+    // ── Amount in Words + Previous Balance / Balance Due ──
+    const wordsRowH = hasPrevOrDue ? 12 : 8;
+    const dividerX = (pageWidth - margin) - rightColW;
+    const rightEndX = pageWidth - margin - 2;
 
-    finalY += wordsH;
+    doc.rect(margin, finalY, pageWidth - margin * 2, wordsRowH);
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "bold");
+    doc.text(wordsLines, margin + 2, finalY + (hasPrevOrDue ? 7 : 5.5));
+
+    if (hasPrevOrDue) {
+      doc.line(dividerX, finalY, dividerX, finalY + wordsRowH);
+      doc.line(dividerX, finalY + 6, pageWidth - margin, finalY + 6);
+
+      doc.setFont("helvetica", "normal");
+      doc.text('Previous Balance :', dividerX + 2, finalY + 4.5);
+      doc.text(formatAmount(previousBalance), rightEndX, finalY + 4.5, { align: 'right' });
+
+      doc.setFont("helvetica", "bold");
+      doc.text('Balance Due :', dividerX + 2, finalY + 10);
+      doc.text(formatAmount(totalDue), rightEndX, finalY + 10, { align: 'right' });
+    }
+
+    finalY += wordsRowH;
 
     doc.rect(margin, finalY, pageWidth - margin * 2, bankH);
 
@@ -1363,6 +1411,8 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
 
   return {
     ...invoiceData,
+    previousBalance: invoiceData.previousBalance || 0,
+    advancePaid: invoiceData.advancePaid || invoiceData.advance || invoiceData.advanceAmount || 0,
     printFormat: billSettings.printFormat || "A4",
     logoBase64,
 

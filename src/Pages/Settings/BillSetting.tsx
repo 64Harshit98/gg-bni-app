@@ -509,16 +509,16 @@ const BillSettings: React.FC = () => {
             </div>
 
             {/* ── Floating Save Button ── */}
-            <div className="fixed bottom-0 left-0 right-0 p-4 bg-transparent pb-18 flex justify-end md:px-8">
+            <div className="fixed bottom-0 left-0 right-0 p-4 bg-transparent pb-18 flex justify-center md:px-8">
                 <button
                     onClick={handleSave}
                     disabled={isSaving}
                     className={`
-                        w-full md:w-auto px-8 py-3 rounded-sm text-white font-bold text-lg shadow-md transition-all transform active:scale-[0.98]
-                        ${isSaving ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}
+                        w-auto min-w-[150px] py-3 px-6 rounded-sm text-white font-bold shadow-lg transition-colors
+    ${isSaving ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}
                     `}
                 >
-                    {isSaving ? 'Saving...' : 'Save Changes'}
+                    {isSaving ? 'Saving...' : 'Save Settings'}
                 </button>
 
             </div>

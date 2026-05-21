@@ -347,13 +347,12 @@ const SharedItemSettings: React.FC<SharedItemSettingsProps> = ({ theme = 'blue' 
                 </form>
             </main>
 
-            {/* Sticky Save Bar */}
-            <div className="fixed inset-x-0 bottom-0 z-40 bg-white md:bg-transparent border-t md:border-t-0 border-gray-200 p-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] md:shadow-none md:bottom-4 pointer-events-auto">
-                <div className="max-w-3xl mx-auto flex justify-center">
+            <div className="fixed inset-x-0 bottom-16 md:bottom-0 z-40 bg-transparent px-4 pb-2 md:p-4 pointer-events-none">
+                <div className="max-w-2xl mx-auto flex justify-center gap-4 pointer-events-auto">
                     <button
-                        onClick={() => handleSave()}
+                        onClick={handleSave}
                         disabled={isSaving || isLoading}
-                        className={`w-full md:w-auto md:min-w-[250px] flex items-center justify-center ${activeTheme.primaryBg} text-white font-bold py-3 md:py-4 px-6 rounded-sm ${activeTheme.primaryHover} transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed shadow-lg active:scale-[0.98]`}
+                        className="w-auto min-w-[150px] flex items-center justify-center bg-blue-600 text-white font-bold py-3 px-6 rounded-sm hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed shadow-lg"
                     >
                         {isSaving ? <Spinner /> : 'Save Settings'}
                     </button>

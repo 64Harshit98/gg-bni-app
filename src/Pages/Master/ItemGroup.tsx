@@ -433,77 +433,90 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
         </div>
       )}
 
-      {viewingGroup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-lg shadow-lg w-[90%] max-w-lg p-6 flex flex-col max-h-[80vh]">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold text-gray-800">
-                {viewingGroup.name}
-                <span className="ml-2 text-sm font-normal text-gray-500">
-                  ({groupCounts[viewingGroup.id!] || 0} items)
-                </span>
-              </h2>
-              <button onClick={() => setViewingGroup(null)} className="text-gray-400 hover:text-gray-700 text-xl font-bold">✕</button>
-            </div>
+      {viewingGroup && (() => {
+        const validGroupIds = new Set(itemGroups.map(g => g.id));
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-white rounded-lg shadow-lg w-[90%] max-w-lg p-6 flex flex-col max-h-[80vh]">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-semibold text-gray-800">
+                  {viewingGroup.name}
+                  <span className="ml-2 text-sm font-normal text-gray-500">
+                    ({groupCounts[viewingGroup.id!] || 0} items)
+                  </span>
+                </h2>
+                <button onClick={() => setViewingGroup(null)} className="text-gray-400 hover:text-gray-700 text-xl font-bold">✕</button>
+              </div>
 
-            <div className="overflow-y-auto flex-1 space-y-2">
-              {allItems.filter(item => {
-                const ids: string[] = [
-                  ...(Array.isArray(item.itemGroupIds) ? item.itemGroupIds : []),
-                  ...(item.itemGroupId && !Array.isArray(item.itemGroupId) ? [item.itemGroupId] : []),
-                ].filter((id, index, self) => id && self.indexOf(id) === index);
-
-                if (viewingGroup.id === 'virtual-uncategorized') {
-                  return ids.length === 0 || !ids.some(id => itemGroups.some(g => g.id === id));
-                }
-                return ids.includes(viewingGroup.id!);
-              }).length === 0 ? (
-                <p className="text-center text-gray-400 py-8">No items in this group.</p>
-              ) : (
-                allItems.filter(item => {
+              <div className="overflow-y-auto flex-1 space-y-2">
+                {allItems.filter(item => {
                   const ids: string[] = [
                     ...(Array.isArray(item.itemGroupIds) ? item.itemGroupIds : []),
                     ...(item.itemGroupId && !Array.isArray(item.itemGroupId) ? [item.itemGroupId] : []),
                   ].filter((id, index, self) => id && self.indexOf(id) === index);
 
-                  if (viewingGroup.id === 'virtual-uncategorized') {
-                    return ids.length === 0 || !ids.some(id => itemGroups.some(g => g.id === id));
+                  if (viewingGroup.id === 'uncategorized') {
+                    return (
+                      ids.length === 0 ||
+                      !ids.some(id => itemGroups.some(g => g.id === id)) ||
+                      !validGroupIds.has(item.itemGroupId)   // ← ADD THIS (orphan check)
+                    );
                   }
                   return ids.includes(viewingGroup.id!);
-                })
-                  .sort((a, b) => a.name.localeCompare(b.name))
-                  .map(item => {
-                    const stock = item.stock || 0;
-                    const value = stock * (item.purchasePrice || 0);
-                    return (
-                      <div key={item.id} className="bg-white rounded-lg shadow-sm px-3 py-3 space-y-2 border">
-                        <div className="flex items-center gap-3">
-                          <button onClick={() => openEditDrawer(item)} className={`${theme.editIconText} ${theme.editIconHoverText}`}>
-                            <FiEdit2 size={18} />
-                          </button>
-                          <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <span className="font-semibold text-gray-800 truncate">{item.name}</span>
-                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-md whitespace-nowrap ${getStockBadgeClasses(stock)}`}>
-                              {stock === 0 ? 'Out of stock' : `${stock} in stock`}
-                            </span>
-                          </div>
-                          <button onClick={() => setItemPendingDelete(item)} className="text-red-600 hover:text-red-800">
-                            <FiTrash2 size={18} />
-                          </button>
-                        </div>
-                        <div className="flex items-center justify-between text-sm text-gray-600">
-                          <div><span className="font-medium text-gray-700">MRP:</span> ₹{item.mrp ?? 0}</div>
-                          <div><span className="font-medium text-gray-700">Purchase:</span> ₹{item.purchasePrice ?? 0}</div>
-                          <div><span className="font-medium text-gray-700">Value:</span> ₹{value}</div>
-                        </div>
-                      </div>
-                    );
+                }).length === 0 ? (
+                  <p className="text-center text-gray-400 py-8">No items in this group.</p>
+                ) : (
+                  allItems.filter(item => {
+                    const validGroupIds = new Set(itemGroups.map(g => g.id));
+                    const ids: string[] = [
+                      ...(Array.isArray(item.itemGroupIds) ? item.itemGroupIds : []),
+                      ...(item.itemGroupId && !Array.isArray(item.itemGroupId) ? [item.itemGroupId] : []),
+                    ].filter((id, index, self) => id && self.indexOf(id) === index);
+
+                    if (viewingGroup.id === 'uncategorized') {
+                      return (
+                        ids.length === 0 ||
+                        !ids.some(id => itemGroups.some(g => g.id === id)) ||
+                        !validGroupIds.has(item.itemGroupId)   // ← ADD THIS (orphan check)
+                      );
+                    }
+                    return ids.includes(viewingGroup.id!);
                   })
-              )}
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map(item => {
+                      const stock = item.stock || 0;
+                      const value = stock * (item.purchasePrice || 0);
+                      return (
+                        <div key={item.id} className="bg-white rounded-lg shadow-sm px-3 py-3 space-y-2 border">
+                          <div className="flex items-center gap-3">
+                            <button onClick={() => openEditDrawer(item)} className={`${theme.editIconText} ${theme.editIconHoverText}`}>
+                              <FiEdit2 size={18} />
+                            </button>
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              <span className="font-semibold text-gray-800 truncate">{item.name}</span>
+                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-md whitespace-nowrap ${getStockBadgeClasses(stock)}`}>
+                                {stock === 0 ? 'Out of stock' : `${stock} in stock`}
+                              </span>
+                            </div>
+                            <button onClick={() => setItemPendingDelete(item)} className="text-red-600 hover:text-red-800">
+                              <FiTrash2 size={18} />
+                            </button>
+                          </div>
+                          <div className="flex items-center justify-between text-sm text-gray-600">
+                            <div><span className="font-medium text-gray-700">MRP:</span> ₹{item.mrp ?? 0}</div>
+                            <div><span className="font-medium text-gray-700">Purchase:</span> ₹{item.purchasePrice ?? 0}</div>
+                            <div><span className="font-medium text-gray-700">Value:</span> ₹{value}</div>
+                          </div>
+                        </div>
+                      );
+                    })
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+
+      })()}
 
       <ItemEditDrawer item={selectedItemForEdit} isOpen={isEditDrawerOpen} onClose={closeEditDrawer} onSaveSuccess={() => fetchAndSyncGroups()} />
 

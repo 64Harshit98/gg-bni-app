@@ -133,7 +133,67 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                         packetSize: (liveData as any).packetSize ?? undefined,
                         moq: (liveData as any).moq ?? 1,
                     });
-                    setVariantIds((liveData as any).variants || []);
+                    // BFS: traverse in both directions (forward via variants[], backward via allItemsForVariants)
+const rawVariants: string[] = (liveData as any).variants || [];
+
+const visited = new Set<string>([item.id!]);
+const fullGroupSet = new Set<string>();
+const queue: string[] = [...rawVariants];
+
+// Also seed the queue with any item in allItemsForVariants that references current item
+// (backward links that weren't in liveData.variants)
+allItemsForVariants.forEach((candidate: any) => {
+    const candidateVariants: string[] = candidate.variants || [];
+    if (
+        candidate.id &&
+        candidate.id !== item.id &&
+        candidateVariants.map(String).includes(String(item.id))
+    ) {
+        if (!visited.has(String(candidate.id))) {
+            queue.push(String(candidate.id));
+        }
+    }
+});
+
+if (queue.length > 0 && item.companyId) {
+    while (queue.length > 0) {
+        const batch = queue.splice(0, queue.length);
+        await Promise.all(batch.map(async (vid: string) => {
+            if (visited.has(vid)) return;
+            visited.add(vid);
+
+            try {
+                const vRef = doc(db, 'companies', item.companyId!, 'items', vid);
+                const vSnap = await getDoc(vRef);
+                if (!vSnap.exists()) return;
+
+                fullGroupSet.add(vid);
+
+                // Forward: follow this variant's own variants
+                const vVariants: string[] = vSnap.data().variants || [];
+                vVariants.forEach((id: string) => {
+                    if (!visited.has(id)) queue.push(id);
+                });
+
+                // Backward: find any item in allItemsForVariants that points to vid
+                allItemsForVariants.forEach((candidate: any) => {
+                    const candidateVariants: string[] = (candidate.variants || []).map(String);
+                    if (
+                        candidate.id &&
+                        !visited.has(String(candidate.id)) &&
+                        candidateVariants.includes(vid)
+                    ) {
+                        queue.push(String(candidate.id));
+                    }
+                });
+            } catch (e) {
+                console.error("Failed to fetch variant doc", vid, e);
+            }
+        }));
+    }
+}
+
+setVariantIds(Array.from(fullGroupSet));
                     setImagePreview(liveData.imageUrl || null);
                     setImageFile(null);
                     setUploadProgress(null);
@@ -306,7 +366,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
             // Sync variants bidirectionally
             const previousVariantIds: string[] = (item as any).variants || [];
             const allVariantIds = Array.from(new Set([...variantIds, ...previousVariantIds]));
-
+            const fullGroup = Array.from(new Set([item.id, ...variantIds]));
             for (const variantId of allVariantIds) {
                 if (variantId === item.id) continue;
 
@@ -320,15 +380,12 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 let updatedVariants: string[];
 
                 if (variantIds.includes(variantId)) {
-                    // Add current item to this variant's variants list
-                    if (!existingVariants.includes(item.id)) {
-                        updatedVariants = [...existingVariants, item.id];
-                    } else {
-                        continue; // no change needed
-                    }
+                    // Still in the group — its variants should be everyone in fullGroup except itself
+                    const groupForThisVariant = fullGroup.filter(id => id !== variantId);
+                    updatedVariants = groupForThisVariant; // Replace entirely, don't merge with stale data
                 } else {
-                    // Removed from current item — remove current item from their list too
-                    updatedVariants = existingVariants.filter(id => id !== item.id);
+                    // Removed from group — strip current item AND all current group members from its list
+                    updatedVariants = existingVariants.filter(id => !fullGroup.includes(id));
                 }
 
                 await dbOperations.updateItem(variantId, { variants: updatedVariants });

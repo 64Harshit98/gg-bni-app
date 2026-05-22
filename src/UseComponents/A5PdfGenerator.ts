@@ -16,12 +16,15 @@ export const generateA5Invoice = async (
     // --- MASTER SWITCHES (Ported from A4) ---
     const safeScheme = (data.gstScheme || "").toUpperCase().trim();
     const safeTaxType = (data.taxType || "").toUpperCase().trim();
-
+    // Keep isEstimate as the parameter, just augment it:
+    const isExplicitEstimate = isEstimate || (data as any).isEstimate === true;
+    const resolvedIsEstimate = isExplicitEstimate ||
+        (safeScheme !== 'COMPOSITION' && (safeTaxType === 'NONE' || safeTaxType === 'EXEMPT' || safeScheme === 'NONE' || safeScheme === 'EXEMPT'));
     // Hide GST details if Unregistered, None, or Exempt
-    const showGstinDetails = !isEstimate && safeScheme !== 'UNREGISTERED' && safeScheme !== 'NONE' && safeScheme !== '' && safeTaxType !== 'EXEMPT' && safeTaxType !== 'NONE';
+    const showGstinDetails = !resolvedIsEstimate && safeScheme !== 'UNREGISTERED' && safeScheme !== 'NONE' && safeScheme !== '' && safeTaxType !== 'EXEMPT' && safeTaxType !== 'NONE';
 
     // Tax math is enabled if Composition OR (Regular + Not Exempt)
-    const isTaxEnabled = !isEstimate && safeScheme !== 'UNREGISTERED' && safeScheme !== 'NONE' && safeScheme !== '' && (safeScheme === 'COMPOSITION' || (safeTaxType !== 'EXEMPT' && safeTaxType !== 'NONE'));
+    // const isTaxEnabled = !resolvedIsEstimate && safeScheme !== 'UNREGISTERED' && safeScheme !== 'NONE' && safeScheme !== '' && (safeScheme === 'COMPOSITION' || (safeTaxType !== 'EXEMPT' && safeTaxType !== 'NONE'));
 
     const hasImages = data.items.some(
         (item: any) =>
@@ -31,8 +34,9 @@ export const generateA5Invoice = async (
     );
 
     // --- 1. HEADER ---
+    const headerHeight = showGstinDetails && data.companyGstin ? 25 : 20;
     doc.setFillColor("#0c3b5e");
-    doc.rect(0, 0, pageWidth, 20, "F");
+    doc.rect(0, 0, pageWidth, headerHeight, "F");
 
     doc.setTextColor("#ffffff");
     doc.setFont("helvetica", "bold");
@@ -51,9 +55,13 @@ export const generateA5Invoice = async (
         }
 
         doc.text(`GST Type: ${gstText}`, pageWidth / 2, 18, { align: "center" });
+        if (data.companyGstin) {
+            doc.setFontSize(7);
+            doc.text(`GSTIN: ${data.companyGstin}`, pageWidth / 2, 21, { align: "center" });
+        }
     }
 
-    if (isEstimate) {
+    if (resolvedIsEstimate) {
         doc.setFontSize(10);
         doc.setTextColor("#ffffff");
         doc.text("ESTIMATE", pageWidth / 2, 18, { align: "center" });
@@ -61,7 +69,7 @@ export const generateA5Invoice = async (
 
     // --- 2. META INFO ROW ---
 
-    let cursorY = 28;
+    let cursorY = headerHeight + 8;
 
     doc.setTextColor("#000000");
     doc.setFont("helvetica", "normal");
@@ -98,9 +106,9 @@ export const generateA5Invoice = async (
     // headings
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    doc.text(isEstimate ? "Estimate For :" : "Billed To :", 8, sectionStartY + 5);
+    doc.text(resolvedIsEstimate ? "Estimate For :" : "Billed To :", 8, sectionStartY + 5);
 
-    if (!isEstimate) {
+    if (!resolvedIsEstimate) {
         doc.text("Shipped To :", 5 + sectionWidth / 2 + 3, sectionStartY + 5);
     }
 
@@ -113,7 +121,7 @@ export const generateA5Invoice = async (
     const shipX = 5 + sectionWidth / 2 + 3;
 
     // ===== NAME =====
-    if (isEstimate) {
+    if (resolvedIsEstimate) {
         doc.text(data.billTo?.name || "", billX, textY);
     } else {
         doc.text(data.billTo?.name || "", billX, textY);
@@ -126,7 +134,7 @@ export const generateA5Invoice = async (
     const billAddrLines = doc.splitTextToSize(data.billTo?.address || "", sectionWidth / 2 - 8);
     doc.text(billAddrLines, billX, textY);
 
-    if (!isEstimate) {
+    if (!resolvedIsEstimate) {
         const shipAddrLines = doc.splitTextToSize(data.shipTo?.address || data.billTo?.address || "", sectionWidth / 2 - 8);
         doc.text(shipAddrLines, shipX, textY);
     }
@@ -136,7 +144,7 @@ export const generateA5Invoice = async (
     // ===== PHONE =====
     doc.text(`Phone : ${data.billTo?.phone || ""}`, billX, textY);
 
-    if (!isEstimate) {
+    if (!resolvedIsEstimate) {
         doc.text(`Phone : ${data.shipTo?.phone || data.billTo?.phone || ""}`, shipX, textY);
     }
 
@@ -145,7 +153,7 @@ export const generateA5Invoice = async (
         textY += 4;
         doc.text(`GSTIN : ${data.billTo.gstin}`, billX, textY);
 
-        if (!isEstimate && data.shipTo?.gstin) {
+        if (!resolvedIsEstimate && data.shipTo?.gstin) {
             doc.text(`GSTIN : ${data.shipTo.gstin}`, shipX, textY);
         }
     }
@@ -154,59 +162,77 @@ export const generateA5Invoice = async (
 
     // ================= PRE-CALCULATE MATH & GRAND TOTAL =================
     let calculatedGrandTotal = 0;
+    let totalQty = 0;
+    let totalTaxable = 0;
+    let totalTaxAmt = 0;
 
     const processedItems = data.items.map((item: any, index: number) => {
         const totalPcs = item.totalPcs || item.quantity || 1;
         const qty = Number(item.quantity) || 0;
 
-        let mrp = Number(item.mrp || item.listPrice || item.price || item.salesPrice || 0);
-        let rawPrice = Number(item.listPrice || item.salesPrice || item.price || mrp);
-        const taxPercent = Number(item.gstPercent || item.taxRate || item.tax || item.gst || 0);
+        let mrp = Number(item.listPrice) || 0;
 
-        const effectiveTaxRate = isTaxEnabled ? taxPercent : 0;
+        if (mrp === 0) {
+            const salesPrice = Number(item.price || item.rate || 0);
+            if (salesPrice > 0) {
+                mrp = salesPrice;
+            } else if (qty > 0) {
+                mrp = Number(item.amount || 0) / qty;
+            }
+        }
+        let rawPrice = mrp;
+        let effectiveTaxRate = resolvedIsEstimate ? 0 : Number(item.gstPercent || item.taxRate || 0);
 
-        // 1. CALCULATE DISCOUNT FIRST
-        let explicitDiscount = Number(item.discountPercentage || item.discount || item.discountAmount || 0);
-        let sellingPricePerUnit = rawPrice;
+        if (safeScheme === 'COMPOSITION' || safeScheme === 'NONE') {
+            effectiveTaxRate = 0;
+        }
+
+        let rowTotal = 0;
         let rowDiscountAmt = 0;
 
-        if (explicitDiscount > 0 && explicitDiscount <= 100) {
-            // Percentage discount
-            sellingPricePerUnit = rawPrice - (rawPrice * (explicitDiscount / 100));
-            rowDiscountAmt = (rawPrice * qty) - (sellingPricePerUnit * qty);
-        } else if (explicitDiscount > 100) {
-            // Flat amount discount
-            rowDiscountAmt = explicitDiscount;
-            sellingPricePerUnit = rawPrice - (rowDiscountAmt / qty);
+        if (item.amount !== undefined && item.amount !== null && Number(item.amount) > 0) {
+            rowTotal = Number(item.amount);
+            rowDiscountAmt = (mrp * qty) - rowTotal;
+            if (rowDiscountAmt < 0) rowDiscountAmt = 0;
+        } else {
+            const discAmt = Number(item.discountAmount) || 0;
+            rowDiscountAmt = discAmt;
+            rowTotal = (mrp * qty) - discAmt;
         }
 
-        // 2. NEGATIVE DISCOUNT FIX (MARKUP)
-        if (sellingPricePerUnit > rawPrice) {
-            rowDiscountAmt = 0;
-            mrp = sellingPricePerUnit;
-            rawPrice = sellingPricePerUnit;
+        // Explicit Discount Priority (A4 logic)
+        if (item.discountAmount !== undefined && Number(item.discountAmount) > 0) {
+            rowDiscountAmt = Number(item.discountAmount);
         }
 
-        let subtotal = 0;
-        let gstAmount = 0;
+        let taxableValue = 0;
+        let taxAmt = 0;
         let finalRowTotal = 0;
 
-        // 3. THE MATH ENGINE (Applied on the discounted selling price)
-        if (effectiveTaxRate === 0) {
-            finalRowTotal = sellingPricePerUnit * qty;
-            subtotal = finalRowTotal;
-            gstAmount = 0;
-        } else if (data.taxType?.toLowerCase() === 'inclusive') {
-            finalRowTotal = sellingPricePerUnit * qty;
-            subtotal = finalRowTotal / (1 + (effectiveTaxRate / 100));
-            gstAmount = finalRowTotal - subtotal;
+        if (resolvedIsEstimate) {
+            finalRowTotal = rowTotal;
+            taxableValue = rowTotal;
+            taxAmt = 0;
+        } else if (safeScheme === 'NONE' || safeScheme === 'COMPOSITION') {
+            finalRowTotal = rowTotal;
+            taxableValue = rowTotal;
+            taxAmt = 0;
         } else {
-            // EXCLUSIVE
-            subtotal = sellingPricePerUnit * qty;
-            gstAmount = subtotal * (effectiveTaxRate / 100);
-            finalRowTotal = subtotal + gstAmount;
+            if (safeTaxType === 'EXCLUSIVE') {
+                taxableValue = rowTotal;
+                taxAmt = taxableValue * (effectiveTaxRate / 100);
+                finalRowTotal = taxableValue + taxAmt;
+            } else {
+                // INCLUSIVE
+                finalRowTotal = rowTotal;
+                taxableValue = finalRowTotal / (1 + (effectiveTaxRate / 100));
+                taxAmt = finalRowTotal - taxableValue;
+            }
         }
 
+        totalQty += qty;
+        totalTaxable += taxableValue;
+        totalTaxAmt += taxAmt;
         calculatedGrandTotal += finalRowTotal;
 
         return {
@@ -217,14 +243,25 @@ export const generateA5Invoice = async (
             qty,
             rawPrice,
             effectiveTaxRate,
-            gstAmount,
+            taxAmt,
+            taxableValue,
             discountAmt: rowDiscountAmt,
             finalRowTotal,
             imageBase64: item.imageBase64
         };
     });
 
-    const finalTotalAmountToPrint = calculatedGrandTotal > 0 ? calculatedGrandTotal : Number(data.finalAmount || 0);
+    const billDiscount = Number(data.billDiscount) || 0;
+    const extraExpense = Number(data.extraExpenseAmount) || 0;
+    const advance = Number((data as any).advance) || 0;
+
+    const netPayable = calculatedGrandTotal - billDiscount + extraExpense - advance;
+    const finalRoundTotal = Math.round(netPayable);
+    // const roundOffAmt = finalRoundTotal - netPayable;
+
+    const finalTotalAmountToPrint = finalRoundTotal > 0
+        ? finalRoundTotal
+        : Number(data.finalAmount || 0);
 
     // ================= ITEMS TABLE =================
     autoTable(doc, {
@@ -265,7 +302,7 @@ export const generateA5Invoice = async (
             "Product",
             "Qty.",
             "Price",
-            ...(isEstimate ? [] : ["GST (%)", "GST Amt"]),
+            ...(resolvedIsEstimate ? [] : ["GST (%)", "GST Amt"]),
             "Discount",
             "Amount"
         ]],
@@ -275,32 +312,40 @@ export const generateA5Invoice = async (
             `${item.name}\n(${item.totalPcs} ${item.unit})`,
             item.qty,
             item.rawPrice.toFixed(2),
-            ...(isEstimate ? [] : [
+            ...(resolvedIsEstimate ? [] : [
                 `${item.effectiveTaxRate}%`,
-                item.gstAmount.toFixed(2)
+                item.taxAmt.toLocaleString("en-IN", {   // renamed field + Indian format
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                })
             ]),
-            item.discountAmt.toFixed(2),
-            item.finalRowTotal.toFixed(2)
+            item.discountAmt.toLocaleString("en-IN", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }),
+            item.finalRowTotal.toLocaleString("en-IN", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            })
         ]),
 
         foot: [[
             {
                 content: "GRAND TOTAL",
-                colSpan: isEstimate ? (hasImages ? 6 : 5) : (hasImages ? 8 : 7),
+                colSpan: resolvedIsEstimate ? (hasImages ? 6 : 5) : (hasImages ? 8 : 7),
                 styles: {
                     halign: "right",
                     fontStyle: "bold",
-                    textColor: [12, 59, 94],
+                    textColor: [255, 255, 255],
                     fontSize: 10
                 }
             },
             {
-                content: finalTotalAmountToPrint.toFixed(2),
-                styles: {
-                    halign: "right",
-                    fontStyle: "bold",
-                    fontSize: 10
-                }
+                content: finalTotalAmountToPrint.toLocaleString("en-IN", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                }),
+                styles: { halign: "right", fontStyle: "bold", fontSize: 10 }
             }
         ]],
 
@@ -330,15 +375,83 @@ export const generateA5Invoice = async (
     });
 
     // @ts-ignore
-    let finalY = doc.lastAutoTable.finalY + 8;
+    let finalY = doc.lastAutoTable.finalY + 2;
+   // --- 4. TAX BREAKDOWN TABLE (BEFORE PAYMENT INFO) ---
+    if (!resolvedIsEstimate && showGstinDetails) {
+        const taxBreakdownData: Record<string, { taxable: number, cgst: number, sgst: number }> = {};
 
+        processedItems.forEach(item => {
+            if (item.effectiveTaxRate > 0) {
+                const rateKey = item.effectiveTaxRate.toString();
+                if (!taxBreakdownData[rateKey]) {
+                    taxBreakdownData[rateKey] = { taxable: 0, cgst: 0, sgst: 0 };
+                }
+                taxBreakdownData[rateKey].taxable += item.taxableValue;
+                taxBreakdownData[rateKey].cgst += (item.taxAmt / 2);
+                taxBreakdownData[rateKey].sgst += (item.taxAmt / 2);
+            }
+        });
+
+        if (Object.keys(taxBreakdownData).length > 0) {
+            autoTable(doc, {
+                startY: finalY,
+                margin: { left: 5 },
+                head: [["Tax Rate", "Taxable Amt.", "CGST", "SGST", "Total Tax"]],
+                body: [
+                    ...Object.keys(taxBreakdownData).map(rate => {
+                        const d = taxBreakdownData[rate];
+                        return [
+                            `${rate}%`,
+                            d.taxable.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                            (d.cgst).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                            (d.sgst).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                            (d.cgst + d.sgst).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                        ];
+                    }),
+                    [
+                        "TOTAL",
+                        totalTaxable.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                        (totalTaxAmt / 2).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                        (totalTaxAmt / 2).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                        totalTaxAmt.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                    ]
+                ],
+                theme: 'grid',
+                styles: {
+                    fontSize: 6,
+                    cellPadding: 1,
+                    textColor: [0, 0, 0],
+                    lineColor: [0, 0, 0],
+                    lineWidth: 0.1,
+                    halign: 'right',
+                    valign: 'middle',
+                    minCellHeight: 4
+                },
+                headStyles: {
+                    fillColor: [255, 255, 255],
+                    textColor: [0, 0, 0],
+                    fontStyle: 'bold',
+                    lineWidth: 0.1,
+                    lineColor: [0, 0, 0],
+                    halign: 'right'
+                },
+                columnStyles: {
+                    0: { halign: 'left', cellWidth: 15 }
+                },
+                tableWidth: (pageWidth - 10) / 2
+            });
+
+            // @ts-ignore
+            finalY = doc.lastAutoTable.finalY + 6;
+        }
+    }
     // ===== SMART SPACE CALCULATION =====
 
     const footerHeight = 22;
-    const paymentHeight = !isEstimate ? 18 : 0;
+    const paymentHeight = !resolvedIsEstimate ? 22 : 0;
     const termsLines = doc.splitTextToSize(data.terms || "", rightMargin - 10);
-    const termsHeight = !isEstimate ? (termsLines.length * 3.5) + 10 : 0;
-    const signatureHeight = !isEstimate && data.signatureBase64 ? 16 : 10;
+    const termsHeight = !resolvedIsEstimate ? (termsLines.length * 3.5) + 10 : 0;
+    const signatureHeight = !resolvedIsEstimate && data.signatureBase64 ? 16 : 10;
 
     const requiredBottomSpace = footerHeight + paymentHeight + termsHeight + signatureHeight + 8;
 
@@ -348,55 +461,73 @@ export const generateA5Invoice = async (
     }
 
     // --- 4. PAYMENT INFORMATION ---
-    if (!isEstimate) {
-        doc.setFont("helvetica", "normal");
+    if (!resolvedIsEstimate) {
+        doc.setFont("helvetica", "bold");
         doc.setFontSize(11);
-        doc.text("Payment Information", 10, finalY);
+        doc.text("Payment Information", 5, finalY);
 
-        finalY += 6;
-        doc.setFontSize(9);
+        finalY += 3;
+        autoTable(doc, {
+        startY: finalY,
+        margin: { left: 5, right: 5 },
+        tableWidth: pageWidth - 10,
+        theme: 'grid',
+        body: [
+            [
+                { content: "Account Number", styles: { fontStyle: 'bold' } },
+                { content: data.bankDetails?.accountNumber || "" },
+                { content: "Bank Name", styles: { fontStyle: 'bold' } },
+                { content: data.bankDetails?.bankName || "" },
+            ],
+            [
+                { content: "Account Name", styles: { fontStyle: 'bold' } },
+                { content: data.bankDetails?.accountName || "" },
+                { content: "IFSC Code", styles: { fontStyle: 'bold' } },
+                { content: data.bankDetails?.ifsc || "" },
+            ],
+        ],
+        styles: {
+            fontSize: 8,
+            cellPadding: 2,
+            textColor: [0, 0, 0],
+            lineColor: [200, 200, 200],
+            lineWidth: 0.2,
+            valign: 'middle',
+        },
+        columnStyles: {
+            0: { cellWidth: 30, halign: 'left' },
+            1: { halign: 'left' },
+            2: { cellWidth: 25, halign: 'left' },
+            3: { halign: 'left' },
+        },
+    });
 
-        // Grid Row 1
-        doc.text("Account Number:", 10, finalY);
-        doc.text(data.bankDetails?.accountNumber || "", 45, finalY);
-
-        doc.text("Bank Name:", 80, finalY);
-        doc.text(data.bankDetails?.bankName || "", rightMargin, finalY, { align: "right" });
-
-        // Grid Row 2
-        finalY += 6;
-        doc.text("Account Name:", 10, finalY);
-        doc.text(data.bankDetails?.accountName || "", 45, finalY);
-
-        doc.text("IFSC Code:", 80, finalY);
-        doc.text(data.bankDetails?.ifsc || "", rightMargin, finalY, { align: "right" });
-
-        // Separator Line
-        finalY += 6;
-        doc.setDrawColor(200, 200, 200);
-        doc.line(10, finalY, rightMargin, finalY);
-    }
+    // @ts-ignore
+    finalY = doc.lastAutoTable.finalY + 3;
+    // doc.setDrawColor(200, 200, 200);
+    // doc.line(10, finalY, rightMargin, finalY);
+}
 
     // --- 5. TERMS & CONDITIONS ---
-    if (!isEstimate) {
+    if (!resolvedIsEstimate) {
         finalY += 4;
         doc.setFontSize(11);
-        doc.text("Terms & Conditions", 10, finalY);
+        doc.text("Terms & Conditions", 5, finalY);
 
         finalY += 6;
         doc.setFontSize(8);
         doc.setTextColor(80, 80, 80);
-        const splitTerms = doc.splitTextToSize(data.terms || "", rightMargin - 10);
-        doc.text(splitTerms, 10, finalY);
+        const splitTerms = doc.splitTextToSize(data.terms || "", rightMargin - 5);
+        doc.text(splitTerms, 5, finalY);
 
         finalY += (splitTerms.length * 3.5) + 2;
 
         doc.setDrawColor(200, 200, 200);
-        doc.line(10, finalY, rightMargin, finalY);
+        doc.line(5, finalY, rightMargin, finalY);
     }
 
     // --- 6. AUTHORISED SIGNATURE ---
-    if (!isEstimate) {
+    if (!resolvedIsEstimate) {
         const footerY = pageHeight - footerHeight;
         const signTextY = footerY - 4;
         const signImageY = footerY - 14;
@@ -475,11 +606,11 @@ export const generateA5Invoice = async (
     doc.text(part1, indiaX, indiaY);
 
     indiaX += w1;
-    doc.setTextColor(220, 40, 40);
+    doc.setTextColor(255, 255, 255);
     doc.text(part2, indiaX, indiaY);
 
     indiaX += w2;
-    doc.setTextColor(40, 90, 200);
+    doc.setTextColor(255, 255, 255);
     doc.text(part3, indiaX, indiaY);
 
     doc.setTextColor(255, 255, 255);

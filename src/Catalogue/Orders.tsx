@@ -98,6 +98,7 @@ export interface Order {
     specialInstruction?: string;
     manualDiscount?: number;
     discount?: number;
+    expenses?: { id: number; name: string; amount: number }[];
     returnHistory?: {
         id: string;
         returnedAt: Date;
@@ -199,6 +200,8 @@ export const useOrdersData = (
                         paymentMethods: data.paymentMethods,
                         returnHistory: Array.isArray(data.returnHistory) ? data.returnHistory : [],
                         specialInstruction: data.specialInstruction || "",
+                        expenses: Array.isArray(data.expenses) ? data.expenses : [],
+                        manualDiscount: Number(data.manualDiscount || 0),
                         updatedAt,
                         userName:
                             data.userName ||
@@ -393,15 +396,22 @@ const OrdersPage: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'billing' | 'shipping'>('billing');
     const [paymentFilter, setPaymentFilter] = useState<'paid' | 'unpaid'>('unpaid');
     const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+    const [editExpenses, setEditExpenses] = useState<{ id: number; name: string; amount: number | '' }[]>([]);
+    const [editDiscount, setEditDiscount] = useState<number>(0);
+    const [editDiscountPercent, setEditDiscountPercent] = useState<number>(0);
     const [pendingAdjustment, setPendingAdjustment] = useState<{ amount: number } | null>(null);
     const [showAdjustmentPopup, setShowAdjustmentPopup] = useState(false);
     const [showZeroAmountModal, setShowZeroAmountModal] = useState(false);
     const [pendingZeroOrderId, setPendingZeroOrderId] = useState<string | null>(null);
+    const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+    const [pendingDeleteWarning, setPendingDeleteWarning] = useState<string | null>(null);
+    const [pendingDeleteOrderId, setPendingDeleteOrderId] = useState<string | null>(null);
     const [selectedOrderForConfirm, setSelectedOrderForConfirm] = useState<string | null>(null);
     const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
     const [showQrModal, setShowQrModal] = useState<Order | null>(null);
     const [enableItemWiseDiscount, setEnableItemWiseDiscount] = useState(false);
     const [sendingPdf, setSendingPdf] = useState(false);
+    const [showPrintSubMenu, setShowPrintSubMenu] = useState(false);
     const [dateRange, setDateRange] = useState<{ start: Date | null, end: Date | null }>(() => {
 
         if (location.state?.startDate && location.state?.endDate) {
@@ -607,7 +617,7 @@ const OrdersPage: React.FC = () => {
 
     const calculatedEditTotal = useMemo(() => {
         if (!editingOrder?.items) return 0;
-        return editingOrder.items.reduce((sum, item) => {
+        const itemsTotal = editingOrder.items.reduce((sum, item) => {
             const salesPrice = Number(item.salesPrice || 0);
             const mrp = Number(item.mrp || 0);
             const price =
@@ -615,7 +625,9 @@ const OrdersPage: React.FC = () => {
                 (salesPrice > 0 ? salesPrice : mrp);
             return sum + price * Number(item.quantity || 0);
         }, 0);
-    }, [editingOrder?.items]);
+        const expensesTotal = editExpenses.reduce((sum, e) => sum + (parseFloat(e.amount.toString()) || 0), 0);
+        return Math.max(0, itemsTotal + expensesTotal - editDiscount);
+    }, [editingOrder?.items, editExpenses, editDiscount]);
 
     const handleNetPriceChange = (id: string, value: string) => {
         if (!editingOrder) return;
@@ -904,7 +916,7 @@ const OrdersPage: React.FC = () => {
             }
         }
     };
-    const handlePdfAction = async (Order: Order, action: ACTION) => {
+    const handlePdfAction = async (Order: Order, action: ACTION, withDuplicate: boolean = false) => {
         setPdfLoadingOrderId(Order.id);
 
         try {
@@ -1049,6 +1061,10 @@ const OrdersPage: React.FC = () => {
                 advancePaid: Number(Order.paidAmount || 0),
                 dueAmount: Math.max(0, Order.totalAmount - Number(Order.paidAmount || 0)),
                 previousBalance: wpPreviousBalance,
+
+                billDiscount: Number(Order.manualDiscount || 0),
+                extraExpenseName: (Order.expenses || []).map(e => e.name).join(', '),
+                extraExpenseAmount: (Order.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0),
             };
 
             const preparedData = await prepareCatalogueBillData({
@@ -1058,17 +1074,13 @@ const OrdersPage: React.FC = () => {
 
 
             if (action === ACTION.PRINT) {
-                await CatalogueBill(preparedData, "print");
+                await CatalogueBill(preparedData, "print", withDuplicate);
             } else if (action === ACTION.DOWNLOAD) {
                 await CatalogueBill(preparedData, "download");
             }
 
         } catch (err) {
             console.error("❌ Catalogue bill error:", err);
-            setModal({
-                message: "Bill generation failed. Check console.",
-                type: State.ERROR,
-            });
         } finally {
             setPdfLoadingOrderId(null);
         }
@@ -1373,10 +1385,56 @@ const OrdersPage: React.FC = () => {
 
     const handleDeleteOrder = async (orderId: string, skipConfirm = false) => {
         if (!skipConfirm) {
-            const confirmDelete = window.confirm(
-                "Are you sure you want to delete this entire Order?"
-            );
-            if (!confirmDelete) return;
+            setPendingDeleteOrderId(orderId);
+
+            // Fetch order data to build warning message
+            if (currentUser?.companyId) {
+                try {
+                    const orderRef = doc(db, "companies", currentUser.companyId, "Orders", orderId);
+                    const orderSnap = await getDoc(orderRef);
+                    if (orderSnap.exists()) {
+                        const orderData = orderSnap.data();
+
+                        // Case-insensitive lookup across all payment method keys
+                        const creditNotePayment = Object.entries(orderData.paymentMethods || {})
+                            .filter(([key]) => key.toLowerCase().includes('credit note') || key.toLowerCase() === 'credit')
+                            .reduce((sum, [, val]) => sum + Number(val || 0), 0);
+
+                        const hasCreditNoteReturns = (orderData.returnHistory || []).some((h: any) =>
+                            h.modeOfReturn?.toLowerCase().includes('credit note')
+                        );
+
+                        let warningMessage = "Are you sure you want to delete this order?";
+
+                        if (creditNotePayment > 0) {
+                            warningMessage += `. This order was paid using Credit Note of ${creditNotePayment.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}. The credit note balance will be restored to the customer`;
+                        }
+
+                        if (hasCreditNoteReturns) {
+                            const creditNoteReturnAmount = (orderData.returnHistory || [])
+                                .filter((h: any) => h.modeOfReturn?.toLowerCase().includes('credit note'))
+                                .reduce((sum: number, h: any) => sum + (Number(h.finalBalance) || 0), 0);
+
+                            if (creditNotePayment > 0) {
+                                warningMessage += ` and the returned items' Credit Note of ${creditNoteReturnAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })} will be removed from the customer`;
+                            } else {
+                                warningMessage += `. This order contains Credit Note returns of ${creditNoteReturnAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })} which will be removed from the customer`;
+                            }
+                        }
+
+                        warningMessage += ".";
+
+                        // Store the custom message to show in the modal
+                        setPendingDeleteWarning(warningMessage);
+                    }
+                } catch (err) {
+                    console.error("Warning fetch error:", err);
+                    setPendingDeleteWarning(null);
+                }
+            }
+
+            setShowDeleteConfirmModal(true);
+            return;
         }
         if (!currentUser?.companyId) return;
 
@@ -1432,14 +1490,36 @@ const OrdersPage: React.FC = () => {
                     }
                 }));
             }
+            // ── Credit Note Adjustment ─────────────────────────────────────────
+            // Credit used to PAY this order → restore it back to customer on delete
+            const creditNotePayment = Object.entries(orderData.paymentMethods || {})
+                .filter(([key]) => key.toLowerCase().includes('credit note') || key.toLowerCase() === 'credit')
+                .reduce((sum, [, val]) => sum + Number(val || 0), 0);
 
+            const creditNoteReturns = (orderData.returnHistory || [])
+                .filter((h: any) => h.modeOfReturn?.toLowerCase().includes('credit note'))
+                .reduce((sum: number, h: any) => sum + (Number(h.finalBalance) || 0), 0);
+            const netCreditAdjustment = creditNotePayment - creditNoteReturns;
+
+            const partyPhone = (orderData.userLoginPhone || orderData.billingDetails?.phone || '')
+                .replace(/\D/g, '').slice(-10);
+
+            if (netCreditAdjustment !== 0 && partyPhone) {
+                const customerRef = doc(db, 'companies', companyId, 'customers', partyPhone);
+                await updateDoc(customerRef, {
+                    creditBalance: firebaseIncrement(netCreditAdjustment)
+                }).catch(() => {
+                    // Customer doc may not exist — safe to ignore
+                });
+            }
+            // ──────────────────────────────────────────────────────────────────
             // Delete order
             await deleteDoc(orderRef);
 
-            setModal({
-                message: "Order deleted successfully",
-                type: State.SUCCESS,
-            });
+            // setModal({
+            //     message: "Order deleted successfully",
+            //     type: State.SUCCESS,
+            // });
         } catch (error) {
             console.error("Delete Order Error:", error);
             setModal({
@@ -1589,12 +1669,14 @@ const OrdersPage: React.FC = () => {
     const handleSaveChanges = async () => {
         if (!editingOrder || !currentUser?.companyId) return;
         // ── Zero-amount guard ──────────────────────────────────────────────────
-         const preCheckTotal = (editingOrder.items || []).reduce((sum, item) => {
-        const salesPrice = Number(item.salesPrice || 0);
-        const mrp = Number(item.mrp || 0);
-        const unitPrice = item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
-        return sum + Number(unitPrice || 0) * Number(item.quantity || 0);
-    }, 0);
+        const itemsOnlyTotal = (editingOrder.items || []).reduce((sum, item) => {
+            const salesPrice = Number(item.salesPrice || 0);
+            const mrp = Number(item.mrp || 0);
+            const unitPrice = item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+            return sum + Number(unitPrice || 0) * Number(item.quantity || 0);
+        }, 0);
+        const expensesTotal = editExpenses.reduce((sum, e) => sum + (parseFloat(e.amount.toString()) || 0), 0);
+        const preCheckTotal = Math.max(0, itemsOnlyTotal + expensesTotal - editDiscount);
 
         if (preCheckTotal <= 0) {
             setPendingZeroOrderId(editingOrder.id);
@@ -1610,18 +1692,27 @@ const OrdersPage: React.FC = () => {
                 ? ({ id: editingOrder.id, ...(liveOrderSnap.data() as any) } as any)
                 : Orders.find(o => o.id === editingOrder.id);
 
-            const getItemsTotal = (items: any[] = []) =>
-                items.reduce((sum, item) => {
+            const getItemsTotal = (items: any[] = [], expenses: any[] = [], discount: number = 0) => {
+                const base = items.reduce((sum, item) => {
                     const salesPrice = Number(item.salesPrice || 0);
                     const mrp = Number(item.mrp || 0);
                     const unitPrice = item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
                     return sum + Number(unitPrice || 0) * Number(item.quantity || 0);
                 }, 0);
+                const exp = expenses.reduce((sum: number, e: any) => sum + (parseFloat(e.amount?.toString()) || 0), 0);
+                return Math.max(0, base + exp - discount);
+            };
+
 
             // Compare item-based totals so increase/decrease detection is always correct,
             // even if stored totalAmount was stale.
-            const originalTotal = Number(getItemsTotal(originalOrder?.items || []));
-            const newTotal = Number(getItemsTotal(editingOrder.items || []));
+            // Compare totals including expenses/discount
+            const originalTotal = Number(getItemsTotal(
+                originalOrder?.items || [],
+                Array.isArray(originalOrder?.expenses) ? originalOrder.expenses : [],
+                Number(originalOrder?.manualDiscount || 0)
+            ));
+            const newTotal = Number(getItemsTotal(editingOrder.items || [], editExpenses, editDiscount));
             const netDiff = newTotal - originalTotal;
 
             // ── Stock delta calculation (same logic as EditOrderModal) ──────────
@@ -1647,6 +1738,8 @@ const OrdersPage: React.FC = () => {
             const buildUpdatePayload = (extraFields: Record<string, any> = {}) => ({
                 items: editingOrder.items,
                 totalAmount: newTotal,
+                manualDiscount: editDiscount,
+                expenses: editExpenses.map(({ id, name, amount }) => ({ id, name, amount: parseFloat(amount.toString()) || 0 })),
                 billingDetails: editingOrder.billingDetails,
                 shippingDetails: editingOrder.shippingDetails,
                 userName: editingOrder.billingDetails?.name,
@@ -1693,6 +1786,11 @@ const OrdersPage: React.FC = () => {
             const originalPaid = Number(originalOrder?.paidAmount || 0);
             const originalDue = Math.max(0, originalTotal - originalPaid);
             const priceReduction = Math.abs(netDiff);
+            const expensesPayload = editExpenses.map(({ id, name, amount }) => ({
+                id,
+                name,
+                amount: parseFloat(amount.toString()) || 0,
+            }));
             if (netDiff < 0) {
 
                 if (priceReduction <= originalDue) {
@@ -1711,7 +1809,14 @@ const OrdersPage: React.FC = () => {
                     // CASE 1B: The reduction wipes out the Due and digs into the Paid amount.
                     // We ONLY refund the leftover difference.
                     const refundableAmount = priceReduction - originalDue;
-                    await Promise.all(stockUpdatePromises);
+                    await Promise.all([
+                        ...stockUpdatePromises,
+                        updateDoc(orderRef, {
+                            expenses: expensesPayload,
+                            manualDiscount: editDiscount,
+                            updatedAt: serverTimestamp(),
+                        }),
+                    ]);
 
                     setPendingAdjustment({ amount: refundableAmount });
                     setShowAdjustmentPopup(true);
@@ -2065,7 +2170,7 @@ const OrdersPage: React.FC = () => {
                                         )) : [];
                             const isExpanded = expandedorderId === Order.id;
                             const isUpcomingStatus = Order.status === 'Upcoming';
-                            const total = (Order.items || []).reduce((sum, item) => {
+                            const itemsSubtotal = (Order.items || []).reduce((sum, item) => {
                                 const salesPrice = Number(item.salesPrice || 0);
                                 const mrp = Number(item.mrp || 0);
                                 const price =
@@ -2073,6 +2178,10 @@ const OrdersPage: React.FC = () => {
                                     (salesPrice > 0 ? salesPrice : mrp);
                                 return sum + price * Number(item.quantity || 0);
                             }, 0);
+                            const orderExpensesTotal = (Order.expenses || []).reduce(
+                                (sum, ex) => sum + (parseFloat(String(ex.amount)) || 0), 0
+                            );
+                            const total = Math.max(0, itemsSubtotal + orderExpensesTotal - Number(Order.manualDiscount || 0));
                             const paid = Number(Order.paidAmount || 0);
                             const due = Math.max(0, total - paid);
                             const isPaid = Order.status === 'Paid';
@@ -2107,8 +2216,25 @@ const OrdersPage: React.FC = () => {
                                         {!isUpcomingStatus && (
                                             <button
                                                 onClick={(e) => {
-                                                    e.stopPropagation(); setEditingOrder(Order); setEditingOrder(Order);
+                                                    e.stopPropagation();
+                                                    setEditingOrder(Order);
                                                     setSelectedItemForEdit(null);
+                                                    // Restore saved expenses
+                                                    setEditExpenses(
+                                                        Array.isArray((Order as any).expenses) && (Order as any).expenses.length > 0
+                                                            ? (Order as any).expenses.map((ex: any) => ({ ...ex, id: ex.id || Date.now() }))
+                                                            : []
+                                                    );
+                                                    // Restore saved discount
+                                                    const savedDiscount = Number((Order as any).manualDiscount || 0);
+                                                    setEditDiscount(savedDiscount);
+                                                    const itemsBase = (Order.items || []).reduce((sum, item) => {
+                                                        const salesPrice = Number(item.salesPrice || 0);
+                                                        const mrp = Number(item.mrp || 0);
+                                                        const price = item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+                                                        return sum + price * Number(item.quantity || 0);
+                                                    }, 0);
+                                                    setEditDiscountPercent(itemsBase > 0 ? parseFloat(((savedDiscount / itemsBase) * 100).toFixed(2)) : 0);
                                                 }}
                                                 className="absolute top-5 left-2 p-2 bg-white/90 backdrop-blur-sm text-slate-500 rounded-sm transition-all duration-300 z-20 group"
                                             >
@@ -2395,6 +2521,33 @@ const OrdersPage: React.FC = () => {
                                                             </div>
                                                         ))
                                                     }
+                                                    {/* Expenses & Discount display (saved on order) */}
+                                                    {!isUpcomingStatus && (
+                                                        <>
+                                                            {Array.isArray(Order.expenses) && Order.expenses.length > 0 && (
+                                                                <div className="px-2 pt-1 space-y-0.5">
+                                                                    {Order.expenses.map((ex, idx) => (
+                                                                        <div key={idx} className="flex justify-between items-center">
+                                                                            <span className="text-[8px] font-bold text-orange-500 uppercase tracking-wide">
+                                                                                {ex.name || 'Expense'}
+                                                                            </span>
+                                                                            <span className="text-[9px] font-black text-orange-600">
+                                                                                +₹{formatAmount(parseFloat(String(ex.amount)) || 0)}
+                                                                            </span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                            {Number(Order.manualDiscount || 0) > 0 && (
+                                                                <div className="px-2 pt-0.5 flex justify-between items-center">
+                                                                    <span className="text-[8px] font-bold text-red-500 uppercase tracking-wide">Bill Discount</span>
+                                                                    <span className="text-[9px] font-black text-red-600">
+                                                                        -₹{formatAmount(Number(Order.manualDiscount))}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    )}
                                                     {/* Totals Section */}
                                                     {!isUpcomingStatus && (
                                                         <div className="border-t mt-1 p-2 flex items-center justify-between">
@@ -2646,7 +2799,7 @@ const OrdersPage: React.FC = () => {
 
             {/* Modals (SelectedAction, QR, Payment, Editing) Same as provided */}
             {selectedOrderForAction && (
-                <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4" onClick={() => setSelectedOrderForAction(null)}>
+                <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4" onClick={() => { setSelectedOrderForAction(null); setShowPrintSubMenu(false); }}>
                     <div className="bg-white rounded-sm p-6 w-full max-w-sm shadow-xl" onClick={e => e.stopPropagation()}>
                         <div className="flex mb-4 bg-slate-100 rounded-sm p-1">
                             {['bill', 'estimate'].map((type) => (
@@ -2694,19 +2847,11 @@ const OrdersPage: React.FC = () => {
                             </button>
                             <button
                                 onClick={() => {
-                                    const order = selectedOrderForAction;
-
-                                    setPdfLoadingOrderId(order.id);   // spinner start
-
-                                    setSelectedOrderForAction(null);
-
-                                    setTimeout(() => {
-                                        handlePdfAction(order, ACTION.PRINT);
-                                    }, 50);
+                                    setShowPrintSubMenu(true);
                                 }}
                                 className="w-full border py-2.5 rounded-sm font-bold"
                             >
-                                Print Directly
+                                Print
                             </button>
                             <button
                                 disabled
@@ -2722,7 +2867,57 @@ const OrdersPage: React.FC = () => {
                     </div>
                 </div>
             )}
-
+            {showPrintSubMenu && selectedOrderForAction && (
+                <div
+                    className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/50 p-4"
+                    onClick={() => setShowPrintSubMenu(false)}
+                >
+                    <div
+                        className="bg-white rounded-sm p-6 w-full max-w-xs shadow-xl"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest mb-4 text-center">
+                            Print Options
+                        </h3>
+                        <div className="flex flex-col gap-3">
+                            <button
+                                onClick={() => {
+                                    const order = selectedOrderForAction;
+                                    setPdfLoadingOrderId(order.id);
+                                    setSelectedOrderForAction(null);
+                                    setShowPrintSubMenu(false);
+                                    setTimeout(() => {
+                                        handlePdfAction(order, ACTION.PRINT);
+                                    }, 50);
+                                }}
+                                className="w-full border py-2.5 rounded-sm font-bold text-sm"
+                            >
+                                Print (Bill Only)
+                            </button>
+                            <button
+                                onClick={() => {
+                                    const order = selectedOrderForAction;
+                                    setPdfLoadingOrderId(order.id);
+                                    setSelectedOrderForAction(null);
+                                    setShowPrintSubMenu(false);
+                                    setTimeout(() => {
+                                        handlePdfAction(order, ACTION.PRINT, true);
+                                    }, 50);
+                                }}
+                                className="w-full border border-orange-400 text-orange-600 py-2.5 rounded-sm font-bold text-sm"
+                            >
+                                Print (Bill + Duplicate)
+                            </button>
+                            <button
+                                onClick={() => setShowPrintSubMenu(false)}
+                                className="w-full text-[11px] font-bold text-slate-400 hover:text-slate-700 mt-1"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {showQrModal && (
                 <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
                     <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm flex flex-col items-center animate-in fade-in zoom-in duration-300 relative">
@@ -2892,7 +3087,7 @@ const OrdersPage: React.FC = () => {
 
                             {/* Close Button */}
                             <button
-                                onClick={() => setEditingOrder(null) }
+                                onClick={() => setEditingOrder(null)}
                                 className="p-1.5 hover:bg-gray-200 rounded-sm transition-colors"
                             >
                                 <FiX size={20} />
@@ -3133,7 +3328,107 @@ const OrdersPage: React.FC = () => {
                                 </div>
                             </div>
                         </div>
+                        {/* Expenses & Discount Section */}
+                        <div className="px-6 py-3 bg-white border-t space-y-3">
+                            {/* Expenses */}
+                            <div className="flex items-center justify-between">
+                                <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest">Extra Expenses</p>
+                                <button
+                                    onClick={() => setEditExpenses(prev => [...prev, { id: Date.now(), name: '', amount: '' }])}
+                                    className="text-[10px] font-bold text-orange-500 border border-orange-300 px-2 py-0.5 rounded-sm hover:bg-orange-50"
+                                >
+                                    + Add Expense
+                                </button>
+                            </div>
+                            {editExpenses.length > 0 && (
+                                <div className="flex flex-col gap-2">
+                                    {editExpenses.map((expense) => (
+                                        <div key={expense.id} className="flex items-center gap-2 p-2 bg-orange-50 rounded-sm border border-orange-100">
+                                            <input
+                                                type="text"
+                                                placeholder="Expense name (e.g. Freight)"
+                                                value={expense.name}
+                                                onChange={(e) => setEditExpenses(prev => prev.map(ex => ex.id === expense.id ? { ...ex, name: e.target.value } : ex))}
+                                                className="flex-1 p-2 text-xs rounded-sm border border-orange-200 bg-white outline-none focus:border-orange-400"
+                                            />
+                                            <input
+                                                type="number"
+                                                placeholder="Amount (₹)"
+                                                value={expense.amount}
+                                                onChange={(e) => {
+                                                    const val = parseFloat(e.target.value) || '';
+                                                    setEditExpenses(prev => prev.map(ex => ex.id === expense.id ? { ...ex, amount: val } : ex));
+                                                }}
+                                                className="w-24 p-2 text-xs rounded-sm border border-orange-200 bg-white outline-none focus:border-orange-400"
+                                            />
+                                            <button
+                                                onClick={() => setEditExpenses(prev => prev.filter(ex => ex.id !== expense.id))}
+                                                className="p-1 rounded-full bg-orange-100 hover:bg-red-100 text-orange-400 hover:text-red-500"
+                                            >
+                                                <FiX size={12} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
 
+                            {/* Discount */}
+                            <div className="flex items-center justify-between gap-3">
+                                <p className="text-[10px] font-black text-red-500 uppercase tracking-widest whitespace-nowrap">Bill Discount</p>
+                                <div className="flex items-center gap-1 ml-auto">
+                                    <div className="relative flex items-center">
+                                        <input
+                                            type="number"
+                                            placeholder="0"
+                                            value={editDiscountPercent || ''}
+                                            onChange={(e) => {
+                                                let pct = parseFloat(e.target.value) || 0;
+                                                if (pct > 100) pct = 100;
+                                                if (pct < 0) pct = 0;
+                                                setEditDiscountPercent(pct);
+                                                // base = items only (no expenses, no existing discount)
+                                                const base = (editingOrder?.items || []).reduce((sum, item) => {
+                                                    const salesPrice = Number(item.salesPrice || 0);
+                                                    const mrp = Number(item.mrp || 0);
+                                                    const price = item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+                                                    return sum + price * Number(item.quantity || 0);
+                                                }, 0);
+                                                setEditDiscount(parseFloat(((pct / 100) * base).toFixed(2)));
+                                            }}
+                                            className="w-16 text-center bg-red-50 border border-red-200 rounded-sm text-red-700 text-xs p-1.5 outline-none focus:border-red-400 pr-4"
+                                        />
+                                        <span className="absolute right-1 text-[10px] text-red-400 font-bold pointer-events-none">%</span>
+                                    </div>
+                                    <span className="text-gray-300 text-xs">|</span>
+                                    <div className="relative flex items-center">
+                                        <span className="absolute left-1 text-[10px] text-red-400 font-bold pointer-events-none">₹</span>
+                                        <input
+                                            type="number"
+                                            placeholder="0"
+                                            value={editDiscount || ''}
+                                            onChange={(e) => {
+                                                const amt = parseFloat(e.target.value) || 0;
+                                                setEditDiscount(amt);
+                                                const base = (editingOrder?.items || []).reduce((sum, item) => {
+                                                    const salesPrice = Number(item.salesPrice || 0);
+                                                    const mrp = Number(item.mrp || 0);
+                                                    const price = item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+                                                    return sum + price * Number(item.quantity || 0);
+                                                }, 0);
+                                                setEditDiscountPercent(base > 0 ? parseFloat(((amt / base) * 100).toFixed(2)) : 0);
+                                            }}
+                                            className="w-20 text-center bg-red-50 border border-red-200 rounded-sm text-red-700 text-xs p-1.5 outline-none focus:border-red-400 pl-4"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Live total preview */}
+                            <div className="flex justify-between items-center pt-1 border-t border-slate-100">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Final Total</span>
+                                <span className="text-base font-black text-slate-800">₹{formatAmount(calculatedEditTotal)}</span>
+                            </div>
+                        </div>
                         {/* Footer Buttons */}
                         <div className="px-6 py-4 bg-slate-50 border-t flex gap-3">
                             <button
@@ -3183,6 +3478,46 @@ const OrdersPage: React.FC = () => {
                     </div>
                 </div>
             )}
+            {/* Delete Confirm Modal */}
+            {showDeleteConfirmModal && pendingDeleteOrderId && (
+                <div className="fixed inset-0 z-[4000] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white w-[360px] rounded-sm shadow-xl border border-slate-200 p-5">
+                        <p className="text-center text-[11px] font-black uppercase tracking-widest text-slate-500 mb-2">
+                            Delete Order
+                        </p>
+                        <p className="text-center text-sm text-slate-600 mb-5 leading-snug">
+                            {pendingDeleteWarning || (
+                                <>Are you sure you want to <span className="text-red-600 font-bold">delete this order</span>? This action cannot be undone.</>
+                            )}
+                        </p>
+                        <div className="flex gap-3">
+                            <button
+                                className="flex-1 py-2.5 bg-slate-200 text-slate-800 text-xs font-black rounded-sm hover:bg-slate-300 transition"
+                                onClick={() => {
+                                    setShowDeleteConfirmModal(false);
+                                    setPendingDeleteOrderId(null);
+                                    setPendingDeleteWarning(null);
+                                }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                className="flex-1 py-2.5 bg-red-600 text-white text-xs font-black rounded-sm hover:bg-red-700 transition"
+                                onClick={async () => {
+                                    const orderId = pendingDeleteOrderId;
+                                    setShowDeleteConfirmModal(false);
+                                    setPendingDeleteOrderId(null);
+                                    setPendingDeleteWarning(null);
+                                    await handleDeleteOrder(orderId, true);
+                                }}
+                            >
+                                Delete Order
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Zero Amount Modal */}
             {showZeroAmountModal && pendingZeroOrderId && (
                 <div className="fixed inset-0 z-[4000] flex items-center justify-center bg-black/50 backdrop-blur-sm">

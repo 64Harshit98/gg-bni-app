@@ -62,11 +62,15 @@ export interface CatalogueInvoiceData {
   grandTotal: number;
   advancePaid?: number;
   previousBalance?: number;
+  billDiscount?: number;
+  extraExpenseName?: string;
+  extraExpenseAmount?: number;
 }
 
 export const CatalogueBill = async (
   data: CatalogueInvoiceData,
-  action: "download" | "print" | "blob" = "download"
+  action: "download" | "print" | "blob" = "download",
+  withDuplicate: boolean = false
 ): Promise<Blob | void> => {
 
   if ((data as any).printFormat === "A5") {
@@ -577,7 +581,8 @@ export const CatalogueBill = async (
       preCalculatedGrandTotal += subtotal + (subtotal * (effectiveTaxRate / 100));
     }
   });
-
+  const preBillDiscount = Number((data as any).billDiscount) || 0;
+  const preExtraExpenseAmount = Number((data as any).extraExpenseAmount) || 0;
   const finalTotalAmountToPrint = preCalculatedGrandTotal;
 
   // ================= TOTAL BOX =================
@@ -834,7 +839,7 @@ export const CatalogueBill = async (
 
     doc.setTextColor(0, 0, 0);
   };
-
+  
   // ================= TABLE =================
   autoTable(doc, {
     startY: cursorY,
@@ -960,21 +965,33 @@ export const CatalogueBill = async (
   // table end position
   // @ts-ignore
   // @ts-ignore
-  if (!isEstimate) {
-    let finalY = (doc as any).lastAutoTable.finalY;
+  const drawInvoiceFooter = (startY: number) => {
+    let finalY = startY;
 
     const advancePaid = (data as any).advancePaid || 0;
     const previousBalance = Number((data as any).previousBalance) || 0;
+    const extraExpenseName = (data as any).extraExpenseName || '';
+    const valueBoxW = 30;
+    const valueBoxX = (pageWidth - margin) - valueBoxW;
+
+    // ── Bill Discount row ──
+    if (preBillDiscount > 0) {
+      const discH = 6;
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      doc.rect(margin, finalY, pageWidth - margin * 2, discH);
+      doc.line(valueBoxX, finalY, valueBoxX, finalY + discH);
+      doc.text('Less : Bill Discount (-)', valueBoxX - 2, finalY + 4, { align: 'right' });
+      doc.text(formatAmount(preBillDiscount), pageWidth - margin - 2, finalY + 4, { align: 'right' });
+      finalY += discH;
+    }
 
     // Calculate the grand total after deducting advance
-    const grandTotalAfterAdvance = finalTotalAmountToPrint - advancePaid;
+    const grandTotalAfterAdvance = finalTotalAmountToPrint - preBillDiscount - advancePaid + preExtraExpenseAmount;
 
     const currentDue = grandTotalAfterAdvance;
     const totalDue = previousBalance + currentDue;
     const hasPrevOrDue = previousBalance > 0 || currentDue > 0;
-
-    const valueBoxW = 30;
-    const valueBoxX = (pageWidth - margin) - valueBoxW;
 
     // ── Advance Paid row BEFORE Grand Total ──
     if (advancePaid > 0) {
@@ -987,6 +1004,38 @@ export const CatalogueBill = async (
       doc.text(formatAmount(advancePaid), pageWidth - margin - 2, finalY + 4, { align: 'right' });
       finalY += advH;
     }
+    // ── Extra Expense row(s) ──
+    if (extraExpenseName && preExtraExpenseAmount > 0) {
+      const names = extraExpenseName.split(',').map((n: string) => n.trim()).filter(Boolean);
+
+      if (names.length <= 1) {
+        const expH = 6;
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "normal");
+        doc.rect(margin, finalY, pageWidth - margin * 2, expH);
+        doc.line(valueBoxX, finalY, valueBoxX, finalY + expH);
+        doc.text(`Add : ${names[0] || 'Extra Expense'} (+)`, valueBoxX - 2, finalY + 4, { align: 'right' });
+        doc.text(formatAmount(preExtraExpenseAmount), pageWidth - margin - 2, finalY + 4, { align: 'right' });
+        finalY += expH;
+      } else {
+        const totalExpenseH = 6 * names.length;
+        doc.rect(margin, finalY, pageWidth - margin * 2, totalExpenseH);
+        doc.line(valueBoxX, finalY, valueBoxX, finalY + totalExpenseH);
+        names.forEach((name: string, idx: number) => {
+          doc.setFontSize(8);
+          doc.setFont("helvetica", "normal");
+          doc.text(`Add : ${name} (+)`, valueBoxX - 2, finalY + 4, { align: 'right' });
+          if (idx === names.length - 1) {
+            doc.text(formatAmount(preExtraExpenseAmount), pageWidth - margin - 2, finalY + 4, { align: 'right' });
+          }
+          finalY += 6;
+        });
+      }
+    }
+
+
+
+
 
     // ── Grand Total Row (shows amount after advance deduction) ──
     const grandTotalH = 8;
@@ -1168,6 +1217,9 @@ export const CatalogueBill = async (
       finalY + footerH - 4
     );
   }
+  if (!isEstimate) {
+    drawInvoiceFooter((doc as any).lastAutoTable.finalY);
+  }
 
   //  BRANDING FOOTER
   if (!isEstimate) {
@@ -1235,6 +1287,99 @@ export const CatalogueBill = async (
     doc.text(part3, currentX, textZ);
   }
   doc.setTextColor(0, 0, 0);
+
+  // / ================= DUPLICATE PAGE =================
+  if (withDuplicate && !isEstimate) {
+    doc.addPage();
+
+    // Draw "DUPLICATE" label as plain text centered at top, before header
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(100, 100, 100);
+    doc.text("DUPLICATE", pageWidth / 2, margin + 2, { align: "center" });
+    doc.setTextColor(0, 0, 0);
+
+    let dupCursorY = drawHeader();
+
+    // Re-draw meta row
+    const dupMetaY = dupCursorY + 2;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(`Invoice No : ${data.order.orderId || ""}`, margin, dupMetaY);
+    doc.text(`Date : ${formatDateTime(data.order.date)}`, margin + (pageWidth - margin * 2) / 3, dupMetaY);
+    doc.setLineWidth(0.4);
+    doc.line(margin, dupMetaY + 6, pageWidth - margin, dupMetaY + 6);
+    dupCursorY = dupMetaY + 8;
+
+    // Re-draw bill/ship + total box
+    const dupSectionStartY = dupCursorY + 4;
+    const dupTableWidth = fullWidth - totalBoxWidth;
+
+    doc.rect(margin, dupSectionStartY, dupTableWidth, sectionHeight);
+    doc.line(margin + dupTableWidth / 2, dupSectionStartY, margin + dupTableWidth / 2, dupSectionStartY + sectionHeight);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text("Billed To :", margin + 3, dupSectionStartY + 6);
+    doc.text("Shipped To :", margin + dupTableWidth / 2 + 3, dupSectionStartY + 6);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    let dupTextY = dupSectionStartY + 12;
+    doc.text(data.customer.billing?.name || "", margin + 3, dupTextY);
+    doc.text(data.customer.shipping?.name || "", margin + dupTableWidth / 2 + 3, dupTextY);
+    dupTextY += 4;
+    const dupBillingAddrLines = doc.splitTextToSize(data.customer.billing?.address || "", dupTableWidth / 2 - 6);
+    const dupShippingAddrLines = doc.splitTextToSize(data.customer.shipping?.address || "", dupTableWidth / 2 - 6);
+    doc.text(dupBillingAddrLines, margin + 3, dupTextY);
+    doc.text(dupShippingAddrLines, margin + dupTableWidth / 2 + 3, dupTextY);
+    dupTextY += Math.max(dupBillingAddrLines.length, dupShippingAddrLines.length) * 5;
+    doc.text(`Phone : ${data.customer.billing?.phone || ""}`, margin + 3, dupTextY);
+    doc.text(`Phone : ${data.customer.shipping?.phone || ""}`, margin + dupTableWidth / 2 + 3, dupTextY);
+
+    // Total box
+    const dupTotalBoxX = margin + dupTableWidth;
+    doc.rect(dupTotalBoxX, dupSectionStartY, totalBoxWidth, sectionHeight);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text("TOTAL", dupTotalBoxX + totalBoxWidth / 2, dupSectionStartY + 8, { align: "center" });
+    doc.text(formatAmount(finalTotalAmountToPrint), dupTotalBoxX + totalBoxWidth / 2, dupSectionStartY + 16, { align: "center" });
+    doc.setFontSize(10);
+    doc.text(`${totalProducts} Products`, dupTotalBoxX + totalBoxWidth / 2, dupSectionStartY + 24, { align: "center" });
+
+    dupCursorY = dupSectionStartY + sectionHeight + 6;
+
+    // Re-draw items table
+    autoTable(doc, {
+      startY: dupCursorY,
+      head: isEstimate
+        ? [showMrpColumn ? ["No", "Product", "Item", "Qty", "MRP", "Price", "Total"] : ["No", "Product", "Item", "Qty", "Price", "Total"]]
+        : [showMrpColumn ? ["No", "Product", "Item", "Qty", "GST%", "MRP", "Price", "SubTotal", "GSTAmt", "Total"] : ["No", "Product", "Item", "Qty", "GST%", "Price", "SubTotal", "GSTAmt", "Total"]],
+      body,
+      margin: { left: margin, right: margin },
+      theme: "grid",
+      headStyles: { fillColor: false, textColor: [0, 0, 0] },
+      styles: { fontSize: 8, cellPadding: 4, valign: "middle", minCellHeight: 20, lineColor: [0, 0, 0], lineWidth: 0.2 },
+      columnStyles: isEstimate
+        ? { 0: { cellWidth: 12, halign: "center" }, 1: { cellWidth: 22 }, 2: { cellWidth: "auto" }, 3: { cellWidth: 14, halign: "center" }, 4: { cellWidth: 24, halign: "center" }, 5: { cellWidth: 24, halign: "center" }, 6: { cellWidth: 24, halign: "center", fontStyle: "bold" } }
+        : { 0: { cellWidth: 12, halign: "center" }, 1: { cellWidth: 20 }, 2: { cellWidth: "auto" }, 3: { cellWidth: 16, halign: "center" }, 4: { cellWidth: 16, halign: "center" }, 5: { cellWidth: 18, halign: "center" }, 6: { cellWidth: 22, halign: "center" }, 7: { cellWidth: 22, halign: "center" }, 8: { cellWidth: 20, halign: "center" }, 9: { cellWidth: 22, halign: "center", fontStyle: "bold" } },
+      didDrawCell: (hookData) => {
+        if (hookData.column.index === 1 && hookData.section === "body") {
+          const item = data.items[hookData.row.index];
+          const imgSize = 16;
+          const x = hookData.cell.x + (hookData.cell.width - imgSize) / 2;
+          const y = hookData.cell.y + (hookData.cell.height - imgSize) / 2;
+          if (item?.imageBase64 && item.imageBase64.startsWith("data:image")) {
+            try {
+              doc.addImage(item.imageBase64, item.imageBase64.includes("png") ? "PNG" : "JPEG", x, y, imgSize, imgSize);
+            } catch (e) { console.error("Dup image error", e); }
+          }
+        }
+      },
+      didDrawPage: () => { drawBrandingFooter(); },
+    });
+    drawInvoiceFooter((doc as any).lastAutoTable.finalY);
+  }
 
   // ================= OUTPUT =================
   if (action === "print") {
@@ -1413,6 +1558,9 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
     ...invoiceData,
     previousBalance: invoiceData.previousBalance || 0,
     advancePaid: invoiceData.advancePaid || invoiceData.advance || invoiceData.advanceAmount || 0,
+    billDiscount: invoiceData.billDiscount || 0,
+    extraExpenseName: invoiceData.extraExpenseName || '',
+    extraExpenseAmount: invoiceData.extraExpenseAmount || 0,
     printFormat: billSettings.printFormat || "A4",
     logoBase64,
 

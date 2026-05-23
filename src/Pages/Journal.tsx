@@ -358,6 +358,7 @@ const Journal: React.FC = () => {
   const [invoiceToPrint, setInvoiceToPrint] = useState<Invoice | null>(null);
   const [showQrModal, setShowQrModal] = useState<Invoice | null>(null);
   const [sendingPdf, setSendingPdf] = useState(false);
+  const [showPrintSubMenu, setShowPrintSubMenu] = useState(false);
 
   const { currentUser, loading: authLoading, hasPermission } = useAuth();
 
@@ -459,24 +460,24 @@ const Journal: React.FC = () => {
 
   const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
   const [isPosBasicPlan, setIsPosBasicPlan] = useState(false);
-useEffect(() => {
-  const fetchExpiry = async () => {
-    if (!currentUser?.companyId) return;
-    const companyRef = doc(db, 'companies', currentUser.companyId);
-    const snap = await getDoc(companyRef);
-    if (snap.exists()) {
-      const data = snap.data();
-      const expiry = data.expiryDate;
-      if (expiry) {
-        const d = expiry.toDate ? expiry.toDate() : new Date(expiry);
-        setDaysRemaining(Math.ceil((d.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)));
+  useEffect(() => {
+    const fetchExpiry = async () => {
+      if (!currentUser?.companyId) return;
+      const companyRef = doc(db, 'companies', currentUser.companyId);
+      const snap = await getDoc(companyRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        const expiry = data.expiryDate;
+        if (expiry) {
+          const d = expiry.toDate ? expiry.toDate() : new Date(expiry);
+          setDaysRemaining(Math.ceil((d.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)));
+        }
+        const normalizedPlan = normalizePlan(data.pack);
+        setIsPosBasicPlan(normalizedPlan === PLANS.POS_BASIC);
       }
-      const normalizedPlan = normalizePlan(data.pack);
-      setIsPosBasicPlan(normalizedPlan === PLANS.POS_BASIC);
-    }
-  };
-  fetchExpiry();
-}, [currentUser?.companyId]);
+    };
+    fetchExpiry();
+  }, [currentUser?.companyId]);
 
 
   const showBadge = daysRemaining !== null && daysRemaining <= 7 && daysRemaining >= 0;
@@ -648,7 +649,7 @@ useEffect(() => {
     });
 
     return {
-      printFormat: (forcePosPrint ||  isPosBasicPlan) ? 'THERMAL58' : (billSettings.printFormat || 'A4'),
+      printFormat: (forcePosPrint || isPosBasicPlan) ? 'THERMAL58' : (billSettings.printFormat || 'A4'),
       gstScheme: salesSettings?.gstScheme || '',
       taxType: invoice.taxType || salesSettings?.taxType || '',
       companyName: businessInfo?.name || '',
@@ -726,7 +727,7 @@ useEffect(() => {
     };
   };
 
-  const handlePdfAction = async (invoice: Invoice, action: ACTION.DOWNLOAD | ACTION.PRINT) => {
+  const handlePdfAction = async (invoice: Invoice, action: ACTION.DOWNLOAD | ACTION.PRINT, withDuplicate: boolean = false) => {
     setInvoiceToPrint(null);
     setPdfGenerating(invoice.id);
 
@@ -740,9 +741,9 @@ useEffect(() => {
       const dataForPdf = await preparePdfData({
         ...invoice,
         isEstimate: billType === 'estimate'
-      } as any,  isPosBasicPlan);
+      } as any, isPosBasicPlan);
       if (dataForPdf) {
-        await generatePdf(dataForPdf, action);
+        await generatePdf(dataForPdf, action, withDuplicate);
       } else {
         throw new Error("Could not prepare PDF data");
       }
@@ -848,11 +849,43 @@ useEffect(() => {
 
   const promptDeleteInvoice = (invoice: Invoice) => {
     setInvoiceToDelete(invoice);
-    if (currentUser?.plan !== PLANS.POS_BASIC) {
-      setModal({ message: "Are you sure you want to delete this invoice? This action cannot be undone and will restore item stock.", type: State.INFO });
-      return;
+
+    // Check if invoice has credit note in payment methods
+    const creditNotePayment = Number(invoice.paymentMethods?.['Credit Note'] || 0);
+
+    // Check if invoice has credit note returns
+    const hasCreditNoteReturns = (invoice.returnHistory || []).some((h: any) =>
+      h.modeOfReturn === 'Credit Note' || h.modeOfReturn?.includes('Credit Note')
+    );
+
+    let warningMessage = "Are you sure you want to delete this invoice? This action cannot be undone";
+
+    // Add credit note warning for payments
+    if (creditNotePayment > 0) {
+      warningMessage += `. This bill was paid using Credit Note of ${creditNotePayment.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}. The credit note balance will be restored to the customer`;
     }
-    setModal({ message: "Are you sure you want to delete this invoice? This action cannot be undone.", type: State.INFO });
+
+    // Add credit note warning for returns
+    if (hasCreditNoteReturns) {
+      const creditNoteReturnAmount = (invoice.returnHistory || [])
+        .filter((h: any) => h.modeOfReturn === 'Credit Note' || h.modeOfReturn?.includes('Credit Note'))
+        .reduce((sum: number, h: any) => sum + (Number(h.finalBalance) || 0), 0);
+
+      if (creditNotePayment > 0) {
+        warningMessage += ` and the returned items' Credit Note of ${creditNoteReturnAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })} will be removed from the customer`;
+      } else {
+        warningMessage += `. This bill contains Credit Note returns of ${creditNoteReturnAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })} which will be removed from the customer`;
+      }
+    }
+
+    // Add stock restoration message for non-POS_BASIC plans
+    if (currentUser?.plan !== PLANS.POS_BASIC) {
+      warningMessage += " and will restore item stock";
+    }
+
+    warningMessage += ".";
+
+    setModal({ message: warningMessage, type: State.INFO });
   };
 
   const confirmDeleteInvoice = async () => {
@@ -883,7 +916,20 @@ useEffect(() => {
           });
         }
       }
+      const creditNotePayment = Number(invoiceToDelete.paymentMethods?.['Credit Note'] || 0);
 
+      const creditNoteReturns = (invoiceToDelete.returnHistory || [])
+        .filter((h: any) => h.modeOfReturn === 'Credit Note' || h.modeOfReturn?.includes('Credit Note'))
+        .reduce((sum: number, h: any) => sum + (Number(h.finalBalance) || 0), 0);
+
+      const netCreditAdjustment = creditNotePayment - creditNoteReturns;
+
+      if (netCreditAdjustment !== 0 && invoiceToDelete.partyNumber) {
+        const customerRef = doc(db, 'companies', companyId, 'customers', invoiceToDelete.partyNumber);
+        batch.set(customerRef, {
+          creditBalance: increment(netCreditAdjustment)
+        }, { merge: true });
+      }
       batch.delete(invoiceDocRef);
       await batch.commit();
 
@@ -918,12 +964,29 @@ useEffect(() => {
     navigate(`${ROUTES.PURCHASE_RETURN}`, { state: { invoiceData: invoice } });
   };
 
-  const openPaymentModal = (invoice: Invoice) => {
+  const [customerCredit, setCustomerCredit] = useState<number>(0);
+  const openPaymentModal = async (invoice: Invoice) => {
     setSelectedInvoice(invoice);
     setIsModalOpen(true);
+
+    const phone = (invoice.partyNumber || '').replace(/\D/g, '').slice(-10);
+    if (phone && currentUser?.companyId) {
+      try {
+        const customerRef = doc(db, 'companies', currentUser.companyId, 'customers', phone);
+        const snap = await getDoc(customerRef);
+        if (snap.exists()) {
+          setCustomerCredit(Number(snap.data().creditBalance || 0));
+        } else {
+          setCustomerCredit(0);
+        }
+      } catch (err) {
+        console.error('Error fetching credit balance:', err);
+        setCustomerCredit(0);
+      }
+    } else {
+      setCustomerCredit(0);
+    }
   };
-
-
   const handleSettlePayment = async (
     invoice: any,
     amount: number,
@@ -951,6 +1014,14 @@ useEffect(() => {
       const newDue = currentDue - amount;
       if (newDue < 0) throw new Error('Payment exceeds due amount.');
 
+      // Deduct from customer credit balance if Credit Note was used
+      if ((method === 'credit' || method === 'Credit Note') && invoice.partyNumber) {
+        const normalizedPhone = invoice.partyNumber.replace(/\D/g, '').slice(-10);
+        if (normalizedPhone) {
+          const customerRef = doc(db, 'companies', companyId, 'customers', normalizedPhone);
+          transaction.set(customerRef, { creditBalance: increment(-amount) }, { merge: true });
+        }
+      }
       const newPaymentMethods = {
         ...currentPaymentMethods,
         [method]: currentMethodTotal + amount,
@@ -1351,15 +1422,15 @@ useEffect(() => {
                     <>
                       <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
                         <button onClick={(e) => { e.stopPropagation(); handleSalesReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">Return</button>
-                        
+
                       </ShowWrapper>
                       <button
-                          onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }}
-                          disabled={pdfGenerating === invoice.id}
-                          className="px-4 py-2 text-sm font-medium text-white bg-black rounded-sm hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {pdfGenerating === invoice.id ? <Spinner /> : 'Print'}
-                        </button>
+                        onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }}
+                        disabled={pdfGenerating === invoice.id}
+                        className="px-4 py-2 text-sm font-medium text-white bg-black rounded-sm hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {pdfGenerating === invoice.id ? <Spinner /> : 'Print'}
+                      </button>
                     </>
                   )}
 
@@ -1384,15 +1455,15 @@ useEffect(() => {
   return (
     <div className="flex min-h-screen w-full flex-col overflow-hidden bg-gray-100 mb-10">
       {modal && <Modal message={modal.message} type={modal.type} onClose={cancelDelete} onConfirm={confirmDeleteInvoice} showConfirmButton={invoiceToDelete !== null} />}
-      <PaymentModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} invoice={selectedInvoice} onSubmit={handleSettlePayment} />
+      <PaymentModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} invoice={selectedInvoice} onSubmit={handleSettlePayment} availableCredit={customerCredit} />
 
       {/* ACTION SELECTION MODAL */}
       {invoiceToPrint && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setInvoiceToPrint(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => { setInvoiceToPrint(null); setShowPrintSubMenu(false); }}>
           <div className="bg-white rounded-sm p-4 w-full max-w-sm mx-4 shadow-xl animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-gray-800">Select Action</h3>
-              <button onClick={() => setInvoiceToPrint(null)} className="text-gray-500 hover:text-gray-700">
+              <button onClick={() => { setInvoiceToPrint(null); setShowPrintSubMenu(false); }} className="text-gray-500 hover:text-gray-700">
                 <IconClose />
               </button>
             </div>
@@ -1414,21 +1485,21 @@ useEffect(() => {
               </div>
             )}
             <p className="text-gray-600 mb-6">Choose how you want to provide the bill.</p>
-            
+
             <div className="flex flex-col gap-3">
               {invoiceToPrint.type === 'Credit' ? (
                 <>
-                <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-                  <button
-                    onClick={() => handleSendWhatsapp({
-                      ...invoiceToPrint,
-                      isEstimate: billType === 'estimate'
-                    } as any)}
-                    disabled={sendingPdf}
-                    className="w-full bg-green-600 text-white py-2.5 px-4 rounded-sm font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                  >
-                    {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
-                  </button>
+                  <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+                    <button
+                      onClick={() => handleSendWhatsapp({
+                        ...invoiceToPrint,
+                        isEstimate: billType === 'estimate'
+                      } as any)}
+                      disabled={sendingPdf}
+                      className="w-full bg-green-600 text-white py-2.5 px-4 rounded-sm font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
+                    </button>
                   </ShowWrapper>
                   <button
                     onClick={() => handlePdfAction({
@@ -1439,19 +1510,16 @@ useEffect(() => {
                   >
                     <IconDownload /> Download PDF
                   </button>
-                  <button
-                    onClick={() => handlePdfAction({
-                      ...invoiceToPrint,
-                      isEstimate: billType === 'estimate'
-                    } as any, ACTION.PRINT)}
+                 <button
+                    onClick={() => setShowPrintSubMenu(true)}
                     className="w-full bg-white text-gray-700 border border-gray-300 py-2.5 px-4 rounded-sm font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
                   >
-                    <IconPrint /> Print Directly
+                    <IconPrint /> Print
                   </button>
                   <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-                  <button onClick={() => handleShowQr(invoiceToPrint)} className="w-full bg-gray-900 text-white py-2.5 px-4 rounded-sm font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2">
-                    <IconScanCircle width={20} height={20} /> Generate QR Code
-                  </button>
+                    <button onClick={() => handleShowQr(invoiceToPrint)} className="w-full bg-gray-900 text-white py-2.5 px-4 rounded-sm font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2">
+                      <IconScanCircle width={20} height={20} /> Generate QR Code
+                    </button>
                   </ShowWrapper>
                 </>
               ) : (
@@ -1459,7 +1527,7 @@ useEffect(() => {
                   <button onClick={() => handlePdfAction(invoiceToPrint, ACTION.DOWNLOAD)} className="w-full text-white py-2.5 px-4 rounded-sm font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 bg-blue-600" disabled>
                     <IconDownload /> Download PDF
                   </button>
-                   
+
                   <button
                     onClick={() => {
                       handlePrintQr(invoiceToPrint);
@@ -1469,14 +1537,66 @@ useEffect(() => {
                   >
                     <IconPrint /> Print QR
                   </button>
-                  
+
                 </>
               )}
             </div>
           </div>
         </div>
       )}
-
+{showPrintSubMenu && invoiceToPrint && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
+          onClick={() => setShowPrintSubMenu(false)}
+        >
+          <div
+            className="bg-white rounded-sm p-6 w-full max-w-xs mx-4 shadow-xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest mb-4 text-center">
+              Print Options
+            </h3>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => {
+                  const inv = invoiceToPrint;
+                  setShowPrintSubMenu(false);
+                  setInvoiceToPrint(null);
+                  handlePdfAction(
+                    { ...inv, isEstimate: billType === 'estimate' } as any,
+                    ACTION.PRINT,
+                    false
+                  );
+                }}
+                className="w-full border py-2.5 rounded-sm font-bold text-sm"
+              >
+                Print (Bill Only)
+              </button>
+              <button
+                onClick={() => {
+                  const inv = invoiceToPrint;
+                  setShowPrintSubMenu(false);
+                  setInvoiceToPrint(null);
+                  handlePdfAction(
+                    { ...inv, isEstimate: billType === 'estimate' } as any,
+                    ACTION.PRINT,
+                    true
+                  );
+                }}
+                className="w-full border border-blue-500 text-blue-600 py-2.5 rounded-sm font-bold text-sm"
+              >
+                Print (Bill + Duplicate)
+              </button>
+              <button
+                onClick={() => setShowPrintSubMenu(false)}
+                className="w-full text-[11px] font-bold text-slate-400 hover:text-slate-700 mt-1"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showQrModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <div className="bg-white rounded-sm shadow-2xl p-6 w-full max-w-sm flex flex-col items-center animate-in fade-in zoom-in duration-300 relative">

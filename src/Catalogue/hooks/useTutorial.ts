@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { db } from '../../lib/Firebase';
 import { doc, getDoc } from 'firebase/firestore';
 
@@ -7,10 +7,12 @@ const useTutorial = (
   setTutorialStep: (step: number) => void,
   tutorialKey: string
 ) => {
+  const hasChecked = useRef(false); // ✅ Prevent re-runs on resize/re-render
   useEffect(() => {
+    if (hasChecked.current) return; // ✅ Only run once per mount
     const checkTutorial = async () => {
       if (!currentUser?.companyId) return;
-
+ hasChecked.current = true; // ✅ Mark as checked immediately
       try {
         const ref = doc(
           db,
@@ -36,7 +38,7 @@ const useTutorial = (
     };
 
     checkTutorial();
-  }, [currentUser, setTutorialStep, tutorialKey]);
+  }, [currentUser?.companyId, setTutorialStep, tutorialKey]);
 };
 
 export default useTutorial;

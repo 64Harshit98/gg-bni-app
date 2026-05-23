@@ -2,6 +2,11 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../../context/auth-context';
 import { PLANS } from '../../enums';
 import BackButton from '../../Components/BackButton';
+import { db } from '../../lib/Firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { useNavigate } from 'react-router-dom';
+import { logoutUser } from '../../lib/AuthOperations';
+import { ROUTES } from '../../constants/routes.constants';
 
 // --- HELPER: Feature Descriptions ---
 const FEATURE_DESCRIPTIONS: Record<string, string> = {
@@ -190,6 +195,12 @@ const BOTH_TIERS = [
 
 const SubscriptionPage: React.FC = () => {
     const { currentUser } = useAuth();
+    const navigate = useNavigate();
+
+    const handleLogout = async () => {
+        try { await logoutUser(); navigate(ROUTES.LANDING); }
+        catch (err) { console.error('Logout failed:', err); }
+    };
 
     const [activeTab, setActiveTab] = useState<'pos' | 'catalogue' | 'both'>('pos');
     const [isDetailsOpen] = useState(true);
@@ -201,6 +212,16 @@ const SubscriptionPage: React.FC = () => {
     const isPlanActive = subData?.isActive || false;
     const expiryDate = subData?.expiryDate;
 
+    const [userEmail, setUserEmail] = useState<string>('');
+    useEffect(() => {
+        const fetchEmail = async () => {
+            if (!currentUser?.uid || !(currentUser as any)?.companyId) return;
+            const userDocRef = doc(db, 'companies', (currentUser as any).companyId, 'users', currentUser.uid);
+            const snap = await getDoc(userDocRef);
+            if (snap.exists()) setUserEmail(snap.data()?.email || '');
+        };
+        fetchEmail();
+    }, [currentUser]);
     const showActiveView = isPlanActive && (
         currentPack === PLANS.ENTERPRISE ||
         currentPack === PLANS.POS_PRO ||
@@ -271,6 +292,20 @@ const SubscriptionPage: React.FC = () => {
                         </div>
                     </div>
                 </div>
+                <div className="mt-3 px-4 py-3 bg-white rounded-sm shadow-sm border border-gray-200 grid grid-cols-2 gap-4">
+                    <div>
+                        <p className="text-sm text-gray-500 uppercase font-bold tracking-wider">Name</p>
+                        <p className="mt-1 text-base font-semibold text-gray-800">
+                            {(currentUser as any)?.name || (currentUser as any)?.displayName || '—'}
+                        </p>
+                    </div>
+                    <div>
+                        <p className="text-sm text-gray-500 uppercase font-bold tracking-wider">Email</p>
+                        <p className="mt-1 text-base font-semibold text-gray-800 break-all">
+                            {userEmail || '—'}
+                        </p>
+                    </div>
+                </div>
             </div>
         </div>
     );
@@ -280,9 +315,16 @@ const SubscriptionPage: React.FC = () => {
             <div className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-20">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex justify-between h-16 items-center">
-                        <BackButton/>
+                        <BackButton />
                         <h1 className="text-xl font-bold text-gray-800">Subscription</h1>
-                        <div className="w-10"></div>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={handleLogout}
+                                className="ml-1 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-sm transition-colors"
+                            >
+                                Logout
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

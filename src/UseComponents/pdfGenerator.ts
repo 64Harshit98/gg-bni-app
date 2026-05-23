@@ -76,7 +76,7 @@ export interface InvoiceData {
   };
 }
 
-export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | ACTION.PRINT | ACTION.BLOB = ACTION.DOWNLOAD): Promise<Blob | void> => {
+export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | ACTION.PRINT | ACTION.BLOB = ACTION.DOWNLOAD, withDuplicate: boolean = false): Promise<Blob | void> => {
   const isEstimate = (data as any).isEstimate === true;
 
   if (data.printFormat === 'THERMAL58') {
@@ -811,6 +811,320 @@ finalY += grandTotalH;
   doc.text(part3, currentX, textY);
   doc.setTextColor(0, 0, 0);
 
+  // --- DUPLICATE PAGE ---
+  if (withDuplicate && !isEstimate) {
+    doc.addPage();
+
+    // "DUPLICATE" label at top center
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(100, 100, 100);
+    doc.text("DUPLICATE", pageWidth / 2, margin + 2, { align: "center" });
+    doc.setTextColor(0, 0, 0);
+
+    let dupCursorY = margin;
+
+    // Timestamp
+    const dupNow = new Date();
+    const dupGeneratedAt = dupNow.toLocaleString('en-IN', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.text(`Bill generated on ${dupGeneratedAt}`, pageWidth - margin, dupCursorY - 2, { align: "right" });
+
+    // --- RE-DRAW HEADER ---
+    const dupAddressLines = doc.splitTextToSize(data.companyAddress, contentWidth - 50);
+    const dupExtraAddressLines = Math.max(0, dupAddressLines.length - 1);
+    const dupAddressOffset = dupExtraAddressLines * 4;
+    const dupHeaderHeight = 25 + dupAddressOffset;
+
+    doc.rect(startX, dupCursorY, contentWidth, dupHeaderHeight);
+
+    if (qrBase64) {
+      doc.addImage(qrBase64, 'PNG', startX + 2, dupCursorY + 2, 18, 18);
+      doc.setFontSize(6);
+      doc.setFont('helvetica', 'normal');
+      doc.text('Scan to Pay', startX + 11, dupCursorY + 22, { align: 'center' });
+    }
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text(title, pageWidth / 2, dupCursorY + 5, { align: 'center' });
+
+    doc.setFontSize(8);
+    doc.text(`Msme No ${data.msmeNumber || ''}`, endX - 2, dupCursorY + 5, { align: 'right' });
+
+    const dupLogoX = endX - 18 - 2;
+    const dupLogoY = dupCursorY + 7;
+    if (data.companyLogoBase64) {
+      try {
+        doc.addImage(data.companyLogoBase64, 'PNG', dupLogoX, dupLogoY, 18, 14);
+      } catch (e) { /* skip */ }
+    }
+
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text(data.companyName.toUpperCase(), pageWidth / 2, dupCursorY + 11, { align: 'center' });
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text(dupAddressLines, pageWidth / 2, dupCursorY + 16, { align: 'center' });
+    doc.text(`Phone : ${data.companyContact}`, pageWidth / 2, dupCursorY + 20, { align: 'center' });
+
+    if (showGstinDetails) {
+      doc.setFont('helvetica', 'bold');
+      doc.text(`GSTIN : ${data.companyGstin || ''}  (${safeScheme})`, pageWidth / 2, dupCursorY + 24 + dupAddressOffset, { align: 'center' });
+      doc.setFont('helvetica', 'normal');
+    }
+
+    dupCursorY += dupHeaderHeight;
+
+    // --- RE-DRAW META INFO ---
+    doc.rect(startX, dupCursorY, contentWidth, metaHeight);
+    doc.line(pageWidth / 2, dupCursorY, pageWidth / 2, dupCursorY + metaHeight);
+    doc.setFontSize(9);
+    doc.text(`Invoice No. :  ${data.invoice.number}`, startX + 2, dupCursorY + 5);
+    doc.text(`Date          :  ${data.invoice.date}`, startX + 2, dupCursorY + 10);
+    const dupPosVal = data.billTo.address.split(',').pop()?.trim() || '';
+    doc.text(`Place of Supply : ${dupPosVal}`, (pageWidth / 2) + 2, dupCursorY + 5);
+    if (showGstinDetails) {
+      let dupSchemeInfo = `GST Type: ${safeScheme}`;
+      if (safeScheme === 'REGULAR') dupSchemeInfo += ` (${safeTaxType})`;
+      doc.setFont('helvetica', 'bold');
+      doc.text(dupSchemeInfo, (pageWidth / 2) + 2, dupCursorY + 10);
+      doc.setFont('helvetica', 'normal');
+    }
+    dupCursorY += metaHeight;
+
+    // --- RE-DRAW PARTIES SECTION ---
+    doc.rect(startX, dupCursorY, contentWidth, partyHeight);
+    doc.line(pageWidth / 2, dupCursorY, pageWidth / 2, dupCursorY + partyHeight);
+
+    const dupHeaderY = dupCursorY + 5;
+    doc.setFont('helvetica', 'bold');
+    doc.text('Billed to :', startX + 2, dupHeaderY);
+    doc.text('Shipped to :', (pageWidth / 2) + 2, dupHeaderY);
+    doc.setFont('helvetica', 'normal');
+
+    let dupLeftY = dupHeaderY + 6;
+    doc.text(billName, startX + 2, dupLeftY);
+    dupLeftY += 5;
+    doc.text(billAddr, startX + 2, dupLeftY);
+    dupLeftY += billAddr.length * 5;
+    doc.text(billPhone, startX + 2, dupLeftY);
+    dupLeftY += 5;
+    if (showGstinDetails && data.billTo.gstin) {
+      doc.text(`GST No. : ${data.billTo.gstin}`, startX + 2, dupLeftY);
+    }
+
+    let dupRightY = dupHeaderY + 6;
+    doc.text(shipName, (pageWidth / 2) + 2, dupRightY);
+    dupRightY += 5;
+    doc.text(shipAddr, (pageWidth / 2) + 2, dupRightY);
+    dupRightY += shipAddr.length * 5;
+    doc.text(shipPhone, (pageWidth / 2) + 2, dupRightY);
+    dupRightY += 5;
+    if (showGstinDetails && data.shipTo?.gstin) {
+      doc.text(`GST No. : ${data.shipTo.gstin}`, (pageWidth / 2) + 2, dupRightY);
+    }
+
+    dupCursorY += partyHeight;
+
+    // --- RE-DRAW ITEMS TABLE ---
+    autoTable(doc, {
+      startY: dupCursorY,
+      head: [showTaxColumns
+        ? ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Subtotal', 'CGST', 'CGST Amt', 'SGST', 'SGST Amt', 'Amount']
+        : ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Amount']
+      ],
+      body: tableBody,
+      theme: 'grid',
+      styles: { fontSize: 8, cellPadding: 1, textColor, lineColor, lineWidth: 0.1, halign: 'center', valign: 'middle' },
+      headStyles: { fillColor: [255, 255, 255], textColor, fontStyle: 'bold', lineWidth: 0.1, lineColor },
+      columnStyles: showTaxColumns ? {
+        0: { cellWidth: 8 }, 1: { cellWidth: 'auto', halign: 'left' }, 2: { cellWidth: 15 }, 12: { cellWidth: 20, halign: 'right' }
+      } : {
+        0: { cellWidth: 8 }, 1: { cellWidth: 'auto', halign: 'left' }, 2: { cellWidth: 15 }, 7: { cellWidth: 20, halign: 'right' }
+      },
+      margin: { left: margin, right: margin },
+    });
+
+    // @ts-ignore
+    let dupFinalY = doc.lastAutoTable.finalY;
+
+    // --- RE-DRAW BOTTOM TOTALS (discount, advance, round-off, grand total) ---
+    if (billDiscount > 0) {
+      const discH = 6;
+      doc.rect(startX, dupFinalY, contentWidth, discH);
+      doc.line(valueBoxX, dupFinalY, valueBoxX, dupFinalY + discH);
+      doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+      doc.text('Less : Bill Discount (-)', valueBoxX - 2, dupFinalY + 4, { align: 'right' });
+      doc.text(formatNumberWithCommas(billDiscount), endX - 2, dupFinalY + 4, { align: 'right' });
+      dupFinalY += discH;
+    }
+
+    if (advance > 0) {
+      const advH = 6;
+      doc.rect(startX, dupFinalY, contentWidth, advH);
+      doc.line(valueBoxX, dupFinalY, valueBoxX, dupFinalY + advH);
+      doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+      doc.text('Advance Paid (-):', valueBoxX - 2, dupFinalY + 4, { align: 'right' });
+      doc.text(formatNumberWithCommas(advance), endX - 2, dupFinalY + 4, { align: 'right' });
+      dupFinalY += advH;
+    }
+
+    if (data.extraExpenseName && data.extraExpenseAmount && data.extraExpenseAmount > 0) {
+      const names = data.extraExpenseName.split(',').map(n => n.trim()).filter(Boolean);
+      if (names.length <= 1) {
+        const expH = 6;
+        doc.rect(startX, dupFinalY, contentWidth, expH);
+        doc.line(valueBoxX, dupFinalY, valueBoxX, dupFinalY + expH);
+        doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+        doc.text(`Add : ${names[0] || 'Extra Expense'} (+)`, valueBoxX - 2, dupFinalY + 4, { align: 'right' });
+        doc.text(data.extraExpenseAmount.toFixed(2), endX - 2, dupFinalY + 4, { align: 'right' });
+        dupFinalY += expH;
+      } else {
+        const totalExpenseH = 6 * names.length;
+        doc.rect(startX, dupFinalY, contentWidth, totalExpenseH);
+        doc.line(valueBoxX, dupFinalY, valueBoxX, dupFinalY + totalExpenseH);
+        names.forEach((name, idx) => {
+          doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+          doc.text(`Add : ${name} (+)`, valueBoxX - 2, dupFinalY + 4, { align: 'right' });
+          if (idx === names.length - 1) doc.text(data.extraExpenseAmount!.toFixed(2), endX - 2, dupFinalY + 4, { align: 'right' });
+          dupFinalY += 6;
+        });
+      }
+    }
+
+    // Round off
+    doc.rect(startX, dupFinalY, contentWidth, roundOffH);
+    doc.line(valueBoxX, dupFinalY, valueBoxX, dupFinalY + roundOffH);
+    doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+    doc.text('Add : Rounded off (+)', valueBoxX - 2, dupFinalY + 4, { align: 'right' });
+    doc.text(roundOffAmt.toFixed(2), endX - 2, dupFinalY + 4, { align: 'right' });
+    dupFinalY += roundOffH;
+
+    // Grand total
+    doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+    doc.rect(startX, dupFinalY, contentWidth, grandTotalH);
+    doc.text('Grand Total', pageWidth / 6, dupFinalY + 5.5);
+    doc.text(`${totalQty.toFixed(3)} Unit`, pageWidth / 3, dupFinalY + 5.5);
+    doc.text('Rs.', endX - 35, dupFinalY + 5.5);
+    doc.rect(endX - 30, dupFinalY, 30, grandTotalH);
+    doc.text(formatNumberWithCommas(grandTotalAfterAdvance), endX - 2, dupFinalY + 5.5, { align: 'right' });
+    dupFinalY += grandTotalH;
+
+    // Narration
+    if (data.narration && data.narration.trim() !== '') {
+      const dupNarrationLines = doc.splitTextToSize(data.narration, contentWidth - 18);
+      const dupNarrationH = (dupNarrationLines.length * 4) + 4;
+      doc.rect(startX, dupFinalY, contentWidth, dupNarrationH);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Remarks:', startX + 2, dupFinalY + 4);
+      doc.setFont('helvetica', 'normal');
+      doc.text(dupNarrationLines, startX + 16, dupFinalY + 4);
+      dupFinalY += dupNarrationH;
+    }
+
+    // Tax table
+    if (showTaxColumns) {
+      const dupTaxHeaders = [['Tax Rate', 'Taxable Amt.', 'CGST', 'SGST', 'Total Tax']];
+      const dupTaxBody = Object.keys(taxBreakdown).map(rate => {
+        const d = taxBreakdown[rate];
+        return [`${rate}%`, formatNumberWithCommas(d.taxable), formatNumberWithCommas(d.cgst), formatNumberWithCommas(d.sgst), formatNumberWithCommas(d.cgst + d.sgst)];
+      });
+      dupTaxBody.push(['TOTAL', formatNumberWithCommas(totalTaxable), formatNumberWithCommas(totalTaxAmt / 2), formatNumberWithCommas(totalTaxAmt / 2), formatNumberWithCommas(totalTaxAmt)]);
+      autoTable(doc, {
+        startY: dupFinalY + 2,
+        head: dupTaxHeaders,
+        body: dupTaxBody,
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 1, textColor, lineColor, lineWidth: 0.1, halign: 'right' },
+        headStyles: { fillColor: [255, 255, 255], textColor, fontStyle: 'bold', halign: 'right', lineColor, lineWidth: 0.1 },
+        columnStyles: { 0: { halign: 'left' } },
+        tableWidth: contentWidth / 2,
+        margin: { left: startX },
+      });
+      // @ts-ignore
+      dupFinalY = Math.max(doc.lastAutoTable.finalY + 2, dupFinalY + 25);
+    }
+
+    // Amount in words + Previous balance
+    doc.rect(startX, dupFinalY, contentWidth, wordsH);
+    doc.setFontSize(8); doc.setFont('helvetica', 'bold');
+    doc.text(`Rs. ${convertNumberToWords(grandTotalAfterAdvance)}`, startX + 2, dupFinalY + (hasPrevOrDue ? 7 : 5.5));
+    if (hasPrevOrDue) {
+      const dupDividerX = startX + leftColW;
+      doc.line(dupDividerX, dupFinalY, dupDividerX, dupFinalY + wordsH);
+      doc.line(dupDividerX, dupFinalY + 6, endX, dupFinalY + 6);
+      doc.setFont('helvetica', 'normal');
+      doc.text('Previous Balance :', dupDividerX + 2, dupFinalY + 4.5);
+      doc.text(formatNumberWithCommas(prevBal), endX - 2, dupFinalY + 4.5, { align: 'right' });
+      doc.setFont('helvetica', 'bold');
+      doc.text('Balance Due :', dupDividerX + 2, dupFinalY + 10);
+      doc.text(formatNumberWithCommas(totalDue), endX - 2, dupFinalY + 10, { align: 'right' });
+    }
+    dupFinalY += wordsH;
+
+    // Bank details
+    if (safeScheme !== 'NONE') {
+      const dupBankH = 10;
+      doc.rect(startX, dupFinalY, contentWidth, dupBankH);
+      doc.setFont('helvetica', 'bold');
+      doc.text('BANK DETAIL :', startX + 2, dupFinalY + 4);
+      const dupBdWidth = doc.getTextWidth('BANK DETAIL :');
+      doc.line(startX + 2, dupFinalY + 4.5, startX + 2 + dupBdWidth, dupFinalY + 4.5);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Bank name : ${data.bankDetails?.bankName || ''} , A/C NO. ${data.bankDetails?.accountNumber || ''}`, startX + 35, dupFinalY + 4);
+      doc.text(`IFSC Code ${data.bankDetails?.ifsc || ''}`, startX + 35, dupFinalY + 8);
+      dupFinalY += dupBankH;
+    }
+
+    // Footer (Terms, Receiver, Auth Signatory)
+    const dupFooterH = 35;
+    if (dupFinalY + dupFooterH > pageHeight - margin) {
+      doc.addPage();
+      dupFinalY = margin;
+    }
+    const dupTermsWidth = contentWidth * 0.50;
+    const dupReceiverWidth = contentWidth * 0.25;
+    const dupAuthWidth = contentWidth * 0.25;
+    const dupTermsX = startX;
+    const dupReceiverX = startX + dupTermsWidth;
+    const dupAuthX = startX + dupTermsWidth + dupReceiverWidth;
+
+    doc.rect(dupTermsX, dupFinalY, dupTermsWidth, dupFooterH);
+    doc.rect(dupReceiverX, dupFinalY, dupReceiverWidth, dupFooterH);
+    doc.rect(dupAuthX, dupFinalY, dupAuthWidth, dupFooterH);
+
+    let dupTermY = dupFinalY + 4;
+    doc.setFontSize(8); doc.setFont('helvetica', 'bold');
+    doc.text('Terms & Condition', dupTermsX + 2, dupTermY);
+    const dupTcWidth = doc.getTextWidth('Terms & Condition');
+    doc.line(dupTermsX + 2, dupTermY + 1, dupTermsX + 2 + dupTcWidth, dupTermY + 1);
+    dupTermY += 4;
+    doc.setFont('helvetica', 'normal');
+    doc.text('E. & O. E.', dupTermsX + 2, dupTermY);
+    dupTermY += 4;
+    doc.text(doc.splitTextToSize(data.terms, dupTermsWidth - 5), dupTermsX + 2, dupTermY);
+
+    doc.setFont('helvetica', 'bold');
+    doc.text("Receiver's Signature :", dupReceiverX + 2, dupFinalY + 4);
+
+    const dupAuthCenter = dupAuthX + (dupAuthWidth / 2);
+    doc.setFontSize(7);
+    doc.text(`for ${data.companyName}`, dupAuthCenter, dupFinalY + 4, { align: 'center' });
+
+    if (data.signatureBase64) {
+      try {
+        doc.addImage(data.signatureBase64, 'PNG', dupAuthCenter - 17.5, dupFinalY + 8, 35, 15);
+      } catch (e) { /* skip */ }
+    }
+    doc.setFontSize(8);
+    doc.text("Authorised Signatory", dupAuthCenter, dupFinalY + dupFooterH - 2, { align: 'center' });
+  }
   // --- OUTPUT ---
   if (action === ACTION.PRINT) {
     doc.autoPrint();
@@ -964,9 +1278,8 @@ export const preparePdfData = async (invoiceData: any) => {
     }))
   };
 };
-export const generatePdfBlob = async (data: InvoiceData): Promise<Blob> => {
-  // Call the main function with ACTION.BLOB
-  const result = await generatePdf(data, ACTION.BLOB);
+export const generatePdfBlob = async (data: InvoiceData, withDuplicate: boolean = false): Promise<Blob> => {
+  const result = await generatePdf(data, ACTION.BLOB, withDuplicate);
 
   // Ensure we actually got a Blob back
   if (result instanceof Blob) {

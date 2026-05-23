@@ -29,6 +29,7 @@ import { generatePdfBlob } from '../../UseComponents/pdfGenerator';
 import { getFirestoreOperations } from '../../lib/ItemsFirebase';
 import { botMasterService } from '../Additional/Whatsapp/WhatsappApi';
 import { PLAN_ALLOWED_FEATURES } from '../Settings/SalesSetting';
+import CalcDisplay from '../../Components/CalcDisplay';
 
 export interface SalesItem extends OriginalSalesItem {
     isEditable: boolean;
@@ -527,7 +528,7 @@ const Sales: React.FC = () => {
     const amountToPayNow = useMemo(() => finalAmount, [finalAmount]);
     // Helper to evaluate the current string (e.g., "100*2" -> 200)
 
-    const displayRef = useRef<HTMLInputElement>(null);
+    const displayRef = useRef<HTMLTextAreaElement>(null);
     const cartListRef = useRef<HTMLDivElement>(null);
     // Injects a number exactly where the user tapped
     const insertAtCursor = (val: string) => {
@@ -606,13 +607,47 @@ const Sales: React.FC = () => {
         // Fallback for mobile HTTP testing
         return 'id-' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
     };
+    // Evaluates expressions like "23*5", "36-5", "45*5-10", "36" 
+    // NO percentage handling here — that's done in parseFullEquation
+    const evaluateSegmentNoPercent = (expr: string): number => {
+        // Split by - to handle flat subtraction
+        // But careful: "23*5-10" → base="23*5", subtract=10
+        const subtractParts = expr.split('-');
+
+        // First part may have multiplication
+        let result = evaluateMultiplication(subtractParts[0]);
+
+        // Remaining parts are subtracted flat
+        for (let i = 1; i < subtractParts.length; i++) {
+            const val = evaluateMultiplication(subtractParts[i]);
+            if (!isNaN(val)) result -= val;
+        }
+
+        return result;
+    };
+
+    // Evaluates "23*5" or "100" — multiplication only
+    const evaluateMultiplication = (expr: string): number => {
+        const parts = expr.trim().split('*');
+        let result = 1;
+        let hasValid = false;
+
+        parts.forEach(p => {
+            const n = parseFloat(p.trim());
+            if (!isNaN(n)) {
+                result *= n;
+                hasValid = true;
+            }
+        });
+
+        return hasValid ? result : NaN;
+    };
     // Parses the entire string on the screen to calculate live totals and generate items
     const parseFullEquation = (equation: string): { items: SalesItem[], total: number } => {
         if (!equation.trim()) return { items: [], total: 0 };
 
-        // Normalize equation: handle subtraction by converting "-" into "+-" form
-        const normalized = equation.replace(/-/g, '+-');
-        const segments = normalized.split('+');
+        // Split ONLY on + as separator (never treat + as addition)
+        const segments = equation.split('+').map(s => s.trim()).filter(Boolean);
 
         const newItems: SalesItem[] = [];
         let grandTotal = 0;
@@ -622,29 +657,30 @@ const Sales: React.FC = () => {
 
             let segmentValue = 0;
 
-            // Handle percentage 
-            if (segment.includes('%')) {
-                const num = parseFloat(segment.replace('%', ''));
-                if (!isNaN(num)) {
-                    segmentValue = (grandTotal * num) / 100;
+            // Each segment can be:
+            // "115"        → flat amount
+            // "23*5"       → multiply
+            // "36-5"       → flat subtract
+            // "45*5-10"    → multiply then flat subtract
+            // "20-2%"      → multiply/flat then percentage discount
+            // "45*3-10%"   → multiply then percentage discount
+
+            // Step 1: Check for percentage discount at the END (e.g. "45*3-10%")
+            const percentDiscountMatch = segment.match(/^(.+)-(\d+(?:\.\d+)?)%$/);
+
+            if (percentDiscountMatch) {
+                const baseExpr = percentDiscountMatch[1].trim();  // "45*3" or "20"
+                const discountPct = parseFloat(percentDiscountMatch[2]); // 10 or 2
+
+                // Evaluate base expression (may have * and -)
+                // First handle multiplication, then subtraction
+                let baseValue = evaluateSegmentNoPercent(baseExpr);
+                if (!isNaN(baseValue)) {
+                    segmentValue = baseValue * (1 - discountPct / 100);
                 }
             } else {
-                // Handle multiplication
-                const multiplicationParts = segment.split('*');
-                let subtotal = 1;
-                let hasValidNumber = false;
-
-                multiplicationParts.forEach(numStr => {
-                    const num = parseFloat(numStr);
-                    if (!isNaN(num)) {
-                        subtotal *= num;
-                        hasValidNumber = true;
-                    }
-                });
-
-                if (hasValidNumber) {
-                    segmentValue = subtotal;
-                }
+                // No percentage — evaluate as flat expression with * and -
+                segmentValue = evaluateSegmentNoPercent(segment);
             }
 
             if (!isNaN(segmentValue) && segmentValue !== 0) {
@@ -668,7 +704,8 @@ const Sales: React.FC = () => {
                     unit: 'Bill',
                     unitMultiplier: 1,
                     packetSize: 1,
-                    isCustomAmount: true
+                    isCustomAmount: true,
+                    isStagedCalcItem: false,
                 });
 
                 grandTotal += segmentValue;
@@ -2370,7 +2407,7 @@ const Sales: React.FC = () => {
             </div>
         );
     }
-
+ 
     if (isCalculatorView) {
         return (
             // fixed inset-0 completely disables page scrolling
@@ -2400,22 +2437,28 @@ const Sales: React.FC = () => {
                         </div>
                         {/* Enlarged Display Screen */}
                         <div
-                            className="bg-white border border-gray-200 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] p-4 flex flex-col items-end justify-end h-32 sm:h-40 shrink-0 w-full cursor-text"
+                            className="bg-white border border-gray-200 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] px-4 pt-3 pb-2 flex flex-col items-end justify-end min-h-[8rem] sm:min-h-[10rem] max-h-[12rem] sm:max-h-[14rem] shrink-0 w-full cursor-text overflow-hidden relative"
                             onClick={() => displayRef.current?.focus()}
                         >
-                            <input
+                            {/* Hidden textarea — drives all input logic unchanged */}
+                            <textarea
                                 ref={displayRef}
-                                type="text"
-                                inputMode="none" // <--- The magic attribute that hides mobile keyboards but keeps the cursor
+                                inputMode="none"
                                 value={calcInput}
-                                placeholder="0"
+                                placeholder=""
                                 onChange={(e) => {
-                                    // Sanitizes native physical typing to only allow math chars
-                                    const val = e.target.value.replace(/[^0-9*.\-+]/g, '');
+                                    const val = e.target.value.replace(/[^0-9*.\-+%]/g, '');
                                     setCalcInput(val);
                                 }}
-                                className="text-4xl sm:text-5xl font-light text-gray-800 tracking-wide w-full text-right bg-transparent border-none outline-none m-0 p-0 overflow-x-auto caret-indigo-600"
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') e.preventDefault();
+                                }}
+                                className="absolute opacity-0 pointer-events-none w-0 h-0"
+                                rows={1}
                             />
+
+                            {/* Visual display — wraps into lines, last line is large */}
+                            <CalcDisplay value={calcInput} />
                         </div>
 
                         <div className="grid grid-cols-8 sm:gap-2 flex-1 min-h-0 w-full">

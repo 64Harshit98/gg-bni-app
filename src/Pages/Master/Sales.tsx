@@ -176,7 +176,7 @@ const Sales: React.FC = () => {
     const [items, setItems] = useState<SalesItem[]>(() => {
         if (isEditMode) return [];
         try {
-            const savedDraft = localStorage.getItem('sales_cart_draft');
+            const savedDraft = sessionStorage.getItem('sales_cart_draft');
             const parsedDraft = savedDraft ? JSON.parse(savedDraft) : [];
             return parsedDraft;
         } catch (e) {
@@ -265,11 +265,15 @@ const Sales: React.FC = () => {
             if (savedType === 'none') setActiveTaxMode('exempt');
             else if (savedType === 'inclusive' || savedType === 'exclusive') setActiveTaxMode(savedType);
         } else if (salesSettings) {
-            // Pre-select based on Settings
-            if (salesSettings.gstScheme === 'none' || salesSettings.gstScheme === 'composition') {
+            // 1. Check session storage first
+            const savedTaxMode = sessionStorage.getItem('sales_tax_mode_draft');
+            if (!isEditMode && (savedTaxMode === 'inclusive' || savedTaxMode === 'exclusive' || savedTaxMode === 'exempt')) {
+                setActiveTaxMode(savedTaxMode);
+            }
+            // 2. Fallback to pre-select based on Settings
+            else if (salesSettings.gstScheme === 'none' || salesSettings.gstScheme === 'composition') {
                 setActiveTaxMode('exempt');
             } else {
-                // If Regular, use the taxType preference
                 setActiveTaxMode(salesSettings.taxType as any || 'exclusive');
             }
         }
@@ -339,8 +343,14 @@ const Sales: React.FC = () => {
                     const originalSalesman = fetchedWorkers.find(u => u.uid === invoiceToEdit?.salesmanId);
                     setSelectedWorker(originalSalesman || null);
                 } else {
-                    const currentUserAsWorker = fetchedWorkers.find(u => u.uid === currentUser.uid);
-                    setSelectedWorker(currentUserAsWorker || null);
+                    const savedSalesmanUid = sessionStorage.getItem('sales_salesman_draft');
+                    if (savedSalesmanUid) {
+                        const savedWorker = fetchedWorkers.find(u => u.uid === savedSalesmanUid);
+                        setSelectedWorker(savedWorker || null);
+                    } else {
+                        const currentUserAsWorker = fetchedWorkers.find(u => u.uid === currentUser.uid);
+                        setSelectedWorker(currentUserAsWorker || null);
+                    }
                 }
             } catch (err) {
                 console.error(err);
@@ -399,8 +409,26 @@ const Sales: React.FC = () => {
     }, [isEditMode, invoiceToEdit]);
 
     useEffect(() => {
-        if (!isEditMode) localStorage.setItem('sales_cart_draft', JSON.stringify(items));
-    }, [items, isEditMode]);
+        if (!isEditMode && !pageIsLoading) {
+            sessionStorage.setItem('sales_cart_draft', JSON.stringify(items));
+        }
+    }, [items, isEditMode, pageIsLoading]);
+
+    useEffect(() => {
+        if (!isEditMode && activeTaxMode && !pageIsLoading) {
+            sessionStorage.setItem('sales_tax_mode_draft', activeTaxMode);
+        }
+    }, [activeTaxMode, isEditMode, pageIsLoading]);
+
+    useEffect(() => {
+        if (!isEditMode && !pageIsLoading) {
+            if (selectedWorker) {
+                sessionStorage.setItem('sales_salesman_draft', selectedWorker.uid);
+            } else {
+                sessionStorage.removeItem('sales_salesman_draft');
+            }
+        }
+    }, [selectedWorker, isEditMode, pageIsLoading]);
 
     const categories = useMemo(() => {
         const groups = new Set(availableItems.map(i => i.itemGroupId || 'uncategorized'));
@@ -738,51 +766,6 @@ const Sales: React.FC = () => {
             insertAtCursor(value); // <-- UPDATED
         }
     };
-
-    // Update physical keyboard listener to use the cursor too
-    // useEffect(() => {
-    //     if (!isCalculatorView) return;
-    //     const handleKeyDown = (e: KeyboardEvent) => {
-
-    //         // 1. If the input IS focused natively, prevent double-typing but catch action keys
-    //         if (document.activeElement === displayRef.current) {
-    //             if (e.key === 'Enter' || e.key === '=') {
-    //                 e.preventDefault();
-    //                 handleCheckoutClick();
-    //             } else if (e.key.toLowerCase() === 'c' || e.key === 'Escape') {
-    //                 e.preventDefault();
-    //                 if (calcInput === '') {
-    //                     if (items.length > 0 && window.confirm("Are you sure you want to clear the bill?")) setItems([]);
-    //                 } else {
-    //                     setCalcInput('');
-    //                 }
-    //             }
-    //             return; // Stop here so native onChange can handle the physical number typing
-    //         }
-
-    //         // 2. If the input IS NOT focused (Global typing fallback)
-    //         const key = e.key;
-    //         if (/^[0-9*.\-+]$/.test(key)) {
-    //             e.preventDefault();
-    //             insertAtCursor(key);
-    //         } else if (key === 'Enter' || key === '=') {
-    //             e.preventDefault();
-    //             handleCheckoutClick();
-    //         } else if (key === 'Backspace') {
-    //             e.preventDefault();
-    //             deleteAtCursor();
-    //         } else if (key.toLowerCase() === 'c' || key === 'Escape') {
-    //             e.preventDefault();
-    //             if (calcInput === '') {
-    //                 if (items.length > 0 && window.confirm("Are you sure you want to clear the bill?")) setItems([]);
-    //             } else {
-    //                 setCalcInput('');
-    //             }
-    //         }
-    //     };
-    //     window.addEventListener('keydown', handleKeyDown);
-    //     return () => window.removeEventListener('keydown', handleKeyDown);
-    // }, [isCalculatorView, calcInput, items.length]);
 
     const handleCheckoutClick = () => {
         if (calcInput.trim()) {
@@ -1281,7 +1264,10 @@ const Sales: React.FC = () => {
         const newTaxAmount = toCurrency(finalizedItems.reduce((acc, item) => acc + item.taxAmount, 0));
 
         // 4. Calculate perfect roundOff to ensure Database matches UI exactly
-        const rawInvoiceTotal = newTaxableAmount + newTaxAmount + (completionData.extraExpenseAmount || 0);
+        const totalExpenseAmount = completionData.expenses?.reduce((sum, e) => sum + (Number(e.amount) || 0), 0) || 0;
+
+        // 4. Calculate perfect roundOff to ensure Database matches UI exactly
+        const rawInvoiceTotal = newTaxableAmount + newTaxAmount + totalExpenseAmount;
         const finalRoundOff = toCurrency(finalInvoiceTotal - rawInvoiceTotal);
 
         const saveOperation = async (transaction: any, isNew: boolean, existingId?: string) => {
@@ -1310,8 +1296,7 @@ const Sales: React.FC = () => {
                 shippingNumber: completionData.shippingNumber || '',
                 shippingAddress: completionData.shippingAddress || '',
                 shippingGST: completionData.shippingGST || '',
-                extraExpenseName: completionData.extraExpenseName || '',
-                extraExpenseAmount: completionData.extraExpenseAmount || 0,
+                expenses: completionData.expenses || [],
                 narration: completionData.narration || '',
             };
 
@@ -1448,7 +1433,9 @@ const Sales: React.FC = () => {
 
                     setIsDrawerOpen(false);
                     setSavedBillData({ id: result.id, number: result.number, invoiceData: invoiceData });
-                    localStorage.removeItem('sales_cart_draft');
+                    sessionStorage.removeItem('sales_cart_draft');
+                    sessionStorage.removeItem('sales_tax_mode_draft');
+                    sessionStorage.removeItem('sales_salesman_draft');
                     setItems([]);
                     setStagedCalcInput('');
                     setCalcInput('');
@@ -1606,7 +1593,9 @@ const Sales: React.FC = () => {
     };
 
     const showSuccessModal = (message: string, navigateTo?: string) => {
-        localStorage.removeItem('sales_cart_draft');
+        sessionStorage.removeItem('sales_cart_draft');
+        sessionStorage.removeItem('sales_tax_mode_draft');
+        sessionStorage.removeItem('sales_salesman_draft');
         setIsDrawerOpen(false);
         setModal({ message, type: State.SUCCESS });
         setTimeout(() => { setModal(null); if (navigateTo) navigate(navigateTo); else if (!salesSettings?.copyVoucherAfterSaving) setItems([]); }, 1500);
@@ -1746,10 +1735,14 @@ const Sales: React.FC = () => {
         </>
     );
 
+    const oldTotalExpense = invoiceToEdit?.expenses
+        ? invoiceToEdit.expenses.reduce((sum: number, e: any) => sum + (Number(e.amount) || 0), 0)
+        : Number(invoiceToEdit?.extraExpenseAmount || 0);
+
     const calculatedOriginalTotal = invoiceToEdit ?
         (Number(invoiceToEdit.totalAmount ?? invoiceToEdit.amount ?? 0) +
             Number(invoiceToEdit.manualDiscount || 0) -
-            Number(invoiceToEdit.extraExpenseAmount || 0))
+            oldTotalExpense)
         : undefined;
 
     if (isCardView) {
@@ -2373,8 +2366,7 @@ const Sales: React.FC = () => {
                     initialShippingNumber={isEditMode ? invoiceToEdit?.shippingNumber : ''}
                     initialShippingAddress={isEditMode ? invoiceToEdit?.shippingAddress : ''}
                     initialShippingGST={isEditMode ? invoiceToEdit?.shippingGST : ''}
-                    initialExpenseName={isEditMode ? invoiceToEdit?.extraExpenseName : ''}
-                    initialExpenseAmount={isEditMode ? invoiceToEdit?.extraExpenseAmount : ''}
+                    initialExpenses={isEditMode ? (invoiceToEdit?.expenses || (invoiceToEdit?.extraExpenseName ? [{ name: invoiceToEdit.extraExpenseName, amount: invoiceToEdit.extraExpenseAmount }] : [])) : []}
                     initialNarration={isEditMode ? invoiceToEdit?.narration : ''}
                     enableShippingDetails={salesSettings?.enableShippingDetails}
                     enableExtraExpense={salesSettings?.enableExtraExpense}
@@ -2740,8 +2732,7 @@ const Sales: React.FC = () => {
                 initialShippingNumber={isEditMode ? invoiceToEdit?.shippingNumber : ''}
                 initialShippingAddress={isEditMode ? invoiceToEdit?.shippingAddress : ''}
                 initialShippingGST={isEditMode ? invoiceToEdit?.shippingGST : ''}
-                initialExpenseName={isEditMode ? invoiceToEdit?.extraExpenseName : ''}
-                initialExpenseAmount={isEditMode ? invoiceToEdit?.extraExpenseAmount : ''}
+                initialExpenses={isEditMode ? (invoiceToEdit?.expenses || (invoiceToEdit?.extraExpenseName ? [{ name: invoiceToEdit.extraExpenseName, amount: invoiceToEdit.extraExpenseAmount }] : [])) : []}
                 initialNarration={isEditMode ? invoiceToEdit?.narration : ''}
                 enableShippingDetails={salesSettings?.enableShippingDetails}
                 enableExtraExpense={salesSettings?.enableExtraExpense}

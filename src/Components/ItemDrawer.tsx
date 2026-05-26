@@ -19,6 +19,34 @@ interface ItemEditDrawerProps {
     onSaveSuccess: (updatedItem: Partial<Item>) => void;
 }
 
+// Brought over the formatImageUrl function from ItemAdd to ensure Drive/Dropbox links work seamlessly
+const formatImageUrl = (url: string | null | undefined): string | null => {
+    if (!url) return null;
+    let cleanUrl = url.trim();
+
+    if (cleanUrl.includes('drive.google.com')) {
+        let fileId = null;
+        const matchFileD = cleanUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+
+        if (matchFileD) {
+            fileId = matchFileD[1];
+        } else {
+            const matchIdParam = cleanUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+            if (matchIdParam) fileId = matchIdParam[1];
+        }
+
+        if (fileId) {
+            return `https://lh3.googleusercontent.com/d/$${fileId}`;
+        }
+    }
+
+    if (cleanUrl.includes('dropbox.com')) {
+        return cleanUrl.replace('dl=0', 'raw=1').replace('www.dropbox.com', 'dl.dropboxusercontent.com');
+    }
+
+    return cleanUrl;
+};
+
 const ImagePreview: React.FC<{ imageUrl: string | null; alt: string }> = ({ imageUrl, alt }) => {
     if (!imageUrl) {
         return (
@@ -35,6 +63,7 @@ const ImagePreview: React.FC<{ imageUrl: string | null; alt: string }> = ({ imag
         />
     );
 };
+
 const UNIT_OPTIONS = [
     { value: '', label: 'Select Unit' },
     { value: 'pcs', label: 'Pieces (1)' },
@@ -47,6 +76,7 @@ const UNIT_OPTIONS = [
 
 export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, onClose, onSaveSuccess }) => {
     const cameraInputRef = useRef<HTMLInputElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null); // Added ref for the standard file input
     const dbOperations = useDatabase();
     const [formData, setFormData] = useState<Partial<Item>>({});
     const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -83,6 +113,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
         };
         fetchGroups();
     }, [isOpen, dbOperations]);
+
     useEffect(() => {
         const loadAllItems = async () => {
             if (isOpen && dbOperations) {
@@ -96,6 +127,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
         };
         loadAllItems();
     }, [isOpen, dbOperations]);
+
     useEffect(() => {
         const fetchLiveItemData = async () => {
             if (isOpen && item && item.id && item.companyId) {
@@ -133,67 +165,62 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                         packetSize: (liveData as any).packetSize ?? undefined,
                         moq: (liveData as any).moq ?? 1,
                     });
-                    // BFS: traverse in both directions (forward via variants[], backward via allItemsForVariants)
-const rawVariants: string[] = (liveData as any).variants || [];
 
-const visited = new Set<string>([item.id!]);
-const fullGroupSet = new Set<string>();
-const queue: string[] = [...rawVariants];
+                    const rawVariants: string[] = (liveData as any).variants || [];
+                    const visited = new Set<string>([item.id!]);
+                    const fullGroupSet = new Set<string>();
+                    const queue: string[] = [...rawVariants];
 
-// Also seed the queue with any item in allItemsForVariants that references current item
-// (backward links that weren't in liveData.variants)
-allItemsForVariants.forEach((candidate: any) => {
-    const candidateVariants: string[] = candidate.variants || [];
-    if (
-        candidate.id &&
-        candidate.id !== item.id &&
-        candidateVariants.map(String).includes(String(item.id))
-    ) {
-        if (!visited.has(String(candidate.id))) {
-            queue.push(String(candidate.id));
-        }
-    }
-});
+                    allItemsForVariants.forEach((candidate: any) => {
+                        const candidateVariants: string[] = candidate.variants || [];
+                        if (
+                            candidate.id &&
+                            candidate.id !== item.id &&
+                            candidateVariants.map(String).includes(String(item.id))
+                        ) {
+                            if (!visited.has(String(candidate.id))) {
+                                queue.push(String(candidate.id));
+                            }
+                        }
+                    });
 
-if (queue.length > 0 && item.companyId) {
-    while (queue.length > 0) {
-        const batch = queue.splice(0, queue.length);
-        await Promise.all(batch.map(async (vid: string) => {
-            if (visited.has(vid)) return;
-            visited.add(vid);
+                    if (queue.length > 0 && item.companyId) {
+                        while (queue.length > 0) {
+                            const batch = queue.splice(0, queue.length);
+                            await Promise.all(batch.map(async (vid: string) => {
+                                if (visited.has(vid)) return;
+                                visited.add(vid);
 
-            try {
-                const vRef = doc(db, 'companies', item.companyId!, 'items', vid);
-                const vSnap = await getDoc(vRef);
-                if (!vSnap.exists()) return;
+                                try {
+                                    const vRef = doc(db, 'companies', item.companyId!, 'items', vid);
+                                    const vSnap = await getDoc(vRef);
+                                    if (!vSnap.exists()) return;
 
-                fullGroupSet.add(vid);
+                                    fullGroupSet.add(vid);
 
-                // Forward: follow this variant's own variants
-                const vVariants: string[] = vSnap.data().variants || [];
-                vVariants.forEach((id: string) => {
-                    if (!visited.has(id)) queue.push(id);
-                });
+                                    const vVariants: string[] = vSnap.data().variants || [];
+                                    vVariants.forEach((id: string) => {
+                                        if (!visited.has(id)) queue.push(id);
+                                    });
 
-                // Backward: find any item in allItemsForVariants that points to vid
-                allItemsForVariants.forEach((candidate: any) => {
-                    const candidateVariants: string[] = (candidate.variants || []).map(String);
-                    if (
-                        candidate.id &&
-                        !visited.has(String(candidate.id)) &&
-                        candidateVariants.includes(vid)
-                    ) {
-                        queue.push(String(candidate.id));
+                                    allItemsForVariants.forEach((candidate: any) => {
+                                        const candidateVariants: string[] = (candidate.variants || []).map(String);
+                                        if (
+                                            candidate.id &&
+                                            !visited.has(String(candidate.id)) &&
+                                            candidateVariants.includes(vid)
+                                        ) {
+                                            queue.push(String(candidate.id));
+                                        }
+                                    });
+                                } catch (e) {
+                                    console.error("Failed to fetch variant doc", vid, e);
+                                }
+                            }));
+                        }
                     }
-                });
-            } catch (e) {
-                console.error("Failed to fetch variant doc", vid, e);
-            }
-        }));
-    }
-}
 
-setVariantIds(Array.from(fullGroupSet));
+                    setVariantIds(Array.from(fullGroupSet));
                     setImagePreview(liveData.imageUrl || null);
                     setImageFile(null);
                     setUploadProgress(null);
@@ -206,7 +233,7 @@ setVariantIds(Array.from(fullGroupSet));
 
                 } catch (err) {
                     console.error("Error fetching live item data:", err);
-                    setModal({ message: "Failed to load latest item details.", type: State.ERROR }); // <-- Changed
+                    setModal({ message: "Failed to load latest item details.", type: State.ERROR });
                 } finally {
                     setIsFetching(false);
                 }
@@ -281,7 +308,6 @@ setVariantIds(Array.from(fullGroupSet));
             return;
         }
 
-        // VALIDATION: Prevent saving if both MRP and Sales Price are 0
         const currentMRP = Number(formData.mrp || 0);
         const currentSalesPrice = Number(formData.salesPrice || 0);
 
@@ -301,7 +327,8 @@ setVariantIds(Array.from(fullGroupSet));
         setUploadProgress(null);
 
         try {
-            let newImageUrl = formData.imageUrl || null;
+            // Apply formatting logic in case user pasted a raw Drive/Dropbox link
+            let newImageUrl = formData.imageUrl ? formatImageUrl(formData.imageUrl) : null;
 
             if (imageFile) {
                 if (!storage) throw new Error("Firebase Storage is not initialized.");
@@ -363,10 +390,11 @@ setVariantIds(Array.from(fullGroupSet));
             };
 
             await dbOperations.updateItem(item.id, dataToUpdate);
-            // Sync variants bidirectionally
+
             const previousVariantIds: string[] = (item as any).variants || [];
             const allVariantIds = Array.from(new Set([...variantIds, ...previousVariantIds]));
             const fullGroup = Array.from(new Set([item.id, ...variantIds]));
+
             for (const variantId of allVariantIds) {
                 if (variantId === item.id) continue;
 
@@ -380,11 +408,9 @@ setVariantIds(Array.from(fullGroupSet));
                 let updatedVariants: string[];
 
                 if (variantIds.includes(variantId)) {
-                    // Still in the group — its variants should be everyone in fullGroup except itself
                     const groupForThisVariant = fullGroup.filter(id => id !== variantId);
-                    updatedVariants = groupForThisVariant; // Replace entirely, don't merge with stale data
+                    updatedVariants = groupForThisVariant;
                 } else {
-                    // Removed from group — strip current item AND all current group members from its list
                     updatedVariants = existingVariants.filter(id => !fullGroup.includes(id));
                 }
 
@@ -413,7 +439,6 @@ setVariantIds(Array.from(fullGroupSet));
     const overlayClasses = isOpen
         ? 'opacity-100 bg-black/60'
         : 'opacity-0 bg-transparent pointer-events-none';
-
 
     const getUnitLabel = () => {
         if (formData.unit === 'box') return '10 pcs';
@@ -480,11 +505,12 @@ setVariantIds(Array.from(fullGroupSet));
                                     className="hidden"
                                 />
 
-                                <div className='flex'>
+                                <div className='flex items-center gap-2'>
                                     <input
                                         type="file"
                                         accept="image/png, image/jpeg"
                                         onChange={handleFileChange}
+                                        ref={fileInputRef}
                                         className="mt-2 text-sm w-full file:mr-4 file:py-2 file:px-4 file:rounded-sm file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                                         disabled={isSaving}
                                     />
@@ -492,12 +518,47 @@ setVariantIds(Array.from(fullGroupSet));
                                     <button
                                         type="button"
                                         onClick={() => cameraInputRef.current?.click()}
-                                        className="p-2 rounded bg-green-100 hover:bg-green-200 mt-2 cursor-pointer"
+                                        className="p-2 rounded bg-green-100 hover:bg-green-200 mt-2 cursor-pointer shrink-0"
                                     >
                                         <FiCamera size={20} />
                                     </button>
-
                                 </div>
+
+                                {/* NEW URL INPUT SECTION */}
+                                <div className="mt-4">
+                                    <label className="text-sm font-medium leading-none mb-1 block">Or paste Image URL</label>
+                                    <input
+                                        type="text"
+                                        name="imageUrl"
+                                        value={formData.imageUrl || ''}
+                                        onChange={(e) => {
+                                            const url = e.target.value;
+                                            setFormData(prev => ({ ...prev, imageUrl: url }));
+                                            if (!imageFile) {
+                                                setImagePreview(url);
+                                            }
+                                        }}
+                                        disabled={!!imageFile || isSaving}
+                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        placeholder="https://example.com/image.jpg"
+                                    />
+                                </div>
+
+                                {/* OPTION TO REMOVE LOCAL FILE IF SELECTED */}
+                                {imageFile && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setImageFile(null);
+                                            setImagePreview(formData.imageUrl || null);
+                                            if (cameraInputRef.current) cameraInputRef.current.value = '';
+                                            if (fileInputRef.current) fileInputRef.current.value = '';
+                                        }}
+                                        className="text-xs text-red-500 hover:underline mt-2 block"
+                                    >
+                                        Remove Selected File
+                                    </button>
+                                )}
                             </div>
 
                             <div>
@@ -510,7 +571,6 @@ setVariantIds(Array.from(fullGroupSet));
                                     disabled={isSaving}
                                 />
                             </div>
-
 
                             {/* --- Pricing Row --- */}
 
@@ -538,8 +598,6 @@ setVariantIds(Array.from(fullGroupSet));
                                         disabled={isSaving}
                                     />
                                 </div>
-
-
 
                                 {/* --- Sales Price --- */}
                                 <div>
@@ -655,7 +713,6 @@ setVariantIds(Array.from(fullGroupSet));
                                             value={formData.unit || ''}
                                             onChange={(e) => {
                                                 handleChange(e);
-                                                // Clear the packet size if they switch away from 'pkt'
                                                 if (e.target.value !== 'pkt') {
                                                     setFormData(prev => ({ ...prev, packetSize: undefined }));
                                                 }
@@ -852,7 +909,6 @@ setVariantIds(Array.from(fullGroupSet));
                         </button>
                     </div>
                 </div>
-
             </div>
         </div>
     );

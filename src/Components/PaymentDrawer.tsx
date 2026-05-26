@@ -20,6 +20,11 @@ import { useAuth } from '../context/auth-context';
 
 export interface PaymentDetails { [key: string]: number; }
 
+export interface ExpenseItem {
+    name: string;
+    amount: number;
+}
+
 export interface PaymentCompletionData {
     paymentDetails: PaymentDetails;
     partyName: string;
@@ -36,8 +41,7 @@ export interface PaymentCompletionData {
     shippingNumber?: string;
     shippingAddress?: string;
     shippingGST?: string;
-    extraExpenseName?: string;
-    extraExpenseAmount?: number;
+    expenses?: ExpenseItem[];
     narration?: string;
 }
 
@@ -64,8 +68,7 @@ interface PaymentDrawerProps {
     initialShippingNumber?: string;
     initialShippingAddress?: string;
     initialShippingGST?: string;
-    initialExpenseName?: string;
-    initialExpenseAmount?: number;
+    initialExpenses?: ExpenseItem[];
     initialNarration?: string;
     enableShippingDetails?: boolean;
     enableExtraExpense?: boolean;
@@ -113,8 +116,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     initialShippingNumber,
     initialShippingAddress,
     initialShippingGST,
-    initialExpenseName,
-    initialExpenseAmount,
+    initialExpenses,
     initialNarration,
     enableShippingDetails = false,
     enableExtraExpense = false,
@@ -243,8 +245,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         setShippingAddress(initialShippingAddress || '');
         setShippingGST(initialShippingGST || '');
         setExpenses(
-            initialExpenseName
-                ? [{ id: Date.now(), name: initialExpenseName, amount: initialExpenseAmount || '' }]
+            initialExpenses && initialExpenses.length > 0
+                ? initialExpenses.map((e, index) => ({ id: Date.now() + index, name: e.name, amount: e.amount }))
                 : []
         );
         setNarration(initialNarration || '');
@@ -295,7 +297,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         if (isSale && initialNumber) searchParty(initialNumber, 'number');
         if (!isSale && initialName) searchParty(initialName, 'name');
 
-    }, [isOpen, mode, billTotal, initialDiscount, originalBillTotal, initialPartyName, initialPartyNumber, initialPartyAddress, initialPartyGST, initialShippingName, initialShippingNumber, initialShippingAddress, initialShippingGST, initialExpenseName, initialExpenseAmount, initialNarration]);
+    }, [isOpen, mode, billTotal, initialDiscount, originalBillTotal, initialPartyName, initialPartyNumber, initialPartyAddress, initialPartyGST, initialShippingName, initialShippingNumber, initialShippingAddress, initialShippingGST, initialNarration]);
 
     useEffect(() => {
         if (isOpen && !isSubmitting && shouldSaveToLocalStorage.current) {
@@ -487,7 +489,12 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             const safeShippingNumber = shippingNumber ? shippingNumber.trim() : '';
             const safeShippingAddress = shippingAddress ? shippingAddress.trim() : '';
             const safeShippingGST = shippingGST ? shippingGST.trim() : '';
-            const safeExpenseName = expenses.map(e => e.name.trim()).filter(Boolean).join(', ');
+            const formattedExpenses = expenses
+                .filter(e => e.name.trim() || e.amount) // Only keep rows where the user actually typed something
+                .map(e => ({
+                    name: e.name.trim(),
+                    amount: parseFloat(e.amount.toString()) || 0
+                }));
             const safeNarration = narration ? narration.trim() : '';
 
             await onPaymentComplete({
@@ -505,8 +512,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 shippingNumber: safeShippingNumber,
                 shippingAddress: safeShippingAddress,
                 shippingGST: safeShippingGST,
-                extraExpenseName: safeExpenseName,
-                extraExpenseAmount: parsedExpense || 0,
+                expenses: formattedExpenses, // <-- Add this
                 narration: safeNarration,
             });
 

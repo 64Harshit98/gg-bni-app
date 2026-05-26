@@ -103,6 +103,7 @@ interface Invoice {
   shippingNumber?: string;
   shippingAddress?: string;
   shippingGST?: string;
+  expenses?: { name: string; amount: number }[];
   extraExpenseName?: string;
   extraExpenseAmount?: number;
   narration?: string;
@@ -135,6 +136,7 @@ interface PdfData {
     phone: string;
     gstin?: string;
   };
+  expenses: { name: string; amount: number }[];
   extraExpenseName?: string;
   extraExpenseAmount?: number;
   narration?: string;
@@ -284,6 +286,7 @@ const useJournalData = (companyId?: string) => {
           shippingNumber: data.shippingNumber || '',
           shippingAddress: data.shippingAddress || '',
           shippingGST: data.shippingGST || '',
+          expenses: data.expenses || [],
           extraExpenseName: data.extraExpenseName || '',
           extraExpenseAmount: Number(data.extraExpenseAmount) || 0,
           narration: data.narration || '',
@@ -675,6 +678,7 @@ const Journal: React.FC = () => {
         phone: invoice.shippingNumber || '',
         gstin: invoice.shippingGST || '',
       },
+      expenses: invoice.expenses || [],
       extraExpenseName: invoice.extraExpenseName || '',
       extraExpenseAmount: invoice.extraExpenseAmount || 0,
       narration: invoice.narration || '',
@@ -1383,7 +1387,16 @@ const Journal: React.FC = () => {
                 ) : null}
 
                 {/* --- NEW: EXTRA EXPENSE ROW --- */}
-                {invoice.extraExpenseAmount && invoice.extraExpenseAmount > 0 ? (
+                {invoice.expenses && invoice.expenses.length > 0 ? (
+                  invoice.expenses.map((expense, idx) => (
+                    <div key={`exp-${idx}`} className="flex justify-between items-center mt-1 pt-1.5 border-t border-slate-200">
+                      <p className="text-xs font-medium text-slate-400">{expense.name || 'Extra Expense'}</p>
+                      <p className="text-xs font-semibold text-orange-500">
+                        + {Number(expense.amount).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+                      </p>
+                    </div>
+                  ))
+                ) : (invoice.extraExpenseAmount && invoice.extraExpenseAmount > 0) ? (
                   <div className="flex justify-between items-center mt-1 pt-1.5 border-t border-slate-200">
                     <p className="text-xs font-medium text-slate-400">{invoice.extraExpenseName || 'Extra Expense'}</p>
                     <p className="text-xs font-semibold text-orange-500">

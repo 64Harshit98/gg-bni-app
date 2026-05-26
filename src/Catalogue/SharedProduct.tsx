@@ -27,6 +27,40 @@ const generateSlug = (name: string) => {
         .replace(/[^a-z0-9-]/g, "");
 };
 
+const getEffectivePriceInfo = (item: Item) => {
+    const mrp = Number(item.mrp || 0);
+    const itemSalesPrice = Number(item.salesPrice || 0);
+    const presetDiscount = Number(item.discount || 0);
+
+    let salePrice = 0;
+    let calculatedDiscount = 0;
+
+    if (mrp > 0 && itemSalesPrice > 0) {
+        // Case 1: Both exist. Ignore DB discount. Calculate diff.
+        salePrice = itemSalesPrice;
+        calculatedDiscount = ((mrp - itemSalesPrice) / mrp) * 100;
+    } else if (itemSalesPrice > 0) {
+        // Case 2: Only Sales Price exists. Apply DB discount.
+        calculatedDiscount = presetDiscount;
+        salePrice = itemSalesPrice * (1 - (presetDiscount / 100));
+    } else if (mrp > 0) {
+        // Case 3: Only MRP exists. Apply DB discount.
+        calculatedDiscount = presetDiscount;
+        salePrice = mrp * (1 - (presetDiscount / 100));
+    }
+
+    // Round to 2 decimal places to ensure clean UI numbers
+    salePrice = Math.round((salePrice + Number.EPSILON) * 100) / 100;
+
+    return {
+        mrp,
+        salePrice,
+        discountPercent: Math.round(calculatedDiscount),
+        hasDiscount: calculatedDiscount > 0,
+        hasBothPrices: mrp > 0 && salePrice > 0 && salePrice < mrp
+    };
+};
+
 const SharedProduct: React.FC = () => {
     const navigate = useNavigate();
     const { companyId: pathId, groupId: groupSlug } = useParams<{
@@ -110,7 +144,7 @@ const SharedProduct: React.FC = () => {
     const [_isLeadFilled, setIsLeadFilled] = useState(false);
     const [forceLeadOpen, setForceLeadOpen] = useState(false);
     const [selectedItemForDetails, setSelectedItemForDetails] = useState<Item | null>(null);
-     const [variantGroupIds, setVariantGroupIds] = useState<string[]>([]);
+    const [variantGroupIds, setVariantGroupIds] = useState<string[]>([]);
     const [socialLinks, setSocialLinks] = useState<any>({});
     const observerRef = useRef<IntersectionObserver | null>(null);
     const loadMoreRef = useRef<HTMLDivElement | null>(null);
@@ -169,8 +203,8 @@ const SharedProduct: React.FC = () => {
 
     const cartTotal = useMemo(() => {
         return cart.reduce((acc, curr) => {
-            const price = curr.item?.salesPrice || curr.item?.mrp || 0;
-            return acc + price * curr.quantity;
+            const { salePrice } = getEffectivePriceInfo(curr.item);
+            return acc + salePrice * curr.quantity;
         }, 0);
     }, [cart]);
 
@@ -243,8 +277,7 @@ const SharedProduct: React.FC = () => {
 
             const itemsForFirebase = updatedCart.map(c => {
                 const multiplier = c.item.unitMultiplier ?? 1;
-                const basePrice = (c.item.salesPrice ?? c.item.mrp) || 0;
-                const salePrice = basePrice
+                const { salePrice, mrp } = getEffectivePriceInfo(c.item);
 
                 return {
                     id: String(c.item.id),
@@ -252,7 +285,7 @@ const SharedProduct: React.FC = () => {
                     name: c.item.name,
                     quantity: c.quantity,
 
-                    mrp: c.item.mrp || 0,
+                    mrp: mrp,
                     salesPrice: salePrice,
 
                     unit: c.item.unit,
@@ -384,17 +417,16 @@ const SharedProduct: React.FC = () => {
         // lead filled → cart allow
         setCart(prev => {
             const existing = prev.find(i => i.item.id === item.id);
-
             const moqQty = (item as any).moq || 1;
+            const { salePrice, mrp } = getEffectivePriceInfo(item);
 
-            // const multiplier = (item as any).unitMultiplier || 1;
             const itemWithPrice = {
                 ...item,
                 tax: Number(item.tax ?? 0),
                 unit: item.unit,
                 unitMultiplier: item.unitMultiplier || 1,
-                mrp: (item.mrp || 0),
-                salesPrice: ((item.salesPrice ?? item.mrp) || 0),
+                mrp: mrp,
+                salesPrice: salePrice,
                 groupid: resolvedGroupId || item.itemGroupId,
             };
             const newCart = existing
@@ -936,66 +968,66 @@ const SharedProduct: React.FC = () => {
     }, [resolvedGroupId])
 
     const resolveVariantGroup = (item: Item): string[] => {
-    const itemId = String(item.id!);
+        const itemId = String(item.id!);
 
-    // Only consider listed items for public catalogue
-    const listedItems = allItems.filter(i => i.isListed === true);
+        // Only consider listed items for public catalogue
+        const listedItems = allItems.filter(i => i.isListed === true);
 
-    const findTrueRoot = (startId: string): Item | null => {
-        const visited = new Set<string>();
-        const queue = [startId];
-        let bestRoot: Item | null = null;
-        let bestCount = -1;
+        const findTrueRoot = (startId: string): Item | null => {
+            const visited = new Set<string>();
+            const queue = [startId];
+            let bestRoot: Item | null = null;
+            let bestCount = -1;
 
-        while (queue.length > 0) {
-            const currentId = queue.shift()!;
-            if (visited.has(currentId)) continue;
-            visited.add(currentId);
+            while (queue.length > 0) {
+                const currentId = queue.shift()!;
+                if (visited.has(currentId)) continue;
+                visited.add(currentId);
 
-            const currentItem = listedItems.find(i => String(i.id) === currentId);
-            if (!currentItem) continue;
+                const currentItem = listedItems.find(i => String(i.id) === currentId);
+                if (!currentItem) continue;
 
-            const currentVariants: string[] = ((currentItem as any).variants || [])
-                .map(String)
-                // Only include variants that are listed
-                .filter((vid: string) => listedItems.some(i => String(i.id) === vid));
+                const currentVariants: string[] = ((currentItem as any).variants || [])
+                    .map(String)
+                    // Only include variants that are listed
+                    .filter((vid: string) => listedItems.some(i => String(i.id) === vid));
 
-            if (currentVariants.length > bestCount) {
-                bestCount = currentVariants.length;
-                bestRoot = currentItem;
+                if (currentVariants.length > bestCount) {
+                    bestCount = currentVariants.length;
+                    bestRoot = currentItem;
+                }
+
+                currentVariants.forEach((vid: string) => { if (!visited.has(vid)) queue.push(vid); });
+
+                listedItems.forEach(i => {
+                    const iVariants: string[] = ((i as any).variants || []).map(String);
+                    if (iVariants.includes(currentId) && !visited.has(String(i.id))) {
+                        queue.push(String(i.id));
+                    }
+                });
             }
 
-            currentVariants.forEach((vid: string) => { if (!visited.has(vid)) queue.push(vid); });
+            return bestRoot;
+        };
 
-            listedItems.forEach(i => {
-                const iVariants: string[] = ((i as any).variants || []).map(String);
-                if (iVariants.includes(currentId) && !visited.has(String(i.id))) {
-                    queue.push(String(i.id));
-                }
-            });
+        const trueRoot = findTrueRoot(itemId);
+        if (trueRoot) {
+            const rootId = String(trueRoot.id!);
+            const rootVariants: string[] = ((trueRoot as any).variants || [])
+                .map(String)
+                // Final filter: only return IDs of listed items
+                .filter((vid: string) => listedItems.some(i => String(i.id) === vid));
+            return [rootId, ...rootVariants];
         }
 
-        return bestRoot;
+        return [itemId];
     };
 
-    const trueRoot = findTrueRoot(itemId);
-    if (trueRoot) {
-        const rootId = String(trueRoot.id!);
-        const rootVariants: string[] = ((trueRoot as any).variants || [])
-            .map(String)
-            // Final filter: only return IDs of listed items
-            .filter((vid: string) => listedItems.some(i => String(i.id) === vid));
-        return [rootId, ...rootVariants];
-    }
-
-    return [itemId];
-};
-
-const handleOpenDetailDrawer = (item: Item) => {
-    setSelectedItemForDetails(item);
-    setVariantGroupIds(resolveVariantGroup(item));
-    setIsDetailDrawerOpen(true);
-};
+    const handleOpenDetailDrawer = (item: Item) => {
+        setSelectedItemForDetails(item);
+        setVariantGroupIds(resolveVariantGroup(item));
+        setIsDetailDrawerOpen(true);
+    };
 
     if (domainResolveError) {
         return (
@@ -1233,16 +1265,7 @@ const handleOpenDetailDrawer = (item: Item) => {
                             (item.stock || 0) <= 0;
                         const showNotifyButton = catalogueSettings?.enableOutOfStockNotification && isOutOfStock;
                         const disableAddToCart = isOutOfStock;
-                        const basePrice = item.salesPrice || item.mrp;
-                        // const multiplier = (item as any).unitMultiplier || 1;
-                        const salePrice = basePrice
-                        const mrp = (item.mrp || 0)
-                        const hasBothPrices =
-                            item.salesPrice &&
-                            item.mrp &&
-                            item.salesPrice < item.mrp;
-                        const hasDiscount = salePrice < mrp;
-                        const discountPercent = mrp && hasDiscount ? Math.round(((mrp - salePrice) / mrp) * 100) : 0;
+                        const { mrp, salePrice, discountPercent, hasDiscount, hasBothPrices } = getEffectivePriceInfo(item);
                         const showDiscountBadge = !hidePriceEnabled && catalogueSettings?.showDiscountBadge && hasDiscount;
                         return (
                             <div

@@ -62,6 +62,40 @@ const QuickListedToggle: React.FC<QuickListedToggleProps> = ({ itemId, isListed,
 };
 
 const ITEMS_PER_BATCH_RENDER = 24;
+// --- NEW 3-TIER LOGIC HELPER ---
+const getEffectivePriceInfo = (item: Item) => {
+    const mrp = Number(item.mrp || 0);
+    const itemSalesPrice = Number(item.salesPrice || 0);
+    const presetDiscount = Number(item.discount || 0);
+
+    let salePrice = 0;
+    let calculatedDiscount = 0;
+
+    if (mrp > 0 && itemSalesPrice > 0) {
+        // Case 1: Both exist. Ignore DB discount. Calculate diff.
+        salePrice = itemSalesPrice;
+        calculatedDiscount = ((mrp - itemSalesPrice) / mrp) * 100;
+    } else if (itemSalesPrice > 0) {
+        // Case 2: Only Sales Price exists. Apply DB discount.
+        calculatedDiscount = presetDiscount;
+        salePrice = itemSalesPrice * (1 - (presetDiscount / 100));
+    } else if (mrp > 0) {
+        // Case 3: Only MRP exists. Apply DB discount.
+        calculatedDiscount = presetDiscount;
+        salePrice = mrp * (1 - (presetDiscount / 100));
+    }
+
+    // Round to 2 decimal places to ensure clean UI numbers
+    salePrice = Math.round((salePrice + Number.EPSILON) * 100) / 100;
+
+    return {
+        mrp,
+        salePrice,
+        discountPercent: Math.round(calculatedDiscount),
+        hasDiscount: calculatedDiscount > 0,
+        hasBothPrices: mrp > 0 && salePrice > 0 && salePrice < mrp
+    };
+};
 
 const MyShop: React.FC = () => {
     const navigate = useNavigate();
@@ -240,8 +274,8 @@ const MyShop: React.FC = () => {
 
     const cartTotal = useMemo(() =>
         cart.reduce((acc, curr) => {
-            const basePrice = curr.item.salesPrice || curr.item.mrp || 0;
-            return acc + basePrice * curr.quantity;
+            const { salePrice } = getEffectivePriceInfo(curr.item);
+            return acc + salePrice * curr.quantity;
         }, 0),
         [cart]
     );
@@ -799,20 +833,9 @@ const MyShop: React.FC = () => {
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1">
                     {itemsToDisplay.map((item) => {
-                        const basePrice = item.salesPrice || item.mrp;
+                        const { mrp, salePrice, discountPercent, hasDiscount, hasBothPrices } = getEffectivePriceInfo(item);
                         const multiplier = (item as any).unitMultiplier || 1;
-                        const salePrice = basePrice;
-                        const mrp = (item.mrp || 0);
-                        const hasBothPrices =
-                            item.salesPrice &&
-                            item.mrp &&
-                            item.salesPrice < item.mrp;
-
-                        const hasDiscount = salePrice < mrp;
-                        const discountPercent = mrp && hasDiscount ? Math.round(((mrp - salePrice) / mrp) * 100) : 0;
-                        const showDiscountBadge =
-                            catalogueSettings?.showDiscountBadge &&
-                            hasDiscount;
+                        const showDiscountBadge = catalogueSettings?.showDiscountBadge && hasDiscount;
 
                         return (
                             <div
@@ -973,7 +996,14 @@ const MyShop: React.FC = () => {
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <h4 className="text-[10px] font-black text-[#F97316] uppercase truncate">{item.name}</h4>
-                                            <p className="text-xs font-black text-[#1A3B5D]">₹{item.mrp}</p>
+                                            <p className="text-xs font-black text-[#1A3B5D]">
+                                                ₹{getEffectivePriceInfo(item).salePrice}
+                                                {getEffectivePriceInfo(item).hasBothPrices && (
+                                                    <span className="text-[10px] text-gray-400 line-through ml-1.5">
+                                                        ₹{getEffectivePriceInfo(item).mrp}
+                                                    </span>
+                                                )}
+                                            </p>
                                             <div className="flex items-center gap-3 mt-2">
                                                 <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-sm px-2 py-1">
                                                     <button onClick={() => updateQuantity(item.id!, -1)} className="text-gray-400 hover:text-[#F97316]"><Minus size={14} /></button>

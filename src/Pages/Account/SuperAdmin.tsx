@@ -29,6 +29,9 @@ interface CompanyData {
   id: string;
   name: string;
   ownerName?: string;
+  email?: string;
+  phone?: string;
+  lastLogin?: any;
   pack: string;
   validity: 'active' | 'inactive';
   expiryDate?: any;
@@ -45,7 +48,7 @@ const SuperAdminCompanies: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null); // NEW STATE
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({
     pack: 'free',
     validity: 'active' as 'active' | 'inactive',
@@ -71,7 +74,7 @@ const SuperAdminCompanies: React.FC = () => {
 
     if (!confirmDelete) return;
 
-    setDeletingId(companyId); // UPDATE: Use specific deletion state
+    setDeletingId(companyId);
     try {
       const functions = getFunctions();
       const deleteCompanyData = httpsCallable(functions, 'deleteCompanyData');
@@ -79,7 +82,6 @@ const SuperAdminCompanies: React.FC = () => {
       const result = await deleteCompanyData({ companyId });
       console.log((result.data as any).message);
 
-      // Remove the company from the local state
       setCompanies(prev => prev.filter(c => c.id !== companyId));
       setEditingId(null);
       alert("Company and users successfully deleted.");
@@ -88,41 +90,60 @@ const SuperAdminCompanies: React.FC = () => {
       console.error(err);
       alert(`Failed to delete company: ${err.message}`);
     } finally {
-      setDeletingId(null); // UPDATE: Reset state
+      setDeletingId(null);
     }
   };
+
   // ── Fetch ──────────────────────────────────────────────
   useEffect(() => {
     const fetchCompanies = async () => {
       try {
-        const usersQuery = await getDocs(collectionGroup(db, 'users'));
         const companyMap = new Map<string, CompanyData>();
 
-        usersQuery.forEach((userDoc) => {
-          const parentCompany = userDoc.ref.parent.parent;
-          if (parentCompany && !companyMap.has(parentCompany.id)) {
-            companyMap.set(parentCompany.id, {
-              id: parentCompany.id,
-              name: 'Unknown (Phantom)',
-              ownerName: 'Unknown',
-              pack: 'free',
-              validity: 'inactive',
-              expiryDate: null,
-            });
-          }
-        });
-
-        const realSnap = await getDocs(collection(db, 'companies'));
-        realSnap.forEach(d => {
+        // 1. Fetch Companies First (Primary Data)
+        const companiesSnap = await getDocs(collection(db, 'companies'));
+        companiesSnap.forEach(d => {
           const data = d.data();
           companyMap.set(d.id, {
             id: d.id,
             name: data.name || 'Unknown Company',
-            ownerName: data.ownerName || 'Unknown',
+            ownerName: 'Unknown', // Will be overwritten by User Doc
+            email: 'N/A',         // Will be overwritten by User Doc
+            phone: data.ownerPhoneNumber || 'N/A', // Base phone from company doc
+            lastLogin: data.createdAt || null,     // Fallback to company creation
             pack: data.pack || 'free',
             validity: data.validity || 'inactive',
             expiryDate: data.expiryDate,
           });
+        });
+
+        // 2. Fetch Users to get the specific "Owner" details
+        const usersQuery = await getDocs(collectionGroup(db, 'users'));
+        usersQuery.forEach((userDoc) => {
+          const userData = userDoc.data();
+          // Find the company ID (either from the document field or parent path)
+          const parentCompany = userDoc.ref.parent.parent;
+          const compId = userData.companyId || (parentCompany ? parentCompany.id : null);
+
+          if (compId && companyMap.has(compId)) {
+            // Check for Owner role (handling potential case variations)
+            if (userData.role === 'Owner' || userData.role === 'owner') {
+              const existing = companyMap.get(compId)!;
+
+              // Merge user data into the company state
+              if (userData.name) existing.ownerName = userData.name;
+              if (userData.email) existing.email = userData.email;
+              if (userData.phoneNumber) existing.phone = userData.phoneNumber;
+
+              // If you have a specific lastLogin field, map it here. 
+              // Otherwise it falls back to createdAt from the user doc.
+              if (userData.lastLogin || userData.createdAt) {
+                existing.lastLogin = userData.lastLogin || userData.createdAt;
+              }
+
+              companyMap.set(compId, existing);
+            }
+          }
         });
 
         setCompanies(Array.from(companyMap.values()));
@@ -143,11 +164,26 @@ const SuperAdminCompanies: React.FC = () => {
     const exp = company.expiryDate
       ? (company.expiryDate.toDate ? company.expiryDate.toDate() : new Date(company.expiryDate))
       : null;
+
+    // Check if pack includes "basic" or "free" for trial logic if needed
     if (company.pack === 'free') return 'trial';
     if (!exp || exp.getTime() < now.getTime()) return 'expired';
     const diff = exp.getTime() - now.getTime();
     if (diff <= soonMs) return 'near_expiry';
     return 'active';
+  };
+
+  const formatExpiry = (expiryDate: any) => {
+    if (!expiryDate) return null;
+    const d = expiryDate.toDate ? expiryDate.toDate() : new Date(expiryDate);
+    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  const formatDateTime = (timestamp: any) => {
+    if (!timestamp) return 'N/A';
+    const d = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    if (isNaN(d.getTime())) return 'N/A';
+    return d.toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
   // ── Stats ──────────────────────────────────────────────
@@ -228,13 +264,6 @@ const SuperAdminCompanies: React.FC = () => {
     }
   };
 
-
-  const formatExpiry = (expiryDate: any) => {
-    if (!expiryDate) return null;
-    const d = expiryDate.toDate ? expiryDate.toDate() : new Date(expiryDate);
-    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-  };
-
   const isExpiringSoon = (expiryDate: any) => {
     if (!expiryDate) return false;
     const d = expiryDate.toDate ? expiryDate.toDate() : new Date(expiryDate);
@@ -243,12 +272,11 @@ const SuperAdminCompanies: React.FC = () => {
   };
 
   const packBadge = (pack: string) => {
-    switch (pack) {
-      case 'platinum': return 'bg-purple-100 text-purple-700';
-      case 'gold': return 'bg-yellow-100 text-yellow-700';
-      case 'basic': return 'bg-blue-100 text-blue-700';
-      default: return 'bg-gray-100 text-gray-500';
-    }
+    const p = pack.toLowerCase();
+    if (p.includes('platinum')) return 'bg-purple-100 text-purple-700';
+    if (p.includes('gold')) return 'bg-yellow-100 text-yellow-700';
+    if (p.includes('basic')) return 'bg-blue-100 text-blue-700';
+    return 'bg-gray-100 text-gray-500';
   };
 
   const toggleFilter = (f: FilterType) =>
@@ -271,7 +299,6 @@ const SuperAdminCompanies: React.FC = () => {
           </svg>
         </button>
       </div>
-
 
       {/* ── FILTER CARDS ── */}
       <div className="grid grid-cols-2 gap-2 mb-4 md:grid-cols-4 md:gap-4">
@@ -347,7 +374,7 @@ const SuperAdminCompanies: React.FC = () => {
                       </h3>
                       {/* Pack badge */}
                       <span className={`text-[10px] px-2 py-0.5 rounded-sm font-bold uppercase ${packBadge(company.pack)}`}>
-                        {company.pack}
+                        {company.pack.replace('pos_', '')}
                       </span>
                       {/* Status badge */}
                       <span className={`text-[10px] px-2 py-0.5 rounded-sm font-bold uppercase ${getStatus(company) === 'expired'
@@ -387,9 +414,35 @@ const SuperAdminCompanies: React.FC = () => {
                   </div>
                 </div>
 
-                {/* ── Inline edit panel ── */}
+                {/* ── Inline edit panel & Contact Details ── */}
                 {isEditing && (
                   <div className="border-t border-gray-100 bg-gray-50 p-4">
+
+                    {/* Contact Info & Activity Section */}
+                    <div className="mb-5 p-3 bg-white border border-gray-200 rounded-sm shadow-sm">
+                      <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 border-b border-gray-100 pb-1">
+                        Owner Contact & Activity Details
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-4 text-sm">
+                        <div className="flex flex-col">
+                          <span className="text-[10px] text-gray-400 font-bold uppercase">Owner Name</span>
+                          <span className="text-gray-800 font-medium">{company.ownerName || 'N/A'}</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[10px] text-gray-400 font-bold uppercase">Email</span>
+                          <span className="text-blue-600 font-medium truncate">{company.email || 'N/A'}</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[10px] text-gray-400 font-bold uppercase">Phone Number</span>
+                          <span className="text-gray-800 font-medium">{company.phone || 'N/A'}</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[10px] text-gray-400 font-bold uppercase">Account Created / Last Activity</span>
+                          <span className="text-gray-800 font-medium">{formatDateTime(company.lastLogin)}</span>
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
 
                       {/* Plan */}
@@ -453,6 +506,7 @@ const SuperAdminCompanies: React.FC = () => {
                         </p>
                       </div>
                     </div>
+
                     <div className="flex flex-col sm:flex-row gap-3 mt-4">
                       <button
                         onClick={handleSave}
@@ -471,7 +525,6 @@ const SuperAdminCompanies: React.FC = () => {
                       >
                         {deletingId === company.id ? (
                           <>
-                            {/* Tailwind Spinner */}
                             <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>

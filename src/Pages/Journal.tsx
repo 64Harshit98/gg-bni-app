@@ -1510,12 +1510,29 @@ const Journal: React.FC = () => {
                   >
                     <IconDownload /> Download PDF
                   </button>
-                 <button
-                    onClick={() => setShowPrintSubMenu(true)}
-                    className="w-full bg-white text-gray-700 border border-gray-300 py-2.5 px-4 rounded-sm font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
-                  >
-                    <IconPrint /> Print
-                  </button>
+                  {isPosBasicPlan ? (
+                    <button
+                      onClick={() => {
+                        const inv = invoiceToPrint;
+                        setInvoiceToPrint(null);
+                        handlePdfAction(
+                          { ...inv, isEstimate: billType === 'estimate' } as any,
+                          ACTION.PRINT,
+                          false
+                        );
+                      }}
+                      className="w-full bg-white text-gray-700 border border-gray-300 py-2.5 px-4 rounded-sm font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <IconPrint /> Print
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setShowPrintSubMenu(true)}
+                      className="w-full bg-white text-gray-700 border border-gray-300 py-2.5 px-4 rounded-sm font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <IconPrint /> Print
+                    </button>
+                  )}
                   <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
                     <button onClick={() => handleShowQr(invoiceToPrint)} className="w-full bg-gray-900 text-white py-2.5 px-4 rounded-sm font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2">
                       <IconScanCircle width={20} height={20} /> Generate QR Code
@@ -1544,7 +1561,7 @@ const Journal: React.FC = () => {
           </div>
         </div>
       )}
-{showPrintSubMenu && invoiceToPrint && (
+      {!isPosBasicPlan && showPrintSubMenu && invoiceToPrint && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
           onClick={() => setShowPrintSubMenu(false)}

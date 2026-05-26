@@ -6,7 +6,8 @@ import type { InvoiceData } from "./pdfGenerator";
 export const generateA5Invoice = async (
     data: InvoiceData,
     isEstimate: boolean = false,
-    action: ACTION
+    action: ACTION,
+    withDuplicate: boolean = false
 ) => {
     const doc = new jsPDF("p", "mm", "a5"); // A5 Size
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -32,12 +33,21 @@ export const generateA5Invoice = async (
             typeof item.imageBase64 === "string" &&
             item.imageBase64.startsWith("data:image")
     );
-
+ // ================= DRAW PAGE HELPER =================
+    const drawPage = (isDuplicate: boolean = false) => {
+        if (isDuplicate) {
+            doc.addPage();
+        }
     // --- 1. HEADER ---
     const headerHeight = showGstinDetails && data.companyGstin ? 25 : 20;
     doc.setFillColor("#0c3b5e");
     doc.rect(0, 0, pageWidth, headerHeight, "F");
-
+    if (isDuplicate) {
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(200, 200, 200);
+        doc.text("DUPLICATE", pageWidth / 2, 5, { align: "center" });
+    }
     doc.setTextColor("#ffffff");
     doc.setFont("helvetica", "bold");
     doc.setFontSize(22);
@@ -262,359 +272,368 @@ export const generateA5Invoice = async (
     const finalTotalAmountToPrint = finalRoundTotal > 0
         ? finalRoundTotal
         : Number(data.finalAmount || 0);
-
-    // ================= ITEMS TABLE =================
-    autoTable(doc, {
-        startY: tableStartY,
-        margin: { left: 5, right: 5 },
-        tableWidth: 'auto',
-        rowPageBreak: 'avoid',
-        headStyles: {
-            fillColor: [255, 255, 255],
-            textColor: [0, 0, 0],
-            lineColor: [0, 0, 0],
-            lineWidth: 0.2,
-            halign: 'center',
-            valign: 'middle',
-            fontSize: 8,
-            fontStyle: 'normal'
-        },
-        bodyStyles: {
-            lineColor: [0, 0, 0],
-            lineWidth: 0.2,
-            textColor: [0, 0, 0],
-            fontSize: 8,
-            halign: 'center',
-            valign: 'middle',
-            minCellHeight: hasImages ? 18 : 10
-        },
-        columnStyles: hasImages
-            ? {
-                1: { cellWidth: 18, halign: "center" },
-                2: { halign: "left" }
-            }
-            : {
-                1: { halign: "left" }
+        // ================= ITEMS TABLE =================
+        autoTable(doc, {
+            startY: tableStartY,
+            margin: { left: 5, right: 5 },
+            tableWidth: 'auto',
+            rowPageBreak: 'avoid',
+            headStyles: {
+                fillColor: [255, 255, 255],
+                textColor: [0, 0, 0],
+                lineColor: [0, 0, 0],
+                lineWidth: 0.2,
+                halign: 'center',
+                valign: 'middle',
+                fontSize: 8,
+                fontStyle: 'normal'
             },
-        head: [[
-            "S. No.",
-            ...(hasImages ? ["Image"] : []),
-            "Product",
-            "Qty.",
-            "Price",
-            ...(resolvedIsEstimate ? [] : ["GST (%)", "GST Amt"]),
-            "Discount",
-            "Amount"
-        ]],
-        body: processedItems.map(item => [
-            item.sno,
-            ...(hasImages ? [""] : []),
-            `${item.name}\n(${item.totalPcs} ${item.unit})`,
-            item.qty,
-            item.rawPrice.toFixed(2),
-            ...(resolvedIsEstimate ? [] : [
-                `${item.effectiveTaxRate}%`,
-                item.taxAmt.toLocaleString("en-IN", {   // renamed field + Indian format
+            bodyStyles: {
+                lineColor: [0, 0, 0],
+                lineWidth: 0.2,
+                textColor: [0, 0, 0],
+                fontSize: 8,
+                halign: 'center',
+                valign: 'middle',
+                minCellHeight: hasImages ? 18 : 10
+            },
+            columnStyles: hasImages
+                ? {
+                    1: { cellWidth: 18, halign: "center" },
+                    2: { halign: "left" }
+                }
+                : {
+                    1: { halign: "left" }
+                },
+            head: [[
+                "S. No.",
+                ...(hasImages ? ["Image"] : []),
+                "Product",
+                "Qty.",
+                "Price",
+                ...(resolvedIsEstimate ? [] : ["GST (%)", "GST Amt"]),
+                "Discount",
+                "Amount"
+            ]],
+            body: processedItems.map(item => [
+                item.sno,
+                ...(hasImages ? [""] : []),
+                `${item.name}\n(${item.totalPcs} ${item.unit})`,
+                item.qty,
+                item.rawPrice.toFixed(2),
+                ...(resolvedIsEstimate ? [] : [
+                    `${item.effectiveTaxRate}%`,
+                    item.taxAmt.toLocaleString("en-IN", {   // renamed field + Indian format
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    })
+                ]),
+                item.discountAmt.toLocaleString("en-IN", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                }),
+                item.finalRowTotal.toLocaleString("en-IN", {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2
                 })
             ]),
-            item.discountAmt.toLocaleString("en-IN", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-            }),
-            item.finalRowTotal.toLocaleString("en-IN", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-            })
-        ]),
 
-        foot: [[
-            {
-                content: "GRAND TOTAL",
-                colSpan: resolvedIsEstimate ? (hasImages ? 6 : 5) : (hasImages ? 8 : 7),
-                styles: {
-                    halign: "right",
-                    fontStyle: "bold",
-                    textColor: [255, 255, 255],
-                    fontSize: 10
+            foot: [[
+                {
+                    content: "GRAND TOTAL",
+                    colSpan: resolvedIsEstimate ? (hasImages ? 6 : 5) : (hasImages ? 8 : 7),
+                    styles: {
+                        halign: "right",
+                        fontStyle: "bold",
+                        textColor: [255, 255, 255],
+                        fontSize: 10
+                    }
+                },
+                {
+                    content: finalTotalAmountToPrint.toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    }),
+                    styles: { halign: "right", fontStyle: "bold", fontSize: 10 }
                 }
-            },
-            {
-                content: finalTotalAmountToPrint.toLocaleString("en-IN", {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
-                }),
-                styles: { halign: "right", fontStyle: "bold", fontSize: 10 }
-            }
-        ]],
+            ]],
 
-        showFoot: "lastPage",
+            showFoot: "lastPage",
 
-        didDrawCell: (hookData) => {
-            if (!hasImages) return;
-            const imageColumnIndex = 1;
+            didDrawCell: (hookData) => {
+                if (!hasImages) return;
+                const imageColumnIndex = 1;
 
-            if (hookData.section === "body" && hookData.column.index === imageColumnIndex) {
-                const item = processedItems[hookData.row.index];
+                if (hookData.section === "body" && hookData.column.index === imageColumnIndex) {
+                    const item = processedItems[hookData.row.index];
 
-                if (item?.imageBase64 && item.imageBase64.startsWith("data:image")) {
-                    try {
-                        const imgSize = 14;
-                        const x = hookData.cell.x + (hookData.cell.width - imgSize) / 2;
-                        const y = hookData.cell.y + (hookData.cell.height - imgSize) / 2;
-                        const format = item.imageBase64.includes("png") ? "PNG" : "JPEG";
+                    if (item?.imageBase64 && item.imageBase64.startsWith("data:image")) {
+                        try {
+                            const imgSize = 14;
+                            const x = hookData.cell.x + (hookData.cell.width - imgSize) / 2;
+                            const y = hookData.cell.y + (hookData.cell.height - imgSize) / 2;
+                            const format = item.imageBase64.includes("png") ? "PNG" : "JPEG";
 
-                        doc.addImage(item.imageBase64, format, x, y, imgSize, imgSize);
-                    } catch (e) {
-                        console.error("A5 image render error", e);
+                            doc.addImage(item.imageBase64, format, x, y, imgSize, imgSize);
+                        } catch (e) {
+                            console.error("A5 image render error", e);
+                        }
                     }
                 }
-            }
-        },
-    });
-
-    // @ts-ignore
-    let finalY = doc.lastAutoTable.finalY + 2;
-   // --- 4. TAX BREAKDOWN TABLE (BEFORE PAYMENT INFO) ---
-    if (!resolvedIsEstimate && showGstinDetails) {
-        const taxBreakdownData: Record<string, { taxable: number, cgst: number, sgst: number }> = {};
-
-        processedItems.forEach(item => {
-            if (item.effectiveTaxRate > 0) {
-                const rateKey = item.effectiveTaxRate.toString();
-                if (!taxBreakdownData[rateKey]) {
-                    taxBreakdownData[rateKey] = { taxable: 0, cgst: 0, sgst: 0 };
-                }
-                taxBreakdownData[rateKey].taxable += item.taxableValue;
-                taxBreakdownData[rateKey].cgst += (item.taxAmt / 2);
-                taxBreakdownData[rateKey].sgst += (item.taxAmt / 2);
-            }
+            },
         });
 
-        if (Object.keys(taxBreakdownData).length > 0) {
+        // @ts-ignore
+        let finalY = doc.lastAutoTable.finalY + 6;
+        // --- 4. TAX BREAKDOWN TABLE (BEFORE PAYMENT INFO) ---
+        if (!resolvedIsEstimate && showGstinDetails) {
+            const taxBreakdownData: Record<string, { taxable: number, cgst: number, sgst: number }> = {};
+
+            processedItems.forEach(item => {
+                if (item.effectiveTaxRate > 0) {
+                    const rateKey = item.effectiveTaxRate.toString();
+                    if (!taxBreakdownData[rateKey]) {
+                        taxBreakdownData[rateKey] = { taxable: 0, cgst: 0, sgst: 0 };
+                    }
+                    taxBreakdownData[rateKey].taxable += item.taxableValue;
+                    taxBreakdownData[rateKey].cgst += (item.taxAmt / 2);
+                    taxBreakdownData[rateKey].sgst += (item.taxAmt / 2);
+                }
+            });
+
+            if (Object.keys(taxBreakdownData).length > 0) {
+                autoTable(doc, {
+                    startY: finalY,
+                    margin: { left: 5 },
+                    head: [["Tax Rate", "Taxable Amt.", "CGST", "SGST", "Total Tax"]],
+                    body: [
+                        ...Object.keys(taxBreakdownData).map(rate => {
+                            const d = taxBreakdownData[rate];
+                            return [
+                                `${rate}%`,
+                                d.taxable.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                                (d.cgst).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                                (d.sgst).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                                (d.cgst + d.sgst).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                            ];
+                        }),
+                        [
+                            "TOTAL",
+                            totalTaxable.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                            (totalTaxAmt / 2).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                            (totalTaxAmt / 2).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                            totalTaxAmt.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                        ]
+                    ],
+                    theme: 'grid',
+                    styles: {
+                        fontSize: 6,
+                        cellPadding: 1,
+                        textColor: [0, 0, 0],
+                        lineColor: [0, 0, 0],
+                        lineWidth: 0.1,
+                        halign: 'right',
+                        valign: 'middle',
+                        minCellHeight: 4
+                    },
+                    headStyles: {
+                        fillColor: [255, 255, 255],
+                        textColor: [0, 0, 0],
+                        fontStyle: 'bold',
+                        lineWidth: 0.1,
+                        lineColor: [0, 0, 0],
+                        halign: 'right'
+                    },
+                    columnStyles: {
+                        0: { halign: 'left', cellWidth: 15 }
+                    },
+                    tableWidth: (pageWidth - 10) / 2
+                });
+
+                // @ts-ignore
+                finalY = doc.lastAutoTable.finalY + 6;
+            }
+        }
+        // ===== SMART SPACE CALCULATION =====
+
+        const footerHeight = 22;
+        const paymentHeight = !resolvedIsEstimate ? 24 : 0;
+        // const termsLines = doc.splitTextToSize(data.terms || "", rightMargin - 10);
+        // const termsHeight = !resolvedIsEstimate ? (termsLines.length * 3.5) + 10 : 0;
+        const signatureHeight = !resolvedIsEstimate && data.signatureBase64 ? 16 : 10;
+
+        const splitTermsPreview = doc.splitTextToSize(data.terms || "", rightMargin - 5);
+        const termsHeightAccurate = !resolvedIsEstimate ? (splitTermsPreview.length * 3.5) + 10 : 0;
+
+        const requiredBottomSpace = paymentHeight + termsHeightAccurate + signatureHeight + 10;
+
+        if (finalY + requiredBottomSpace > pageHeight) {
+            doc.addPage();
+            finalY = 20;
+        }
+
+        // --- 4. PAYMENT INFORMATION ---
+        if (!resolvedIsEstimate) {
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(11);
+            doc.text("Payment Information", 5, finalY);
+
+            finalY += 3;
             autoTable(doc, {
                 startY: finalY,
-                margin: { left: 5 },
-                head: [["Tax Rate", "Taxable Amt.", "CGST", "SGST", "Total Tax"]],
-                body: [
-                    ...Object.keys(taxBreakdownData).map(rate => {
-                        const d = taxBreakdownData[rate];
-                        return [
-                            `${rate}%`,
-                            d.taxable.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                            (d.cgst).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                            (d.sgst).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                            (d.cgst + d.sgst).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                        ];
-                    }),
-                    [
-                        "TOTAL",
-                        totalTaxable.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                        (totalTaxAmt / 2).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                        (totalTaxAmt / 2).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                        totalTaxAmt.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                    ]
-                ],
+                margin: { left: 5, right: 5 },
+                tableWidth: pageWidth - 10,
                 theme: 'grid',
+                body: [
+                    [
+                        { content: "Account Number", styles: { fontStyle: 'bold' } },
+                        { content: data.bankDetails?.accountNumber || "" },
+                        { content: "Bank Name", styles: { fontStyle: 'bold' } },
+                        { content: data.bankDetails?.bankName || "" },
+                    ],
+                    [
+                        { content: "Account Name", styles: { fontStyle: 'bold' } },
+                        { content: data.bankDetails?.accountName || "" },
+                        { content: "IFSC Code", styles: { fontStyle: 'bold' } },
+                        { content: data.bankDetails?.ifsc || "" },
+                    ],
+                ],
                 styles: {
-                    fontSize: 6,
-                    cellPadding: 1,
+                    fontSize: 8,
+                    cellPadding: 2,
                     textColor: [0, 0, 0],
-                    lineColor: [0, 0, 0],
-                    lineWidth: 0.1,
-                    halign: 'right',
+                    lineColor: [200, 200, 200],
+                    lineWidth: 0.2,
                     valign: 'middle',
-                    minCellHeight: 4
-                },
-                headStyles: {
-                    fillColor: [255, 255, 255],
-                    textColor: [0, 0, 0],
-                    fontStyle: 'bold',
-                    lineWidth: 0.1,
-                    lineColor: [0, 0, 0],
-                    halign: 'right'
                 },
                 columnStyles: {
-                    0: { halign: 'left', cellWidth: 15 }
+                    0: { cellWidth: 30, halign: 'left' },
+                    1: { halign: 'left' },
+                    2: { cellWidth: 25, halign: 'left' },
+                    3: { halign: 'left' },
                 },
-                tableWidth: (pageWidth - 10) / 2
             });
 
             // @ts-ignore
-            finalY = doc.lastAutoTable.finalY + 6;
+            finalY = doc.lastAutoTable.finalY + 3;
+            // doc.setDrawColor(200, 200, 200);
+            // doc.line(10, finalY, rightMargin, finalY);
         }
-    }
-    // ===== SMART SPACE CALCULATION =====
 
-    const footerHeight = 22;
-    const paymentHeight = !resolvedIsEstimate ? 22 : 0;
-    const termsLines = doc.splitTextToSize(data.terms || "", rightMargin - 10);
-    const termsHeight = !resolvedIsEstimate ? (termsLines.length * 3.5) + 10 : 0;
-    const signatureHeight = !resolvedIsEstimate && data.signatureBase64 ? 16 : 10;
+        // --- 5. TERMS & CONDITIONS ---
+        if (!resolvedIsEstimate) {
+            finalY += 4;
+            doc.setFontSize(11);
+            doc.text("Terms & Conditions", 5, finalY);
 
-    const requiredBottomSpace = footerHeight + paymentHeight + termsHeight + signatureHeight + 8;
+            finalY += 6;
+            doc.setFontSize(8);
+            doc.setTextColor(80, 80, 80);
+            const splitTerms = doc.splitTextToSize(data.terms || "", rightMargin - 5);
+            doc.text(splitTerms, 5, finalY);
 
-    if (finalY + requiredBottomSpace > pageHeight) {
-        doc.addPage();
-        finalY = 20;
-    }
+            finalY += (splitTerms.length * 3.5) + 2;
 
-    // --- 4. PAYMENT INFORMATION ---
-    if (!resolvedIsEstimate) {
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(11);
-        doc.text("Payment Information", 5, finalY);
+            doc.setDrawColor(200, 200, 200);
+            doc.line(5, finalY, rightMargin, finalY);
+        }
 
-        finalY += 3;
-        autoTable(doc, {
-        startY: finalY,
-        margin: { left: 5, right: 5 },
-        tableWidth: pageWidth - 10,
-        theme: 'grid',
-        body: [
-            [
-                { content: "Account Number", styles: { fontStyle: 'bold' } },
-                { content: data.bankDetails?.accountNumber || "" },
-                { content: "Bank Name", styles: { fontStyle: 'bold' } },
-                { content: data.bankDetails?.bankName || "" },
-            ],
-            [
-                { content: "Account Name", styles: { fontStyle: 'bold' } },
-                { content: data.bankDetails?.accountName || "" },
-                { content: "IFSC Code", styles: { fontStyle: 'bold' } },
-                { content: data.bankDetails?.ifsc || "" },
-            ],
-        ],
-        styles: {
-            fontSize: 8,
-            cellPadding: 2,
-            textColor: [0, 0, 0],
-            lineColor: [200, 200, 200],
-            lineWidth: 0.2,
-            valign: 'middle',
-        },
-        columnStyles: {
-            0: { cellWidth: 30, halign: 'left' },
-            1: { halign: 'left' },
-            2: { cellWidth: 25, halign: 'left' },
-            3: { halign: 'left' },
-        },
-    });
+        // --- 6. AUTHORISED SIGNATURE ---
+        if (!resolvedIsEstimate) {
+            const footerY = pageHeight - footerHeight;
+            const signTextY = footerY - 4;
+            const signImageY = footerY - 14;
 
-    // @ts-ignore
-    finalY = doc.lastAutoTable.finalY + 3;
-    // doc.setDrawColor(200, 200, 200);
-    // doc.line(10, finalY, rightMargin, finalY);
-}
+            if (data.signatureBase64) {
+                doc.addImage(data.signatureBase64, "PNG", rightMargin - 30, signImageY, 30, 10);
+            }
 
-    // --- 5. TERMS & CONDITIONS ---
-    if (!resolvedIsEstimate) {
-        finalY += 4;
-        doc.setFontSize(11);
-        doc.text("Terms & Conditions", 5, finalY);
+            doc.setFontSize(9);
+            doc.text("Authorised Sign", rightMargin, signTextY, { align: "right" });
+        }
 
-        finalY += 6;
-        doc.setFontSize(8);
-        doc.setTextColor(80, 80, 80);
-        const splitTerms = doc.splitTextToSize(data.terms || "", rightMargin - 5);
-        doc.text(splitTerms, 5, finalY);
-
-        finalY += (splitTerms.length * 3.5) + 2;
-
-        doc.setDrawColor(200, 200, 200);
-        doc.line(5, finalY, rightMargin, finalY);
-    }
-
-    // --- 6. AUTHORISED SIGNATURE ---
-    if (!resolvedIsEstimate) {
+        // --- 7. FOOTER ---
         const footerY = pageHeight - footerHeight;
-        const signTextY = footerY - 4;
-        const signImageY = footerY - 14;
 
-        if (data.signatureBase64) {
-            doc.addImage(data.signatureBase64, "PNG", rightMargin - 30, signImageY, 30, 10);
+        doc.setFillColor("#0c3b5e");
+        doc.rect(0, footerY, pageWidth, footerHeight, "F");
+
+        doc.setTextColor("#ffffff");
+        doc.setFontSize(8);
+
+        // Left side Footer (DYNAMIC)
+        const footeraddressLines = doc.splitTextToSize(data.companyAddress || "", 70);
+        doc.text(footeraddressLines, 10, footerY + 6);
+
+        const addressEndY = footerY + 6 + (footeraddressLines.length * 4);
+
+        doc.text(`Contact No. - ${data.companyContact || ""}`, 10, addressEndY + 2);
+
+        if (data.companyGstin) {
+            doc.text(`GSTIN - ${data.companyGstin}`, 10, addressEndY + 6);
         }
 
-        doc.setFontSize(9);
-        doc.text("Authorised Sign", rightMargin, signTextY, { align: "right" });
+        // ===== BRANDING =====
+        const pbText = "Powered by ";
+        const linkText = "SELLAR.IN";
+
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "bold");
+
+        const pbWidth = doc.getTextWidth(pbText);
+        const linkWidth = doc.getTextWidth(linkText);
+
+        let brandingX = rightMargin - (pbWidth + linkWidth);
+
+        doc.setTextColor(255, 255, 255);
+        doc.text(pbText, brandingX, footerY + 8);
+        brandingX += pbWidth;
+
+        doc.setTextColor(120, 190, 255);
+        doc.text(linkText, brandingX, footerY + 8);
+
+        doc.setDrawColor(120, 190, 255);
+        doc.line(brandingX, footerY + 8.5, brandingX + linkWidth, footerY + 8.5);
+
+        doc.link(brandingX, footerY + 5, linkWidth, 4, { url: "https://www.sellar.in" });
+
+        // ===== MADE IN INDIA =====
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7);
+
+        const part1 = "Made with ";
+        const part2 = "pride";
+        const part3 = " in India";
+
+        const w1 = doc.getTextWidth(part1);
+        const w2 = doc.getTextWidth(part2);
+        const w3 = doc.getTextWidth(part3);
+
+        const totalWidth = w1 + w2 + w3;
+
+        let indiaX = rightMargin - totalWidth;
+        const indiaY = footerY + 13.5;
+
+        doc.setTextColor(255, 255, 255);
+        doc.text(part1, indiaX, indiaY);
+
+        indiaX += w1;
+        doc.setTextColor(255, 255, 255);
+        doc.text(part2, indiaX, indiaY);
+
+        indiaX += w2;
+        doc.setTextColor(255, 255, 255);
+        doc.text(part3, indiaX, indiaY);
+
+        doc.setTextColor(255, 255, 255);
+
+    }; // end drawPage
+
+    // ================= RENDER PAGES =================
+    drawPage(false);
+    if (withDuplicate && !resolvedIsEstimate) {
+        drawPage(true);
     }
-
-    // --- 7. FOOTER ---
-    const footerY = pageHeight - footerHeight;
-
-    doc.setFillColor("#0c3b5e");
-    doc.rect(0, footerY, pageWidth, footerHeight, "F");
-
-    doc.setTextColor("#ffffff");
-    doc.setFontSize(8);
-
-    // Left side Footer (DYNAMIC)
-    const footeraddressLines = doc.splitTextToSize(data.companyAddress || "", 70);
-    doc.text(footeraddressLines, 10, footerY + 6);
-
-    const addressEndY = footerY + 6 + (footeraddressLines.length * 4);
-
-    doc.text(`Contact No. - ${data.companyContact || ""}`, 10, addressEndY + 2);
-
-    if (data.companyGstin) {
-        doc.text(`GSTIN - ${data.companyGstin}`, 10, addressEndY + 6);
-    }
-
-    // ===== BRANDING =====
-    const pbText = "Powered by ";
-    const linkText = "SELLAR.IN";
-
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "bold");
-
-    const pbWidth = doc.getTextWidth(pbText);
-    const linkWidth = doc.getTextWidth(linkText);
-
-    let brandingX = rightMargin - (pbWidth + linkWidth);
-
-    doc.setTextColor(255, 255, 255);
-    doc.text(pbText, brandingX, footerY + 8);
-    brandingX += pbWidth;
-
-    doc.setTextColor(120, 190, 255);
-    doc.text(linkText, brandingX, footerY + 8);
-
-    doc.setDrawColor(120, 190, 255);
-    doc.line(brandingX, footerY + 8.5, brandingX + linkWidth, footerY + 8.5);
-
-    doc.link(brandingX, footerY + 5, linkWidth, 4, { url: "https://www.sellar.in" });
-
-    // ===== MADE IN INDIA =====
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7);
-
-    const part1 = "Made with ";
-    const part2 = "pride";
-    const part3 = " in India";
-
-    const w1 = doc.getTextWidth(part1);
-    const w2 = doc.getTextWidth(part2);
-    const w3 = doc.getTextWidth(part3);
-
-    const totalWidth = w1 + w2 + w3;
-
-    let indiaX = rightMargin - totalWidth;
-    const indiaY = footerY + 13.5;
-
-    doc.setTextColor(255, 255, 255);
-    doc.text(part1, indiaX, indiaY);
-
-    indiaX += w1;
-    doc.setTextColor(255, 255, 255);
-    doc.text(part2, indiaX, indiaY);
-
-    indiaX += w2;
-    doc.setTextColor(255, 255, 255);
-    doc.text(part3, indiaX, indiaY);
-
-    doc.setTextColor(255, 255, 255);
-
     // --- PRINT / DOWNLOAD / BLOB ---
     if (action === ACTION.PRINT) {
         doc.autoPrint();

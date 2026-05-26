@@ -221,7 +221,8 @@ export const CatalogueBill = async (
     return generateA5Invoice(
       a5Data as any,
       data.isEstimate === true,
-      finalAction
+      finalAction,
+      withDuplicate
     );
   }
 
@@ -839,7 +840,7 @@ export const CatalogueBill = async (
 
     doc.setTextColor(0, 0, 0);
   };
-  
+
   // ================= TABLE =================
   autoTable(doc, {
     startY: cursorY,
@@ -1004,38 +1005,33 @@ export const CatalogueBill = async (
       doc.text(formatAmount(advancePaid), pageWidth - margin - 2, finalY + 4, { align: 'right' });
       finalY += advH;
     }
-    // ── Extra Expense row(s) ──
-    if (extraExpenseName && preExtraExpenseAmount > 0) {
-      const names = extraExpenseName.split(',').map((n: string) => n.trim()).filter(Boolean);
+    const extraExpensesList: { name: string; amount: number }[] = (data as any).extraExpenses || [];
 
-      if (names.length <= 1) {
+    if (extraExpensesList.length > 0) {
+      extraExpensesList.forEach((expense) => {
+        if (!expense.name || expense.amount <= 0) return;
         const expH = 6;
         doc.setFontSize(8);
         doc.setFont("helvetica", "normal");
-        doc.rect(margin, finalY, pageWidth - margin * 2, expH);
+        doc.line(margin, finalY, margin, finalY + expH);                          // left border
+        doc.line(pageWidth - margin, finalY, pageWidth - margin, finalY + expH);  // right border
         doc.line(valueBoxX, finalY, valueBoxX, finalY + expH);
-        doc.text(`Add : ${names[0] || 'Extra Expense'} (+)`, valueBoxX - 2, finalY + 4, { align: 'right' });
-        doc.text(formatAmount(preExtraExpenseAmount), pageWidth - margin - 2, finalY + 4, { align: 'right' });
+        doc.text(`Add : ${expense.name} (+)`, valueBoxX - 2, finalY + 4, { align: 'right' });
+        doc.text(formatAmount(expense.amount), pageWidth - margin - 2, finalY + 4, { align: 'right' });
         finalY += expH;
-      } else {
-        const totalExpenseH = 6 * names.length;
-        doc.rect(margin, finalY, pageWidth - margin * 2, totalExpenseH);
-        doc.line(valueBoxX, finalY, valueBoxX, finalY + totalExpenseH);
-        names.forEach((name: string, idx: number) => {
-          doc.setFontSize(8);
-          doc.setFont("helvetica", "normal");
-          doc.text(`Add : ${name} (+)`, valueBoxX - 2, finalY + 4, { align: 'right' });
-          if (idx === names.length - 1) {
-            doc.text(formatAmount(preExtraExpenseAmount), pageWidth - margin - 2, finalY + 4, { align: 'right' });
-          }
-          finalY += 6;
-        });
-      }
+      });
+    } else if (extraExpenseName && preExtraExpenseAmount > 0) {
+      // fallback for old data that only has name+total
+      const expH = 6;
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      doc.line(margin, finalY, margin, finalY + expH);                          // left border
+      doc.line(pageWidth - margin, finalY, pageWidth - margin, finalY + expH);  // right border
+      doc.line(valueBoxX, finalY, valueBoxX, finalY + expH);                    // vertical divider
+      doc.text(`Add : ${extraExpenseName} (+)`, valueBoxX - 2, finalY + 4, { align: 'right' });
+      doc.text(formatAmount(preExtraExpenseAmount), pageWidth - margin - 2, finalY + 4, { align: 'right' });
+      finalY += expH;
     }
-
-
-
-
 
     // ── Grand Total Row (shows amount after advance deduction) ──
     const grandTotalH = 8;
@@ -1561,6 +1557,7 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
     billDiscount: invoiceData.billDiscount || 0,
     extraExpenseName: invoiceData.extraExpenseName || '',
     extraExpenseAmount: invoiceData.extraExpenseAmount || 0,
+    extraExpenses: invoiceData.extraExpenses || [],
     printFormat: billSettings.printFormat || "A4",
     logoBase64,
 

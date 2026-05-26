@@ -1065,6 +1065,7 @@ const OrdersPage: React.FC = () => {
                 billDiscount: Number(Order.manualDiscount || 0),
                 extraExpenseName: (Order.expenses || []).map(e => e.name).join(', '),
                 extraExpenseAmount: (Order.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0),
+                extraExpenses: (Order.expenses || []).map(e => ({ name: e.name, amount: parseFloat(String(e.amount)) || 0 })),
             };
 
             const preparedData = await prepareCatalogueBillData({

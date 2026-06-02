@@ -165,7 +165,7 @@ const HomePageContent: React.FC = () => {
                                 itemStats.set(item.id, {
                                     name: item.name,
                                     totalQuantity: cur.totalQuantity + (item.quantity || 0),
-                                    totalAmount: cur.totalAmount + ((item.salesPrice || 0) * (item.quantity || 0)),
+                                    totalAmount: cur.totalAmount + ((item.customPrice || 0) * (item.quantity || 0)),
                                 });
                             });
                         }

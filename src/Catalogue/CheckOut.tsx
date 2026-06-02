@@ -156,6 +156,11 @@ const CartPage: React.FC = () => {
     const [leadStatus, setLeadStatus] = useState<"approved" | "pending" | "declined" | null>(null);
     const [approvalError, setApprovalError] = useState<string | null>(null);
     const [specialInstruction, setSpecialInstruction] = useState("");
+    useEffect(() => {
+        if (movError) {
+            window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+        }
+    }, [movError]);
 
     useEffect(() => {
         const savedCart = localStorage.getItem('temp_cart');
@@ -323,8 +328,8 @@ const CartPage: React.FC = () => {
                         quantity: Number(i.quantity),
                         mrp: Number(i.mrp),
                         salesPrice: Number(i.salesPrice),
-                        tax:i.tax,
-                        note:i.note,
+                        tax: i.tax,
+                        note: i.note,
                         image: i.imageUrl || "",
                         finalPrice: Number(i.salesPrice) * Number(i.quantity),
                         unit: i.unit || "pcs",

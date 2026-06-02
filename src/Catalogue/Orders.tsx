@@ -638,10 +638,14 @@ const OrdersPage: React.FC = () => {
             if (item.id !== id) return item;
 
             const mrp = Number(item.mrp || 0);
+            const salesPrice = Number(item.salesPrice || 0);
+
+            // 3-Tier Base Price Determination
+            const basePrice = mrp > 0 ? mrp : salesPrice;
 
             let discount = 0;
-            if (mrp > 0) {
-                discount = ((mrp - newNetPrice) / mrp) * 100;
+            if (basePrice > 0) {
+                discount = ((basePrice - newNetPrice) / basePrice) * 100;
             }
 
             return {
@@ -661,19 +665,30 @@ const OrdersPage: React.FC = () => {
         const mrp = Number(item.mrp || 0);
         const salePrice = Number(item.salesPrice || 0);
         let discount = Number(item.discount || 0);
-        let netPrice = Number(item.customPrice ?? 0);
 
+        // Fall back to undefined so we know if we need to run initial calculations
+        let netPrice = item.customPrice;
+
+        const basePrice = mrp > 0 ? mrp : salePrice;
         const liveMoq = liveMoqMap[item.id] ?? Number(item.moq ?? 0);
 
-        if (netPrice > 0) {
-            discount = mrp > 0 ? ((mrp - netPrice) / mrp) * 100 : 0;
-        } else if (salePrice > 0 && discount === 0) {
-            netPrice = salePrice;
-            discount = mrp > 0 ? ((mrp - salePrice) / mrp) * 100 : 0;
-        } else if (discount > 0 && mrp > 0) {
-            netPrice = mrp * (1 - discount / 100);
+        // 3-Tier Initialization Logic
+        if (netPrice === undefined || netPrice === null) {
+            if (mrp > 0 && salePrice > 0) {
+                netPrice = salePrice;
+                discount = ((mrp - salePrice) / mrp) * 100;
+            } else if (salePrice > 0) {
+                netPrice = salePrice * (1 - discount / 100);
+            } else if (mrp > 0) {
+                netPrice = mrp * (1 - discount / 100);
+            } else {
+                netPrice = 0;
+            }
         } else {
-            netPrice = salePrice > 0 ? salePrice : mrp;
+            // If netPrice is actively being edited, keep the discount synced to the base
+            if (basePrice > 0) {
+                discount = ((basePrice - netPrice) / basePrice) * 100;
+            }
         }
 
         return {
@@ -715,14 +730,18 @@ const OrdersPage: React.FC = () => {
     const handleDiscountChange = (id: string, value: number | string) => {
         if (!editingOrder) return;
 
-        const discountValue =
-            typeof value === "string" ? parseFloat(value) || 0 : value;
+        const discountValue = typeof value === "string" ? parseFloat(value) || 0 : value;
 
         const updatedItems = editingOrder.items?.map((item) => {
             if (item.id !== id) return item;
 
             const mrp = Number(item.mrp || 0);
-            const netPrice = mrp * (1 - discountValue / 100);
+            const salesPrice = Number(item.salesPrice || 0);
+
+            // 3-Tier Base Price Determination
+            const basePrice = mrp > 0 ? mrp : salesPrice;
+
+            const netPrice = basePrice * (1 - discountValue / 100);
 
             return {
                 ...item,
@@ -1246,13 +1265,38 @@ const OrdersPage: React.FC = () => {
             delete updatePayload.Stock;
         }
 
-        Object.keys(updatePayload).forEach(key => {
+        Object.keys(updatePayload).forEach((key) => {
             if (updatePayload[key] === undefined) delete updatePayload[key];
         });
 
-        const updatedItems = (editingOrder.items || []).map(item => {
+        const updatedItems = (editingOrder.items || []).map((item) => {
             if (String(item.id) === String(selectedItemForEdit.id)) {
-                return { ...item, ...updatePayload };
+                const mergedItem = { ...item, ...updatePayload };
+
+                const mrp = Number(mergedItem.mrp || 0);
+                const salesPrice = Number(mergedItem.salesPrice || 0);
+                const presetDiscount = Number(mergedItem.discount || 0);
+
+                let finalNetPrice = 0;
+                let calculatedDiscount = 0;
+
+                // --- 3-TIER LOGIC ---
+                if (mrp > 0 && salesPrice > 0) {
+                    finalNetPrice = salesPrice;
+                    calculatedDiscount = ((mrp - salesPrice) / mrp) * 100;
+                } else if (salesPrice > 0) {
+                    calculatedDiscount = presetDiscount;
+                    finalNetPrice = salesPrice * (1 - (presetDiscount / 100));
+                } else if (mrp > 0) {
+                    calculatedDiscount = presetDiscount;
+                    finalNetPrice = mrp * (1 - (presetDiscount / 100));
+                }
+
+                // Using toFixed(2) as a fallback since applyRounding isn't imported here
+                mergedItem.customPrice = Number(finalNetPrice.toFixed(2));
+                mergedItem.discount = Number(calculatedDiscount.toFixed(2));
+
+                return mergedItem;
             }
             return item;
         });
@@ -1261,18 +1305,20 @@ const OrdersPage: React.FC = () => {
             const salesPrice = Number(i.salesPrice || 0);
             const mrp = Number(i.mrp || 0);
 
-            const price =
-                i.customPrice ??
-                (salesPrice > 0 ? salesPrice : mrp);
+            const price = i.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
 
             return sum + price * Number(i.quantity || 0);
         }, 0);
 
-        setEditingOrder(prev => prev ? {
-            ...prev,
-            items: updatedItems,
-            totalAmount: newTotal
-        } : prev);
+        setEditingOrder((prev) =>
+            prev
+                ? {
+                    ...prev,
+                    items: updatedItems,
+                    totalAmount: newTotal,
+                }
+                : prev
+        );
 
         if (currentUser?.companyId) {
             const orderRef = doc(
@@ -1286,7 +1332,7 @@ const OrdersPage: React.FC = () => {
             updateDoc(orderRef, {
                 items: updatedItems,
                 totalAmount: newTotal,
-                updatedAt: serverTimestamp()
+                updatedAt: serverTimestamp(),
             });
         }
 

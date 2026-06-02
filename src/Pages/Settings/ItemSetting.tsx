@@ -352,7 +352,7 @@ const SharedItemSettings: React.FC<SharedItemSettingsProps> = ({ theme = 'blue' 
                     <button
                         onClick={handleSave}
                         disabled={isSaving || isLoading}
-                        className="w-auto min-w-[150px] flex items-center justify-center bg-blue-600 text-white font-bold py-3 px-6 rounded-sm hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed shadow-lg"
+                        className={`w-auto min-w-[150px] flex items-center justify-center ${activeTheme.primaryBg} text-white font-bold py-3 px-6 rounded-sm ${activeTheme.primaryHover} transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed shadow-lg`}
                     >
                         {isSaving ? <Spinner /> : 'Save Settings'}
                     </button>

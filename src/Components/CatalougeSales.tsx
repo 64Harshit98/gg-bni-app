@@ -8,7 +8,7 @@ import {
     CardDescription,
 } from './ui/card';
 import { useFilter } from './Filter';
- 
+
 // ── Props (data comes from HomePage, no internal fetch) ──────────────────────
 interface CompletedSalesCardProps {
     isDataVisible: boolean;
@@ -16,7 +16,7 @@ interface CompletedSalesCardProps {
     totalSalesCount: number;
     loading: boolean;
 }
- 
+
 export const CompletedSalesCard: React.FC<CompletedSalesCardProps> = ({
     isDataVisible,
     totalSalesAmount,
@@ -24,7 +24,7 @@ export const CompletedSalesCard: React.FC<CompletedSalesCardProps> = ({
     loading,
 }) => {
     const { filters } = useFilter();
- 
+
     const selectedPeriodText = useMemo(() => {
         if (!filters.startDate || !filters.endDate) return 'for the selected period';
         const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' };
@@ -52,7 +52,7 @@ export const CompletedSalesCard: React.FC<CompletedSalesCardProps> = ({
                             {isDataVisible ? `₹${totalSalesAmount.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '₹ ******'}
                         </p>
                         <p className="text-md text-gray-500 mt-2">
-                            from {isDataVisible ? <strong>{totalSalesCount}</strong> : '**'} completed orders
+                            from {isDataVisible ? <strong>{totalSalesCount}</strong> : '**'} orders
                         </p>
                     </div>
                 )}

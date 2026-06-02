@@ -25,6 +25,15 @@ export interface ExpenseItem {
     amount: number;
 }
 
+const INDIAN_STATES = [
+    "Andaman and Nicobar Islands", "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar",
+    "Chandigarh", "Chhattisgarh", "Dadra and Nagar Haveli and Daman and Diu", "Delhi", "Goa",
+    "Gujarat", "Haryana", "Himachal Pradesh", "Jammu and Kashmir", "Jharkhand", "Karnataka",
+    "Kerala", "Ladakh", "Lakshadweep", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya",
+    "Mizoram", "Nagaland", "Odisha", "Puducherry", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu",
+    "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal"
+];
+
 export interface PaymentCompletionData {
     paymentDetails: PaymentDetails;
     partyName: string;
@@ -43,6 +52,8 @@ export interface PaymentCompletionData {
     shippingGST?: string;
     expenses?: ExpenseItem[];
     narration?: string;
+    placeOfSupply?: string;     // <-- ADD THIS
+    shippingState?: string;
 }
 
 interface PaymentDrawerProps {
@@ -76,6 +87,8 @@ interface PaymentDrawerProps {
     enableCustomerDetails?: boolean;
     initialPartyAddress?: string;
     initialPartyGST?: string;
+    initialPlaceOfSupply?: string;  // <-- ADD THIS
+    initialShippingState?: string;
 }
 
 const SESSION_STORAGE_NAME_KEY = 'sessionPartyName';
@@ -92,6 +105,8 @@ interface PartySuggestion {
     shippingNumber?: string;
     shippingAddress?: string;
     shippingGST?: string;
+    state?: string;             // <-- ADD THIS
+    shippingState?: string;
 }
 
 const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
@@ -124,6 +139,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     enableCustomerDetails = true,
     initialPartyAddress,
     initialPartyGST,
+    initialPlaceOfSupply,
+    initialShippingState,
 }) => {
     const { currentUser } = useAuth();
 
@@ -149,7 +166,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isDiscountLocked, setIsDiscountLocked] = useState(true);
-
+    const [partyState, setPartyState] = useState('');
+    const [shippingState, setShippingState] = useState('');
     const [suggestions, setSuggestions] = useState<PartySuggestion[]>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
     const searchTimeout = useRef<NodeJS.Timeout | null>(null);
@@ -217,6 +235,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             setShippingNumber(partyNumber);
             setShippingAddress(partyAddress);
             setShippingGST(partyGST);
+            setShippingState(partyState);
         }
     }, [isSameAsBilling, partyName, partyNumber, partyAddress, partyGST]);
 
@@ -291,6 +310,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         setPartyNumber(initialNumber);
         setPartyAddress(initialPartyAddress || '');
         setPartyGST(initialPartyGST || '');
+        setPartyState(initialPlaceOfSupply || '');        // <-- ADD THIS
+        setShippingState(initialShippingState || '');
         setIsDetailsExpanded(false);
 
         // Auto-search logic on open
@@ -343,6 +364,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                             name: data.name || '',
                             number: data.number || doc.id,
                             address: data.address,
+                            state: data.state || data.placeOfSupply,      // <-- ADD THIS
+                            shippingState: data.shippingState,
                             gstNumber: data.gstNumber,
                             creditBalance: data.creditBalance,
                             debitBalance: data.debitBalance,
@@ -388,12 +411,14 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         setPartyName(party.name);
         setPartyNumber(party.number);
         setPartyAddress(party.address || '');
+        setPartyState(party.state || '');                // <-- ADD THIS
         setPartyGST(party.gstNumber || '');
         setPartyCredit(party.creditBalance || 0);
         setPartyDebit(party.debitBalance || 0);
         setShippingName(party.shippingName || '');
         setShippingNumber(party.shippingNumber || '');
         setShippingAddress(party.shippingAddress || '');
+        setShippingState(party.shippingState || '');     // <-- ADD THIS
         setShippingGST(party.shippingGST || '');
         setUseCredit(false);
         setUseDebit(false);
@@ -514,6 +539,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 shippingGST: safeShippingGST,
                 expenses: formattedExpenses, // <-- Add this
                 narration: safeNarration,
+                placeOfSupply: partyState,                       // <-- ADD THIS
+                shippingState: shippingState,
             });
 
             const identifier = safePartyNumber || safePartyName;
@@ -526,11 +553,13 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                     number: safePartyNumber,
                     companyId: currentUser.companyId,
                     address: safePartyAddress,
+                    state: partyState,                               // <-- ADD THIS
                     gstNumber: safePartyGST,
                     shippingName: safeShippingName,
                     shippingNumber: safeShippingNumber,
                     shippingAddress: safeShippingAddress,
                     shippingGST: safeShippingGST,
+                    shippingState: shippingState,                    // <-- ADD THIS
                     updatedAt: serverTimestamp(),
                 };
 
@@ -719,9 +748,29 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                     </div>
 
                                     {isDetailsExpanded && (
-                                        <div className="grid grid-cols-2 gap-3 mt-3 animate-in slide-in-from-top-2 fade-in duration-200">
+                                        <div className="flex flex-col gap-3 mt-3 animate-in slide-in-from-top-2 fade-in duration-200">
                                             <input type="text" placeholder="GST Number" maxLength={15} value={addressType === 'billing' ? partyGST : shippingGST} onChange={(e) => { if (addressType === 'billing') { setPartyGST(e.target.value); } else { setShippingGST(e.target.value); setIsSameAsBilling(false); } }} className="w-full p-2.5 text-sm rounded-XS border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none" />
-                                            <input type="text" placeholder="Full Address" value={addressType === 'billing' ? partyAddress : shippingAddress} onChange={(e) => { if (addressType === 'billing') { setPartyAddress(e.target.value); } else { setShippingAddress(e.target.value); setIsSameAsBilling(false); } }} className="w-full p-2.5 text-sm rounded-XS border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none" />
+
+                                            {/* NEW LAYOUT: Address taking 2/3 width, State taking 1/3 width */}
+                                            <div className="flex gap-2 w-full">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Full Address"
+                                                    value={addressType === 'billing' ? partyAddress : shippingAddress}
+                                                    onChange={(e) => { if (addressType === 'billing') { setPartyAddress(e.target.value); } else { setShippingAddress(e.target.value); setIsSameAsBilling(false); } }}
+                                                    className="flex-1 p-2.5 text-sm rounded-xs border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none"
+                                                />
+                                                <select
+                                                    value={addressType === 'billing' ? partyState : shippingState}
+                                                    onChange={(e) => { if (addressType === 'billing') { setPartyState(e.target.value); } else { setShippingState(e.target.value); setIsSameAsBilling(false); } }}
+                                                    className="w-1/3 p-2.5 text-sm rounded-xs border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none"
+                                                >
+                                                    <option value="">State</option>
+                                                    {INDIAN_STATES.map(state => (
+                                                        <option key={state} value={state}>{state}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
                                         </div>
                                     )}
                                     {expenses.length > 0 && (

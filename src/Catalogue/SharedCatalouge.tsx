@@ -462,9 +462,22 @@ const SharedCataloguePage: React.FC = () => {
                                         </div>
                                     )}
                                     {collageImages.length > 0 ? (
-                                        <div className="grid grid-cols-2 grid-rows-2 w-full h-full gap-[2px] p-[2px]">
+                                        <div
+                                            className={`w-full h-full gap-[2px] p-[2px] grid ${collageImages.length === 1
+                                                    ? 'grid-cols-1 grid-rows-1'
+                                                    : collageImages.length === 2
+                                                        ? 'grid-cols-2 grid-rows-1'
+                                                        : 'grid-cols-2 grid-rows-2'
+                                                }`}
+                                        >
                                             {collageImages.map((img, index) => (
-                                                <div key={index} className="w-full h-full overflow-hidden rounded-sm">
+                                                <div
+                                                    key={index}
+                                                    className={`w-full h-full overflow-hidden rounded-[2px] ${
+                                                        // Special case: If 3 images, make the first one span two rows
+                                                        collageImages.length === 3 && index === 0 ? 'row-span-2' : ''
+                                                        }`}
+                                                >
                                                     <img
                                                         src={img}
                                                         alt={`product-${index}`}
@@ -472,19 +485,9 @@ const SharedCataloguePage: React.FC = () => {
                                                     />
                                                 </div>
                                             ))}
-
-                                            {/* filler boxes */}
-                                            {Array.from({ length: 4 - collageImages.length }).map((_, i) => (
-                                                <div
-                                                    key={`empty-${i}`}
-                                                    className="w-full h-full bg-gray-100 flex items-center justify-center"
-                                                >
-                                                    <FiPackage className="h-4 w-4 text-gray-300" />
-                                                </div>
-                                            ))}
                                         </div>
                                     ) : (
-                                        <div className="w-full h-full flex items-center justify-center">
+                                        <div className="w-full h-full flex items-center justify-center bg-gray-50">
                                             <FiPackage className="h-10 w-10 text-gray-200" />
                                         </div>
                                     )}

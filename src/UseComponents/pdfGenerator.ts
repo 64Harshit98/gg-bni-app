@@ -17,6 +17,8 @@ export interface InvoiceData {
   companyContact: string;
   companyEmail?: string;
   companyGstin?: string;
+  companyState?: string;
+  placeOfSupply?: string;
   companyLogoBase64?: string;
   msmeNumber?: string;
   signatureBase64?: string;
@@ -128,6 +130,13 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   const showGstinDetails = !isEstimate && safeScheme !== 'NONE' && safeTaxType !== 'EXEMPT' && safeTaxType !== 'NONE';
   const showTaxColumns = !isEstimate;
 
+  // NEW: Determine IGST based on Place of Supply vs Company State
+  const safeCompanyState = (data.companyState || '').trim().toLowerCase();
+  const safePos = (data.placeOfSupply || '').trim().toLowerCase();
+
+  // If we have both strings and they don't match, it's an inter-state (IGST) bill
+  const isIgst = Boolean(safeCompanyState && safePos && safeCompanyState !== safePos);
+
   const drawBox = (y: number, h: number) => {
     doc.rect(startX, y, contentWidth, h);
   };
@@ -140,10 +149,9 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
 
   // --- PRE-CALCULATE LAYOUT HEIGHTS ---
   const addressLines = doc.splitTextToSize(data.companyAddress, contentWidth - 50);
-  const extraAddressLines = Math.max(0, addressLines.length - 1);
-  const addressOffset = extraAddressLines * 4;
-  const headerHeight = 25 + addressOffset;
+  const addressBlockHeight = addressLines.length * 4; // Dynamic height based on address lines
 
+  const headerHeight = 25 + addressBlockHeight; // Expanded box height
   const metaHeight = 16;
 
   const billName = data.billTo.name;
@@ -158,39 +166,57 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   const padding = 10;
   const partyHeight = (Math.max(5 + billAddr.length, 4 + shipAddr.length) * lineHeight) + padding;
 
-  // --- PRE-CALCULATE MATH ONCE ---
   let totalQty = 0, totalTaxable = 0, totalTaxAmt = 0, grossTotal = 0;
   const hasZeroMrp = data.items.some(item => !item.listPrice || item.listPrice === 0);
   const priceHeader = hasZeroMrp ? 'Sale Price' : 'MRP';
-  const taxBreakdown: Record<string, { taxable: number, cgst: number, sgst: number }> = {};
+
+  const taxBreakdown: Record<string, { taxable: number, cgst: number, sgst: number, igst: number }> = {};
+
+  // 1. Calculate proportional scales for Bill Discount
+  const totalBillDiscount = Number(data.billDiscount) || 0;
+  const sumPostDiscountAmounts = data.items.reduce((sum, item) => {
+    let tAmt = Number((item as any).taxableAmount || (item as any).subtotal || 0);
+    let txAmt = Number((item as any).taxAmount || (item as any).gstAmount || 0);
+    let fAmt = Number((item as any).finalPrice || item.amount || (item as any).total || 0);
+    return sum + (tAmt > 0 || txAmt > 0 ? tAmt + txAmt : fAmt);
+  }, 0);
 
   const tableBody = data.items.map(item => {
     const qty = Number(item.quantity) || 0;
-    let mrp = Number((item as any).mrp || item.listPrice || 0);
+    let mrp = Number((item as any).mrp || item.listPrice || (item as any).salesPrice || (item as any).rate || 0);
+
     let taxAmt = Number((item as any).taxAmount || item.gstAmount || 0);
     let taxableAmt = Number((item as any).taxableAmount || (item as any).subtotal || 0);
     let finalAmount = Number((item as any).finalPrice || item.amount || (item as any).total || 0);
 
-    // --- CRITICAL FIX: Ensure Row Amount includes Tax for perfect math! ---
     if (taxableAmt > 0 || taxAmt > 0) {
       finalAmount = taxableAmt + taxAmt;
     } else if (!taxableAmt && finalAmount > 0) {
       taxableAmt = finalAmount - taxAmt;
     }
 
-    let discountAmt = Number(item.discountAmount || (item as any).manualDiscount || (item as any).discount || 0);
-    if (discountAmt === 0 && mrp > 0 && taxableAmt > 0) {
-      discountAmt = (mrp * qty) - taxableAmt;
+    if (mrp === 0 && qty > 0 && taxableAmt > 0) {
+      mrp = taxableAmt / qty;
     }
 
-    if (discountAmt < 0) {
-      discountAmt = 0;
-      mrp = qty > 0 ? (taxableAmt / qty) : taxableAmt;
+    // FIX: PRICE MARKUP BUG
+    const effectiveUnitRate = qty > 0 ? (taxableAmt / qty) : 0;
+    if (effectiveUnitRate > mrp) {
+      mrp = effectiveUnitRate;
     }
+
+    // --- FIX: INCLUSIVE TAX BUG ---
+    // 1. Use the true item discount calculated safely on the frontend
+    let itemDisc = Number(item.discountAmount || 0);
+
+    // 2. Pro-rate the global bill discount across rows
+    let billDisc = sumPostDiscountAmounts > 0 ? (finalAmount / sumPostDiscountAmounts) * totalBillDiscount : 0;
+
+    if (itemDisc < 0) itemDisc = 0;
+    if (billDisc < 0) billDisc = 0;
 
     let taxRate = Number(item.taxRate || item.gstPercent || (item as any).tax || 0);
 
-    // Zero out tax for Estimates/Exempt
     if (isEstimate || safeScheme === 'NONE' || safeTaxType === 'EXEMPT' || safeTaxType === 'NONE') {
       taxRate = 0;
       taxAmt = 0;
@@ -200,45 +226,63 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     totalQty += qty;
     totalTaxable += taxableAmt;
     totalTaxAmt += taxAmt;
-    grossTotal += finalAmount; // Gross total now correctly includes tax!
+    grossTotal += finalAmount;
 
     if (taxRate > 0) {
       const rateKey = taxRate.toString();
       if (!taxBreakdown[rateKey]) {
-        taxBreakdown[rateKey] = { taxable: 0, cgst: 0, sgst: 0 };
+        taxBreakdown[rateKey] = { taxable: 0, cgst: 0, sgst: 0, igst: 0 };
       }
       taxBreakdown[rateKey].taxable += taxableAmt;
-      taxBreakdown[rateKey].cgst += (taxAmt / 2);
-      taxBreakdown[rateKey].sgst += (taxAmt / 2);
+      if (isIgst) {
+        taxBreakdown[rateKey].igst += taxAmt;
+      } else {
+        taxBreakdown[rateKey].cgst += (taxAmt / 2);
+        taxBreakdown[rateKey].sgst += (taxAmt / 2);
+      }
     }
 
-    return showTaxColumns ? [
+    // Unified Columns
+    if (!showTaxColumns) {
+      return [
+        item.sno, item.name, item.hsn || (item as any).hsnSac || '', qty, item.unit || 'PCS',
+        mrp.toFixed(2), itemDisc.toFixed(2), billDisc.toFixed(2), finalAmount.toFixed(2)
+      ];
+    }
+
+    return [
       item.sno, item.name, item.hsn || (item as any).hsnSac || '', qty, item.unit || 'PCS',
-      mrp.toFixed(2), discountAmt.toFixed(2), taxableAmt.toFixed(2),
-      `${(taxRate / 2)}%`, (taxAmt / 2).toFixed(2), `${(taxRate / 2)}%`, (taxAmt / 2).toFixed(2), finalAmount.toFixed(2)
-    ] : [
-      item.sno, item.name, item.hsn || (item as any).hsnSac || '', qty, item.unit || 'PCS',
-      mrp.toFixed(2), discountAmt.toFixed(2), finalAmount.toFixed(2)
+      mrp.toFixed(2), itemDisc.toFixed(2), billDisc.toFixed(2), taxableAmt.toFixed(2),
+      `${taxRate}%`, taxAmt.toFixed(2), finalAmount.toFixed(2)
     ];
   });
 
-  const billDiscount = Number(data.billDiscount) || 0;
   const advance = Number(data.advance) || 0;
 
-  // Safely sum up all extra expenses
   let totalExtraExpenses = Number(data.extraExpenseAmount) || 0;
   if (data.expenses && data.expenses.length > 0) {
     totalExtraExpenses = data.expenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
   }
 
   // --- STRICT MATH FIX ---
-  const pureCalculated = grossTotal - billDiscount + totalExtraExpenses;
-  const invoiceTotal = Number(data.finalAmount || (data as any).grandTotal || 0) || Math.round(pureCalculated);
+  // We DO NOT subtract billDiscount here because the items table already factors it in!
+  const pureCalculated = grossTotal + totalExtraExpenses;
+  let invoiceTotal = Number(data.finalAmount || (data as any).grandTotal || 0);
+
+  const isExemptOrEstimate = isEstimate || safeScheme === 'NONE' || safeTaxType === 'EXEMPT' || safeTaxType === 'NONE';
+  if (isExemptOrEstimate || !invoiceTotal) {
+    invoiceTotal = Math.round(pureCalculated);
+  }
+
   const roundOffAmt = invoiceTotal - pureCalculated;
   const settledAmount = invoiceTotal - advance;
 
   const prevBal = Number(data.previousBalance) || 0;
-  const currentDue = Number(data.due) || 0;
+
+  // Calculate currentDue based on the PDF's internal invoiceTotal minus payments.
+  // Do NOT use data.due from the database, because the database due amount includes tax!
+  const currentDue = Math.max(0, invoiceTotal - advance);
+
   const totalDue = prevBal + currentDue;
   const hasPrevOrDue = prevBal > 0 || currentDue > 0;
   const wordsH = hasPrevOrDue ? 12 : 8;
@@ -285,12 +329,17 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     doc.setFontSize(16); doc.setFont('helvetica', 'bold');
     doc.text(data.companyName.toUpperCase(), pageWidth / 2, cursorY + 11, { align: 'center' });
     doc.setFontSize(9); doc.setFont('helvetica', 'normal');
-    if (!isEstimate) doc.text(addressLines, pageWidth / 2, cursorY + 16, { align: 'center' });
-    if (!isEstimate) doc.text(`Phone : ${data.companyContact}`, pageWidth / 2, cursorY + 20, { align: 'center' });
+
+    if (!isEstimate) {
+      doc.text(addressLines, pageWidth / 2, cursorY + 16, { align: 'center' });
+      // Push phone number below the address dynamically
+      doc.text(`Phone : ${data.companyContact}`, pageWidth / 2, cursorY + 16 + addressBlockHeight, { align: 'center' });
+    }
 
     if (showGstinDetails) {
       doc.setFont('helvetica', 'bold');
-      doc.text(`GSTIN : ${data.companyGstin || ''}  (${safeScheme})`, pageWidth / 2, cursorY + 24 + addressOffset, { align: 'center' });
+      // Push GSTIN below the phone number
+      doc.text(`GSTIN : ${data.companyGstin || ''}  (${safeScheme})`, pageWidth / 2, cursorY + 22 + addressBlockHeight, { align: 'center' });
       doc.setFont('helvetica', 'normal');
     }
     cursorY += headerHeight;
@@ -300,7 +349,10 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     doc.setFontSize(9);
     doc.text(`Invoice No. :  ${data.invoice.number}`, startX + 2, cursorY + 5);
     doc.text(`Date          :  ${data.invoice.date}`, startX + 2, cursorY + 10);
-    doc.text(`Place of Supply : ${data.billTo.address.split(',').pop()?.trim() || ''}`, (pageWidth / 2) + 2, cursorY + 5);
+
+    // UPDATED: Use the specific placeOfSupply string
+    const displayPos = data.placeOfSupply || data.billTo.address.split(',').pop()?.trim() || '';
+    doc.text(`Place of Supply : ${displayPos}`, (pageWidth / 2) + 2, cursorY + 5);
     if (showGstinDetails) {
       doc.setFont('helvetica', 'bold');
       doc.text(`GST Type: ${safeScheme}${safeScheme === 'REGULAR' ? ` (${safeTaxType})` : ''}`, (pageWidth / 2) + 2, cursorY + 10);
@@ -317,10 +369,19 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     doc.setFont('helvetica', 'normal');
 
     let leftY = headerY + 6;
-    doc.text(isEstimate ? shipName : billName, startX + 2, leftY); leftY += lineHeight;
-    const leftAddr = isEstimate ? shipAddr : billAddr; doc.text(leftAddr, startX + 2, leftY); leftY += (leftAddr.length * lineHeight);
-    doc.text(isEstimate ? shipPhone : billPhone, startX + 2, leftY); leftY += lineHeight;
-    if (!isEstimate && showGstinDetails && data.billTo.gstin) doc.text(`GST No. : ${data.billTo.gstin}`, startX + 2, leftY);
+
+    // FIX: Prioritize primary billing details for Estimates so it doesn't print blank
+    const printName = isEstimate ? (billName || shipName) : billName;
+    const printAddr = isEstimate ? (data.billTo.address ? billAddr : shipAddr) : billAddr;
+    const printPhone = isEstimate ? (data.billTo.phone ? billPhone : shipPhone) : billPhone;
+
+    doc.text(printName, startX + 2, leftY); leftY += lineHeight;
+    doc.text(printAddr, startX + 2, leftY); leftY += (printAddr.length * lineHeight);
+    doc.text(printPhone, startX + 2, leftY); leftY += lineHeight;
+
+    if (!isEstimate && showGstinDetails && data.billTo.gstin) {
+      doc.text(`GST No. : ${data.billTo.gstin}`, startX + 2, leftY);
+    }
 
     if (!isEstimate) {
       let rightY = headerY + 6;
@@ -331,19 +392,25 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     }
     cursorY += partyHeight;
 
-    // 4. AutoTable
+    const fullTaxHeaders = isIgst
+      ? ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Subtotal', 'IGST', 'IGST Amt', 'Amount']
+      : ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Bill Disc.', 'Subtotal', 'GST', 'GST Amt', 'Amount'];
+
+    const noTaxHeaders = ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Bill Disc.', 'Amount'];
+
+    const activeColumnStyles = showTaxColumns
+      ? { 0: { cellWidth: 8 }, 1: { cellWidth: 'auto', halign: 'left' }, 2: { cellWidth: 12 }, 11: { cellWidth: 18, halign: 'right' } }
+      : { 0: { cellWidth: 8 }, 1: { cellWidth: 'auto', halign: 'left' }, 2: { cellWidth: 15 }, 8: { cellWidth: 20, halign: 'right' } };
+
     autoTable(doc, {
       startY: cursorY,
-      head: [showTaxColumns
-        ? ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Subtotal', 'CGST', 'CGST Amt', 'SGST', 'SGST Amt', 'Amount']
-        : ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Amount']
-      ],
+      head: [showTaxColumns ? fullTaxHeaders : noTaxHeaders],
       body: tableBody,
       theme: 'grid',
       styles: { fontSize: 8, cellPadding: 1, textColor, lineColor, lineWidth: 0.1, halign: 'center', valign: 'middle' },
       headStyles: { fillColor: [255, 255, 255], textColor, fontStyle: 'bold', lineWidth: 0.1, lineColor },
-      columnStyles: showTaxColumns ? { 0: { cellWidth: 8 }, 1: { cellWidth: 'auto', halign: 'left' }, 2: { cellWidth: 15 }, 12: { cellWidth: 20, halign: 'right' } }
-        : { 0: { cellWidth: 8 }, 1: { cellWidth: 'auto', halign: 'left' }, 2: { cellWidth: 15 }, 7: { cellWidth: 20, halign: 'right' } },
+      // @ts-ignore
+      columnStyles: activeColumnStyles as any,
       margin: { left: margin, right: margin },
     });
     // @ts-ignore
@@ -361,7 +428,6 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
       finalY += h;
     };
 
-    if (billDiscount > 0) addRow('Less : Bill Discount (-)', billDiscount, 6);
 
     if (data.expenses && data.expenses.length > 0) {
       doc.rect(startX, finalY, contentWidth, 6 * data.expenses.length); doc.line(vBoxX, finalY, vBoxX, finalY + (6 * data.expenses.length));
@@ -393,12 +459,12 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     finalY += 8;
 
     // --- ADVANCE & SETTLED AMOUNT ---
-    if (advance > 0) {
+    if (advance > 0 && !isEstimate) {
       addRow('Advance Paid (-)', advance, 6);
 
       doc.setFontSize(9); doc.setFont('helvetica', 'bold');
       doc.rect(startX, finalY, contentWidth, 8);
-      doc.text('Balance Due', vBoxX - 2, finalY + 5.5, { align: 'right' });
+      doc.text('Balance Due', vBoxX - 65, finalY + 5.5, { align: 'right' });
       doc.rect(endX - 30, finalY, 30, 8);
       doc.text(settledAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }), endX - 2, finalY + 5.5, { align: 'right' });
       finalY += 8;
@@ -412,22 +478,45 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
       doc.setFont('helvetica', 'normal'); doc.text(nLines, startX + 16, finalY + 4);
       finalY += nH;
     }
-
     if (showTaxColumns) {
-      const taxHeaders = [['Tax Rate', 'Taxable Amt.', 'CGST', 'SGST', 'Total Tax']];
+      // 1. Updated Headers with dedicated % columns
+      const taxHeaders = isIgst
+        ? [['Tax Rate', 'Taxable Amt.', 'IGST %', 'IGST Amt.', 'Total Tax']]
+        : [['Tax Rate', 'Taxable Amt.', 'CGST %', 'CGST Amt.', 'SGST %', 'SGST Amt.', 'Total Tax']];
+
+      // 2. Map the body to place rates and amounts in separate columns
       const taxBody = Object.keys(taxBreakdown).map(rate => {
         const d = taxBreakdown[rate];
         const fmt = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-        return [`${rate}%`, fmt(d.taxable), fmt(d.cgst), fmt(d.sgst), fmt(d.cgst + d.sgst)];
+
+        // Format the half rate (e.g., 18 -> 9, 5 -> 2.5)
+        const halfRate = (Number(rate) / 2).toFixed(1).replace('.0', '');
+
+        return isIgst
+          ? [`${rate}%`, fmt(d.taxable), `${rate}%`, fmt(d.igst), fmt(d.igst)]
+          : [`${rate}%`, fmt(d.taxable), `${halfRate}%`, fmt(d.cgst), `${halfRate}%`, fmt(d.sgst), fmt(d.cgst + d.sgst)];
       });
+
+      // 3. Add the totals row (using empty strings '' for the percentage columns)
       const fmt = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-      taxBody.push(['TOTAL', fmt(totalTaxable), fmt(totalTaxAmt / 2), fmt(totalTaxAmt / 2), fmt(totalTaxAmt)]);
+      if (isIgst) {
+        taxBody.push(['TOTAL', fmt(totalTaxable), '', fmt(totalTaxAmt), fmt(totalTaxAmt)]);
+      } else {
+        taxBody.push(['TOTAL', fmt(totalTaxable), '', fmt(totalTaxAmt / 2), '', fmt(totalTaxAmt / 2), fmt(totalTaxAmt)]);
+      }
+
+      // 4. Render the table
       autoTable(doc, {
         startY: finalY + 2, head: taxHeaders, body: taxBody, theme: 'grid',
         styles: { fontSize: 8, cellPadding: 1, textColor, lineColor, lineWidth: 0.1, halign: 'right' },
         headStyles: { fillColor: [255, 255, 255], textColor, fontStyle: 'bold', halign: 'right', lineColor, lineWidth: 0.1 },
-        columnStyles: { 0: { halign: 'left' } }, tableWidth: contentWidth / 2, margin: { left: startX },
+        // Keep the first column left-aligned, right-align the rest
+        columnStyles: { 0: { halign: 'left' } },
+        // Increased width to 65% to comfortably fit the 7 columns without text wrapping
+        tableWidth: contentWidth * 0.65,
+        margin: { left: startX },
       });
+
       // @ts-ignore
       finalY = Math.max(doc.lastAutoTable.finalY + 2, finalY + 25);
     }
@@ -576,10 +665,16 @@ export const preparePdfData = async (invoiceData: any) => {
         doc(db, 'companies', invoiceData.companyId, 'business_info', invoiceData.companyId)
       );
 
+
       if (businessInfoDoc.exists()) {
         const businessData = businessInfoDoc.data();
-        const logoUrl = businessData?.companyLogo;
 
+        // Grab state from business_info if it exists
+        if (businessData?.state) {
+          companyData.state = businessData.state;
+        }
+
+        const logoUrl = businessData?.companyLogo;
         if (logoUrl) {
           // Convert logo URL to base64
           try {
@@ -606,6 +701,8 @@ export const preparePdfData = async (invoiceData: any) => {
     companyLogoBase64,
 
     // --- TEXT FIELDS (The likely culprits) ---
+    companyState: companyData.state, // Fetch this from your companyDoc
+    placeOfSupply: invoiceData.placeOfSupply || '',
     type: invoiceData.type || 'SALES',              // Fixes 'undefined' type
     voucherName: invoiceData.voucherName || 'Tax Invoice',
     currency: invoiceData.currency || 'INR',        // Fixes currency crash

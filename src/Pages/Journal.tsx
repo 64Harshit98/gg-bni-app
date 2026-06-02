@@ -103,6 +103,7 @@ interface Invoice {
   shippingNumber?: string;
   shippingAddress?: string;
   shippingGST?: string;
+  placeOfSupply?: string;
   expenses?: { name: string; amount: number }[];
   extraExpenseName?: string;
   extraExpenseAmount?: number;
@@ -122,6 +123,8 @@ interface PdfData {
   companyGstin: string;
   msmeNumber: string;
   panNumber: string;
+  placeOfSupply?: string;
+  companyState?: string;       // <-- ADD THIS
   billDiscount: number;
   upiId: string;
   billTo: {
@@ -265,6 +268,7 @@ const useJournalData = (companyId?: string) => {
           partyNumber: data.partyNumber || '',
           partyAddress: data.partyAddress || '',
           partyGstin: data.partyGstin || '',
+          placeOfSupply: data.placeOfSupply || '', // <-- ADD THIS
           salesmanId: data.salesmanId || null,
           salesmanName: data.salesmanName || '',
           createdAt,
@@ -635,10 +639,7 @@ const Journal: React.FC = () => {
         quantity: qty,
         unit: fullItem.unit || item.unit || "Pcs",
         hsn: fullItem.hsnSac || item.hsnSac || "N/A",
-
-        // KEY FIX: Send the real MRP (even if 0) so the PDF generator renames the column
         listPrice: actualMrp,
-        // Pass basePrice as 'price' so the PDF generator uses it for the math when listPrice is 0
         price: basePrice,
 
         discountAmount: absoluteDiscount,
@@ -664,6 +665,8 @@ const Journal: React.FC = () => {
       companyGstin: billSettings.companyGstin || businessInfo?.gstin || '',
       msmeNumber: billSettings.msmeNumber || '',
       panNumber: billSettings.panNumber || '',
+      companyState: businessInfo?.state || '',         // <-- ADD THIS
+      placeOfSupply: invoice.placeOfSupply || '',
       billDiscount: invoice.manualDiscount || 0,
       upiId: billSettings.upiId || '',
       billTo: {

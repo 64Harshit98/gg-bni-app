@@ -1091,8 +1091,47 @@ const Sales: React.FC = () => {
     }, [items, listSelectedCategory]);
 
     const handleProceedToPayment = () => {
-        if (items.length === 0) { setModal({ message: 'Please add at least one item.', type: State.INFO }); return; }
-        if (salesSettings?.enableSalesmanSelection && !selectedWorker) { setModal({ message: 'Please select a salesman.', type: State.ERROR }); return; }
+        if (items.length === 0) {
+            setModal({ message: 'Please add at least one item.', type: State.INFO });
+            return;
+        }
+        if (salesSettings?.enableSalesmanSelection && !selectedWorker) {
+            setModal({ message: 'Please select a salesman.', type: State.ERROR });
+            return;
+        }
+
+        // --- NEW: MRP PRICE VALIDATION ---
+        const invalidMrpItems: string[] = [];
+        items.filter(i => !i.isCustomAmount).forEach(item => {
+            const mrp = Number(item.mrp) || 0;
+
+            // Only check if the item actually has an MRP set in the database
+            if (mrp > 0) {
+                let effectiveUnitPrice = 0;
+                if (item.customPrice !== undefined && item.customPrice !== null && item.customPrice !== '') {
+                    effectiveUnitPrice = parseFloat(String(item.customPrice));
+                } else {
+                    const currentDiscount = Number(item.discount) || 0;
+                    effectiveUnitPrice = mrp * (1 - currentDiscount / 100);
+                }
+
+                // If the user's custom price is higher than the MRP, flag it
+                if (effectiveUnitPrice > mrp) {
+                    invalidMrpItems.push(`${item.name} (Max: ₹${mrp})`);
+                }
+            }
+        });
+
+        // Block the payment drawer from opening and show an error
+        if (invalidMrpItems.length > 0) {
+            setModal({
+                message: `Selling price cannot exceed MRP for: ${invalidMrpItems.join(', ')}`,
+                type: State.ERROR
+            });
+            return;
+        }
+        // ---------------------------------
+
         if (!(salesSettings as any)?.allowNegativeStock) {
             const stockNeeds = new Map<string, number>();
             items.filter(i => i.isEditable).forEach(i => {
@@ -1107,6 +1146,7 @@ const Sales: React.FC = () => {
             });
             if (invalidItems.length > 0) { setModal({ message: `Insufficient stock: ${invalidItems.join(', ')}`, type: State.ERROR }); return; }
         }
+
         setIsDrawerOpen(true);
     };
 
@@ -1289,6 +1329,8 @@ const Sales: React.FC = () => {
                 partyNumber: completionData.partyNumber,
                 partyAddress: completionData.partyAddress || '',
                 partyGstin: completionData.partyGST || '',
+                placeOfSupply: completionData.placeOfSupply || '',    // <-- ADD THIS
+                shippingState: completionData.shippingState || '',
                 salesmanId: finalSalesman.uid,
                 salesmanName: finalSalesman.name,
                 updatedAt: serverTimestamp(),
@@ -2366,6 +2408,8 @@ const Sales: React.FC = () => {
                     initialShippingNumber={isEditMode ? invoiceToEdit?.shippingNumber : ''}
                     initialShippingAddress={isEditMode ? invoiceToEdit?.shippingAddress : ''}
                     initialShippingGST={isEditMode ? invoiceToEdit?.shippingGST : ''}
+                    initialPlaceOfSupply={isEditMode ? invoiceToEdit?.placeOfSupply : ''}      // <-- ADD THIS
+                    initialShippingState={isEditMode ? invoiceToEdit?.shippingState : ''}
                     initialExpenses={isEditMode ? (invoiceToEdit?.expenses || (invoiceToEdit?.extraExpenseName ? [{ name: invoiceToEdit.extraExpenseName, amount: invoiceToEdit.extraExpenseAmount }] : [])) : []}
                     initialNarration={isEditMode ? invoiceToEdit?.narration : ''}
                     enableShippingDetails={salesSettings?.enableShippingDetails}
@@ -2399,7 +2443,7 @@ const Sales: React.FC = () => {
             </div>
         );
     }
- 
+
     if (isCalculatorView) {
         return (
             // fixed inset-0 completely disables page scrolling
@@ -2521,8 +2565,8 @@ const Sales: React.FC = () => {
                     enableExtraExpense={false}
                     enableNarration={false}
                     allowDueBilling={salesSettings?.allowDueBilling ?? false}
-                    requireCustomerName={false}
-                    requireCustomerMobile={false}
+                    requireCustomerName={salesSettings?.requireCustomerName ?? false}
+                    requireCustomerMobile={salesSettings?.requireCustomerMobile ?? false}
                     isPartyNameEditable={true}
                     initialPartyName={''}
                     initialPartyNumber={''}

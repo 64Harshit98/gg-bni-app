@@ -1022,7 +1022,7 @@ const OrdersPage: React.FC = () => {
                 companyName: companyInfo?.name || "",
                 companyAddress: companyInfo?.address || "",
                 companyPhone: companyInfo?.ownerPhoneNumber || "",
-
+                placeOfSupply: Order.shippingDetails?.state || "",
                 companyGstin: businessData.gstin || "",
                 panNumber: businessData.panNumber || "",
                 msmeNumber: businessData.msmeUdyamNumber || "",
@@ -1056,10 +1056,10 @@ const OrdersPage: React.FC = () => {
 
                 items: itemsWithBase64,
 
-                grandTotal: Order.totalAmount,
-                paidAmount: Number(Order.paidAmount || 0),
-                advancePaid: Number(Order.paidAmount || 0),
-                dueAmount: Math.max(0, Order.totalAmount - Number(Order.paidAmount || 0)),
+                grandTotal: Math.max(0, itemsWithBase64.reduce((sum, i) => sum + i.total, 0) + (Order.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0) - Number(Order.manualDiscount || 0)),
+                paidAmount: Order.status === 'Paid' ? Math.max(0, itemsWithBase64.reduce((sum, i) => sum + i.total, 0) + (Order.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0) - Number(Order.manualDiscount || 0)) : Number(Order.paidAmount || 0),
+                advancePaid: Order.status === 'Paid' ? Math.max(0, itemsWithBase64.reduce((sum, i) => sum + i.total, 0) + (Order.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0) - Number(Order.manualDiscount || 0)) : Number(Order.paidAmount || 0),
+                dueAmount: Order.status === 'Paid' ? 0 : Math.max(0, Order.totalAmount - Number(Order.paidAmount || 0)),
                 previousBalance: wpPreviousBalance,
 
                 billDiscount: Number(Order.manualDiscount || 0),
@@ -1172,10 +1172,10 @@ const OrdersPage: React.FC = () => {
                     date: Order.time,
                 },
                 items: itemsWithBase64,
-                grandTotal: Order.totalAmount,
-                paidAmount: Number(Order.paidAmount || 0),
-                advancePaid: Number(Order.paidAmount || 0),
-                dueAmount: Math.max(0, Order.totalAmount - Number(Order.paidAmount || 0)),
+                grandTotal: Math.max(0, itemsWithBase64.reduce((sum, i) => sum + i.total, 0) + (Order.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0) - Number(Order.manualDiscount || 0)),
+                paidAmount: Order.status === 'Paid' ? Math.max(0, itemsWithBase64.reduce((sum, i) => sum + i.total, 0) + (Order.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0) - Number(Order.manualDiscount || 0)) : Number(Order.paidAmount || 0),
+                advancePaid: Order.status === 'Paid' ? Math.max(0, itemsWithBase64.reduce((sum, i) => sum + i.total, 0) + (Order.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0) - Number(Order.manualDiscount || 0)) : Number(Order.paidAmount || 0),
+                dueAmount: Order.status === 'Paid' ? 0 : Math.max(0, Order.totalAmount - Number(Order.paidAmount || 0)),
             };
 
             const preparedData = await prepareCatalogueBillData({
@@ -2183,10 +2183,19 @@ const OrdersPage: React.FC = () => {
                                 (sum, ex) => sum + (parseFloat(String(ex.amount)) || 0), 0
                             );
                             const total = Math.max(0, itemsSubtotal + orderExpensesTotal - Number(Order.manualDiscount || 0));
-                            const paid = Number(Order.paidAmount || 0);
-                            const due = Math.max(0, total - paid);
+                            let paid = Number(Order.paidAmount || 0);
+                            let due = Math.max(0, total - paid);
                             const isPaid = Order.status === 'Paid';
                             const isFinalStage = Order.status === 'Completed' || Order.status === 'Paid';
+
+                            // --- FIX: Ghost Due Amount on Returned Orders ---
+                            // If the order is fully Paid, force due to 0 and paid to total. 
+                            // This patches DB inconsistencies caused by return logic missing expenses.
+                            if (isPaid) {
+                                due = 0;
+                                paid = total;
+                            }
+                            // ------------------------------------------------
                             return (
                                 <motion.div
                                     key={Order.id}
@@ -2252,17 +2261,16 @@ const OrdersPage: React.FC = () => {
                                                 if (Order.paymentMethods) {
                                                     Object.entries(Order.paymentMethods).forEach(([method, amount]) => {
                                                         if (method.toLowerCase() !== 'due' && Number(amount) > 0) {
-                                                            seen.add(method.toUpperCase());
+                                                            seen.add(method.trim().toUpperCase());
                                                         }
                                                     });
                                                 }
 
-                                                // Collect from latest return's paymentDetails
                                                 const latestReturn = Order.returnHistory?.[Order.returnHistory.length - 1];
                                                 if (latestReturn?.paymentDetails) {
                                                     Object.entries(latestReturn.paymentDetails).forEach(([method, amount]) => {
                                                         if (method.toLowerCase() !== 'due' && Number(amount) > 0) {
-                                                            seen.add(method.toUpperCase());
+                                                            seen.add(method.trim().toUpperCase());
                                                         }
                                                     });
                                                 }
@@ -2561,14 +2569,13 @@ const OrdersPage: React.FC = () => {
                                                                         if (Order.paymentMethods && Object.keys(Order.paymentMethods).length > 0) {
                                                                             Object.entries(Order.paymentMethods).forEach(([method, amount]) => {
                                                                                 if (method.toLowerCase() !== 'due' && Number(amount) > 0) {
-                                                                                    const key = method.toUpperCase();
+                                                                                    const key = method.trim().toUpperCase();
                                                                                     mergedMethods[key] = (mergedMethods[key] || 0) + Number(amount);
                                                                                 }
                                                                             });
                                                                         } else if (Order.paymentMethod && paid > 0) {
-                                                                            mergedMethods[Order.paymentMethod.toUpperCase()] = paid;
+                                                                            mergedMethods[Order.paymentMethod.trim().toUpperCase()] = paid;
                                                                         }
-
                                                                         return Object.entries(mergedMethods).map(([method, amount]) => (
                                                                             <div
                                                                                 key={method}
@@ -2946,20 +2953,24 @@ const OrdersPage: React.FC = () => {
             )}
 
             {showPaymentModal && (() => {
+                // FIX 3: Include Expenses and Discounts in the Payment Drawer Total
+                const itemsTotal = (showPaymentModal.items || []).reduce(
+                    (sum, item) =>
+                        sum + (
+                            (item.customPrice ??
+                                (Number(item.salesPrice || 0) > 0
+                                    ? Number(item.salesPrice)
+                                    : Number(item.mrp || 0)))
+                            * Number(item.quantity || 0)
+                        ),
+                    0
+                );
 
-                // Updated total calculate karo (items se)
-                const updatedTotal =
-                    (showPaymentModal.items || []).reduce(
-                        (sum, item) =>
-                            sum + (
-                                (item.customPrice ??
-                                    (Number(item.salesPrice || 0) > 0
-                                        ? Number(item.salesPrice)
-                                        : Number(item.mrp || 0)))
-                                * Number(item.quantity || 0)
-                            ),
-                        0
-                    );
+                const expTotal = (showPaymentModal.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0);
+                const discTotal = Number(showPaymentModal.manualDiscount || 0);
+
+                // Real total matching the invoice
+                const updatedTotal = Math.max(0, itemsTotal + expTotal - discTotal);
 
                 // Current paid
                 const alreadyPaid = Number(showPaymentModal.paidAmount || 0);
@@ -3012,19 +3023,24 @@ const OrdersPage: React.FC = () => {
                                 // --------------------------------------------------------
 
                                 const currentMethods = showPaymentModal.paymentMethods || {};
+
+                                const newPaidTotal = alreadyPaid + amount;
+                                const remainingDue = Math.max(0, updatedTotal - newPaidTotal);
+
                                 const updatedMethods = {
                                     ...currentMethods,
                                     [methodKey]: (currentMethods[methodKey] || 0) + amount,
+                                    due: remainingDue // Sync the exact database due amount!
                                 };
 
-                                const newPaidTotal = alreadyPaid + amount;
-
                                 let newStatus = showPaymentModal.status;
-                                if (
-                                    showPaymentModal.status === 'Completed' &&
-                                    Math.round(newPaidTotal) >= Math.round(updatedTotal)
-                                ) {
+
+                                // If the remaining due is practically zero, mark as Paid
+                                if (remainingDue <= 0.1) {
                                     newStatus = 'Paid';
+                                } else if (newStatus === 'Paid' && remainingDue > 0.1) {
+                                    // Edge case: if it was Paid but they somehow added debt, revert to Completed
+                                    newStatus = 'Completed';
                                 }
 
                                 await updateDoc(orderRef, {

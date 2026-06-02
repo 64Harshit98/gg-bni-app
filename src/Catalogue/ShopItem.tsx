@@ -214,51 +214,39 @@ const MyShop: React.FC = () => {
         const categorySlug = group ? generateSlug(group.name) : item.itemGroupId;
         const itemSlug = generateSlug(item.name || "product");
 
-        let shareUrl = `${window.location.origin}/${companyId}/${categorySlug}?product=${itemSlug}&itemId=${item.id}`;
+        // ADDED &cId=${companyId} to the base URL
+        let shareUrl = `${window.location.origin}/${companyId}/${categorySlug}?product=${itemSlug}&itemId=${item.id}&cId=${companyId}`;
 
         try {
             const docRef = doc(db, 'companies', companyId);
             const snap = await getDoc(docRef);
 
             if (snap.exists() && snap.data().subdomain) {
-                shareUrl = `https://${snap.data().subdomain}.sellar.in/${categorySlug}?product=${itemSlug}&itemId=${item.id}`;
+                // ADDED &cId=${companyId} to the subdomain URL
+                shareUrl = `https://${snap.data().subdomain}.sellar.in/${categorySlug}?product=${itemSlug}&itemId=${item.id}&cId=${companyId}`;
             }
         } catch (error) {
             console.error("Error fetching subdomain for sharing:", error);
         }
 
         try {
+            const shareText = `Check out ${item.name} from ${companyName}`;
+
             if (navigator.share) {
-                const shareData: ShareData = {
-                    title: `${companyName} - ${item.name}`,
-                    text: `Check out ${item.name} from ${companyName}`,
+                await navigator.share({
+                    title: item.name,
+                    text: shareText,
                     url: shareUrl,
-                };
-
-                if (item.imageUrl && navigator.canShare) {
-                    try {
-                        const imageResponse = await fetch(item.imageUrl);
-                        const blob = await imageResponse.blob();
-                        const file = new File([blob], `${itemSlug}.jpg`, { type: blob.type });
-
-                        if (navigator.canShare({ files: [file] })) {
-                            shareData.files = [file];
-                        }
-                    } catch (imageError) {
-                        console.warn("Could not fetch image for native sharing, falling back to text only.", imageError);
-                    }
-                }
-
-                await navigator.share(shareData);
+                });
             } else {
-                await navigator.clipboard.writeText(shareUrl);
+                await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`);
                 alert("Product link copied to clipboard!");
             }
         } catch (error) {
+            if (error instanceof Error && error.name === 'AbortError') return;
             console.error("Error sharing item:", error);
         }
     };
-
     const updateQuantity = (itemId: string, delta: number) => {
         setCart(prev => prev.map(i => {
             if (i.item.id === itemId) {

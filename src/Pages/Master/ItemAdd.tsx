@@ -127,7 +127,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   const [imageUrl, setImageUrl] = useState<string>('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-const [itemVariants, setItemVariants] = useState<string[]>([]);
+  const [itemVariants, setItemVariants] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [pageIsLoading, setPageIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -590,7 +590,13 @@ const [itemVariants, setItemVariants] = useState<string[]>([]);
         const rowPurchaseDiscount = parseFloat(getVal(7)) || 0;
         const rowTax = parseFloat(getVal(8)) || 0;
         const rowHsn = getVal(9);
-        const csvCategoryValue = getVal(10);
+        let csvCategoryValue = getVal(10);
+        if (
+          csvCategoryValue &&
+          ['uncategorized', 'none', 'n/a', 'null'].includes(csvCategoryValue.toLowerCase())
+        ) {
+          csvCategoryValue = "";
+        }
         const stockVal = parseInt(getVal(11)) || 0;
         const rowRestock = parseInt(getVal(12)) || 0;
         const rowMoq = parseInt(getVal(13)) || 1;
@@ -1155,7 +1161,7 @@ const [itemVariants, setItemVariants] = useState<string[]>([]);
                   </label>
                   <InfoTooltip text="Select a primary category. Add more as catalogue-only tags below." />
                 </div>
-              
+
                 {/* Primary category dropdown — always visible */}
                 <select
                   value={selectedCategories[0] || ''}

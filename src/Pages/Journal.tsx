@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import JournalEditModal from './Journaleditmodal';
+import PaymentDrawer from '../Components/PaymentDrawer';
 import { useNavigate, Link } from 'react-router-dom';
 import { db } from '../lib/Firebase';
 import {
@@ -17,7 +19,7 @@ import {
   serverTimestamp,
   writeBatch
 } from 'firebase/firestore';
-import { useAuth } from '../context/auth-context';
+import { useAuth, useDatabase } from '../context/auth-context';
 import { CustomToggle, CustomToggleItem } from '../Components/CustomToggle';
 import { CustomCard } from '../Components/CustomCard';
 import { CustomButton } from '../Components/CustomButton';
@@ -106,6 +108,16 @@ interface Invoice {
   extraExpenseName?: string;
   extraExpenseAmount?: number;
   narration?: string;
+  removedItemsHistory?: Array<{
+    id: string;
+    name: string;
+    quantity: number;
+    finalPrice: number;
+    mrp: number;
+    unit?: string;
+    removedAt: string;
+    modeOfReturn: string;
+  }>;
 }
 
 interface PdfData {
@@ -241,8 +253,9 @@ const useJournalData = (companyId?: string) => {
           };
         });
 
-        const calculatedTotal = Object.values(paymentMethods).reduce(
-          (sum: number, value: any) => sum + (typeof value === 'number' ? value : 0),
+        const calculatedTotal = Object.entries(paymentMethods).reduce(
+          (sum: number, [key, value]: [string, any]) =>
+            key !== 'due' ? sum + (typeof value === 'number' ? value : 0) : sum,
           0
         );
         const returnHistory = data.returnHistory || [];
@@ -287,6 +300,7 @@ const useJournalData = (companyId?: string) => {
           extraExpenseName: data.extraExpenseName || '',
           extraExpenseAmount: Number(data.extraExpenseAmount) || 0,
           narration: data.narration || '',
+          removedItemsHistory: data.removedItemsHistory || [],
         };
       });
     };
@@ -348,6 +362,9 @@ const Journal: React.FC = () => {
   const [invoiceToDelete, setInvoiceToDelete] = useState<Invoice | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
+  const [postEditInvoice, setPostEditInvoice] = useState<Invoice | null>(null);
+  const [showPostEditDrawer, setShowPostEditDrawer] = useState(false);
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
   const [showCustomPicker, setShowCustomPicker] = useState(false);
@@ -361,6 +378,7 @@ const Journal: React.FC = () => {
   const [showPrintSubMenu, setShowPrintSubMenu] = useState(false);
 
   const { currentUser, loading: authLoading, hasPermission } = useAuth();
+  const dbOperations = useDatabase();
 
   // ─── Tutorial state (mirrors Home.tsx pattern) ────────────────────────────
   const [tutorialStep, setTutorialStep] = useState(0);
@@ -373,7 +391,12 @@ const Journal: React.FC = () => {
   };
 
   useTutorial(currentUser, setTutorialStep, 'journalTutorialDone');
-
+  useEffect(() => {
+    if (!dbOperations) return;
+    dbOperations.getWorkers().then((fetched: Array<{ uid: string; name: string }>) => {
+      if (fetched && fetched.length > 0) setWorkers(fetched);
+    }).catch(() => { });
+  }, [dbOperations]);
   // ─── Autoscroll: whenever tutorialStep changes, scroll that element into view
   useEffect(() => {
     if (tutorialStep === 0) return;
@@ -949,21 +972,17 @@ const Journal: React.FC = () => {
   };
 
   const handleEditInvoice = (invoice: Invoice) => {
-    if (invoice.type === 'Credit') {
-      navigate(ROUTES.SALES, { state: { invoiceData: invoice, isEditMode: true } });
-    } else {
-      navigate(ROUTES.PURCHASE, { state: { purchaseId: invoice.id, isEditMode: true } });
-    }
+    setEditingInvoice(invoice);
   };
 
-  const handleSalesReturn = (invoice: Invoice) => {
-    navigate(`${ROUTES.SALES_RETURN}`, { state: { invoiceData: invoice } });
-  };
+  // const handleSalesReturn = (invoice: Invoice) => {
+  //   navigate(`${ROUTES.SALES_RETURN}`, { state: { invoiceData: invoice } });
+  // };
 
-  const handlePurchaseReturn = (invoice: Invoice) => {
-    navigate(`${ROUTES.PURCHASE_RETURN}`, { state: { invoiceData: invoice } });
-  };
-
+  // const handlePurchaseReturn = (invoice: Invoice) => {
+  //   navigate(`${ROUTES.PURCHASE_RETURN}`, { state: { invoiceData: invoice } });
+  // };
+  const [workers, setWorkers] = useState<Array<{ uid: string; name: string }>>([]);
   const [customerCredit, setCustomerCredit] = useState<number>(0);
   const openPaymentModal = async (invoice: Invoice) => {
     setSelectedInvoice(invoice);
@@ -1010,10 +1029,10 @@ const Journal: React.FC = () => {
       const currentPaymentMethods = data.paymentMethods || {};
       const currentDue = currentPaymentMethods.due || 0;
       const currentMethodTotal = currentPaymentMethods[method] || 0;
-
-      const newDue = currentDue - amount;
-      if (newDue < 0) throw new Error('Payment exceeds due amount.');
-
+      if (amount > currentDue + 0.01) {
+        throw new Error(`Settlement amount ₹${amount} exceeds due amount ₹${currentDue}`);
+      }
+      const newDue = Math.max(0, currentDue - amount);
       // Deduct from customer credit balance if Credit Note was used
       if ((method === 'credit' || method === 'Credit Note') && invoice.partyNumber) {
         const normalizedPhone = invoice.partyNumber.replace(/\D/g, '').slice(-10);
@@ -1027,7 +1046,13 @@ const Journal: React.FC = () => {
         [method]: currentMethodTotal + amount,
         due: newDue,
       };
+      const totalPaid = Object.entries(newPaymentMethods)
+        .filter(([k]) => k !== 'due')
+        .reduce((s, [, v]) => s + (Number(v) || 0), 0);
 
+      if (totalPaid > (sfDoc.data().totalAmount || 0) + 0.01) {
+        throw new Error('Total paid would exceed invoice amount. Payment rejected.');
+      }
       const paymentRecord = {
         amount,
         method,
@@ -1170,29 +1195,45 @@ const Journal: React.FC = () => {
                 </div>
                 <div className="space-y-2 text-sm">
                   {(invoice.items && invoice.items.length > 0) ? invoice.items.map((item, index) => {
-                    const netUnitPrice =
-                      item.taxableAmount && item.quantity > 0
-                        ? item.taxableAmount / item.quantity
-                        : item.effectiveUnitPrice
-                          ? item.effectiveUnitPrice
-                          : (item.quantity > 0 ? (item.finalPrice / item.quantity) : 0);
+                    const netUnitPrice = (() => {
+                      if (item.taxableAmount && item.quantity > 0) return item.taxableAmount / item.quantity;
+                      if (item.effectiveUnitPrice && item.effectiveUnitPrice > 0) return item.effectiveUnitPrice;
+                      if (item.salesPrice && item.salesPrice > 0) return item.salesPrice;
+                      if (item.mrp && item.mrp > 0) return item.mrp;
+                      if (item.quantity > 0 && item.finalPrice > 0) return item.finalPrice / item.quantity;
+                      return 0;
+                    })();
 
                     // --- Collect ALL returned qty for this item across all return entries ---
                     const returnedEntries: { qty: number; modeOfReturn: string; returnedAt: any }[] = [];
                     (invoice.returnHistory || []).forEach((h: any) => {
+                      // Returned items — items customer gave back
                       (h.returnedItems || []).forEach((r: any) => {
                         if (r.originalItemId === item.id || r.originalItemId === (item as any).productId) {
                           returnedEntries.push({
                             qty: Number(r.quantity) || Number(r.qty) || 0,
-                            modeOfReturn: h.modeOfReturn || '',
-                            returnedAt: h.returnedAt,
+                            modeOfReturn: h.modeOfReturn || 'Return',
+                            returnedAt: h.returnedAt || h.timestamp,
+                          });
+                        }
+                      });
+                      // Exchanged-AWAY items — original items the customer returned during exchange
+                      // Only match if this invoice item was the one being exchanged away (originalItemId matches)
+                      (h.exchangedItems || h.exchangeItems || []).forEach((r: any) => {
+                        if (
+                          (r.originalItemId && (r.originalItemId === item.id || r.originalItemId === (item as any).productId))
+                        ) {
+                          returnedEntries.push({
+                            qty: Number(r.quantity) || Number(r.qty) || 0,
+                            modeOfReturn: 'Exchange',
+                            returnedAt: h.returnedAt || h.timestamp,
                           });
                         }
                       });
                     });
 
-                    // const totalReturnedQty = returnedEntries.reduce((sum, e) => sum + e.qty, 0);
-                    const remainingQty = item.quantity;
+                    const totalReturnedQty = returnedEntries.reduce((sum, e) => sum + e.qty, 0);
+                    const remainingQty = item.quantity - totalReturnedQty;
 
                     const renderPriceRow = (qty: number) => {
                       const amt = netUnitPrice * qty;
@@ -1265,7 +1306,10 @@ const Journal: React.FC = () => {
                   {/* Show returned items crossed out */}
                   {invoice.returnedItemsSnapshot && invoice.returnedItemsSnapshot.length > 0 &&
                     invoice.returnedItemsSnapshot
-                      .filter((snap: any) => !invoice.items?.some(i => i.id === snap.id))
+                      .filter((snap: any) =>
+                        !invoice.items?.some(i => i.id === snap.id) &&
+                        !invoice.items?.some(i => i.id === snap.originalItemId)
+                      )
                       .map((item: any, index: number) => {
                         const matchedHistory = invoice.returnHistory?.find((h: any) =>
                           h.returnedItems?.some((ri: any) =>
@@ -1314,6 +1358,7 @@ const Journal: React.FC = () => {
                         );
                       })
                   }
+
                   {/* ✅ NEW block - fallback for OLD transactions missing returnedItemsSnapshot */}
                   {(!invoice.returnedItemsSnapshot || invoice.returnedItemsSnapshot.length === 0) &&
                     invoice.returnHistory?.flatMap((h: any) =>
@@ -1359,7 +1404,45 @@ const Journal: React.FC = () => {
                         </div>
                       ))
                   }
-                  {invoice.items?.length === 0 && (!invoice.returnedItemsSnapshot || invoice.returnedItemsSnapshot.length === 0) &&
+                  {/* Removed items from edit (Credit Note / Cash Refund) */}
+                  {(invoice.removedItemsHistory || []).map((item, index) => {
+                    const modeOfReturn = item.modeOfReturn || 'Refund';
+                    const badgeStyle = (() => {
+                      const m = modeOfReturn.toUpperCase();
+                      if (m.includes('CREDIT')) return 'bg-blue-50 text-blue-700 border-blue-200';
+                      if (m.includes('CASH') || m.includes('REFUND')) return 'bg-green-50 text-green-700 border-green-200';
+                      return 'bg-orange-50 text-orange-600 border-orange-200';
+                    })();
+                    return (
+                      <div key={`removed-edit-${index}`} className="flex justify-between items-center text-slate-400 mb-3">
+                        <div className="flex-1 pr-4">
+                          <p className="font-medium line-through">{item.name}</p>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                            <span className={`text-[7px] uppercase font-bold px-1.5 py-0.5 rounded border ${badgeStyle}`}>
+                              {modeOfReturn}
+                            </span>
+                            {item.removedAt && (
+                              <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wide">
+                                {new Date(item.removedAt).toLocaleDateString('en-GB', {
+                                  day: '2-digit', month: 'short', year: '2-digit'
+                                })}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-semibold line-through">
+                            {Number(item.finalPrice).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+                          </p>
+                          <p className="text-xs">Qty: {item.quantity}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {invoice.items?.length === 0 &&
+                    (!invoice.returnedItemsSnapshot || invoice.returnedItemsSnapshot.length === 0) &&
+                    (!invoice.removedItemsHistory || invoice.removedItemsHistory.length === 0) &&
+                    (!invoice.returnHistory || invoice.returnHistory.length === 0) &&
                     <p className="text-xs text-slate-400">No item details available.</p>
                   }
                 </div>
@@ -1420,10 +1503,10 @@ const Journal: React.FC = () => {
 
                   {invoice.type === 'Credit' && (
                     <>
-                      <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+                      {/* <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
                         <button onClick={(e) => { e.stopPropagation(); handleSalesReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">Return</button>
 
-                      </ShowWrapper>
+                      </ShowWrapper> */}
                       <button
                         onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }}
                         disabled={pdfGenerating === invoice.id}
@@ -1437,7 +1520,6 @@ const Journal: React.FC = () => {
                   {invoice.type === 'Debit' && (
                     <>
                       <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-                        <button onClick={(e) => { e.stopPropagation(); handlePurchaseReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-sm hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-colors">Return</button>
                         <button onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-black rounded-sm hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center gap-2">Print</button>
                       </ShowWrapper>
                     </>
@@ -1456,7 +1538,113 @@ const Journal: React.FC = () => {
     <div className="flex min-h-screen w-full flex-col overflow-hidden bg-gray-100 mb-10">
       {modal && <Modal message={modal.message} type={modal.type} onClose={cancelDelete} onConfirm={confirmDeleteInvoice} showConfirmButton={invoiceToDelete !== null} />}
       <PaymentModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} invoice={selectedInvoice} onSubmit={handleSettlePayment} availableCredit={customerCredit} />
+      {/* ── JOURNAL EDIT MODAL ─────────────────────────────────────────────── */}
+      {editingInvoice && (
+        <JournalEditModal
+          invoice={editingInvoice}
+          workers={workers}
+          onClose={() => setEditingInvoice(null)}
+          onSaveSuccess={(msg, updatedInvoice) => {
+            setEditingInvoice(null);
+            // If invoice has due amount, open PaymentDrawer FIRST — show success only after payment
+            if (updatedInvoice && (updatedInvoice.dueAmount ?? 0) > 0) {
+              setPostEditInvoice(updatedInvoice as unknown as Invoice);
+              setShowPostEditDrawer(true);
+              // Don't show success modal yet — it will show after payment is done
+            } else {
+              // Paid invoice or no due — show success immediately
+              setModal({ message: msg, type: State.SUCCESS });
+              setTimeout(() => setModal(null), 3000);
+            }
+          }}
+          onSaveError={(msg) => {
+            setModal({ message: msg, type: State.ERROR });
+            setTimeout(() => setModal(null), 3000);
+          }}
+        />
+      )}
 
+      {/* Post-edit PaymentDrawer — opens after invoice is saved */}
+      {showPostEditDrawer && postEditInvoice && (
+        <PaymentDrawer
+          isOpen={showPostEditDrawer}
+          onClose={() => {
+            setShowPostEditDrawer(false);
+            setPostEditInvoice(null);
+            // Invoice was already saved — show success even if payment drawer is dismissed
+            setModal({ message: 'Invoice updated successfully', type: State.SUCCESS });
+            setTimeout(() => setModal(null), 3000);
+          }}
+          mode={postEditInvoice.type === 'Credit' ? 'sale' : 'purchase'}
+          subtotal={postEditInvoice.dueAmount ?? 0}
+  billTotal={postEditInvoice.dueAmount ?? 0}
+  initialPartyName={postEditInvoice.partyName}
+  initialPartyNumber={postEditInvoice.partyNumber}
+  initialPartyAddress={postEditInvoice.partyAddress}
+  initialPartyGST={postEditInvoice.partyGstin}
+  initialPaymentMethods={{}}
+  initialDiscount={0}
+          initialNarration={postEditInvoice.narration || ''}
+          initialExpenseName={postEditInvoice.extraExpenseName || ''}
+          initialExpenseAmount={postEditInvoice.extraExpenseAmount || 0}
+          allowDueBilling={true}
+          enableNarration={true}
+          enableExtraExpense={true}
+          enableCustomerDetails={true}
+          onPaymentComplete={async (data) => {
+  if (!postEditInvoice || !currentUser?.companyId) return;
+  try {
+    const collectionName = postEditInvoice.type === 'Credit' ? 'sales' : 'purchases';
+    const docRef = doc(db, 'companies', currentUser.companyId, collectionName, postEditInvoice.id);
+    const { updateDoc } = await import('firebase/firestore');
+
+    // Read existing payments fresh from Firestore to avoid stale state
+    const { getDoc } = await import('firebase/firestore');
+    const snap = await getDoc(docRef);
+    const existingMethods: Record<string, number> = {};
+    if (snap.exists()) {
+      const saved = snap.data().paymentMethods || {};
+      for (const [k, v] of Object.entries(saved)) {
+        if (k === 'due') continue;
+        const num = Number(v) || 0;
+        if (num > 0) existingMethods[k] = num;
+      }
+    }
+
+    // Only add non-zero new payments on top of what's already in Firestore
+    const merged: Record<string, number> = { ...existingMethods };
+    for (const [method, amount] of Object.entries(data.paymentDetails)) {
+      if (method === 'due') continue;
+      const num = Number(amount) || 0;
+      if (num > 0) {
+        merged[method] = (Number(merged[method]) || 0) + num;
+      }
+    }
+
+    // Recompute due from actual invoice total stored in Firestore
+    const snapData = snap.exists() ? snap.data() : null;
+const invoiceTotal = snapData
+    ? (Number(snapData.totalAmount) || postEditInvoice.amount)
+    : postEditInvoice.amount;
+const drawerDiscount = Number(data.discount) || 0;  // ← the ₹5 given in drawer
+const effectiveTotal = Math.max(0, invoiceTotal - drawerDiscount);
+const totalCollected = Object.values(merged)
+    .reduce((s, v) => s + (Number(v) || 0), 0);
+merged['due'] = Math.max(0, effectiveTotal - totalCollected);
+
+    await updateDoc(docRef, { paymentMethods: merged });
+
+              setShowPostEditDrawer(false);
+              setPostEditInvoice(null);
+              setModal({ message: 'Payment updated successfully', type: State.SUCCESS });
+              setTimeout(() => setModal(null), 3000);
+            } catch (err: any) {
+              setModal({ message: 'Failed to update payment: ' + (err?.message || ''), type: State.ERROR });
+              setTimeout(() => setModal(null), 4000);
+            }
+          }}
+        />
+      )}
       {/* ACTION SELECTION MODAL */}
       {invoiceToPrint && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => { setInvoiceToPrint(null); setShowPrintSubMenu(false); }}>

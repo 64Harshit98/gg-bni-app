@@ -2623,9 +2623,9 @@ const OrdersPage: React.FC = () => {
                                                             : Order.status === "Packed"
                                                                 ? 'grid-cols-5 md:grid-cols-5'
                                                                 : Order.status === "Paid"
-                                                                    ? 'grid-cols-3'
+                                                                    ? 'grid-cols-2'
                                                                     : Order.status === "Completed"
-                                                                        ? 'grid-cols-4'
+                                                                        ? 'grid-cols-3'
                                                                         : 'grid-cols-4'
                                                             } gap-3 pt-6 border-t`}
                                                     >
@@ -2690,7 +2690,7 @@ const OrdersPage: React.FC = () => {
                                                                 )}
 
                                                                 {/* RETURN – PAID + UNPAID dono me */}
-                                                                <button
+                                                                {/* <button
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
                                                                         navigate(
@@ -2701,7 +2701,7 @@ const OrdersPage: React.FC = () => {
                                                                     className="py-2.5 bg-sky-500 text-white text-xs font-bold rounded-sm"
                                                                 >
                                                                     Return
-                                                                </button>
+                                                                </button> */}
 
                                                                 {/* PRINT */}
                                                                 <button

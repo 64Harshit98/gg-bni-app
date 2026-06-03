@@ -1661,7 +1661,7 @@ const Sales: React.FC = () => {
                         <select
                             value={activeTaxMode}
                             onChange={(e) => setActiveTaxMode(e.target.value as any)}
-                            disabled={(salesSettings?.gstScheme !== 'regular')}
+                            disabled={(salesSettings?.gstScheme !== 'regular' || salesSettings?.lockTaxToggle)}
                             className={`appearance-none border border-gray-300 pr-8 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium transition-all ${isLocked
                                 ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                                 : 'bg-gray-50 hover:border-blue-400 text-gray-700 cursor-pointer'
@@ -1688,7 +1688,7 @@ const Sales: React.FC = () => {
                         <select
                             value={activeTaxMode}
                             onChange={(e) => setActiveTaxMode(e.target.value as any)}
-                            disabled={(salesSettings?.gstScheme !== 'regular')}
+                            disabled={(salesSettings?.gstScheme !== 'regular' || salesSettings?.lockTaxToggle)}
                             className={`appearance-none w-full bg-white border border-gray-300 px-3 py-2 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium transition-all shadow-sm md:px-4 md:py-2.5 md:text-[15px] md:rounded-sm ${isLocked
                                 ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                                 : 'hover:border-blue-400 text-gray-700 cursor-pointer'

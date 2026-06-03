@@ -3015,15 +3015,14 @@ const OrdersPage: React.FC = () => {
                 const expTotal = (showPaymentModal.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0);
                 const discTotal = Number(showPaymentModal.manualDiscount || 0);
 
-                // Real total matching the invoice
-                const updatedTotal = Math.max(0, itemsTotal + expTotal - discTotal);
+                // FIX: Round the total to 2 decimal places
+                const updatedTotal = Number(Math.max(0, itemsTotal + expTotal - discTotal).toFixed(2));
 
                 // Current paid
                 const alreadyPaid = Number(showPaymentModal.paidAmount || 0);
 
-                // Current due
-                const currentDue = Math.max(0, updatedTotal - alreadyPaid);
-
+                // FIX: Round the final due amount to prevent long decimals
+                const currentDue = Number(Math.max(0, updatedTotal - alreadyPaid).toFixed(2));
                 return (
                     <PaymentModal
                         isOpen={!!showPaymentModal}
@@ -3081,12 +3080,14 @@ const OrdersPage: React.FC = () => {
 
                                 let newStatus = showPaymentModal.status;
 
-                                // If the remaining due is practically zero, mark as Paid
-                                if (remainingDue <= 0.1) {
-                                    newStatus = 'Paid';
-                                } else if (newStatus === 'Paid' && remainingDue > 0.1) {
-                                    // Edge case: if it was Paid but they somehow added debt, revert to Completed
-                                    newStatus = 'Completed';
+                                // FIXED: Only alter the status automatically if it's already in the final stages.
+                                // Otherwise, keep it in its current tab (Upcoming, Confirmed, Packed).
+                                if (newStatus === 'Completed' || newStatus === 'Paid') {
+                                    if (remainingDue <= 0.1) {
+                                        newStatus = 'Paid';
+                                    } else {
+                                        newStatus = 'Completed';
+                                    }
                                 }
 
                                 await updateDoc(orderRef, {

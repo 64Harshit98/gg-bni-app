@@ -125,7 +125,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
         }
 
         // --- NEW: Validation for Credit Note Redemption ---
-        if (method === 'credit' && paymentAmount > availableCredit) {
+        if (method === 'credit Note' && paymentAmount > availableCredit) {
             setError(`Cannot redeem more than available credit (₹${availableCredit.toLocaleString('en-IN')}).`);
             return;
         }
@@ -204,7 +204,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                             <option value="PDC">PDC</option>
                             {/* --- NEW: Add Credit Note Option --- */}
                             {availableCredit > 0 && (
-                                <option value="credit">Credit Note</option>
+                                <option value="credit Note">Credit Note</option>
                             )}
                             {/* --------------------------------- */}
                         </select>

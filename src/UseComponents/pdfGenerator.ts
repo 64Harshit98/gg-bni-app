@@ -99,7 +99,12 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     );
   }
 
-  const doc = new jsPDF('p', 'mm', 'a4');
+  const doc = new jsPDF({
+    orientation: 'p',
+    unit: 'mm',
+    format: 'a4',
+    compress: true
+  });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
 
@@ -118,7 +123,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   if (data.upiId) {
     const upiString = `upi://pay?pa=${data.upiId}&pn=${encodeURIComponent(data.companyName)}&cu=INR`;
     try {
-      qrBase64 = await QRCode.toDataURL(upiString, { width: 80, margin: 0 });
+      qrBase64 = await QRCode.toDataURL(upiString, { width: 80, margin: 0, errorCorrectionLevel: 'L' });
     } catch (err) {
       console.error("Failed to generate QR code", err);
     }
@@ -311,7 +316,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
 
     drawBox(cursorY, headerHeight);
     if (qrBase64 && !isEstimate) {
-      doc.addImage(qrBase64, 'PNG', startX + 2, cursorY + 2, 18, 18);
+      doc.addImage(qrBase64, 'JPEG', startX + 2, cursorY + 2, 18, 18, undefined, 'FAST');
       doc.setFontSize(6); doc.text('Scan to Pay', startX + 11, cursorY + 22, { align: 'center' });
     }
 
@@ -323,7 +328,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     if (!isEstimate) doc.text(`Msme No ${data.msmeNumber || ''}`, endX - 2, cursorY + 5, { align: 'right' });
 
     if (data.companyLogoBase64) {
-      try { doc.addImage(data.companyLogoBase64, 'PNG', endX - 20, cursorY + 7, 18, 14); } catch (e) { }
+      try { doc.addImage(data.companyLogoBase64, 'JPEG', endX - 20, cursorY + 7, 18, 14, undefined, 'FAST'); } catch (e) { }
     }
 
     doc.setFontSize(16); doc.setFont('helvetica', 'bold');
@@ -558,7 +563,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
       doc.setFont('helvetica', 'bold'); doc.text("Receiver's Signature :", startX + tW + 2, finalY + 4);
       doc.setFontSize(7); doc.text(`for ${data.companyName}`, startX + tW + rW + (aW / 2), finalY + 4, { align: 'center' });
       if (data.signatureBase64) {
-        try { doc.addImage(data.signatureBase64, 'PNG', startX + tW + rW + (aW / 2) - 17.5, finalY + 8, 35, 15); } catch (e) { }
+        try { doc.addImage(data.signatureBase64, 'JPEG', startX + tW + rW + (aW / 2) - 17.5, finalY + 8, 35, 15, undefined, 'FAST'); } catch (e) { }
       }
       doc.setFontSize(8); doc.text("Authorised Signatory", startX + tW + rW + (aW / 2), finalY + 33, { align: 'center' });
     }
@@ -643,7 +648,39 @@ const convertNumberToWords = (amount: number): string => {
 
   return str.trim();
 };
+const compressImage = (
+  blob: Blob,
+  quality: number = 0.5
+): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
 
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+
+      const maxWidth = 300;
+
+      const scale = Math.min(1, maxWidth / img.width);
+
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+
+      const ctx = canvas.getContext('2d');
+
+      if (!ctx) {
+        reject('Canvas context not available');
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+
+    img.onerror = reject;
+    img.src = URL.createObjectURL(blob);
+  });
+};
 export const preparePdfData = async (invoiceData: any) => {
   // 1. Fetch Company Details (Safe Fetch)
   let companyData: any = {
@@ -680,12 +717,8 @@ export const preparePdfData = async (invoiceData: any) => {
           try {
             const response = await fetch(logoUrl);
             const blob = await response.blob();
-            companyLogoBase64 = await new Promise<string>((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onloadend = () => resolve(reader.result as string);
-              reader.onerror = reject;
-              reader.readAsDataURL(blob);
-            });
+
+            companyLogoBase64 = await compressImage(blob, 0.5);
           } catch (error) {
             console.error("Error converting logo to base64:", error);
           }

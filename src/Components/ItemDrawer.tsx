@@ -7,6 +7,8 @@ import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { FiSave, FiX, FiPackage, FiCamera } from 'react-icons/fi';
 import { Spinner } from '../constants/Spinner';
 import imageCompression from 'browser-image-compression';
+import ReactCrop, { type Crop, centerCrop, makeAspectCrop } from 'react-image-crop';
+import 'react-image-crop/dist/ReactCrop.css';
 import ShowWrapper from '../context/ShowWrapper';
 import { Permissions, State } from '../enums';
 import { Modal } from '../constants/Modal';
@@ -96,6 +98,12 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
     const [unitChangeWarning, setUnitChangeWarning] = useState(false);
     const [variantIds, setVariantIds] = useState<string[]>([]);
     const [allItemsForVariants, setAllItemsForVariants] = useState<any[]>([]);
+    const [showCropModal, setShowCropModal] = useState(false);
+const [rawImageSrc, setRawImageSrc] = useState<string | null>(null);
+const [crop, setCrop] = useState<Crop>();
+const [completedCrop, setCompletedCrop] = useState<Crop | null>(null);
+const imgRef = useRef<HTMLImageElement>(null);
+const pendingRawFile = useRef<File | null>(null);
 
     useEffect(() => {
         const fetchGroups = async () => {
@@ -270,34 +278,77 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
         }));
     };
 
-    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+    const getCroppedBlob = (image: HTMLImageElement, crop: Crop): Promise<Blob> => {
+    const canvas = document.createElement('canvas');
+    const scaleX = image.naturalWidth / image.width;
+    const scaleY = image.naturalHeight / image.height;
+    canvas.width = crop.width;
+    canvas.height = crop.height;
+    const ctx = canvas.getContext('2d')!;
+    ctx.drawImage(
+        image,
+        crop.x * scaleX, crop.y * scaleY,
+        crop.width * scaleX, crop.height * scaleY,
+        0, 0,
+        crop.width, crop.height
+    );
+    return new Promise((resolve, reject) => {
+        canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Canvas is empty')), 'image/jpeg', 0.95);
+    });
+};
 
-        setModal(null);
-        setUploadProgress(null);
+const applyCompression = async (file: File) => {
+    setModal(null);
+    setUploadProgress(null);
+    const options = { maxSizeMB: 0.05, maxWidthOrHeight: 1920, useWebWorker: true };
+    try {
+        const compressedFile = await imageCompression(file, options);
+        const newFile = new File([compressedFile], compressedFile.name || file.name, { type: compressedFile.type });
+        setImageFile(newFile);
+        if (imagePreview && imagePreview.startsWith('blob:')) URL.revokeObjectURL(imagePreview);
+        setImagePreview(URL.createObjectURL(newFile));
+    } catch (error) {
+        console.error("Image compression failed:", error);
+        setModal({ message: "Image compression failed. Please try a different file.", type: State.ERROR });
+    }
+};
 
-        const options = {
-            maxSizeMB: 0.05,
-            maxWidthOrHeight: 1920,
-            useWebWorker: true,
-        };
+const handleImageLoaded = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const { width, height } = e.currentTarget;
+    const centeredCrop = centerCrop(
+        makeAspectCrop({ unit: '%', width: 80 }, 1, width, height),
+        width, height
+    );
+    setCrop(centeredCrop);
+};
 
-        try {
-            const compressedFile = await imageCompression(file, options);
-            const newFile = new File([compressedFile], compressedFile.name || file.name, { type: compressedFile.type });
-            setImageFile(newFile);
+const handleCropConfirm = async () => {
+    if (!imgRef.current || !completedCrop || completedCrop.width === 0 || completedCrop.height === 0) {
+        if (pendingRawFile.current) await applyCompression(pendingRawFile.current);
+        setShowCropModal(false);
+        return;
+    }
+    try {
+        const croppedBlob = await getCroppedBlob(imgRef.current, completedCrop);
+        const croppedFile = new File([croppedBlob], pendingRawFile.current?.name || 'cropped.jpg', { type: 'image/jpeg' });
+        await applyCompression(croppedFile);
+    } catch {
+        setModal({ message: 'Failed to crop image.', type: State.ERROR });
+    } finally {
+        setShowCropModal(false);
+    }
+};
 
-            if (imagePreview && imagePreview.startsWith('blob:')) {
-                URL.revokeObjectURL(imagePreview);
-            }
-            setImagePreview(URL.createObjectURL(newFile));
-
-        } catch (error) {
-            console.error("Image compression failed:", error);
-            setModal({ message: "Image compression failed. Please try a different file.", type: State.ERROR });
-        }
-    };
+const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const objectUrl = URL.createObjectURL(file);
+    pendingRawFile.current = file;
+    setRawImageSrc(objectUrl);
+    setCrop(undefined);
+    setCompletedCrop(null);
+    setShowCropModal(true);
+};
 
     const handleSave = async () => {
         const companyId = item?.companyId;
@@ -458,6 +509,58 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 className={`bg-white rounded-t-lg shadow-xl w-full max-w-md h-[80vh] flex flex-col transform transition-all duration-300 ease-in-out ${drawerClasses}`}
                 onClick={(e) => e.stopPropagation()}
             >
+                                {/* CROP MODAL */}
+                {showCropModal && rawImageSrc && (
+                    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 rounded-t-lg px-4">
+                        <div className="bg-white rounded-lg shadow-xl w-full p-4 flex flex-col gap-3">
+                            <h3 className="text-base font-bold text-gray-800">Crop Image</h3>
+                            <p className="text-xs text-gray-500">Drag to select crop area. Tap <strong>Use Full Image</strong> to skip.</p>
+                            <div className="flex justify-center overflow-hidden" style={{ maxHeight: 'calc(80vh - 180px)' }}>
+                                <ReactCrop
+                                    crop={crop}
+                                    onChange={(c) => setCrop(c)}
+                                    onComplete={(c) => setCompletedCrop(c)}
+                                    aspect={undefined}
+                                >
+                                    <img
+                                        ref={imgRef}
+                                        src={rawImageSrc}
+                                        alt="Crop preview"
+                                        onLoad={handleImageLoaded}
+                                        className="max-w-full object-contain"
+                                        style={{ maxHeight: 'calc(80vh - 180px)' , maxWidth: '100%', width: '100%' }}
+                                    />
+                                </ReactCrop>
+                            </div>
+                            <div className="flex justify-end gap-2 mt-1">
+                                <button
+                                    onClick={() => {
+                                        setShowCropModal(false);
+                                        pendingRawFile.current = null;
+                                        if (cameraInputRef.current) cameraInputRef.current.value = '';
+                                        if (fileInputRef.current) fileInputRef.current.value = '';
+                                    }}
+                                    className="px-3 py-2 text-xs font-medium text-gray-600 bg-gray-100 rounded-sm hover:bg-gray-200"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={async () => { if (pendingRawFile.current) await applyCompression(pendingRawFile.current); setShowCropModal(false); }}
+                                    className="px-3 py-2 text-xs font-medium text-gray-700 bg-gray-200 rounded-sm hover:bg-gray-300"
+                                >
+                                    Use Full Image
+                                </button>
+                                <button
+                                    onClick={handleCropConfirm}
+                                    className="px-4 py-2 text-xs font-bold text-white bg-sky-500 rounded-sm hover:bg-sky-600"
+                                >
+                                    Crop & Use
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 <div className="p-4 text-center relative border-b">
                     <div className="absolute left-1/2 top-2 -translate-x-1/2">
                         <div className="w-12 h-1.5 bg-gray-300 rounded-full"></div>

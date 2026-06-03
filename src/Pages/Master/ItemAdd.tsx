@@ -15,6 +15,8 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import ExcelJS from 'exceljs';
 import { db, storage } from '../../lib/Firebase';
 import imageCompression from 'browser-image-compression';
+import ReactCrop, { type Crop, centerCrop, makeAspectCrop } from 'react-image-crop';
+import 'react-image-crop/dist/ReactCrop.css';
 import { InfoTooltip } from '../../Components/InfoToolTip';
 import { VariantPicker } from '../../Components/VariantPicker';
 
@@ -135,6 +137,12 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
 
   const [isImageCompressing, setIsImageCompressing] = useState(false);
+  const [showCropModal, setShowCropModal] = useState(false);
+  const [rawImageSrc, setRawImageSrc] = useState<string | null>(null);
+  const [crop, setCrop] = useState<Crop>();
+  const [completedCrop, setCompletedCrop] = useState<Crop | null>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const pendingRawFile = useRef<File | null>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
 
@@ -302,22 +310,79 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       return Date.now();
     }
   };
-
+  const getCroppedBlob = (image: HTMLImageElement, crop: Crop): Promise<Blob> => {
+    const canvas = document.createElement('canvas');
+    const scaleX = image.naturalWidth / image.width;
+    const scaleY = image.naturalHeight / image.height;
+    canvas.width = crop.width;
+    canvas.height = crop.height;
+    const ctx = canvas.getContext('2d')!;
+    ctx.drawImage(
+      image,
+      crop.x * scaleX, crop.y * scaleY,
+      crop.width * scaleX, crop.height * scaleY,
+      0, 0,
+      crop.width, crop.height
+    );
+    return new Promise((resolve, reject) => {
+      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Canvas is empty')), 'image/jpeg', 0.95);
+    });
+  };
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Show crop modal first before compressing
+    const objectUrl = URL.createObjectURL(file);
+    pendingRawFile.current = file;
+    setRawImageSrc(objectUrl);
+    setCrop(undefined);
+    setCompletedCrop(null);
+    setShowCropModal(true);
+  };
+
+  const handleCropConfirm = async () => {
+    if (!imgRef.current || !completedCrop || completedCrop.width === 0 || completedCrop.height === 0) {
+      // No crop selected — use original file
+      if (!pendingRawFile.current) return;
+      applyCompression(pendingRawFile.current);
+      setShowCropModal(false);
+      return;
+    }
+
+    try {
+      const croppedBlob = await getCroppedBlob(imgRef.current, completedCrop);
+      const croppedFile = new File([croppedBlob], pendingRawFile.current?.name || 'cropped.jpg', { type: 'image/jpeg' });
+      await applyCompression(croppedFile);
+    } catch {
+      setModal({ message: 'Failed to crop image.', type: State.ERROR });
+    } finally {
+      setShowCropModal(false);
+    }
+  };
+
+  const applyCompression = async (file: File) => {
     setIsImageCompressing(true);
     try {
       const options = { maxSizeMB: 0.5, maxWidthOrHeight: 1024, useWebWorker: true };
       const compressedFile = await imageCompression(file, options);
       setImageFile(compressedFile);
       setImagePreview(URL.createObjectURL(compressedFile));
-    } catch (error) {
+    } catch {
       setModal({ message: 'Failed to compress image.', type: State.ERROR });
     } finally {
       setIsImageCompressing(false);
     }
+  };
+
+  const handleImageLoaded = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const { width, height } = e.currentTarget;
+    // Default to a centered square crop
+    const centeredCrop = centerCrop(
+      makeAspectCrop({ unit: '%', width: 80 }, 1, width, height),
+      width, height
+    );
+    setCrop(centeredCrop);
   };
 
   const handleAddItem = async () => {
@@ -916,6 +981,50 @@ const ItemAdd: React.FC<ItemAddProps> = ({
             <p className="text-sm text-gray-600 font-mono">
               {uploadProgress.current} / {uploadProgress.total} processed
             </p>
+          </div>
+        </div>
+      )}
+      {showCropModal && rawImageSrc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6 flex flex-col gap-4">
+            <h2 className="text-lg font-bold text-gray-800">Crop Image</h2>
+            <p className="text-sm text-gray-500">Drag to select the area you want to keep. Click <strong>Use Full Image</strong> to skip cropping.</p>
+            <div className="flex justify-center max-h-[60vh] overflow-auto">
+              <ReactCrop
+                crop={crop}
+                onChange={(c) => setCrop(c)}
+                onComplete={(c) => setCompletedCrop(c)}
+                aspect={undefined}
+              >
+                <img
+                  ref={imgRef}
+                  src={rawImageSrc}
+                  alt="Crop preview"
+                  onLoad={handleImageLoaded}
+                  className="max-w-full object-contain"
+                />
+              </ReactCrop>
+            </div>
+            <div className="flex justify-end gap-3 mt-2">
+              <button
+                onClick={() => { setShowCropModal(false); pendingRawFile.current = null; if (imageInputRef.current) imageInputRef.current.value = ''; }}
+                className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-sm hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => { if (pendingRawFile.current) await applyCompression(pendingRawFile.current); setShowCropModal(false); }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-sm hover:bg-gray-300"
+              >
+                Use Full Image
+              </button>
+              <button
+                onClick={handleCropConfirm}
+                className={`px-6 py-2 text-sm font-bold text-white ${activeTheme.primaryBg} rounded-sm`}
+              >
+                Crop & Use
+              </button>
+            </div>
           </div>
         </div>
       )}

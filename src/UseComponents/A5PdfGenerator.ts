@@ -3,13 +3,64 @@ import autoTable from "jspdf-autotable";
 import { ACTION } from "../enums";
 import type { InvoiceData } from "./pdfGenerator";
 
+const compressBase64Image = (
+    base64: string,
+    quality: number = 0.4,
+    maxSize: number = 120
+): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+
+        img.onload = () => {
+            const canvas = document.createElement("canvas");
+
+            const scale = Math.min(
+                1,
+                maxSize / Math.max(img.width, img.height)
+            );
+
+            canvas.width = img.width * scale;
+            canvas.height = img.height * scale;
+
+            const ctx = canvas.getContext("2d");
+
+            if (!ctx) {
+                reject("Canvas error");
+                return;
+            }
+
+            ctx.drawImage(
+                img,
+                0,
+                0,
+                canvas.width,
+                canvas.height
+            );
+
+            resolve(
+                canvas.toDataURL(
+                    "image/jpeg",
+                    quality
+                )
+            );
+        };
+
+        img.onerror = reject;
+        img.src = base64;
+    });
+};
 export const generateA5Invoice = async (
     data: InvoiceData,
     isEstimate: boolean = false,
     action: ACTION,
     withDuplicate: boolean = false
 ) => {
-    const doc = new jsPDF("p", "mm", "a5"); // A5 Size
+    const doc = new jsPDF({
+        orientation: "p",
+        unit: "mm",
+        format: "a5",
+        compress: true
+    }); // A5 Size
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const rightMargin = pageWidth - 10;
@@ -33,245 +84,263 @@ export const generateA5Invoice = async (
             typeof item.imageBase64 === "string" &&
             item.imageBase64.startsWith("data:image")
     );
- // ================= DRAW PAGE HELPER =================
+    for (const item of data.items as any[]) {
+        if (
+            item.imageBase64 &&
+            item.imageBase64.startsWith("data:image") &&
+            !item.compressedImageBase64
+        ) {
+            try {
+                item.compressedImageBase64 =
+                    await compressBase64Image(
+                        item.imageBase64,
+                        0.4,
+                        120
+                    );
+            } catch (err) {
+                console.error("Image compression failed", err);
+            }
+        }
+    }
+    // ================= DRAW PAGE HELPER =================
     const drawPage = (isDuplicate: boolean = false) => {
         if (isDuplicate) {
             doc.addPage();
         }
-    // --- 1. HEADER ---
-    const headerHeight = showGstinDetails && data.companyGstin ? 25 : 20;
-    doc.setFillColor("#0c3b5e");
-    doc.rect(0, 0, pageWidth, headerHeight, "F");
-    if (isDuplicate) {
-        doc.setFontSize(9);
+        // --- 1. HEADER ---
+        const headerHeight = showGstinDetails && data.companyGstin ? 25 : 20;
+        doc.setFillColor("#0c3b5e");
+        doc.rect(0, 0, pageWidth, headerHeight, "F");
+        if (isDuplicate) {
+            doc.setFontSize(9);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(200, 200, 200);
+            doc.text("DUPLICATE", pageWidth / 2, 5, { align: "center" });
+        }
+        doc.setTextColor("#ffffff");
         doc.setFont("helvetica", "bold");
-        doc.setTextColor(200, 200, 200);
-        doc.text("DUPLICATE", pageWidth / 2, 5, { align: "center" });
-    }
-    doc.setTextColor("#ffffff");
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(22);
-    doc.text(data.companyName || "Giftinguru.com", pageWidth / 2, 13, { align: "center" });
+        doc.setFontSize(22);
+        doc.text(data.companyName || "Giftinguru.com", pageWidth / 2, 13, { align: "center" });
 
-    // Use the new showGstinDetails switch here
-    if (showGstinDetails) {
+        // Use the new showGstinDetails switch here
+        if (showGstinDetails) {
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(8);
+
+            let gstText = safeScheme;
+
+            if (safeScheme === "REGULAR" && data.taxType) {
+                gstText += ` (${data.taxType.toLowerCase() === "inclusive" ? "Inclusive" : "Exclusive"})`;
+            }
+
+            doc.text(`GST Type: ${gstText}`, pageWidth / 2, 18, { align: "center" });
+            if (data.companyGstin) {
+                doc.setFontSize(7);
+                doc.text(`GSTIN: ${data.companyGstin}`, pageWidth / 2, 21, { align: "center" });
+            }
+        }
+
+        if (resolvedIsEstimate) {
+            doc.setFontSize(10);
+            doc.setTextColor("#ffffff");
+            doc.text("ESTIMATE", pageWidth / 2, 18, { align: "center" });
+        }
+
+        // --- 2. META INFO ROW ---
+
+        let cursorY = headerHeight + 8;
+
+        doc.setTextColor("#000000");
         doc.setFont("helvetica", "normal");
         doc.setFontSize(8);
 
-        let gstText = safeScheme;
+        const usableWidth = pageWidth - 10;
+        const colWidth = usableWidth / 3;
 
-        if (safeScheme === "REGULAR" && data.taxType) {
-            gstText += ` (${data.taxType.toLowerCase() === "inclusive" ? "Inclusive" : "Exclusive"})`;
+        const col1X = 5;
+        const col2X = 5 + colWidth;
+        const col3X = 5 + (colWidth * 2);
+
+        doc.text(`Invoice No : ${data.invoice.number || ""}`, col1X, cursorY);
+        doc.text(`Date : ${data.invoice.date || ""}`, col2X, cursorY);
+
+        const posLines = doc.splitTextToSize(`Place of Supply : ${data.billTo.address || ""}`, colWidth - 2);
+        doc.text(posLines, col3X, cursorY);
+
+        doc.line(5, cursorY + 4, pageWidth - 5, cursorY + 4);
+
+        cursorY += 8;
+
+        // ================= BILL / SHIP TABLE =================
+
+        const sectionStartY = cursorY;
+        const sectionHeight = 28;
+        const sectionWidth = pageWidth - 10;
+
+        doc.rect(5, sectionStartY, sectionWidth, sectionHeight);
+
+        // middle divider
+        doc.line(5 + sectionWidth / 2, sectionStartY, 5 + sectionWidth / 2, sectionStartY + sectionHeight);
+
+        // headings
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.text(resolvedIsEstimate ? "Estimate For :" : "Billed To :", 8, sectionStartY + 5);
+
+        if (!resolvedIsEstimate) {
+            doc.text("Shipped To :", 5 + sectionWidth / 2 + 3, sectionStartY + 5);
         }
 
-        doc.text(`GST Type: ${gstText}`, pageWidth / 2, 18, { align: "center" });
-        if (data.companyGstin) {
-            doc.setFontSize(7);
-            doc.text(`GSTIN: ${data.companyGstin}`, pageWidth / 2, 21, { align: "center" });
-        }
-    }
+        // values
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        let textY = sectionStartY + 10;
 
-    if (resolvedIsEstimate) {
-        doc.setFontSize(10);
-        doc.setTextColor("#ffffff");
-        doc.text("ESTIMATE", pageWidth / 2, 18, { align: "center" });
-    }
+        const billX = 8;
+        const shipX = 5 + sectionWidth / 2 + 3;
 
-    // --- 2. META INFO ROW ---
-
-    let cursorY = headerHeight + 8;
-
-    doc.setTextColor("#000000");
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-
-    const usableWidth = pageWidth - 10;
-    const colWidth = usableWidth / 3;
-
-    const col1X = 5;
-    const col2X = 5 + colWidth;
-    const col3X = 5 + (colWidth * 2);
-
-    doc.text(`Invoice No : ${data.invoice.number || ""}`, col1X, cursorY);
-    doc.text(`Date : ${data.invoice.date || ""}`, col2X, cursorY);
-
-    const posLines = doc.splitTextToSize(`Place of Supply : ${data.billTo.address || ""}`, colWidth - 2);
-    doc.text(posLines, col3X, cursorY);
-
-    doc.line(5, cursorY + 4, pageWidth - 5, cursorY + 4);
-
-    cursorY += 8;
-
-    // ================= BILL / SHIP TABLE =================
-
-    const sectionStartY = cursorY;
-    const sectionHeight = 28;
-    const sectionWidth = pageWidth - 10;
-
-    doc.rect(5, sectionStartY, sectionWidth, sectionHeight);
-
-    // middle divider
-    doc.line(5 + sectionWidth / 2, sectionStartY, 5 + sectionWidth / 2, sectionStartY + sectionHeight);
-
-    // headings
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.text(resolvedIsEstimate ? "Estimate For :" : "Billed To :", 8, sectionStartY + 5);
-
-    if (!resolvedIsEstimate) {
-        doc.text("Shipped To :", 5 + sectionWidth / 2 + 3, sectionStartY + 5);
-    }
-
-    // values
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    let textY = sectionStartY + 10;
-
-    const billX = 8;
-    const shipX = 5 + sectionWidth / 2 + 3;
-
-    // ===== NAME =====
-    if (resolvedIsEstimate) {
-        doc.text(data.billTo?.name || "", billX, textY);
-    } else {
-        doc.text(data.billTo?.name || "", billX, textY);
-        doc.text(data.shipTo?.name || data.billTo?.name || "", shipX, textY);
-    }
-
-    textY += 4;
-
-    // ===== ADDRESS =====
-    const billAddrLines = doc.splitTextToSize(data.billTo?.address || "", sectionWidth / 2 - 8);
-    doc.text(billAddrLines, billX, textY);
-
-    if (!resolvedIsEstimate) {
-        const shipAddrLines = doc.splitTextToSize(data.shipTo?.address || data.billTo?.address || "", sectionWidth / 2 - 8);
-        doc.text(shipAddrLines, shipX, textY);
-    }
-
-    textY += 8;
-
-    // ===== PHONE =====
-    doc.text(`Phone : ${data.billTo?.phone || ""}`, billX, textY);
-
-    if (!resolvedIsEstimate) {
-        doc.text(`Phone : ${data.shipTo?.phone || data.billTo?.phone || ""}`, shipX, textY);
-    }
-
-    // ===== GSTIN =====
-    if (showGstinDetails && data.billTo?.gstin) {
-        textY += 4;
-        doc.text(`GSTIN : ${data.billTo.gstin}`, billX, textY);
-
-        if (!resolvedIsEstimate && data.shipTo?.gstin) {
-            doc.text(`GSTIN : ${data.shipTo.gstin}`, shipX, textY);
-        }
-    }
-
-    const tableStartY = sectionStartY + sectionHeight + 5;
-
-    // ================= PRE-CALCULATE MATH & GRAND TOTAL =================
-    let calculatedGrandTotal = 0;
-    let totalQty = 0;
-    let totalTaxable = 0;
-    let totalTaxAmt = 0;
-
-    const processedItems = data.items.map((item: any, index: number) => {
-        const totalPcs = item.totalPcs || item.quantity || 1;
-        const qty = Number(item.quantity) || 0;
-
-        let mrp = Number(item.listPrice) || 0;
-
-        if (mrp === 0) {
-            const salesPrice = Number(item.price || item.rate || 0);
-            if (salesPrice > 0) {
-                mrp = salesPrice;
-            } else if (qty > 0) {
-                mrp = Number(item.amount || 0) / qty;
-            }
-        }
-        let rawPrice = mrp;
-        let effectiveTaxRate = resolvedIsEstimate ? 0 : Number(item.gstPercent || item.taxRate || 0);
-
-        if (safeScheme === 'COMPOSITION' || safeScheme === 'NONE') {
-            effectiveTaxRate = 0;
-        }
-
-        let rowTotal = 0;
-        let rowDiscountAmt = 0;
-
-        if (item.amount !== undefined && item.amount !== null && Number(item.amount) > 0) {
-            rowTotal = Number(item.amount);
-            rowDiscountAmt = (mrp * qty) - rowTotal;
-            if (rowDiscountAmt < 0) rowDiscountAmt = 0;
-        } else {
-            const discAmt = Number(item.discountAmount) || 0;
-            rowDiscountAmt = discAmt;
-            rowTotal = (mrp * qty) - discAmt;
-        }
-
-        // Explicit Discount Priority (A4 logic)
-        if (item.discountAmount !== undefined && Number(item.discountAmount) > 0) {
-            rowDiscountAmt = Number(item.discountAmount);
-        }
-
-        let taxableValue = 0;
-        let taxAmt = 0;
-        let finalRowTotal = 0;
-
+        // ===== NAME =====
         if (resolvedIsEstimate) {
-            finalRowTotal = rowTotal;
-            taxableValue = rowTotal;
-            taxAmt = 0;
-        } else if (safeScheme === 'NONE' || safeScheme === 'COMPOSITION') {
-            finalRowTotal = rowTotal;
-            taxableValue = rowTotal;
-            taxAmt = 0;
+            doc.text(data.billTo?.name || "", billX, textY);
         } else {
-            if (safeTaxType === 'EXCLUSIVE') {
-                taxableValue = rowTotal;
-                taxAmt = taxableValue * (effectiveTaxRate / 100);
-                finalRowTotal = taxableValue + taxAmt;
-            } else {
-                // INCLUSIVE
-                finalRowTotal = rowTotal;
-                taxableValue = finalRowTotal / (1 + (effectiveTaxRate / 100));
-                taxAmt = finalRowTotal - taxableValue;
+            doc.text(data.billTo?.name || "", billX, textY);
+            doc.text(data.shipTo?.name || data.billTo?.name || "", shipX, textY);
+        }
+
+        textY += 4;
+
+        // ===== ADDRESS =====
+        const billAddrLines = doc.splitTextToSize(data.billTo?.address || "", sectionWidth / 2 - 8);
+        doc.text(billAddrLines, billX, textY);
+
+        if (!resolvedIsEstimate) {
+            const shipAddrLines = doc.splitTextToSize(data.shipTo?.address || data.billTo?.address || "", sectionWidth / 2 - 8);
+            doc.text(shipAddrLines, shipX, textY);
+        }
+
+        textY += 8;
+
+        // ===== PHONE =====
+        doc.text(`Phone : ${data.billTo?.phone || ""}`, billX, textY);
+
+        if (!resolvedIsEstimate) {
+            doc.text(`Phone : ${data.shipTo?.phone || data.billTo?.phone || ""}`, shipX, textY);
+        }
+
+        // ===== GSTIN =====
+        if (showGstinDetails && data.billTo?.gstin) {
+            textY += 4;
+            doc.text(`GSTIN : ${data.billTo.gstin}`, billX, textY);
+
+            if (!resolvedIsEstimate && data.shipTo?.gstin) {
+                doc.text(`GSTIN : ${data.shipTo.gstin}`, shipX, textY);
             }
         }
 
-        totalQty += qty;
-        totalTaxable += taxableValue;
-        totalTaxAmt += taxAmt;
-        calculatedGrandTotal += finalRowTotal;
+        const tableStartY = sectionStartY + sectionHeight + 5;
 
-        return {
-            sno: item.sno || (index + 1).toString(),
-            name: item.name || "",
-            totalPcs,
-            unit: item.unit || "pcs",
-            qty,
-            rawPrice,
-            effectiveTaxRate,
-            taxAmt,
-            taxableValue,
-            discountAmt: rowDiscountAmt,
-            finalRowTotal,
-            imageBase64: item.imageBase64
-        };
-    });
+        // ================= PRE-CALCULATE MATH & GRAND TOTAL =================
+        let calculatedGrandTotal = 0;
+        let totalQty = 0;
+        let totalTaxable = 0;
+        let totalTaxAmt = 0;
 
-    const billDiscount = Number(data.billDiscount) || 0;
-    const extraExpense = Number(data.extraExpenseAmount) || 0;
-    const advance = Number((data as any).advance) || 0;
+        const processedItems = data.items.map((item: any, index: number) => {
+            const totalPcs = item.totalPcs || item.quantity || 1;
+            const qty = Number(item.quantity) || 0;
 
-    const netPayable = calculatedGrandTotal - billDiscount + extraExpense - advance;
-    const finalRoundTotal = Math.round(netPayable);
-    // const roundOffAmt = finalRoundTotal - netPayable;
+            let mrp = Number(item.listPrice) || 0;
 
-    const finalTotalAmountToPrint = finalRoundTotal > 0
-        ? finalRoundTotal
-        : Number(data.finalAmount || 0);
+            if (mrp === 0) {
+                const salesPrice = Number(item.price || item.rate || 0);
+                if (salesPrice > 0) {
+                    mrp = salesPrice;
+                } else if (qty > 0) {
+                    mrp = Number(item.amount || 0) / qty;
+                }
+            }
+            let rawPrice = mrp;
+            let effectiveTaxRate = resolvedIsEstimate ? 0 : Number(item.gstPercent || item.taxRate || 0);
+
+            if (safeScheme === 'COMPOSITION' || safeScheme === 'NONE') {
+                effectiveTaxRate = 0;
+            }
+
+            let rowTotal = 0;
+            let rowDiscountAmt = 0;
+
+            if (item.amount !== undefined && item.amount !== null && Number(item.amount) > 0) {
+                rowTotal = Number(item.amount);
+                rowDiscountAmt = (mrp * qty) - rowTotal;
+                if (rowDiscountAmt < 0) rowDiscountAmt = 0;
+            } else {
+                const discAmt = Number(item.discountAmount) || 0;
+                rowDiscountAmt = discAmt;
+                rowTotal = (mrp * qty) - discAmt;
+            }
+
+            // Explicit Discount Priority (A4 logic)
+            if (item.discountAmount !== undefined && Number(item.discountAmount) > 0) {
+                rowDiscountAmt = Number(item.discountAmount);
+            }
+
+            let taxableValue = 0;
+            let taxAmt = 0;
+            let finalRowTotal = 0;
+
+            if (resolvedIsEstimate) {
+                finalRowTotal = rowTotal;
+                taxableValue = rowTotal;
+                taxAmt = 0;
+            } else if (safeScheme === 'NONE' || safeScheme === 'COMPOSITION') {
+                finalRowTotal = rowTotal;
+                taxableValue = rowTotal;
+                taxAmt = 0;
+            } else {
+                if (safeTaxType === 'EXCLUSIVE') {
+                    taxableValue = rowTotal;
+                    taxAmt = taxableValue * (effectiveTaxRate / 100);
+                    finalRowTotal = taxableValue + taxAmt;
+                } else {
+                    // INCLUSIVE
+                    finalRowTotal = rowTotal;
+                    taxableValue = finalRowTotal / (1 + (effectiveTaxRate / 100));
+                    taxAmt = finalRowTotal - taxableValue;
+                }
+            }
+
+            totalQty += qty;
+            totalTaxable += taxableValue;
+            totalTaxAmt += taxAmt;
+            calculatedGrandTotal += finalRowTotal;
+
+            return {
+                sno: item.sno || (index + 1).toString(),
+                name: item.name || "",
+                totalPcs,
+                unit: item.unit || "pcs",
+                qty,
+                rawPrice,
+                effectiveTaxRate,
+                taxAmt,
+                taxableValue,
+                discountAmt: rowDiscountAmt,
+                finalRowTotal,
+                imageBase64: item.imageBase64
+            };
+        });
+
+        const billDiscount = Number(data.billDiscount) || 0;
+        const extraExpense = Number(data.extraExpenseAmount) || 0;
+        const advance = Number((data as any).advance) || 0;
+
+        const netPayable = calculatedGrandTotal - billDiscount + extraExpense - advance;
+        const finalRoundTotal = Math.round(netPayable);
+        // const roundOffAmt = finalRoundTotal - netPayable;
+
+        const finalTotalAmountToPrint = finalRoundTotal > 0
+            ? finalRoundTotal
+            : Number(data.finalAmount || 0);
         // ================= ITEMS TABLE =================
         autoTable(doc, {
             startY: tableStartY,
@@ -372,9 +441,22 @@ export const generateA5Invoice = async (
                             const imgSize = 14;
                             const x = hookData.cell.x + (hookData.cell.width - imgSize) / 2;
                             const y = hookData.cell.y + (hookData.cell.height - imgSize) / 2;
-                            const format = item.imageBase64.includes("png") ? "PNG" : "JPEG";
+                            const imageToUse =
+                                (item as any).compressedImageBase64 ||
+                                item.imageBase64;
 
-                            doc.addImage(item.imageBase64, format, x, y, imgSize, imgSize);
+                            doc.addImage(
+                                imageToUse,
+                                "JPEG",
+                                x,
+                                y,
+                                imgSize,
+                                imgSize,
+                                undefined,
+                                "FAST"
+                            );
+
+                            doc.addImage(imageToUse,"JPEG", x, y, imgSize, imgSize, undefined, "FAST");
                         } catch (e) {
                             console.error("A5 image render error", e);
                         }
@@ -545,7 +627,7 @@ export const generateA5Invoice = async (
             const signImageY = footerY - 14;
 
             if (data.signatureBase64) {
-                doc.addImage(data.signatureBase64, "PNG", rightMargin - 30, signImageY, 30, 10);
+                doc.addImage(data.signatureBase64, "JPEG", rightMargin - 30, signImageY, 30, 10, undefined, "FAST");
             }
 
             doc.setFontSize(9);

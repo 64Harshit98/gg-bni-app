@@ -65,6 +65,7 @@ export interface CatalogueInvoiceData {
     mrp?: number;
     salesPrice?: number;
     unit?: string;
+    compressedImageBase64?: string;
   }[];
 
   specialInstruction?: string;
@@ -77,7 +78,52 @@ export interface CatalogueInvoiceData {
   extraExpenseName?: string;
   extraExpenseAmount?: number;
 }
+const compressBase64Image = (
+  base64: string,
+  quality: number = 0.4,
+  maxSize: number = 150
+): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
 
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+
+      const scale = Math.min(
+        1,
+        maxSize / Math.max(img.width, img.height)
+      );
+
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+
+      const ctx = canvas.getContext("2d");
+
+      if (!ctx) {
+        reject("Canvas not available");
+        return;
+      }
+
+      ctx.drawImage(
+        img,
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
+
+      resolve(
+        canvas.toDataURL(
+          "image/jpeg",
+          quality
+        )
+      );
+    };
+
+    img.onerror = reject;
+    img.src = base64;
+  });
+};
 export const CatalogueBill = async (
   data: CatalogueInvoiceData,
   action: "download" | "print" | "blob" = "download",
@@ -194,7 +240,12 @@ export const CatalogueBill = async (
   }
 
   const isEstimate = data.isEstimate === true;
-  const doc = new jsPDF("p", "mm", "a4");
+  const doc = new jsPDF({
+    orientation: "p",
+    unit: "mm",
+    format: "a4",
+    compress: true
+  });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 10;
@@ -212,8 +263,11 @@ export const CatalogueBill = async (
   if (data.upiId && !isEstimate) {
     const upiString = `upi://pay?pa=${data.upiId}&pn=${encodeURIComponent(data.companyName)}&cu=INR`;
     try {
-      qrBase64 = await QRCode.toDataURL(upiString, { width: 80, margin: 0 });
-    } catch (err) { }
+      // Need top-level await or a quick async resolution
+      qrBase64 = await QRCode.toDataURL(upiString, { width: 80, margin: 0, errorCorrectionLevel: "L" });
+    } catch (err) {
+      console.error("Failed to generate QR code", err);
+    }
   }
 
   // --- STRICT TAX SCHEME LOGIC ---

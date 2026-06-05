@@ -9,7 +9,7 @@ import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName.tsx';
 import SearchBar from './SearchBar.tsx';
 // import LeadPopUp from './PopUp.tsx';
-import { doc, getDoc, collection, query, where, getDocs, onSnapshot } from "firebase/firestore";
+import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "../lib/Firebase";
 import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting';
 
@@ -148,43 +148,38 @@ const SharedCataloguePage: React.FC = () => {
             try {
                 setIsLoading(true);
                 setError(null);
+
                 const [fetchedItemGroups, fetchedItems] = await Promise.all([
                     getItemGroupsByCompany(effectiveCompanyId),
                     getItemsByCompany(effectiveCompanyId)
                 ]);
+
                 setItemGroups(fetchedItemGroups);
                 setAllItems(fetchedItems);
-                // fetch business info (social links)
-                const businessRef = doc(
-                    db,
-                    "companies",
-                    effectiveCompanyId,
-                    "business_info",
-                    effectiveCompanyId
-                );
 
+                // FETCH BUSINESS INFO
+                const businessRef = doc(db, "companies", effectiveCompanyId, "business_info", effectiveCompanyId);
                 const businessSnap = await getDoc(businessRef);
-
                 if (businessSnap.exists()) {
                     setSocialLinks(businessSnap.data());
                 }
 
                 // FETCH CATALOGUE SALES SETTINGS
-                const settingsRef = doc(
-                    db,
-                    "companies",
-                    effectiveCompanyId,
-                    "settings",
-                    "catalogue-sales-settings"
-                );
-
+                const settingsRef = doc(db, "companies", effectiveCompanyId, "settings", "catalogue-sales-settings");
                 const settingsSnap = await getDoc(settingsRef);
-
                 if (settingsSnap.exists()) {
-                    setCatalogueSettings(
-                        settingsSnap.data() as CatalogueSalesSettings
-                    );
+                    setCatalogueSettings(settingsSnap.data() as CatalogueSalesSettings);
                 }
+
+                // FIX: FETCH PINNED CATEGORIES VIA HTTP INSTEAD OF WEBSOCKETS
+                const pinnedRef = doc(db, 'companies', effectiveCompanyId, 'settings', 'pinned_categories');
+                const pinnedSnap = await getDoc(pinnedRef);
+                if (pinnedSnap.exists()) {
+                    setPinnedIds(new Set(pinnedSnap.data().ids || []));
+                } else {
+                    setPinnedIds(new Set());
+                }
+
             } catch (err: any) {
                 setError(err.message || 'Failed to load catalogue.');
                 console.error("Fetch Error:", err);
@@ -232,18 +227,7 @@ const SharedCataloguePage: React.FC = () => {
             window.removeEventListener('storage', handleStorage);
         };
     }, []);
-    useEffect(() => {
-        if (!effectiveCompanyId) return;
-        const ref = doc(db, 'companies', effectiveCompanyId, 'settings', 'pinned_categories');
-        const unsubscribe = onSnapshot(ref, (snap) => {
-            if (snap.exists()) {
-                setPinnedIds(new Set(snap.data().ids || []));
-            } else {
-                setPinnedIds(new Set());
-            }
-        });
-        return () => unsubscribe();
-    }, [effectiveCompanyId]);
+
 
     const getGroupImages = (groupId: string): string[] => {
         const imgs = allItems
@@ -464,10 +448,10 @@ const SharedCataloguePage: React.FC = () => {
                                     {collageImages.length > 0 ? (
                                         <div
                                             className={`w-full h-full gap-[2px] p-[2px] grid ${collageImages.length === 1
-                                                    ? 'grid-cols-1 grid-rows-1'
-                                                    : collageImages.length === 2
-                                                        ? 'grid-cols-2 grid-rows-1'
-                                                        : 'grid-cols-2 grid-rows-2'
+                                                ? 'grid-cols-1 grid-rows-1'
+                                                : collageImages.length === 2
+                                                    ? 'grid-cols-2 grid-rows-1'
+                                                    : 'grid-cols-2 grid-rows-2'
                                                 }`}
                                         >
                                             {collageImages.map((img, index) => (

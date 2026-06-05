@@ -159,19 +159,6 @@ const SharedProduct: React.FC = () => {
     const [isScrolled, setIsScrolled] = useState(false);
     const [isSearchSticky, setIsSearchSticky] = useState(false);
     const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
-
-    useEffect(() => {
-        if (!effectiveCompanyId) return;
-        const ref = doc(db, 'companies', effectiveCompanyId, 'settings', 'pinned_items');
-        const unsubscribe = onSnapshot(ref, (snap) => {
-            if (snap.exists()) {
-                setPinnedIds(new Set(snap.data().ids || []));
-            } else {
-                setPinnedIds(new Set());
-            }
-        });
-        return () => unsubscribe();
-    }, [effectiveCompanyId]);
     const cartIconRef = useRef<HTMLButtonElement | null>(null);
     const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -691,24 +678,27 @@ const SharedProduct: React.FC = () => {
                 setError(null);
 
                 // 2. Use direct library calls or manual Firestore queries 
-                // instead of dbOperations which requires a login
                 const [fetchedItemGroups, fetchedItems] = await Promise.all([
                     getItemGroupsByCompany(effectiveCompanyId),
                     getItemsByCompany(effectiveCompanyId)
                 ]);
 
                 // 3. Fetch Catalogue Sales Settings
-                const settingsRef = doc(
-                    db,
-                    'companies',
-                    effectiveCompanyId,
-                    'settings',
-                    'catalogue-sales-settings'
-                );
+                const settingsRef = doc(db, 'companies', effectiveCompanyId, 'settings', 'catalogue-sales-settings');
                 const settingsSnap = await getDoc(settingsRef);
                 if (settingsSnap.exists()) {
                     setCatalogueSettings(settingsSnap.data() as CatalogueSalesSettings);
                 }
+
+                // --- FIX: ADD PINNED ITEMS FETCH HERE ---
+                const pinnedRef = doc(db, 'companies', effectiveCompanyId, 'settings', 'pinned_items');
+                const pinnedSnap = await getDoc(pinnedRef);
+                if (pinnedSnap.exists()) {
+                    setPinnedIds(new Set(pinnedSnap.data().ids || []));
+                } else {
+                    setPinnedIds(new Set());
+                }
+                // ----------------------------------------
 
                 // 4. Update state with fetched data
                 setAllItemGroups(fetchedItemGroups);
@@ -718,13 +708,7 @@ const SharedProduct: React.FC = () => {
                 syncNotifyStockStatus(fetchedItems);
 
                 // 6. Fetch Business/Social Info
-                const businessRef = doc(
-                    db,
-                    "companies",
-                    effectiveCompanyId,
-                    "business_info",
-                    effectiveCompanyId
-                );
+                const businessRef = doc(db, "companies", effectiveCompanyId, "business_info", effectiveCompanyId);
                 const businessSnap = await getDoc(businessRef);
                 if (businessSnap.exists()) {
                     setSocialLinks(businessSnap.data());
@@ -740,8 +724,6 @@ const SharedProduct: React.FC = () => {
 
         fetchData();
 
-        // 7. Dependency array: Remove currentUser and dbOperations 
-        // to prevent re-triggering when auth state changes
     }, [authLoading, effectiveCompanyId, resolvedGroupId]);
 
     useEffect(() => {

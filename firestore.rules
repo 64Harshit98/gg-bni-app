@@ -59,11 +59,13 @@ service cloud.firestore {
         allow read: if true;
         allow write: if isCompanyMember(companyId);
       }
-             match /settings/bill {
+      match /settings/bill {
         allow read: if true;
         allow write: if isCompanyMember(companyId);
       }
-      // =========================
+      match /settings/{document=**} {
+          allow read: if true; 
+      }
       
       // =========================================================
       // AUTHENTICATED ONLY SECTIONS

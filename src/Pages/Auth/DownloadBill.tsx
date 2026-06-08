@@ -114,10 +114,10 @@ const DownloadBill: React.FC = () => {
           // Terms & Bank
           terms: billSettings.termsAndConditions || 'Goods once sold will not be taken back.',
           bankDetails: {
-            accountName: billSettings.accountName || businessInfo?.accountHolderName,
-            accountNumber: billSettings.accountNumber || businessInfo?.accountNumber,
-            bankName: billSettings.bankName || businessInfo?.bankName,
-            ifsc: billSettings.ifscCode || billSettings.ifsc || '',
+            accountName: businessInfo?.accountHolderName || billSettings.accountName,
+            accountNumber: businessInfo?.accountNumber || billSettings.accountNumber,
+            bankName: businessInfo?.bankName || billSettings.bankName,
+            ifsc: businessInfo?.ifscCode || billSettings.ifscCode || billSettings.ifsc || '',
             gstin: businessInfo?.gstin // Fallback to business GSTIN
           }
         };

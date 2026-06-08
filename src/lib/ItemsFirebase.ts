@@ -201,6 +201,7 @@ export const getFirestoreOperations = (companyId: string) => {
           phoneNumber: (data.phoneNumber as string) || "",
           accountHolderName: (data.accountHolderName as string) || "",
           accountNumber: (data.accountNumber as string) || "",
+          ifscCode: (data.ifscCode as string) || "",
           bankName: (data.bankName as string) || "",
           email: (data.email as string) || "",
           gstin: (data.gstin as string) || ""

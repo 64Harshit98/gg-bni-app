@@ -148,94 +148,154 @@ export const generateA5Invoice = async (
 
         // --- 2. META INFO ROW ---
 
-        let cursorY = headerHeight + 8;
+        let cursorY = headerHeight + 5;
 
         doc.setTextColor("#000000");
         doc.setFont("helvetica", "normal");
         doc.setFontSize(8);
 
-        const usableWidth = pageWidth - 10;
-        const colWidth = usableWidth / 3;
-
-        const col1X = 5;
-        const col2X = 5 + colWidth;
-        const col3X = 5 + (colWidth * 2);
-
-        doc.text(`Invoice No : ${data.invoice.number || ""}`, col1X, cursorY);
-        doc.text(`Date : ${data.invoice.date || ""}`, col2X, cursorY);
-
-        const posLines = doc.splitTextToSize(`Place of Supply : ${data.billTo.address || ""}`, colWidth - 2);
-        doc.text(posLines, col3X, cursorY);
-
-        doc.line(5, cursorY + 4, pageWidth - 5, cursorY + 4);
-
-        cursorY += 8;
-
-        // ================= BILL / SHIP TABLE =================
+        // ================= THREE BOX SECTION =================
 
         const sectionStartY = cursorY;
-        const sectionHeight = 28;
-        const sectionWidth = pageWidth - 10;
 
-        doc.rect(5, sectionStartY, sectionWidth, sectionHeight);
+        const sectionHeight = 24;
+        const totalWidth = pageWidth - 10;
+        const boxWidth = totalWidth / 3;
 
-        // middle divider
-        doc.line(5 + sectionWidth / 2, sectionStartY, 5 + sectionWidth / 2, sectionStartY + sectionHeight);
+        // boxes
+        doc.rect(5, sectionStartY, boxWidth, sectionHeight);
+        doc.rect(5 + boxWidth, sectionStartY, boxWidth, sectionHeight);
+        doc.rect(5 + (boxWidth * 2), sectionStartY, boxWidth, sectionHeight);
 
         // headings
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(9);
-        doc.text(resolvedIsEstimate ? "Estimate For :" : "Billed To :", 8, sectionStartY + 5);
-
-        if (!resolvedIsEstimate) {
-            doc.text("Shipped To :", 5 + sectionWidth / 2 + 3, sectionStartY + 5);
-        }
-
-        // values
-        doc.setFont("helvetica", "normal");
         doc.setFontSize(8);
-        let textY = sectionStartY + 10;
 
-        const billX = 8;
-        const shipX = 5 + sectionWidth / 2 + 3;
+        doc.text("INVOICE DETAILS", 7, sectionStartY + 5);
+        doc.text("BILLED TO", 7 + boxWidth, sectionStartY + 5);
+        doc.text("SHIPPED TO", 7 + (boxWidth * 2), sectionStartY + 5);
 
-        // ===== NAME =====
-        if (resolvedIsEstimate) {
-            doc.text(data.billTo?.name || "", billX, textY);
-        } else {
-            doc.text(data.billTo?.name || "", billX, textY);
-            doc.text(data.shipTo?.name || data.billTo?.name || "", shipX, textY);
-        }
+        // content
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7);
 
-        textY += 4;
+        const invoiceX = 7;
+        const billX = 7 + boxWidth;
+        const shipX = 7 + (boxWidth * 2);
 
-        // ===== ADDRESS =====
-        const billAddrLines = doc.splitTextToSize(data.billTo?.address || "", sectionWidth / 2 - 8);
-        doc.text(billAddrLines, billX, textY);
+        // ===== INVOICE DETAILS =====
 
-        if (!resolvedIsEstimate) {
-            const shipAddrLines = doc.splitTextToSize(data.shipTo?.address || data.billTo?.address || "", sectionWidth / 2 - 8);
-            doc.text(shipAddrLines, shipX, textY);
-        }
+        doc.setFont("helvetica", "bold");
 
-        textY += 8;
+        doc.text(
+            `Invoice No : ${data.invoice.number || ""}`,
+            invoiceX,
+            sectionStartY + 10
+        );
 
-        // ===== PHONE =====
-        doc.text(`Phone : ${data.billTo?.phone || ""}`, billX, textY);
+        doc.text(
+            `Date : ${data.invoice.date || ""}`,
+            invoiceX,
+            sectionStartY + 15
+        );
 
-        if (!resolvedIsEstimate) {
-            doc.text(`Phone : ${data.shipTo?.phone || data.billTo?.phone || ""}`, shipX, textY);
-        }
+        doc.text(
+            `Place : ${data.shipTo?.address || ""}`,
+            invoiceX,
+            sectionStartY + 20
+        );
 
-        // ===== GSTIN =====
+
+        // ===== BILL TO =====
+
+        const billAddrLines = doc.splitTextToSize(
+            data.billTo?.address || "",
+            boxWidth - 8
+        );
+
+        let billY = sectionStartY + 10;
+
+        doc.text(
+            data.billTo?.name || "",
+            billX,
+            billY
+        );
+
+        billY += 4;
+
+        doc.text(
+            billAddrLines,
+            billX,
+            billY
+        );
+
+        billY += (billAddrLines.length * 3);
+
+        doc.text(
+            `Phone : ${data.billTo?.phone || ""}`,
+            billX,
+            billY
+        );
+
         if (showGstinDetails && data.billTo?.gstin) {
-            textY += 4;
-            doc.text(`GSTIN : ${data.billTo.gstin}`, billX, textY);
+            billY += 3.5;
 
-            if (!resolvedIsEstimate && data.shipTo?.gstin) {
-                doc.text(`GSTIN : ${data.shipTo.gstin}`, shipX, textY);
-            }
+            doc.text(
+                `GSTIN : ${data.billTo.gstin}`,
+                billX,
+                billY
+            );
         }
+
+        // ===== SHIP TO =====
+
+        doc.text(
+            data.shipTo?.name ||  "",
+            shipX,
+            sectionStartY + 10
+        );
+
+        const shipAddrLines = doc.splitTextToSize(
+            data.shipTo?.address ||  "",
+            boxWidth - 8
+        );
+
+        let shipY = sectionStartY + 10;
+
+        doc.text(
+            data.shipTo?.name ||  "",
+            shipX,
+            shipY
+        );
+
+        shipY += 4;
+
+        doc.text(
+            shipAddrLines,
+            shipX,
+            shipY
+        );
+
+        shipY += (shipAddrLines.length * 3);
+
+        doc.text(
+            `Phone : ${data.shipTo?.phone ||  ""}`,
+            shipX,
+            shipY
+        );
+
+        if (showGstinDetails) {
+            shipY += 3.5;
+
+            doc.text(
+                `GSTIN : ${data.shipTo?.gstin ||
+                ""
+                }`,
+                shipX,
+                shipY
+            );
+        }
+
 
         const tableStartY = sectionStartY + sectionHeight + 5;
 
@@ -456,7 +516,7 @@ export const generateA5Invoice = async (
                                 "FAST"
                             );
 
-                            doc.addImage(imageToUse,"JPEG", x, y, imgSize, imgSize, undefined, "FAST");
+                            doc.addImage(imageToUse, "JPEG", x, y, imgSize, imgSize, undefined, "FAST");
                         } catch (e) {
                             console.error("A5 image render error", e);
                         }
@@ -466,7 +526,9 @@ export const generateA5Invoice = async (
         });
 
         // @ts-ignore
-        let finalY = doc.lastAutoTable.finalY + 6;
+        let finalY = (doc as any).lastAutoTable.finalY + 6;
+
+        let gstTableBottomY = finalY;
         // --- 4. TAX BREAKDOWN TABLE (BEFORE PAYMENT INFO) ---
         if (!resolvedIsEstimate && showGstinDetails) {
             const taxBreakdownData: Record<string, { taxable: number, cgst: number, sgst: number }> = {};
@@ -482,6 +544,16 @@ export const generateA5Invoice = async (
                     taxBreakdownData[rateKey].sgst += (item.taxAmt / 2);
                 }
             });
+
+            const gstBankBlockHeight = 20;
+
+            if (
+                finalY + gstBankBlockHeight >
+                pageHeight - 42
+            ) {
+                doc.addPage();
+                finalY = 20;
+            }
 
             if (Object.keys(taxBreakdownData).length > 0) {
                 autoTable(doc, {
@@ -533,85 +605,140 @@ export const generateA5Invoice = async (
                 });
 
                 // @ts-ignore
-                finalY = doc.lastAutoTable.finalY + 6;
+                gstTableBottomY = (doc as any).lastAutoTable.finalY;
             }
         }
         // ===== SMART SPACE CALCULATION =====
 
         const footerHeight = 22;
-        const paymentHeight = !resolvedIsEstimate ? 24 : 0;
-        // const termsLines = doc.splitTextToSize(data.terms || "", rightMargin - 10);
-        // const termsHeight = !resolvedIsEstimate ? (termsLines.length * 3.5) + 10 : 0;
-        const signatureHeight = !resolvedIsEstimate && data.signatureBase64 ? 16 : 10;
-
-        const splitTermsPreview = doc.splitTextToSize(data.terms || "", rightMargin - 5);
-        const termsHeightAccurate = !resolvedIsEstimate ? (splitTermsPreview.length * 3.5) + 10 : 0;
-
-        const requiredBottomSpace = paymentHeight + termsHeightAccurate + signatureHeight + 10;
-
-        if (finalY + requiredBottomSpace > pageHeight) {
-            doc.addPage();
-            finalY = 20;
-        }
-
-        // --- 4. PAYMENT INFORMATION ---
+        
+        // --- 4. BANK DETAIL ---
         if (!resolvedIsEstimate) {
-            doc.setFont("helvetica", "bold");
-            doc.setFontSize(11);
-            doc.text("Payment Information", 5, finalY);
 
-            finalY += 3;
+            const paymentX = (pageWidth / 2) + 4;
+
             autoTable(doc, {
                 startY: finalY,
-                margin: { left: 5, right: 5 },
-                tableWidth: pageWidth - 10,
-                theme: 'grid',
+                margin: { left: paymentX },
+                tableWidth: 60,
+
+                theme: "grid",
+
+                head: [[
+                    {
+                        content: "BANK DETAIL",
+                        colSpan: 2,
+                        styles: {
+                            halign: "center",
+                            fontStyle: "bold"
+                        }
+                    }
+                ]],
+
                 body: [
                     [
-                        { content: "Account Number", styles: { fontStyle: 'bold' } },
-                        { content: data.bankDetails?.accountNumber || "" },
-                        { content: "Bank Name", styles: { fontStyle: 'bold' } },
-                        { content: data.bankDetails?.bankName || "" },
+                        {
+                            content: `Bank : ${data.bankDetails?.bankName || ""}`,
+                            colSpan: 1
+                        },
+                        {
+                            content: `A/C No : ${data.bankDetails?.accountNumber || ""}`,
+                            colSpan: 1
+                        }
                     ],
                     [
-                        { content: "Account Name", styles: { fontStyle: 'bold' } },
-                        { content: data.bankDetails?.accountName || "" },
-                        { content: "IFSC Code", styles: { fontStyle: 'bold' } },
-                        { content: data.bankDetails?.ifsc || "" },
-                    ],
+                        {
+                            content: `IFSC : ${data.bankDetails?.ifsc || ""}`,
+                            colSpan: 2,
+                            styles: {
+                                halign: "left"
+                            }
+                        }
+                    ]
                 ],
                 styles: {
-                    fontSize: 8,
-                    cellPadding: 2,
+                    fontSize: 7,
+                    cellPadding: 1.5,
+                    lineWidth: 0.1,
                     textColor: [0, 0, 0],
-                    lineColor: [200, 200, 200],
-                    lineWidth: 0.2,
-                    valign: 'middle',
+                    lineColor: [0, 0, 0]
                 },
+
+                headStyles: {
+                    fillColor: [255, 255, 255],
+                    textColor: [0, 0, 0]
+                },
+
                 columnStyles: {
-                    0: { cellWidth: 30, halign: 'left' },
-                    1: { halign: 'left' },
-                    2: { cellWidth: 25, halign: 'left' },
-                    3: { halign: 'left' },
-                },
+                    0: {
+                        cellWidth: 32
+                    },
+                    1: {
+                        cellWidth: 34
+                    }
+                }
             });
 
-            // @ts-ignore
-            finalY = doc.lastAutoTable.finalY + 3;
-            // doc.setDrawColor(200, 200, 200);
-            // doc.line(10, finalY, rightMargin, finalY);
+            const paymentTableBottomY =
+                (doc as any).lastAutoTable.finalY;
+
+            finalY =
+                Math.max(
+                    gstTableBottomY,
+                    paymentTableBottomY
+                ) + 4;
         }
 
         // --- 5. TERMS & CONDITIONS ---
         if (!resolvedIsEstimate) {
+
+            const footerY = pageHeight - footerHeight;
+
+            const signAreaTop = footerY - 18;
+
+            const splitTerms = doc.splitTextToSize(
+                data.terms || "",
+                rightMargin - 5
+            );
+
+            const termsHeight =
+                6 + (splitTerms.length * 3.5);
+
+            const desiredTermsY =
+                signAreaTop -
+                termsHeight -
+                4;
+
+            if (desiredTermsY > finalY) {
+                finalY = desiredTermsY;
+            }
+
+            const termsBlockHeight =
+                10 + (splitTerms.length * 3.5);
+
+            const footerTopY =
+                pageHeight - footerHeight;
+
+            if (
+                finalY +
+                termsBlockHeight >
+                footerTopY - 8
+            ) {
+                doc.addPage();
+                finalY = 20;
+            }
+
             finalY += 4;
+
             doc.setFontSize(11);
+            doc.setTextColor(0, 0, 0);
             doc.text("Terms & Conditions", 5, finalY);
 
             finalY += 6;
+
             doc.setFontSize(8);
             doc.setTextColor(80, 80, 80);
-            const splitTerms = doc.splitTextToSize(data.terms || "", rightMargin - 5);
+
             doc.text(splitTerms, 5, finalY);
 
             finalY += (splitTerms.length * 3.5) + 2;
@@ -619,7 +746,6 @@ export const generateA5Invoice = async (
             doc.setDrawColor(200, 200, 200);
             doc.line(5, finalY, rightMargin, finalY);
         }
-
         // --- 6. AUTHORISED SIGNATURE ---
         if (!resolvedIsEstimate) {
             const footerY = pageHeight - footerHeight;
@@ -691,9 +817,9 @@ export const generateA5Invoice = async (
         const w2 = doc.getTextWidth(part2);
         const w3 = doc.getTextWidth(part3);
 
-        const totalWidth = w1 + w2 + w3;
+        const indiaTextWidth = w1 + w2 + w3;
 
-        let indiaX = rightMargin - totalWidth;
+        let indiaX = rightMargin - indiaTextWidth;
         const indiaY = footerY + 13.5;
 
         doc.setTextColor(255, 255, 255);

@@ -228,7 +228,7 @@ const CatalogueSalesSettings: React.FC = () => {
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
       <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
-        <BackButton/>
+        <BackButton />
         <h1 className="text-lg font-semibold text-gray-800">Sales Settings</h1>
         <div className="w-6"></div>
       </div>
@@ -266,6 +266,14 @@ const CatalogueSalesSettings: React.FC = () => {
               checked={settings.hidePrice ?? false}
               onChange={(checked) => handleCheckboxChange('hidePrice', checked)}
               tooltip="Completely hides item prices on the customer-facing catalogue."
+            />
+            <ToggleRow
+              id="require-approval"
+              label="Require Customer Approval"
+              description="Customers must submit a request and be approved before they can view prices or add items to cart."
+              checked={settings.requireApproval ?? false}
+              onChange={(checked) => handleCheckboxChange('requireApproval', checked)}
+              tooltip="Enables an approval gate — customers fill a lead form and you manually approve or decline them."
             />
           </SettingsCard>
 

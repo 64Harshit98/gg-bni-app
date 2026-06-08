@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronLeft } from 'lucide-react'
 import { collection, doc, updateDoc, deleteDoc, onSnapshot } from "firebase/firestore";
@@ -17,6 +17,34 @@ type RequestType = {
     items?: { name: string; qty?: number, id?: string, inStock?: boolean }[];
     inStock?: boolean;
     messageSent?: boolean;
+    // bulk quote fields
+    itemName?: string;
+    itemImage?: string;
+    quantity?: string;
+    note?: string;
+};
+type BulkQuoteType = {
+    id: string;
+    customerName?: string;
+    customerNumber?: string;
+    itemId?: string;
+    itemName?: string;
+    itemImage?: string;
+    quantity?: string;
+    note?: string;
+    status?: string;
+    createdAt?: any;
+};
+type PersonalizationType = {
+    id: string;
+    customerName?: string;
+    customerNumber?: string;
+    itemId?: string;
+    itemName?: string;
+    itemImage?: string;
+    note?: string;
+    status?: string;
+    createdAt?: any;
 };
 
 function RequestPage() {
@@ -26,6 +54,8 @@ function RequestPage() {
     const [requestType, setRequestType] = useState<'notify' | 'approval'>('approval')
     const [approvalStatus, setApprovalStatus] = useState<'pending' | 'completed'>('pending')
     const [requests, setRequests] = useState<RequestType[]>([]);
+    const [bulkQuotes, setBulkQuotes] = useState<BulkQuoteType[]>([]);
+    const [personalizationRequests, setPersonalizationRequests] = useState<PersonalizationType[]>([]);
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [animatingId, setAnimatingId] = useState<string | null>(null);
     const [isSearchOpen, setIsSearchOpen] = useState(false)
@@ -60,7 +90,7 @@ function RequestPage() {
             case "declined":
                 return "bg-red-50 text-red-600 border-red-100";
             default:
-                return "bg-blue-50 text-blue-600 border-blue-100"; // pending
+                return "bg-gray-50 text-gray-600 border-gray-100"; // pending
         }
     };
 
@@ -169,7 +199,44 @@ function RequestPage() {
 
         return true;
     });
+    // Map phone → bulk quotes for fast lookup inside expanded cards
+    const bulkByPhone = useMemo(() => {
+        const map: Record<string, BulkQuoteType[]> = {};
+        bulkQuotes.forEach(bq => {
+            const phone = (bq.customerNumber || '').replace(/\D/g, '');
+            if (!phone) return;
+            if (!map[phone]) map[phone] = [];
+            map[phone].push(bq);
+        });
+        return map;
+    }, [bulkQuotes]);
+    const personalizationByPhone = useMemo(() => {
+        const map: Record<string, PersonalizationType[]> = {};
+        personalizationRequests.forEach(pr => {
+            const phone = (pr.customerNumber || '').replace(/\D/g, '');
+            if (!phone) return;
+            if (!map[phone]) map[phone] = [];
+            map[phone].push(pr);
+        });
+        return map;
+    }, [personalizationRequests]);
 
+    // Bulk quotes with no matching customer row → shown as standalone cards
+    const unmatchedBulkQuotes = useMemo(() => {
+        const knownPhones = new Set(
+            requests.map(r => (r.customerNumber || '').replace(/\D/g, ''))
+        );
+        const queryText = searchQuery.toLowerCase();
+        return bulkQuotes.filter(bq => {
+            const phone = (bq.customerNumber || '').replace(/\D/g, '');
+            if (knownPhones.has(phone)) return false;
+            if (!queryText) return true;
+            return (
+                (bq.customerName || '').toLowerCase().includes(queryText) ||
+                (bq.customerNumber || '').includes(queryText)
+            );
+        });
+    }, [bulkQuotes, requests, searchQuery]);
     useEffect(() => {
         if (!companyId) return;
 
@@ -242,10 +309,28 @@ function RequestPage() {
 
             mergeAndSet();
         });
+        const bulkRef = collection(db, 'companies', companyId, 'BulkQuoteRequests');
+        const unsubBulk = onSnapshot(bulkRef, (snap) => {
+            const items: BulkQuoteType[] = snap.docs.map(docSnap => ({
+                id: docSnap.id,
+                ...docSnap.data() as any,
+            }));
+            setBulkQuotes(items); // standalone state, not merged into requests
+        });
+        const personalizationRef = collection(db, 'companies', companyId, 'PersonalizationRequests');
+        const unsubPersonalization = onSnapshot(personalizationRef, (snap) => {
+            const items: PersonalizationType[] = snap.docs.map(docSnap => ({
+                id: docSnap.id,
+                ...docSnap.data() as any,
+            }));
+            setPersonalizationRequests(items);
+        });
 
         return () => {
             unsubApproval();
             unsubNotify();
+            unsubBulk();
+            unsubPersonalization();
         };
     }, [companyId]);
 
@@ -295,7 +380,26 @@ function RequestPage() {
             console.error("Delete error:", err);
         }
     };
-
+    const handleDeleteBulk = async (bulkId: string) => {
+        if (!companyId) return;
+        try {
+            await deleteDoc(
+                doc(db, "companies", companyId, "BulkQuoteRequests", bulkId)
+            );
+            setBulkQuotes(prev => prev.filter(b => b.id !== bulkId));
+        } catch (err) {
+            console.error("Delete bulk error:", err);
+        }
+    };
+    const handleDeletePersonalization = async (pid: string) => {
+        if (!companyId) return;
+        try {
+            await deleteDoc(doc(db, "companies", companyId, "PersonalizationRequests", pid));
+            setPersonalizationRequests(prev => prev.filter(p => p.id !== pid));
+        } catch (err) {
+            console.error("Delete personalization error:", err);
+        }
+    };
     const formatWhatsAppNumber = (num?: string) => {
         if (!num) return "";
 
@@ -322,12 +426,12 @@ function RequestPage() {
                             onClick={() => navigate(-1)}
                             className="p-1 hover:bg-gray-100 rounded-sm transition-colors"
                         >
-                            <ChevronLeft className="text-[#1A3B5D]" size={20} />
+                            <ChevronLeft className="text-[#F97316]" size={20} />
                         </button>
 
-                        <div className="w-1 h-5 bg-[#00A3E1] rounded-sm"></div>
+                        <div className="w-1 h-5 bg-[#F97316] rounded-sm"></div>
 
-                        <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">
+                        <h1 className="text-xs md:text-sm font-black text-[#F97316] uppercase tracking-tighter">
                             Request Page
                         </h1>
                     </div>
@@ -337,7 +441,7 @@ function RequestPage() {
                         onClick={() => setIsSearchOpen(prev => !prev)}
                         className="p-2 rounded-sm hover:bg-gray-100 transition-colors"
                     >
-                        <Search size={18} className="text-[#1A3B5D]" />
+                        <Search size={18} className="text-[#F97316]" />
                     </button>
                 </div>
             </header>
@@ -349,7 +453,7 @@ function RequestPage() {
                         placeholder="Search by name or number..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full p-3 border border-gray-200 rounded-sm text-sm outline-none focus:border-[#00A3E1]"
+                        className="w-full p-3 border border-gray-200 rounded-sm text-sm outline-none focus:border-[#F97316]"
                     />
                 </div>
             )}
@@ -363,17 +467,16 @@ function RequestPage() {
                         <button
                             onClick={() => setRequestType('notify')}
                             className={`flex-1 py-1 text-sm font-bold rounded-sm transition-all ${requestType === 'notify'
-                                ? 'bg-[#1A3B5D] text-white'
+                                ? 'bg-[#F97316] text-white'
                                 : 'text-gray-500'
                                 }`}
                         >
                             Pre-Order Requests
                         </button>
-
                         <button
                             onClick={() => setRequestType('approval')}
                             className={`flex-1 py-1 text-sm font-bold rounded-sm transition-all ${requestType === 'approval'
-                                ? 'bg-[#1A3B5D] text-white'
+                                ? 'bg-[#F97316] text-white'
                                 : 'text-gray-500'
                                 }`}
                         >
@@ -381,14 +484,14 @@ function RequestPage() {
                         </button>
                     </div>
                 </div>
-                
+
                 {/* Sub Toggle: Only visible when "Completed" is selected */}
                 {requestType === 'approval' && (
                     <div className="flex gap-2 mb-4 items-center">
                         <button
                             onClick={() => setApprovalStatus('pending')}
                             className={`flex-1 py-2 text-xs font-bold rounded-sm border ${approvalStatus === 'pending'
-                                ? 'bg-[#1A3B5D] text-white'
+                                ? 'bg-[#F97316] text-white'
                                 : 'bg-white border-gray-200 text-gray-500'
                                 }`}
                         >
@@ -398,7 +501,7 @@ function RequestPage() {
                         <button
                             onClick={() => setApprovalStatus('completed')}
                             className={`flex-1 py-2 text-xs font-bold rounded-sm border ${approvalStatus === 'completed'
-                                ? 'bg-[#1A3B5D] text-white'
+                                ? 'bg-[#F97316] text-white'
                                 : 'bg-white border-gray-200 text-gray-500'
                                 }`}
                         >
@@ -457,16 +560,16 @@ function RequestPage() {
                                 }
                                 className={`p-3 shadow-sm border rounded-sm cursor-pointer transition-all duration-300 bg-white border-gray-100 ${animatingId === req.id ? "opacity-0 scale-95 -translate-x-3" : "opacity-100 scale-100 translate-x-0"}`}>
                                 {/* ===== COLLAPSED HEADER ===== */}
-                                <div className="flex justify-between items-start">
+                                <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-2">
                                     {/* LEFT SIDE */}
-                                    <div>
+                                    <div className="min-w-0">
                                         <div className='items-center'>
                                             <h3 className="text-xs font-bold text-slate-800">
                                                 {req.customerName || "No Name"}
                                             </h3>
 
                                             <p
-                                                className={`text-xs font-medium flex items-center gap-1.5 p-0.5 rounded-xs border ${req.type === "notify" ? "text-gray-600 bg-gray-50 border-gray-200" : "text-emerald-600 bg-emerald-50 border-emerald-200"}`}>
+                                                className={`text-xs font-medium flex items-center gap-1.5 p-0.5 rounded-xs border w-fit ${req.type === "notify" ? "text-gray-600 bg-gray-50 border-gray-200" : "text-emerald-600 bg-emerald-50 border-emerald-200"}`}>
                                                 <Phone size={14} className="text-gray-400" />
                                                 {req.customerNumber || "No Number"}
                                             </p>
@@ -478,7 +581,19 @@ function RequestPage() {
                                             {formatDate(req.createdAt)}
                                         </p>
                                     </div>
-
+                                    {/* CENTER — always rendered to hold the grid column */}
+                                    <div className="self-center flex justify-center">
+                                        {(() => {
+                                            const phone = (req.customerNumber || '').replace(/\D/g, '');
+                                            const bulkCount = (bulkByPhone[phone] || []).length;
+                                            if (bulkCount === 0) return null;
+                                            return (
+                                                <span className="flex items-center gap-1 text-[8px] font-black px-1.5 py-1 rounded-sm bg-[#F97316]/10 text-[#F97316] border border-[#F97316]/30 uppercase tracking-wide whitespace-nowrap">
+                                                    Bulk Order
+                                                </span>
+                                            );
+                                        })()}
+                                    </div>
                                     {/* RIGHT SIDE */}
                                     <div className="flex flex-col items-end gap-1">
                                         <div className="flex items-center gap-2">
@@ -520,7 +635,7 @@ function RequestPage() {
                                         className="mt-4 border-t pt-4"
                                         onClick={(e) => e.stopPropagation()}
                                     >
-                                        {/* Business Card - Optimized Container */}
+
                                         {req.type === 'notify' ? (
                                             <div className="space-y-2 mb-4">
                                                 {req.items?.length ? (
@@ -554,7 +669,6 @@ function RequestPage() {
                                             </div>
                                         ) : (
 
-                                            //  APPROVAL REQUESTS → OLD IMAGE UI
                                             <div className="relative w-full overflow-hidden rounded-md border border-gray-200 bg-gray-100 group">
                                                 {req.businessCard && req.businessCard !== "Placeholder" ? (
                                                     <img
@@ -570,9 +684,79 @@ function RequestPage() {
                                                     </div>
                                                 )}
                                             </div>
-
                                         )}
-
+                                        {/* ── BULK QUOTE REQUESTS for this customer ── */}
+                                        {(() => {
+                                            const phone = (req.customerNumber || '').replace(/\D/g, '');
+                                            const customerBulks = bulkByPhone[phone] || [];
+                                            if (customerBulks.length === 0) return null;
+                                            return (
+                                                <div className="mt-3 border border-[#F97316]/20 rounded-sm overflow-hidden">
+                                                    <div className="bg-[#F97316]/5 px-3 py-1.5">
+                                                        <span className="text-[9px] font-black uppercase tracking-widest text-[#F97316]">
+                                                            Bulk Quote Requests ({customerBulks.length})
+                                                        </span>
+                                                    </div>
+                                                    <div className="space-y-2 p-2">
+                                                        {customerBulks.map(bq => (
+                                                            <div key={bq.id} className="flex gap-2 items-start bg-white border border-gray-100 rounded-sm p-2">
+                                                                <div className="w-10 h-10 shrink-0 bg-gray-50 border border-gray-200 rounded-sm flex items-center justify-center overflow-hidden">
+                                                                    {bq.itemImage ? (
+                                                                        <img src={bq.itemImage} alt={bq.itemName} className="w-full h-full object-contain" />
+                                                                    ) : (
+                                                                        <span className="text-gray-300 text-[9px]">No img</span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex-1 min-w-0">
+                                                                    <p className="text-[11px] font-black text-[#1A3B5D] uppercase truncate">{bq.itemName}</p>
+                                                                    <p className="text-[10px] text-gray-500"><span className="font-bold">Qty:</span> {bq.quantity}</p>
+                                                                    {bq.note && (
+                                                                        <p className="text-[10px] text-gray-400 mt-0.5 italic">{bq.note}</p>
+                                                                    )}
+                                                                </div>
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); handleDeleteBulk(bq.id); }}
+                                                                    className="text-red-400 hover:text-red-600 text-xs font-bold p-1 shrink-0"
+                                                                >
+                                                                    ✕
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+                                        {/* ── PERSONALIZATION REQUESTS for this customer ── */}
+                                        {(() => {
+                                            const phone = (req.customerNumber || '').replace(/\D/g, '');
+                                            const customerPersonalizations = personalizationByPhone[phone] || [];
+                                            if (customerPersonalizations.length === 0) return null;
+                                            return (
+                                                <div className="mt-3 border border-[#1A3B5D]/20 rounded-sm overflow-hidden">
+                                                    <div className="bg-[#1A3B5D]/5 px-3 py-1.5">
+                                                        <span className="text-[9px] font-black uppercase tracking-widest text-[#1A3B5D]">
+                                                            Query Requests ({customerPersonalizations.length})
+                                                        </span>
+                                                    </div>
+                                                    <div className="space-y-2 p-2">
+                                                        {customerPersonalizations.map(pr => (
+                                                            <div key={pr.id} className="flex gap-2 items-start bg-white border border-gray-100 rounded-sm p-2">
+                                                                <div className="flex-1 min-w-0">
+                                                                    <div className="bg-yellow-50 border border-yellow-100 rounded-sm p-1.5">
+                                                                        <span className="text-[9px] font-black uppercase text-yellow-700 block mb-0.5">Query</span>
+                                                                        <p className="text-[10px] text-gray-600">{pr.note}</p>
+                                                                    </div>
+                                                                </div>
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); handleDeletePersonalization(pr.id); }}
+                                                                    className="text-red-400 hover:text-red-600 text-xs font-bold p-1 shrink-0"
+                                                                >✕</button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
                                         {/*  NOTIFY ACTION BUTTONS */}
                                         {req.type === "notify" && (
                                             <div className="grid grid-cols-3 gap-3 pt-2 border-t">
@@ -654,6 +838,81 @@ function RequestPage() {
                         );
                     })}
                 </div>
+                {/* ── Standalone Bulk Quote Requests (no matching customer row) ── */}
+                {requestType === 'approval' && approvalStatus === 'pending' && unmatchedBulkQuotes.length > 0 && (
+                    <div className="space-y-3 mt-3">
+                        {unmatchedBulkQuotes.map(bq => {
+                            const isExpanded = expandedId === bq.id;
+                            return (
+                                <div
+                                    key={bq.id}
+                                    onClick={() => setExpandedId(isExpanded ? null : bq.id)}
+                                    className="p-3 shadow-sm border rounded-sm cursor-pointer bg-white border-gray-100 transition-all duration-300"
+                                >
+                                    {/* Header */}
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <h3 className="text-xs font-bold text-slate-800">{bq.customerName || "No Name"}</h3>
+                                            <p className="text-xs font-medium flex items-center gap-1.5 p-0.5 rounded-xs border text-gray-600 bg-gray-50 border-gray-200">
+                                                <Phone size={14} className="text-gray-400" />
+                                                {bq.customerNumber || "No Number"}
+                                            </p>
+                                            <p className="text-[10px] text-gray-400 font-medium mt-1">{formatDate(bq.createdAt)}</p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-blue-50 text-blue-600 border-blue-200">
+                                                Bulk Quote
+                                            </span>
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                strokeWidth={2.5}
+                                                stroke="currentColor"
+                                                className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                                            >
+                                                <path d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                                            </svg>
+                                        </div>
+                                    </div>
+
+                                    {/* Expanded */}
+                                    {isExpanded && (
+                                        <div className="mt-4 border-t pt-4" onClick={e => e.stopPropagation()}>
+                                            <div className="flex gap-3 bg-gray-50 border border-gray-100 rounded-sm p-2">
+                                                <div className="w-14 h-14 shrink-0 bg-white border border-gray-200 rounded-sm flex items-center justify-center overflow-hidden">
+                                                    {bq.itemImage ? (
+                                                        <img src={bq.itemImage} alt={bq.itemName} className="w-full h-full object-contain" />
+                                                    ) : (
+                                                        <span className="text-gray-300 text-xs">No img</span>
+                                                    )}
+                                                </div>
+                                                <div className="flex flex-col justify-center gap-1 min-w-0">
+                                                    <p className="text-[11px] font-black text-[#1A3B5D] uppercase truncate">{bq.itemName}</p>
+                                                    <p className="text-[10px] text-gray-500"><span className="font-bold">Qty:</span> {bq.quantity}</p>
+                                                    {bq.note && (
+                                                        <div className="bg-yellow-50 border border-yellow-100 rounded-sm p-2 text-xs text-gray-600 mt-1">
+                                                            <span className="font-black text-[9px] uppercase text-yellow-700 block mb-0.5">Note</span>
+                                                            {bq.note}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-3 gap-2 pt-2 border-t mt-2">
+                                                <a href={`tel:${bq.customerNumber?.replace(/\D/g, '')}`} onClick={e => e.stopPropagation()}
+                                                    className="py-2 bg-white border border-emerald-200 text-emerald-600 text-xs font-bold rounded-sm text-center">Call</a>
+                                                <a href={`https://wa.me/91${bq.customerNumber?.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
+                                                    className="py-2 bg-[#25D366] text-white text-xs font-bold rounded-sm text-center">WhatsApp</a>
+                                                <button onClick={(e) => { e.stopPropagation(); handleDeleteBulk(bq.id); }}
+                                                    className="py-2 bg-[#FF3B30] text-white text-xs font-bold rounded-sm">Delete</button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
             </main>
         </div>
     )

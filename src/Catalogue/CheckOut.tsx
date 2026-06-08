@@ -146,8 +146,26 @@ const CartPage: React.FC = () => {
 
     const { businessName: companyName, socialLinks } = useBusinessName(effectiveCompanyId || "");
     const [salesSettings, setSalesSettings] = useState<CatalogueSalesSettings | null>(null);
-    const [shipping, setShipping] = useState<Address>({ name: '', phone: '', city: '', state: '', address: '', gstin: '' });
-    const [billing, setBilling] = useState<Address>({ name: '', phone: '', city: '', state: '', address: '', gstin: '' });
+    const getSavedLead = () => {
+        try {
+            const leadData = JSON.parse(localStorage.getItem("leadData") || "{}");
+            return {
+                name: leadData.name || '',
+                phone: (leadData.number || '').replace(/\D/g, '').trim(),
+            };
+        } catch {
+            return { name: '', phone: '' };
+        }
+    };
+
+    const [shipping, setShipping] = useState<Address>(() => {
+        const lead = getSavedLead();
+        return { name: lead.name, phone: lead.phone, city: '', state: '', address: '', gstin: '' };
+    });
+    const [billing, setBilling] = useState<Address>(() => {
+        const lead = getSavedLead();
+        return { name: lead.name, phone: lead.phone, city: '', state: '', address: '', gstin: '' };
+    });
     const [isSameAsShipping, setIsSameAsShipping] = useState<boolean>(false);
     const [cartItems, setCartItems] = useState<CartItem[]>([]);
     const [movError, setMovError] = useState<string | null>(null);
@@ -310,12 +328,16 @@ const CartPage: React.FC = () => {
 
                 const invoice = `${prefix}${currentNumber}`;
                 const newOrderDoc = doc(ordersRef);
-
+                const leadData = JSON.parse(localStorage.getItem("leadData") || "{}");
+                const customerPhone = (leadData.number || "").replace(/\D/g, "").trim();
                 // 2. WRITE: Create the final order
                 transaction.set(newOrderDoc, {
                     orderId: invoice,
                     invoiceNumber: invoice,
                     status: 'Confirmed',
+                    isLead: false,
+                    userName: billing.name || "",
+                    userLoginPhone: customerPhone || billing.phone || "",
                     totalAmount: totalPay,
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp(),
@@ -365,6 +387,19 @@ const CartPage: React.FC = () => {
 
             // SUCCESS CLEANUP
             localStorage.removeItem('temp_cart');
+            const upcomingUserKey = localStorage.getItem("upcoming_user_key");
+            if (upcomingUserKey && effectiveCompanyId) {
+                try {
+                    const { deleteDoc, doc: firestoreDoc } = await import('firebase/firestore');
+                    const draftRef = firestoreDoc(db, "companies", effectiveCompanyId, "Orders", `upcoming_${upcomingUserKey}`);
+                    await deleteDoc(draftRef);
+                } catch (err) {
+                    console.warn("Could not delete upcoming draft:", err);
+                }
+            }
+            localStorage.removeItem("upcoming_user_key");
+            // localStorage.removeItem("leadSubmitted");
+            // localStorage.removeItem("leadData");
             setPlacedOrderId(finalInvoiceNumber);
             setOrderSuccess(true);
 

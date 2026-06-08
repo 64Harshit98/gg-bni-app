@@ -14,8 +14,9 @@ import { serverTimestamp, doc, setDoc, getDoc, getDocs, updateDoc, collection, o
 import { db } from '../lib/Firebase';
 import { useLocation } from 'react-router-dom';
 import LeadPopUp from './PopUp';
+import BulkQuotePopup from './BulkQuotePopup';
 import { getItemGroupsByCompany, getItemsByCompany } from '../lib/ItemsFirebase';
-import { runTransaction } from 'firebase/firestore';
+//port { runTransaction } from 'firebase/firestore';
 
 const ITEMS_PER_BATCH_RENDER = 24;
 
@@ -143,6 +144,7 @@ const SharedProduct: React.FC = () => {
     const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
     const [_isLeadFilled, setIsLeadFilled] = useState(false);
     const [forceLeadOpen, setForceLeadOpen] = useState(false);
+    const [timedPopupFired, setTimedPopupFired] = useState(false);
     const [selectedItemForDetails, setSelectedItemForDetails] = useState<Item | null>(null);
     const [variantGroupIds, setVariantGroupIds] = useState<string[]>([]);
     const [socialLinks, setSocialLinks] = useState<any>({});
@@ -155,10 +157,30 @@ const SharedProduct: React.FC = () => {
     const [_checkingApproval, setCheckingApproval] = useState<boolean>(true);
     const [leadPhone, setLeadPhone] = useState<string>("");
     const [showNotifySuccess, setShowNotifySuccess] = useState(false);
+    const [showPersonalizationSuccess, setShowPersonalizationSuccess] = useState(false);
     const [notifiedItems, setNotifiedItems] = useState<Record<string, boolean>>({});
     const [isScrolled, setIsScrolled] = useState(false);
     const [isSearchSticky, setIsSearchSticky] = useState(false);
     const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
+    const [bulkQuoteItem, setBulkQuoteItem] = useState<Item | null>(null);
+    const [pendingBulkItem, setPendingBulkItem] = useState<Item | null>(null); // saved while lead popup is open
+    const [personalizationItem, setPersonalizationItem] = useState<Item | null>(null);
+    const [personalizationText, setPersonalizationText] = useState('');
+    const [pendingPersonalizationItem, setPendingPersonalizationItem] = useState<Item | null>(null);
+    const [pendingCartItem, setPendingCartItem] = useState<Item | null>(null);
+
+    useEffect(() => {
+        if (!effectiveCompanyId) return;
+        const ref = doc(db, 'companies', effectiveCompanyId, 'settings', 'pinned_items');
+        const unsubscribe = onSnapshot(ref, (snap) => {
+            if (snap.exists()) {
+                setPinnedIds(new Set(snap.data().ids || []));
+            } else {
+                setPinnedIds(new Set());
+            }
+        });
+        return () => unsubscribe();
+    }, [effectiveCompanyId]);
     const cartIconRef = useRef<HTMLButtonElement | null>(null);
     const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -195,53 +217,56 @@ const SharedProduct: React.FC = () => {
         }, 0);
     }, [cart]);
 
-    // --- New Firebase Sync Function ---
-    const generateCatalogueInvoiceNumber = async (companyId: string): Promise<string> => {
-        if (!companyId) throw new Error("Missing companyId");
+    // // --- New Firebase Sync Function ---
+    // const generateCatalogueInvoiceNumber = async (companyId: string): Promise<string> => {
+    //     if (!companyId) throw new Error("Missing companyId");
 
-        const settingsRef = doc(
-            db,
-            "companies",
-            companyId,
-            "settings",
-            "catalogue-sales-settings"
-        );
+    //     const settingsRef = doc(
+    //         db,
+    //         "companies",
+    //         companyId,
+    //         "settings",
+    //         "catalogue-sales-settings"
+    //     );
 
-        return await runTransaction(db, async (transaction) => {
-            const snap = await transaction.get(settingsRef);
+    //     return await runTransaction(db, async (transaction) => {
+    //         const snap = await transaction.get(settingsRef);
 
-            let prefix = "ORD-";
-            let currentNumber = 1001;
+    //         let prefix = "ORD-";
+    //         let currentNumber = 1001;
 
-            if (snap.exists()) {
-                const data = snap.data() as CatalogueSalesSettings;
-                prefix = data.voucherPrefix || "ORD-";
-                currentNumber = data.currentVoucherNumber || 1001;
-            }
+    //         if (snap.exists()) {
+    //             const data = snap.data() as CatalogueSalesSettings;
+    //             prefix = data.voucherPrefix || "ORD-";
+    //             currentNumber = data.currentVoucherNumber || 1001;
+    //         }
 
-            const invoice = `${prefix}${currentNumber}`;
+    //         const invoice = `${prefix}${currentNumber}`;
 
-            transaction.set(
-                settingsRef,
-                {
-                    currentVoucherNumber: currentNumber + 1,
-                    updatedAt: serverTimestamp(),
-                },
-                { merge: true }
-            );
+    //         transaction.set(
+    //             settingsRef,
+    //             {
+    //                 currentVoucherNumber: currentNumber + 1,
+    //                 updatedAt: serverTimestamp(),
+    //             },
+    //             { merge: true }
+    //         );
 
-            return invoice;
-        });
-    };
+    //         return invoice;
+    //     });
+    // };
     const syncToUpcoming = async (
         updatedCart: { item: Item; quantity: number }[]
     ) => {
         if (!effectiveCompanyId || updatedCart.length === 0) return;
+
+        const leadSubmittedCheck = localStorage.getItem("leadSubmitted") === "true";
+        if (approvalEnabled && !leadSubmittedCheck) return;
+
         try {
             const leadData = JSON.parse(
                 localStorage.getItem("leadData") || "{}"
             );
-
             // number normalize
             const cleanNumber = (leadData.number || "")
                 .replace(/\D/g, "")
@@ -299,51 +324,41 @@ const SharedProduct: React.FC = () => {
 
             //  BLOCK only when:
             // old lead AND upcoming doc exist nahi karta
-            if (leadSubmitted && !leadJustSubmitted && !snap.exists()) {
+            if (!leadSubmitted && !leadJustSubmitted && !snap.exists()) {
                 return;
             }
             const invoiceNumber = snap.exists()
                 ? snap.data().invoiceNumber
-                : await generateCatalogueInvoiceNumber(effectiveCompanyId);
+                : `DRAFT-${userKey}`;
 
             const existingData = snap.exists() ? snap.data() : {};
 
-            await setDoc(
-                orderRef,
-                {
-                    orderId: invoiceNumber,
-                    invoiceNumber,
-                    userId: userKey,
+            const upcomingPayload: Record<string, any> = {
+                orderId: invoiceNumber,
+                invoiceNumber,
+                userId: userKey,
+                userName: existingData.userName || leadData.name || loginName || "Guest User",
+                userLoginPhone: existingData.userLoginPhone || cleanNumber || "",
+                status: "Upcoming",
+                isLead: true,
+                items: itemsForFirebase.map(i => {
+                    const clean: Record<string, any> = {};
+                    for (const [k, v] of Object.entries(i)) {
+                        if (v !== undefined) clean[k] = v;
+                    }
+                    return clean;
+                }),
+                totalAmount: itemsForFirebase.reduce((acc: number, curr) => acc + curr.finalPrice, 0),
+                paidAmount: 0,
+                updatedAt: serverTimestamp(),
+            };
 
-                    //  NAME OVERWRITE NAHI HOGA
-                    userName:
-                        existingData.userName ||
-                        leadData.name ||
-                        loginName,
+            // createdAt only set if new doc
+            if (!snap.exists()) {
+                upcomingPayload.createdAt = serverTimestamp();
+            }
 
-                    userLoginPhone:
-                        existingData.userLoginPhone ||
-                        cleanNumber ||
-                        "",
-
-                    status: "Upcoming",
-                    isLead: true, //  ADD THIS
-
-                    items: itemsForFirebase,
-                    totalAmount: itemsForFirebase.reduce(
-                        (acc: number, curr) => acc + curr.finalPrice,
-                        0
-                    ),
-                    paidAmount: 0,
-
-                    createdAt: snap.exists()
-                        ? snap.data().createdAt
-                        : serverTimestamp(),
-
-                    updatedAt: serverTimestamp(),
-                },
-                { merge: true }
-            );
+            await setDoc(orderRef, upcomingPayload, { merge: true });
             localStorage.removeItem("leadJustSubmitted");
         } catch (err) {
             console.error("Sync Upcoming Error:", err);
@@ -374,7 +389,31 @@ const SharedProduct: React.FC = () => {
             return () => clearTimeout(t);
         }
     }, [showNotifySuccess]);
+    useEffect(() => {
+        if (showPersonalizationSuccess) {
+            const t = setTimeout(() => {
+                setShowPersonalizationSuccess(false);
+            }, 3000);
 
+            return () => clearTimeout(t);
+        }
+    }, [showPersonalizationSuccess]);
+    useEffect(() => {
+        // Wait until settings are loaded
+        if (!catalogueSettings) return;
+
+        const alreadyFilled = localStorage.getItem("leadSubmitted") === "true";
+        if (alreadyFilled) return;
+
+        if (timedPopupFired) return;
+
+        const timer = setTimeout(() => {
+            setTimedPopupFired(true);
+            setForceLeadOpen(true);
+        }, 10000);
+
+        return () => clearTimeout(timer);
+    }, [catalogueSettings, timedPopupFired]);
     useEffect(() => {
         const handleScroll = () => {
             // Header ki approximate height
@@ -392,10 +431,10 @@ const SharedProduct: React.FC = () => {
     }, []);
 
     const addToCart = useCallback((item: Item) => {
-        //  SINGLE SOURCE OF TRUTH
-        const alreadyFilled = !approvalEnabled || localStorage.getItem("leadSubmitted") === "true";
-        // lead not filled → popup dikhao
+        // Always require name+number before adding to cart
+        const alreadyFilled = localStorage.getItem("leadSubmitted") === "true";
         if (!alreadyFilled) {
+            setPendingCartItem(item);
             setForceLeadOpen(false);
             setTimeout(() => setForceLeadOpen(true), 0);
             return;
@@ -522,7 +561,53 @@ const SharedProduct: React.FC = () => {
             console.error("Notify error:", err);
         }
     };
+    const handlePersonalizationSubmit = async (item: Item, note: string) => {
+        try {
+            if (!effectiveCompanyId) return;
 
+            const alreadyFilled = localStorage.getItem("leadSubmitted") === "true";
+            if (!alreadyFilled) {
+                setPendingPersonalizationItem(item);
+                setForceLeadOpen(false);
+                setTimeout(() => setForceLeadOpen(true), 0);
+                return;
+            }
+
+            const leadData = JSON.parse(localStorage.getItem("leadData") || "{}");
+            const name = leadData?.name || "Guest User";
+            const number = (leadData?.number || "").replace(/\D/g, "").trim();
+
+            if (!number) { setForceLeadOpen(true); return; }
+
+            const docKey = `${number}_${String(item.id ?? Date.now())}`;
+
+            const ref = doc(
+                db,
+                "companies",
+                effectiveCompanyId,
+                "PersonalizationRequests",
+                docKey
+            );
+
+            await setDoc(ref, {
+                customerName: name || "Guest User",
+                customerNumber: number,
+                itemId: String(item.id ?? ""),
+                itemName: String(item.name ?? "General Request"),
+                itemImage: String(item.imageUrl ?? ""),
+                note: note.trim(),
+                status: "pending",
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+            }, { merge: true });
+
+            setPersonalizationItem(null);
+            setPersonalizationText('');
+            setShowPersonalizationSuccess(true);
+        } catch (err) {
+            console.error("Personalization error:", err);
+        }
+    };
     const fetchUserNotifyStatus = async () => {
         try {
             if (!effectiveCompanyId) return;
@@ -1031,10 +1116,13 @@ const SharedProduct: React.FC = () => {
 
     return (
         <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative">
-            {approvalEnabled && <LeadPopUp
+
+            <LeadPopUp
                 companyId={effectiveCompanyId}
                 companyName={companyName}
-                forceOpen={approvalEnabled && forceLeadOpen && !leadStatus}
+                autoPopup={false}
+                forceOpen={forceLeadOpen}
+                detailsOnly={!approvalEnabled}
                 onLeadSubmit={() => {
                     setIsLeadFilled(true);
                     setForceLeadOpen(false);
@@ -1047,12 +1135,23 @@ const SharedProduct: React.FC = () => {
                     const phone = leadData.number || "";
                     setLeadPhone(phone);
 
-                    //  CRITICAL FIX — fetch again after lead submit
                     setTimeout(() => {
                         fetchUserNotifyStatus();
                     }, 300);
+                    if (pendingCartItem) {          // ← auto-add to cart
+                        addToCart(pendingCartItem);
+                        setPendingCartItem(null);
+                    }
+                    if (pendingBulkItem) {
+                        setBulkQuoteItem(pendingBulkItem);
+                        setPendingBulkItem(null);
+                    }
+                    if (pendingPersonalizationItem) {
+                        setPersonalizationItem(pendingPersonalizationItem);
+                        setPendingPersonalizationItem(null);
+                    }
                 }}
-            />}
+            />
             <header className="sticky top-0 bg-white border-b border-gray-100 shadow-sm z-[60]">
                 <div className="max-w-7xl mx-auto px-1 md:px-4 py-2 relative">
 
@@ -1121,7 +1220,26 @@ const SharedProduct: React.FC = () => {
                     </div>
 
                     {/* Cart Button - Right Side */}
-                    <div className="absolute right-1 md:right-4 top-1/2 -translate-y-1/2">
+                    <div className="absolute right-1 md:right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                        {/* Personalization Button */}
+                        <button
+                            onClick={() => {
+                                const alreadyFilled = localStorage.getItem('leadSubmitted') === 'true';
+                                if (!alreadyFilled) {
+                                    setForceLeadOpen(false);
+                                    setTimeout(() => setForceLeadOpen(true), 0);
+                                    return;
+                                }
+                                setPersonalizationItem({} as Item);
+                                setPersonalizationText('');
+                            }}
+                            className="flex items-center justify-center gap-1.5 bg-[#F97316] text-white py-2 px-3 md:px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all"
+                            title="Send a Query"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                            </svg>
+                        </button>
                         <button
                             ref={cartIconRef}
                             onClick={(e) => {
@@ -1131,7 +1249,7 @@ const SharedProduct: React.FC = () => {
                                     navigate(subdomain ? '/checkout' : `/checkout/${effectiveCompanyId}`);
                                 }
                             }}
-                            className="flex items-center justify-center gap-2 bg-[#F97316] text-white py-2 px-3 md:px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative"
+                            className="hidden md:flex items-center justify-center gap-2 bg-[#F97316] text-white py-2 px-3 md:px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative"
                         >
                             <ShoppingCart size={16} />
                             <span className="hidden md:inline">Cart</span>
@@ -1158,6 +1276,17 @@ const SharedProduct: React.FC = () => {
                         You will be notified when item is back in stock
                         <button
                             onClick={() => setShowNotifySuccess(false)}
+                            className="absolute right-2 top-2 text-green-600 font-black"
+                        >
+                            ✕
+                        </button>
+                    </div>
+                )}
+                {showPersonalizationSuccess && (
+                    <div className="max-w-7xl mx-auto mb-3 p-3 bg-green-50 border border-green-200 text-green-700 text-xs font-bold rounded-sm text-center relative animate-fade-in">
+                        ✅ Personalization request submitted! We'll get back to you soon.
+                        <button
+                            onClick={() => setShowPersonalizationSuccess(false)}
                             className="absolute right-2 top-2 text-green-600 font-black"
                         >
                             ✕
@@ -1263,6 +1392,24 @@ const SharedProduct: React.FC = () => {
                             >
                                 {/* IMAGE */}
                                 <div className="aspect-square bg-[#F8FAFC] flex items-center justify-center relative overflow-hidden">
+                                    {/* BULK QUOTE BUTTON — top left */}
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            const alreadyFilled = !approvalEnabled || localStorage.getItem('leadSubmitted') === 'true';
+                                            if (!alreadyFilled) {
+                                                setPendingBulkItem(item);
+                                                setForceLeadOpen(false);
+                                                setTimeout(() => setForceLeadOpen(true), 0);
+                                                return;
+                                            }
+                                            setBulkQuoteItem(item);
+                                        }}
+                                        className="absolute top-1.5 left-1.5 z-10 bg-[#F97316] text-white text-[8px] font-black uppercase tracking-tight px-1.5 py-1 rounded-sm shadow-md hover:bg-[#F97316] transition-colors"
+                                        title="Request Bulk Price"
+                                    >
+                                        Bulk
+                                    </button>
                                     {pinnedIds.has(item.id!) && (
                                         <div className="absolute top-1.5 right-1.5 z-10 bg-white text-[#F97316] rounded-sm px-1 py-1 flex items-center gap-0.5 shadow-md border border-[#F97316]">
                                             <Pin size={12} className="fill-[#F97316]" />
@@ -1453,7 +1600,68 @@ const SharedProduct: React.FC = () => {
 
                 </div>
             </div>
+            {/* BULK QUOTE POPUP */}
+            {bulkQuoteItem && effectiveCompanyId && (
+                <BulkQuotePopup
+                    item={bulkQuoteItem}
+                    companyId={effectiveCompanyId}
+                    onClose={() => setBulkQuoteItem(null)}
+                />
+            )}
+            {/* PERSONALIZATION POPUP */}
+            {personalizationItem && (
+                <div
+                    className="fixed inset-0 z-[2000] flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm"
+                    onClick={() => setPersonalizationItem(null)}
+                >
+                    <div
+                        className="bg-white w-full md:max-w-md rounded-t-sm md:rounded-sm shadow-2xl p-5 space-y-4"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Header */}
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h2 className="text-sm font-black text-[#1A3B5D] uppercase tracking-tight">
+                                    Send a Query
+                                </h2>
+                                <p className="text-[10px] text-gray-400 font-semibold mt-0.5">
+                                    Describe what you're looking for
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setPersonalizationItem(null)}
+                                className="text-gray-400 hover:text-gray-700 font-black text-lg leading-none"
+                            >✕</button>
+                        </div>
 
+                        {/* Query description only */}
+                        <div>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-1">
+                                Your Query
+                            </label>
+                            <textarea
+                                rows={5}
+                                value={personalizationText}
+                                onChange={(e) => setPersonalizationText(e.target.value)}
+                                placeholder="e.g. I need a blue hoodie in size L with 'Rahul' printed on it..."
+                                className="w-full border border-gray-200 rounded-sm p-3 text-sm text-gray-700 outline-none focus:border-[#1A3B5D] resize-none"
+                            />
+                        </div>
+
+                        {/* Submit */}
+                        <button
+                            disabled={!personalizationText.trim()}
+                            onClick={() => handlePersonalizationSubmit(personalizationItem, personalizationText)}
+                            className={`w-full py-3 rounded-sm text-[12px] font-black uppercase tracking-widest transition-all ${personalizationText.trim()
+                                ? 'bg-[#1A3B5D] text-white active:scale-95'
+                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                }`}
+                        >
+                            Submit Query
+                        </button>
+                    </div>
+                </div>
+            )}
             <ItemDetailDrawer
                 catalogueSettings={catalogueSettings}
                 item={selectedItemForDetails}

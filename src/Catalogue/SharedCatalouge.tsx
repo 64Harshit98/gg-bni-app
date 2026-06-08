@@ -12,6 +12,7 @@ import SearchBar from './SearchBar.tsx';
 import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "../lib/Firebase";
 import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting';
+import LeadPopUp from './PopUp.tsx';
 
 const SharedCataloguePage: React.FC = () => {
     const { companyId: pathId } = useParams<{ companyId: string }>();
@@ -101,6 +102,12 @@ const SharedCataloguePage: React.FC = () => {
     const [isSearchSticky, setIsSearchSticky] = useState(false);
     const [catalogueSettings, setCatalogueSettings] = useState<CatalogueSalesSettings | null>(null);
     const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
+    const [timedPopupOpen, setTimedPopupOpen] = useState(false);
+    const [personalizationItem, setPersonalizationItem] = useState<Item | null>(null);
+    const [personalizationText, setPersonalizationText] = useState('');
+    const [showPersonalizationSuccess, setShowPersonalizationSuccess] = useState(false);
+    const [forceLeadOpen, setForceLeadOpen] = useState(false);
+    const [showLeadSuccess, setShowLeadSuccess] = useState(false);
     const liveItems = useMemo(() => {
         return allItems.filter(item => {
             if (!item.isListed) return false;
@@ -212,6 +219,20 @@ const SharedCataloguePage: React.FC = () => {
             setCart(JSON.parse(savedCart));
         }
     }, []);
+    useEffect(() => {
+        // Only run if approval is required
+        if (!catalogueSettings?.requireApproval) return;
+
+        // Don't run if already filled
+        const alreadyFilled = localStorage.getItem("leadSubmitted") === "true";
+        if (alreadyFilled) return;
+
+        const timer = setTimeout(() => {
+            setTimedPopupOpen(true);
+        }, 10000); // 10 seconds
+
+        return () => clearTimeout(timer);
+    }, [catalogueSettings?.requireApproval]);
 
     useEffect(() => {
         const handleStorage = () => {
@@ -292,7 +313,48 @@ const SharedCataloguePage: React.FC = () => {
             });
 
     }, [itemGroups, allItems, searchQuery, sortOrder, pinnedIds]);
+    const handlePersonalizationSubmit = async (item: Item, note: string) => {
+        try {
+            if (!effectiveCompanyId) return;
 
+            const alreadyFilled = localStorage.getItem("leadSubmitted") === "true";
+            if (!alreadyFilled) {
+                setForceLeadOpen(false);
+                setTimeout(() => setForceLeadOpen(true), 0);
+                return;
+            }
+
+            const leadData = JSON.parse(localStorage.getItem("leadData") || "{}");
+            const name = leadData?.name || "Guest User";
+            const number = (leadData?.number || "").replace(/\D/g, "").trim();
+
+            if (!number) { setForceLeadOpen(true); return; }
+
+            const { doc, setDoc, serverTimestamp } = await import('firebase/firestore');
+            const { db } = await import('../lib/Firebase');
+
+            const docKey = `${number}_${String(item.id ?? Date.now())}`;
+            const ref = doc(db, "companies", effectiveCompanyId, "PersonalizationRequests", docKey);
+
+            await setDoc(ref, {
+                customerName: name || "Guest User",
+                customerNumber: number,
+                itemId: String(item.id ?? ""),
+                itemName: String(item.name ?? "General Request"),
+                itemImage: String(item.imageUrl ?? ""),
+                note: note.trim(),
+                status: "pending",
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+            }, { merge: true });
+
+            setPersonalizationItem(null);
+            setPersonalizationText('');
+            setShowPersonalizationSuccess(true);
+        } catch (err) {
+            console.error("Personalization error:", err);
+        }
+    };
     if (domainResolveError) {
         return (
             <div className="flex flex-col items-center justify-center h-screen bg-[#E9F0F7] text-[#1A3B5D]">
@@ -323,7 +385,19 @@ const SharedCataloguePage: React.FC = () => {
         <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative">
 
             {/* <LeadPopUp effectiveCompanyId={effectiveCompanyId} companyName={companyName} /> */}
-
+            <LeadPopUp
+                companyId={effectiveCompanyId}
+                companyName={companyName}
+                autoPopup={false}
+                forceOpen={forceLeadOpen || (catalogueSettings?.requireApproval ? timedPopupOpen : false)}
+                onLeadSubmit={() => {
+                    setTimedPopupOpen(false);
+                    setForceLeadOpen(false);
+                    localStorage.setItem("leadJustSubmitted", "true");
+                    setShowLeadSuccess(true);
+                    setTimeout(() => setShowLeadSuccess(false), 4000);
+                }}
+            />
             {/* --- HEADER --- */}
             <header className="sticky top-0 z-[100] bg-white border-b border-gray-100 shadow-sm w-full">
                 <div className="max-w-7xl mx-auto px-3 py-3 relative flex items-center justify-end">
@@ -333,30 +407,72 @@ const SharedCataloguePage: React.FC = () => {
                         {companyName}
                     </h1>
 
-                    {/* Right Section - Cart Button */}
-                    <button
-                        onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation(); // Forces the browser to ONLY click this button
-                            if (effectiveCompanyId) {
-                                navigate(subdomain ? '/checkout' : `/checkout/${effectiveCompanyId}`);
-                            }
-                        }}
-                        className="flex items-center justify-center gap-2 bg-[#F97316] text-white py-2 px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative cursor-pointer"
-                    >
-                        <ShoppingCart size={16} />
-                        <span className="hidden md:inline">Cart</span>
+                    {/* Right Section - Query + Cart Buttons */}
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => {
+                                const alreadyFilled = localStorage.getItem('leadSubmitted') === 'true';
+                                if (!alreadyFilled) {
+                                    setForceLeadOpen(false);
+                                    setTimeout(() => setForceLeadOpen(true), 0);
+                                    return;
+                                }
+                                setPersonalizationItem({} as Item);
+                                setPersonalizationText('');
+                            }}
+                            className="flex items-center justify-center gap-1.5 bg-[#F97316] text-white py-2 px-3 md:px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all"
+                            title="Send a Query"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                            </svg>
+                        </button>
+                        <button
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation(); // Forces the browser to ONLY click this button
+                                if (effectiveCompanyId) {
+                                    navigate(subdomain ? '/checkout' : `/checkout/${effectiveCompanyId}`);
+                                }
+                            }}
+                            className="flex items-center justify-center gap-2 bg-[#F97316] text-white py-2 px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative cursor-pointer"
+                        >
+                            <ShoppingCart size={16} />
+                            <span className="hidden md:inline">Cart</span>
 
-                        {cartCount > 0 && (
-                            <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[8px] w-4 h-4 rounded-sm flex items-center justify-center border-2 border-white">
-                                {cartCount}
-                            </span>
-                        )}
-                    </button>
+                            {cartCount > 0 && (
+                                <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[8px] w-4 h-4 rounded-sm flex items-center justify-center border-2 border-white">
+                                    {cartCount}
+                                </span>
+                            )}
+                        </button>
+                    </div>
                 </div>
             </header>
 
             <main className="p-1 md:p-6 space-y-4 flex-1 max-w-7xl mx-auto w-full pb-12 md:pb-20">
+                {showLeadSuccess && (
+                    <div className="max-w-7xl mx-auto mb-3 p-3 bg-green-50 border border-green-200 text-green-700 text-xs font-bold rounded-sm text-center relative animate-fade-in">
+                        ✅ Details submitted! You can now browse and add items to your cart.
+                        <button
+                            onClick={() => setShowLeadSuccess(false)}
+                            className="absolute right-2 top-2 text-green-600 font-black"
+                        >
+                            ✕
+                        </button>
+                    </div>
+                )}
+                {showPersonalizationSuccess && (
+                    <div className="max-w-7xl mx-auto mb-3 p-3 bg-green-50 border border-green-200 text-green-700 text-xs font-bold rounded-sm text-center relative animate-fade-in">
+                        ✅ Personalization request submitted! We'll get back to you soon.
+                        <button
+                            onClick={() => setShowPersonalizationSuccess(false)}
+                            className="absolute right-2 top-2 text-green-600 font-black"
+                        >
+                            ✕
+                        </button>
+                    </div>
+                )}
                 <div className='flex items-center justify-center mt-1'>
                     <h1 className="text-lg md:text-xl font-extrabold text-[#F97316] uppercase tracking-tighter">Categories</h1>
                 </div>
@@ -554,7 +670,57 @@ const SharedCataloguePage: React.FC = () => {
 
                 </div>
             </div>
+            {/* PERSONALIZATION POPUP */}
+            {personalizationItem && (
+                <div
+                    className="fixed inset-0 z-[2000] flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm"
+                    onClick={() => setPersonalizationItem(null)}
+                >
+                    <div
+                        className="bg-white w-full md:max-w-md rounded-t-sm md:rounded-sm shadow-2xl p-5 space-y-4"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h2 className="text-sm font-black text-[#1A3B5D] uppercase tracking-tight">
+                                    Send a Query
+                                </h2>
+                                <p className="text-[10px] text-gray-400 font-semibold mt-0.5">
+                                    Describe what you're looking for
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setPersonalizationItem(null)}
+                                className="text-gray-400 hover:text-gray-700 font-black text-lg leading-none"
+                            >✕</button>
+                        </div>
 
+                        <div>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-1">
+                                Your Query
+                            </label>
+                            <textarea
+                                rows={5}
+                                value={personalizationText}
+                                onChange={(e) => setPersonalizationText(e.target.value)}
+                                placeholder="e.g. I need a blue hoodie in size L with 'Rahul' printed on it..."
+                                className="w-full border border-gray-200 rounded-sm p-3 text-sm text-gray-700 outline-none focus:border-[#1A3B5D] resize-none"
+                            />
+                        </div>
+
+                        <button
+                            disabled={!personalizationText.trim()}
+                            onClick={() => handlePersonalizationSubmit(personalizationItem, personalizationText)}
+                            className={`w-full py-3 rounded-sm text-[12px] font-black uppercase tracking-widest transition-all ${personalizationText.trim()
+                                ? 'bg-[#1A3B5D] text-white active:scale-95'
+                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                }`}
+                        >
+                            Submit Query
+                        </button>
+                    </div>
+                </div>
+            )}
             {/* FOOTER */}
             <Footer
                 companyName={companyName}

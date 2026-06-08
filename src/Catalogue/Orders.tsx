@@ -140,11 +140,82 @@ export const useOrdersData = (
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    // Ref to hold both sets independently — no state race
+    const dateOrdersRef = React.useRef<Order[]>([]);
+    const upcomingOrdersRef = React.useRef<Order[]>([]);
+
+    const mapDoc = React.useCallback((docSnap: any): Order => {
+        const data = docSnap.data();
+        const createdAt =
+            data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date();
+        const updatedAt =
+            data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : createdAt;
+        return {
+            id: docSnap.id,
+            orderId: data.orderId || '',
+            type: data.type || "order",
+            isLead: data.isLead || false,
+            totalAmount: Number(data.totalAmount || 0),
+            paidAmount: Number(data.paidAmount || 0),
+            creditNoteAmount: Number(data.creditNoteAmount || 0),
+            refundAmount: Number(data.refundAmount || 0),
+            status: data.status || 'Upcoming',
+            paymentMethod: data.paymentMethod,
+            paymentMethods: data.paymentMethods,
+            returnHistory: Array.isArray(data.returnHistory) ? data.returnHistory : [],
+            specialInstruction: data.specialInstruction || "",
+            expenses: Array.isArray(data.expenses) ? data.expenses : [],
+            manualDiscount: Number(data.manualDiscount || 0),
+            updatedAt,
+            userName: data.userName || data.billingDetails?.name || 'Anonymous',
+            userLoginPhone: data.userLoginPhone || data.billingDetails?.phone || '',
+            billingDetails: data.billingDetails,
+            shippingDetails: data.shippingDetails,
+            createdAt,
+            time: formatDate(createdAt),
+            items: Array.isArray(data.items)
+                ? data.items.map((i: any) => {
+                    const salesPrice = Number(i.salesPrice || 0);
+                    const mrp = Number(i.mrp || 0);
+                    const finalPrice = i.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+                    return {
+                        id: i.id,
+                        itemId: i.itemId || i.id,
+                        name: i.name,
+                        quantity: Number(i.quantity || 0),
+                        mrp,
+                        salesPrice,
+                        unitPrice: finalPrice,
+                        customPrice: finalPrice,
+                        moq: Number(i.moq ?? 0),
+                        itemGroupId: i.itemGroupId || i.groupId || null,
+                        tax: Number(i.tax ?? 0),
+                        unitMultiplier: Number(i.unitMultiplier ?? i.multiplier ?? 1),
+                        unit: i.unit ?? "pcs",
+                        finalPrice: Number(i.finalPrice ?? finalPrice * Number(i.quantity || 0)),
+                        note: i.note || '',
+                        imageUrl: i.imageUrl || "",
+                        imageBase64: "",
+                    };
+                })
+                : [],
+        };
+    }, []);
+
+    // Merges both refs into state — upcoming ref is always the source of truth for Upcoming status
+    const mergeAndSet = React.useCallback(() => {
+        const upcomingIds = new Set(upcomingOrdersRef.current.map(o => o.id));
+        // From date-filtered, exclude anything that's in the upcoming set (upcoming ref is fresher)
+        const nonUpcomingFromDate = dateOrdersRef.current.filter(
+            o => o.status !== 'Upcoming' && !upcomingIds.has(o.id)
+        );
+        const merged = [...nonUpcomingFromDate, ...upcomingOrdersRef.current];
+        setOrders(merged);
+    }, []);
+
     const ordersQuery = useMemo(() => {
         if (!companyId) return null;
-
         const ordersRef = collection(db, 'companies', companyId, 'Orders');
-
         if (startDate && endDate) {
             return query(
                 ordersRef,
@@ -153,101 +224,29 @@ export const useOrdersData = (
                 orderBy('createdAt', 'desc')
             );
         }
-
         return query(ordersRef, orderBy('createdAt'));
-    }, [
-        companyId,
-        startDate?.getTime(),
-        endDate?.getTime()
-    ]);
+    }, [companyId, startDate?.getTime(), endDate?.getTime()]);
 
+    const upcomingQuery = useMemo(() => {
+        if (!companyId) return null;
+        const ordersRef = collection(db, 'companies', companyId, 'Orders');
+        return query(ordersRef, where('status', '==', 'Upcoming'));
+    }, [companyId]);
+
+    // Listener 1: Date-filtered orders (all statuses except upcoming are sourced from here)
     useEffect(() => {
         if (!ordersQuery) {
+            dateOrdersRef.current = [];
             setOrders([]);
             setLoading(false);
             return;
         }
-
         setLoading(true);
-
-        const unsubscribe = onSnapshot(
+        const unsub = onSnapshot(
             ordersQuery,
             (snapshot) => {
-                const list: Order[] = snapshot.docs.map((doc) => {
-                    const data = doc.data();
-
-                    const createdAt =
-                        data.createdAt instanceof Timestamp
-                            ? data.createdAt.toDate()
-                            : new Date();
-
-                    const updatedAt =
-                        data.updatedAt instanceof Timestamp
-                            ? data.updatedAt.toDate()
-                            : createdAt;
-
-                    return {
-                        id: doc.id,
-                        orderId: data.orderId || '',
-                        type: data.type || "order",
-                        isLead: data.isLead || false,
-                        totalAmount: Number(data.totalAmount || 0),
-                        paidAmount: Number(data.paidAmount || 0),
-                        creditNoteAmount: Number(data.creditNoteAmount || 0),
-                        refundAmount: Number(data.refundAmount || 0),
-                        status: data.status || 'Upcoming',
-                        paymentMethod: data.paymentMethod,
-                        paymentMethods: data.paymentMethods,
-                        returnHistory: Array.isArray(data.returnHistory) ? data.returnHistory : [],
-                        specialInstruction: data.specialInstruction || "",
-                        expenses: Array.isArray(data.expenses) ? data.expenses : [],
-                        manualDiscount: Number(data.manualDiscount || 0),
-                        updatedAt,
-                        userName:
-                            data.userName ||
-                            data.billingDetails?.name ||
-                            'Anonymous',
-                        userLoginPhone:
-                            data.userLoginPhone ||
-                            data.billingDetails?.phone ||
-                            '',
-                        billingDetails: data.billingDetails,
-                        shippingDetails: data.shippingDetails,
-                        createdAt,
-                        time: formatDate(createdAt),
-                        items: Array.isArray(data.items)
-                            ? data.items.map((i: any) => {
-                                const salesPrice = Number(i.salesPrice || 0);
-                                const mrp = Number(i.mrp || 0);
-                                const finalPrice =
-                                    i.customPrice ??
-                                    (salesPrice > 0 ? salesPrice : mrp);
-
-                                return {
-                                    id: i.id,
-                                    itemId: i.itemId || i.id,
-                                    name: i.name,
-                                    quantity: Number(i.quantity || 0),
-                                    mrp: mrp,
-                                    salesPrice: salesPrice,
-                                    unitPrice: finalPrice,
-                                    customPrice: finalPrice,
-                                    moq: Number(i.moq ?? 0),
-                                    itemGroupId: i.itemGroupId || i.groupId || null,
-                                    tax: Number(i.tax ?? 0),
-                                    unitMultiplier: Number(i.unitMultiplier ?? i.multiplier ?? 1),
-                                    unit: i.unit ?? "pcs",
-                                    finalPrice: Number(i.finalPrice ?? finalPrice * Number(i.quantity || 0)),
-                                    note: i.note || '',
-                                    imageUrl: i.imageUrl || "",
-                                    imageBase64: "",
-                                };
-                            })
-                            : [],
-                    };
-                });
-
-                setOrders(list);
+                dateOrdersRef.current = snapshot.docs.map(mapDoc);
+                mergeAndSet();
                 setLoading(false);
             },
             () => {
@@ -255,9 +254,24 @@ export const useOrdersData = (
                 setLoading(false);
             }
         );
+        return () => unsub();
+    }, [ordersQuery, mapDoc, mergeAndSet]);
 
-        return () => unsubscribe();
-    }, [ordersQuery]);
+    // Listener 2: ALL upcoming orders regardless of date — always live
+    useEffect(() => {
+        if (!upcomingQuery) return;
+        const unsub = onSnapshot(
+            upcomingQuery,
+            (snapshot) => {
+                upcomingOrdersRef.current = snapshot.docs.map(mapDoc);
+                mergeAndSet();
+            },
+            (err) => {
+                console.error('Upcoming orders listener error:', err);
+            }
+        );
+        return () => unsub();
+    }, [upcomingQuery, mapDoc, mergeAndSet]);
 
     return { Orders, loading, error };
 };
@@ -436,7 +450,7 @@ const OrdersPage: React.FC = () => {
     const [_error, setError] = useState<string | null>(null);
     const [availableItems, setAvailableItems] = useState<Item[]>([]);
     const [billType, setBillType] = useState<'estimate' | 'bill'>('bill');
-    // const [pendingRequestCount, setPendingRequestCount] = useState(0);
+    const [pendingRequestCount, setPendingRequestCount] = useState(0);
 
     const { currentUser } = useAuth();
 
@@ -875,27 +889,27 @@ const OrdersPage: React.FC = () => {
         fetchData();
     }, [dbOperations, currentUser?.companyId]);
 
-    // useEffect(() => {
-    //     if (!currentUser?.companyId) return;
+    useEffect(() => {
+        if (!currentUser?.companyId) return;
 
-    //     const fetchPendingRequests = async () => {
-    //         try {
-    //             const snap = await getDocs(
-    //                 collection(db, "companies", currentUser.companyId, "AuthorizedUser")
-    //             );
+        const fetchPendingRequests = async () => {
+            try {
+                const snap = await getDocs(
+                    collection(db, "companies", currentUser.companyId, "AuthorizedUser")
+                );
 
-    //             // const pending = snap.docs.filter(
-    //             //     (d: any) => d.data()?.status === "pending"
-    //             // ).length;
+                const pending = snap.docs.filter(
+                    (d: any) => d.data()?.status === "pending"
+                ).length;
 
-    //             // setPendingRequestCount(pending);
-    //         } catch (err) {
-    //             console.error("Pending request fetch error:", err);
-    //         }
-    //     };
+                setPendingRequestCount(pending);
+            } catch (err) {
+                console.error("Pending request fetch error:", err);
+            }
+        };
 
-    //     fetchPendingRequests();
-    // }, [currentUser?.companyId]);
+        fetchPendingRequests();
+    }, [currentUser?.companyId]);
     // Helper to convert product image URLs to Base64 for jsPDF
     // Helper to convert product image URLs to Base64 for jsPDF
     // Helper to convert product image URLs to Base64 for jsPDF
@@ -1378,13 +1392,14 @@ const OrdersPage: React.FC = () => {
         let result = Orders
             .filter(order => {
 
-                //  UPCOMING TAB
                 if (activeStatusTab === "Upcoming") {
-                    if (order.status === "Upcoming" && order.isLead) {
-                        // lead tabhi dikhe jab items ho
+                    if (order.status !== "Upcoming") return false;
+                    // For lead/upcoming orders, only show if they have items
+                    // For confirmed cart orders (isLead: false), always show
+                    if (order.isLead) {
                         return (order.items?.length || 0) > 0;
                     }
-                    return order.status === "Upcoming";
+                    return true;
                 }
 
                 //  COMPLETED TAB
@@ -1422,7 +1437,16 @@ const OrdersPage: React.FC = () => {
             });
         }
 
-        return result;
+        // Sort: latest first for all tabs
+        return result.sort((a, b) => {
+            const aTime = a.updatedAt
+                ? new Date(a.updatedAt).getTime()
+                : new Date(a.createdAt).getTime();
+            const bTime = b.updatedAt
+                ? new Date(b.updatedAt).getTime()
+                : new Date(b.createdAt).getTime();
+            return bTime - aTime;
+        });
 
     }, [Orders, activeStatusTab, paymentFilter, searchQuery]);
 
@@ -1627,45 +1651,50 @@ const OrdersPage: React.FC = () => {
             }
 
             //  STOCK DECREASE WHEN CONFIRMED
+            // Skip for cart orders — they already deducted stock at placement
             if (nextStatus === "Confirmed") {
-                const orderSnap = await getDoc(OrderRef);
-                const orderData = orderSnap.data();
-                const items = orderData?.items || [];
+                const freshSnap = await getDoc(OrderRef);
+                const freshData = freshSnap.data();
+                const wasPlacedViaCart = !!freshData?.orderedBy;
 
-                await Promise.all(
-                    items.map(async (item: any) => {
-                        try {
-                            const itemId = item.itemId || item.id;
-                            if (!itemId) return;
+                if (!wasPlacedViaCart) {
+                    const items = freshData?.items || [];
 
-                            const itemRef = doc(
-                                db,
-                                "companies",
-                                currentUser.companyId,
-                                "items",
-                                itemId
-                            );
+                    await Promise.all(
+                        items.map(async (item: any) => {
+                            try {
+                                const itemId = item.itemId || item.id;
+                                if (!itemId) return;
 
-                            const snap = await getDoc(itemRef);
-                            if (!snap.exists()) {
-                                return;
+                                const itemRef = doc(
+                                    db,
+                                    "companies",
+                                    currentUser.companyId,
+                                    "items",
+                                    itemId
+                                );
+
+                                const snap = await getDoc(itemRef);
+                                if (!snap.exists()) {
+                                    return;
+                                }
+
+                                const currentStock = Number(snap.data().stock || 0);
+
+                                const deductQty =
+                                    Number(item.quantity || 0) *
+                                    Number(item.unitMultiplier || 1);
+
+                                await updateDoc(itemRef, {
+                                    stock: currentStock - deductQty
+                                });
+
+                            } catch (err) {
+                                console.error("Stock update failed:", err);
                             }
-
-                            const currentStock = Number(snap.data().stock || 0);
-
-                            const deductQty =
-                                Number(item.quantity || 0) *
-                                Number(item.unitMultiplier || 1);
-
-                            await updateDoc(itemRef, {
-                                stock: currentStock - deductQty
-                            });
-
-                        } catch (err) {
-                            console.error("Stock update failed:", err);
-                        }
-                    })
-                );
+                        })
+                    );
+                }
             }
 
             await updateDoc(OrderRef, {
@@ -2106,7 +2135,7 @@ const OrdersPage: React.FC = () => {
             <div className={`bg-white shadow-sm sticky z-[50] border-b top-[72px]`}>
 
                 {/* Request Page */}
-                {/* <div
+                <div
                     onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`)}
                     className="mx-3 mt-2 mb-2 rounded-sm cursor-pointer bg-white border border-slate-200 px-3 py-2 flex items-center justify-between shadow-sm hover:bg-slate-50 active:scale-[0.99] transition-all">
                     <div className="flex flex-col">
@@ -2118,13 +2147,13 @@ const OrdersPage: React.FC = () => {
                         </span>
                     </div>
 
-                   
+
                     <div className="min-w-[26px] h-[22px] px-2 flex items-center justify-center
                     text-[11px] font-black rounded-sm
                     bg-red-500 text-white">
                         {pendingRequestCount}
                     </div>
-                </div> */}
+                </div>
 
                 {/* ORDER TIMELINE */}
                 <div className="flex items-center w-full px-2 md:px-10 pt-9 pb-9 bg-white">
@@ -2137,12 +2166,8 @@ const OrdersPage: React.FC = () => {
                         return (
                             <React.Fragment key={status}>
                                 <div
-                                    className={`relative flex flex-col items-center flex-1 min-w-0 ${status === "Upcoming" ? "cursor-not-allowed" : "cursor-pointer"}`}
-                                    onClick={() => {
-                                        if (status !== "Upcoming") {
-                                            setActiveStatusTab(status);
-                                        }
-                                    }}
+                                    className="relative flex flex-col items-center flex-1 min-w-0 cursor-pointer"
+                                    onClick={() => setActiveStatusTab(status)}
                                 >
                                     <span
                                         className={`absolute ${index % 2 === 0 ? 'bottom-full mb-2' : 'top-full mt-2'
@@ -2159,15 +2184,14 @@ const OrdersPage: React.FC = () => {
                                             } ${isActive ? "scale-110 shadow-md ring-2 ring-orange-100" : ""}`}
                                     >
 
-                                        {status === "Upcoming" ? (
-                                            <span className="absolute px-1 py-[2px] text-[5px] font-black uppercase rounded-full bg-orange-100 text-[#F97316] border border-orange-300 whitespace-nowrap">
-                                                Coming Soon
-                                            </span>
-                                        ) : (
-                                            <span className="text-[10px] md:text-xs font-black">
-                                                {count}
-                                            </span>
-                                        )}
+                                        {/* {status === "Upcoming" ? (
+                                        //     <span className="absolute px-1 py-[2px] text-[5px] font-black uppercase rounded-full bg-orange-100 text-[#F97316] border border-orange-300 whitespace-nowrap">
+                                        //         Coming Soon
+                                        //     </span>
+                                        // ) : ( */}
+                                        <span className="text-[10px] md:text-xs font-black">
+                                            {count}
+                                        </span>
 
                                     </div>
                                 </div>
@@ -2672,7 +2696,7 @@ const OrdersPage: React.FC = () => {
                                                 {(
                                                     <div
                                                         className={`grid ${isUpcomingStatus
-                                                            ? 'grid-cols-3'
+                                                            ? Order.userLoginPhone ? 'grid-cols-3' : 'grid-cols-1'
                                                             : Order.status === "Packed"
                                                                 ? 'grid-cols-5 md:grid-cols-5'
                                                                 : Order.status === "Paid"

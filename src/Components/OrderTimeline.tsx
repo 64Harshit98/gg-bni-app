@@ -5,7 +5,7 @@ import { useFilter } from './Filter';
 import { Spinner } from '../constants/Spinner';
 import type { OrderStatus } from '../Catalogue/Orders';
 
-const orderStatuses: (OrderStatus | 'Upcoming')[] = ['Upcoming', 'Confirmed', 'Packed', 'Completed'];
+const orderStatuses: OrderStatus[] = ['Upcoming', 'Confirmed', 'Packed', 'Completed'];
 
 // ── Props (counts come from HomePage, no internal fetch) ─────────────────────
 interface OrderTimelineProps {
@@ -32,7 +32,7 @@ export const OrderTimeline: React.FC<OrderTimelineProps> = ({
         return start === end ? `for ${start}` : `from ${start} to ${end}`;
     }, [filters.startDate, filters.endDate]);
 
-    const handleViewStatus = (status: OrderStatus | 'Upcoming') => {
+    const handleViewStatus = (status: OrderStatus) => {
         navigate(ROUTES.ORDERDETAILS, {
             state: {
                 defaultStatus: status,
@@ -71,11 +71,7 @@ export const OrderTimeline: React.FC<OrderTimelineProps> = ({
                             <div className="flex flex-col items-center flex-1 min-w-0">
                                 <button
                                     className={`relative flex flex-col items-center w-full group ${status === "Upcoming" ? "cursor-not-allowed" : "cursor-pointer"}`}
-                                    onClick={() => {
-                                        if (status !== "Upcoming") {
-                                            handleViewStatus(status as any);
-                                        }
-                                    }}
+                                    onClick={() => handleViewStatus(status)}
                                 >
                                     {isTopLabel && (
                                         <span className="absolute bottom-full mb-2 text-center text-[10px] sm:text-xs md:text-sm text-gray-600 font-bold whitespace-pre-line leading-tight w-max">
@@ -83,15 +79,14 @@ export const OrderTimeline: React.FC<OrderTimelineProps> = ({
                                         </span>
                                     )}
                                     <div className="relative w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full bg-[#F97316] flex items-center justify-center transition-all duration-300 z-10 border-2 md:border-4 border-gray-300 shadow-sm group-hover:scale-110">
-                                        {status === "Upcoming" ? (
+                                        {/* {status === "Upcoming" ? (
                                             <span className="absolute px-1 py-[2px] text-[6px] font-black uppercase rounded-full bg-orange-100 text-[#F97316] border border-orange-300 whitespace-nowrap">
                                                 Coming Soon
                                             </span>
-                                        ) : (
+                                        ) : ( */}
                                             <span className="text-xs sm:text-sm md:text-xl font-bold text-white">
                                                 {isDataVisible ? count : '∗'}
                                             </span>
-                                        )}
                                     </div>
                                     {!isTopLabel && (
                                         <span className="absolute top-full mt-2 text-center text-[10px] sm:text-xs md:text-sm text-gray-600 font-bold whitespace-pre-line leading-tight w-max">

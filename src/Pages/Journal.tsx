@@ -726,10 +726,10 @@ const Journal: React.FC = () => {
       finalAmount: invoice.amount,
       isEstimate: (invoice as any).isEstimate || false,
       bankDetails: {
-        accountName: billSettings.accountName || businessInfo?.accountHolderName,
-        accountNumber: billSettings.accountNumber || businessInfo?.accountNumber,
-        bankName: billSettings.bankName || businessInfo?.bankName,
-        ifsc: billSettings.ifscCode || '',
+        accountName: businessInfo?.accountHolderName || billSettings.accountName,
+        accountNumber: businessInfo?.accountNumber || billSettings.accountNumber,
+        bankName: businessInfo?.bankName || billSettings.bankName,
+        ifsc: businessInfo?.ifscCode || billSettings.ifscCode || '',
       }
     };
   };

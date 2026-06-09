@@ -130,14 +130,11 @@ export const CatalogueBill = async (
           subtotal = rawPrice * qty;
           gstAmount = 0;
           finalRowTotal = subtotal;
-        } else if (data.taxType === 'inclusive') {
+        } else {
+          // DB price already includes tax, so back-calculate for BOTH inclusive and exclusive
           finalRowTotal = rawPrice * qty;
           subtotal = finalRowTotal / (1 + (effectiveTaxRate / 100));
           gstAmount = finalRowTotal - subtotal;
-        } else {
-          subtotal = rawPrice * qty;
-          gstAmount = subtotal * (effectiveTaxRate / 100);
-          finalRowTotal = subtotal + gstAmount;
         }
 
         let discountAmt = (mrp * qty) - (rawPrice * qty);
@@ -308,14 +305,11 @@ export const CatalogueBill = async (
     if (taxRate === 0) {
       taxableAmt = rowNet;
       finalAmount = taxableAmt;
-    } else if (safeTaxType === 'INCLUSIVE') {
+    } else {
+      // DB price already includes tax, so back-calculate for BOTH inclusive and exclusive
       finalAmount = rowNet;
       taxableAmt = finalAmount / (1 + (taxRate / 100));
       taxAmt = finalAmount - taxableAmt;
-    } else {
-      taxableAmt = rowNet;
-      taxAmt = taxableAmt * (taxRate / 100);
-      finalAmount = taxableAmt + taxAmt;
     }
 
     totalQty += qty;
@@ -867,12 +861,6 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
 
   // --- STRICT MATH FIX: Calculate true post-tax total ---
   const taxType = invoiceData.taxType || salesSettings?.taxType || 'exclusive';
-  const gstType = salesSettings?.gstScheme === "none" ? "" : (gstTypeFromSales || companyData.gstType || "");
-  const safeScheme = gstType.toUpperCase();
-  const safeTaxType = taxType.toUpperCase();
-
-  const isRegular = safeScheme === "REGULAR" && safeTaxType !== "EXEMPT" && safeTaxType !== "NONE";
-
   const totalBillDiscount = Number(invoiceData.manualDiscount || invoiceData.billDiscount || 0);
   const sumPostDiscountAmounts = (invoiceData.items || []).reduce((sum: number, item: any) => {
     const mrp = Number(item.mrp || 0);
@@ -893,13 +881,9 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
     let billDisc = sumPostDiscountAmounts > 0 ? (rowGross / sumPostDiscountAmounts) * totalBillDiscount : 0;
     let rowNet = rowGross - billDisc;
 
-    let taxRate = isRegular ? Number(item.tax ?? item.gst ?? item.taxRate ?? 0) : 0;
+    // We no longer explicitly add tax here because actualPrice already includes it
     let finalRowAmount = rowNet;
 
-    // Explicitly add tax to exclusive items
-    if (isRegular && safeTaxType === 'EXCLUSIVE' && taxRate > 0) {
-      finalRowAmount = rowNet + (rowNet * (taxRate / 100));
-    }
     trueGrandTotal += finalRowAmount;
   });
 

@@ -280,13 +280,14 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   }
 
   const roundOffAmt = invoiceTotal - pureCalculated;
-  const settledAmount = invoiceTotal - advance;
+
+  // Lock the settled amount to a minimum of 0
+  const settledAmount = Math.max(0, invoiceTotal - advance);
 
   const prevBal = Number(data.previousBalance) || 0;
 
   // Calculate currentDue based on the PDF's internal invoiceTotal minus payments.
-  // Do NOT use data.due from the database, because the database due amount includes tax!
-  const currentDue = Math.max(0, invoiceTotal - advance);
+  const currentDue = settledAmount;
 
   const totalDue = prevBal + currentDue;
   const hasPrevOrDue = prevBal > 0 || currentDue > 0;
@@ -469,7 +470,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
 
       doc.setFontSize(9); doc.setFont('helvetica', 'bold');
       doc.rect(startX, finalY, contentWidth, 8);
-      doc.text('Balance Due', vBoxX - 65, finalY + 5.5, { align: 'right' });
+      doc.text('Balance Due', vBoxX - 6, finalY + 5.5, { align: 'right' });
       doc.rect(endX - 30, finalY, 30, 8);
       doc.text(settledAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }), endX - 2, finalY + 5.5, { align: 'right' });
       finalY += 8;

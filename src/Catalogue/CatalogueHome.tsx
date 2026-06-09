@@ -147,7 +147,22 @@ const HomePageContent: React.FC = () => {
                         // 2. Calculate Total Sales Amount irrespective of status
                         // Note: Using o.totalAmount here so even unpaid/upcoming orders show their value. 
                         // If you only want actual cash received, change this back to (o.paidAmount || 0) - (o.refundAmount || 0)
-                        const effectiveAmount: number = o.totalAmount || 0;
+                        // 2. Calculate Total Sales Amount irrespective of status
+                        let effectiveAmount = 0;
+
+                        if (Array.isArray(o.items) && o.items.length > 0) {
+                            // Dynamically calculate the total from items for absolute accuracy
+                            const itemsTotal = o.items.reduce((sum: number, item: any) => {
+                                return sum + ((item.finalPrice || 0) * (item.quantity || 0));
+                            }, 0);
+
+                            // Apply any order-level discounts as a percentage
+                            const discountPercent = Number(o.discount) || 0;
+                            effectiveAmount = itemsTotal - (itemsTotal * (discountPercent / 100));
+                        } else {
+                            // Fallback if no items exist
+                            effectiveAmount = Number(o.totalAmount) || Number(o.grandTotal) || 0;
+                        }
 
                         totalSalesAmount += effectiveAmount;
                         totalSalesCount += 1;
@@ -165,7 +180,7 @@ const HomePageContent: React.FC = () => {
                                 itemStats.set(item.id, {
                                     name: item.name,
                                     totalQuantity: cur.totalQuantity + (item.quantity || 0),
-                                    totalAmount: cur.totalAmount + ((item.customPrice || 0) * (item.quantity || 0)),
+                                    totalAmount: cur.totalAmount + ((item.finalPrice || 0) * (item.quantity || 0)),
                                 });
                             });
                         }

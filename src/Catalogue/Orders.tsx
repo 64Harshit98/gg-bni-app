@@ -25,7 +25,7 @@ import {
     where,
     serverTimestamp,
     increment as firebaseIncrement,
-    setDoc
+    setDoc,
 } from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
 import { CustomCard } from '../Components/CustomCard';
@@ -63,7 +63,6 @@ export interface OrderItem {
     unit?: string;
     unitMultiplier?: number;
     unitPrice?: number;
-    customPrice?: number;
     moq?: number;
     itemId?: string
 }
@@ -177,7 +176,7 @@ export const useOrdersData = (
                 ? data.items.map((i: any) => {
                     const salesPrice = Number(i.salesPrice || 0);
                     const mrp = Number(i.mrp || 0);
-                    const finalPrice = i.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+                    const finalPrice = i.finalPrice ?? (salesPrice > 0 ? salesPrice : mrp);
                     return {
                         id: i.id,
                         itemId: i.itemId || i.id,
@@ -186,7 +185,6 @@ export const useOrdersData = (
                         mrp,
                         salesPrice,
                         unitPrice: finalPrice,
-                        customPrice: finalPrice,
                         moq: Number(i.moq ?? 0),
                         itemGroupId: i.itemGroupId || i.groupId || null,
                         tax: Number(i.tax ?? 0),
@@ -635,7 +633,7 @@ const OrdersPage: React.FC = () => {
             const salesPrice = Number(item.salesPrice || 0);
             const mrp = Number(item.mrp || 0);
             const price =
-                item.customPrice ??
+                item.finalPrice ??
                 (salesPrice > 0 ? salesPrice : mrp);
             return sum + price * Number(item.quantity || 0);
         }, 0);
@@ -664,7 +662,7 @@ const OrdersPage: React.FC = () => {
 
             return {
                 ...item,
-                customPrice: Number(newNetPrice.toFixed(2)),
+                finalPrice: Number(newNetPrice.toFixed(2)),
                 discount: Number(discount.toFixed(2)),
             };
         });
@@ -681,7 +679,7 @@ const OrdersPage: React.FC = () => {
         let discount = Number(item.discount || 0);
 
         // Fall back to undefined so we know if we need to run initial calculations
-        let netPrice = item.customPrice;
+        let netPrice = item.finalPrice;
 
         const basePrice = mrp > 0 ? mrp : salePrice;
         const liveMoq = liveMoqMap[item.id] ?? Number(item.moq ?? 0);
@@ -710,7 +708,7 @@ const OrdersPage: React.FC = () => {
             productId: item.itemId || item.id,
             isEditable: true,
             discount: Number(discount.toFixed(2)),
-            customPrice: Number(netPrice.toFixed(2)),
+            finalPrice: Number(netPrice.toFixed(2)),
             unitMultiplier: Number(item.unitMultiplier || 1),
             moq: liveMoq,
         };
@@ -760,7 +758,7 @@ const OrdersPage: React.FC = () => {
             return {
                 ...item,
                 discount: Number(discountValue.toFixed(2)),
-                customPrice: Number(netPrice.toFixed(2)),
+                finalPrice: Number(netPrice.toFixed(2)),
             };
         });
 
@@ -971,7 +969,7 @@ const OrdersPage: React.FC = () => {
             const itemsWithBase64 = await Promise.all((Order.items || []).map(async (item: any, index: number) => {
                 const mrp = Number(item.mrp || 0);
                 const salesPrice = Number(item.salesPrice || 0);
-                const actualPrice = item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+                const actualPrice = item.finalPrice ?? (salesPrice > 0 ? salesPrice : mrp);
 
                 // --- THE MAGIC FALLBACK ---
                 let targetImageUrl = item.imageUrl;
@@ -1154,7 +1152,7 @@ const OrdersPage: React.FC = () => {
             const itemsWithBase64 = await Promise.all((Order.items || []).map(async (item: any, index: number) => {
                 const mrp = Number(item.mrp || 0);
                 const salesPrice = Number(item.salesPrice || 0);
-                const actualPrice = item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+                const actualPrice = item.finalPrice ?? (salesPrice > 0 ? salesPrice : mrp);
                 const base64Image = item.imageUrl ? await convertImageUrlToBase64(item.imageUrl, item.name) : "";
                 return {
                     sno: index + 1,
@@ -1307,7 +1305,7 @@ const OrdersPage: React.FC = () => {
                 }
 
                 // Using toFixed(2) as a fallback since applyRounding isn't imported here
-                mergedItem.customPrice = Number(finalNetPrice.toFixed(2));
+                mergedItem.finalPrice = Number(finalNetPrice.toFixed(2));
                 mergedItem.discount = Number(calculatedDiscount.toFixed(2));
 
                 return mergedItem;
@@ -1319,7 +1317,7 @@ const OrdersPage: React.FC = () => {
             const salesPrice = Number(i.salesPrice || 0);
             const mrp = Number(i.mrp || 0);
 
-            const price = i.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+            const price = i.finalPrice ?? (salesPrice > 0 ? salesPrice : mrp);
 
             return sum + price * Number(i.quantity || 0);
         }, 0);
@@ -1418,7 +1416,12 @@ const OrdersPage: React.FC = () => {
                 const q = searchQuery.toLowerCase();
                 return (
                     order.orderId?.toLowerCase().includes(q) ||
-                    order.userName?.toLowerCase().includes(q)
+                    order.userName?.toLowerCase().includes(q) ||
+                    order.userLoginPhone?.toLowerCase().includes(q) ||
+                    order.billingDetails?.phone?.toLowerCase().includes(q) ||
+                    order.billingDetails?.name?.toLowerCase().includes(q) ||
+                    order.shippingDetails?.phone?.toLowerCase().includes(q) ||
+                    order.shippingDetails?.name?.toLowerCase().includes(q)
                 );
             });
 
@@ -1748,7 +1751,7 @@ const OrdersPage: React.FC = () => {
         const itemsOnlyTotal = (editingOrder.items || []).reduce((sum, item) => {
             const salesPrice = Number(item.salesPrice || 0);
             const mrp = Number(item.mrp || 0);
-            const unitPrice = item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+            const unitPrice = item.finalPrice ?? (salesPrice > 0 ? salesPrice : mrp);
             return sum + Number(unitPrice || 0) * Number(item.quantity || 0);
         }, 0);
         const expensesTotal = editExpenses.reduce((sum, e) => sum + (parseFloat(e.amount.toString()) || 0), 0);
@@ -1772,7 +1775,7 @@ const OrdersPage: React.FC = () => {
                 const base = items.reduce((sum, item) => {
                     const salesPrice = Number(item.salesPrice || 0);
                     const mrp = Number(item.mrp || 0);
-                    const unitPrice = item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+                    const unitPrice = item.finalPrice ?? (salesPrice > 0 ? salesPrice : mrp);
                     return sum + Number(unitPrice || 0) * Number(item.quantity || 0);
                 }, 0);
                 const exp = expenses.reduce((sum: number, e: any) => sum + (parseFloat(e.amount?.toString()) || 0), 0);
@@ -1950,7 +1953,7 @@ const OrdersPage: React.FC = () => {
             (editingOrder.items || []).reduce((sum, item) => {
                 const salesPrice = Number(item.salesPrice || 0);
                 const mrp = Number(item.mrp || 0);
-                const unitPrice = item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+                const unitPrice = item.finalPrice ?? (salesPrice > 0 ? salesPrice : mrp);
                 return sum + Number(unitPrice || 0) * Number(item.quantity || 0);
             }, 0)
         );
@@ -2014,7 +2017,7 @@ const OrdersPage: React.FC = () => {
             (editingOrder.items || []).reduce((sum, item) => {
                 const salesPrice = Number(item.salesPrice || 0);
                 const mrp = Number(item.mrp || 0);
-                const unitPrice = item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+                const unitPrice = item.finalPrice ?? (salesPrice > 0 ? salesPrice : mrp);
                 return sum + Number(unitPrice || 0) * Number(item.quantity || 0);
             }, 0)
         );
@@ -2245,7 +2248,7 @@ const OrdersPage: React.FC = () => {
                                 const salesPrice = Number(item.salesPrice || 0);
                                 const mrp = Number(item.mrp || 0);
                                 const price =
-                                    item.customPrice ??
+                                    item.finalPrice ??
                                     (salesPrice > 0 ? salesPrice : mrp);
                                 return sum + price * Number(item.quantity || 0);
                             }, 0);
@@ -2311,7 +2314,7 @@ const OrdersPage: React.FC = () => {
                                                     const itemsBase = (Order.items || []).reduce((sum, item) => {
                                                         const salesPrice = Number(item.salesPrice || 0);
                                                         const mrp = Number(item.mrp || 0);
-                                                        const price = item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+                                                        const price = item.finalPrice ?? (salesPrice > 0 ? salesPrice : mrp);
                                                         return sum + price * Number(item.quantity || 0);
                                                     }, 0);
                                                     setEditDiscountPercent(itemsBase > 0 ? parseFloat(((savedDiscount / itemsBase) * 100).toFixed(2)) : 0);
@@ -2443,7 +2446,7 @@ const OrdersPage: React.FC = () => {
                                                         // item.quantity may already reflect post-return qty, so add back returned qty to get original
                                                         const originalQty = Number(item.quantity || 0) + totalReturnedFromHistory;
                                                         const remainingQty = originalQty - totalReturnedFromHistory; // = item.quantity
-                                                        const unitPrice = item.customPrice ??
+                                                        const unitPrice = item.finalPrice ??
                                                             (Number(item.salesPrice || 0) > 0 ? Number(item.salesPrice) : Number(item.mrp));
 
                                                         return (
@@ -3027,7 +3030,7 @@ const OrdersPage: React.FC = () => {
                 const itemsTotal = (showPaymentModal.items || []).reduce(
                     (sum, item) =>
                         sum + (
-                            (item.customPrice ??
+                            (item.finalPrice ??
                                 (Number(item.salesPrice || 0) > 0
                                     ? Number(item.salesPrice)
                                     : Number(item.mrp || 0)))
@@ -3357,11 +3360,10 @@ const OrdersPage: React.FC = () => {
                                                     imageBase64: "",
                                                     unitPrice: finalPrice,
                                                     finalPrice: finalPrice,
-                                                    customPrice: finalPrice
                                                 };
 
                                                 const updatedItems = [newItem, ...(editingOrder.items || [])];
-                                                const newTotal = updatedItems.reduce((sum, i) => sum + ((i.customPrice ?? (Number(i.salesPrice || 0) > 0 ? Number(i.salesPrice) : Number(i.mrp))) * Number(i.quantity || 0)), 0);
+                                                const newTotal = updatedItems.reduce((sum, i) => sum + ((i.finalPrice ?? (Number(i.salesPrice || 0) > 0 ? Number(i.salesPrice) : Number(i.mrp))) * Number(i.quantity || 0)), 0);
                                                 setEditingOrder({ ...editingOrder, items: updatedItems, totalAmount: newTotal });
                                             }}
                                             placeholder="Search item to add..."
@@ -3478,7 +3480,7 @@ const OrdersPage: React.FC = () => {
                                                 const base = (editingOrder?.items || []).reduce((sum, item) => {
                                                     const salesPrice = Number(item.salesPrice || 0);
                                                     const mrp = Number(item.mrp || 0);
-                                                    const price = item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+                                                    const price = item.finalPrice ?? (salesPrice > 0 ? salesPrice : mrp);
                                                     return sum + price * Number(item.quantity || 0);
                                                 }, 0);
                                                 setEditDiscount(parseFloat(((pct / 100) * base).toFixed(2)));
@@ -3500,7 +3502,7 @@ const OrdersPage: React.FC = () => {
                                                 const base = (editingOrder?.items || []).reduce((sum, item) => {
                                                     const salesPrice = Number(item.salesPrice || 0);
                                                     const mrp = Number(item.mrp || 0);
-                                                    const price = item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+                                                    const price = item.finalPrice ?? (salesPrice > 0 ? salesPrice : mrp);
                                                     return sum + price * Number(item.quantity || 0);
                                                 }, 0);
                                                 setEditDiscountPercent(base > 0 ? parseFloat(((amt / base) * 100).toFixed(2)) : 0);

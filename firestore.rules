@@ -146,6 +146,10 @@ service cloud.firestore {
         allow read: if true;
         allow create: if true;
       }
+      match/BulkQuoteRequests/{documnet=**}{
+      allow read: if true;
+        allow write: if true;
+      }
       
       match /permissions/{role} {
          allow read: if isCompanyMember(companyId);

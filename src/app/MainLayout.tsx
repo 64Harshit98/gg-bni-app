@@ -11,13 +11,17 @@ import { Permissions } from '../enums';
 import ShowWrapper from '../context/ShowWrapper';
 import sellarLogo from '../assets/sellar-logo-heading.png';
 import { TutorialStep } from '../Components/TutorialStep';
+import { ExpenseModal } from '../Components/ExpenseModal';
+import { useExpenses } from '../Pages/Reports/ExpenseReport/useExpense';
 
 const MainLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [tutorialStep, setTutorialStep] = useState(-1); // -1 = hidden by default
+  const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const { currentUser } = useAuth();
+  const { addExpense } = useExpenses(currentUser?.companyId, 'pos');
 
   useEffect(() => {
     const checkTutorial = async () => {
@@ -92,6 +96,9 @@ const MainLayout = () => {
       <ShowWrapper requiredPermission={Permissions.CreateUsers}>
         <Button variant="outline" className="w-full mb-2 rounded-sm bg-white" onClick={() => navigate(ROUTES.USER_ADD)}>Add User</Button>
       </ShowWrapper>
+      <ShowWrapper requiredPermission={Permissions.ViewReports}>
+        <Button variant="outline" className="w-full mb-2 rounded-sm bg-white" onClick={() => setIsExpenseModalOpen(true)}>Add Expense</Button>
+      </ShowWrapper>
     </>
   );
 
@@ -134,6 +141,9 @@ const MainLayout = () => {
           </ShowWrapper>
           <ShowWrapper requiredPermission={Permissions.CreateUsers}>
             <Link to={ROUTES.USER_ADD} className={sidebarLinkClass(ROUTES.USER_ADD)}><span className="text-lg">+</span><span>Add User</span></Link>
+          </ShowWrapper>
+          <ShowWrapper requiredPermission={Permissions.ViewReports}>
+            <button onClick={() => setIsExpenseModalOpen(true)} className={sidebarLinkClass('')}><span className="text-lg">+</span><span>Add Expense</span></button>
           </ShowWrapper>
         </nav>
       </aside>
@@ -180,7 +190,11 @@ const MainLayout = () => {
           ))}
         </div>
       </nav>
-
+      <ExpenseModal
+        isOpen={isExpenseModalOpen}
+        onClose={() => setIsExpenseModalOpen(false)}
+        onSave={data => addExpense(currentUser?.companyId!, data)}
+      />
     </div>
   );
 };

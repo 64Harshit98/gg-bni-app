@@ -16,6 +16,7 @@ import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import BackButton from '../../Components/BackButton';
+import { useExpenses } from './ExpenseReport/useExpense';
 
 const PnlReportPage: React.FC = () => {
   const {
@@ -41,6 +42,9 @@ const PnlReportPage: React.FC = () => {
     loading: dataLoading,
     error,
   } = usePnlReport(currentUser?.companyId);
+  const { expenses: posExpenses } = useExpenses(currentUser?.companyId, 'pos');
+  const { expenses: catExpenses } = useExpenses(currentUser?.companyId, 'catalogue');
+  const expenses = [...posExpenses, ...catExpenses];
 
   /* ---------- LOCAL STATES (ADDED) ---------- */
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
@@ -76,7 +80,9 @@ const PnlReportPage: React.FC = () => {
     //   0,
     // );
 
-
+    const totalExpenses = expenses
+      .filter(e => e.date >= startTimestamp && e.date <= endTimestamp)
+      .reduce((sum, e) => sum + e.amount, 0);
     const salesTransactions: TransactionDetail[] = filteredSales.map((s) => {
       const cogs = s.costOfGoodsSold ?? 0;
       // If cogs is 0 but totalAmount > 0, we know there's a data entry error
@@ -126,10 +132,11 @@ const PnlReportPage: React.FC = () => {
           (sum, t) => sum + (t.costOfGoodsSold || 0),
           0,
         ),
+        totalExpenses,
         grossProfit: invoiceFilteredTransactions.reduce(
           (sum, t) => sum + (t.profit || 0),
           0,
-        ),
+        ) - totalExpenses,
         grossProfitPercentage:
           invoiceFilteredTransactions.reduce((sum, t) => sum + t.totalAmount, 0) > 0
             ? (invoiceFilteredTransactions.reduce(
@@ -145,7 +152,7 @@ const PnlReportPage: React.FC = () => {
       },
       filteredTransactions: invoiceFilteredTransactions,
     };
-  }, [sales, appliedFilters, sortConfig, searchQuery]);
+  }, [sales, expenses, appliedFilters, sortConfig, searchQuery]);
 
   /* ---------- SORT ---------- */
   const handleSort = (key: keyof TransactionDetail) => {
@@ -237,6 +244,12 @@ const PnlReportPage: React.FC = () => {
             totalCost.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
             'GROSS MARGIN',
             `${grossProfitPercentage.toFixed(2)}%`,
+          ],
+          [
+            'TOTAL EXPENSES (Rs.)',
+            (pnlSummary.totalExpenses ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            '',
+            '',
           ],
         ],
         theme: 'plain',
@@ -387,11 +400,11 @@ const PnlReportPage: React.FC = () => {
       // ── COLUMN DEFINITIONS ──────────────────────────────────────────────
       const COLS = [
         { header: '#', width: 6 },
-        { header: 'Date', width: 16 },
-        { header: 'Invoice', width: 18 },
-        { header: 'Sales (₹)', width: 18 },
-        { header: 'Cost (₹)', width: 18 },
-        { header: 'Profit (₹)', width: 18 },
+        { header: 'Date', width: 18 },
+        { header: 'Invoice', width: 22 },
+        { header: 'Sales (₹)', width: 22 },
+        { header: 'Cost (₹)', width: 22 },
+        { header: 'Profit (₹)', width: 22 },
       ];
       const colCount = COLS.length;
 
@@ -420,7 +433,7 @@ const PnlReportPage: React.FC = () => {
       aoa[3][0] = 'SUMMARY';
 
       // Row 4 – Summary values (single merged cell)
-      aoa[4][0] = `Total Sales: ₹${pnlSummary.totalRevenue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Total Cost: ₹${pnlSummary.totalCost.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Gross Profit: ₹${pnlSummary.grossProfit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Margin: ${pnlSummary.grossProfitPercentage.toFixed(2)}%`;
+      aoa[4][0] = `Total Sales: ₹${pnlSummary.totalRevenue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Total Cost: ₹${pnlSummary.totalCost.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Expenses: ₹${(pnlSummary.totalExpenses ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Net Profit: ₹${pnlSummary.grossProfit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Net Margin: ${pnlSummary.grossProfitPercentage.toFixed(2)}%`;
 
       // Row 6 – Column headers
       COLS.forEach((c, i) => { aoa[6][i] = c.header; });
@@ -452,7 +465,7 @@ const PnlReportPage: React.FC = () => {
         { hpt: 20 }, // 1 meta
         { hpt: 8 },  // 2 spacer
         { hpt: 18 }, // 3 summary label
-        { hpt: 22 }, // 4 summary values
+        { hpt: 48 }, // 4 summary values
         { hpt: 8 },  // 5 spacer
         { hpt: 28 }, // 6 headers
         ...filteredTransactions.map(() => ({ hpt: 20 })),
@@ -499,7 +512,7 @@ const PnlReportPage: React.FC = () => {
       style('A5', s(
         { sz: 10, bold: true, color: { rgb: '166534' } },
         solidFill('DCFCE7'),
-        { horizontal: 'center', vertical: 'center' },
+        { horizontal: 'center', vertical: 'center', wrapText: true },
         bblr,
       ));
 
@@ -694,23 +707,30 @@ const PnlReportPage: React.FC = () => {
       </div>
 
       {/* SUMMARY */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-2">
+      <div className="grid grid-cols-2 md:grid-cols-6 xl:grid-cols-5 gap-2 mb-2">
         <CustomCard
-          className="py-10"
+          className="py-10 md:col-span-2 xl:col-span-1"
           variant={CardVariant.Summary}
           title="Total Sales"
           value={`₹${pnlSummary.totalRevenue.toLocaleString('en-IN')}`}
           valueClassName="text-blue-600"
         />
         <CustomCard
-          className="py-10"
+          className="py-10 md:col-span-2 xl:col-span-1"
           variant={CardVariant.Summary}
           title="Total Cost"
           value={`₹${pnlSummary.totalCost.toLocaleString('en-IN')}`}
           valueClassName="text-red-600"
         />
         <CustomCard
-          className="py-10"
+          className="py-10 md:col-span-2 xl:col-span-1"
+          variant={CardVariant.Summary}
+          title="Expenses"
+          value={`₹${(pnlSummary.totalExpenses ?? 0).toLocaleString('en-IN')}`}
+          valueClassName="text-orange-600"
+        />
+        <CustomCard
+          className="py-10 md:col-span-3 xl:col-span-1"
           variant={CardVariant.Summary}
           title="Profit / Loss"
           value={`₹${pnlSummary.grossProfit.toLocaleString('en-IN')}`}
@@ -721,6 +741,7 @@ const PnlReportPage: React.FC = () => {
           }
         />
         <CustomCard
+          className="col-span-2 md:col-span-3 xl:col-span-1"
           variant={CardVariant.Summary}
           title="Gross Profit %"
           value={`${Math.round(pnlSummary.grossProfitPercentage)}%`}

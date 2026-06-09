@@ -10,7 +10,8 @@ import { Share2 } from "lucide-react"; // <-- Add Globe icon
 import { useOrderSound } from '../Catalogue/hooks/useOrderSound';
 import { useConfirmedOrdersCount } from '../Catalogue/hooks/useConfirmedOrdersCount';
 import GlobalCatalogueModal from '../Components/CatalogueShareCard';
-
+import { ExpenseModal } from '../Components/ExpenseModal';
+import { useExpenses } from '../Pages/Reports/ExpenseReport/useExpense';
 // Add Firebase imports for fetching the subdomain
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
@@ -25,6 +26,8 @@ const CatalogueLayout = () => {
 
     // 1. New State for the Store Link (Fallback to old link just in case)
     const [storeLink, setStoreLink] = useState(`${window.location.origin}/catalogue/${currentUser?.companyId}`);
+    const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+    const { addExpense } = useExpenses(currentUser?.companyId, 'catalogue');
 
     // 2. Fetch the custom subdomain on load
     useEffect(() => {
@@ -91,6 +94,10 @@ const CatalogueLayout = () => {
                 onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`)}
             >
                 Requests
+            </Button>
+            <Button variant="outline" className="w-full mb-2 rounded bg-white"
+                onClick={() => setIsExpenseModalOpen(true)}>
+                Add Expense
             </Button>
         </>
     );
@@ -167,7 +174,13 @@ const CatalogueLayout = () => {
                         <span className="text-lg">+</span>
                         <span>Orders Return</span>
                     </NavLink>
-
+                    <button
+                        onClick={() => setIsExpenseModalOpen(true)}
+                        className={sidebarLinkClass(false)}
+                    >
+                        <span className="text-lg">+</span>
+                        <span>Add Expense</span>
+                    </button>
                     <button
                         onClick={handleShare}
                         className={sidebarLinkClass(false)} // same design, no active
@@ -235,6 +248,12 @@ const CatalogueLayout = () => {
                 </div>
             </nav>
             <GlobalCatalogueModal />
+            <ExpenseModal
+                isOpen={isExpenseModalOpen}
+                onClose={() => setIsExpenseModalOpen(false)}
+                onSave={data => addExpense(currentUser?.companyId!, data)}
+                theme="orange"
+            />
         </div>
     );
 };

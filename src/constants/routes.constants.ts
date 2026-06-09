@@ -85,6 +85,8 @@ export const ROUTES = {
   WEBSITE_QUERY: '/super-admin/website-leads',
   CATA_ADDITIONAL_SERVICES: 'additional-services',
   USER_REPORT: '/user-report',
+  EXPENSE_REPORT: '/expense-report',
+  CATALOGUE_EXPENSE_REPORT: 'cata-expense-report',
   AGENT_SIGNUP: '/agent-signup',
   PARTNER_DASHBOARD: '/partner-dashboard',
   AGENT_DASHBOARD: '/agent-dashboard'

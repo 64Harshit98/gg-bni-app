@@ -54,7 +54,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
   const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
   const [itemPendingDelete, setItemPendingDelete] = useState<any | null>(null);
   const [deleteModal, setDeleteModal] = useState<{ message: string; type: State } | null>(null);
-
+  const [groupPendingFullDelete, setGroupPendingFullDelete] = useState<ItemGroup | null>(null);
   const isActive = (path: string) => location.pathname === path;
 
   const toTitleCase = (str: string) => {
@@ -299,6 +299,51 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
     }
   };
 
+  const handleDeleteGroupAndItems = async (group: ItemGroup) => {
+    if (!dbOperations || !group.id) return;
+    try {
+      setLoading(true);
+      const items = await dbOperations.syncItems();
+      const validGroupIds = new Set(itemGroups.map(g => g.id));
+
+      const itemsToDelete = items.filter(item => {
+        const ids: string[] = [
+          ...(Array.isArray(item.itemGroupIds) ? item.itemGroupIds : []),
+          ...(item.itemGroupId && !Array.isArray(item.itemGroupId) ? [item.itemGroupId] : []),
+        ].filter((id, index, self) => id && self.indexOf(id) === index);
+
+        if (group.id === 'uncategorized') {
+          return (
+            ids.length === 0 ||
+            !ids.some(id => itemGroups.some(g => g.id === id)) ||
+            !validGroupIds.has(item.itemGroupId as string)
+          );
+        }
+        return ids.includes(group.id!);
+      });
+
+      // 1. Delete all items in the group
+      for (const item of itemsToDelete) {
+        if (item.id) await dbOperations.deleteItem(item.id);
+      }
+
+      // 2. Delete the group itself (unless it's the virtual Uncategorized group)
+      if (group.id !== 'uncategorized') {
+        await dbOperations.deleteItemGroupIfUnused(group);
+      }
+
+      showSuccessMessage(`Deleted category "${group.name}" and ${itemsToDelete.length} item(s).`);
+      setViewingGroup(null); // Close the modal
+      await fetchAndSyncGroups();
+    } catch (err: any) {
+      console.error('Error deleting items and category:', err);
+      setError(err.message || 'Failed to delete items and category.');
+    } finally {
+      setLoading(false);
+      setGroupPendingFullDelete(null);
+    }
+  };
+
   const renderHeader = () => (
     <div className="flex flex-col md:flex-row md:justify-between md:items-center bg-gray-100 md:bg-white border-b border-gray-300 shadow-sm flex-shrink-0 p-2 md:px-4 md:py-3 mb-2 md:mb-0">
       <h1 className="text-2xl font-bold text-gray-800 text-center md:text-left mb-2 md:mb-0">Item Groups</h1>
@@ -439,13 +484,31 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
             <div className="bg-white rounded-lg shadow-lg w-[90%] max-w-lg p-6 flex flex-col max-h-[80vh]">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold text-gray-800">
+                <h2 className="text-lg font-semibold text-gray-800 flex-1">
                   {viewingGroup.name}
                   <span className="ml-2 text-sm font-normal text-gray-500">
                     ({groupCounts[viewingGroup.id!] || 0} items)
                   </span>
                 </h2>
-                <button onClick={() => setViewingGroup(null)} className="text-gray-400 hover:text-gray-700 text-xl font-bold">✕</button>
+                <div className="flex items-center gap-3">
+                  {viewingGroup.id !== 'uncategorized' && (
+                    <button
+                      onClick={() => setGroupPendingFullDelete(viewingGroup)}
+                      className="text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-3 py-1.5 rounded-md transition-colors whitespace-nowrap"
+                    >
+                      Delete Category & Items
+                    </button>
+                  )}
+                  {viewingGroup.id === 'uncategorized' && (groupCounts["uncategorized"] || 0) > 0 && (
+                    <button
+                      onClick={() => setGroupPendingFullDelete(viewingGroup)}
+                      className="text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-3 py-1.5 rounded-md transition-colors whitespace-nowrap"
+                    >
+                      Empty Uncategorized
+                    </button>
+                  )}
+                  <button onClick={() => setViewingGroup(null)} className="text-gray-400 hover:text-gray-700 text-xl font-bold leading-none">✕</button>
+                </div>
               </div>
 
               <div className="overflow-y-auto flex-1 space-y-2">
@@ -522,6 +585,19 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
 
       {itemPendingDelete && (
         <Modal type={State.ERROR} message={`Are you sure you want to delete "${itemPendingDelete.name}"?`} onClose={() => setItemPendingDelete(null)} onConfirm={confirmDeleteItem} showConfirmButton={true} />
+      )}
+      {groupPendingFullDelete && (
+        <Modal
+          type={State.WARNING}
+          message={
+            groupPendingFullDelete.id === 'uncategorized'
+              ? `Are you sure you want to completely delete ALL uncategorized items? This cannot be undone.`
+              : `DANGER: Are you sure you want to completely delete the category "${groupPendingFullDelete.name}" AND all of its items? This cannot be undone.`
+          }
+          onClose={() => setGroupPendingFullDelete(null)}
+          onConfirm={() => handleDeleteGroupAndItems(groupPendingFullDelete)}
+          showConfirmButton={true}
+        />
       )}
 
       {deleteModal && (

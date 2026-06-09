@@ -32,6 +32,8 @@ interface CatalogueSalesSettings {
     currentVoucherNumber?: number;
     hidePrice?: boolean;
     requireApproval?: boolean;
+    gstScheme?: string;
+    taxType?: string;
 }
 
 interface Address {
@@ -273,10 +275,25 @@ const CartPage: React.FC = () => {
         setCartItems(prev => prev.map(item => item.id === id ? { ...item, note } : item));
     };
 
-    const subtotal = cartItems.reduce(
-        (acc, item) => acc + item.salesPrice * item.quantity,
-        0
-    );
+    // 1. Evaluate the master tax logic
+    const scheme = salesSettings?.gstScheme?.toLowerCase() || 'regular';
+    const taxType = salesSettings?.taxType?.toLowerCase() || 'inclusive';
+
+    // Only add tax on top IF they are Regular AND Exclusive
+    const applyExclusiveTax = scheme === 'regular' && taxType === 'exclusive';
+
+    // 2. Calculate Subtotal
+    const subtotal = cartItems.reduce((acc, item) => {
+        const baseAmount = item.salesPrice * item.quantity;
+        let taxAmount = 0;
+
+        if (applyExclusiveTax) {
+            taxAmount = baseAmount * ((item.tax || 0) / 100);
+        }
+
+        return acc + baseAmount + taxAmount;
+    }, 0);
+
     const totalPay = Math.round(subtotal);
 
     const isMovValid = () => {
@@ -342,21 +359,47 @@ const CartPage: React.FC = () => {
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp(),
                     specialInstruction: specialInstruction || "",
-                    items: cartItems.map(i => ({
-                        id: String(i.id),
-                        itemId: String(i.id),
-                        groupId: i.groupId || i.category,
-                        name: i.name,
-                        quantity: Number(i.quantity),
-                        mrp: Number(i.mrp),
-                        salesPrice: Number(i.salesPrice),
-                        tax: i.tax,
-                        note: i.note,
-                        image: i.imageUrl || "",
-                        finalPrice: Number(i.salesPrice) * Number(i.quantity),
-                        unit: i.unit || "pcs",
-                        unitMultiplier: i.unitMultiplier || 1
-                    })),
+                    // Inside the placeOrder transaction.set(newOrderDoc, {...})
+
+                    // Inside the placeOrder transaction.set(newOrderDoc, {...})
+
+                    items: cartItems.map(i => {
+                        const originalUnitPrice = Number(i.salesPrice);
+                        const qty = Number(i.quantity);
+
+                        // FIX: If exclusive, calculate the new unit price by adding the tax directly to it
+                        const actualUnitPrice = applyExclusiveTax
+                            ? originalUnitPrice + (originalUnitPrice * ((i.tax || 0) / 100))
+                            : originalUnitPrice;
+
+                        const finalPriceWithTax = actualUnitPrice * qty;
+
+                        // Determine the correct string to save for the POS bill engine
+                        let itemTaxTypeToSave = 'Inclusive';
+                        if (scheme === 'exempt' || scheme === 'composition') {
+                            itemTaxTypeToSave = scheme.charAt(0).toUpperCase() + scheme.slice(1);
+                        } else if (taxType === 'exclusive') {
+                            itemTaxTypeToSave = 'Exclusive';
+                        }
+
+                        return {
+                            id: String(i.id),
+                            itemId: String(i.id),
+                            groupId: i.groupId || i.category,
+                            name: i.name,
+                            quantity: qty,
+                            mrp: Number(i.mrp),
+                            // 👇 Send the tax-loaded unit price to the POS engine so it can back-calculate correctly
+                            salesPrice: actualUnitPrice,
+                            tax: i.tax,
+                            taxType: itemTaxTypeToSave,
+                            note: i.note,
+                            image: i.imageUrl || "",
+                            finalPrice: finalPriceWithTax, // This will now perfectly equal actualUnitPrice * qty
+                            unit: i.unit || "pcs",
+                            unitMultiplier: i.unitMultiplier || 1
+                        };
+                    }),
                     billingDetails: billing,
                     shippingDetails: isSameAsShipping ? billing : shipping,
                     orderedBy: localStorage.getItem("upcoming_user_key"),

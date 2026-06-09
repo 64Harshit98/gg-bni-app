@@ -76,6 +76,7 @@
     "@types/qrcode": "^1.5.5",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
+    "@types/react-image-crop": "^8.1.6",
     "@types/xlsx": "^0.0.35",
     "@vitejs/plugin-react": "^4.4.1",
     "autoprefixer": "^10.4.21",

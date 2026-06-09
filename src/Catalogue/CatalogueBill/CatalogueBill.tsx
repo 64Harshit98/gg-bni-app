@@ -78,52 +78,6 @@ export interface CatalogueInvoiceData {
   extraExpenseName?: string;
   extraExpenseAmount?: number;
 }
-const compressBase64Image = (
-  base64: string,
-  quality: number = 0.4,
-  maxSize: number = 150
-): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-
-      const scale = Math.min(
-        1,
-        maxSize / Math.max(img.width, img.height)
-      );
-
-      canvas.width = img.width * scale;
-      canvas.height = img.height * scale;
-
-      const ctx = canvas.getContext("2d");
-
-      if (!ctx) {
-        reject("Canvas not available");
-        return;
-      }
-
-      ctx.drawImage(
-        img,
-        0,
-        0,
-        canvas.width,
-        canvas.height
-      );
-
-      resolve(
-        canvas.toDataURL(
-          "image/jpeg",
-          quality
-        )
-      );
-    };
-
-    img.onerror = reject;
-    img.src = base64;
-  });
-};
 export const CatalogueBill = async (
   data: CatalogueInvoiceData,
   action: "download" | "print" | "blob" = "download",

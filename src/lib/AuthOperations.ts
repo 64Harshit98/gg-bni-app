@@ -26,18 +26,17 @@ export const registerUserWithDetails = async (
   email: string,
   password: string,
   role: ROLES,
-  businessData: any, // Goes to business_info
-  planDetails: any,  // Goes to Root Doc
-  salesSettings: any, // Goes to settings/sales-settings
-  catalogueSalesSettings: any, // Goes to settings/catalogue-sales-settings
+  businessData: any,
+  planDetails: any,
+  salesSettings: any,
+  catalogueSalesSettings: any,
   items: any[] = [],
-  finalReferralCode: string | null = null
+  finalReferralCode: string | null = null // <--- Reverted back to string
 ): Promise<any> => {
   try {
     const functions = getFunctions();
     const registerCompanyAndUser = httpsCallable(functions, 'registerCompanyAndUser');
 
-    // Call Cloud Function with ALL separated data
     const result = await registerCompanyAndUser({
       name,
       phoneNumber,
@@ -46,15 +45,13 @@ export const registerUserWithDetails = async (
       role,
       businessData,
       planDetails,
-      salesSettings, // <--- Passing this to backend
-      catalogueSalesSettings, // <--- Passing this to backend
+      salesSettings,
+      catalogueSalesSettings,
       items,
-      referralCode: finalReferralCode
+      referralCode: finalReferralCode // <--- Pass the string to the cloud function
     });
 
-    // Auto-Login after success
     await loginUser(email, password);
-
     return result.data;
   } catch (error: any) {
     console.error('Error calling registration function:', error);

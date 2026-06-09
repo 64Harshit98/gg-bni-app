@@ -262,7 +262,12 @@ const ManagePermissionsPage: React.FC = () => {
 
     const ALL_ROLES = useMemo(() => Object.values(ROLES), []);
 
-    const VISIBLE_ROLES = useMemo(() => ALL_ROLES.filter(r => r !== ROLES.OWNER), [ALL_ROLES]);
+    // Define all roles you want to hide from this management screen
+    const EXCLUDED_ROLES_FROM_UI = [ROLES.OWNER, ROLES.AGENCY, ROLES.AGENT];
+
+    const VISIBLE_ROLES = useMemo(() => {
+        return ALL_ROLES.filter(r => !EXCLUDED_ROLES_FROM_UI.includes(r));
+    }, [ALL_ROLES]);
 
     const allPermissions = useMemo(() => Object.values(Permissions), []);
     const ungroupedPermissions = useMemo(() => getUngroupedPermissions(allPermissions), [allPermissions]);
@@ -300,11 +305,9 @@ const ManagePermissionsPage: React.FC = () => {
                             finalPermissions = getSafePermissionsToSave(role, Object.values(Permissions), currentPlan);
                             shouldUpdateDB = true;
                         } else {
-                            const defaults = getDefaultPermissions(role);
-                            finalPermissions = Array.from(new Set([...defaults, ...storedData]));
-                            if (finalPermissions.length !== storedData.length) {
-                                shouldUpdateDB = true;
-                            }
+                            // FIX: Stop merging defaults here. Just use the stored data!
+                            // This ensures unchecked permissions stay unchecked.
+                            finalPermissions = getSafePermissionsToSave(role, storedData, currentPlan);
                         }
                     } else {
                         console.warn(`No permissions for ${role}, using defaults.`);

@@ -274,7 +274,7 @@ exports.autoCalculateCommissionOnExtension = functions.firestore
         if (!createdAt) return null;
 
         const oneYearFromCreation = new Date(createdAt);
-        oneYearFromCreation.setDate(oneYearFromCreation.getDate() + 342);
+        oneYearFromCreation.setDate(oneYearFromCreation.getDate() + 365);
         if (newExpiry < oneYearFromCreation) return null;
 
         // 3. Was this company referred by an Agent or Agency?
@@ -615,13 +615,14 @@ async function generateUniqueReferralCode(name, phoneNumber) {
 }
 
 exports.registerCompanyAndUser = functions.https.onCall(async (data, context) => {
-    // 1. Destructure all incoming data (Add salesSettings back)
+    // 1. Destructure incoming data (Notice we expect referralCode as a string now)
     const {
         email, password, name, phoneNumber, role,
         businessData,
         planDetails,
-        salesSettings,// <--- ADDED BACK
-        catalogueSalesSettings
+        salesSettings,
+        catalogueSalesSettings,
+        referralCode // <--- Catching the string code here
     } = data;
 
     // 2. Basic Validation
@@ -632,7 +633,42 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
     }
 
     try {
-        // 3. Generate Company ID (Unchanged)
+        // ========================================================
+        // 🚨 SECURE REFERRAL CODE LOOKUP (Runs as Admin!)
+        // ========================================================
+        let referralDetails = null;
+
+        if (referralCode) {
+            const cleanCode = referralCode.trim().toUpperCase();
+
+            // Check Agents collection first
+            const agentQuery = await db.collection('agents').where('ownReferralCode', '==', cleanCode).get();
+
+            if (!agentQuery.empty) {
+                referralDetails = {
+                    referrerId: agentQuery.docs[0].id,
+                    code: cleanCode,
+                    type: 'agent'
+                };
+            } else {
+                // Check Companies collection next
+                const compQuery = await db.collection('companies').where('ownReferralCode', '==', cleanCode).get();
+
+                if (!compQuery.empty) {
+                    referralDetails = {
+                        referrerId: compQuery.docs[0].id,
+                        code: cleanCode,
+                        type: 'company'
+                    };
+                } else {
+                    // Code is fake/invalid! Throw an error to stop registration
+                    throw new functions.https.HttpsError("invalid-argument", "The referral code you entered is invalid.");
+                }
+            }
+        }
+        // ========================================================
+
+        // 3. Generate Company ID 
         const counterRef = db.doc("CompanyID/counter");
         const newNumber = await db.runTransaction(async (t) => {
             const counterDoc = await t.get(counterRef);
@@ -648,14 +684,14 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
         const paddedNumber = String(newNumber).padStart(4, "0");
         const newCompanyId = `CMP-${paddedNumber}`;
 
-        // 4. Create Authentication User (Unchanged)
+        // 4. Create Authentication User
         const userRecord = await admin.auth().createUser({
             email: email,
             password: password,
             displayName: name,
         });
 
-        // 5. Set Custom Claims (Unchanged)
+        // 5. Set Custom Claims 
         await admin.auth().setCustomUserClaims(userRecord.uid, {
             companyId: newCompanyId,
             role: role,
@@ -665,17 +701,15 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
         const companyRootRef = db.doc(`companies/${newCompanyId}`);
         const userDocRef = db.doc(`companies/${newCompanyId}/users/${userRecord.uid}`);
         const businessInfoRef = db.doc(`companies/${newCompanyId}/business_info/${newCompanyId}`);
-
-        // ADDED BACK: Reference for Sales Settings
         const salesSettingsRef = db.doc(`companies/${newCompanyId}/settings/sales-settings`);
         const catalogueSettingsRef = db.doc(`companies/${newCompanyId}/settings/catalogue-sales-settings`);
 
         // 7. Prepare Data Payloads
         const trialDate = new Date();
         trialDate.setDate(trialDate.getDate() + 7);
-        trialDate.setUTCHours(18, 29, 59, 999); // Exactly 23:59:59 IST
+        trialDate.setUTCHours(18, 29, 59, 999);
 
-        // A. Root Data (Unchanged)
+        // A. Root Data (Saving the looked-up referral details here)
         const companyRootData = {
             name: businessData.businessName || name,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -684,10 +718,11 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
             pack: "enterprise",
             validity: "active",
             expiryDate: admin.firestore.Timestamp.fromDate(trialDate),
-            isTrial: true
+            isTrial: true,
+            referralDetails: referralDetails // <--- Saved safely!
         };
 
-        // B. Business Info Data (Unchanged)
+        // B. Business Info Data 
         const finalBusinessData = {
             ...businessData,
             companyId: newCompanyId,
@@ -696,11 +731,12 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
             email: email || "",
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
         };
+
         const defaultSalesSettings = {
             settingType: 'sales',
             enableRounding: true,
             roundingInterval: 1,
-            taxType: 'exclusive', // This will be overwritten if user selects Inclusive
+            taxType: 'exclusive',
             enableItemWiseDiscount: true,
             allowDueBilling: true,
             requireCustomerName: false,
@@ -708,7 +744,6 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
             salesViewType: 'list',
         };
 
-        // --- FULL DEFAULTS FOR CATALOGUE SALES SETTINGS ---
         const defaultCatalogueSettings = {
             settingType: 'catalogueSales',
             allowNegativeInventory: true,
@@ -722,8 +757,8 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
             voucherPrefix: 'ORD-',
             currentVoucherNumber: 1,
             copyVoucherAfterSaving: false,
-            gstScheme: 'none', // Overwritten by frontend
-            taxType: 'inclusive', // Overwritten by frontend
+            gstScheme: 'none',
+            taxType: 'inclusive',
             lockTaxToggle: false,
             enableRounding: true,
             roundingInterval: 1,
@@ -735,9 +770,6 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
             hideOutOfStock: false
         };
 
-        // --- MERGE LOGIC ---
-
-        // Final Sales Settings (Defaults + Frontend Input + System Data)
         const finalSalesSettings = {
             ...defaultSalesSettings,
             ...(salesSettings || {}),
@@ -745,7 +777,6 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         };
 
-        // Final Catalogue Settings (Defaults + Frontend Input + System Data)
         const finalCatalogueSettings = {
             ...defaultCatalogueSettings,
             ...(catalogueSalesSettings || {}),
@@ -753,7 +784,6 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         };
 
-        // C. User Profile Data (Unchanged)
         const userProfile = {
             name: name,
             phoneNumber: phoneNumber || '',
@@ -763,14 +793,11 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
             companyId: newCompanyId,
         };
 
-
         // 8. Execute Atomic Batch Write
         const batch = db.batch();
         batch.set(companyRootRef, companyRootData);
         batch.set(userDocRef, userProfile);
         batch.set(businessInfoRef, finalBusinessData);
-
-        // ADDED BACK: Write the settings
         batch.set(salesSettingsRef, finalSalesSettings);
         batch.set(catalogueSettingsRef, finalCatalogueSettings);
 
@@ -780,13 +807,18 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data, context) =>
 
     } catch (error) {
         console.error("Error in registerCompanyAndUser:", error);
+
+        // Pass the invalid code error back to the frontend cleanly
+        if (error.message === "The referral code you entered is invalid.") {
+            throw new functions.https.HttpsError("invalid-argument", error.message);
+        }
+
         if (error.code === 'auth/email-already-exists' || error.code === 'auth/email-already-in-use') {
             throw new functions.https.HttpsError("already-exists", "This email is already registered.");
         }
         throw new functions.https.HttpsError("internal", "Registration failed.");
     }
 });
-
 exports.inviteUserToCompany = functions.https.onCall(async (data, context) => {
     // (Keep existing invite logic same as before)
     if (!context.auth || !context.auth.token.companyId) {

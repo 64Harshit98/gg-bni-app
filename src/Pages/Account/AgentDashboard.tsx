@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/auth-context';
 import { db } from '../../lib/Firebase';
 import { collection, getDocs, doc, updateDoc, writeBatch, query, orderBy, where, increment, serverTimestamp } from 'firebase/firestore';
-import { FiUsers, FiCheckCircle, FiCalendar, FiGift, FiList } from 'react-icons/fi';
+import { FiUsers, FiCheckCircle, FiCalendar, FiGift, FiList, FiEdit2 } from 'react-icons/fi';
 import { LuIndianRupee } from 'react-icons/lu';
 import { Spinner } from '../../constants/Spinner';
 import { IconClose } from '../../constants/Icons';
@@ -48,7 +48,7 @@ interface CreditRecord {
 }
 
 // ========================================================
-// NEW: Custom Settlement Modal (Strictly using rounded-sm)
+// Custom Settlement Modal
 // ========================================================
 const SettlePayoutModal: React.FC<{
     isOpen: boolean;
@@ -130,6 +130,124 @@ const SettlePayoutModal: React.FC<{
     );
 };
 
+// ========================================================
+// Edit Credits Modal
+// ========================================================
+const EditCreditsModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    company: Company | null;
+    onSubmit: (newCredits: number) => Promise<void>;
+}> = ({ isOpen, onClose, company, onSubmit }) => {
+    const [credits, setCredits] = useState<number | string>('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    useEffect(() => {
+        if (isOpen && company) {
+            setCredits(company.referralCredits);
+        }
+    }, [isOpen, company]);
+
+    if (!isOpen || !company) return null;
+
+    const handleSubmit = async () => {
+        setIsSubmitting(true);
+        await onSubmit(Number(credits));
+        setIsSubmitting(false);
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+            <div className="bg-white rounded-sm shadow-xl w-full max-w-sm p-6 border border-gray-200">
+                <div className="flex justify-between items-center mb-5">
+                    <h2 className="text-lg font-bold text-gray-900">Edit Credits</h2>
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-700 p-1 rounded-sm transition-colors">
+                        <IconClose width={18} height={18} />
+                    </button>
+                </div>
+
+                <div className="mb-5 bg-gray-50 p-3 rounded-sm border border-gray-100 text-sm">
+                    <div className="flex justify-between mb-1">
+                        <span className="text-gray-500 font-medium">Business:</span>
+                        <span className="font-bold text-gray-900">{company.name}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span className="text-gray-500 font-medium">Current Credits:</span>
+                        <span className="font-bold text-purple-700">{company.referralCredits}</span>
+                    </div>
+                </div>
+
+                <div className="mb-6">
+                    <label className="block text-xs font-bold text-gray-600 uppercase mb-2">
+                        New Credit Balance
+                    </label>
+                    <input
+                        type="number"
+                        value={credits}
+                        onChange={(e) => setCredits(e.target.value)}
+                        min={0}
+                        placeholder="Enter total credits"
+                        className="w-full px-3 py-2.5 border border-gray-300 rounded-sm focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm font-semibold text-gray-900 transition-shadow"
+                    />
+                </div>
+
+                <div className="flex gap-3">
+                    <button
+                        onClick={onClose}
+                        disabled={isSubmitting}
+                        className="flex-1 px-4 py-2 bg-white border border-gray-300 rounded-sm text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        onClick={handleSubmit}
+                        disabled={isSubmitting || credits === '' || Number(credits) < 0}
+                        className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-sm text-sm font-bold hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                        {isSubmitting ? 'Saving...' : 'Save Changes'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// ========================================================
+// Row Component for Dynamic Month Selection
+// ========================================================
+const ActionCell: React.FC<{
+    company: Company;
+    onAdd: (companyId: string, currentExpiry: Date, currentCredits: number, companyName: string, monthsToAdd: number) => void;
+}> = ({ company, onAdd }) => {
+    const [months, setMonths] = useState(1);
+
+    return (
+        <div className="flex items-center justify-center gap-2">
+            <select
+                value={months}
+                onChange={(e) => setMonths(Number(e.target.value))}
+                className={`border rounded-sm text-xs font-bold px-2 py-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition-colors ${company.referralCredits >= months
+                    ? 'border-purple-300 text-purple-700 bg-purple-50'
+                    : 'border-gray-300 text-gray-700 bg-white'
+                    }`}
+            >
+                <option value={1}>1 M</option>
+                <option value={2}>2 M</option>
+                <option value={3}>3 M</option>
+            </select>
+            <button
+                onClick={() => onAdd(company.id, company.expiryDate, company.referralCredits, company.name, months)}
+                className={`px-3 py-2 rounded-sm text-xs font-bold transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap ${company.referralCredits > 0
+                    ? 'bg-purple-600 text-white hover:bg-purple-700 shadow-sm'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200'
+                    }`}
+            >
+                <FiCalendar size={14} /> Add
+            </button>
+        </div>
+    );
+};
+
 const SuperAdminDashboard: React.FC = () => {
     const { currentUser } = useAuth();
     const [agents, setAgents] = useState<Agent[]>([]);
@@ -140,9 +258,12 @@ const SuperAdminDashboard: React.FC = () => {
     const [_totalCommissionsCount, setTotalCommissionsCount] = useState(0);
     const [loading, setLoading] = useState(true);
 
-    // Modal State
+    // Modal States
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedRequest, setSelectedRequest] = useState<PayoutRequest | null>(null);
+
+    const [isEditCreditsModalOpen, setIsEditCreditsModalOpen] = useState(false);
+    const [selectedCompanyForCredits, setSelectedCompanyForCredits] = useState<Company | null>(null);
 
     const [activeTab, setActiveTab] = useState<'agents' | 'payouts' | 'users'>('users');
 
@@ -203,12 +324,12 @@ const SuperAdminDashboard: React.FC = () => {
                 });
             });
 
-            // NEW SORT: Push users with credits to the top, then sort the rest by expiry date
+            // Sort: Users with credits to the top, then sort the rest by expiry date
             compList.sort((a, b) => {
                 if (b.referralCredits !== a.referralCredits) {
-                    return b.referralCredits - a.referralCredits; // Highest credits first
+                    return b.referralCredits - a.referralCredits;
                 }
-                return a.expiryDate.getTime() - b.expiryDate.getTime(); // Then nearest expiry first
+                return a.expiryDate.getTime() - b.expiryDate.getTime();
             });
 
             setCompanies(compList);
@@ -278,7 +399,6 @@ const SuperAdminDashboard: React.FC = () => {
             const agentRef = doc(db, 'agents', agentId);
 
             if (isFullSettlement) {
-                // FULL SETTLEMENT
                 batch.update(reqRef, { status: 'paid' });
                 batch.update(agentRef, { unpaidBalance: increment(-settleAmount), hasPendingRequest: false });
 
@@ -286,14 +406,12 @@ const SuperAdminDashboard: React.FC = () => {
                 const commSnap = await getDocs(commQuery);
                 commSnap.forEach(cDoc => { batch.update(cDoc.ref, { status: 'paid' }); });
             } else {
-                // PARTIAL SETTLEMENT
                 batch.update(reqRef, { amount: increment(-settleAmount) });
                 batch.update(agentRef, { unpaidBalance: increment(-settleAmount) });
             }
 
             await batch.commit();
 
-            // Update the local UI state
             setPayoutRequests(prev => prev.map(r => {
                 if (r.id === requestId) {
                     return isFullSettlement
@@ -310,8 +428,6 @@ const SuperAdminDashboard: React.FC = () => {
             ));
 
             alert(`Successfully settled ₹${settleAmount}!`);
-
-            // Close modal and reset selection
             setIsModalOpen(false);
             setSelectedRequest(null);
 
@@ -321,14 +437,44 @@ const SuperAdminDashboard: React.FC = () => {
         }
     };
 
-    const handleAddFreeMonth = async (companyId: string, currentExpiry: Date, currentCredits: number, companyName: string) => {
-        const confirmAdd = window.confirm(`Add 1 Month (30 Days) of free software to ${companyName}?`);
+    // ========================================================
+    // UPDATE DIRECT CREDITS
+    // ========================================================
+    const handleUpdateCredits = async (newCredits: number) => {
+        if (!selectedCompanyForCredits) return;
+
+        try {
+            const companyRef = doc(db, 'companies', selectedCompanyForCredits.id);
+
+            // Only updating the document directly
+            await updateDoc(companyRef, {
+                referralCredits: newCredits
+            });
+
+            // Updating Local State
+            setCompanies(prev => prev.map(c =>
+                c.id === selectedCompanyForCredits.id ? { ...c, referralCredits: newCredits } : c
+            ));
+
+            alert(`Credits for ${selectedCompanyForCredits.name} successfully updated to ${newCredits}!`);
+            setIsEditCreditsModalOpen(false);
+            setSelectedCompanyForCredits(null);
+
+        } catch (error) {
+            console.error("Error updating credits:", error);
+            alert("Failed to update credits.");
+        }
+    };
+
+
+    const handleAddFreeMonth = async (companyId: string, currentExpiry: Date, currentCredits: number, companyName: string, monthsToAdd: number) => {
+        const confirmAdd = window.confirm(`Add ${monthsToAdd} Month(s) (${monthsToAdd * 30} Days) of free software to ${companyName}?`);
         if (!confirmAdd) return;
 
         try {
             const newExpiryDate = new Date(currentExpiry);
-            newExpiryDate.setDate(newExpiryDate.getDate() + 30);
-            const newCredits = Math.max(0, currentCredits - 1);
+            newExpiryDate.setDate(newExpiryDate.getDate() + (monthsToAdd * 30));
+            const newCredits = Math.max(0, currentCredits - monthsToAdd);
 
             const batch = writeBatch(db);
             const companyRef = doc(db, 'companies', companyId);
@@ -342,7 +488,7 @@ const SuperAdminDashboard: React.FC = () => {
             batch.set(ledgerRef, {
                 referrerId: companyId,
                 referrerName: companyName,
-                referredCompanyName: '1 Month Extension Applied',
+                referredCompanyName: `${monthsToAdd} Month(s) Extension Applied`,
                 type: 'Claimed',
                 date: serverTimestamp()
             });
@@ -354,13 +500,13 @@ const SuperAdminDashboard: React.FC = () => {
             const newRecord: CreditRecord = {
                 id: ledgerRef.id,
                 referrerName: companyName,
-                referredCompanyName: '1 Month Extension Applied',
+                referredCompanyName: `${monthsToAdd} Month(s) Extension Applied`,
                 type: 'Claimed',
                 date: new Date()
             };
             setCreditLedger([newRecord, ...creditLedger]);
 
-            alert("Successfully added 30 days to their subscription!");
+            alert(`Successfully added ${monthsToAdd * 30} days to their subscription!`);
 
         } catch (error) {
             console.error("Error adding month:", error);
@@ -487,24 +633,30 @@ const SuperAdminDashboard: React.FC = () => {
                                                         </span>
                                                     </td>
                                                     <td className="px-6 py-4 text-center">
-                                                        {company.referralCredits > 0 ? (
-                                                            <span className="bg-purple-100 text-purple-700 px-3 py-1 rounded-sm text-xs font-bold flex items-center justify-center gap-1 w-max mx-auto border border-purple-200">
-                                                                <FiGift /> {company.referralCredits} Months
-                                                            </span>
-                                                        ) : (
-                                                            <span className="text-gray-400 font-medium">0</span>
-                                                        )}
+                                                        <div className="flex items-center justify-center gap-2">
+                                                            {company.referralCredits > 0 ? (
+                                                                <span className="bg-purple-100 text-purple-700 px-3 py-1 rounded-sm text-xs font-bold flex items-center justify-center gap-1 border border-purple-200">
+                                                                    <FiGift /> {company.referralCredits} Months
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-gray-400 font-medium">0</span>
+                                                            )}
+
+                                                            {/* EDIT CREDITS BUTTON */}
+                                                            <button
+                                                                onClick={() => {
+                                                                    setSelectedCompanyForCredits(company);
+                                                                    setIsEditCreditsModalOpen(true);
+                                                                }}
+                                                                className="text-gray-400 hover:text-purple-600 transition-colors p-1"
+                                                                title="Edit Credits"
+                                                            >
+                                                                <FiEdit2 size={15} />
+                                                            </button>
+                                                        </div>
                                                     </td>
                                                     <td className="px-6 py-4 text-center">
-                                                        <button
-                                                            onClick={() => handleAddFreeMonth(company.id, company.expiryDate, company.referralCredits, company.name)}
-                                                            className={`px-4 py-2 rounded-sm text-xs font-bold transition-colors w-full flex items-center justify-center gap-1.5 ${company.referralCredits > 0
-                                                                ? 'bg-purple-600 text-white hover:bg-purple-700 shadow-sm'
-                                                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200'
-                                                                }`}
-                                                        >
-                                                            <FiCalendar size={14} /> +1 Month
-                                                        </button>
+                                                        <ActionCell company={company} onAdd={handleAddFreeMonth} />
                                                     </td>
                                                 </tr>
                                             );
@@ -553,7 +705,7 @@ const SuperAdminDashboard: React.FC = () => {
                                                         {record.type === 'Earned' ? (
                                                             <span className="bg-green-100 text-green-700 px-3 py-1 rounded-sm text-xs font-bold border border-green-200">+1 Earned</span>
                                                         ) : (
-                                                            <span className="bg-purple-100 text-purple-700 px-3 py-1 rounded-sm text-xs font-bold border border-purple-200">-1 Claimed</span>
+                                                            <span className="bg-purple-100 text-purple-700 px-3 py-1 rounded-sm text-xs font-bold border border-purple-200">Claimed</span>
                                                         )}
                                                     </td>
                                                 </tr>
@@ -683,7 +835,6 @@ const SuperAdminDashboard: React.FC = () => {
                     </div>
                 )}
 
-                {/* THE NEW MODAL COMPONENT */}
                 <SettlePayoutModal
                     isOpen={isModalOpen}
                     onClose={() => {
@@ -692,6 +843,16 @@ const SuperAdminDashboard: React.FC = () => {
                     }}
                     request={selectedRequest}
                     onSubmit={handleSettlePayment}
+                />
+
+                <EditCreditsModal
+                    isOpen={isEditCreditsModalOpen}
+                    onClose={() => {
+                        setIsEditCreditsModalOpen(false);
+                        setSelectedCompanyForCredits(null);
+                    }}
+                    company={selectedCompanyForCredits}
+                    onSubmit={handleUpdateCredits}
                 />
             </div>
         </div>

@@ -11,7 +11,6 @@ import { Building2Icon, PinIcon, Scale } from 'lucide-react';
 import { Spinner } from '../../constants/Spinner';
 import bgMain from '../../assets/bg-main.png';
 import sellarHeading from '../../assets/sellar-logo-heading.png';
-
 import { registerUserWithDetails } from '../../lib/AuthOperations';
 import { saveLeadProgress } from '../../lib/Lead';
 import { auth } from '../../lib/Firebase';
@@ -237,11 +236,9 @@ const BusinessInfoPage: React.FC = () => {
     const finalBusinessType = formData.businessType === 'Other' ? formData.customBusinessType : formData.businessType;
     const finalBusinessCategory = formData.businessCategory === 'Other' ? formData.customBusinessCategory : formData.businessCategory;
     const finalGstin = formData.gstType === 'NA' ? '' : formData.gstin.toUpperCase();
-    const finalReferralCode = referralCode.trim().toUpperCase(); // Format code before sending
-
+    const finalReferralCode = referralCode.trim().toUpperCase();
 
     try {
-      // 1. Prepare Business Payload
       const businessInfoPayload = {
         businessName: formData.businessName,
         businessType: finalBusinessType,
@@ -256,16 +253,15 @@ const BusinessInfoPage: React.FC = () => {
         createdAt: new Date(),
       };
 
-      // 2. Prepare Plan Payload (Force Enterprise Trial)
       const planPayload = {
         pack: PLANS.ENTERPRISE,
         validity: 'active',
-        expiryDate: new Date(new Date().setDate(new Date().getDate() + 28)), // 28 Days Trial
+        expiryDate: new Date(new Date().setDate(new Date().getDate() + 28)),
         isTrial: true
       };
 
       let mappedGstScheme = 'none';
-      let mappedTaxType = 'exclusive'; // default fallback
+      let mappedTaxType = 'exclusive';
 
       if (formData.gstType === 'Composite') {
         mappedGstScheme = 'composition';
@@ -274,7 +270,6 @@ const BusinessInfoPage: React.FC = () => {
         mappedTaxType = formData.gstType === 'Regular-Inclusive' ? 'inclusive' : 'exclusive';
       }
 
-      // Send the mapped values in your payloads
       const salesSettingsPayload = {
         gstScheme: mappedGstScheme,
         gstin: finalGstin,
@@ -286,7 +281,7 @@ const BusinessInfoPage: React.FC = () => {
         taxType: mappedTaxType,
       };
 
-      // 4. Create User in Auth & Firestore
+      // Just pass the raw string code down the pipeline!
       await registerUserWithDetails(
         previousData.fullName,
         previousData.phoneNumber,
@@ -297,11 +292,10 @@ const BusinessInfoPage: React.FC = () => {
         planPayload,
         salesSettingsPayload,
         catalogueSalesSettingsPayload,
-        [], // No initial staff
+        [],
         finalReferralCode
       );
 
-      // 5. Update Lead Status (Conversion Event)
       const currentUid = auth.currentUser?.uid;
       await saveLeadProgress(previousData.email, {
         status: 'Trial Plan',
@@ -311,17 +305,17 @@ const BusinessInfoPage: React.FC = () => {
         plan: 'Enterprise Trial'
       });
 
-      // 6. Cleanup & Redirect to Dashboard (AppGuard will handle Phase 2)
       localStorage.removeItem(LOCAL_STORAGE_KEY);
       navigate(ROUTES.HOME);
 
     } catch (err: any) {
       console.error('Registration failed:', err);
+      // This will now display our clean Cloud Function error message if the code is invalid!
       setError(err.message || 'Setup failed. Please check your internet and try again.');
       setIsSubmitting(false);
+      setShowLoadingScreen(false);
     }
   };
-
   const handleStepClick = (targetStep: number) => {
     if (targetStep === 1) {
       navigate(ROUTES.SIGNUP, { state: previousData });
@@ -598,7 +592,7 @@ const BusinessInfoPage: React.FC = () => {
                         label="Referral Code (Optional)"
                         value={referralCode}
                         onChange={(e) => setReferralCode(e.target.value.toUpperCase())} // Forces uppercase instantly
-                        className="pl-12 py-2.5 bg-gray-100 border border-[#7D7777A3] shadow-sm"
+                        className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
                       />
                       <button
                         type="button"

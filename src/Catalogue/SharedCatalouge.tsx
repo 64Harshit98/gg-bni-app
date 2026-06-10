@@ -435,7 +435,7 @@ const SharedCataloguePage: React.FC = () => {
                                     navigate(subdomain ? '/checkout' : `/checkout/${effectiveCompanyId}`);
                                 }
                             }}
-                            className="flex items-center justify-center gap-2 bg-[#F97316] text-white py-2 px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative cursor-pointer"
+                            className="hidden md:flex items-center justify-center gap-2 bg-[#F97316] text-white py-2 px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all relative cursor-pointer"
                         >
                             <ShoppingCart size={16} />
                             <span className="hidden md:inline">Cart</span>

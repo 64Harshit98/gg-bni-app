@@ -705,7 +705,7 @@ const Journal: React.FC = () => {
       previousBalance: await (async () => {
         if (!currentUser?.companyId || !invoice.partyNumber) return 0;
         try {
-          const { getDocs, collection, query, where } = await import('firebase/firestore');
+          const { getDocs, collection, query, where, } = await import('firebase/firestore');
           const salesRef = collection(db, 'companies', currentUser.companyId, 'sales');
           const snap = await getDocs(query(
             salesRef,
@@ -716,6 +716,18 @@ const Journal: React.FC = () => {
             // Exclude current invoice, sum all other dues
             if (d.id !== invoice.id) {
               total += Number(d.data().paymentMethods?.due ?? 0);
+            }
+          });
+          const obRef = collection(db, 'companies', currentUser.companyId, 'openingBalances');
+          const obSnap = await getDocs(query(
+            obRef,
+            where('partyNumber', '==', invoice.partyNumber)
+          ));
+          obSnap.forEach(d => {
+            const data = d.data();
+            // Sirf 'due' type OB add karo, 'advance' nahi
+            if ((data.balanceType ?? 'due') === 'due') {
+              total += Number(data.dueAmount ?? data.amount ?? 0);
             }
           });
           return total;

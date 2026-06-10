@@ -10,6 +10,18 @@ export interface PaymentRecord {
     date: string;
     timestamp: number;
 }
+export interface OpeningBalance {
+    id: string;
+    partyName: string;
+    partyNumber: string;
+    partyType: 'Customer' | 'Supplier';
+    amount: number;
+    dueAmount: number;
+    balanceType?: 'due' | 'advance'; // ✅ 'due' = they owe you, 'advance' = you owe them
+    note?: string;
+    createdAt: number;
+    paymentHistory: PaymentRecord[];
+}
 
 // Renamed from LedgerSaleRecord to LedgerTransaction to reflect both Sales & Purchases
 export interface LedgerTransaction {
@@ -22,6 +34,8 @@ export interface LedgerTransaction {
     paymentHistory: PaymentRecord[];
     createdAt: number;
     type: 'sale' | 'purchase'; // NEW: Identifies the type of bill
+    isOpeningBalance?: boolean;
+    note?: string;
 }
 
 export interface PartySummary {
@@ -37,6 +51,7 @@ export interface PartySummary {
 export default function usePartyLedger() {
     const { currentUser, loading: authLoading } = useAuth();
     const [transactions, setTransactions] = useState<LedgerTransaction[]>([]);
+    const [openingBalances, setOpeningBalances] = useState<OpeningBalance[]>([]);
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -176,68 +191,215 @@ export default function usePartyLedger() {
 
         fetchLedgerData();
     }, [currentUser, authLoading, appliedFilters]);
+    // ✅ NEW: Fetch opening balances independently — no date filter, always load all
+    useEffect(() => {
+        if (authLoading || !currentUser?.companyId) return;
+
+        const fetchOpeningBalances = async () => {
+            try {
+                const companyId = currentUser.companyId;
+                const obRef = collection(db, 'companies', companyId, 'openingBalances');
+                const obSnapshot = await getDocs(obRef);
+                const mappedOB: OpeningBalance[] = obSnapshot.docs.map(doc => {
+                    const data = doc.data();
+                    const creationMillis = data.createdAt instanceof Timestamp
+                        ? data.createdAt.toMillis()
+                        : Date.now();
+                    return {
+                        id: doc.id,
+                        partyName: data.partyName || 'Unknown',
+                        partyNumber: data.partyNumber || '',
+                        partyType: data.partyType || 'Customer',
+                        amount: data.amount || 0,
+                        dueAmount: data.dueAmount ?? data.amount ?? 0,
+                        balanceType: data.balanceType || 'due', // ✅
+                        note: data.note || '',
+                        createdAt: creationMillis,
+                        paymentHistory: data.paymentHistory || [],
+                    };
+                });
+                setOpeningBalances(mappedOB);
+            } catch (err) {
+                console.error('Error fetching opening balances:', err);
+            }
+        };
+
+        fetchOpeningBalances();
+    }, [currentUser?.companyId, authLoading]); // ✅ Only re-runs when company changes, NOT on date filter change
 
     // Group all transactions (Sales & Purchases) by party name
     const partySummaries = useMemo(() => {
-        const grouped = transactions.reduce((acc, txn) => {
-             const key = txn.partyNumber?.trim() || txn.partyName;
+        // ✅ Filter opening balances by the applied date range
+        const filteredOBs = openingBalances.filter(ob => {
+            if (!appliedFilters) return false;
+            return ob.createdAt >= appliedFilters.start && ob.createdAt <= appliedFilters.end;
+        });
+        // Merge opening balances as pseudo-transactions into grouped view
+        const obAsTransactions: LedgerTransaction[] = filteredOBs.map(ob => ({
+            id: ob.id,
+            invoiceNumber: undefined,
+            partyName: ob.partyName,
+            partyNumber: ob.partyNumber,
+            totalAmount: ob.amount,
+            dueAmount: ob.dueAmount,
+            paymentHistory: ob.paymentHistory,
+            createdAt: ob.createdAt,
+            type: ob.partyType === 'Customer' ? 'sale' : 'purchase' as 'sale' | 'purchase',
+            isOpeningBalance: true,
+            note: ob.note,
+            balanceType: ob.balanceType ?? 'due',  // ✅ balanceType pass karo
+        } as LedgerTransaction & { isOpeningBalance: boolean; balanceType: string }));
+
+        const allItems = [...transactions, ...obAsTransactions];
+
+        const grouped = allItems.reduce((acc, txn) => {
+            const key = txn.partyNumber?.trim() || txn.partyName;
             const currentTxnType = txn.type === 'sale' ? 'Customer' : 'Supplier';
 
             if (!acc[key]) {
                 acc[key] = {
                     partyName: txn.partyName || 'N/A',
                     partyNumber: txn.partyNumber || 'N/A',
-                    partyType: currentTxnType, // Set initial type
+                    partyType: txn.isOpeningBalance ? currentTxnType : currentTxnType, // will be corrected below
                     totalBilled: 0,
                     totalDue: 0,
                     totalTransactions: 0,
                     transactions: [],
                 };
             } else {
-            // ✅ Use the latest non-empty name encountered
-            if (txn.partyName && txn.partyName !== 'N/A') {
-                acc[key].partyName = txn.partyName;
+                if (txn.partyName && txn.partyName !== 'N/A') {
+                    acc[key].partyName = txn.partyName;
+                }
+                // ✅ Only real bills (not opening balances) can flip partyType to 'Both'
+                if (!txn.isOpeningBalance && acc[key].partyType !== currentTxnType && acc[key].partyType !== 'Both') {
+                    acc[key].partyType = 'Both';
+                }
             }
-            if (acc[key].partyType !== currentTxnType && acc[key].partyType !== 'Both') {
-                acc[key].partyType = 'Both';
-            }
-        }
 
             acc[key].totalBilled += txn.totalAmount;
-            acc[key].totalDue += txn.dueAmount;
-            acc[key].totalTransactions += 1;
+            // ✅ advance OB totalDue mein add nahi hoga
+            if (!(txn.isOpeningBalance && (txn as any).balanceType === 'advance')) {
+                acc[key].totalDue += txn.dueAmount;
+            }
+            if (!txn.isOpeningBalance) {
+                acc[key].totalTransactions += 1;
+            }
             acc[key].transactions.push(txn);
 
             return acc;
         }, {} as Record<string, PartySummary>);
 
         return Object.values(grouped).sort((a, b) => a.partyName.localeCompare(b.partyName));
-    }, [transactions]);
+    }, [transactions, openingBalances, appliedFilters]);
 
     const selectedPartyLedger = useMemo(() => {
         if (!selectedPartyName) return null;
         return (
-        partySummaries.find(p => p.partyNumber === selectedPartyName) ||
-        partySummaries.find(p => p.partyName === selectedPartyName) ||
-        null
-    );
+            partySummaries.find(p => p.partyNumber === selectedPartyName) ||
+            partySummaries.find(p => p.partyName === selectedPartyName) ||
+            null
+        );
     }, [selectedPartyName, partySummaries]);
-const updateTransactionLocally = (invoiceId: string, amountPaid: number, paymentRecord: PaymentRecord) => {
-    setTransactions(prev =>
-        prev.map(txn => {
-            if (txn.id !== invoiceId) return txn;
-            return {
-                ...txn,
-                dueAmount: Math.max(0, txn.dueAmount - amountPaid),
-                paymentHistory: [...txn.paymentHistory, paymentRecord],
-            };
-        })
-    );
-};
+    const updateTransactionLocally = (invoiceId: string, amountPaid: number, paymentRecord: PaymentRecord) => {
+        setTransactions(prev =>
+            prev.map(txn => {
+                if (txn.id !== invoiceId) return txn;
+                return {
+                    ...txn,
+                    dueAmount: Math.max(0, txn.dueAmount - amountPaid),
+                    paymentHistory: [...txn.paymentHistory, paymentRecord],
+                };
+            })
+        );
+    };
+    const updateOpeningBalanceLocally = (obId: string, amountPaid: number, paymentRecord: PaymentRecord) => {
+        setOpeningBalances(prev =>
+            prev.map(ob => {
+                if (ob.id !== obId) return ob;
+                return {
+                    ...ob,
+                    dueAmount: Math.max(0, ob.dueAmount - amountPaid),
+                    paymentHistory: [...ob.paymentHistory, paymentRecord],
+                };
+            })
+        );
+    };
+
+    const addOpeningBalance = async (
+        partyName: string,
+        partyNumber: string,
+        partyType: 'Customer' | 'Supplier',
+        amount: number,
+        note?: string,
+        balanceType: 'due' | 'advance' = 'due'
+    ) => {
+        if (!currentUser?.companyId) throw new Error('Company ID not found.');
+        const { doc, collection: col, setDoc, serverTimestamp, increment } = await import('firebase/firestore');
+        const obRef = doc(col(db, 'companies', currentUser.companyId, 'openingBalances'));
+        const newOB = {
+            partyName,
+            partyNumber,
+            partyType,
+            amount,
+            dueAmount: balanceType === 'due' ? amount : 0,  // ✅ advance ka dueAmount 0
+            balanceType,
+            note: note || '',
+            paymentHistory: [],
+            createdAt: serverTimestamp(),
+        };
+        await setDoc(obRef, newOB);
+
+        // ✅ advance hai toh credit/debit balance update karo
+        if (partyNumber.trim().length >= 3) {
+            const collectionName = partyType === 'Customer' ? 'customers' : 'suppliers';
+            let balanceField: string;
+
+            if (partyType === 'Customer') {
+                // Customer advance → creditBalance
+                // Customer due → kuch nahi (woh collect karna hai, store nahi)
+                if (balanceType === 'advance') {
+                    balanceField = 'creditBalance';
+                } else {
+                    balanceField = ''; // Due OB customer ke liye store nahi
+                }
+            } else {
+                // Supplier advance → debitBalance (tumne zyada diya)
+                // Supplier due → debitBalance (supplier tumhara paisa dega)
+                balanceField = 'debitBalance';
+            }
+
+            if (balanceField) {
+                const partyRef = doc(db, 'companies', currentUser.companyId, collectionName, partyNumber.trim());
+                await setDoc(partyRef, {
+                    name: partyName,
+                    number: partyNumber,
+                    [balanceField]: increment(amount),
+                }, { merge: true });
+            }
+        }
+        const localOB: OpeningBalance = {
+            id: obRef.id,
+            partyName,
+            partyNumber,
+            partyType,
+            amount,
+            dueAmount: amount,
+            balanceType,   // ✅ stored locally
+            note: note || '',
+            createdAt: Date.now(),
+            paymentHistory: [],
+        };
+        setOpeningBalances(prev => [...prev, localOB]);
+        return localOB;
+    };
+
     return {
         isLoading, authLoading, error,
         companyId: currentUser?.companyId,
         updateTransactionLocally,
+        updateOpeningBalanceLocally,
+        addOpeningBalance,
+        openingBalances,
         datePreset, setDatePreset,
         customStartDate, setCustomStartDate,
         customEndDate, setCustomEndDate,

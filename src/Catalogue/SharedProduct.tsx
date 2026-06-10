@@ -167,6 +167,7 @@ const SharedProduct: React.FC = () => {
     const [personalizationItem, setPersonalizationItem] = useState<Item | null>(null);
     const [personalizationText, setPersonalizationText] = useState('');
     const [pendingPersonalizationItem, setPendingPersonalizationItem] = useState<Item | null>(null);
+    const [pendingNotifyItem, setPendingNotifyItem] = useState<Item | null>(null);
     const [pendingCartItem, setPendingCartItem] = useState<Item | null>(null);
 
     useEffect(() => {
@@ -488,6 +489,7 @@ const SharedProduct: React.FC = () => {
 
             // lead not filled → popup dikhao
             if (!alreadyFilled) {
+                setPendingNotifyItem(item);
                 setForceLeadOpen(false);
                 setTimeout(() => setForceLeadOpen(true), 0);
                 return;
@@ -1142,6 +1144,10 @@ const SharedProduct: React.FC = () => {
                         addToCart(pendingCartItem);
                         setPendingCartItem(null);
                     }
+                    if (pendingNotifyItem) {
+                        handleNotifyRequest(pendingNotifyItem);
+                        setPendingNotifyItem(null);
+                    }
                     if (pendingBulkItem) {
                         setBulkQuoteItem(pendingBulkItem);
                         setPendingBulkItem(null);
@@ -1405,7 +1411,7 @@ const SharedProduct: React.FC = () => {
                                             }
                                             setBulkQuoteItem(item);
                                         }}
-                                        className="absolute top-1.5 left-1.5 z-10 bg-[#F97316] text-white text-[8px] font-black uppercase tracking-tight px-1.5 py-1 rounded-sm shadow-md hover:bg-[#F97316] transition-colors"
+                                        className="absolute bottom-1.5 left-1.5 z-10 bg-[#F97316] text-white text-[8px] font-black uppercase tracking-tight px-1.5 py-1 rounded-sm shadow-md hover:bg-[#F97316] transition-colors"
                                         title="Request Bulk Price"
                                     >
                                         Bulk

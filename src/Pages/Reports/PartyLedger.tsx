@@ -18,15 +18,28 @@ const PartyLedger: React.FC = () => {
         selectedPartyName, setSelectedPartyName,
         selectedPartyLedger,
         updateTransactionLocally,
+        updateOpeningBalanceLocally,
+        addOpeningBalance,
     } = usePartyLedger();
 
     const [expandedBillId, setExpandedBillId] = useState<string | null>(null);
+    const [showTransactionList, setShowTransactionList] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [partyTypeFilter, setPartyTypeFilter] = useState<'all' | 'Customer' | 'Supplier'>('all');
+    const [partyTypeFilter, setPartyTypeFilter] = useState<'all' | 'Customer' | 'Supplier' | 'Both'>('all');
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<any | null>(null);
     const [statusFilter, setStatusFilter] = useState<'all' | 'due' | 'settled'>('all');
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+    const [isOBModalOpen, setIsOBModalOpen] = useState(false);
+    const [obForm, setObForm] = useState({
+        partyName: '',
+        partyNumber: '',
+        partyType: 'Customer' as 'Customer' | 'Supplier',
+        balanceType: 'due' as 'due' | 'advance', // 'due' = they owe you, 'advance' = you owe them
+        amount: '',
+        note: ''
+    });
+    const [obLoading, setObLoading] = useState(false);
 
     const showToast = (message: string, type: 'success' | 'error' = 'success') => {
         setToast({ message, type });
@@ -80,7 +93,33 @@ const PartyLedger: React.FC = () => {
         setAppliedFilters({ start: start.getTime(), end: end.getTime() });
         setSelectedPartyName(null);
         setExpandedBillId(null);
+        setShowTransactionList(false);
     };
+    const handleAddOpeningBalance = async () => {
+        if (!obForm.partyName.trim() || !obForm.amount || Number(obForm.amount) <= 0) {
+            showToast('Please fill in party name and a valid amount.', 'error');
+            return;
+        }
+        setObLoading(true);
+        try {
+            await addOpeningBalance(
+                obForm.partyName.trim(),
+                obForm.partyNumber.trim(),
+                obForm.partyType,
+                Number(obForm.amount),
+                obForm.note.trim(),
+                obForm.balanceType  // ✅ pass balanceType
+            );
+            setIsOBModalOpen(false);
+            setObForm({ partyName: '', partyNumber: '', partyType: 'Customer', balanceType: 'due', amount: '', note: '' });
+            showToast('Opening balance added successfully!', 'success');
+        } catch (e) {
+            showToast('Failed to add opening balance.', 'error');
+        } finally {
+            setObLoading(false);
+        }
+    };
+
     // ✅ FIXED: Complete rewrite of handleSettlePayment
     const handleSettlePayment = async (
         invoice: any,
@@ -94,7 +133,36 @@ const PartyLedger: React.FC = () => {
             if (!companyId) {
                 throw new Error('Company ID not found. Please log in again.');
             }
-
+            // Handle opening balance settlement separately
+            if (invoice.isOpeningBalance) {
+                const { db } = await import('../../lib/Firebase');
+                const { doc, runTransaction } = await import('firebase/firestore');
+                const obRef = doc(db, 'companies', companyId, 'openingBalances', invoice.id);
+                await runTransaction(db, async (transaction) => {
+                    const sfDoc = await transaction.get(obRef);
+                    if (!sfDoc.exists()) throw new Error('Opening balance record not found.');
+                    const data = sfDoc.data();
+                    const currentDue = data.dueAmount ?? data.amount ?? 0;
+                    if (amount > currentDue) throw new Error(`Amount (₹${amount}) exceeds due (₹${currentDue}).`);
+                    const paymentRecord = {
+                        amount, method: method.toLowerCase(), date: new Date().toISOString(), timestamp: Date.now(),
+                        ...(method.toUpperCase() === 'PDC' && { chequeNumber: chequeNumber || '', chequeDate: chequeDate || '' }),
+                    };
+                    transaction.update(obRef, {
+                        dueAmount: Math.max(0, currentDue - amount),
+                        paymentHistory: [...(data.paymentHistory || []), paymentRecord],
+                    });
+                });
+                const paymentRecord: PaymentRecord = {
+                    amount, method: method.toLowerCase(), date: new Date().toISOString(), timestamp: Date.now(),
+                    ...(method.toUpperCase() === 'PDC' && { chequeNumber: chequeNumber || '', chequeDate: chequeDate || '' }),
+                };
+                updateOpeningBalanceLocally(invoice.id, amount, paymentRecord);
+                setIsPaymentModalOpen(false);
+                setSelectedInvoiceForPayment(null);
+                showToast(`Opening balance payment of ₹${amount} settled via ${method}!`, 'success');
+                return;
+            }
             // ✅ Validation: Check amount is valid
             if (amount <= 0) {
                 throw new Error('Payment amount must be greater than 0.');
@@ -195,7 +263,8 @@ const PartyLedger: React.FC = () => {
 
             const matchesType =
                 partyTypeFilter === 'all' ||
-                party.partyType === partyTypeFilter;
+                party.partyType === partyTypeFilter ||
+                party.partyType === 'Both';
 
             const matchesStatus =
                 statusFilter === 'all' ||
@@ -211,8 +280,95 @@ const PartyLedger: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-gray-50 pb-16">
+            {/* Opening Balance Modal */}
+            {isOBModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+                    <div className="bg-white rounded-sm shadow-xl w-full max-w-sm p-5">
+                        {/* Title row + Customer/Supplier badge */}
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-base font-bold text-gray-800">Add Opening Balance</h2>
+                            <span className={`text-xs font-bold px-2.5 py-1 rounded border tracking-wide
+    ${obForm.partyType === 'Customer'
+                                    ? 'bg-blue-50 text-blue-600 border-blue-200'
+                                    : 'bg-purple-50 text-purple-600 border-purple-200'
+                                }`}>
+                                {obForm.partyType}
+                            </span>
+                        </div>
+
+                        <div className="space-y-3">
+                            {/* Name + Number in same row */}
+                            <div className="flex gap-2">
+                                <input
+                                    placeholder="Party Name *"
+                                    value={obForm.partyName}
+                                    readOnly
+                                    className="flex-1 p-2 border border-gray-200 rounded-sm text-sm bg-gray-50 text-gray-500 cursor-not-allowed"
+                                />
+                                <input
+                                    placeholder="Phone"
+                                    value={obForm.partyNumber}
+                                    readOnly
+                                    maxLength={10}
+                                    className="w-28 p-2 border border-gray-200 rounded-sm text-sm bg-gray-50 text-gray-500 cursor-not-allowed"
+                                />
+                            </div>
+
+                            {/* Due vs Advance toggle */}
+                            <div>
+                                <p className="text-xs font-semibold text-gray-500 mb-1.5">Balance Type</p>
+                                <div className="flex border border-gray-200 rounded-sm overflow-hidden text-sm">
+                                    <button
+                                        onClick={() => setObForm(f => ({ ...f, balanceType: 'due' }))}
+                                        className={`flex-1 px-3 py-2 font-medium transition ${obForm.balanceType === 'due' ? 'bg-red-500 text-white' : 'bg-white text-gray-500'}`}
+                                    >
+                                        Due(They Owe You)
+                                    </button>
+                                    <button
+                                        onClick={() => setObForm(f => ({ ...f, balanceType: 'advance' }))}
+                                        className={`flex-1 px-3 py-2 font-medium border-l border-gray-200 transition ${obForm.balanceType === 'advance' ? 'bg-emerald-500 text-white' : 'bg-white text-gray-500'}`}
+                                    >
+                                        Debt(You Owe Them)
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-gray-400 mt-1">
+                                    {obForm.balanceType === 'due'
+                                        ? 'Party owes you money — receivable/debit balance.'
+                                        : 'You owe the party — payable/credit balance.'}
+                                </p>
+                            </div>
+
+                            <input
+                                type="number"
+                                placeholder="Amount (₹) *"
+                                value={obForm.amount}
+                                onChange={e => setObForm(f => ({ ...f, amount: e.target.value }))}
+                                className="w-full p-2 border border-gray-300 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                            />
+                            <input
+                                placeholder="Note (optional)"
+                                value={obForm.note}
+                                onChange={e => setObForm(f => ({ ...f, note: e.target.value }))}
+                                className="w-full p-2 border border-gray-300 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                            />
+                        </div>
+
+                        <div className="flex gap-2 mt-4">
+                            <button
+                                onClick={() => { setIsOBModalOpen(false); setObForm({ partyName: '', partyNumber: '', partyType: 'Customer', balanceType: 'due', amount: '', note: '' }); }}
+                                className="flex-1 px-3 py-2 text-sm font-semibold text-gray-600 bg-gray-100 rounded-sm hover:bg-gray-200"
+                            >Cancel</button>
+                            <button
+                                onClick={handleAddOpeningBalance}
+                                disabled={obLoading}
+                                className="flex-1 px-3 py-2 text-sm font-semibold text-white bg-blue-500 rounded-sm hover:bg-blue-600 disabled:opacity-50"
+                            >{obLoading ? 'Saving...' : 'Save'}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {toast && (
-                <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-md shadow-lg text-sm font-semibold text-white transition-all
+                <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-sm shadow-lg text-sm font-semibold text-white transition-all
                 ${toast.type === 'success' ? 'bg-blue-500' : 'bg-red-500'}`}>
                     {toast.message}
                 </div>
@@ -260,9 +416,11 @@ const PartyLedger: React.FC = () => {
                             <input type="date" value={customEndDate} onChange={(e) => { setCustomEndDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border border-gray-200 rounded-sm" />
                         </div>
                     </div>
-                    <button onClick={handleApplyFilters} className="w-full mt-3 px-3 py-2 bg-blue-600 text-white text-sm font-semibold rounded-sm hover:bg-blue-700 transition-colors">
-                        Apply
-                    </button>
+                    <div className="flex gap-2 mt-3">
+                        <button onClick={handleApplyFilters} className="flex-1 px-3 py-2 bg-blue-600 text-white text-sm font-semibold rounded-sm hover:bg-blue-700 transition-colors">
+                            Apply
+                        </button>
+                    </div>
                     <div className="flex flex-col items-center gap-2 mt-3">
                         <div className="flex border border-gray-200 rounded-sm overflow-hidden text-sm w-1/2">
                             <button
@@ -276,6 +434,12 @@ const PartyLedger: React.FC = () => {
                                 className={`flex-1 px-3 py-1.5 transition font-medium border-l border-gray-200 ${partyTypeFilter === 'Supplier' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
                             >
                                 Supplier
+                            </button>
+                            <button
+                                onClick={() => setPartyTypeFilter(prev => prev === 'Both' ? 'all' : 'Both')}
+                                className={`flex-1 px-3 py-1.5 transition font-medium border-l border-gray-200 ${partyTypeFilter === 'Both' ? 'bg-blue-500 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+                            >
+                                Both
                             </button>
                         </div>
                         <div className="flex bg-gray-100 rounded-sm p-1 text-sm">
@@ -303,41 +467,51 @@ const PartyLedger: React.FC = () => {
                     {filteredParties.length === 0 ? (
                         <div className="p-6 text-center text-gray-500 bg-white">No parties found for this period.</div>
                     ) : (
-                        filteredParties.map((party) => (
-                            <CustomCard
-                                key={party.partyName}
-                                onClick={() => setSelectedPartyName(party.partyNumber || party.partyName)}
-                                className="cursor-pointer transition-shadow hover:shadow-md p-3.5 bg-white"
+                        <>
+                            <button
+                                onClick={() => setShowTransactionList(prev => !prev)}
+                                className="w-full flex items-center justify-between px-4 py-2.5 bg-white border border-slate-200 rounded-sm text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
                             >
-                                {/* Top Row: Badge and Total */}
-                                <div className="flex items-start justify-between mb-1.5">
-                                    <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider whitespace-nowrap ${party.partyType === 'Customer' ? 'bg-blue-50 text-blue-600 border-blue-200' :
-                                        party.partyType === 'Supplier' ? 'bg-purple-50 text-purple-600 border-purple-200' :
-                                            'bg-orange-50 text-orange-600 border-orange-200'
-                                        }`}>
-                                        {party.partyType}
-                                    </span>
-                                    <p className="text-xs text-slate-400">
-                                        Total: ₹{party.totalBilled.toLocaleString('en-IN')}
-                                    </p>
-                                </div>
+                                <span>{showTransactionList ? 'Hide' : 'Show'} List ({filteredParties.length} parties)</span>
+                                <span className={`inline-block transition-transform duration-200 ${showTransactionList ? 'rotate-180' : ''}`}>▼</span>
+                            </button>
 
-                                {/* Bottom Row: Name/Number and Pending Due */}
-                                <div className="flex items-end justify-between">
-                                    <div>
-                                        <p className="text-base font-semibold text-slate-800">{party.partyName}</p>
-                                        <p className="text-sm text-slate-500 mt-0.5">
-                                            {party.partyNumber || 'N/A'} <span className="mx-1 text-slate-300">•</span> {party.totalTransactions} Bills
+                            {showTransactionList && filteredParties.map((party) => (
+                                <CustomCard
+                                    key={party.partyName}
+                                    onClick={() => { setSelectedPartyName(party.partyNumber || party.partyName); setShowTransactionList(false); }}
+                                    className="cursor-pointer transition-shadow hover:shadow-md p-3.5 bg-white"
+                                >
+                                    {/* Top Row: Badge and Total */}
+                                    <div className="flex items-start justify-between mb-1.5">
+                                        <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider whitespace-nowrap ${party.partyType === 'Customer' ? 'bg-blue-50 text-blue-600 border-blue-200' :
+                                            party.partyType === 'Supplier' ? 'bg-purple-50 text-purple-600 border-purple-200' :
+                                                'bg-orange-50 text-orange-600 border-orange-200'
+                                            }`}>
+                                            {party.partyType}
+                                        </span>
+                                        <p className="text-xs text-slate-400">
+                                            Total: ₹{party.totalBilled.toLocaleString('en-IN')}
                                         </p>
                                     </div>
-                                    <div className="text-right">
-                                        <p className={`text-lg font-bold ${party.totalDue > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                                            {party.totalDue > 0 ? 'Due: ' : ''}₹{party.totalDue.toLocaleString('en-IN')}
-                                        </p>
+
+                                    {/* Bottom Row: Name/Number and Pending Due */}
+                                    <div className="flex items-end justify-between">
+                                        <div>
+                                            <p className="text-base font-semibold text-slate-800">{party.partyName}</p>
+                                            <p className="text-sm text-slate-500 mt-0.5">
+                                                {party.partyNumber || 'N/A'} <span className="mx-1 text-slate-300">•</span> {party.totalTransactions} Bills
+                                            </p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className={`text-lg font-bold ${party.totalDue > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                                {party.totalDue > 0 ? 'Due: ' : ''}₹{party.totalDue.toLocaleString('en-IN')}
+                                            </p>
+                                        </div>
                                     </div>
-                                </div>
-                            </CustomCard>
-                        ))
+                                </CustomCard>
+                            ))}
+                        </>
                     )}
                 </div>
             ) : (
@@ -348,7 +522,7 @@ const PartyLedger: React.FC = () => {
                     <div className="sticky top-0 z-30 pt-2 pb-3 -mx-2 px-2 bg-gray-50">
                         {/* Top Bar with Title and Close */}
                         <div className="flex items-center justify-between pb-2 mb-2">
-                            <BackButton onClick={() => { setSelectedPartyName(null); setExpandedBillId(null); }} />
+                            <BackButton onClick={() => { setSelectedPartyName(null); setExpandedBillId(null); setShowTransactionList(false); }} />
                             <h1 className="flex-1 text-lg text-center font-bold text-gray-800 truncate px-2">
                                 {selectedPartyName} - Ledger
                             </h1>
@@ -358,7 +532,26 @@ const PartyLedger: React.FC = () => {
                         <div className="rounded-sm border border-slate-200 bg-white overflow-hidden">
                             <div className="bg-sky-100 border-b border-slate-100 px-4 py-2 flex justify-between items-center">
                                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Ledger Summary</span>
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{selectedPartyLedger?.transactions.length} Bills</span>
+                                <div className="flex items-center gap-3">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{selectedPartyLedger?.transactions.length} Bills</span>
+                                    <button
+                                        onClick={() => {
+                                            // ✅ Pre-fill party details from the selected party
+                                            setObForm({
+                                                partyName: selectedPartyLedger?.partyName || '',
+                                                partyNumber: selectedPartyLedger?.partyNumber || '',
+                                                partyType: selectedPartyLedger?.partyType === 'Supplier' ? 'Supplier' : 'Customer',
+                                                balanceType: 'due',
+                                                amount: '',
+                                                note: '',
+                                            });
+                                            setIsOBModalOpen(true);
+                                        }}
+                                        className="text-[10px] font-bold px-2 py-0.5 bg-blue-500 text-white rounded hover:bg-blue-600 transition whitespace-nowrap"
+                                    >
+                                        + Opening Balance
+                                    </button>
+                                </div>
                             </div>
                             <div className="p-4 flex justify-between items-center">
                                 <div className="flex flex-col flex-1">
@@ -388,17 +581,36 @@ const PartyLedger: React.FC = () => {
                                     <div className="flex justify-between items-end w-full -mt-5 relative pointer-events-none">
                                         {/* LEFT: Transaction Type Badge */}
                                         <div className="flex justify-start gap-1 flex-wrap max-w-[50%] pointer-events-auto">
-                                            <span className={`text-[8px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider whitespace-nowrap ${txn.type === 'sale' ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-purple-50 text-purple-600 border-purple-200'}`}>
-                                                {txn.type}
-                                            </span>
+                                            {txn.isOpeningBalance ? (
+                                                <span className={`text-[8px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider whitespace-nowrap 
+        ${(txn as any).balanceType === 'advance'
+                                                        ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                                                        : 'bg-orange-50 text-orange-600 border-orange-200'
+                                                    }`}>
+                                                    {(txn as any).balanceType === 'advance' ? 'Advance' : 'Opening Balance'}
+                                                </span>
+                                            ) : (
+                                                <span className={`text-[8px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider whitespace-nowrap ${txn.type === 'sale' ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-purple-50 text-purple-600 border-purple-200'}`}>
+                                                    {txn.type}
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
 
                                     <div className="flex items-center justify-between mt-2">
                                         {/* LEFT ALIGNED INFO */}
                                         <div className="flex-1">
-                                            <p className="text-base font-semibold text-slate-800">{txn.invoiceNumber || txn.id.slice(0, 8)}</p>
-                                            <p className="text-sm text-slate-500 mt-1">{formatDate(txn.createdAt)}</p>
+                                            {txn.isOpeningBalance ? (
+                                                <>
+                                                    <p className="text-base font-semibold text-slate-800">Opening Due</p>
+                                                    <p className="text-sm text-slate-500 mt-1">{formatDate(txn.createdAt)}</p>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <p className="text-base font-semibold text-slate-800">{txn.invoiceNumber || txn.id.slice(0, 8)}</p>
+                                                    <p className="text-sm text-slate-500 mt-1">{formatDate(txn.createdAt)}</p>
+                                                </>
+                                            )}
                                         </div>
 
                                         {/* CENTER SETTLED BADGE */}
@@ -436,6 +648,12 @@ const PartyLedger: React.FC = () => {
 
                                     {isExpanded && (
                                         <div className="mt-3">
+                                            {/* Show note for Opening Balance */}
+                                            {txn.isOpeningBalance && (txn as any).note && (
+                                                <p className="text-xs text-slate-500 italic mb-2 px-1">
+                                                    Note: {(txn as any).note}
+                                                </p>
+                                            )}
                                             <div className="relative py-2">
                                                 <div className="absolute inset-0 flex items-center" aria-hidden="true">
                                                     <div className="w-full border-t border-slate-200"></div>
@@ -475,7 +693,7 @@ const PartyLedger: React.FC = () => {
                                                 )}
                                             </div>
                                             {/* ✅ FIXED: Settle button with corrected invoice object */}
-                                            {txn.dueAmount > 0 && (
+                                            {txn.dueAmount > 0 && !(txn.isOpeningBalance && (txn as any).balanceType === 'advance') && (
                                                 <div className="mt-3 pt-3 border-t border-slate-200">
                                                     <button
                                                         onClick={(e) => {
@@ -491,6 +709,7 @@ const PartyLedger: React.FC = () => {
                                                                 partyName: selectedPartyName,
                                                                 partyNumber: txn.partyNumber,
                                                                 createdAt: txn.createdAt,
+                                                                isOpeningBalance: txn.isOpeningBalance === true,
                                                             });
 
                                                             setIsPaymentModalOpen(true);

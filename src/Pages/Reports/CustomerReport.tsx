@@ -128,8 +128,12 @@ const CustomerReport: React.FC = () => {
       }
 
       const row = map.get(key)!;
-      row.totalBills += 1;
-      row.totalSales += sale.totalAmount;
+
+      if (!(sale as any).isOpeningBalance) {
+        row.totalBills += 1;
+        row.totalSales += sale.totalAmount;
+      }
+
 
       const due = sale.dueAmount || 0;
       if (due > 0) {
@@ -175,9 +179,11 @@ const CustomerReport: React.FC = () => {
 
     /* ---------- SUMMARY METRICS ---------- */
     const totalCustomers = customerRows.length;
-    const totalBills = newFilteredSales.length;
+    const totalBills = newFilteredSales.filter(
+      (s) => !(s as any).isOpeningBalance
+    ).length;
     const totalSales = newFilteredSales.reduce(
-      (sum, s) => sum + s.totalAmount,
+      (sum, s) => (s as any).isOpeningBalance ? sum : sum + s.totalAmount,
       0,
     );
     const totalDue = customerRows.reduce((sum, c) => sum + Math.max(0, c.totalDue), 0);

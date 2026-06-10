@@ -1006,10 +1006,12 @@ const OrdersPage: React.FC = () => {
 
             // Fetch previous balance for this customer
             let previousBalance = 0;
-            const customerPhone = Order.billingDetails?.phone || Order.userLoginPhone || '';
+            const customerPhone = (Order.billingDetails?.phone || Order.userLoginPhone || '').toString().trim();
             if (currentUser?.companyId && customerPhone) {
                 try {
                     const { getDocs, collection, query, where } = await import('firebase/firestore');
+
+                    // 1. Due from other Orders
                     const salesRef = collection(db, 'companies', currentUser.companyId, 'Orders');
                     const snap = await getDocs(query(
                         salesRef,
@@ -1024,14 +1026,31 @@ const OrdersPage: React.FC = () => {
                             previousBalance += due;
                         }
                     });
+
+                    // 2. Due from openingBalances (same party phone)
+                    const obRef = collection(db, 'companies', currentUser.companyId, 'openingBalances');
+                    const obSnap = await getDocs(query(
+                        obRef,
+                        where('partyNumber', '==', customerPhone)
+                    ));
+                    obSnap.forEach(d => {
+                        const data = d.data();
+                        // Only 'due' type OB adds to previous balance, 'advance' does not
+                        if ((data.balanceType ?? 'due') === 'due') {
+                            previousBalance += Number(data.dueAmount ?? data.amount ?? 0);
+                        }
+                    });
+
                 } catch (e) { console.error('Previous balance fetch error:', e); }
             }
             // Fetch previous balance for this customer
             let wpPreviousBalance = 0;
-            const wpCustomerPhone = Order.billingDetails?.phone || Order.userLoginPhone || '';
+            const wpCustomerPhone = (Order.billingDetails?.phone || Order.userLoginPhone || '').toString().trim();
             if (currentUser?.companyId && wpCustomerPhone) {
                 try {
                     const { getDocs, collection, query, where } = await import('firebase/firestore');
+
+                    // 1. Due from other Orders
                     const salesRef = collection(db, 'companies', currentUser.companyId, 'Orders');
                     const snap = await getDocs(query(
                         salesRef,
@@ -1046,6 +1065,20 @@ const OrdersPage: React.FC = () => {
                             wpPreviousBalance += due;
                         }
                     });
+
+                    // 2. Due from openingBalances (same party phone)
+                    const obRef = collection(db, 'companies', currentUser.companyId, 'openingBalances');
+                    const obSnap = await getDocs(query(
+                        obRef,
+                        where('partyNumber', '==', wpCustomerPhone)
+                    ));
+                    obSnap.forEach(d => {
+                        const data = d.data();
+                        if ((data.balanceType ?? 'due') === 'due') {
+                            wpPreviousBalance += Number(data.dueAmount ?? data.amount ?? 0);
+                        }
+                    });
+
                 } catch (e) { console.error('Previous balance fetch error:', e); }
             }
             const rawBillData = {

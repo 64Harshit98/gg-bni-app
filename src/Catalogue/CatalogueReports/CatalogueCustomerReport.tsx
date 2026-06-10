@@ -56,20 +56,21 @@ const CatalogueCustomerReport: React.FC = () => {
       : Infinity;
 
     return sales.filter(
-      (s) => s.createdAt.getTime() >= start && s.createdAt.getTime() <= end,
+      (s) => (s.createdAt.getTime() >= start && s.createdAt.getTime() <= end),
     );
   }, [sales, appliedFilters]);
 
-const [searchQuery, setSearchQuery] = useState('');
-const [showSearch, setShowSearch] = useState(false);
-const [customerCreditMap, setCustomerCreditMap] = useState<Record<string, number>>({});
-const [sortConfig, setSortConfig] = useState<{
-  key: keyof CustomerRowWithCredit;
-  direction: 'asc' | 'desc';
-}>({
-  key: 'totalSales',
-  direction: 'desc',
-});
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
+  const [customerCreditMap, setCustomerCreditMap] = useState<Record<string, number>>({});
+  const [obAdvanceMap, setObAdvanceMap] = useState<Record<string, number>>({});
+  const [sortConfig, setSortConfig] = useState<{
+    key: keyof CustomerRowWithCredit;
+    direction: 'asc' | 'desc';
+  }>({
+    key: 'totalSales',
+    direction: 'desc',
+  });
 
   useEffect(() => {
     if (!currentUser?.companyId) {
@@ -98,6 +99,40 @@ const [sortConfig, setSortConfig] = useState<{
 
     return unsubscribe;
   }, [currentUser?.companyId]);
+  useEffect(() => {
+    if (!currentUser?.companyId) {
+      setObAdvanceMap({});
+      return;
+    }
+
+    const obRef = collection(db, 'companies', currentUser.companyId, 'openingBalances');
+    const unsubscribe = onSnapshot(
+      query(obRef),
+      (snapshot) => {
+        const nextMap: Record<string, number> = {};
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() as Record<string, unknown>;
+          if ((data.balanceType ?? 'advance') !== 'advance') return;
+          if (data.source !== 'catalogue') return;  // ← ADD THIS
+
+          const amount = Number(data.amount ?? 0);
+          const numberKey = String(data.partyNumber || '').trim();
+          const nameKey = String(data.partyName || '').trim().toLowerCase();
+
+          if (numberKey) {
+            nextMap[`num:${numberKey}`] = (nextMap[`num:${numberKey}`] || 0) + amount;
+          }
+          if (nameKey) {
+            nextMap[`name:${nameKey}`] = (nextMap[`name:${nameKey}`] || 0) + amount;
+          }
+        });
+        setObAdvanceMap(nextMap);
+      },
+      () => setObAdvanceMap({}),
+    );
+
+    return unsubscribe;
+  }, [currentUser?.companyId]);
 
   /* ---------- CUSTOMER AGGREGATION ---------- */
   const customerRows: CustomerRowWithCredit[] = useMemo(() => {
@@ -119,21 +154,31 @@ const [sortConfig, setSortConfig] = useState<{
       }
 
       const row = map.get(key)!;
-      row.totalBills += 1;
-      row.totalSales += sale.totalAmount;
+      if (!(sale as any).isOpeningBalance) {
+        row.totalBills += 1;
+        row.totalSales += sale.totalAmount;
+      }
 
       const due = sale.dueAmount || 0;
 
       if (due > 0) {
         row.totalDue += due;
       }
+
     });
 
     let result = Array.from(map.values());
     result = result.map((row) => {
       const byNumber = customerCreditMap[`num:${row.customerNumber}`];
       const byName = customerCreditMap[`name:${row.customerName.toLowerCase()}`];
-      const creditNote = byNumber ?? byName ?? 0;
+      const creditFromCustomers = byNumber ?? byName ?? 0;
+
+      // Also add any advance-type opening balances for this customer
+      const obByNumber = obAdvanceMap[`num:${row.customerNumber}`];
+      const obByName = obAdvanceMap[`name:${row.customerName.toLowerCase()}`];
+      const creditFromOB = obByNumber ?? obByName ?? 0;
+
+      const creditNote = creditFromCustomers + creditFromOB;
       return { ...row, creditNote: Math.max(0, Number(creditNote || 0)) };
     });
 
@@ -166,25 +211,24 @@ const [sortConfig, setSortConfig] = useState<{
     });
 
     return result;
-  }, [filteredSales, searchQuery, customerCreditMap, sortConfig]);
+  }, [filteredSales, searchQuery, customerCreditMap, obAdvanceMap, sortConfig]);
 
   /* ---------- SUMMARY METRICS ---------- */
   const metrics = useMemo(() => {
     const totalCustomers = customerRows.length;
 
-    const totalBills = customerRows.reduce(
-      (sum, c) => sum + c.totalBills,
-      0
-    );
+    const totalBills = filteredSales.filter(
+      (s) => !(s as any).isOpeningBalance
+    ).length;
 
     const totalDue = customerRows.reduce(
       (sum, c) => sum + Math.max(0, c.totalDue),
       0
     );
 
-    const totalSales = customerRows.reduce(
-      (sum, c) => sum + c.totalSales,
-      0
+    const totalSales = filteredSales.reduce(
+      (sum, s) => (s as any).isOpeningBalance ? sum : sum + s.totalAmount,
+      0,
     );
 
     const averageSalePerCustomer =
@@ -197,7 +241,7 @@ const [sortConfig, setSortConfig] = useState<{
       totalSales,
       averageSalePerCustomer,
     };
-  }, [customerRows]);
+  }, [customerRows, filteredSales]);
 
   const handleApplyFilters = () => {
     const start = new Date(startDate);

@@ -3,7 +3,7 @@ import { useAuth } from '../../context/auth-context';
 import { useState, useEffect } from 'react';
 import { State } from '../../enums';
 import { formatDateForInput } from '../../Pages/Reports/SalesReportComponents/salesReport.utils';
-import { collection, onSnapshot, query, Timestamp } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 import { type Sale } from '../../Pages/Reports/CustomerReportComponents/customerReport.utils';
 
@@ -52,45 +52,46 @@ export default function useCustomerReport() {
       return;
     }
 
-    const salesRef = collection(
-      db,
-      'companies',
-      currentUser.companyId,
-      'Orders',
-    );
+    const ordersRef = collection(db, 'companies', currentUser.companyId, 'Orders');
+    const obRef = collection(db, 'companies', currentUser.companyId, 'openingBalances');
 
-    const q = query(salesRef);
+    const q = query(ordersRef, where('status', '!=', 'Upcoming'));
+    const obQ = query(obRef);
 
-    const unsubscribe = onSnapshot(
+    const unsubscribeSales = onSnapshot(
       q,
       (snapshot) => {
-        setSales(
-          snapshot.docs
-            .map((doc) => {
-              const data = doc.data();
-              const totalAmount = Number(data.totalAmount || 0);
-              const paidAmount = Number(data.paidAmount || 0);
-
-              const isValidOrder = data.status !== 'Upcoming';
-
-              return {
-                id: doc.id,
-                partyName: data.userName || data.billingDetails?.name || 'N/A',
-                partyNumber: data.userLoginPhone || data.billingDetails?.phone
-                  ? String(data.userLoginPhone || data.billingDetails?.phone)
-                  : 'N/A',
-                totalAmount,
-                paidAmount,
-                dueAmount: totalAmount - paidAmount,
-                createdAt:
-                  data.createdAt instanceof Timestamp
-                    ? data.createdAt.toDate()
-                    : new Date(),
-                isValidOrder,
-              };
-            })
-            .filter((s) => s.isValidOrder)
-        );
+        setSales(prev => {
+          const obEntries = prev.filter((s: any) => s.isOpeningBalance === true);
+          const salesEntries = snapshot.docs.map((doc) => {
+            const data = doc.data();
+            const total = Number(data.totalAmount || 0);
+            const paid = Number(data.paidAmount || 0);
+            return {
+              id: doc.id,
+              partyName:
+                data.userName ||
+                data.billingDetails?.name ||
+                data.shippingDetails?.name ||
+                'N/A',
+              partyNumber: (
+                data.userLoginPhone ||
+                data.billingDetails?.phone ||
+                data.shippingDetails?.phone ||
+                'N/A'
+              ).toString(),
+              totalAmount: total,
+              dueAmount: Math.max(0, total - paid),
+              creditNoteAmount: 0,
+              createdAt:
+                data.createdAt instanceof Timestamp
+                  ? data.createdAt.toDate()
+                  : new Date(),
+              isOpeningBalance: false,
+            };
+          });
+          return [...salesEntries, ...obEntries];
+        });
         setLoading(false);
       },
       () => {
@@ -99,7 +100,44 @@ export default function useCustomerReport() {
       },
     );
 
-    return unsubscribe;
+    const unsubscribeOB = onSnapshot(
+  obQ,
+  (snapshot) => {
+    setSales(prev => {
+      const salesEntries = prev.filter((s: any) => s.isOpeningBalance !== true);
+      const obEntries = snapshot.docs
+        .filter(doc => {
+          const data = doc.data();
+          return (data.balanceType ?? 'due') === 'due' 
+            && data.partyType === 'Customer'
+            && data.source === 'catalogue';  // ← ADD THIS
+        })
+            .map(doc => {
+              const data = doc.data();
+              return {
+                id: doc.id,
+                partyName: data.partyName || 'N/A',
+                partyNumber: data.partyNumber || 'N/A',
+                totalAmount: Number(data.amount || 0),
+                dueAmount: Number(data.dueAmount ?? data.amount ?? 0),
+                creditNoteAmount: 0,
+                createdAt:
+                  data.createdAt instanceof Timestamp
+                    ? data.createdAt.toDate()
+                    : new Date(),
+                isOpeningBalance: true,
+              };
+            });
+          return [...salesEntries, ...obEntries];
+        });
+      },
+      () => { }
+    );
+
+    return () => {
+      unsubscribeSales();
+      unsubscribeOB();
+    };
   }, [currentUser?.companyId]);
 
   return {

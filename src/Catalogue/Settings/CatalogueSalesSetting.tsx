@@ -258,6 +258,14 @@ const CatalogueSalesSettings: React.FC = () => {
                 tooltip="Hide Out Of Stock Items from Customers."
               />
             </div>
+            <ToggleRow
+              id="enable-out-of-stock-notification"
+              label="Enable 'Notify Me' Button"
+              description="Show a 'Notify Me' button on out-of-stock products so customers can request restock alerts."
+              checked={settings.enableOutOfStockNotification ?? false}
+              onChange={(checked) => handleCheckboxChange('enableOutOfStockNotification', checked)}
+              tooltip="When enabled, customers will see a 'Notify Me' button instead of 'Add to Cart' for out-of-stock items. Their requests appear in the Pre-Order Requests page."
+            />
 
             <ToggleRow
               id="hide-price"

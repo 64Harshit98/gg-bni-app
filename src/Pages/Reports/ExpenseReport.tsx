@@ -115,7 +115,7 @@ const ExpenseReportPage: React.FC = () => {
             doc.text(`Generated: ${formatDate(Date.now())}   |   Period: ${formatDate(appliedFilters.start)} to ${formatDate(appliedFilters.end)}`, 14, 31);
             autoTable(doc, {
                 startY: 38,
-                head: [['DATE', 'TITLE', 'DESCRIPTION', 'AMOUNT (₹)']],
+                head: [['DATE', 'TITLE', 'DESCRIPTION', 'AMOUNT(Rs)']],
                 body: filtered.map(e => [formatDate(e.date), e.title, e.description, e.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })]),
                 foot: [['TOTAL', '', '', summary.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })]],
                 theme: 'plain',
@@ -123,7 +123,7 @@ const ExpenseReportPage: React.FC = () => {
                 headStyles: { fillColor: [249, 250, 251], textColor: [17, 24, 39], fontStyle: 'bold', lineWidth: { top: 1, bottom: 1 }, lineColor: [229, 231, 235] },
                 footStyles: { fillColor: [255, 255, 255], textColor: [17, 24, 39], fontStyle: 'bold', lineWidth: { top: 1, bottom: 2 }, lineColor: [17, 24, 39] },
                 alternateRowStyles: { fillColor: [252, 252, 252] },
-                columnStyles: { 0: { cellWidth: 35 }, 1: { cellWidth: 30 }, 2: { cellWidth: 'auto' }, 3: { halign: 'right', cellWidth: 35 } },
+                columnStyles: { 0: { cellWidth: 35 }, 1: { cellWidth: 30 }, 2: { cellWidth: 'auto' }, 3: { halign: 'right', cellWidth: 42 } },
                 didDrawPage: () => {
                     doc.setFontSize(9); doc.setTextColor(156, 163, 175);
                     doc.text(`Page ${doc.getNumberOfPages()}`, pw - 14, ph - 10, { align: 'right' });

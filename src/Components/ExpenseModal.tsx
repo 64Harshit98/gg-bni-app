@@ -54,7 +54,7 @@ export const ExpenseModal = ({ isOpen, onClose, onSave, theme = 'blue' }: Props)
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+    <div className="fixed inset-0 z-[8000] flex items-center justify-center bg-black/40 px-4">
       <div className="bg-white w-full max-w-sm rounded-sm shadow-xl p-5">
         <h2 className="text-lg font-bold text-gray-800 mb-4">Add Expense</h2>
         {/* Title */}

@@ -146,9 +146,17 @@ export const useOrdersData = (
     const mapDoc = React.useCallback((docSnap: any): Order => {
         const data = docSnap.data();
         const createdAt =
-            data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date();
+            data.createdAt instanceof Timestamp
+                ? data.createdAt.toDate()
+                : data.createdAt
+                    ? new Date(data.createdAt)
+                    : new Date(0); // fallback to epoch, NOT current time
         const updatedAt =
-            data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : createdAt;
+            data.updatedAt instanceof Timestamp
+                ? data.updatedAt.toDate()
+                : data.updatedAt
+                    ? new Date(data.updatedAt)
+                    : createdAt;
         return {
             id: docSnap.id,
             orderId: data.orderId || '',
@@ -207,9 +215,14 @@ export const useOrdersData = (
         const nonUpcomingFromDate = dateOrdersRef.current.filter(
             o => o.status !== 'Upcoming' && !upcomingIds.has(o.id)
         );
-        const merged = [...nonUpcomingFromDate, ...upcomingOrdersRef.current];
+        const filteredUpcoming = upcomingOrdersRef.current.filter(o => {
+            if (!startDate || !endDate) return true;
+            const orderTime = o.createdAt ? new Date(o.createdAt).getTime() : 0;
+            return orderTime >= startDate.getTime() && orderTime <= endDate.getTime();
+        });
+        const merged = [...nonUpcomingFromDate, ...filteredUpcoming];
         setOrders(merged);
-    }, []);
+    }, [startDate, endDate]);
 
     const ordersQuery = useMemo(() => {
         if (!companyId) return null;
@@ -1475,13 +1488,15 @@ const OrdersPage: React.FC = () => {
 
         // Sort: latest first for all tabs
         return result.sort((a, b) => {
-            const aTime = a.updatedAt
-                ? new Date(a.updatedAt).getTime()
-                : new Date(a.createdAt).getTime();
-            const bTime = b.updatedAt
-                ? new Date(b.updatedAt).getTime()
-                : new Date(b.createdAt).getTime();
-            return bTime - aTime;
+            const getTime = (o: Order) => {
+                if (activeStatusTab === 'Upcoming') {
+                    return new Date(o.createdAt).getTime();
+                }
+                return o.updatedAt
+                    ? new Date(o.updatedAt).getTime()
+                    : new Date(o.createdAt).getTime();
+            };
+            return getTime(b) - getTime(a);
         });
 
     }, [Orders, activeStatusTab, paymentFilter, searchQuery]);
@@ -2244,7 +2259,7 @@ const OrdersPage: React.FC = () => {
                 </div>
             </div>
             {activeStatusTab === 'Completed' && (
-                <div className="sticky top-[178px] z-[90] flex p-1 bg-white mx-4 mt-2 rounded-sm shadow-sm border border-slate-200 max-w-md md:mx-auto w-[92%]">
+                <div className=" flex p-1 bg-white mx-4 mt-2 rounded-sm shadow-sm border border-slate-200 max-w-md md:mx-auto w-[92%]">
                     {['unpaid', 'paid'].map((f) => (
                         <button
                             key={f}

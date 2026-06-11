@@ -148,6 +148,7 @@ const HomePageContent: React.FC = () => {
                         // Note: Using o.totalAmount here so even unpaid/upcoming orders show their value. 
                         // If you only want actual cash received, change this back to (o.paidAmount || 0) - (o.refundAmount || 0)
                         // 2. Calculate Total Sales Amount irrespective of status
+                        if (status === 'Upcoming') return;
                         let effectiveAmount = 0;
 
                         if (Array.isArray(o.items) && o.items.length > 0) {

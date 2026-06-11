@@ -732,7 +732,7 @@ const PurchaseReturnPage: React.FC = () => {
 
       await batch.commit();
       setModal({ type: State.SUCCESS, message: 'Purchase Return processed successfully!' });
-      handleClear();
+      setTimeout(() => navigate(ROUTES.JOURNAL), 1500);
     } catch (error: any) {
       console.error('Error processing return:', error);
       if (error.code === 'not-found') {

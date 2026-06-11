@@ -1133,6 +1133,15 @@ const Sales: React.FC = () => {
         // ---------------------------------
 
         if (!(salesSettings as any)?.allowNegativeStock) {
+            // Build a map of quantities already committed in the ORIGINAL invoice
+            const originalQuantities = new Map<string, number>();
+            if (isEditMode && invoiceToEdit?.items) {
+                (invoiceToEdit.items as any[]).forEach((oldItem) => {
+                    const pid = oldItem.productId || oldItem.id;
+                    const oldQty = oldItem.quantity || 1;
+                    originalQuantities.set(pid, (originalQuantities.get(pid) || 0) + oldQty);
+                });
+            }
             const stockNeeds = new Map<string, number>();
             items.filter(i => i.isEditable).forEach(i => {
                 const pid = i.productId;
@@ -1142,7 +1151,13 @@ const Sales: React.FC = () => {
             const invalidItems: string[] = [];
             stockNeeds.forEach((needed, pid) => {
                 const avail = availableItems.find(a => a.id === pid);
-                if ((avail?.stock ?? 0) < needed) invalidItems.push(`${avail?.name} (Avail:${avail?.stock}, Need:${needed})`);
+                const currentStock = avail?.stock ?? 0;
+                // Add back the original committed quantity — those units are already deducted
+                const alreadyCommitted = originalQuantities.get(pid) || 0;
+                const effectiveAvailable = currentStock + alreadyCommitted;
+                if (effectiveAvailable < needed) {
+                    invalidItems.push(`${avail?.name} (Avail:${effectiveAvailable}, Need:${needed})`);
+                }
             });
             if (invalidItems.length > 0) { setModal({ message: `Insufficient stock: ${invalidItems.join(', ')}`, type: State.ERROR }); return; }
         }

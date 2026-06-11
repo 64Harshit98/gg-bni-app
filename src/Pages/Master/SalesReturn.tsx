@@ -840,7 +840,7 @@ const SalesReturnPage: React.FC = () => {
 
       await batch.commit();
       setModal({ type: State.SUCCESS, message: 'Return processed successfully!' });
-      setTimeout(() => navigate(ROUTES.SALES), 1500);
+      setTimeout(() => navigate(ROUTES.JOURNAL), 1500);
     } catch (err: any) {
       console.error(err);
       setModal({ type: State.ERROR, message: `Failed: ${err.message}` });

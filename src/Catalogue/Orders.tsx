@@ -2259,7 +2259,7 @@ const OrdersPage: React.FC = () => {
                 </div>
             </div>
             {activeStatusTab === 'Completed' && (
-                <div className=" flex p-1 bg-white mx-4 mt-2 rounded-sm shadow-sm border border-slate-200 max-w-md md:mx-auto w-[92%]">
+                <div className="sticky top-[248px] z-[90] flex p-1 bg-white mx-4 mt-2 rounded-sm shadow-sm border border-slate-200 max-w-md md:mx-auto w-[92%]">
                     {['unpaid', 'paid'].map((f) => (
                         <button
                             key={f}

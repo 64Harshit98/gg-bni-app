@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { ChevronLeft, Trash2, Check, ChevronUp, X } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Footer from './Footer';
-import { doc, getDoc, serverTimestamp, collection, onSnapshot, query, where, increment, runTransaction, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, collection, onSnapshot, query, where, increment, runTransaction, getDocs } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 import { FiPackage } from 'react-icons/fi';
 import LeadPopUp from './PopUp';
@@ -176,6 +176,58 @@ const CartPage: React.FC = () => {
     const [leadStatus, setLeadStatus] = useState<"approved" | "pending" | "declined" | null>(null);
     const [approvalError, setApprovalError] = useState<string | null>(null);
     const [specialInstruction, setSpecialInstruction] = useState("");
+
+    const syncToUpcoming = async (updatedCart: CartItem[]) => {
+        if (!effectiveCompanyId || updatedCart.length === 0) return;
+
+        const leadSubmittedCheck = localStorage.getItem("leadSubmitted") === "true";
+        if (!leadSubmittedCheck) return;
+
+        try {
+            const userKey = localStorage.getItem("upcoming_user_key");
+            if (!userKey) return;
+
+            const orderRef = doc(
+                db,
+                "companies",
+                effectiveCompanyId,
+                "Orders",
+                `upcoming_${userKey}`
+            );
+
+            const snap = await getDoc(orderRef);
+            if (!snap.exists()) return;
+
+            const itemsForFirebase = updatedCart.map(item => ({
+                id: String(item.id),
+                docId: String(item.id),
+                name: item.name,
+                quantity: item.quantity,
+                mrp: item.mrp,
+                salesPrice: item.salesPrice,
+                unit: item.unit,
+                unitMultiplier: item.unitMultiplier || 1,
+                finalPrice: item.salesPrice * item.quantity,
+            }));
+
+            const totalAmount = itemsForFirebase.reduce(
+                (acc, curr) => acc + curr.finalPrice,
+                0
+            );
+
+            await setDoc(
+                orderRef,
+                {
+                    items: itemsForFirebase,
+                    totalAmount,
+                    updatedAt: serverTimestamp(),
+                },
+                { merge: true }
+            );
+        } catch (err) {
+            console.error("CartPage syncToUpcoming error:", err);
+        }
+    };
     useEffect(() => {
         if (movError) {
             window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
@@ -484,6 +536,7 @@ const CartPage: React.FC = () => {
             item: { ...i },
             quantity: i.quantity
         }))));
+        syncToUpcoming(updatedItems);
     };
 
     const removeFromCart = (id: string | number) => {
@@ -493,6 +546,17 @@ const CartPage: React.FC = () => {
             item: { ...i },
             quantity: i.quantity
         }))));
+        if (updatedCart.length === 0) {
+            // If cart is now empty, wipe the upcoming doc's items too
+            const userKey = localStorage.getItem("upcoming_user_key");
+            if (userKey && effectiveCompanyId) {
+                const orderRef = doc(db, "companies", effectiveCompanyId, "Orders", `upcoming_${userKey}`);
+                setDoc(orderRef, { items: [], totalAmount: 0, updatedAt: serverTimestamp() }, { merge: true })
+                    .catch(err => console.error("Empty cart sync error:", err));
+            }
+        } else {
+            syncToUpcoming(updatedCart);
+        }
     };
 
     useEffect(() => {

@@ -101,6 +101,7 @@ const SharedCataloguePage: React.FC = () => {
     const [isSortOpen, setIsSortOpen] = useState(false);
     const [isSearchSticky, setIsSearchSticky] = useState(false);
     const [catalogueSettings, setCatalogueSettings] = useState<CatalogueSalesSettings | null>(null);
+    const hidePriceEnabled = catalogueSettings?.hidePrice === true;
     const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
     const [timedPopupOpen, setTimedPopupOpen] = useState(false);
     const [personalizationItem, setPersonalizationItem] = useState<Item | null>(null);
@@ -389,6 +390,7 @@ const SharedCataloguePage: React.FC = () => {
                 companyId={effectiveCompanyId}
                 companyName={companyName}
                 autoPopup={false}
+                detailsOnly={!catalogueSettings?.requireApproval}
                 forceOpen={forceLeadOpen || (catalogueSettings?.requireApproval ? timedPopupOpen : false)}
                 onLeadSubmit={() => {
                     setTimedPopupOpen(false);
@@ -653,9 +655,11 @@ const SharedCataloguePage: React.FC = () => {
                             <span className="text-[12px] font-bold uppercase tracking-wide">
                                 {cartCount} Item{cartCount > 1 ? 's' : ''}
                             </span>
-                            <span className="text-[15px] font-bold">
-                                ₹{cartTotal.toFixed(2)}
-                            </span>
+                            {!hidePriceEnabled && !catalogueSettings?.requireApproval && (
+                                <span className="text-[15px] font-bold">
+                                    ₹{cartTotal.toFixed(2)}
+                                </span>
+                            )}
                         </div>
 
 
@@ -712,7 +716,7 @@ const SharedCataloguePage: React.FC = () => {
                             disabled={!personalizationText.trim()}
                             onClick={() => handlePersonalizationSubmit(personalizationItem, personalizationText)}
                             className={`w-full py-3 rounded-sm text-[12px] font-black uppercase tracking-widest transition-all ${personalizationText.trim()
-                                ? 'bg-[#1A3B5D] text-white active:scale-95'
+                                ? 'bg-[#F97316] text-white active:scale-95'
                                 : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                                 }`}
                         >

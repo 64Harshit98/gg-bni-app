@@ -19,6 +19,9 @@ import { usePurchaseSettings } from '../../context/SettingsContext';
 import { GenericCartList } from '../../Components/CartItem';
 import { GenericBillFooter } from '../../Components/Footer';
 import { IconScanCircle } from '../../constants/Icons';
+import { useSmartScanner } from '../../Pages/hooks/SmartScanner';
+import { FiFileText, FiMaximize } from 'react-icons/fi'; // Add to existing react-icons
+import Fuse from 'fuse.js';
 
 // Removes all undefined values from an object before sending to Firestore
 const sanitizeForFirestore = <T extends Record<string, any>>(obj: T): T => {
@@ -100,7 +103,8 @@ const PurchasePage: React.FC = () => {
       return [];
     }
   });
-
+  const { fileInputRef, isScanning, scannedData, setScannedData, processFile, clearScannedData } = useSmartScanner();
+  const [showScannerModal, setShowScannerModal] = useState(false);
   const [availableItems, setAvailableItems] = useState<Item[]>([]);
   const [pageIsLoading, setPageIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -888,6 +892,83 @@ const PurchasePage: React.FC = () => {
     }, 1500);
   };
 
+  const handleApplySmartScan = () => {
+    if (scannedData) {
+      // We intentionally DO NOT update setInvoiceNumber or setInvoiceDate here anymore.
+      // The scanner acts strictly as an item importer.
+
+      if (scannedData.items && scannedData.items.length > 0) {
+
+        const fuse = new Fuse(availableItems, {
+          keys: ['name', 'barcode'],
+          threshold: 0.4,
+          distance: 100
+        });
+
+        const newCartItems = scannedData.items.map(ocrItem => {
+          const ocrNetPrice = ocrItem.purchasePrice * (1 - (ocrItem.discountPercentage / 100));
+          const roundedOcrNetPrice = Math.round(ocrNetPrice * 100) / 100;
+
+          const searchResults = fuse.search(ocrItem.name);
+
+          // LINKED ITEM (Found in DB)
+          if (searchResults.length > 0) {
+            const dbItem = searchResults[0].item;
+            const finalDiscount = ocrItem.discountPercentage || (dbItem as any).purchasediscount || 0;
+            const finalMrp = dbItem.mrp || ocrItem.purchasePrice;
+
+            const finalDbNetPrice = finalMrp * (1 - (finalDiscount / 100));
+            const roundedDbNetPrice = Math.round(finalDbNetPrice * 100) / 100;
+
+            return {
+              id: crypto.randomUUID(),
+              productId: dbItem.id,
+              name: dbItem.name,
+              unit: dbItem.unit || ocrItem.unit,
+              purchasePrice: roundedDbNetPrice,
+              originalPurchasePrice: dbItem.purchasePrice,
+              mrp: finalMrp,
+              barcode: dbItem.barcode || '',
+              quantity: ocrItem.quantity || 1,
+              unitMultiplier: 1,
+              discount: finalDiscount,
+              purchasediscount: finalDiscount,
+              taxRate: dbItem.tax || dbItem.taxRate || 0,
+              stock: dbItem.stock || 0,
+              isEditable: true
+            };
+          }
+
+          // UNLINKED ITEM (Not in DB)
+          return {
+            id: crypto.randomUUID(),
+            productId: crypto.randomUUID(),
+            name: `⚠️ ${ocrItem.name} (Not in DB)`,
+            unit: ocrItem.unit,
+            purchasePrice: roundedOcrNetPrice,
+            originalPurchasePrice: ocrItem.purchasePrice,
+            mrp: ocrItem.purchasePrice,
+            barcode: '',
+            quantity: ocrItem.quantity,
+            unitMultiplier: 1,
+            discount: ocrItem.discountPercentage,
+            purchasediscount: ocrItem.discountPercentage,
+            taxRate: 0,
+            stock: 0,
+            isEditable: true
+          };
+        });
+
+        // Append items to cart
+        setItems(prev => [...prev, ...newCartItems]);
+      }
+
+      clearScannedData();
+      setModal({ message: 'Items linked and applied successfully!', type: State.SUCCESS });
+      setTimeout(() => setModal(null), 1500);
+    }
+  };
+
   const handleBarcodeScanned = (barcode: string) => {
     setIsScannerOpen(false);
     const itemToAdd = availableItems.find(item => item.barcode === barcode);
@@ -995,6 +1076,8 @@ const PurchasePage: React.FC = () => {
   const displayTaxTotal = showTaxToggle && billTaxType !== 'none';
   const isCardView = purchaseSettings?.purchaseViewType === 'card';
   const isCardImageView = isCardView && (purchaseSettings?.cardViewWithPhoto !== false);
+  // Checks if any item in the current cart has the unlinked warning flag
+  const hasUnlinkedItems = items.some(item => item.name.includes('(Not in DB)'));
 
   const renderTaxToggle = () => {
     return (
@@ -1701,7 +1784,7 @@ const PurchasePage: React.FC = () => {
                 taxLabel="Total Tax"
                 actionLabel={isEditMode ? 'Update' : 'Pay Now'}
                 onActionClick={handleProceedToPayment}
-                disableAction={items.length === 0}
+                disableAction={items.length === 0 || hasUnlinkedItems}
               >
                 {showTaxToggle && renderTaxToggle()}
               </GenericBillFooter>
@@ -1722,7 +1805,7 @@ const PurchasePage: React.FC = () => {
               taxLabel="Total Tax"
               actionLabel={isEditMode ? 'Update' : 'Pay Now'}
               onActionClick={handleProceedToPayment}
-              disableAction={items.length === 0}
+              disableAction={items.length === 0 || hasUnlinkedItems}
             >
               {showTaxToggle && renderTaxToggle()}
             </GenericBillFooter>
@@ -1759,6 +1842,66 @@ const PurchasePage: React.FC = () => {
   // --- LIST VIEW (Desktop Split / Mobile Stack) ---
   return (
     <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden">
+      {/* SMART SCAN VERIFICATION MODAL */}
+      {scannedData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm bg-black/40">
+          <div className="bg-white p-4 rounded-sm shadow-xl w-full max-w-md mx-4">
+            <h3 className="text-lg font-bold text-gray-800 border-b pb-2 mb-4 flex items-center gap-2">
+              <FiFileText className="text-blue-600" /> Verify Extracted Items
+            </h3>
+            <div className="space-y-4">
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Total Amount Found</label>
+                <input
+                  type="text"
+                  value={scannedData.amount}
+                  onChange={(e) => setScannedData({ ...scannedData, amount: e.target.value })}
+                  className="w-full border border-gray-300 rounded-sm px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+
+              {/* --- ITEM LIST PREVIEW --- */}
+              {scannedData.items && scannedData.items.length > 0 ? (
+                <div className="mt-4 border-t pt-4">
+                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-2">
+                    Items Found ({scannedData.items.length})
+                  </label>
+                  <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-sm divide-y divide-gray-100">
+                    {scannedData.items.map((item, idx) => (
+                      <div key={idx} className="p-2 text-xs flex justify-between items-center bg-gray-50">
+                        <span className="font-medium text-gray-800 truncate pr-2 w-3/5" title={item.name}>
+                          {item.name}
+                        </span>
+                        <span className="text-gray-500 w-1/5 text-right">
+                          {item.quantity} {item.unit}
+                        </span>
+                        <span className="text-blue-600 font-semibold w-1/5 text-right">
+                          ₹{item.purchasePrice}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[9px] text-gray-400 mt-1">
+                    These items will be matched with your inventory when applied.
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-4 border-t pt-4 text-center">
+                  <p className="text-xs text-orange-600 font-medium bg-orange-50 p-2 rounded-sm border border-orange-100">
+                    ⚠️ No items could be automatically extracted from this format.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
+              <CustomButton variant={Variant.Outline} onClick={clearScannedData}>Cancel</CustomButton>
+              <CustomButton variant={Variant.Filled} onClick={handleApplySmartScan}>Apply Items to Bill</CustomButton>
+            </div>
+          </div>
+        </div>
+      )}
       {modal && (
         <Modal
           message={modal.message}
@@ -1786,6 +1929,82 @@ const PurchasePage: React.FC = () => {
           </div>
         </div>
       )}
+      {/* FULL SCREEN LOADING OVERLAY */}
+      {isScanning && (
+        <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center backdrop-blur-sm bg-white/70">
+          {/* Animated Spinner */}
+          <div className="w-12 h-12 border-4 border-gray-200 border-t-[#ff1894] rounded-full animate-spin mb-4 shadow-sm"></div>
+
+          <h3 className="text-lg font-bold text-gray-800 animate-pulse">
+            Analyzing Document...
+          </h3>
+          <p className="text-sm text-gray-500 mt-2 font-medium">
+            Extracting items, prices, and discounts
+          </p>
+
+          {/* Sellar AI Badge */}
+          <div className="mt-6 flex items-center gap-2 px-3 py-1.5 bg-[#ff1894]/10 rounded-full border border-[#ff1894]/20">
+            {/* Glowing Dot */}
+            <div className="relative flex h-2 w-2">
+              <div className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#ff1894] opacity-75"></div>
+              <div className="relative inline-flex rounded-full h-2 w-2 bg-[#ff1894]"></div>
+            </div>
+
+            <span className="text-[10px] uppercase font-bold tracking-wider text-black">
+              Sellar AI
+            </span>
+          </div>
+        </div>
+      )}
+      {/* CAMERA SELECTION MODAL */}
+      {showScannerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm bg-black/40">
+          <div className="bg-white p-6 rounded-sm shadow-xl w-full max-w-sm mx-4">
+            <h3 className="text-lg font-bold text-gray-800 mb-4 text-center">
+              Choose Action
+            </h3>
+
+            <div className="grid grid-cols-2 gap-4">
+              {/* OPTION 1: SCAN ITEM BARCODE */}
+              <button
+                onClick={() => {
+                  setShowScannerModal(false);
+                }}
+                className="flex flex-col items-center justify-center p-6 border-2 border-gray-100 rounded-sm hover:border-blue-500 hover:bg-blue-50 transition-all group"
+              >
+                <FiMaximize className="text-3xl text-gray-400 group-hover:text-blue-600 mb-3" />
+                <span className="text-sm font-semibold text-gray-700 group-hover:text-blue-700">
+                  Scan Item
+                </span>
+              </button>
+
+              {/* OPTION 2: UPLOAD SMART BILL */}
+              <button
+                onClick={() => {
+                  setShowScannerModal(false);
+                  // This triggers your existing Smart Scanner flow!
+                  fileInputRef.current?.click();
+                }}
+                className="flex flex-col items-center justify-center p-6 border-2 border-gray-100 rounded-sm hover:border-blue-500 hover:bg-blue-50 transition-all group"
+              >
+                <FiFileText className="text-3xl text-gray-400 group-hover:text-blue-600 mb-3" />
+                <span className="text-sm font-semibold text-gray-700 group-hover:text-blue-700">
+                  Upload Bill
+                </span>
+              </button>
+            </div>
+
+            <div className="mt-6 flex justify-center">
+              <button
+                onClick={() => setShowScannerModal(false)}
+                className="text-sm font-medium text-gray-500 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
 
       {renderHeader()}
@@ -1802,9 +2021,22 @@ const PurchasePage: React.FC = () => {
                   onAddItem={(query) => navigate(ROUTES.ITEM_ADD, { state: { prefillName: query } })}
                   itemGroupMap={itemGroupMap} />
               </div>
-              <button onClick={() => setIsScannerOpen(true)} className="p-3 bg-gray-700 text-white rounded-md font-semibold transition hover:bg-gray-800" title="Scan Barcode">
-                <IconScanCircle width={20} height={20} />
+              {/* Change your existing camera button's onClick to this: */}
+              <button
+                onClick={() => setShowScannerModal(true)}
+                className="p-3 bg-gray-700 text-white rounded-md font-semibold transition hover:bg-gray-800"
+              >
+                <FiCamera size={20} />
               </button>
+
+              {/* Keep your hidden file input exactly where it is! */}
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                ref={fileInputRef}
+                onChange={processFile}
+                className="hidden"
+              />
             </div>
           </div>
 
@@ -1855,7 +2087,7 @@ const PurchasePage: React.FC = () => {
               taxLabel="Total Tax"
               actionLabel={isEditMode ? 'Update' : 'Pay Now'}
               onActionClick={handleProceedToPayment}
-              disableAction={items.length === 0}
+              disableAction={items.length === 0 || hasUnlinkedItems}
             >
               {showTaxToggle && renderTaxToggle()}
             </GenericBillFooter>
@@ -1879,7 +2111,7 @@ const PurchasePage: React.FC = () => {
               taxLabel="Total Tax"
               actionLabel={isEditMode ? 'Update' : 'Pay Now'}
               onActionClick={handleProceedToPayment}
-              disableAction={items.length === 0}
+              disableAction={items.length === 0 || hasUnlinkedItems}
             >
               {showTaxToggle && renderTaxToggle()}
             </GenericBillFooter>
@@ -1910,7 +2142,13 @@ const PurchasePage: React.FC = () => {
         onClose={handleCloseEditDrawer}
         onSaveSuccess={handleSaveSuccess}
       />
-
+      {hasUnlinkedItems && (
+        <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded-sm">
+          <p className="text-xs text-red-600 font-medium text-center leading-tight">
+            ⚠️ Cannot save bill. Please remove unlinked items or add them to your inventory.
+          </p>
+        </div>
+      )}
       {showPrintQrModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm bg-black/20">
           <div className="bg-white p-6 rounded-sm shadow-xl w-full max-w-sm mx-4">

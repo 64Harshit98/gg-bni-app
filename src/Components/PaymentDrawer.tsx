@@ -87,8 +87,12 @@ interface PaymentDrawerProps {
     enableCustomerDetails?: boolean;
     initialPartyAddress?: string;
     initialPartyGST?: string;
-    initialPlaceOfSupply?: string;  // <-- ADD THIS
+    initialPlaceOfSupply?: string;
     initialShippingState?: string;
+    taxMode?: 'inclusive' | 'exclusive' | 'exempt';
+    onTaxModeChange?: (mode: 'inclusive' | 'exclusive' | 'exempt') => void;
+    isTaxToggleLocked?: boolean;
+    totalMrp?: number;
 }
 
 const SESSION_STORAGE_NAME_KEY = 'sessionPartyName';
@@ -113,11 +117,9 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     isOpen,
     onClose,
     mode = 'sale',
-    subtotal,
     billTotal,
     originalBillTotal,
     totalTax = 0,
-    totalQuantity = 0,
     totalItemDiscount = 0,
     onPaymentComplete,
     initialPartyName,
@@ -141,6 +143,10 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     initialPartyGST,
     initialPlaceOfSupply,
     initialShippingState,
+    taxMode = 'exclusive',
+    onTaxModeChange,
+    isTaxToggleLocked = false,
+    totalMrp = 0,
 }) => {
     const { currentUser } = useAuth();
 
@@ -640,10 +646,9 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
 
             {modal && <div className="absolute z-[10000]"><Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} /></div>}
 
-            <div className="relative w-full max-w-lg bg-gray-50 rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[90dvh] flex flex-col transform transition-transform duration-300 ease-out animate-slide-up" onClick={(e) => e.stopPropagation()}>
-
+            <div className="relative w-full max-w-lg md:max-w-3xl bg-gray-50 rounded-t-xs sm:rounded-2xl shadow-2xl max-h-[90dvh] flex flex-col transform transition-transform duration-300 ease-out animate-slide-up" onClick={(e) => e.stopPropagation()}>
                 {/* Header */}
-                <div className="p-3 bg-white rounded-t-2xl border-b border-gray-200 sticky top-0 z-10 flex items-center justify-center shadow-sm">
+                <div className="p-3 bg-white rounded-t-xs border-b border-gray-200 sticky top-0 z-10 flex items-center justify-center shadow-sm">
                     <div className="w-10 h-1 bg-gray-300 rounded-full absolute top-2"></div>
                     <button onClick={onClose} className="absolute left-4 p-1.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors">
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
@@ -651,159 +656,144 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                     <h2 className="text-lg font-semibold text-gray-800 mt-2">Payment Details</h2>
                 </div>
 
-                <div className="flex-1 overflow-y-auto overscroll-y-contain bg-white">
-                    {/* Party Info Section */}
+                {/* MIDDLE SECTION: Stacked on Mobile, Side-by-Side on Desktop */}
+                <div className="flex-1 overflow-y-auto md:overflow-hidden bg-white flex flex-col md:flex-row">
+
+                    {/* LEFT COLUMN: Customer Info & Balances */}
                     {enableCustomerDetails && (
-                        <div className="p-4 space-y-2">
+                        <div className="md:w-1/2 flex flex-col border-b md:border-b-0 md:border-r border-gray-200 bg-white">
 
-                            {/* NORMAL MODE: Header & Shipping Toggles */}
-                            {!isCalculator && (
-                                <div className="flex justify-between items-center mb-2">
-                                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">{partyLabel} Info</h3>
-                                    {isSale && enableShippingDetails && (
-                                        <div className="flex bg-gray-200 rounded-md p-1 shadow-inner">
-                                            <button onClick={() => setAddressType('billing')} className={`text-xs px-4 py-1.5 rounded font-semibold transition-all ${addressType === 'billing' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Billing</button>
-                                            <button onClick={() => setAddressType('shipping')} className={`text-xs px-4 py-1.5 rounded font-semibold transition-all ${addressType === 'shipping' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Shipping</button>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* NORMAL MODE: Same as Billing Checkbox */}
-                            {!isCalculator && isSale && enableShippingDetails && addressType === 'shipping' && (
-                                <div className="flex items-center justify-end mb-3 animate-in fade-in slide-in-from-top-1">
-                                    <label className="flex items-center gap-2 cursor-pointer bg-blue-50 px-3 py-1.5 rounded-md border border-blue-100">
-                                        <input type="checkbox" checked={isSameAsBilling} onChange={(e) => { const isChecked = e.target.checked; setIsSameAsBilling(isChecked); if (!isChecked) { setShippingName(''); setShippingNumber(''); setShippingAddress(''); setShippingGST(''); } }} className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer" />
-                                        <span className="text-xs font-semibold text-blue-800">Same as Billing Details</span>
-                                    </label>
-                                </div>
-                            )}
-
-                            {/* NAME AND NUMBER INPUTS (Will always render if enableCustomerDetails is true) */}
-                            <div className="grid grid-cols-2 gap-4 relative animate-in fade-in slide-in-from-top-2">
-                                {/* NUMBER INPUT */}
-                                <div className="relative">
-                                    <input
-                                        type="tel"
-                                        maxLength={10}
-                                        placeholder={requireCustomerMobile ? "Phone Number *" : "Phone Number"}
-                                        value={addressType === 'billing' ? partyNumber : shippingNumber}
-                                        onChange={(e) => {
-                                            const val = e.target.value.replace(/\D/g, '').slice(0, 10);
-
-                                            if (addressType === 'billing') {
-                                                handleInputChange(val, 'number');
-                                            } else {
-                                                setShippingNumber(val);
-                                                setIsSameAsBilling(false);
-                                            }
-                                        }}
-                                        onFocus={() => { if (isSale && addressType === 'billing' && partyNumber.length >= 3) searchParty(partyNumber, 'number'); }}
-                                        className={`w-full bg-gray-50 p-3 text-sm rounded-xs border ${requireCustomerMobile && !partyNumber && addressType === 'billing' ? 'border-red-300 focus:border-red-500' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none`}
-                                        autoComplete="off"
-                                    />
-                                    {requireCustomerMobile && addressType === 'billing' && <span className="absolute right-3 top-3 text-red-500 font-bold">*</span>}
-                                    {isSale && addressType === 'billing' && renderSuggestions()}
-                                </div>
-
-                                {/* NAME INPUT */}
-                                <div className="relative">
-                                    <input
-                                        type="text"
-                                        placeholder={requireCustomerName ? `${partyLabel} Name *` : `${partyLabel} Name`}
-                                        value={addressType === 'billing' ? partyName : shippingName}
-                                        onChange={(e) => {
-                                            if (addressType === 'billing') { handleInputChange(e.target.value, 'name'); }
-                                            else { setShippingName(e.target.value); setIsSameAsBilling(false); }
-                                        }}
-                                        onFocus={() => { if (!isSale && addressType === 'billing' && partyName.length >= 3) searchParty(partyName, 'name'); }}
-                                        className={`w-full bg-gray-50 p-3 text-sm rounded-xs border ${requireCustomerName && !partyName && addressType === 'billing' ? '' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none`}
-                                        autoComplete="off"
-                                    />
-                                    {requireCustomerName && addressType === 'billing' && <span className="absolute right-3 top-3 text-red-500 font-bold">*</span>}
-                                    {!isSale && addressType === 'billing' && renderSuggestions()}
-                                </div>
-                            </div>
-
-                            {/* NORMAL MODE: Extra Details Toggles (HIDDEN IN CALCULATOR MODE) */}
-                            {!isCalculator && (
-                                <div className="pt-2 flex flex-col gap-2 w-full">
-                                    <div className="flex items-center justify-between w-full">
-                                        <div onClick={() => setIsDetailsExpanded(!isDetailsExpanded)} className="flex items-center justify-start cursor-pointer text-blue-600 hover:text-blue-700 transition-colors text-xs font-semibold select-none">
-                                            <span>{isDetailsExpanded ? '- Hide' : '+ Add'} GST & Address</span>
-                                        </div>
-                                        {isSale && enableNarration && (
-                                            <div onClick={() => setIsNarrationExpanded(!isNarrationExpanded)} className="flex items-center justify-start cursor-pointer text-gray-500 hover:text-gray-700 transition-colors text-xs font-semibold select-none">
-                                                <span>{isNarrationExpanded ? '- Hide' : '+ Add'} Narration</span>
-                                            </div>
-                                        )}
-                                        {isSale && enableExtraExpense && (
-                                            <div
-                                                onClick={() => setExpenses(prev => [...prev, { id: Date.now(), name: '', amount: '' }])}
-                                                className="flex items-center justify-end cursor-pointer text-orange-600 hover:text-orange-700 transition-colors text-xs font-semibold select-none"
-                                            >
-                                                <span>+ Add Expense</span>
+                            <div className="p-2 md:p-5 space-y-1 md:space-y-3 flex-1 overflow-y-auto">
+                                {/* NORMAL MODE: Header & Shipping Toggles */}
+                                {!isCalculator && (
+                                    <div className="flex justify-between items-center mb-2">
+                                        <h3 className="text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-wider">{partyLabel} Info</h3>
+                                        {isSale && enableShippingDetails && (
+                                            <div className="flex bg-gray-200 rounded-xs p-1 shadow-inner">
+                                                <button onClick={() => setAddressType('billing')} className={`text-[10px] md:text-xs px-3 md:px-4 py-1 md:py-1.5 rounded font-semibold transition-all ${addressType === 'billing' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Billing</button>
+                                                <button onClick={() => setAddressType('shipping')} className={`text-[10px] md:text-xs px-3 md:px-4 py-1 md:py-1.5 rounded font-semibold transition-all ${addressType === 'shipping' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Shipping</button>
                                             </div>
                                         )}
                                     </div>
+                                )}
 
-                                    {isDetailsExpanded && (
-                                        <div className="flex flex-col gap-3 mt-3 animate-in slide-in-from-top-2 fade-in duration-200">
-                                            <input type="text" placeholder="GST Number" maxLength={15} value={addressType === 'billing' ? partyGST : shippingGST} onChange={(e) => { if (addressType === 'billing') { setPartyGST(e.target.value); } else { setShippingGST(e.target.value); setIsSameAsBilling(false); } }} className="w-full p-2.5 text-sm rounded-XS border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none" />
+                                {/* NORMAL MODE: Same as Billing Checkbox */}
+                                {!isCalculator && isSale && enableShippingDetails && addressType === 'shipping' && (
+                                    <div className="flex items-center justify-end mb-2 md:mb-3 animate-in fade-in slide-in-from-top-1">
+                                        <label className="flex items-center gap-1.5 md:gap-2 cursor-pointer bg-blue-50 px-2 md:px-3 py-1 md:py-1.5 rounded-xs border border-blue-100">
+                                            <input type="checkbox" checked={isSameAsBilling} onChange={(e) => { const isChecked = e.target.checked; setIsSameAsBilling(isChecked); if (!isChecked) { setShippingName(''); setShippingNumber(''); setShippingAddress(''); setShippingGST(''); } }} className="w-3.5 h-3.5 md:w-4 md:h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer" />
+                                            <span className="text-[10px] md:text-xs font-semibold text-blue-800">Same as Billing Details</span>
+                                        </label>
+                                    </div>
+                                )}
 
-                                            {/* NEW LAYOUT: Address taking 2/3 width, State taking 1/3 width */}
-                                            <div className="flex gap-2 w-full">
-                                                <input
-                                                    type="text"
-                                                    placeholder="Full Address"
-                                                    value={addressType === 'billing' ? partyAddress : shippingAddress}
-                                                    onChange={(e) => { if (addressType === 'billing') { setPartyAddress(e.target.value); } else { setShippingAddress(e.target.value); setIsSameAsBilling(false); } }}
-                                                    className="flex-1 p-2.5 text-sm rounded-xs border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none"
-                                                />
-                                                <select
-                                                    value={addressType === 'billing' ? partyState : shippingState}
-                                                    onChange={(e) => { if (addressType === 'billing') { setPartyState(e.target.value); } else { setShippingState(e.target.value); setIsSameAsBilling(false); } }}
-                                                    className="w-1/3 p-2.5 text-sm rounded-xs border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none"
-                                                >
-                                                    <option value="">State</option>
-                                                    {INDIAN_STATES.map(state => (
-                                                        <option key={state} value={state}>{state}</option>
-                                                    ))}
-                                                </select>
+                                {/* NAME AND NUMBER INPUTS */}
+                                <div className="grid grid-cols-2 gap-2 md:gap-4 relative animate-in fade-in slide-in-from-top-2">
+                                    {/* NUMBER INPUT */}
+                                    <div className="relative">
+                                        <input
+                                            type="tel"
+                                            maxLength={10}
+                                            placeholder={requireCustomerMobile ? "Phone Number *" : "Phone Number"}
+                                            value={addressType === 'billing' ? partyNumber : shippingNumber}
+                                            onChange={(e) => {
+                                                const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                                                if (addressType === 'billing') { handleInputChange(val, 'number'); }
+                                                else { setShippingNumber(val); setIsSameAsBilling(false); }
+                                            }}
+                                            onFocus={() => { if (isSale && addressType === 'billing' && partyNumber.length >= 3) searchParty(partyNumber, 'number'); }}
+                                            className={`w-full bg-gray-50 p-2 md:p-3 text-xs md:text-sm rounded-xs border ${requireCustomerMobile && !partyNumber && addressType === 'billing' ? 'border-red-300 focus:border-red-500' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none`}
+                                            autoComplete="off"
+                                        />
+                                        {requireCustomerMobile && addressType === 'billing' && <span className="absolute right-2 top-2 md:right-3 md:top-3 text-red-500 font-bold">*</span>}
+                                        {isSale && addressType === 'billing' && renderSuggestions()}
+                                    </div>
+
+                                    {/* NAME INPUT */}
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            placeholder={requireCustomerName ? `${partyLabel} Name *` : `${partyLabel} Name`}
+                                            value={addressType === 'billing' ? partyName : shippingName}
+                                            onChange={(e) => {
+                                                if (addressType === 'billing') { handleInputChange(e.target.value, 'name'); }
+                                                else { setShippingName(e.target.value); setIsSameAsBilling(false); }
+                                            }}
+                                            onFocus={() => { if (!isSale && addressType === 'billing' && partyName.length >= 3) searchParty(partyName, 'name'); }}
+                                            className={`w-full bg-gray-50 p-2 md:p-3 text-xs md:text-sm rounded-xs border ${requireCustomerName && !partyName && addressType === 'billing' ? '' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none`}
+                                            autoComplete="off"
+                                        />
+                                        {requireCustomerName && addressType === 'billing' && <span className="absolute right-2 top-2 md:right-3 md:top-3 text-red-500 font-bold">*</span>}
+                                        {!isSale && addressType === 'billing' && renderSuggestions()}
+                                    </div>
+                                </div>
+
+                                {/* NORMAL MODE: Extra Details Toggles */}
+                                {!isCalculator && (
+                                    <div className="pt-1 md:pt-2 flex flex-col gap-1.5 md:gap-2 w-full">
+                                        <div className="flex items-center justify-between w-full">
+                                            <div onClick={() => setIsDetailsExpanded(!isDetailsExpanded)} className="flex items-center justify-start cursor-pointer text-blue-600 hover:text-blue-700 transition-colors text-[10px] md:text-xs font-semibold select-none">
+                                                <span>{isDetailsExpanded ? '- Hide' : '+ Add'} GST & Address</span>
                                             </div>
-                                        </div>
-                                    )}
-                                    {expenses.length > 0 && (
-                                        <div className="flex flex-col gap-2 mt-3 animate-in slide-in-from-top-2 fade-in duration-200">
-                                            {expenses.map((expense) => (
-                                                <div key={expense.id} className="flex items-center gap-2 p-2 bg-orange-50 rounded-lg border border-orange-100">
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Expense Name (e.g. Freight)"
-                                                        value={expense.name}
-                                                        onChange={(e) => setExpenses(prev => prev.map(ex => ex.id === expense.id ? { ...ex, name: e.target.value } : ex))}
-                                                        className="flex-1 p-2.5 text-sm rounded-lg border border-orange-200 bg-white focus:border-orange-500 outline-none"
-                                                    />
-                                                    <input
-                                                        type="number"
-                                                        placeholder="Amount (₹)"
-                                                        value={expense.amount}
-                                                        onChange={(e) => setExpenses(prev => prev.map(ex => ex.id === expense.id ? { ...ex, amount: parseFloat(e.target.value) || '' } : ex))}
-                                                        className="w-28 p-2.5 text-sm rounded-lg border border-orange-200 bg-white focus:border-orange-500 outline-none"
-                                                    />
-                                                    <button
-                                                        onClick={() => setExpenses(prev => prev.filter(ex => ex.id !== expense.id))}
-                                                        className="p-1.5 rounded-full bg-orange-100 hover:bg-red-100 text-orange-400 hover:text-red-500 transition-colors flex-shrink-0"
-                                                    >
-                                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-                                                    </button>
+                                            {isSale && enableNarration && (
+                                                <div onClick={() => setIsNarrationExpanded(!isNarrationExpanded)} className="flex items-center justify-start cursor-pointer text-gray-500 hover:text-gray-700 transition-colors text-[10px] md:text-xs font-semibold select-none">
+                                                    <span>{isNarrationExpanded ? '- Hide' : '+ Add'} Narration</span>
                                                 </div>
-                                            ))}
+                                            )}
+                                            {isSale && enableExtraExpense && (
+                                                <div onClick={() => setExpenses(prev => [...prev, { id: Date.now(), name: '', amount: '' }])} className="flex items-center justify-end cursor-pointer text-orange-600 hover:text-orange-700 transition-colors text-[10px] md:text-xs font-semibold select-none">
+                                                    <span>+ Add Expense</span>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {isDetailsExpanded && (
+                                            <div className="flex flex-col gap-2 md:gap-3 mt-1.5 md:mt-3 animate-in slide-in-from-top-2 fade-in duration-200">
+                                                <input type="text" placeholder="GST Number" maxLength={15} value={addressType === 'billing' ? partyGST : shippingGST} onChange={(e) => { if (addressType === 'billing') { setPartyGST(e.target.value); } else { setShippingGST(e.target.value); setIsSameAsBilling(false); } }} className="w-full p-2 text-xs md:text-sm rounded-xs border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none" />
+                                                <div className="flex gap-2 w-full">
+                                                    <input type="text" placeholder="Full Address" value={addressType === 'billing' ? partyAddress : shippingAddress} onChange={(e) => { if (addressType === 'billing') { setPartyAddress(e.target.value); } else { setShippingAddress(e.target.value); setIsSameAsBilling(false); } }} className="flex-1 p-2 text-xs md:text-sm rounded-xs border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none" />
+                                                    <select value={addressType === 'billing' ? partyState : shippingState} onChange={(e) => { if (addressType === 'billing') { setPartyState(e.target.value); } else { setShippingState(e.target.value); setIsSameAsBilling(false); } }} className="w-1/3 p-2 text-xs md:text-sm rounded-xs border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none">
+                                                        <option value="">State</option>
+                                                        {INDIAN_STATES.map(state => (<option key={state} value={state}>{state}</option>))}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {expenses.length > 0 && (
+                                            <div className="flex flex-col gap-1.5 md:gap-2 mt-1.5 md:mt-3 animate-in slide-in-from-top-2 fade-in duration-200">
+                                                {expenses.map((expense) => (
+                                                    <div key={expense.id} className="flex items-center gap-1.5 md:gap-2 p-1.5 md:p-2 bg-orange-50 rounded-lg border border-orange-100">
+                                                        <input type="text" placeholder="Expense Name" value={expense.name} onChange={(e) => setExpenses(prev => prev.map(ex => ex.id === expense.id ? { ...ex, name: e.target.value } : ex))} className="flex-1 p-2 text-xs md:text-sm rounded-xs border border-orange-200 bg-white focus:border-orange-500 outline-none" />
+                                                        <input type="number" placeholder="Amt (₹)" value={expense.amount} onChange={(e) => setExpenses(prev => prev.map(ex => ex.id === expense.id ? { ...ex, amount: parseFloat(e.target.value) || '' } : ex))} className="w-20 md:w-28 p-2 text-xs md:text-sm rounded-xs border border-orange-200 bg-white focus:border-orange-500 outline-none" />
+                                                        <button onClick={() => setExpenses(prev => prev.filter(ex => ex.id !== expense.id))} className="p-1 md:p-1.5 rounded-full bg-orange-100 hover:bg-red-100 text-orange-400 hover:text-red-500 transition-colors flex-shrink-0"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {isNarrationExpanded && (
+                                            <div className="mt-1.5 md:mt-2 animate-in slide-in-from-top-2 fade-in duration-200">
+                                                <textarea placeholder="Enter narration or remarks..." value={narration} onChange={(e) => setNarration(e.target.value)} className="w-full p-2 text-xs md:text-sm rounded-xs border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none resize-none" rows={2} />
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Credit/Debit Balances */}
+                            {(partyCredit > 0 || partyDebit > 0) && (
+                                <div className="px-2 md:px-5 pb-2 md:pb-5">
+                                    <h3 className="text-[9px] md:text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5 md:mb-2">Available Balances</h3>
+                                    {partyCredit > 0 && (
+                                        <div className="flex items-center justify-between p-2 md:p-3 bg-green-50 border border-green-100 rounded-xs mb-1.5 md:mb-2">
+                                            <div className="flex flex-col"><span className="text-[10px] md:text-sm font-semibold text-green-800">Credit Note</span><span className="text-[8px] md:text-xs text-green-600">Available: ₹{partyCredit.toFixed(2)}</span></div>
+                                            <label className="flex items-center gap-1.5 md:gap-2 cursor-pointer"><input type="checkbox" checked={useCredit} onChange={(e) => setUseCredit(e.target.checked)} className="w-3.5 h-3.5 md:w-5 md:h-5 text-green-600 rounded focus:ring-green-500 border-gray-300" /><span className="text-[10px] md:text-sm font-medium text-gray-700">Apply</span></label>
                                         </div>
                                     )}
-                                    {isNarrationExpanded && (
-                                        <div className="mt-2 animate-in slide-in-from-top-2 fade-in duration-200">
-                                            <textarea placeholder="Enter narration or remarks..." value={narration} onChange={(e) => setNarration(e.target.value)} className="w-full p-2.5 text-sm rounded-lg border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none resize-none" rows={2} />
+                                    {partyDebit > 0 && (
+                                        <div className="flex items-center justify-between p-2 md:p-3 bg-red-50 border border-red-100 rounded-xs">
+                                            <div className="flex flex-col"><span className="text-[10px] md:text-sm font-semibold text-red-800">Debit Balance</span><span className="text-[8px] md:text-xs text-red-600">Available: ₹{partyDebit.toFixed(2)}</span></div>
+                                            <label className="flex items-center gap-1.5 md:gap-2 cursor-pointer"><input type="checkbox" checked={useDebit} onChange={(e) => setUseDebit(e.target.checked)} className="w-3.5 h-3.5 md:w-5 md:h-5 text-red-600 rounded focus:ring-red-500 border-gray-300" /><span className="text-[10px] md:text-sm font-medium text-gray-700">Apply</span></label>
                                         </div>
                                     )}
                                 </div>
@@ -811,37 +801,15 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                         </div>
                     )}
 
-                    {/* Credit/Debit Balances */}
-                    {(partyCredit > 0 || partyDebit > 0) && (
-                        <div className="px-4 pb-2">
-                            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Available Balances</h3>
-                            {partyCredit > 0 && (
-                                <div className="flex items-center justify-between p-3 bg-green-50 border border-green-100 rounded-lg mb-2">
-                                    <div className="flex flex-col"><span className="text-sm font-semibold text-green-800">Credit Note Balance</span><span className="text-xs text-green-600">Available: ₹{partyCredit.toFixed(2)}</span></div>
-                                    <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={useCredit} onChange={(e) => setUseCredit(e.target.checked)} className="w-5 h-5 text-green-600 rounded focus:ring-green-500 border-gray-300" /><span className="text-sm font-medium text-gray-700">Apply</span></label>
-                                </div>
-                            )}
-                            {partyDebit > 0 && (
-                                <div className="flex items-center justify-between p-3 bg-red-50 border border-red-100 rounded-lg">
-                                    <div className="flex flex-col"><span className="text-sm font-semibold text-red-800">Debit Balance</span><span className="text-xs text-red-600">Available: ₹{partyDebit.toFixed(2)}</span></div>
-                                    <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={useDebit} onChange={(e) => setUseDebit(e.target.checked)} className="w-5 h-5 text-red-600 rounded focus:ring-red-500 border-gray-300" /><span className="text-sm font-medium text-gray-700">Apply</span></label>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* Payment Inputs */}
-                    <div className="p-4 bg-gray-100">
-                        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Transaction Type</h3>
-                        <div className="grid grid-cols-2 gap-4">
+                    {/* RIGHT COLUMN: Transaction Type */}
+                    {/* RIGHT COLUMN: Transaction Type */}
+                    <div className={`p-2 md:p-4 bg-gray-50 flex flex-col justify-center border-t md:border-t-0 ${enableCustomerDetails ? 'md:w-1/2' : 'w-full'}`}>
+                        <h3 className="text-[10px] md:text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2 md:mb-3">
+                            Transaction Type
+                        </h3>
+                        <div className="grid grid-cols-2 gap-6">
                             {transactiontypes.map((mode) => {
-                                // 1. Identify if this is the Due field
-                                const isDueField =
-                                    mode.id.toLowerCase().includes('due') ||
-                                    mode.name.toLowerCase().includes('due');
-
-                                // 2. Determine if it should be locked
-                                // It is locked ONLY if it's a Sale, it IS the due field, and Due Billing is turned OFF.
+                                const isDueField = mode.id.toLowerCase().includes('due') || mode.name.toLowerCase().includes('due');
                                 const isDisabled = isSale && isDueField && !allowDueBilling;
 
                                 return (
@@ -850,41 +818,34 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                         id={mode.id}
                                         label={isDisabled ? `${mode.name}` : mode.name}
                                         value={selectedPayments[mode.id]?.toString() || ''}
-                                        // Block the change handlers if disabled
-                                        onChange={(e) => {
-                                            if (!isDisabled) handleAmountChange(mode.id, e.target.value);
-                                        }}
-                                        onFill={() => {
-                                            if (!isDisabled) handleFillRemaining(mode.id);
-                                        }}
+                                        onChange={(e) => { if (!isDisabled) handleAmountChange(mode.id, e.target.value); }}
+                                        onFill={() => { if (!isDisabled) handleFillRemaining(mode.id); }}
                                         showFillButton={pendingAmount > 0.01 && !isDisabled}
-                                        className={`rounded-xs transition-colors ${isDisabled
-                                            ? 'bg-gray-100 cursor-not-allowed opacity-60 pointer-events-none'
-                                            : 'bg-white'
-                                            }`}
+                                        className={`
+                            h-10 min-h-[50px] text-xs rounded-xs transition-colors shadow-sm
+                            /* Target the inner Fill button to make it a tiny badge */
+                            [&_button]:text-[9px] [&_button]:px-2 [&_button]:py-0.5 [&_button]:h-auto [&_button]:rounded-[3px] [&_button]:tracking-wider
+                            /* Target the inner input to ensure text fits the smaller height */
+                            [&_input]:text-xs [&_input]:font-bold [&_label]:text-[10px]
+                            ${isDisabled
+                                                ? 'bg-gray-100 cursor-not-allowed opacity-60 pointer-events-none'
+                                                : 'bg-white'
+                                            }
+                        `}
                                         disabled={isDisabled}
                                     />
                                 );
                             })}
                         </div>
                     </div>
+
                 </div>
+                {/* Footer Totals & Summary Box */}
+                <div className="p-2 bg-gray-50 border-t border-gray-200 rounded-b-xs shadow-[0_-4px_15px_rgba(0,0,0,0.05)] z-20">
 
-                {/* Footer Totals */}
-                <div className="p-4 bg-white border-t border-gray-200 rounded-b-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-20">
-                    {!isCalculator && (
-
-                        <div className="flex justify-between items-center mb-2 text-sm text-gray-500">
-                            <span>Qty: <strong className="text-gray-800">{totalQuantity}</strong></span>
-                            <div className="flex items-center gap-2">
-                                <span>Subtotal:</span>
-                                <span className="font-medium text-gray-800">₹{subtotal.toFixed(2)}</span>
-                            </div>
-                        </div>
-                    )}
-                    {/* AFTER: Two synced inputs — % and ₹ — both locked by default */}
+                    {/* 1. Discount Row */}
                     <div
-                        className="flex justify-between items-center mb-2 text-sm"
+                        className="flex justify-between items-center mb-1.5 px-1"
                         onMouseDown={handleDiscountPressStart}
                         onMouseUp={handleDiscountPressEnd}
                         onMouseLeave={handleDiscountPressEnd}
@@ -892,26 +853,24 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                         onTouchEnd={handleDiscountPressEnd}
                         onClick={handleDiscountClick}
                     >
-                        <div className="flex items-center gap-2">
-                            <span className={`text-gray-500 ${isDiscountLocked ? '' : 'text-blue-600 font-semibold'}`}>
+                        <div className="flex items-center gap-1.5">
+                            <span className={`text-gray-500 text-[11px] ${isDiscountLocked ? '' : 'text-blue-600 font-semibold'}`}>
                                 Bill Discount
                             </span>
-                            {isDiscountLocked
-                                ? <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                            {isDiscountLocked && (
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
                                     <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                                 </svg>
-                                : null
-                            }
+                            )}
                             {discountInfo && (
-                                <span className="text-xs text-red-500 bg-red-50 px-1 rounded animate-pulse">
+                                <span className="text-[10px] text-red-500 bg-red-50 px-1 rounded animate-pulse">
                                     {discountInfo}
                                 </span>
                             )}
                         </div>
 
-                        {/* Twin inputs */}
+                        {/* Twin inputs (Micro) */}
                         <div className="flex items-center gap-1">
-                            {/* Percent input */}
                             <div className="relative flex items-center">
                                 <input
                                     type="number"
@@ -919,17 +878,15 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                     value={discountPercent || ''}
                                     onChange={handleDiscountPercentChange}
                                     readOnly={isDiscountLocked}
-                                    className={`w-14 text-center bg-red-100 rounded-sm text-red-800 focus:outline-none pr-4 ${isDiscountLocked ? 'cursor-not-allowed' : 'border-b border-blue-300 font-semibold'
-                                        }`}
+                                    className={`w-10 text-center text-[11px] bg-red-100 rounded-xs text-red-800 focus:outline-none pr-3 py-0.5 ${isDiscountLocked ? 'cursor-not-allowed' : 'border-b border-blue-300 font-semibold'}`}
                                 />
-                                <span className="absolute right-1 text-xs text-red-400 font-bold pointer-events-none">%</span>
+                                <span className="absolute right-1 text-[10px] text-red-400 font-bold pointer-events-none">%</span>
                             </div>
 
-                            <span className="text-gray-300 text-xs">|</span>
+                            <span className="text-gray-300 text-[10px] mx-0.5">|</span>
 
-                            {/* Amount input */}
                             <div className="relative flex items-center">
-                                <span className="absolute left-1 text-xs text-red-400 font-bold pointer-events-none">₹</span>
+                                <span className="absolute left-1 text-[10px] text-red-400 font-bold pointer-events-none">₹</span>
                                 <input
                                     id="discount"
                                     type="number"
@@ -937,51 +894,93 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                     value={discount || ''}
                                     onChange={handleDiscountAmountChange}
                                     readOnly={isDiscountLocked}
-                                    className={`w-16 text-center bg-red-100 rounded-sm text-red-800 focus:outline-none pl-4 ${isDiscountLocked ? 'cursor-not-allowed' : 'border-b border-blue-300 font-semibold'
-                                        }`}
+                                    className={`w-12 text-center text-[11px] bg-red-100 rounded-xs text-red-800 focus:outline-none pl-3 py-0.5 ${isDiscountLocked ? 'cursor-not-allowed' : 'border-b border-blue-300 font-semibold'}`}
                                 />
                             </div>
                         </div>
                     </div>
 
-                    <div className="flex justify-between items-center mb-1.5 min-h-[24px]">
-                        <div className="flex-1 flex justify-start">
-                            {changeToReturn > 0.01 ? (
-                                <span className="text-base font-bold text-yellow-700 bg-yellow-50 px-2 py-1 rounded border border-yellow-100">
-                                    Return: ₹{changeToReturn.toFixed()}
-                                </span>
-                            ) : (
-                                <span className={`text-base font-bold ${pendingAmount < 0.01 ? 'text-green-600' : 'text-red-500'}`}>
-                                    {pendingAmount < 0.01 ? 'Paid' : `Due: ₹${pendingAmount.toFixed()}`}
-                                </span>
-                            )}
+                    {/* Section Divider */}
+                    <div className="pt-1.5 border-t border-gray-200">
+
+                        {/* 2. Tax Type Toggle */}
+                        <div className="flex justify-between items-center mb-1 px-1">
+                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Tax Type</span>
+                            <div className="flex bg-gray-100 p-0.5 rounded-xs shadow-inner">
+                                <button
+                                    onClick={() => onTaxModeChange && onTaxModeChange('exempt')}
+                                    disabled={isTaxToggleLocked}
+                                    className={`px-3 py-0.5 text-[10px] font-bold rounded-xs shadow-sm transition-all ${taxMode === 'exempt' ? 'bg-blue-500 text-white' : 'text-gray-600 hover:text-gray-800'} ${isTaxToggleLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                >Exempt</button>
+                                <button
+                                    onClick={() => onTaxModeChange && onTaxModeChange('inclusive')}
+                                    disabled={isTaxToggleLocked}
+                                    className={`px-3 py-0.5 text-[10px] font-bold rounded-xs shadow-sm transition-all ${taxMode === 'inclusive' ? 'bg-blue-500 text-white' : 'text-gray-600 hover:text-gray-800'} ${isTaxToggleLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                >Inclusive</button>
+                                <button
+                                    onClick={() => onTaxModeChange && onTaxModeChange('exclusive')}
+                                    disabled={isTaxToggleLocked}
+                                    className={`px-3 py-0.5 text-[10px] font-bold rounded-xs shadow-sm transition-all ${taxMode === 'exclusive' ? 'bg-blue-500 text-white' : 'text-gray-600 hover:text-gray-800'} ${isTaxToggleLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                >Exclusive</button>
+                            </div>
                         </div>
 
-                        <div className="flex flex-col items-center mb-4 px-4">
-                            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">
-                                Total Payable
-                            </span>
-                            <span className="text-3xl font-extrabold text-blue-600">
-                                ₹{netPayable.toFixed(0)}
-                            </span>
-                        </div>
+                        {/* 3. Calculation Summary Box (Horizontal Stat Bar Layout) */}
+                        <div className="flex flex-col gap-1 mb-1 px-1">
 
-                        <div className="flex-1 flex flex-col items-end justify-center pb-4">
-                            {totalTax > 0 && (
-                                <span className="text-sm text-gray-600 font-medium leading-tight mb-1">
-                                    Tax: ₹{liveTax.toFixed(2)}
-                                </span>
-                            )}
-                            {totalItemDiscount > 0 && (
-                                <span className="text-base text-red-600 font-medium leading-tight">
-                                    Disc: -₹{totalItemDiscount.toFixed()}
-                                </span>
-                            )}
+                            {/* Return / Due Indicator */}
+                            <div className="flex justify-start items-center min-h-[16px]">
+                                {changeToReturn > 0.01 ? (
+                                    <span className="text-[10px] font-bold text-yellow-700 bg-yellow-50 px-2 py-0.5 rounded-xs border border-yellow-100">
+                                        Return: ₹{changeToReturn.toFixed(2)}
+                                    </span>
+                                ) : (
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-xs border ${pendingAmount < 0.01 ? 'text-green-700 bg-green-50 border-green-100' : 'text-red-600 bg-red-50 border-red-100'}`}>
+                                        {pendingAmount < 0.01 ? 'Fully Paid' : `Due: ₹${pendingAmount.toFixed(2)}`}
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* 1-Row Stacked Layout */}
+                            <div className="flex items-center justify-between bg-white rounded-xs border border-gray-200 shadow-sm text-center">
+
+                                {/* MRP */}
+                                <div className="flex flex-col items-center flex-1">
+                                    <span className="text-[9px] text-gray-400 font-bold uppercase mb-0.5 leading-none">MRP</span>
+                                    <span className="text-[11px] font-bold text-gray-700 leading-none">₹{totalMrp.toFixed(0)}</span>
+                                </div>
+
+                                {/* DISC */}
+                                <div className="flex flex-col items-center flex-1 border-r border-gray-100 pr-1">
+                                    <span className="text-[9px] text-gray-400 font-bold uppercase mb-0.5 leading-none">Disc</span>
+                                    <span className="text-[11px] font-bold text-red-500 leading-none">-₹{(totalItemDiscount + discount).toFixed(0)}</span>
+                                </div>
+
+                                {/* CENTER: Total Payable (Compact Box) */}
+                                <div className="bg-blue-600 text-white rounded-xs py-1.5 px-3 flex flex-col items-center justify-center shadow-sm mx-1.5">
+                                    <span className="text-[8px] font-bold uppercase tracking-wider text-blue-200 mb-0.5 leading-none">Total</span>
+                                    <span className="font-extrabold text-lg tracking-tight leading-none">₹{netPayable.toFixed(0)}</span>
+                                </div>
+
+                                {/* SUB */}
+                                <div className="flex flex-col items-center flex-1 border-l border-gray-100 pl-1">
+                                    <span className="text-[9px] text-gray-400 font-bold uppercase mb-0.5 leading-none">Sub</span>
+                                    <span className="text-[11px] font-bold text-gray-700 leading-none">₹{Math.max(0, netPayable - liveTax).toFixed(0)}</span>
+                                </div>
+
+                                {/* TAX */}
+                                <div className="flex flex-col items-center flex-1">
+                                    <span className="text-[9px] text-gray-400 font-bold uppercase mb-0.5 leading-none">Tax</span>
+                                    <span className="text-[11px] font-bold text-gray-700 leading-none">+₹{liveTax.toFixed(0)}</span>
+                                </div>
+
+                            </div>
                         </div>
                     </div>
 
-                    <button onClick={handleConfirm} disabled={isSubmitting || pendingAmount > 0.01} className="w-full py-3.5 text-white rounded-sm font-bold text-lg shadow active:scale-[0.98] transition-all disabled:bg-gray-300 disabled:shadow-none disabled:cursor-not-allowed flex items-center justify-center gap-2" style={{ backgroundColor: pendingAmount < 0.01 ? '#0ea5e9' : '#94a3b8' }}>
-                        {isSubmitting ? (<><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Processing...</>) : ("Confirm Payment")}
+                    {/* 4. Confirm Button */}
+                    <button onClick={handleConfirm} disabled={isSubmitting || pendingAmount > 0.01} className="w-full py-2 text-white rounded-xs font-bold text-sm shadow active:scale-[0.98] transition-all disabled:bg-gray-300 disabled:shadow-none disabled:cursor-not-allowed flex items-center justify-center gap-2" style={{ backgroundColor: pendingAmount < 0.01 ? '#0ea5e9' : '#94a3b8' }}>
+                        {isSubmitting ? (<><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>...</>) : ("Confirm Payment")}
                     </button>
                 </div>
             </div>

@@ -41,7 +41,7 @@ export interface Item {
   firestoreDocId?: string;
   packetSize?: number;
   unitMultiplier?: number;
-  moq?:number;
+  moq?: number;
   variants?: string[];
 }
 
@@ -60,6 +60,9 @@ export interface PurchaseItem {
   purchasePrice: number;
   quantity: number;
   stock?: number;
+  taxType?: 'inclusive' | 'exclusive' | 'exempt';
+  taxRate?: number;
+  tax?: number;
 }
 
 export interface Purchase {
@@ -111,5 +114,5 @@ export interface SalesItem {
   discountPercentage?: number;
   finalPrice?: number;
   stock?: number;
-  productId?:string
+  productId?: string
 }

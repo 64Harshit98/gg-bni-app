@@ -148,7 +148,7 @@ service cloud.firestore {
       }
       match/BulkQuoteRequests/{documnet=**}{
       allow read: if true;
-        allow write: if true;
+        allow create: if true;
       }
       
       match /permissions/{role} {

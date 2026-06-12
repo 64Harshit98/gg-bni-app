@@ -235,15 +235,17 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     }
   };
 
-  const fetchNextBarcode = async () => {
+  const fetchNextBarcode = async (forceRefresh = false) => {
     if (!currentUser?.companyId || !itemSettings?.autoGenerateBarcode) return;
 
-    const draft = sessionStorage.getItem(DRAFT_STORAGE_KEY);
-    if (draft) {
-      try {
-        const parsed = JSON.parse(draft);
-        if (parsed.itemBarcode) return;
-      } catch (e) { }
+    if (!forceRefresh) {
+      const draft = sessionStorage.getItem(DRAFT_STORAGE_KEY);
+      if (draft) {
+        try {
+          const parsed = JSON.parse(draft);
+          if (parsed.itemBarcode) return;
+        } catch (e) { }
+      }
     }
 
     try {
@@ -454,7 +456,15 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     let finalPurchaseDiscount = parseFloat(PurchaseDiscount) || 0;
     if (mrpValue > 0 && purchaseValue > 0) finalPurchaseDiscount = 0;
 
-    const finalBarcode = itemBarcode.trim();
+    // --- FIX: Fallback to auto-generated barcode if input is empty ---
+    const finalBarcode = itemBarcode.trim() || fetchedAutoBarcode;
+
+    // --- STRICT BLOCK: Absolutely no empty strings allowed ---
+    if (!finalBarcode) {
+      setModal({ message: 'Barcode is required and cannot be empty.', type: State.ERROR });
+      return;
+    }
+
     setIsSaving(true);
 
     try {
@@ -601,6 +611,15 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         if (item.barcode) itemMapByBarcode.set(item.barcode.trim(), item);
         if (item.name) itemMapByName.set(item.name.toLowerCase().trim(), item);
       });
+
+      // --- NEW BLOCK: Find highest explicit numeric barcode ---
+      let maxImportedNumericBarcode = 0;
+      for (let r = dataStartRow; r <= worksheet.rowCount; r++) {
+        const rawBarcode = worksheet.getRow(r).getCell(2).text?.trim();
+        if (rawBarcode && /^\d+$/.test(rawBarcode)) {
+          maxImportedNumericBarcode = Math.max(maxImportedNumericBarcode, parseInt(rawBarcode, 10));
+        }
+      }
 
       let nextSeqNumber = 0;
       if (importMode === 'create_update') {
@@ -791,8 +810,25 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         processedCount++;
       }
 
+      // --- NEW BLOCK: Sync Database Counter ---
+      if (maxImportedNumericBarcode > 0) {
+        try {
+          const counterRef = doc(db, 'companies', currentUser.companyId, 'counters', 'items');
+          await runTransaction(db, async (transaction) => {
+            const counterDoc = await transaction.get(counterRef);
+            const currentSeq = counterDoc.exists() ? (counterDoc.data().currentSequence || 1000) : 1000;
+
+            if (maxImportedNumericBarcode >= currentSeq) {
+              transaction.set(counterRef, { currentSequence: maxImportedNumericBarcode }, { merge: true });
+            }
+          });
+        } catch (e) {
+          console.error("Failed to sync sequence counter:", e);
+        }
+      }
+
       await fetchGroups();
-      await fetchNextBarcode(); // Refresh UI Counter
+      await fetchNextBarcode(true); // Force refresh UI Counter (bypasses draft)
 
       if (failedCount > 0) {
         setModal({ message: `Imported with errors. ${failedCount} rows failed.`, type: State.ERROR });

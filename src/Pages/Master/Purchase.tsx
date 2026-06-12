@@ -13,7 +13,7 @@ import SearchableItemInput from '../../UseComponents/SearchIteminput';
 import { CustomButton } from '../../Components';
 import { incrementPurchaseCounter, peekNextPurchaseNumber } from '../../UseComponents/InvoiceCounter';
 import { Spinner } from '../../constants/Spinner';
-import { FiTrash2, FiEdit, FiCamera, FiX, FiChevronDown, FiSearch, FiMenu } from 'react-icons/fi';
+import { FiTrash2, FiEdit, FiCamera, FiX, FiSearch, FiMenu } from 'react-icons/fi';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
 import { usePurchaseSettings } from '../../context/SettingsContext';
 import { GenericCartList } from '../../Components/CartItem';
@@ -35,7 +35,7 @@ interface PurchaseItem extends Omit<SalesItem, 'finalPrice' | 'effectiveUnitPric
   purchasediscount?: number;
   barcode?: string;
   taxRate?: number;
-  taxType?: 'inclusive' | 'exclusive' | 'none';
+  taxType?: 'inclusive' | 'exclusive' | 'exempt';
   taxAmount?: number;
   taxableAmount?: number;
   stock: number;
@@ -59,7 +59,7 @@ interface PurchaseDocumentData {
   taxableAmount?: number;
   taxAmount?: number;
   gstScheme?: 'regular' | 'composition' | 'none';
-  taxType?: 'inclusive' | 'exclusive' | 'none';
+  taxType?: 'inclusive' | 'exclusive' | 'exempt';
   totalAmount: number;
   paymentMethods: { [key: string]: number };
   createdAt: any;
@@ -79,7 +79,7 @@ const applyPurchaseRounding = (amount: number, isRoundingEnabled: boolean): numb
   return Math.round(amount);
 };
 
-type TaxOption = 'inclusive' | 'exclusive' | 'none';
+type TaxOption = 'inclusive' | 'exclusive' | 'exempt';
 const PurchasePage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -210,7 +210,7 @@ const PurchasePage: React.FC = () => {
             setInvoiceNumber(purchaseData.invoiceNumber);
 
             if (purchaseData.taxType) {
-              setBillTaxType(purchaseData.taxType as TaxOption);
+              setBillTaxType((purchaseData.taxType === 'exempt' ? 'none' : purchaseData.taxType) as TaxOption);
             }
 
             const validatedItems = (purchaseData.items || []).map((item: any) => {
@@ -469,7 +469,8 @@ const PurchasePage: React.FC = () => {
     roundingOffAmount,
     finalAmount,
     totalDiscount,
-    totalQuantity
+    totalQuantity,
+    totalMrp
   } = useMemo(() => {
     const taxType = billTaxType;
     const isRoundingEnabled = purchaseSettings?.roundingOff ?? true;
@@ -497,7 +498,7 @@ const PurchasePage: React.FC = () => {
       let itemTax = 0;
       let itemFinalTotal = 0;
 
-      const effectiveScheme = taxType === 'none' ? 'none' : 'regular';
+      const effectiveScheme = taxType === 'exempt' ? 'none' : 'regular';
       if (effectiveScheme === 'regular') {
         if (taxType === 'exclusive') {
           itemTaxableBase = itemTotalPurchasePrice;
@@ -530,7 +531,8 @@ const PurchasePage: React.FC = () => {
       taxAmount: totalTaxAgg,
       roundingOffAmount: currentRoundingOffAmount,
       finalAmount: roundedAmount,
-      totalQuantity: qtyAgg
+      totalQuantity: qtyAgg,
+      totalMrp: mrpTotalAgg
     };
   }, [items, purchaseSettings, billTaxType]);
 
@@ -627,13 +629,13 @@ const PurchasePage: React.FC = () => {
     const taxType = billTaxType;
 
     const finalTaxType = taxType;
-    const gstScheme = taxType === 'none' ? 'none' : 'regular';
+    const gstScheme = taxType === 'exempt' ? 'none' : 'regular';
 
     const formatItemsForDB = (itemsToFormat: PurchaseItem[]): PurchaseItem[] => {
       return itemsToFormat.map((item) => {
         const purchasePrice = Number(item.purchasePrice || 0);
         const quantity = item.quantity || 1;
-        const itemTaxRate = finalTaxType === 'none' ? 0 : (item.taxRate || 0);
+        const itemTaxRate = finalTaxType === 'exempt' ? 0 : (item.taxRate || 0);
 
         const itemTotalPurchasePrice = purchasePrice * quantity;
         let itemTaxableBase = 0;
@@ -687,7 +689,7 @@ const PurchasePage: React.FC = () => {
     completionData: PaymentCompletionData,
     formattedItemsForDB: PurchaseItem[],
     gstScheme: 'regular' | 'composition' | 'none',
-    finalTaxType: 'inclusive' | 'exclusive' | 'none'
+    finalTaxType: 'inclusive' | 'exclusive' | 'exempt'
   ) => {
     if (!currentUser?.companyId) return;
     const companyId = currentUser.companyId;
@@ -790,7 +792,7 @@ const PurchasePage: React.FC = () => {
     completionData: PaymentCompletionData,
     formattedItemsForDB: PurchaseItem[],
     gstScheme: 'regular' | 'composition' | 'none',
-    finalTaxType: 'inclusive' | 'exclusive' | 'none'
+    finalTaxType: 'inclusive' | 'exclusive' | 'exempt'
   ) => {
     if (!editModeData || !currentUser?.companyId) return;
     const companyId = currentUser.companyId;
@@ -1073,57 +1075,11 @@ const PurchasePage: React.FC = () => {
   if (error) return (<div className="flex flex-col items-center justify-center h-screen text-red-600"><p>{error}</p><button onClick={() => navigate(-1)} className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Go Back</button></div>);
 
   const showTaxToggle = true; // Always show the manual tax toggle on the UI
-  const displayTaxTotal = showTaxToggle && billTaxType !== 'none';
+  const displayTaxTotal = showTaxToggle && billTaxType !== 'exempt';
   const isCardView = purchaseSettings?.purchaseViewType === 'card';
   const isCardImageView = isCardView && (purchaseSettings?.cardViewWithPhoto !== false);
   // Checks if any item in the current cart has the unlinked warning flag
   const hasUnlinkedItems = items.some(item => item.name.includes('(Not in DB)'));
-
-  const renderTaxToggle = () => {
-    return (
-      <>
-        {/* MOBILE VIEW */}
-        <div className="flex md:hidden justify-between items-center p-1 bg-white border-b border-gray-200 px-5 rounded-sm">
-          <span className="text-sm font-semibold text-gray-700">Tax Calculation</span>
-          <div className="relative">
-            <select
-              value={billTaxType}
-              onChange={(e) => setBillTaxType(e.target.value as TaxOption)}
-              className="appearance-none border border-gray-300 pr-8 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium transition-all bg-gray-50 hover:border-blue-400 text-gray-700 cursor-pointer"
-            >
-              <option value="exclusive">Tax Exclusive</option>
-              <option value="inclusive">Tax Inclusive</option>
-              <option value="none">Tax Exempt</option>
-            </select>
-            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
-              <FiChevronDown size={14} />
-            </div>
-          </div>
-        </div>
-
-        {/* DESKTOP VIEW */}
-        <div className="hidden md:flex flex-row items-center justify-between md:flex-col md:items-start gap-2 py-2 bg-white border-b border-gray-200">
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
-            Tax Calculation
-          </span>
-          <div className="relative w-1/2 md:w-full">
-            <select
-              value={billTaxType}
-              onChange={(e) => setBillTaxType(e.target.value as TaxOption)}
-              className="appearance-none w-full bg-white border border-gray-300 px-3 py-2 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium transition-all shadow-sm md:px-4 md:py-2.5 md:text-[15px] md:rounded-sm hover:border-blue-400 text-gray-700 cursor-pointer"
-            >
-              <option value="exclusive">Tax Exclusive</option>
-              <option value="inclusive">Tax Inclusive</option>
-              <option value="none">Tax Exempt</option>
-            </select>
-            <div className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-gray-400">
-              <FiChevronDown size={14} />
-            </div>
-          </div>
-        </div>
-      </>
-    );
-  };
 
   const renderHeader = () => (
     <div className="flex flex-col md:flex-row md:justify-between md:items-center bg-gray-100 md:bg-white border-b border-gray-200 shadow-sm flex-shrink-0 p-2 md:px-4 md:py-3 mb-2 md:mb-0">
@@ -1786,7 +1742,6 @@ const PurchasePage: React.FC = () => {
                 onActionClick={handleProceedToPayment}
                 disableAction={items.length === 0 || hasUnlinkedItems}
               >
-                {showTaxToggle && renderTaxToggle()}
               </GenericBillFooter>
             </div>
           </div>
@@ -1807,7 +1762,6 @@ const PurchasePage: React.FC = () => {
               onActionClick={handleProceedToPayment}
               disableAction={items.length === 0 || hasUnlinkedItems}
             >
-              {showTaxToggle && renderTaxToggle()}
             </GenericBillFooter>
           </div>
         </div>
@@ -1817,6 +1771,7 @@ const PurchasePage: React.FC = () => {
           isOpen={isDrawerOpen}
           onClose={() => setIsDrawerOpen(false)}
           subtotal={subtotal}
+          totalTax={taxAmount} // Ensure totalTax is passed
           billTotal={finalAmount}
           initialDiscount={editModeData?.manualDiscount}
           onPaymentComplete={handleSavePurchase}
@@ -1827,6 +1782,12 @@ const PurchasePage: React.FC = () => {
           totalQuantity={totalQuantity}
           requireCustomerName={purchaseSettings?.requireSupplierName}
           requireCustomerMobile={purchaseSettings?.requireSupplierMobile}
+
+          // 👇 ADD THESE 4 LINES TO BOTH DRAWERS:
+          taxMode={billTaxType}
+          onTaxModeChange={setBillTaxType}
+          isTaxToggleLocked={false}
+          totalMrp={totalMrp}
         />
 
         <ItemEditDrawer
@@ -2089,7 +2050,6 @@ const PurchasePage: React.FC = () => {
               onActionClick={handleProceedToPayment}
               disableAction={items.length === 0 || hasUnlinkedItems}
             >
-              {showTaxToggle && renderTaxToggle()}
             </GenericBillFooter>
           </div>
 
@@ -2113,7 +2073,6 @@ const PurchasePage: React.FC = () => {
               onActionClick={handleProceedToPayment}
               disableAction={items.length === 0 || hasUnlinkedItems}
             >
-              {showTaxToggle && renderTaxToggle()}
             </GenericBillFooter>
           </div>
         </div>
@@ -2124,18 +2083,25 @@ const PurchasePage: React.FC = () => {
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
         subtotal={subtotal}
-        totalTax={taxAmount}
+        totalTax={taxAmount} // Ensure totalTax is passed
         billTotal={finalAmount}
+        initialDiscount={editModeData?.manualDiscount}
         onPaymentComplete={handleSavePurchase}
         isPartyNameEditable={!editModeData}
-        initialDiscount={editModeData?.manualDiscount}
         initialPartyName={editModeData ? editModeData.partyName : ''}
         initialPartyNumber={editModeData ? editModeData.partyNumber : ''}
         initialPaymentMethods={editModeData ? editModeData.paymentMethods : undefined}
         totalQuantity={totalQuantity}
         requireCustomerName={purchaseSettings?.requireSupplierName}
         requireCustomerMobile={purchaseSettings?.requireSupplierMobile}
+
+        // 👇 ADD THESE 4 LINES TO BOTH DRAWERS:
+        taxMode={billTaxType}
+        onTaxModeChange={setBillTaxType}
+        isTaxToggleLocked={false}
+        totalMrp={totalMrp}
       />
+
       <ItemEditDrawer
         item={selectedItemForEdit}
         isOpen={isItemDrawerOpen}

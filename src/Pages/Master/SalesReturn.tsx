@@ -128,6 +128,17 @@ const SalesReturnPage: React.FC = () => {
   const [isPriceLocked, setIsPriceLocked] = useState(true);
   const [priceInfo, setPriceInfo] = useState<string | null>(null);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
+  const [activeTaxMode, setActiveTaxMode] = useState<'inclusive' | 'exclusive' | 'exempt'>('exclusive');
+
+  useEffect(() => {
+    if (salesSettings) {
+      if (salesSettings.gstScheme === 'none' || salesSettings.gstScheme === 'composition') {
+        setActiveTaxMode('exempt');
+      } else {
+        setActiveTaxMode((salesSettings.taxType as any) || 'exclusive');
+      }
+    }
+  }, [salesSettings]);
 
   const handleOpenEditDrawer = (item: Item) => {
     // item.id here is the cart UUID, so find the real item from availableItems
@@ -290,6 +301,12 @@ const SalesReturnPage: React.FC = () => {
     setSelectedSale(sale);
     setPartyName(sale.partyName || 'N/A');
     setPartyNumber(sale.partyNumber || '');
+
+    // 👇 ADD THIS LINE to inherit the original invoice's tax type
+    if (sale.taxType) {
+      setActiveTaxMode(sale.taxType as any);
+    }
+
     setOriginalSaleItems(
       sale.items.map((item: any) => {
         const itemData = item.data || item;
@@ -518,42 +535,61 @@ const SalesReturnPage: React.FC = () => {
     } as SalesItem));
   }, [exchangeItems]);
 
-  // --- FIXED USEMEMO: Recalculates tax separately for return vs exchange items ---
-  const { totalReturnGross, totalReturnValue, totalExchangeValue, finalBalance, discountDeducted } = useMemo(() => {
+  // --- FIXED USEMEMO: Recalculates tax and MRP separately ---
+  const { totalReturnGross, totalReturnValue, totalExchangeValue, finalBalance, discountDeducted, totalMrp, totalTax } = useMemo(() => {
     let returnGross = 0;
     let returnExclusiveTax = 0;
+    let returnMrpTotal = 0;
+    let returnTaxAmount = 0; // <-- Added to track total return tax
 
     itemsToReturn.forEach(returnItem => {
       returnGross += returnItem.amount;
+
+      const baseReturnPrice = returnItem.mrp > 0 ? returnItem.mrp : returnItem.unitPrice;
+      returnMrpTotal += baseReturnPrice * returnItem.quantity;
+
       const origItem = selectedSale?.items.find(i => (i.id || (i as any).productId) === returnItem.originalItemId);
-
       if (origItem) {
-        // Cast to 'any' to bypass strict TypeScript interface checks
         const extendedItem = origItem as any;
-
         const taxType = extendedItem.taxType || 'none';
         const taxRate = Number(extendedItem.taxRate || extendedItem.tax || 0);
 
-        if (taxType === 'exclusive' && taxRate > 0) {
-          returnExclusiveTax += returnItem.amount * (taxRate / 100);
+        if (taxType === 'inclusive' && taxRate > 0) {
+          const base = returnItem.amount / (1 + (taxRate / 100));
+          returnTaxAmount += (returnItem.amount - base);
+        } else if (taxType === 'exclusive' && taxRate > 0) {
+          const tax = returnItem.amount * (taxRate / 100);
+          returnTaxAmount += tax;
+          returnExclusiveTax += tax;
         }
       }
     });
 
     let exchangeGross = 0;
     let exchangeExclusiveTax = 0;
+    let exchangeMrpTotal = 0;
+    let exchangeTaxAmount = 0; // <-- Added to track total exchange tax
 
     const gstScheme = salesSettings?.gstScheme || 'none';
     const isTaxEnabled = salesSettings?.enableTax ?? true;
-    const globalTaxType = salesSettings?.taxType ?? 'exclusive';
-    const effectiveTaxMode = (gstScheme === 'regular' && isTaxEnabled) ? globalTaxType : 'none';
+    const effectiveTaxMode = (gstScheme === 'regular' && isTaxEnabled) ? activeTaxMode : 'none';
 
     exchangeItems.forEach(exchangeItem => {
       exchangeGross += exchangeItem.amount;
+
+      const baseExchangePrice = exchangeItem.mrp > 0 ? exchangeItem.mrp : (exchangeItem.salesPrice || 0);
+      exchangeMrpTotal += baseExchangePrice * exchangeItem.quantity;
+
       const itemMaster = availableItems.find(i => i.id === exchangeItem.originalItemId);
       const itemTaxRate = (itemMaster?.tax !== undefined) ? Number(itemMaster.tax) : (salesSettings?.defaultTaxRate ?? 0);
-      if (effectiveTaxMode === 'exclusive' && itemTaxRate > 0) {
-        exchangeExclusiveTax += exchangeItem.amount * (itemTaxRate / 100);
+
+      if (effectiveTaxMode === 'inclusive' && itemTaxRate > 0) {
+        const base = exchangeItem.amount / (1 + (itemTaxRate / 100));
+        exchangeTaxAmount += (exchangeItem.amount - base);
+      } else if (effectiveTaxMode === 'exclusive' && itemTaxRate > 0) {
+        const tax = exchangeItem.amount * (itemTaxRate / 100);
+        exchangeTaxAmount += tax;
+        exchangeExclusiveTax += tax;
       }
     });
 
@@ -576,9 +612,11 @@ const SalesReturnPage: React.FC = () => {
       totalReturnValue,
       totalExchangeValue: totalExchangeVal,
       finalBalance: Math.round(finalBalance),
-      discountDeducted
+      discountDeducted,
+      totalMrp: Math.abs(exchangeMrpTotal - returnMrpTotal),
+      totalTax: Math.abs(exchangeTaxAmount - returnTaxAmount) // <-- Export the absolute tax difference
     };
-  }, [itemsToReturn, exchangeItems, selectedSale, salesSettings, availableItems]);
+  }, [itemsToReturn, exchangeItems, selectedSale, salesSettings, availableItems, activeTaxMode]);
 
   const saveReturnTransaction = async (completionData?: Partial<PaymentCompletionData>) => {
     if (!currentUser || !currentUser.companyId || !selectedSale) return;
@@ -622,11 +660,10 @@ const SalesReturnPage: React.FC = () => {
       const gstScheme = salesSettings?.gstScheme || 'none';
       const isTaxEnabled = salesSettings?.enableTax ?? true;
       const currentTaxRate = salesSettings?.defaultTaxRate ?? 0;
-      const taxType = salesSettings?.taxType ?? 'exclusive';
 
       let effectiveTaxMode = 'none';
       if (gstScheme === 'regular' && isTaxEnabled) {
-        effectiveTaxMode = taxType;
+        effectiveTaxMode = activeTaxMode;
       }
 
       // 2. HANDLE STOCK (RETURN)
@@ -1162,9 +1199,15 @@ const SalesReturnPage: React.FC = () => {
         onClose={() => setIsDrawerOpen(false)}
         subtotal={Math.abs(finalBalance)}
         billTotal={Math.abs(finalBalance)}
+        totalTax={totalTax}
         onPaymentComplete={saveReturnTransaction}
         initialPartyName={partyName}
         initialPartyNumber={partyNumber}
+        taxMode={activeTaxMode}
+        onTaxModeChange={setActiveTaxMode}
+        isTaxToggleLocked={true}
+
+        totalMrp={totalMrp}
       />
 
       <ItemEditDrawer

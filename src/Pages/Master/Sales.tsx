@@ -18,7 +18,7 @@ import { Spinner } from '../../constants/Spinner';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
 import { GenericCartList } from '../../Components/CartItem';
 import BarcodeLinkModal from '../../Components/BarcodeLinkModal';
-import { FiTrash2, FiX, FiChevronDown, FiEdit, FiCamera, FiDelete, FiSearch, FiMenu } from 'react-icons/fi';
+import { FiTrash2, FiX, FiEdit, FiCamera, FiDelete, FiSearch, FiMenu } from 'react-icons/fi';
 import { GenericBillFooter } from '../../Components/Footer';
 import { IconScanCircle } from '../../constants/Icons';
 import QRCode from 'react-qr-code';
@@ -459,11 +459,12 @@ const Sales: React.FC = () => {
 
     const gstSchemeDisplay = salesSettings?.gstScheme;
 
-    const { subtotal, totalDiscount, taxAmount, finalAmount, totalQuantity } = useMemo(() => {
+    const { subtotal, totalDiscount, taxAmount, finalAmount, totalQuantity, totalMrp } = useMemo(() => {
         let accumulatorSubtotal = 0;
         let accumulatorTaxable = 0;
         let accumulatorTax = 0;
         let accumulatorQuantity = 0;
+        let accumulatorMrp = 0;
 
         const taxRate = salesSettings?.defaultTaxRate ?? 0;
         const isRoundingEnabled = salesSettings?.enableRounding ?? true;
@@ -484,6 +485,8 @@ const Sales: React.FC = () => {
         items.forEach(cartItem => {
             const currentQuantity = cartItem.quantity || 1;
             accumulatorQuantity += currentQuantity;
+            const basePrice = (cartItem.mrp > 0) ? cartItem.mrp : (cartItem.salesPrice || 0);
+            accumulatorMrp += basePrice * currentQuantity;
 
             let baseForSubtotal = (cartItem.mrp > 0) ? cartItem.mrp : (cartItem.salesPrice || 0);
             const itemSpecificTaxRate = cartItem.tax !== undefined ? Number(cartItem.tax) : taxRate;
@@ -549,7 +552,8 @@ const Sales: React.FC = () => {
             taxableAmount: finalTaxable,
             taxAmount: finalTax,
             finalAmount: finalPayableAmount,
-            totalQuantity: accumulatorQuantity
+            totalQuantity: accumulatorQuantity,
+            totalMrp: accumulatorMrp
         };
     }, [items, salesSettings, activeTaxMode, gstSchemeDisplay]);
 
@@ -1662,68 +1666,6 @@ const Sales: React.FC = () => {
     if (pageIsLoading) return <div className="flex items-center justify-center h-screen"><Spinner /> <p className="ml-2">Loading...</p></div>;
     if (error) return <div className="flex flex-col items-center justify-center h-screen text-red-600"><p>{error}</p><button onClick={() => navigate(-1)} className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Go Back</button></div>;
 
-    // --- Render Tax Toggle (DROPDOWN) ---
-    const renderTaxToggle = () => {
-        const isSettingLocked = salesSettings?.lockTaxToggle ?? false;
-        const isSchemeLocked = salesSettings?.gstScheme !== 'regular';
-        const isLocked = isSettingLocked || isSchemeLocked;
-        return (
-            <>
-                {/* MOBILE VIEW */}
-                <div className="flex md:hidden justify-between items-center p-1 bg-white border-b border-gray-200 px-5 rounded-sm">
-                    <span className="text-sm font-semibold text-gray-700">Tax Calculation</span>
-                    <div className="relative">
-                        <select
-                            value={activeTaxMode}
-                            onChange={(e) => setActiveTaxMode(e.target.value as any)}
-                            disabled={(salesSettings?.gstScheme !== 'regular' || salesSettings?.lockTaxToggle)}
-                            className={`appearance-none border border-gray-300 pr-8 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium transition-all ${isLocked
-                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                : 'bg-gray-50 hover:border-blue-400 text-gray-700 cursor-pointer'
-                                }`}
-                        >
-                            <option value="exclusive">Tax Exclusive</option>
-                            <option value="inclusive">Tax Inclusive</option>
-                            <option value="exempt">Tax Exempt</option>
-                        </select>
-                        {!isLocked && (
-                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
-                                <FiChevronDown size={14} />
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* DESKTOP VIEW */}
-                <div className="hidden md:flex flex-row items-center justify-between md:flex-col md:items-start gap-2 py-2 bg-white border-b border-gray-200">
-                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
-                        Tax Calculation
-                    </span>
-                    <div className="relative w-1/2 md:w-full">
-                        <select
-                            value={activeTaxMode}
-                            onChange={(e) => setActiveTaxMode(e.target.value as any)}
-                            disabled={(salesSettings?.gstScheme !== 'regular' || salesSettings?.lockTaxToggle)}
-                            className={`appearance-none w-full bg-white border border-gray-300 px-3 py-2 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium transition-all shadow-sm md:px-4 md:py-2.5 md:text-[15px] md:rounded-sm ${isLocked
-                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                : 'hover:border-blue-400 text-gray-700 cursor-pointer'
-                                }`}
-                        >
-                            <option value="exclusive">Tax Exclusive</option>
-                            <option value="inclusive">Tax Inclusive</option>
-                            <option value="exempt">Tax Exempt</option>
-                        </select>
-                        {!isLocked && (
-                            <div className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-gray-400">
-                                <FiChevronDown size={14} />
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </>
-        );
-    };
-
     const renderHeader = () => (
         <>
             <div className="flex flex-col md:flex-row md:justify-between md:items-center bg-gray-100 md:bg-white border-b border-gray-200 shadow-sm flex-shrink-0 p-2 md:px-4 md:py-3 mb-2 md:mb-0">
@@ -2374,7 +2316,6 @@ const Sales: React.FC = () => {
                                 actionLabel={isEditMode ? 'Update Invoice' : 'Proceed to Pay'}
                                 onActionClick={handleProceedToPayment}
                                 disableAction={items.length === 0}>
-                                {renderTaxToggle()}
                             </GenericBillFooter>
                         </div>
                     </div>
@@ -2386,7 +2327,6 @@ const Sales: React.FC = () => {
                                 <h2 className="text-xl font-bold text-gray-800">Bill Summary</h2>
                                 <span className="text-xs text-indigo-500 font-semibold">{items.length} Items</span>
                             </div>
-                            {renderTaxToggle()}
                             <GenericBillFooter
                                 isExpanded={true} onToggleExpand={() => { }}
                                 totalQuantity={totalQuantity} subtotal={subtotal}
@@ -2734,7 +2674,6 @@ const Sales: React.FC = () => {
                                 onActionClick={handleProceedToPayment}
                                 disableAction={items.length === 0}
                             >
-                                {renderTaxToggle()}
                             </GenericBillFooter>
                         </div>
                     </div>
@@ -2748,8 +2687,6 @@ const Sales: React.FC = () => {
                         </div>
 
                         {/* Desktop Toggle */}
-                        {renderTaxToggle()}
-
                         <GenericBillFooter
                             isExpanded={true}
                             onToggleExpand={() => { }}
@@ -2796,6 +2733,10 @@ const Sales: React.FC = () => {
                 enableShippingDetails={salesSettings?.enableShippingDetails}
                 enableExtraExpense={salesSettings?.enableExtraExpense}
                 enableNarration={salesSettings?.enableNarration}
+                taxMode={activeTaxMode}
+                onTaxModeChange={setActiveTaxMode}
+                isTaxToggleLocked={(salesSettings?.gstScheme !== 'regular' || salesSettings?.lockTaxToggle)}
+                totalMrp={totalMrp}
             />
             <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
 

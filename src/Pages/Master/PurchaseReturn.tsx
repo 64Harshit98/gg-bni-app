@@ -29,6 +29,7 @@ import BarcodeScanner from '../../UseComponents/BarcodeScanner';
 import { ReturnListItem } from '../../Components/ReturnListItem';
 import { IconScanCircle } from '../../constants/Icons';
 import { GenericCartList, type CartItem } from '../../Components/CartItem';
+import { usePurchaseSettings } from '../../context/SettingsContext';
 
 interface PurchaseData {
   id: string;
@@ -36,6 +37,7 @@ interface PurchaseData {
   partyName: string;
   partyNumber?: string;
   partyAddress?: string;
+  taxType?: 'inclusive' | 'exclusive' | 'exempt';
   partyGstin?: string;
   items: OriginalPurchaseItem[];
   totalAmount: number;
@@ -126,6 +128,8 @@ const PurchaseReturnPage: React.FC = () => {
   const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
   const [scannerPurpose, setScannerPurpose] = useState<'purchase' | 'item' | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const { purchaseSettings } = usePurchaseSettings();
+  const [activeTaxMode, setActiveTaxMode] = useState<'inclusive' | 'exclusive' | 'exempt'>('exclusive');
 
   const itemsToReturn = useMemo(() =>
     originalPurchaseItems.filter(item => selectedReturnIds.has(item.id)),
@@ -265,6 +269,13 @@ const PurchaseReturnPage: React.FC = () => {
     setSupplierNumber(purchase.partyNumber || '');
     setSupplierAddress(purchase.partyAddress || '');
     setSupplierGstin(purchase.partyGstin || '');
+
+    // 👇 STRICTLY INHERIT FROM THE ORIGINAL BILL
+    if (purchase.taxType) {
+      setActiveTaxMode((purchase.taxType === 'exempt' ? 'none' : purchase.taxType) as any);
+    } else {
+      setActiveTaxMode('exclusive'); // Fallback for old bills
+    }
 
     setOriginalPurchaseItems(purchase.items.map((item: any) => {
       const itemData = item.data || item;
@@ -524,67 +535,85 @@ const PurchaseReturnPage: React.FC = () => {
   };
 
   // --- UI CALCULATIONS (With Discount) ---
-  const { totalReturnValue, totalNewItemsValue, finalBalance, discountDeducted } = useMemo(() => {
-    const totalReturnGross = itemsToReturn.reduce((sum, item) => sum + item.amount, 0);
+  // --- UI CALCULATIONS (With Discount, Tax, and MRP) ---
+  const { totalReturnValue, totalNewItemsValue, finalBalance, discountDeducted, totalTax, totalMrp } = useMemo(() => {
+    let returnGross = 0;
+    let returnExclusiveTax = 0;
+    let returnTaxAmount = 0;
+    let returnMrpTotal = 0;
 
-    // --- TAX CALCULATION---
-    let returnTax = 0;
+    itemsToReturn.forEach(returnItem => {
+      returnGross += returnItem.amount;
 
-    if (selectedPurchase) {
-      returnTax = selectedPurchase.items.reduce((sum: number, item: any) => {
-        const itemFinalPrice = Number(item.purchasePrice || item.finalPrice || 0);
-        const taxRate = Number(item.taxRate || item.tax || 0);
-        const taxType = item.taxType;
+      const baseReturnPrice = returnItem.mrp > 0 ? returnItem.mrp : returnItem.unitPrice;
+      returnMrpTotal += baseReturnPrice * returnItem.quantity;
+
+      const origItem = selectedPurchase?.items.find(i => (i.id || (i as any).productId) === returnItem.originalItemId);
+      if (origItem) {
+        const taxType = origItem.taxType === 'exempt' ? 'exempt' : (origItem.taxType || 'exempt');
+        const taxRate = Number(origItem.taxRate || origItem.tax || 0);
 
         if (taxType === 'inclusive' && taxRate > 0) {
-          const itemTax = itemFinalPrice * (taxRate / 100);
-          return sum + itemTax;
+          const base = returnItem.amount / (1 + (taxRate / 100));
+          returnTaxAmount += (returnItem.amount - base);
+        } else if (taxType === 'exclusive' && taxRate > 0) {
+          const tax = returnItem.amount * (taxRate / 100);
+          returnTaxAmount += tax;
+          returnExclusiveTax += tax;
         }
-
-        return sum;
-      }, 0);
-
-      const originalGross = selectedPurchase.items.reduce((sum, item) => {
-        const price = item.purchasePrice ?? (item.quantity ? item.quantity : 0);
-        return sum + (item.quantity * price);
-      }, 0);
-
-      if (originalGross > 0 && returnTax > 0) {
-        const ratio = totalReturnGross / originalGross;
-        returnTax = Math.round(returnTax * ratio * 100) / 100;
       }
-    }
+    });
 
-    const totalNewItemsValue = newItemsReceived.reduce((sum, item) => sum + item.amount, 0);
+    let newItemsGross = 0;
+    let newItemsExclusiveTax = 0;
+    let newItemsTaxAmount = 0;
+    let newItemsMrpTotal = 0;
+
+    const effectiveTaxMode = activeTaxMode; // Simply use what the original bill dictated
+
+    newItemsReceived.forEach(newItem => {
+      newItemsGross += newItem.amount;
+
+      const baseExchangePrice = newItem.mrp > 0 ? newItem.mrp : (newItem.unitPrice || 0);
+      newItemsMrpTotal += baseExchangePrice * newItem.quantity;
+
+      const itemMaster = availableItems.find(i => i.id === newItem.originalItemId);
+      const itemTaxRate = (itemMaster?.tax !== undefined) ? Number(itemMaster.tax) : 0;
+
+      if (effectiveTaxMode === 'inclusive' && itemTaxRate > 0) {
+        const base = newItem.amount / (1 + (itemTaxRate / 100));
+        newItemsTaxAmount += (newItem.amount - base);
+      } else if (effectiveTaxMode === 'exclusive' && itemTaxRate > 0) {
+        const tax = newItem.amount * (itemTaxRate / 100);
+        newItemsTaxAmount += tax;
+        newItemsExclusiveTax += tax;
+      }
+    });
 
     let discountDeducted = 0;
-
     if (selectedPurchase) {
-      const originalGross = selectedPurchase.items.reduce((sum, item) => {
-        const price = item.purchasePrice ?? (item.quantity ? item.quantity : 0);
-        return sum + (item.quantity * price);
-      }, 0);
-
+      const originalGross = selectedPurchase.items.reduce((sum, item: any) => sum + (Number(item.finalPrice || 0)), 0);
       const originalManualDiscount = Number(selectedPurchase.manualDiscount) || 0;
 
       if (originalGross > 0 && originalManualDiscount > 0) {
-        const ratio = totalReturnGross / originalGross;
-        discountDeducted = originalManualDiscount * ratio;
-        discountDeducted = Math.round(discountDeducted * 100) / 100;
+        const ratio = (returnGross + returnExclusiveTax) / originalGross;
+        discountDeducted = Math.round(originalManualDiscount * ratio * 100) / 100;
       }
     }
 
-    const netReturnValue = totalReturnGross - discountDeducted + returnTax;
-    const finalBalance = netReturnValue - totalNewItemsValue;
+    const netReturnVal = returnGross + returnExclusiveTax - discountDeducted;
+    const netNewItemsVal = newItemsGross + newItemsExclusiveTax;
+    const finalBalance = netReturnVal - netNewItemsVal;
 
     return {
-      totalReturnValue: netReturnValue,
-      totalNewItemsValue,
+      totalReturnValue: netReturnVal,
+      totalNewItemsValue: netNewItemsVal,
       finalBalance: Math.round(finalBalance),
       discountDeducted,
-      returnTax
+      totalTax: Math.abs(newItemsTaxAmount - returnTaxAmount),
+      totalMrp: Math.abs(newItemsMrpTotal - returnMrpTotal)
     };
-  }, [itemsToReturn, newItemsReceived, selectedPurchase]);
+  }, [itemsToReturn, newItemsReceived, selectedPurchase, purchaseSettings, availableItems, activeTaxMode]);
 
 
   // --- SAVE LOGIC ---
@@ -626,6 +655,19 @@ const PurchaseReturnPage: React.FC = () => {
         if (originalItem) {
           originalItem.quantity += newItem.quantity;
         } else {
+          const itemMaster = availableItems.find(i => i.id === newItem.originalItemId);
+          const itemTaxRate = (itemMaster?.tax !== undefined) ? Number(itemMaster.tax) : 0;
+
+          const lineTotal = newItem.unitPrice * newItem.quantity;
+          let lineBase = lineTotal;
+          let lineTax = 0;
+
+          if (activeTaxMode === 'inclusive' && itemTaxRate > 0) {
+            lineBase = lineTotal / (1 + (itemTaxRate / 100));
+            lineTax = lineTotal - lineBase;
+          } else if (activeTaxMode === 'exclusive' && itemTaxRate > 0) {
+            lineTax = lineTotal * (itemTaxRate / 100);
+          }
           originalItemsMap.set(newItem.originalItemId, {
             id: newItem.originalItemId,
             name: newItem.name,
@@ -633,6 +675,11 @@ const PurchaseReturnPage: React.FC = () => {
             purchasePrice: newItem.unitPrice,
             mrp: newItem.mrp || 0,
             tax: newItem.tax || 0,
+            taxRate: itemTaxRate,
+            taxType: activeTaxMode,
+            taxableAmount: lineBase,
+            taxAmount: lineTax,
+            finalPrice: activeTaxMode === 'exclusive' ? lineBase + lineTax : lineTotal,
             hsnSac: newItem.hsnSac || '',
             barcode: newItem.barcode || '',
             unit: newItem.unit || '',
@@ -1124,10 +1171,19 @@ const PurchaseReturnPage: React.FC = () => {
       </div>
 
       <PaymentDrawer
+        mode='purchase'
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
         subtotal={Math.abs(finalBalance)}
         billTotal={Math.abs(finalBalance)}
+
+        // 👇 ADD THESE 5 LINES:
+        totalTax={totalTax}
+        taxMode={activeTaxMode}
+        onTaxModeChange={setActiveTaxMode}
+        isTaxToggleLocked={true} // Locked because it inherits the original invoice's tax mode
+        totalMrp={totalMrp}
+
         onPaymentComplete={saveReturnTransaction}
         initialPartyName={supplierName}
         initialPartyNumber={supplierNumber}

@@ -471,30 +471,40 @@ const OrdersPage: React.FC = () => {
 
     // Fetch customer credit when the Payment Modal opens
     useEffect(() => {
-        const fetchCredit = async () => {
-            if (!showPaymentModal || !currentUser?.companyId) {
-                setCustomerCredit(0);
-                return;
-            }
+    const fetchCredit = async () => {
+        if (!showPaymentModal || !currentUser?.companyId) {
+            setCustomerCredit(0);
+            return;
+        }
 
-            const phone = showPaymentModal.userLoginPhone || showPaymentModal.billingDetails?.phone || '';
-            const normalizedPhone = phone.replace(/\D/g, '').slice(-10);
+        const phone = showPaymentModal.userLoginPhone || showPaymentModal.billingDetails?.phone || '';
+        const normalizedPhone = phone.replace(/\D/g, '').slice(-10);
 
-            if (normalizedPhone) {
-                try {
-                    const customerRef = doc(db, 'companies', currentUser.companyId, 'customers', normalizedPhone);
-                    const snap = await getDoc(customerRef);
-                    if (snap.exists()) {
-                        setCustomerCredit(Number(snap.data().creditBalance || 0));
-                    }
-                } catch (err) {
-                    console.error("Error fetching credit balance:", err);
+        if (normalizedPhone) {
+            try {
+                // ✅ Sirf customers collection — advance wahan store ho gaya
+                const customerRef = doc(
+                    db, 
+                    'companies', 
+                    currentUser.companyId, 
+                    'customers', 
+                    normalizedPhone
+                );
+                const snap = await getDoc(customerRef);
+                if (snap.exists()) {
+                    setCustomerCredit(Number(snap.data().creditBalance || 0));
+                } else {
+                    setCustomerCredit(0);
                 }
+            } catch (err) {
+                console.error("Error fetching credit balance:", err);
+                setCustomerCredit(0);
             }
-        };
+        }
+    };
 
-        fetchCredit();
-    }, [showPaymentModal, currentUser?.companyId]);
+    fetchCredit();
+}, [showPaymentModal, currentUser?.companyId]);
 
     useEffect(() => {
         const fetchExpiry = async () => {

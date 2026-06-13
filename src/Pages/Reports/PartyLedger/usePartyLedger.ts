@@ -355,17 +355,18 @@ export default function usePartyLedger() {
             let balanceField: string;
 
             if (partyType === 'Customer') {
-                // Customer advance → creditBalance
-                // Customer due → kuch nahi (woh collect karna hai, store nahi)
                 if (balanceType === 'advance') {
-                    balanceField = 'creditBalance';
+                    balanceField = 'creditBalance'; // You owe customer → their credit
                 } else {
-                    balanceField = ''; // Due OB customer ke liye store nahi
+                    balanceField = ''; // Customer owes you → nothing to store on customer doc
                 }
             } else {
-                // Supplier advance → debitBalance (tumne zyada diya)
-                // Supplier due → debitBalance (supplier tumhara paisa dega)
-                balanceField = 'debitBalance';
+                // Supplier
+                if (balanceType === 'advance') {
+                    balanceField = 'debitBalance'; // You pre-paid supplier → your debit/advance
+                } else {
+                    balanceField = ''; // Supplier owes you → receivable, nothing to store on supplier doc
+                }
             }
 
             if (balanceField) {
@@ -383,7 +384,7 @@ export default function usePartyLedger() {
             partyNumber,
             partyType,
             amount,
-            dueAmount: amount,
+            dueAmount: balanceType === 'due' ? amount : 0,
             balanceType,   // ✅ stored locally
             note: note || '',
             createdAt: Date.now(),

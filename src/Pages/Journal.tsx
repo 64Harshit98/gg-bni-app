@@ -991,15 +991,19 @@ const Journal: React.FC = () => {
     const phone = (invoice.partyNumber || '').replace(/\D/g, '').slice(-10);
     if (phone && currentUser?.companyId) {
       try {
-        const customerRef = doc(db, 'companies', currentUser.companyId, 'customers', phone);
-        const snap = await getDoc(customerRef);
-        if (snap.exists()) {
-          setCustomerCredit(Number(snap.data().creditBalance || 0));
+        if (invoice.type === 'Debit') {
+          // Purchase invoice → fetch supplier's debitBalance
+          const supplierRef = doc(db, 'companies', currentUser.companyId, 'suppliers', phone);
+          const snap = await getDoc(supplierRef);
+          setCustomerCredit(snap.exists() ? Number(snap.data().debitBalance || 0) : 0);
         } else {
-          setCustomerCredit(0);
+          // Sales invoice → fetch customer's creditBalance
+          const customerRef = doc(db, 'companies', currentUser.companyId, 'customers', phone);
+          const snap = await getDoc(customerRef);
+          setCustomerCredit(snap.exists() ? Number(snap.data().creditBalance || 0) : 0);
         }
       } catch (err) {
-        console.error('Error fetching credit balance:', err);
+        console.error('Error fetching balance:', err);
         setCustomerCredit(0);
       }
     } else {
@@ -1021,6 +1025,10 @@ const Journal: React.FC = () => {
     const collectionName = invoice.type === 'Credit' ? 'sales' : 'purchases';
     const docRef = doc(db, 'companies', companyId, collectionName, invoice.id);
 
+    const normalizedMethod = method.toLowerCase().replace(/\s+/g, '');
+    const isCreditNote = normalizedMethod === 'credit' || normalizedMethod === 'creditnote';
+    const normalizedPhone = (invoice.partyNumber || '').replace(/\D/g, '').slice(-10);
+
     await runTransaction(db, async (transaction) => {
       const sfDoc = await transaction.get(docRef);
       if (!sfDoc.exists()) throw new Error("Document does not exist!");
@@ -1033,14 +1041,19 @@ const Journal: React.FC = () => {
       const newDue = currentDue - amount;
       if (newDue < 0) throw new Error('Payment exceeds due amount.');
 
-      // Deduct from customer credit balance if Credit Note was used
-      if ((method === 'credit' || method === 'Credit Note') && invoice.partyNumber) {
-        const normalizedPhone = invoice.partyNumber.replace(/\D/g, '').slice(-10);
-        if (normalizedPhone) {
+      // ✅ Sirf Firestore update transaction ke andar
+      if (isCreditNote && normalizedPhone) {
+        if (invoice.type === 'Debit') {
+
+          const supplierRef = doc(db, 'companies', companyId, 'suppliers', normalizedPhone);
+          transaction.set(supplierRef, { debitBalance: increment(-amount) }, { merge: true });
+        } else {
+
           const customerRef = doc(db, 'companies', companyId, 'customers', normalizedPhone);
           transaction.set(customerRef, { creditBalance: increment(-amount) }, { merge: true });
         }
       }
+
       const newPaymentMethods = {
         ...currentPaymentMethods,
         [method]: currentMethodTotal + amount,
@@ -1063,7 +1076,6 @@ const Journal: React.FC = () => {
         paymentHistory: [...currentHistory, paymentRecord]
       });
 
-      // Trigger notification ONLY for unpaid sales settled via CASH/UPI
       const isSales = invoice.type === 'Credit';
       const isCashOrUpi = method?.toLowerCase() === 'cash' || method?.toLowerCase() === 'upi';
       const isNowPaid = newDue === 0;
@@ -1083,6 +1095,11 @@ const Journal: React.FC = () => {
         );
       }
     });
+
+    // ✅ Transaction complete hone ke BAAD React state update karo
+    if (isCreditNote && normalizedPhone) {
+      setCustomerCredit(prev => Math.max(0, prev - amount));
+    }
   };
 
   const handlePrintQr = (invoice: Invoice) => {
@@ -1483,7 +1500,17 @@ const Journal: React.FC = () => {
   return (
     <div className="flex min-h-screen w-full flex-col overflow-hidden bg-gray-100 mb-10">
       {modal && <Modal message={modal.message} type={modal.type} onClose={cancelDelete} onConfirm={confirmDeleteInvoice} showConfirmButton={invoiceToDelete !== null} />}
-      <PaymentModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} invoice={selectedInvoice} onSubmit={handleSettlePayment} availableCredit={customerCredit} />
+      <PaymentModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setCustomerCredit(0); // ✅ Modal band hone pe reset karo
+        }}
+        invoice={selectedInvoice}
+        onSubmit={handleSettlePayment}
+        availableCredit={customerCredit}
+        isDebitNote={selectedInvoice?.type === 'Debit'}
+      />
 
       {/* ACTION SELECTION MODAL */}
       {invoiceToPrint && (

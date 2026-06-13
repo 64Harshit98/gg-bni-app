@@ -89,9 +89,10 @@ interface PaymentModalProps {
     onSubmit: (invoice: ModalInvoice, amount: number, method: string, chequeNumber?: string, chequeDate?: string) => Promise<void>;
     onConfirm?: (amountToAdd: number) => Promise<void>;
     availableCredit?: number; // Added to receive credit from OrdersPage
+    isDebitNote?: boolean;
 }
 
-export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, invoice, onSubmit, availableCredit = 0 }) => {
+export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, invoice, onSubmit, availableCredit = 0, isDebitNote = false }) => {
     const [amount, setAmount] = useState('');
     const [method, setMethod] = useState('cash');
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -172,7 +173,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                 {/* --- NEW: Display Available Credit Balance --- */}
                 {availableCredit > 0 && (
                     <div className="mb-5 p-3 bg-blue-50 border border-blue-100 rounded-sm flex items-center justify-between">
-                        <span className="text-xs font-bold text-blue-800 uppercase tracking-widest">Available Credit</span>
+                        <span className="text-xs font-bold text-blue-800 uppercase tracking-widest">
+                            {isDebitNote ? 'Available Debit' : 'Available Credit'}
+                        </span>
                         <span className="text-sm font-black text-blue-600">₹{availableCredit.toLocaleString('en-IN')}</span>
                     </div>
                 )}
@@ -204,7 +207,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                             <option value="PDC">PDC</option>
                             {/* --- NEW: Add Credit Note Option --- */}
                             {availableCredit > 0 && (
-                                <option value="credit Note">Credit Note</option>
+                                <option value={isDebitNote ? 'Debit Note' : 'Credit Note'}>
+                                    {isDebitNote ? 'Debit Note' : 'Credit Note'}
+                                </option>
                             )}
                             {/* --------------------------------- */}
                         </select>

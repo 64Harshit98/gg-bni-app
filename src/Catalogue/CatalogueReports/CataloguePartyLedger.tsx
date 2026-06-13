@@ -106,6 +106,45 @@ const CataloguePartyLedger: React.FC = () => {
     const [localPaidOverrides, setLocalPaidOverrides] = useState<Record<string, number>>({});
     const [localPaymentHistories, setLocalPaymentHistories] = useState<Record<string, PaymentRecord[]>>({});
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+
+    useEffect(() => {
+    const fetchAvailableCredit = async () => {
+        if (!isPaymentModalOpen || !currentUser?.companyId || !selectedPartyNumber) {
+            setAvailableCredit(0);
+            return;
+        }
+
+        const normalizedPhone = selectedPartyNumber.replace(/\D/g, '').slice(-10);
+        if (!normalizedPhone) {
+            setAvailableCredit(0);
+            return;
+        }
+
+        try {
+            const { doc: fsDoc, getDoc: fsGetDoc } = await import('firebase/firestore');
+            
+            // ✅ Ab sirf customers collection se lo — advance wahan store ho gaya
+            const customerRef = fsDoc(
+                db, 
+                'companies', 
+                currentUser.companyId, 
+                'customers', 
+                normalizedPhone
+            );
+            const snap = await fsGetDoc(customerRef);
+            if (snap.exists()) {
+                setAvailableCredit(Number(snap.data().creditBalance || 0));
+            } else {
+                setAvailableCredit(0);
+            }
+        } catch (err) {
+            console.error('Credit fetch error:', err);
+            setAvailableCredit(0);
+        }
+    };
+
+    fetchAvailableCredit();
+}, [isPaymentModalOpen, selectedPartyNumber, currentUser?.companyId]);
     const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<any | null>(null);
     const [openingBalances, setOpeningBalances] = useState<OpeningBalance[]>([]);
     const [isOBModalOpen, setIsOBModalOpen] = useState(false);
@@ -118,6 +157,7 @@ const CataloguePartyLedger: React.FC = () => {
         note: ''
     });
     const [obLoading, setObLoading] = useState(false);
+    const [availableCredit, setAvailableCredit] = useState(0); 
 
     const showToast = (message: string, type: 'success' | 'error' = 'success') => {
         setToast({ message, type });
@@ -136,7 +176,19 @@ const CataloguePartyLedger: React.FC = () => {
             if (!invoice.id) throw new Error('Invalid invoice data.');
             // Handle opening balance settlement separately
             if (invoice.isOpeningBalance) {
-                const { doc, runTransaction } = await import('firebase/firestore');
+                const { doc, runTransaction , setDoc: fsSetDoc, serverTimestamp: fsST, increment: fsIncrement } = await import('firebase/firestore');
+                if (method.toUpperCase() === 'CREDIT NOTE' || method.toUpperCase() === 'CREDIT') {
+        const normalizedPhone = selectedPartyNumber.replace(/\D/g, '').slice(-10);
+        if (normalizedPhone) {
+            const customerRef = doc(db, 'companies', currentUser.companyId, 'customers', normalizedPhone);
+            await fsSetDoc(customerRef, {
+                creditBalance: fsIncrement(-amount),
+                updatedAt: fsST(),
+            }, { merge: true });
+            setAvailableCredit(prev => Math.max(0, prev - amount));
+        }
+    }
+
                 const obRef = doc(db, 'companies', currentUser.companyId, 'openingBalances', invoice.id);
                 await runTransaction(db, async (transaction) => {
                     const sfDoc = await transaction.get(obRef);
@@ -266,39 +318,93 @@ const CataloguePartyLedger: React.FC = () => {
         });
     }, [Orders]);
     useEffect(() => {
-        if (!currentUser?.companyId) return;
-        const fetchOpeningBalances = async () => {
-            try {
-                const { collection: col, getDocs, Timestamp } = await import('firebase/firestore');
-                const obRef = col(db, 'companies', currentUser.companyId, 'openingBalances');
-                const obSnapshot = await getDocs(obRef);
-                const mappedOB: OpeningBalance[] = obSnapshot.docs
-                    .filter(doc => doc.data().source === 'catalogue')  // ← ADD THIS LINE
-                    .map(doc => {
-                        const data = doc.data();
-                        const creationMillis = data.createdAt instanceof Timestamp
-                            ? data.createdAt.toMillis()
-                            : Date.now();
-                        return {
-                            id: doc.id,
-                            partyName: data.partyName || 'Unknown',
-                            partyNumber: data.partyNumber || '',
-                            partyType: data.partyType || 'Customer',
-                            amount: data.amount || 0,
-                            dueAmount: data.dueAmount ?? data.amount ?? 0,
-                            balanceType: data.balanceType || 'due',
-                            note: data.note || '',
-                            createdAt: creationMillis,
-                            paymentHistory: data.paymentHistory || [],
-                        };
-                    });
-                setOpeningBalances(mappedOB);
-            } catch (err) {
-                console.error('Error fetching opening balances:', err);
+    if (!currentUser?.companyId) return;
+    const fetchOpeningBalances = async () => {
+        try {
+            const { 
+                collection: col, 
+                getDocs, 
+                Timestamp,
+                doc,
+                setDoc,
+                serverTimestamp,
+                increment: fsIncrement
+            } = await import('firebase/firestore');
+            
+            const obRef = col(db, 'companies', currentUser.companyId, 'openingBalances');
+            const obSnapshot = await getDocs(obRef);
+            
+            const mappedOB: OpeningBalance[] = obSnapshot.docs
+                .filter(doc => doc.data().source === 'catalogue')
+                .map(doc => {
+                    const data = doc.data();
+                    const creationMillis = data.createdAt instanceof Timestamp
+                        ? data.createdAt.toMillis()
+                        : Date.now();
+                    return {
+                        id: doc.id,
+                        partyName: data.partyName || 'Unknown',
+                        partyNumber: data.partyNumber || '',
+                        partyType: data.partyType || 'Customer',
+                        amount: data.amount || 0,
+                        dueAmount: data.dueAmount ?? data.amount ?? 0,
+                        balanceType: data.balanceType || 'due',
+                        note: data.note || '',
+                        createdAt: creationMillis,
+                        paymentHistory: data.paymentHistory || [],
+                    };
+                });
+            
+            setOpeningBalances(mappedOB);
+
+            // ✅ Purane advance OBs ka credit sync karo
+            // Sirf woh OBs jo creditSynced: true nahi hain
+            const advanceOBs = obSnapshot.docs.filter(d => {
+                const data = d.data();
+                return data.source === 'catalogue' 
+                    && data.balanceType === 'advance'
+                    && !data.creditSynced; // ← sirf unsynced wale
+            });
+
+            for (const obDoc of advanceOBs) {
+                const data = obDoc.data();
+                const normalizedPhone = (data.partyNumber || '')
+                    .replace(/\D/g, '').slice(-10);
+                
+                if (!normalizedPhone) continue;
+
+                try {
+                    // Customer credit mein add karo
+                    const customerRef = doc(
+                        db,
+                        'companies',
+                        currentUser.companyId,
+                        'customers',
+                        normalizedPhone
+                    );
+                    await setDoc(customerRef, {
+                        number: normalizedPhone,
+                        name: data.partyName || '',
+                        creditBalance: fsIncrement(data.dueAmount ?? data.amount ?? 0),
+                        updatedAt: serverTimestamp(),
+                    }, { merge: true });
+
+                    // OB ko mark karo ki sync ho gaya
+                    const { updateDoc } = await import('firebase/firestore');
+                    await updateDoc(obDoc.ref, { creditSynced: true });
+                    
+                    console.log('✅ Synced OB credit:', normalizedPhone, data.dueAmount ?? data.amount);
+                } catch (e) {
+                    console.error('❌ Sync failed for:', normalizedPhone, e);
+                }
             }
-        };
-        fetchOpeningBalances();
-    }, [currentUser?.companyId]);
+
+        } catch (err) {
+            console.error('Error fetching opening balances:', err);
+        }
+    };
+    fetchOpeningBalances();
+}, [currentUser?.companyId]);
 
     const toggleBillExpansion = (billId: string) => {
         setExpandedBillId(prev => prev === billId ? null : billId);
@@ -545,44 +651,93 @@ const CataloguePartyLedger: React.FC = () => {
     };
 
     const addOpeningBalance = async (
-        partyName: string,
-        partyNumber: string,
-        partyType: 'Customer' | 'Supplier',
-        amount: number,
-        note?: string,
-        balanceType: 'due' | 'advance' = 'due'
-    ) => {
-        if (!currentUser?.companyId) throw new Error('Company ID not found.');
-        const { doc, collection: col, setDoc, serverTimestamp } = await import('firebase/firestore');
-        const obRef = doc(col(db, 'companies', currentUser.companyId, 'openingBalances'));
-        const newOB = {
-            partyName,
-            partyNumber,
-            partyType,
-            amount,
-            dueAmount: balanceType === 'due' ? amount : 0,
-            balanceType,
-            note: note || '',
-            paymentHistory: [],
-            createdAt: serverTimestamp(),
-            source: 'catalogue',
-        };
-        await setDoc(obRef, newOB);
-        const localOB: OpeningBalance = {
-            id: obRef.id,
-            partyName,
-            partyNumber,
-            partyType,
-            amount,
-            dueAmount: balanceType === 'due' ? amount : 0,
-            balanceType,
-            note: note || '',
-            createdAt: Date.now(),
-            paymentHistory: [],
-        };
-        setOpeningBalances(prev => [...prev, localOB]);
-        return localOB;
+    partyName: string,
+    partyNumber: string,
+    partyType: 'Customer' | 'Supplier',
+    amount: number,
+    note?: string,
+    balanceType: 'due' | 'advance' = 'due'
+) => {
+    if (!currentUser?.companyId) throw new Error('Company ID not found.');
+    
+    // ✅ Sab ek saath import karo
+    const { 
+        doc, 
+        collection: col, 
+        setDoc, 
+        serverTimestamp,
+        increment: fsIncrement
+    } = await import('firebase/firestore');
+    
+    // Step 1: Opening Balance save karo
+    const obRef = doc(col(db, 'companies', currentUser.companyId, 'openingBalances'));
+    const newOB = {
+        partyName,
+        partyNumber,
+        partyType,
+        amount,
+        dueAmount: balanceType === 'due' ? amount : 0,
+        balanceType,
+        note: note || '',
+        paymentHistory: [],
+        createdAt: serverTimestamp(),
+        source: 'catalogue',
     };
+    
+    await setDoc(obRef, newOB);
+    console.log('✅ OB saved:', obRef.id);
+
+    // Step 2: Agar advance hai toh customer credit update karo
+    if (balanceType === 'advance') {
+        const normalizedPhone = partyNumber.replace(/\D/g, '').slice(-10);
+        console.log('📱 Normalized phone:', normalizedPhone);
+        
+        if (normalizedPhone) {
+            try {
+                const customerRef = doc(
+                    db,
+                    'companies',
+                    currentUser.companyId,
+                    'customers',
+                    normalizedPhone
+                );
+                
+                await setDoc(customerRef, {
+                    number: normalizedPhone,
+                    name: partyName,
+                    creditBalance: fsIncrement(amount),
+                    updatedAt: serverTimestamp(),
+                }, { merge: true });
+                
+                console.log('✅ Credit updated for:', normalizedPhone, 'Amount:', amount);
+            } catch (creditErr) {
+                console.error('❌ Credit update failed:', creditErr);
+                // OB toh save ho gaya, credit update fail hua
+                // Toast show karo user ko
+                showToast('Opening balance saved but credit update failed.', 'error');
+            }
+        } else {
+            console.warn('⚠️ No phone number — credit not updated');
+            showToast('Opening balance saved. Note: No phone number provided, credit not linked.', 'error');
+        }
+    }
+
+    // Step 3: Local state update
+    const localOB: OpeningBalance = {
+        id: obRef.id,
+        partyName,
+        partyNumber,
+        partyType,
+        amount,
+        dueAmount: balanceType === 'due' ? amount : 0,
+        balanceType,
+        note: note || '',
+        createdAt: Date.now(),
+        paymentHistory: [],
+    };
+    setOpeningBalances(prev => [...prev, localOB]);
+    return localOB;
+};
 
     const handleAddOpeningBalance = async () => {
         if (!obForm.partyName.trim() || !obForm.amount || Number(obForm.amount) <= 0) {
@@ -712,6 +867,7 @@ const CataloguePartyLedger: React.FC = () => {
                 isOpen={isPaymentModalOpen}
                 onClose={() => { setIsPaymentModalOpen(false); setSelectedInvoiceForPayment(null); }}
                 invoice={selectedInvoiceForPayment}
+                availableCredit={availableCredit}
                 onSubmit={handleSettlePayment}
             />
             {/* HEADER — master list only */}

@@ -63,7 +63,7 @@ const CatalogueCustomerReport: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [customerCreditMap, setCustomerCreditMap] = useState<Record<string, number>>({});
-  const [obAdvanceMap, setObAdvanceMap] = useState<Record<string, number>>({});
+  // const [obAdvanceMap, setObAdvanceMap] = useState<Record<string, number>>({});
   const [sortConfig, setSortConfig] = useState<{
     key: keyof CustomerRowWithCredit;
     direction: 'asc' | 'desc';
@@ -99,40 +99,40 @@ const CatalogueCustomerReport: React.FC = () => {
 
     return unsubscribe;
   }, [currentUser?.companyId]);
-  useEffect(() => {
-    if (!currentUser?.companyId) {
-      setObAdvanceMap({});
-      return;
-    }
+  // useEffect(() => {
+  //   if (!currentUser?.companyId) {
+  //     setObAdvanceMap({});
+  //     return;
+  //   }
 
-    const obRef = collection(db, 'companies', currentUser.companyId, 'openingBalances');
-    const unsubscribe = onSnapshot(
-      query(obRef),
-      (snapshot) => {
-        const nextMap: Record<string, number> = {};
-        snapshot.forEach((docSnap) => {
-          const data = docSnap.data() as Record<string, unknown>;
-          if ((data.balanceType ?? 'advance') !== 'advance') return;
-          if (data.source !== 'catalogue') return;  // ← ADD THIS
+  //   const obRef = collection(db, 'companies', currentUser.companyId, 'openingBalances');
+  //   const unsubscribe = onSnapshot(
+  //     query(obRef),
+  //     (snapshot) => {
+  //       const nextMap: Record<string, number> = {};
+  //       snapshot.forEach((docSnap) => {
+  //         const data = docSnap.data() as Record<string, unknown>;
+  //         if ((data.balanceType ?? 'advance') !== 'advance') return;
+  //         if (data.source !== 'catalogue') return;  // ← ADD THIS
 
-          const amount = Number(data.amount ?? 0);
-          const numberKey = String(data.partyNumber || '').trim();
-          const nameKey = String(data.partyName || '').trim().toLowerCase();
+  //         const amount = Number(data.amount ?? 0);
+  //         const numberKey = String(data.partyNumber || '').trim();
+  //         const nameKey = String(data.partyName || '').trim().toLowerCase();
 
-          if (numberKey) {
-            nextMap[`num:${numberKey}`] = (nextMap[`num:${numberKey}`] || 0) + amount;
-          }
-          if (nameKey) {
-            nextMap[`name:${nameKey}`] = (nextMap[`name:${nameKey}`] || 0) + amount;
-          }
-        });
-        setObAdvanceMap(nextMap);
-      },
-      () => setObAdvanceMap({}),
-    );
+  //         if (numberKey) {
+  //           nextMap[`num:${numberKey}`] = (nextMap[`num:${numberKey}`] || 0) + amount;
+  //         }
+  //         if (nameKey) {
+  //           nextMap[`name:${nameKey}`] = (nextMap[`name:${nameKey}`] || 0) + amount;
+  //         }
+  //       });
+  //       setObAdvanceMap(nextMap);
+  //     },
+  //     () => setObAdvanceMap({}),
+  //   );
 
-    return unsubscribe;
-  }, [currentUser?.companyId]);
+  //   return unsubscribe;
+  // }, [currentUser?.companyId]);
 
   /* ---------- CUSTOMER AGGREGATION ---------- */
   const customerRows: CustomerRowWithCredit[] = useMemo(() => {
@@ -171,14 +171,8 @@ const CatalogueCustomerReport: React.FC = () => {
     result = result.map((row) => {
       const byNumber = customerCreditMap[`num:${row.customerNumber}`];
       const byName = customerCreditMap[`name:${row.customerName.toLowerCase()}`];
-      const creditFromCustomers = byNumber ?? byName ?? 0;
-
-      // Also add any advance-type opening balances for this customer
-      const obByNumber = obAdvanceMap[`num:${row.customerNumber}`];
-      const obByName = obAdvanceMap[`name:${row.customerName.toLowerCase()}`];
-      const creditFromOB = obByNumber ?? obByName ?? 0;
-
-      const creditNote = creditFromCustomers + creditFromOB;
+      // ✅ Sirf customers collection se lo — advance ab wahan store hota hai
+      const creditNote = byNumber ?? byName ?? 0;
       return { ...row, creditNote: Math.max(0, Number(creditNote || 0)) };
     });
 
@@ -211,7 +205,7 @@ const CatalogueCustomerReport: React.FC = () => {
     });
 
     return result;
-  }, [filteredSales, searchQuery, customerCreditMap, obAdvanceMap, sortConfig]);
+  }, [filteredSales, searchQuery, customerCreditMap, sortConfig]);
 
   /* ---------- SUMMARY METRICS ---------- */
   const metrics = useMemo(() => {

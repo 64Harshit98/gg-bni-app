@@ -31,6 +31,7 @@ const PartyLedger: React.FC = () => {
     const [statusFilter, setStatusFilter] = useState<'all' | 'due' | 'settled'>('all');
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [isOBModalOpen, setIsOBModalOpen] = useState(false);
+    const [availableCredit, setAvailableCredit] = useState<number>(0);
     const [obForm, setObForm] = useState({
         partyName: '',
         partyNumber: '',
@@ -152,6 +153,33 @@ const PartyLedger: React.FC = () => {
                         dueAmount: Math.max(0, currentDue - amount),
                         paymentHistory: [...(data.paymentHistory || []), paymentRecord],
                     });
+
+                    const obBalanceType = data.balanceType || 'due';
+                    const partyNum = (data.partyNumber || '').trim();
+                    const partyType = data.partyType || 'Customer';
+                    const { doc: firestoreDoc, increment } = await import('firebase/firestore');
+
+                    // Advance OB settle: creditBalance/debitBalance kam karo
+                    if (partyNum.length >= 3 && obBalanceType === 'advance') {
+                        const collectionName = partyType === 'Customer' ? 'customers' : 'suppliers';
+                        const balanceField = partyType === 'Customer' ? 'creditBalance' : 'debitBalance';
+                        const partyRef = firestoreDoc(db, 'companies', companyId, collectionName, partyNum);
+                        transaction.update(partyRef, {
+                            [balanceField]: increment(-amount),
+                        });
+                    }
+
+                    // ✅ Credit Note se OB due settle: customer ka creditBalance kam karo
+                    const normalizedMethod = method.toLowerCase().replace(/\s+/g, '');
+                    const isCreditNote = normalizedMethod === 'credit' || normalizedMethod === 'creditnote';
+                    if (isCreditNote && partyNum.length >= 3 && obBalanceType === 'due') {
+                        const collectionName = partyType === 'Customer' ? 'customers' : 'suppliers';
+                        const balanceField = partyType === 'Customer' ? 'creditBalance' : 'debitBalance';
+                        const partyRef = firestoreDoc(db, 'companies', companyId, collectionName, partyNum);
+                        transaction.update(partyRef, {
+                            [balanceField]: increment(-amount),
+                        });
+                    }
                 });
                 const paymentRecord: PaymentRecord = {
                     amount, method: method.toLowerCase(), date: new Date().toISOString(), timestamp: Date.now(),
@@ -207,6 +235,19 @@ const PartyLedger: React.FC = () => {
                     [method.toLowerCase()]: (currentPaymentMethods[method.toLowerCase()] || 0) + amount,
                     due: Math.max(0, newDue), // Ensure due never goes negative
                 };
+                const normalizedMethod = method.toLowerCase().replace(/\s+/g, '');
+                if ((normalizedMethod === 'credit' || normalizedMethod === 'creditnote') && invoice.partyNumber) {
+                    const partyNum = (invoice.partyNumber || '').replace(/\D/g, '').slice(-10);
+                    if (partyNum) {
+                        const { doc: fsDoc, increment: fsIncrement } = await import('firebase/firestore');
+                        const customerRef = fsDoc(db, 'companies', companyId, 'customers', partyNum);
+                        transaction.update(customerRef, {
+                            creditBalance: fsIncrement(-amount),
+                        });
+                        // ✅ Local state turant update
+                        setAvailableCredit(prev => Math.max(0, prev - amount));
+                    }
+                }
 
                 // ✅ Create payment record with proper structure
                 const paymentRecord = {
@@ -375,9 +416,15 @@ const PartyLedger: React.FC = () => {
             )}
             <PaymentModal
                 isOpen={isPaymentModalOpen}
-                onClose={() => { setIsPaymentModalOpen(false); setSelectedInvoiceForPayment(null); }}
+                onClose={() => {
+                    setIsPaymentModalOpen(false);
+                    setSelectedInvoiceForPayment(null);
+                    setAvailableCredit(0); // ✅ Reset on close
+                }}
                 invoice={selectedInvoiceForPayment}
                 onSubmit={handleSettlePayment}
+                availableCredit={availableCredit}
+                isDebitNote={selectedInvoiceForPayment?.type === 'purchase'}
             />
             {/* HEADER FOR MASTER LIST ONLY */}
             {!selectedPartyName && (
@@ -696,21 +743,42 @@ const PartyLedger: React.FC = () => {
                                             {txn.dueAmount > 0 && !(txn.isOpeningBalance && (txn as any).balanceType === 'advance') && (
                                                 <div className="mt-3 pt-3 border-t border-slate-200">
                                                     <button
-                                                        onClick={(e) => {
+                                                        onClick={async (e) => {
                                                             e.stopPropagation();
 
-                                                            // ✅ Pass all necessary fields with correct structure
                                                             setSelectedInvoiceForPayment({
-                                                                id: txn.id, // ✅ Keep original ID
+                                                                id: txn.id,
                                                                 invoiceNumber: txn.invoiceNumber,
-                                                                type: txn.type, // ✅ Keep original type ('sale' or 'purchase')
+                                                                type: txn.type,
                                                                 totalAmount: txn.totalAmount,
                                                                 dueAmount: txn.dueAmount,
                                                                 partyName: selectedPartyName,
                                                                 partyNumber: txn.partyNumber,
                                                                 createdAt: txn.createdAt,
                                                                 isOpeningBalance: txn.isOpeningBalance === true,
+                                                                balanceType: (txn as any).balanceType || 'due',
                                                             });
+
+                                                            // ✅ Fetch creditBalance from customers collection
+                                                            const partyNum = (txn.partyNumber || '').replace(/\D/g, '').slice(-10);
+                                                            if (partyNum && companyId) {
+                                                                try {
+                                                                    const { doc, getDoc } = await import('firebase/firestore');
+                                                                    const { db } = await import('../../lib/Firebase');
+                                                                    // Purchase (Supplier) → debitBalance, Sales (Customer) → creditBalance
+                                                    const isSupplier = txn.type === 'purchase';
+                                                    const collectionName = isSupplier ? 'suppliers' : 'customers';
+                                                    const balanceField = isSupplier ? 'debitBalance' : 'creditBalance';
+
+                                                    const partyRef = doc(db, 'companies', companyId, collectionName, partyNum);
+                                                    const snap = await getDoc(partyRef);
+                                                    setAvailableCredit(snap.exists() ? Number(snap.data()[balanceField] || 0) : 0);
+                                                                } catch {
+                                                                    setAvailableCredit(0);
+                                                                }
+                                                            } else {
+                                                                setAvailableCredit(0);
+                                                            }
 
                                                             setIsPaymentModalOpen(true);
                                                         }}

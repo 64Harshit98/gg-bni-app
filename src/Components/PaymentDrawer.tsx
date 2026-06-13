@@ -178,6 +178,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const [showSuggestions, setShowSuggestions] = useState(false);
     const searchTimeout = useRef<NodeJS.Timeout | null>(null);
 
+    const numberInputRef = useRef<HTMLInputElement>(null);
+    const nameInputRef = useRef<HTMLInputElement>(null);
     const shouldSaveToLocalStorage = useRef(true);
     const longPressTimer = useRef<NodeJS.Timeout | null>(null);
     const [discountInfo, setDiscountInfo] = useState<string | null>(null);
@@ -623,18 +625,32 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     // --- RENDER HELPERS ---
     const renderSuggestions = () => {
         if (!showSuggestions || suggestions.length === 0) return null;
-        return (
-            <div className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-200 shadow-xl rounded-lg mt-1 max-h-48 overflow-y-auto">
+        const ref = isSale ? numberInputRef.current : nameInputRef.current;
+        const rect = ref?.getBoundingClientRect();
+        if (!rect) return null;
+
+        return createPortal(
+            <div
+                style={{
+                    position: 'fixed',
+                    top: rect.bottom + 4,
+                    left: rect.left,
+                    width: rect.width * 2 + 8, // spans both inputs
+                    zIndex: 99999,
+                }}
+                className="bg-white border border-gray-200 shadow-xl rounded-lg max-h-48 overflow-y-auto"
+            >
                 {suggestions.map((party, idx) => (
-                    <div key={idx} className="p-3 hover:bg-blue-50 cursor-pointer border-b last:border-0 text-sm flex justify-between items-center" onClick={() => selectParty(party)}>
+                    <div key={idx} className="px-2 py-1 hover:bg-blue-50 cursor-pointer border-b last:border-0 text-sm flex justify-between items-center" onClick={() => selectParty(party)}>
                         <div>
-                            <div className="font-bold text-gray-800">{party.name}</div>
-                            <div className="text-xs text-gray-500">{party.number}</div>
+                            <div className="font-semibold text-xs text-gray-800">{party.name}</div>
+                            <div className="text-[10px] text-gray-500">{party.number}</div>
                         </div>
                         {party.creditBalance && party.creditBalance > 0 && (<span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full">Credit: ₹{party.creditBalance}</span>)}
                     </div>
                 ))}
-            </div>
+            </div>,
+            document.body
         );
     };
 
@@ -670,8 +686,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                         <h3 className="text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-wider">{partyLabel} Info</h3>
                                         {isSale && enableShippingDetails && (
                                             <div className="flex bg-gray-200 rounded-xs p-1 shadow-inner">
-                                                <button onClick={() => setAddressType('billing')} className={`text-[10px] md:text-xs px-3 md:px-4 py-1 md:py-1.5 rounded font-semibold transition-all ${addressType === 'billing' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Billing</button>
-                                                <button onClick={() => setAddressType('shipping')} className={`text-[10px] md:text-xs px-3 md:px-4 py-1 md:py-1.5 rounded font-semibold transition-all ${addressType === 'shipping' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Shipping</button>
+                                                <button onClick={() => setAddressType('billing')} className={`text-[10px] md:text-xs px-4 md:px-5 py-1.5 md:py-2 rounded font-semibold transition-all ${addressType === 'billing' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Billing</button>
+                                                <button onClick={() => setAddressType('shipping')} className={`text-[10px] md:text-xs px-4 md:px-5 py-1.5 md:py-2 rounded font-semibold transition-all ${addressType === 'shipping' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Shipping</button>
                                             </div>
                                         )}
                                     </div>
@@ -692,6 +708,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                     {/* NUMBER INPUT */}
                                     <div className="relative">
                                         <input
+                                            ref={numberInputRef}
                                             type="tel"
                                             maxLength={10}
                                             placeholder={requireCustomerMobile ? "Phone Number *" : "Phone Number"}
@@ -706,12 +723,13 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                             autoComplete="off"
                                         />
                                         {requireCustomerMobile && addressType === 'billing' && <span className="absolute right-2 top-2 md:right-3 md:top-3 text-red-500 font-bold">*</span>}
-                                        {isSale && addressType === 'billing' && renderSuggestions()}
+                                        {/* {isSale && addressType === 'billing' && renderSuggestions()} */}
                                     </div>
 
                                     {/* NAME INPUT */}
                                     <div className="relative">
                                         <input
+                                            ref={nameInputRef}
                                             type="text"
                                             placeholder={requireCustomerName ? `${partyLabel} Name *` : `${partyLabel} Name`}
                                             value={addressType === 'billing' ? partyName : shippingName}
@@ -724,8 +742,10 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                             autoComplete="off"
                                         />
                                         {requireCustomerName && addressType === 'billing' && <span className="absolute right-2 top-2 md:right-3 md:top-3 text-red-500 font-bold">*</span>}
-                                        {!isSale && addressType === 'billing' && renderSuggestions()}
+                                        {/* {!isSale && addressType === 'billing' && renderSuggestions()} */}
                                     </div>
+                                    {/* SUGGESTIONS — spans full grid width */}
+                                    {addressType === 'billing' && renderSuggestions()}
                                 </div>
 
                                 {/* NORMAL MODE: Extra Details Toggles */}
@@ -782,18 +802,26 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
 
                             {/* Credit/Debit Balances */}
                             {(partyCredit > 0 || partyDebit > 0) && (
-                                <div className="px-2 md:px-5 pb-2 md:pb-5">
-                                    <h3 className="text-[9px] md:text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5 md:mb-2">Available Balances</h3>
+                                <div className="px-2 md:px-5 pb-1 md:pb-3">
+                                    <h3 className="text-[9px] md:text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5 md:mb-1">Available Balances</h3>
                                     {partyCredit > 0 && (
-                                        <div className="flex items-center justify-between p-2 md:p-3 bg-green-50 border border-green-100 rounded-xs mb-1.5 md:mb-2">
-                                            <div className="flex flex-col"><span className="text-[10px] md:text-sm font-semibold text-green-800">Credit Note</span><span className="text-[8px] md:text-xs text-green-600">Available: ₹{partyCredit.toFixed(2)}</span></div>
-                                            <label className="flex items-center gap-1.5 md:gap-2 cursor-pointer"><input type="checkbox" checked={useCredit} onChange={(e) => setUseCredit(e.target.checked)} className="w-3.5 h-3.5 md:w-5 md:h-5 text-green-600 rounded focus:ring-green-500 border-gray-300" /><span className="text-[10px] md:text-sm font-medium text-gray-700">Apply</span></label>
+                                        <div className="flex items-center justify-between p-1 md:p-3 bg-green-50 border border-green-100 rounded-xs mb-1.5 md:mb-2">
+                                            <span className="text-[10px] md:text-sm font-semibold text-green-800">Credit Note</span>
+                                            <span className="text-[8px] md:text-xs text-green-600 mx-auto ml-2">Avail: ₹{partyCredit.toFixed(2)}</span>
+                                            <label className="flex items-center gap-1.5 md:gap-2 cursor-pointer ml-2">
+                                                <input type="checkbox" checked={useCredit} onChange={(e) => setUseCredit(e.target.checked)} className="w-3.5 h-3.5 md:w-5 md:h-5 text-green-600 rounded focus:ring-green-500 border-gray-300" />
+                                                <span className="text-[10px] md:text-sm font-medium text-gray-700">Apply</span>
+                                            </label>
                                         </div>
                                     )}
                                     {partyDebit > 0 && (
                                         <div className="flex items-center justify-between p-2 md:p-3 bg-red-50 border border-red-100 rounded-xs">
-                                            <div className="flex flex-col"><span className="text-[10px] md:text-sm font-semibold text-red-800">Debit Balance</span><span className="text-[8px] md:text-xs text-red-600">Available: ₹{partyDebit.toFixed(2)}</span></div>
-                                            <label className="flex items-center gap-1.5 md:gap-2 cursor-pointer"><input type="checkbox" checked={useDebit} onChange={(e) => setUseDebit(e.target.checked)} className="w-3.5 h-3.5 md:w-5 md:h-5 text-red-600 rounded focus:ring-red-500 border-gray-300" /><span className="text-[10px] md:text-sm font-medium text-gray-700">Apply</span></label>
+                                            <span className="text-[10px] md:text-sm font-semibold text-red-800">Debit Balance</span>
+                                            <span className="text-[8px] md:text-xs text-red-600 mx-auto ml-2">Avail: ₹{partyDebit.toFixed(2)}</span>
+                                            <label className="flex items-center gap-1.5 md:gap-2 cursor-pointer ml-2">
+                                                <input type="checkbox" checked={useDebit} onChange={(e) => setUseDebit(e.target.checked)} className="w-3.5 h-3.5 md:w-5 md:h-5 text-red-600 rounded focus:ring-red-500 border-gray-300" />
+                                                <span className="text-[10px] md:text-sm font-medium text-gray-700">Apply</span>
+                                            </label>
                                         </div>
                                     )}
                                 </div>
@@ -841,11 +869,12 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
 
                 </div>
                 {/* Footer Totals & Summary Box */}
-                <div className="p-2 bg-gray-50 border-t border-gray-200 rounded-b-xs shadow-[0_-4px_15px_rgba(0,0,0,0.05)] z-20">
+                <div className="p-2 md:px-4 md:py-3 bg-gray-50 border-t border-gray-200 rounded-b-xs shadow-[0_-4px_15px_rgba(0,0,0,0.05)] z-20">
 
+                    {/* ── MOBILE LAYOUT (unchanged) ── */}
                     {/* 1. Discount Row */}
                     <div
-                        className="flex justify-between items-center mb-1.5 px-1"
+                        className="md:hidden flex justify-between items-center mb-1.5 px-1"
                         onMouseDown={handleDiscountPressStart}
                         onMouseUp={handleDiscountPressEnd}
                         onMouseLeave={handleDiscountPressEnd}
@@ -868,8 +897,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                 </span>
                             )}
                         </div>
-
-                        {/* Twin inputs (Micro) */}
                         <div className="flex items-center gap-1">
                             <div className="relative flex items-center">
                                 <input
@@ -882,13 +909,11 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                 />
                                 <span className="absolute right-1 text-[10px] text-red-400 font-bold pointer-events-none">%</span>
                             </div>
-
                             <span className="text-gray-300 text-[10px] mx-0.5">|</span>
-
                             <div className="relative flex items-center">
                                 <span className="absolute left-1 text-[10px] text-red-400 font-bold pointer-events-none">₹</span>
                                 <input
-                                    id="discount"
+                                    id="discount-mobile"
                                     type="number"
                                     placeholder="0"
                                     value={discount || ''}
@@ -900,86 +925,178 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                         </div>
                     </div>
 
-                    {/* Section Divider */}
-                    <div className="pt-1.5 border-t border-gray-200">
-
-                        {/* 2. Tax Type Toggle */}
+                    {/* Mobile: Section Divider + Tax + Stats */}
+                    <div className="md:hidden pt-1.5 border-t border-gray-200">
                         <div className="flex justify-between items-center mb-1 px-1">
                             <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Tax Type</span>
                             <div className="flex bg-gray-100 p-0.5 rounded-xs shadow-inner">
-                                <button
-                                    onClick={() => onTaxModeChange && onTaxModeChange('exempt')}
-                                    disabled={isTaxToggleLocked}
-                                    className={`px-3 py-0.5 text-[10px] font-bold rounded-xs shadow-sm transition-all ${taxMode === 'exempt' ? 'bg-blue-500 text-white' : 'text-gray-600 hover:text-gray-800'} ${isTaxToggleLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                >Exempt</button>
-                                <button
-                                    onClick={() => onTaxModeChange && onTaxModeChange('inclusive')}
-                                    disabled={isTaxToggleLocked}
-                                    className={`px-3 py-0.5 text-[10px] font-bold rounded-xs shadow-sm transition-all ${taxMode === 'inclusive' ? 'bg-blue-500 text-white' : 'text-gray-600 hover:text-gray-800'} ${isTaxToggleLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                >Inclusive</button>
-                                <button
-                                    onClick={() => onTaxModeChange && onTaxModeChange('exclusive')}
-                                    disabled={isTaxToggleLocked}
-                                    className={`px-3 py-0.5 text-[10px] font-bold rounded-xs shadow-sm transition-all ${taxMode === 'exclusive' ? 'bg-blue-500 text-white' : 'text-gray-600 hover:text-gray-800'} ${isTaxToggleLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                >Exclusive</button>
+                                <button onClick={() => onTaxModeChange && onTaxModeChange('exempt')} disabled={isTaxToggleLocked} className={`px-4 py-1 text-[10px] font-bold rounded-xs shadow-sm transition-all ${taxMode === 'exempt' ? 'bg-blue-500 text-white' : 'text-gray-600 hover:text-gray-800'} ${isTaxToggleLocked ? 'opacity-50 cursor-not-allowed' : ''}`}>Exempt</button>
+                                <button onClick={() => onTaxModeChange && onTaxModeChange('inclusive')} disabled={isTaxToggleLocked} className={`px-4 py-0.5 text-[10px] font-bold rounded-xs shadow-sm transition-all ${taxMode === 'inclusive' ? 'bg-blue-500 text-white' : 'text-gray-600 hover:text-gray-800'} ${isTaxToggleLocked ? 'opacity-50 cursor-not-allowed' : ''}`}>Inclusive</button>
+                                <button onClick={() => onTaxModeChange && onTaxModeChange('exclusive')} disabled={isTaxToggleLocked} className={`px-4 py-0.5 text-[10px] font-bold rounded-xs shadow-sm transition-all ${taxMode === 'exclusive' ? 'bg-blue-500 text-white' : 'text-gray-600 hover:text-gray-800'} ${isTaxToggleLocked ? 'opacity-50 cursor-not-allowed' : ''}`}>Exclusive</button>
                             </div>
                         </div>
-
-                        {/* 3. Calculation Summary Box (Horizontal Stat Bar Layout) */}
                         <div className="flex flex-col gap-1 mb-1 px-1">
-
-                            {/* Return / Due Indicator */}
                             <div className="flex justify-start items-center min-h-[16px]">
                                 {changeToReturn > 0.01 ? (
-                                    <span className="text-[10px] font-bold text-yellow-700 bg-yellow-50 px-2 py-0.5 rounded-xs border border-yellow-100">
-                                        Return: ₹{changeToReturn.toFixed(2)}
-                                    </span>
+                                    <span className="text-[10px] font-bold text-yellow-700 bg-yellow-50 px-2 py-0.5 rounded-xs border border-yellow-100">Return: ₹{changeToReturn.toFixed(2)}</span>
                                 ) : (
                                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-xs border ${pendingAmount < 0.01 ? 'text-green-700 bg-green-50 border-green-100' : 'text-red-600 bg-red-50 border-red-100'}`}>
                                         {pendingAmount < 0.01 ? 'Fully Paid' : `Due: ₹${pendingAmount.toFixed(2)}`}
                                     </span>
                                 )}
                             </div>
-
-                            {/* 1-Row Stacked Layout */}
                             <div className="flex items-center justify-between bg-white rounded-xs border border-gray-200 shadow-sm text-center">
-
-                                {/* MRP */}
                                 <div className="flex flex-col items-center flex-1">
                                     <span className="text-[9px] text-gray-400 font-bold uppercase mb-0.5 leading-none">MRP</span>
                                     <span className="text-[11px] font-bold text-gray-700 leading-none">₹{totalMrp.toFixed(0)}</span>
                                 </div>
-
-                                {/* DISC */}
                                 <div className="flex flex-col items-center flex-1 border-r border-gray-100 pr-1">
                                     <span className="text-[9px] text-gray-400 font-bold uppercase mb-0.5 leading-none">Disc</span>
                                     <span className="text-[11px] font-bold text-red-500 leading-none">-₹{(totalItemDiscount + discount).toFixed(0)}</span>
                                 </div>
-
-                                {/* CENTER: Total Payable (Compact Box) */}
                                 <div className="bg-blue-600 text-white rounded-xs py-1.5 px-3 flex flex-col items-center justify-center shadow-sm mx-1.5">
                                     <span className="text-[8px] font-bold uppercase tracking-wider text-blue-200 mb-0.5 leading-none">Total</span>
                                     <span className="font-extrabold text-lg tracking-tight leading-none">₹{netPayable.toFixed(0)}</span>
                                 </div>
-
-                                {/* SUB */}
                                 <div className="flex flex-col items-center flex-1 border-l border-gray-100 pl-1">
                                     <span className="text-[9px] text-gray-400 font-bold uppercase mb-0.5 leading-none">Sub</span>
                                     <span className="text-[11px] font-bold text-gray-700 leading-none">₹{Math.max(0, netPayable - liveTax).toFixed(0)}</span>
                                 </div>
-
-                                {/* TAX */}
                                 <div className="flex flex-col items-center flex-1">
                                     <span className="text-[9px] text-gray-400 font-bold uppercase mb-0.5 leading-none">Tax</span>
                                     <span className="text-[11px] font-bold text-gray-700 leading-none">+₹{liveTax.toFixed(0)}</span>
                                 </div>
-
                             </div>
                         </div>
                     </div>
 
-                    {/* 4. Confirm Button */}
-                    <button onClick={handleConfirm} disabled={isSubmitting || pendingAmount > 0.01} className="w-full py-2 text-white rounded-xs font-bold text-sm shadow active:scale-[0.98] transition-all disabled:bg-gray-300 disabled:shadow-none disabled:cursor-not-allowed flex items-center justify-center gap-2" style={{ backgroundColor: pendingAmount < 0.01 ? '#0ea5e9' : '#94a3b8' }}>
+                    {/* ── DESKTOP LAYOUT ── */}
+                    <div className="hidden md:flex md:flex-col md:gap-2">
+
+                        {/* ROW 1: Bill Discount (left) + Tax Type (right-aligned) */}
+                        <div className="flex items-center justify-between gap-4">
+
+                            {/* Bill Discount block */}
+                            <div
+                                className="flex items-center gap-3 cursor-pointer"
+                                onMouseDown={handleDiscountPressStart}
+                                onMouseUp={handleDiscountPressEnd}
+                                onMouseLeave={handleDiscountPressEnd}
+                                onClick={handleDiscountClick}
+                            >
+                                <div className="flex flex-col">
+                                    <div className="flex items-center gap-1 mb-1">
+                                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Bill Discount</span>
+                                        {isDiscountLocked && (
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                                            </svg>
+                                        )}
+                                        {discountInfo && (
+                                            <span className="text-[10px] text-red-500 bg-red-50 px-1 rounded animate-pulse">{discountInfo}</span>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="relative flex items-center bg-red-50 border border-red-200 rounded px-2 py-1">
+                                            <input
+                                                type="number"
+                                                placeholder="0"
+                                                value={discountPercent || ''}
+                                                onChange={handleDiscountPercentChange}
+                                                readOnly={isDiscountLocked}
+                                                className={`w-10 text-center text-xs bg-transparent text-red-800 focus:outline-none pr-3 ${isDiscountLocked ? 'cursor-not-allowed' : 'font-semibold'}`}
+                                            />
+                                            <span className="absolute right-1.5 text-[10px] text-red-400 font-bold pointer-events-none">%</span>
+                                        </div>
+                                        <div className="relative flex items-center bg-red-50 border border-red-200 rounded px-2 py-1">
+                                            <span className="absolute left-1.5 text-[10px] text-red-400 font-bold pointer-events-none">₹</span>
+                                            <input
+                                                id="discount"
+                                                type="number"
+                                                placeholder="0"
+                                                value={discount || ''}
+                                                onChange={handleDiscountAmountChange}
+                                                readOnly={isDiscountLocked}
+                                                className={`w-14 text-center text-xs bg-transparent text-red-800 focus:outline-none pl-3 ${isDiscountLocked ? 'cursor-not-allowed' : 'font-semibold'}`}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Tax Type block — right-aligned, same label + box style as Bill Discount */}
+                            <div className="flex flex-col items-end">
+                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Tax Type</span>
+                                <div className="flex items-center gap-1">
+                                    {(['exempt', 'inclusive', 'exclusive'] as const).map((mode) => (
+                                        <button
+                                            key={mode}
+                                            onClick={() => onTaxModeChange && onTaxModeChange(mode)}
+                                            disabled={isTaxToggleLocked}
+                                            className={`
+                                                px-4 py-[7px] text-xs font-bold rounded border transition-all
+                                                ${taxMode === mode
+                                                    ? 'bg-blue-500 border-blue-500 text-white shadow-sm'
+                                                    : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-800'
+                                                }
+                                                ${isTaxToggleLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                                            `}
+                                        >
+                                            {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* ROW 2: MRP / DISC / TOTAL / SUB / TAX stat strip */}
+                        <div className="flex items-center justify-between bg-white rounded-xs border border-gray-200 shadow-sm text-center">
+                            <div className="flex flex-col items-center flex-1 py-1.5">
+                                <span className="text-[9px] text-gray-400 font-bold uppercase mb-0.5 leading-none">MRP</span>
+                                <span className="text-[12px] font-bold text-gray-700 leading-none">₹{totalMrp.toFixed(0)}</span>
+                            </div>
+                            <div className="flex flex-col items-center flex-1 border-r border-gray-100 py-1.5">
+                                <span className="text-[9px] text-gray-400 font-bold uppercase mb-0.5 leading-none">Disc</span>
+                                <span className="text-[12px] font-bold text-red-500 leading-none">-₹{(totalItemDiscount + discount).toFixed(0)}</span>
+                            </div>
+                            <div className="bg-blue-600 text-white rounded-xs py-2 px-5 flex flex-col items-center justify-center shadow-sm mx-2">
+                                <span className="text-[9px] font-bold uppercase tracking-wider text-blue-200 mb-0.5 leading-none">Total</span>
+                                <span className="font-extrabold text-xl tracking-tight leading-none">₹{netPayable.toFixed(0)}</span>
+                            </div>
+                            <div className="flex flex-col items-center flex-1 border-l border-gray-100 py-1.5">
+                                <span className="text-[9px] text-gray-400 font-bold uppercase mb-0.5 leading-none">Sub</span>
+                                <span className="text-[12px] font-bold text-gray-700 leading-none">₹{Math.max(0, netPayable - liveTax).toFixed(0)}</span>
+                            </div>
+                            <div className="flex flex-col items-center flex-1 py-1.5">
+                                <span className="text-[9px] text-gray-400 font-bold uppercase mb-0.5 leading-none">Tax</span>
+                                <span className="text-[12px] font-bold text-gray-700 leading-none">+₹{liveTax.toFixed(0)}</span>
+                            </div>
+                        </div>
+
+                        {/* ROW 3: Due/Return badge + Confirm Button */}
+                        <div className="flex items-center gap-3">
+                            {changeToReturn > 0.01 ? (
+                                <span className="text-[11px] font-bold text-yellow-700 bg-yellow-50 px-3 py-1.5 rounded-xs border border-yellow-100 whitespace-nowrap">
+                                    Return: ₹{changeToReturn.toFixed(2)}
+                                </span>
+                            ) : (
+                                <span className={`text-[11px] font-bold px-3 py-1.5 rounded-xs border whitespace-nowrap ${pendingAmount < 0.01 ? 'text-green-700 bg-green-50 border-green-100' : 'text-red-600 bg-red-50 border-red-100'}`}>
+                                    {pendingAmount < 0.01 ? 'Fully Paid' : `Due: ₹${pendingAmount.toFixed(2)}`}
+                                </span>
+                            )}
+                            <button
+                                onClick={handleConfirm}
+                                disabled={isSubmitting || pendingAmount > 0.01}
+                                className="flex-1 py-3 text-white rounded-xs font-bold text-sm shadow active:scale-[0.98] transition-all disabled:bg-gray-300 disabled:shadow-none disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                style={{ backgroundColor: pendingAmount < 0.01 ? '#0ea5e9' : '#94a3b8' }}
+                            >
+                                {isSubmitting ? (<><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>...</>) : ("Confirm Payment")}
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Mobile Confirm Button (unchanged) */}
+                    <button onClick={handleConfirm} disabled={isSubmitting || pendingAmount > 0.01} className="md:hidden w-full py-3 text-white rounded-xs font-bold text-sm shadow active:scale-[0.98] transition-all disabled:bg-gray-300 disabled:shadow-none disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-1" style={{ backgroundColor: pendingAmount < 0.01 ? '#0ea5e9' : '#94a3b8' }}>
                         {isSubmitting ? (<><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>...</>) : ("Confirm Payment")}
                     </button>
                 </div>

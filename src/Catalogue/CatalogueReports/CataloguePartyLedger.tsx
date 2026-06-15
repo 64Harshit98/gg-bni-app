@@ -890,7 +890,7 @@ const CataloguePartyLedger: React.FC = () => {
                                 type="text"
                                 placeholder="Search by Party Name or Number..."
                                 value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
+                                onChange={(e) => { setSearchQuery(e.target.value); if (e.target.value.trim()) setShowTransactionList(true); }}
                                 className="w-full p-2 border border-gray-300 rounded-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm"
                             />
                         </div>
@@ -927,13 +927,13 @@ const CataloguePartyLedger: React.FC = () => {
                         <div className="flex justify-center mt-3">
                             <div className="flex bg-gray-100 rounded-sm p-1 text-sm">
                                 <button
-                                    onClick={() => setStatusFilter(prev => prev === 'due' ? 'all' : 'due')}
+                                    onClick={() => { setStatusFilter(prev => prev === 'due' ? 'all' : 'due'); setShowTransactionList(true); }}
                                     className={`px-3 py-1.5 rounded-sm transition ${statusFilter === 'due' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-600'}`}
                                 >
                                     Due
                                 </button>
                                 <button
-                                    onClick={() => setStatusFilter(prev => prev === 'settled' ? 'all' : 'settled')}
+                                    onClick={() => { setStatusFilter(prev => prev === 'settled' ? 'all' : 'settled'); setShowTransactionList(true); }}
                                     className={`px-3 py-1.5 rounded-sm transition ${statusFilter === 'settled' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-600'}`}
                                 >
                                     Settled

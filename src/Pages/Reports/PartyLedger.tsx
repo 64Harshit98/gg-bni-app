@@ -444,7 +444,7 @@ const PartyLedger: React.FC = () => {
                             type="text"
                             placeholder="Search by Party Name or Number..."
                             value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
+                            onChange={(e) => { setSearchQuery(e.target.value); if (e.target.value.trim()) setShowTransactionList(true); }}
                             className="w-full p-2 border border-gray-300 rounded-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                         />
                     </div>
@@ -471,19 +471,19 @@ const PartyLedger: React.FC = () => {
                     <div className="flex flex-col items-center gap-2 mt-3">
                         <div className="flex border border-gray-200 rounded-sm overflow-hidden text-sm w-1/2">
                             <button
-                                onClick={() => setPartyTypeFilter(prev => prev === 'Customer' ? 'all' : 'Customer')}
+                                onClick={() => { setPartyTypeFilter(prev => prev === 'Customer' ? 'all' : 'Customer'); setShowTransactionList(true); }}
                                 className={`flex-1 px-3 py-1.5 transition font-medium ${partyTypeFilter === 'Customer' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
                             >
                                 Customer
                             </button>
                             <button
-                                onClick={() => setPartyTypeFilter(prev => prev === 'Supplier' ? 'all' : 'Supplier')}
+                                onClick={() => { setPartyTypeFilter(prev => prev === 'Supplier' ? 'all' : 'Supplier'); setShowTransactionList(true); }}
                                 className={`flex-1 px-3 py-1.5 transition font-medium border-l border-gray-200 ${partyTypeFilter === 'Supplier' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
                             >
                                 Supplier
                             </button>
                             <button
-                                onClick={() => setPartyTypeFilter(prev => prev === 'Both' ? 'all' : 'Both')}
+                                onClick={() => { setPartyTypeFilter(prev => prev === 'Both' ? 'all' : 'Both'); setShowTransactionList(true); }}
                                 className={`flex-1 px-3 py-1.5 transition font-medium border-l border-gray-200 ${partyTypeFilter === 'Both' ? 'bg-blue-500 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
                             >
                                 Both
@@ -491,13 +491,13 @@ const PartyLedger: React.FC = () => {
                         </div>
                         <div className="flex bg-gray-100 rounded-sm p-1 text-sm">
                             <button
-                                onClick={() => setStatusFilter(prev => prev === 'due' ? 'all' : 'due')}
+                                onClick={() => { setStatusFilter(prev => prev === 'due' ? 'all' : 'due'); setShowTransactionList(true); }}
                                 className={`px-3 py-1.5 rounded-sm transition ${statusFilter === 'due' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600'}`}
                             >
                                 Due
                             </button>
                             <button
-                                onClick={() => setStatusFilter(prev => prev === 'settled' ? 'all' : 'settled')}
+                                onClick={() => { setStatusFilter(prev => prev === 'settled' ? 'all' : 'settled'); setShowTransactionList(true); }}
                                 className={`px-3 py-1.5 rounded-sm transition ${statusFilter === 'settled' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600'}`}
                             >
                                 Settled

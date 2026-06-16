@@ -335,8 +335,8 @@ const SalesSettingsPage: React.FC = () => {
             <main className="flex-grow min-h-0 p-3 sm:p-4 md:p-5 bg-gray-50 w-full overflow-y-auto box-border pb-44 md:pb-24">
                 <form onSubmit={handleSave} className="max-w-5xl mx-auto space-y-5">
 
-                    <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-                        <div className="space-y-5">
+                    <div className="space-y-5">
+                        <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
                             {/* Display & Team — full width */}
                             <SettingsCard
                                 title="Display Settings"
@@ -571,9 +571,11 @@ const SalesSettingsPage: React.FC = () => {
                                     </div>
                                 </div>
                             </SettingsCard>
+                        </ShowWrapper>
 
-                            {/* Smaller cards in a 2x2 grid */}
-                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                        {/* Smaller cards in a 2x2 grid */}
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                            <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
                                 <SettingsCard title="Discounts & Price Control">
                                     <ToggleRow id="item-discount" label="Enable Item-wise Discount" description="Allow discount per item." checked={settings.enableItemWiseDiscount ?? false} onChange={(checked) => handleCheckboxChange('enableItemWiseDiscount', checked)} tooltip="Allow discounts to be applied to individual cart items." />
                                     <ToggleRow id="lock-discount" label="Lock Discount Entry" description="Prevent editing discount in billing screen." checked={settings.lockDiscountEntry ?? false} onChange={(checked) => handleCheckboxChange('lockDiscountEntry', checked)} tooltip="Stop staff from manually changing discounts during a sale." />
@@ -590,25 +592,23 @@ const SalesSettingsPage: React.FC = () => {
                                     <ToggleRow id="enable-expense" label="Enable Extra Expense" description="Allow additional charges like freight/packing." checked={settings.enableExtraExpense ?? false} onChange={(checked) => handleCheckboxChange('enableExtraExpense', checked)} tooltip="Add extra charge to final bill." />
                                     <ToggleRow id="enable-narration" label="Enable Narration / Remarks" description="Allow adding custom note in invoice." checked={settings.enableNarration ?? false} onChange={(checked) => handleCheckboxChange('enableNarration', checked)} tooltip="Allow custom remarks on invoice." />
                                 </SettingsCard>
-                            </div>
+                            </ShowWrapper>
+                            {/* Required Fields (Outside ShowWrapper to display for all plans) */}
+                            <SettingsCard title="Required Fields">
+                                <ToggleRow
+                                    id="req-customer-info"
+                                    label="Enable Customer Info"
+                                    description="Enable and disable customer info during payment."
+                                    checked={settings.enableCustomerInfoToggle ?? false}
+                                    onChange={(checked) => handleCheckboxChange('enableCustomerInfoToggle', checked)}
+                                    tooltip="Toggles the customer information capture section during checkout."
+                                />
+                                <ToggleRow id="req-customer" label="Require Customer Name" description="Force customer name before save." checked={settings.requireCustomerName ?? false} onChange={(checked) => handleCheckboxChange('requireCustomerName', checked)} tooltip="Force entering customer name before saving invoice." />
+                                <ToggleRow id="req-mobile" label="Require Customer Mobile" description="Force customer mobile before save." checked={settings.requireCustomerMobile ?? false} onChange={(checked) => handleCheckboxChange('requireCustomerMobile', checked)} tooltip="Force entering customer mobile before saving invoice." />
+                            </SettingsCard>
                         </div>
-                    </ShowWrapper>
-
-                    {/* Required Fields (Outside ShowWrapper to display for all plans) */}
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                        <SettingsCard title="Required Fields">
-                            <ToggleRow
-                                id="req-customer-info"
-                                label="Enable Customer Info"
-                                description="Enable and disable customer info during payment."
-                                checked={settings.enableCustomerInfoToggle ?? false}
-                                onChange={(checked) => handleCheckboxChange('enableCustomerInfoToggle', checked)}
-                                tooltip="Toggles the customer information capture section during checkout."
-                            />
-                            <ToggleRow id="req-customer" label="Require Customer Name" description="Force customer name before save." checked={settings.requireCustomerName ?? false} onChange={(checked) => handleCheckboxChange('requireCustomerName', checked)} tooltip="Force entering customer name before saving invoice." />
-                            <ToggleRow id="req-mobile" label="Require Customer Mobile" description="Force customer mobile before save." checked={settings.requireCustomerMobile ?? false} onChange={(checked) => handleCheckboxChange('requireCustomerMobile', checked)} tooltip="Force entering customer mobile before saving invoice." />
-                        </SettingsCard>
                     </div>
+
 
                     {/* Voucher Numbering (Outside ShowWrapper) */}
                     <SettingsCard

@@ -87,7 +87,6 @@ const BusinessInfoPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [showReferral, setShowReferral] = useState(false);
   const [referralCode, setReferralCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -562,52 +561,30 @@ const BusinessInfoPage: React.FC = () => {
                     />
                   </div>
                 </div>
-
-                <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
-                  <FiMap className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
-                  <FloatingLabelSelect
-                    id="state"
-                    label="State"
-                    value={formData.state}
-                    onChange={(e) => handleChange('state', e.target.value)}
-                    options={indianStates}
-                    required
-                    className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
+                    <FiMap className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+                    <FloatingLabelSelect
+                      id="state"
+                      label="State"
+                      value={formData.state}
+                      onChange={(e) => handleChange('state', e.target.value)}
+                      options={indianStates}
+                      required
+                      className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
+                    />
+                  </div>
+                  <div className="relative [&_label]:!left-[3rem] animate-fade-in">
+                    <FiGift className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+                    <FloatingLabelInput
+                      id="referralCode"
+                      label="Referral Code"
+                      value={referralCode}
+                      onChange={(e) => setReferralCode(e.target.value.toUpperCase())} // Forces uppercase instantly
+                      className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
+                    />
+                  </div>
                 </div>
-                <div className="pt-2 transition-all duration-300 ease-in-out">
-                  {!showReferral ? (
-                    <button
-                      type="button"
-                      onClick={() => setShowReferral(true)}
-                      className="text-gray-600 font-medium text-sm hover:text-black flex items-center gap-2"
-                    >
-                      <FiGift className="text-gray-500" /> Have a referral code?
-                    </button>
-                  ) : (
-                    <div className="relative [&_label]:!left-[3rem] animate-fade-in">
-                      <FiGift className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
-                      <FloatingLabelInput
-                        id="referralCode"
-                        label="Referral Code (Optional)"
-                        value={referralCode}
-                        onChange={(e) => setReferralCode(e.target.value.toUpperCase())} // Forces uppercase instantly
-                        className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowReferral(false);
-                          setReferralCode(''); // Clear if they close it
-                        }}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600 z-20"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  )}
-                </div>
-
               </div>
               {error && (
                 <p className="text-red-500 text-sm text-center bg-red-50 p-2 rounded-sm animate-pulse">
@@ -618,7 +595,7 @@ const BusinessInfoPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="fixed lg:absolute bottom-0 left-0 lg:left-auto right-0 lg:w-1/2 p-4 h-[110px] bg-gray-100 border-t border-gray-200 z-50 shadow-lg">
+        <div className="fixed lg:absolute bottom-0 left-0 lg:left-auto right-0 lg:w-1/2 p-2 h-[110px] bg-gray-100 border-t border-gray-200 z-50 shadow-lg">
           <div className="max-w-md mx-auto space-y-3">
             <CustomButton
               type="submit"

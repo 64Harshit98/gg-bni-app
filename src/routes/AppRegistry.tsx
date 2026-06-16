@@ -161,7 +161,7 @@ export const AppRegistry: AppModule[] = [
         requiredPlans: [PLANS.POS_BASIC, PLANS.POS_PRO, PLANS.ENTERPRISE, PLANS.CALC_CATALOG],
         routes: [
             { component: Home, permission: Permissions.ViewDashboard, isIndex: true },
-            { path: ROUTES.ACCOUNT.substring(1), component: Account, permission: Permissions.ManageEditProfile },
+            { path: ROUTES.ACCOUNT.substring(1), component: Account, permission: Permissions.ViewAccount },
             { path: ROUTES.EDIT_PROFILE, component: EditProfile, permission: Permissions.ManageEditProfile },
             { path: ROUTES.JOURNAL.substring(1), component: Journal, permission: Permissions.ViewTransactions },
             { path: ROUTES.MASTERS.substring(1), component: Masters, permission: Permissions.ViewReports },

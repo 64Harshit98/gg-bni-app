@@ -34,13 +34,12 @@ export const DEFAULT_PERMISSIONS_MAP = {
         Permissions.ViewDashboard,
         Permissions.CreateSales,
         Permissions.CreateSalesReturn,
-        Permissions.ManageEditProfile
+        Permissions.ViewAccount
     ],
     [ROLES.MANAGER]: [
         Permissions.ViewDashboard,
         Permissions.ViewAttendance,
         Permissions.ViewAccount,
-        Permissions.ManageEditProfile,
         Permissions.Viewrestockcard,
         Permissions.ViewTransactions,
         Permissions.PrintQR,
@@ -231,6 +230,7 @@ const permissionGroups = {
 };
 const HIDDEN_FROM_UI_PERMISSIONS = [
     Permissions.HiddenProFeatures,
+    Permissions.ViewPartnerDashboard,
 ];
 const getUngroupedPermissions = (allPermissions: Permissions[]): Permissions[] => {
     const grouped = new Set<Permissions>();

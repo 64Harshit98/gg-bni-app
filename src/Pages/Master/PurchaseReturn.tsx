@@ -30,6 +30,7 @@ import { ReturnListItem } from '../../Components/ReturnListItem';
 import { IconScanCircle } from '../../constants/Icons';
 import { GenericCartList, type CartItem } from '../../Components/CartItem';
 import { usePurchaseSettings } from '../../context/SettingsContext';
+import { ItemEditDrawer } from '../../Components/ItemDrawer';
 
 interface PurchaseData {
   id: string;
@@ -128,6 +129,35 @@ const PurchaseReturnPage: React.FC = () => {
   const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
   const [scannerPurpose, setScannerPurpose] = useState<'purchase' | 'item' | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
+  const [isItemDrawerOpen, setIsItemDrawerOpen] = useState(false);
+
+  const handleOpenEditDrawer = (item: Item) => {
+    // We must find the actual inventory item using the originalItemId
+    const realItem = availableItems.find(a => a.id === (item as any).originalItemId || a.id === item.id);
+    if (!realItem) {
+      setModal({ message: 'Original item not found in inventory.', type: State.ERROR });
+      return;
+    }
+    setSelectedItemForEdit(realItem);
+    setIsItemDrawerOpen(true);
+  };
+
+  const handleCloseEditDrawer = () => {
+    setIsItemDrawerOpen(false);
+    setTimeout(() => setSelectedItemForEdit(null), 300);
+  };
+
+  const handleSaveSuccess = (updatedItemData: Partial<Item>) => {
+    setAvailableItems(prev => prev.map(item =>
+      item.id === selectedItemForEdit?.id ? { ...item, ...updatedItemData, id: item.id } as Item : item
+    ));
+    setNewItemsReceived(prev => prev.map(item =>
+      item.originalItemId === selectedItemForEdit?.id
+        ? { ...item, name: updatedItemData.name ?? item.name, mrp: updatedItemData.mrp ?? item.mrp }
+        : item
+    ));
+  };
   const { purchaseSettings } = usePurchaseSettings();
   const [activeTaxMode, setActiveTaxMode] = useState<'inclusive' | 'exclusive' | 'exempt'>('exclusive');
 
@@ -1035,7 +1065,7 @@ const PurchaseReturnPage: React.FC = () => {
                             applyRounding={(v) => v}
                             State={State}
                             setModal={setModal}
-                            onOpenEditDrawer={() => { }}
+                            onOpenEditDrawer={handleOpenEditDrawer}
                             onDeleteItem={handleRemoveNewItem}
                             onDiscountChange={handleNewItemDiscountChange}
                             onCustomPriceChange={handleNewItemPriceChange}
@@ -1187,6 +1217,12 @@ const PurchaseReturnPage: React.FC = () => {
         onPaymentComplete={saveReturnTransaction}
         initialPartyName={supplierName}
         initialPartyNumber={supplierNumber}
+      />
+      <ItemEditDrawer
+        item={selectedItemForEdit}
+        isOpen={isItemDrawerOpen}
+        onClose={handleCloseEditDrawer}
+        onSaveSuccess={handleSaveSuccess}
       />
     </div>
   );

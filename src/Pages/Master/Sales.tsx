@@ -1002,7 +1002,7 @@ const Sales: React.FC = () => {
     const handlePriceClick = () => { if (salesSettings?.lockSalePriceEntry || isPriceLocked) { setPriceInfo("Cannot edit sale price"); setTimeout(() => setPriceInfo(null), 1000); } };
     const handleDiscountChange = (id: string, v: number | string) => {
         const n = typeof v === 'string' ? parseFloat(v) : v;
-        const safeDiscount = isNaN(n) ? 0 : n;
+        const safeDiscount = isNaN(n) ? 0 : Math.min(100, Math.max(0, n));
         setItems(prev => prev.map(i => {
             if (i.id === id) {
                 // FIXED: Base price is MRP if it exists, otherwise Sales Price

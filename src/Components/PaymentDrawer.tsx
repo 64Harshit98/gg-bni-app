@@ -52,7 +52,7 @@ export interface PaymentCompletionData {
     shippingGST?: string;
     expenses?: ExpenseItem[];
     narration?: string;
-    placeOfSupply?: string;     // <-- ADD THIS
+    placeOfSupply?: string;
     shippingState?: string;
 }
 
@@ -95,8 +95,21 @@ interface PaymentDrawerProps {
     totalMrp?: number;
 }
 
+// --- SESSION STORAGE KEYS ---
 const SESSION_STORAGE_NAME_KEY = 'sessionPartyName';
 const SESSION_STORAGE_NUMBER_KEY = 'sessionPartyNumber';
+const SESSION_STORAGE_ADDRESS_KEY = 'sessionPartyAddress';
+const SESSION_STORAGE_GST_KEY = 'sessionPartyGST';
+const SESSION_STORAGE_STATE_KEY = 'sessionPartyState';
+const SESSION_STORAGE_SHIPPING_NAME_KEY = 'sessionShippingName';
+const SESSION_STORAGE_SHIPPING_NUMBER_KEY = 'sessionShippingNumber';
+const SESSION_STORAGE_SHIPPING_ADDRESS_KEY = 'sessionShippingAddress';
+const SESSION_STORAGE_SHIPPING_GST_KEY = 'sessionShippingGST';
+const SESSION_STORAGE_SHIPPING_STATE_KEY = 'sessionShippingState';
+const SESSION_STORAGE_SAME_AS_BILLING_KEY = 'sessionIsSameAsBilling';
+const SESSION_STORAGE_EXPENSES_KEY = 'sessionExpenses';
+const SESSION_STORAGE_NARRATION_KEY = 'sessionNarration';
+const SESSION_STORAGE_PAYMENTS_KEY = 'sessionSelectedPayments';
 
 interface PartySuggestion {
     name: string;
@@ -109,7 +122,7 @@ interface PartySuggestion {
     shippingNumber?: string;
     shippingAddress?: string;
     shippingGST?: string;
-    state?: string;             // <-- ADD THIS
+    state?: string;
     shippingState?: string;
 }
 
@@ -195,7 +208,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const [isNarrationExpanded, setIsNarrationExpanded] = useState(false);
 
     // --- CALCULATIONS ---
-    // Calculates proportional tax drop live as discount is typed
     const liveTax = useMemo(() => {
         if (!billTotal || billTotal <= 0) return totalTax || 0;
         const ratio = Math.max(0, (billTotal - discount) / billTotal);
@@ -245,16 +257,15 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             setShippingGST(partyGST);
             setShippingState(partyState);
         }
-    }, [isSameAsBilling, partyName, partyNumber, partyAddress, partyGST]);
+    }, [isSameAsBilling, partyName, partyNumber, partyAddress, partyGST, partyState]);
 
+    // --- LIFECYCLE: MOUNT / SYNC INITIAL DATA & CACHE ---
     useEffect(() => {
         if (!isOpen) return;
 
         setIsSubmitting(false);
         const baseTotal = originalBillTotal && originalBillTotal > 0 ? originalBillTotal : billTotal;
         const originalPercent = initialDiscount && baseTotal > 0 ? (initialDiscount / baseTotal) * 100 : 0;
-
-        // Use Math.round here instead of parseFloat to completely eliminate decimals in the discount
         const scaledDiscount = billTotal > 0 ? Math.round((originalPercent / 100) * billTotal) : 0;
 
         setDiscount(scaledDiscount);
@@ -267,75 +278,128 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         setSuggestions([]);
         setShowSuggestions(false);
         setAddressType('billing');
-        setShippingName(initialShippingName || '');
-        setShippingNumber(initialShippingNumber || '');
-        setShippingAddress(initialShippingAddress || '');
-        setShippingGST(initialShippingGST || '');
-        setExpenses(
-            initialExpenses && initialExpenses.length > 0
-                ? initialExpenses.map((e, index) => ({ id: Date.now() + index, name: e.name, amount: e.amount }))
-                : []
-        );
-        setNarration(initialNarration || '');
-        setIsNarrationExpanded(!!initialNarration);
 
-        let initialName = initialPartyName || '';
-        let initialNumber = initialPartyNumber || '';
-
-        // --- THE FIX ---
-        if (initialName || initialNumber) {
-            // EDIT MODE: Turn off auto-save so we don't overwrite the New Bill draft
-            shouldSaveToLocalStorage.current = false;
-
-            // Clear the session storage so the next New Bill starts totally fresh
-            try {
-                sessionStorage.removeItem(SESSION_STORAGE_NAME_KEY);
-                sessionStorage.removeItem(SESSION_STORAGE_NUMBER_KEY);
-            } catch (e) { }
-        } else {
-            // NEW BILL MODE: Turn auto-save back on and load any existing draft
-            shouldSaveToLocalStorage.current = true;
-            try {
-                initialName = sessionStorage.getItem(SESSION_STORAGE_NAME_KEY) || '';
-                initialNumber = sessionStorage.getItem(SESSION_STORAGE_NUMBER_KEY) || '';
-            } catch (e) { }
-        }
-        // ---------------
+        // Setup fallbacks using props
+        let finalName = initialPartyName || '';
+        let finalNumber = initialPartyNumber || '';
+        let finalAddress = initialPartyAddress || '';
+        let finalGST = initialPartyGST || '';
+        let finalState = initialPlaceOfSupply || '';
+        let finalShippingName = initialShippingName || '';
+        let finalShippingNumber = initialShippingNumber || '';
+        let finalShippingAddress = initialShippingAddress || '';
+        let finalShippingGST = initialShippingGST || '';
+        let finalShippingState = initialShippingState || '';
+        let finalIsSameAsBilling = false;
+        let finalExpenses = initialExpenses && initialExpenses.length > 0
+            ? initialExpenses.map((e, index) => ({ id: Date.now() + index, name: e.name, amount: e.amount }))
+            : [];
+        let finalNarration = initialNarration || '';
+        let loadedPayments: PaymentDetails = {};
 
         if (initialPaymentMethods && Object.keys(initialPaymentMethods).length > 0) {
-            const loadedPayments: PaymentDetails = {};
             Object.entries(initialPaymentMethods).forEach(([key, value]) => {
                 if (key === 'due' || key === 'Credit Note' || key === 'Debit Note') return;
                 const numVal = Number(value);
                 if (!isNaN(numVal) && numVal > 0) loadedPayments[key] = numVal;
             });
-            setSelectedPayments(loadedPayments);
-        } else {
-            setSelectedPayments({});
         }
 
-        setPartyName(initialName);
-        setPartyNumber(initialNumber);
-        setPartyAddress(initialPartyAddress || '');
-        setPartyGST(initialPartyGST || '');
-        setPartyState(initialPlaceOfSupply || '');        // <-- ADD THIS
-        setShippingState(initialShippingState || '');
-        setIsDetailsExpanded(false);
+        if (finalName || finalNumber) {
+            // EDIT MODE: Turn off auto-save so we don't overwrite any ongoing New Bill draft
+            shouldSaveToLocalStorage.current = false;
 
-        // Auto-search logic on open
-        if (isSale && initialNumber) searchParty(initialNumber, 'number');
-        if (!isSale && initialName) searchParty(initialName, 'name');
+            // Clear session values completely so the next New Bill flows fresh
+            try {
+                sessionStorage.removeItem(SESSION_STORAGE_NAME_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_NUMBER_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_ADDRESS_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_GST_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_STATE_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_SHIPPING_NAME_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_SHIPPING_NUMBER_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_SHIPPING_ADDRESS_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_SHIPPING_GST_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_SHIPPING_STATE_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_SAME_AS_BILLING_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_EXPENSES_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_NARRATION_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_PAYMENTS_KEY);
+            } catch (e) { }
+        } else {
+            // NEW BILL MODE: Enable automatic local caching
+            shouldSaveToLocalStorage.current = true;
+            try {
+                finalName = sessionStorage.getItem(SESSION_STORAGE_NAME_KEY) || '';
+                finalNumber = sessionStorage.getItem(SESSION_STORAGE_NUMBER_KEY) || '';
+                finalAddress = sessionStorage.getItem(SESSION_STORAGE_ADDRESS_KEY) || '';
+                finalGST = sessionStorage.getItem(SESSION_STORAGE_GST_KEY) || '';
+                finalState = sessionStorage.getItem(SESSION_STORAGE_STATE_KEY) || '';
+                finalShippingName = sessionStorage.getItem(SESSION_STORAGE_SHIPPING_NAME_KEY) || '';
+                finalShippingNumber = sessionStorage.getItem(SESSION_STORAGE_SHIPPING_NUMBER_KEY) || '';
+                finalShippingAddress = sessionStorage.getItem(SESSION_STORAGE_SHIPPING_ADDRESS_KEY) || '';
+                finalShippingGST = sessionStorage.getItem(SESSION_STORAGE_SHIPPING_GST_KEY) || '';
+                finalShippingState = sessionStorage.getItem(SESSION_STORAGE_SHIPPING_STATE_KEY) || '';
+                finalIsSameAsBilling = sessionStorage.getItem(SESSION_STORAGE_SAME_AS_BILLING_KEY) === 'true';
+                finalNarration = sessionStorage.getItem(SESSION_STORAGE_NARRATION_KEY) || '';
+
+                const savedExpenses = sessionStorage.getItem(SESSION_STORAGE_EXPENSES_KEY);
+                if (savedExpenses) finalExpenses = JSON.parse(savedExpenses);
+
+                const savedPayments = sessionStorage.getItem(SESSION_STORAGE_PAYMENTS_KEY);
+                if (savedPayments) loadedPayments = JSON.parse(savedPayments);
+            } catch (e) { }
+        }
+
+        // Apply initialized parameters directly to state hook engines
+        setPartyName(finalName);
+        setPartyNumber(finalNumber);
+        setPartyAddress(finalAddress);
+        setPartyGST(finalGST);
+        setPartyState(finalState);
+        setShippingName(finalShippingName);
+        setShippingNumber(finalShippingNumber);
+        setShippingAddress(finalShippingAddress);
+        setShippingGST(finalShippingGST);
+        setShippingState(finalShippingState);
+        setIsSameAsBilling(finalIsSameAsBilling);
+        setExpenses(finalExpenses);
+        setNarration(finalNarration);
+        setSelectedPayments(loadedPayments);
+
+        setIsNarrationExpanded(!!finalNarration);
+        setIsDetailsExpanded(!!(finalAddress || finalGST || finalState));
+
+        if (isSale && finalNumber) searchParty(finalNumber, 'number');
+        if (!isSale && finalName) searchParty(finalName, 'name');
 
     }, [isOpen, mode, billTotal, initialDiscount, originalBillTotal, initialPartyName, initialPartyNumber, initialPartyAddress, initialPartyGST, initialShippingName, initialShippingNumber, initialShippingAddress, initialShippingGST, initialNarration]);
 
+    // --- AUTOMATIC SESSION SYNC EFFECT ---
     useEffect(() => {
         if (isOpen && !isSubmitting && shouldSaveToLocalStorage.current) {
             try {
-                if (partyName) sessionStorage.setItem(SESSION_STORAGE_NAME_KEY, partyName);
-                if (partyNumber) sessionStorage.setItem(SESSION_STORAGE_NUMBER_KEY, partyNumber);
+                sessionStorage.setItem(SESSION_STORAGE_NAME_KEY, partyName);
+                sessionStorage.setItem(SESSION_STORAGE_NUMBER_KEY, partyNumber);
+                sessionStorage.setItem(SESSION_STORAGE_ADDRESS_KEY, partyAddress);
+                sessionStorage.setItem(SESSION_STORAGE_GST_KEY, partyGST);
+                sessionStorage.setItem(SESSION_STORAGE_STATE_KEY, partyState);
+                sessionStorage.setItem(SESSION_STORAGE_SHIPPING_NAME_KEY, shippingName);
+                sessionStorage.setItem(SESSION_STORAGE_SHIPPING_NUMBER_KEY, shippingNumber);
+                sessionStorage.setItem(SESSION_STORAGE_SHIPPING_ADDRESS_KEY, shippingAddress);
+                sessionStorage.setItem(SESSION_STORAGE_SHIPPING_GST_KEY, shippingGST);
+                sessionStorage.setItem(SESSION_STORAGE_SHIPPING_STATE_KEY, shippingState);
+                sessionStorage.setItem(SESSION_STORAGE_SAME_AS_BILLING_KEY, String(isSameAsBilling));
+                sessionStorage.setItem(SESSION_STORAGE_NARRATION_KEY, narration);
+                sessionStorage.setItem(SESSION_STORAGE_EXPENSES_KEY, JSON.stringify(expenses));
+                sessionStorage.setItem(SESSION_STORAGE_PAYMENTS_KEY, JSON.stringify(selectedPayments));
             } catch (e) { }
         }
-    }, [partyName, partyNumber, isOpen, isSubmitting]);
+    }, [
+        partyName, partyNumber, partyAddress, partyGST, partyState,
+        shippingName, shippingNumber, shippingAddress, shippingGST, shippingState,
+        isSameAsBilling, expenses, narration, selectedPayments, isOpen, isSubmitting
+    ]);
 
     const searchParty = async (term: string, field: 'name' | 'number') => {
         if (!term || term.length < 2 || !currentUser?.companyId) {
@@ -344,13 +408,11 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
 
         const companyId = currentUser.companyId;
         const partyRef = collection(db, 'companies', companyId, collectionName);
-
         const termLower = term.toLowerCase();
         const termCap = termLower.charAt(0).toUpperCase() + termLower.slice(1);
 
         try {
             const queries = [];
-
             queries.push(
                 getDocs(query(partyRef, where(field, '>=', termLower), where(field, '<=', termLower + '\uf8ff'), limit(5)))
             );
@@ -361,7 +423,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 );
             }
             const snapshots = await Promise.all(queries);
-
             const resultsMap = new Map<string, PartySuggestion>();
 
             snapshots.forEach(snap => {
@@ -372,7 +433,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                             name: data.name || '',
                             number: data.number || doc.id,
                             address: data.address,
-                            state: data.state || data.placeOfSupply,      // <-- ADD THIS
+                            state: data.state || data.placeOfSupply,
                             shippingState: data.shippingState,
                             gstNumber: data.gstNumber,
                             creditBalance: data.creditBalance,
@@ -419,14 +480,14 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         setPartyName(party.name);
         setPartyNumber(party.number);
         setPartyAddress(party.address || '');
-        setPartyState(party.state || '');                // <-- ADD THIS
+        setPartyState(party.state || '');
         setPartyGST(party.gstNumber || '');
         setPartyCredit(party.creditBalance || 0);
         setPartyDebit(party.debitBalance || 0);
         setShippingName(party.shippingName || '');
         setShippingNumber(party.shippingNumber || '');
         setShippingAddress(party.shippingAddress || '');
-        setShippingState(party.shippingState || '');     // <-- ADD THIS
+        setShippingState(party.shippingState || '');
         setShippingGST(party.shippingGST || '');
         setUseCredit(false);
         setUseDebit(false);
@@ -449,11 +510,12 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             setModal({ message: `Mismatch: ₹${pendingAmount.toFixed(2)} remaining.`, type: State.ERROR });
             return;
         }
-        // 🚫 Block if non-due payments alone exceed the bill total
+
         const nonDuePaymentTotal = Object.entries(selectedPayments).reduce((acc, [key, value]) => {
             const isDue = key.toLowerCase().includes('due');
             return isDue ? acc : acc + (value || 0);
         }, 0);
+
         const dueInPayments = Object.entries(selectedPayments).reduce((acc, [key, value]) => {
             return key.toLowerCase().includes('due') ? acc + (value || 0) : acc;
         }, 0);
@@ -478,7 +540,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             });
             return;
         }
-        // ✅ ADD THIS CHECK — block if manual payment already covers full bill but credit is also applied
+
         if (useCredit && appliedCreditAmount === 0 && partyCredit > 0) {
             setModal({
                 message: `Credit note not needed — payment methods already cover the full bill of ₹${netPayable.toFixed(2)}.`,
@@ -523,7 +585,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             const safeShippingAddress = shippingAddress ? shippingAddress.trim() : '';
             const safeShippingGST = shippingGST ? shippingGST.trim() : '';
             const formattedExpenses = expenses
-                .filter(e => e.name.trim() || e.amount) // Only keep rows where the user actually typed something
+                .filter(e => e.name.trim() || e.amount)
                 .map(e => ({
                     name: e.name.trim(),
                     amount: parseFloat(e.amount.toString()) || 0
@@ -545,9 +607,9 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 shippingNumber: safeShippingNumber,
                 shippingAddress: safeShippingAddress,
                 shippingGST: safeShippingGST,
-                expenses: formattedExpenses, // <-- Add this
+                expenses: formattedExpenses,
                 narration: safeNarration,
-                placeOfSupply: partyState,                       // <-- ADD THIS
+                placeOfSupply: partyState,
                 shippingState: shippingState,
             });
 
@@ -561,13 +623,13 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                     number: safePartyNumber,
                     companyId: currentUser.companyId,
                     address: safePartyAddress,
-                    state: partyState,                               // <-- ADD THIS
+                    state: partyState,
                     gstNumber: safePartyGST,
                     shippingName: safeShippingName,
                     shippingNumber: safeShippingNumber,
                     shippingAddress: safeShippingAddress,
                     shippingGST: safeShippingGST,
-                    shippingState: shippingState,                    // <-- ADD THIS
+                    shippingState: shippingState,
                     updatedAt: serverTimestamp(),
                 };
 
@@ -584,18 +646,31 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 await setDoc(partyDocRef, partyData, { merge: true });
             }
 
+            // Cleanup storage references explicitly on success
             try {
                 sessionStorage.removeItem(SESSION_STORAGE_NAME_KEY);
                 sessionStorage.removeItem(SESSION_STORAGE_NUMBER_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_ADDRESS_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_GST_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_STATE_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_SHIPPING_NAME_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_SHIPPING_NUMBER_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_SHIPPING_ADDRESS_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_SHIPPING_GST_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_SHIPPING_STATE_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_SAME_AS_BILLING_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_EXPENSES_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_NARRATION_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_PAYMENTS_KEY);
             } catch (e) { }
 
             setPartyName(''); setPartyNumber(''); setSelectedPayments({});
             setShippingName(''); setShippingNumber(''); setShippingAddress(''); setShippingGST('');
-            setExpenses([]);
+            setExpenses([]); setNarration('');
 
         } catch (error) {
             setModal({ message: (error as Error).message || 'Failed to save.', type: State.ERROR });
-        } finally {
+        } {
             setIsSubmitting(false);
         }
     };
@@ -610,19 +685,13 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     };
 
     const handleDiscountPercentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        // 1. Get the value and parse it
         let pct = parseFloat(e.target.value) || 0;
-
-        // 2. Clamp the value between 0 and 100
         if (pct > 100) pct = 100;
         if (pct < 0) pct = 0;
-
-        // 3. Update states
         setDiscountPercent(pct);
         setDiscount(parseFloat(((pct / 100) * billTotal).toFixed(2)));
     };
 
-    // --- RENDER HELPERS ---
     const renderSuggestions = () => {
         if (!showSuggestions || suggestions.length === 0) return null;
         const ref = isSale ? numberInputRef.current : nameInputRef.current;
@@ -635,7 +704,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                     position: 'fixed',
                     top: rect.bottom + 4,
                     left: rect.left,
-                    width: rect.width * 2 + 8, // spans both inputs
+                    width: rect.width * 2 + 8,
                     zIndex: 99999,
                 }}
                 className="bg-white border border-gray-200 shadow-xl rounded-lg max-h-48 overflow-y-auto"
@@ -672,7 +741,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                     <h2 className="text-lg font-semibold text-gray-800 mt-2">Payment Details</h2>
                 </div>
 
-                {/* MIDDLE SECTION: Stacked on Mobile, Side-by-Side on Desktop */}
+                {/* MIDDLE SECTION */}
                 <div className="flex-1 overflow-y-auto md:overflow-hidden bg-white flex flex-col md:flex-row">
 
                     {/* LEFT COLUMN: Customer Info & Balances */}
@@ -680,7 +749,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                         <div className="md:w-1/2 flex flex-col border-b md:border-b-0 md:border-r border-gray-200 bg-white">
 
                             <div className="p-2 md:p-5 space-y-1 md:space-y-3 flex-1 overflow-y-auto">
-                                {/* NORMAL MODE: Header & Shipping Toggles */}
                                 {!isCalculator && (
                                     <div className="flex justify-between items-center mb-2">
                                         <h3 className="text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-wider">{partyLabel} Info</h3>
@@ -693,7 +761,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                     </div>
                                 )}
 
-                                {/* NORMAL MODE: Same as Billing Checkbox */}
                                 {!isCalculator && isSale && enableShippingDetails && addressType === 'shipping' && (
                                     <div className="flex items-center justify-end mb-2 md:mb-3 animate-in fade-in slide-in-from-top-1">
                                         <label className="flex items-center gap-1.5 md:gap-2 cursor-pointer bg-blue-50 px-2 md:px-3 py-1 md:py-1.5 rounded-xs border border-blue-100">
@@ -703,9 +770,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                     </div>
                                 )}
 
-                                {/* NAME AND NUMBER INPUTS */}
                                 <div className="grid grid-cols-2 gap-2 md:gap-4 relative animate-in fade-in slide-in-from-top-2">
-                                    {/* NUMBER INPUT */}
                                     <div className="relative">
                                         <input
                                             ref={numberInputRef}
@@ -723,10 +788,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                             autoComplete="off"
                                         />
                                         {requireCustomerMobile && addressType === 'billing' && <span className="absolute right-2 top-2 md:right-3 md:top-3 text-red-500 font-bold">*</span>}
-                                        {/* {isSale && addressType === 'billing' && renderSuggestions()} */}
                                     </div>
 
-                                    {/* NAME INPUT */}
                                     <div className="relative">
                                         <input
                                             ref={nameInputRef}
@@ -742,13 +805,10 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                             autoComplete="off"
                                         />
                                         {requireCustomerName && addressType === 'billing' && <span className="absolute right-2 top-2 md:right-3 md:top-3 text-red-500 font-bold">*</span>}
-                                        {/* {!isSale && addressType === 'billing' && renderSuggestions()} */}
                                     </div>
-                                    {/* SUGGESTIONS — spans full grid width */}
                                     {addressType === 'billing' && renderSuggestions()}
                                 </div>
 
-                                {/* NORMAL MODE: Extra Details Toggles */}
                                 {!isCalculator && (
                                     <div className="pt-1 md:pt-2 flex flex-col gap-1.5 md:gap-2 w-full">
                                         <div className="flex items-center justify-between w-full">
@@ -800,7 +860,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                 )}
                             </div>
 
-                            {/* Credit/Debit Balances */}
+                            {/* Available Balances */}
                             {(partyCredit > 0 || partyDebit > 0) && (
                                 <div className="px-2 md:px-5 pb-1 md:pb-3">
                                     <h3 className="text-[9px] md:text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5 md:mb-1">Available Balances</h3>
@@ -830,7 +890,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                     )}
 
                     {/* RIGHT COLUMN: Transaction Type */}
-                    {/* RIGHT COLUMN: Transaction Type */}
                     <div className={`p-2 md:p-4 bg-gray-50 flex flex-col justify-center border-t md:border-t-0 ${enableCustomerDetails ? 'md:w-1/2' : 'w-full'}`}>
                         <h3 className="text-[10px] md:text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2 md:mb-3">
                             Transaction Type
@@ -850,29 +909,25 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                         onFill={() => { if (!isDisabled) handleFillRemaining(mode.id); }}
                                         showFillButton={pendingAmount > 0.01 && !isDisabled}
                                         className={`
-                            h-10 min-h-[50px] text-xs rounded-xs transition-colors shadow-sm
-                            /* Target the inner Fill button to make it a tiny badge */
-                            [&_button]:text-[9px] [&_button]:px-2 [&_button]:py-0.5 [&_button]:h-auto [&_button]:rounded-[3px] [&_button]:tracking-wider
-                            /* Target the inner input to ensure text fits the smaller height */
-                            [&_input]:text-xs [&_input]:font-bold [&_label]:text-[10px]
-                            ${isDisabled
+                                            h-10 min-h-[50px] text-xs rounded-xs transition-colors shadow-sm
+                                            [&_button]:text-[9px] [&_button]:px-2 [&_button]:py-0.5 [&_button]:h-auto [&_button]:rounded-[3px] [&_button]:tracking-wider
+                                            [&_input]:text-xs [&_input]:font-bold [&_label]:text-[10px]
+                                            ${isDisabled
                                                 ? 'bg-gray-100 cursor-not-allowed opacity-60 pointer-events-none'
                                                 : 'bg-white'
                                             }
-                        `}
+                                        `}
                                         disabled={isDisabled}
                                     />
                                 );
                             })}
                         </div>
                     </div>
-
                 </div>
+
                 {/* Footer Totals & Summary Box */}
                 <div className="p-2 md:px-4 md:py-3 bg-gray-50 border-t border-gray-200 rounded-b-xs shadow-[0_-4px_15px_rgba(0,0,0,0.05)] z-20">
-
-                    {/* ── MOBILE LAYOUT (unchanged) ── */}
-                    {/* 1. Discount Row */}
+                    {/* MOBILE LAYOUT */}
                     <div
                         className="md:hidden flex justify-between items-center mb-1.5 px-1"
                         onMouseDown={handleDiscountPressStart}
@@ -925,7 +980,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                         </div>
                     </div>
 
-                    {/* Mobile: Section Divider + Tax + Stats */}
                     <div className="md:hidden pt-1.5 border-t border-gray-200">
                         <div className="flex justify-between items-center mb-1 px-1">
                             <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Tax Type</span>
@@ -970,13 +1024,9 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                         </div>
                     </div>
 
-                    {/* ── DESKTOP LAYOUT ── */}
+                    {/* DESKTOP LAYOUT */}
                     <div className="hidden md:flex md:flex-col md:gap-2">
-
-                        {/* ROW 1: Bill Discount (left) + Tax Type (right-aligned) */}
                         <div className="flex items-center justify-between gap-4">
-
-                            {/* Bill Discount block */}
                             <div
                                 className="flex items-center gap-3 cursor-pointer"
                                 onMouseDown={handleDiscountPressStart}
@@ -1024,7 +1074,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                 </div>
                             </div>
 
-                            {/* Tax Type block — right-aligned, same label + box style as Bill Discount */}
                             <div className="flex flex-col items-end">
                                 <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Tax Type</span>
                                 <div className="flex items-center gap-1">
@@ -1049,7 +1098,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                             </div>
                         </div>
 
-                        {/* ROW 2: MRP / DISC / TOTAL / SUB / TAX stat strip */}
                         <div className="flex items-center justify-between bg-white rounded-xs border border-gray-200 shadow-sm text-center">
                             <div className="flex flex-col items-center flex-1 py-1.5">
                                 <span className="text-[9px] text-gray-400 font-bold uppercase mb-0.5 leading-none">MRP</span>
@@ -1073,7 +1121,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                             </div>
                         </div>
 
-                        {/* ROW 3: Due/Return badge + Confirm Button */}
                         <div className="flex items-center gap-3">
                             {changeToReturn > 0.01 ? (
                                 <span className="text-[11px] font-bold text-yellow-700 bg-yellow-50 px-3 py-1.5 rounded-xs border border-yellow-100 whitespace-nowrap">
@@ -1095,7 +1142,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                         </div>
                     </div>
 
-                    {/* Mobile Confirm Button (unchanged) */}
+                    {/* Mobile Confirm Button */}
                     <button onClick={handleConfirm} disabled={isSubmitting || pendingAmount > 0.01} className="md:hidden w-full py-3 text-white rounded-xs font-bold text-sm shadow active:scale-[0.98] transition-all disabled:bg-gray-300 disabled:shadow-none disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-1" style={{ backgroundColor: pendingAmount < 0.01 ? '#0ea5e9' : '#94a3b8' }}>
                         {isSubmitting ? (<><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>...</>) : ("Confirm Payment")}
                     </button>

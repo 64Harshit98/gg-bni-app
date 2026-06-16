@@ -150,7 +150,7 @@ const SupportPage: React.FC = () => {
       <div className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-20">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
-            <BackButton/>
+            <BackButton />
             <h1 className="text-xl font-bold text-gray-800">Help & Support</h1>
             <div className="w-10"></div>
           </div>
@@ -261,7 +261,7 @@ const SupportPage: React.FC = () => {
           </h2>
 
           <AccordionItem
-            title="Raise a Support Ticket"
+            title="Raise a Support Ticket (Comming soon)"
             icon={<Send className="w-5 h-5" />}
             isOpen={openSection === 'ticket'}
             onClick={() => toggleSection('ticket')}
@@ -284,6 +284,7 @@ const SupportPage: React.FC = () => {
                   <input
                     type="text"
                     value={formData.subject}
+                    disabled
                     onChange={(e) => setFormData(p => ({ ...p, subject: e.target.value }))}
                     placeholder="e.g., Cannot export sales report"
                     className="w-full border border-gray-300 rounded-sm p-2 text-sm focus:ring-1 focus:ring-gray-900 outline-none"
@@ -294,6 +295,7 @@ const SupportPage: React.FC = () => {
                   <textarea
                     rows={4}
                     value={formData.description}
+                    disabled
                     onChange={(e) => setFormData(p => ({ ...p, description: e.target.value }))}
                     placeholder="Describe what happened..."
                     className="w-full border border-gray-300 rounded-sm p-2 text-sm focus:ring-1 focus:ring-gray-900 outline-none"
@@ -301,7 +303,7 @@ const SupportPage: React.FC = () => {
                 </div>
                 <button
                   type="submit"
-                  disabled={submitting}
+                  disabled
                   className="w-full bg-gray-900 text-white font-bold py-2 rounded-sm hover:bg-gray-800 transition-colors disabled:opacity-50"
                 >
                   {submitting ? 'Submitting...' : 'Submit Ticket'}

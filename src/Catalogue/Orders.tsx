@@ -64,7 +64,11 @@ export interface OrderItem {
     unitMultiplier?: number;
     unitPrice?: number;
     moq?: number;
-    itemId?: string
+    itemId?: string;
+    taxType?: string;
+    effectiveUnitPrice?: number;
+    customPrice?: number;
+    taxRate?: number;
 }
 
 // 1. Updated Status Types
@@ -114,6 +118,8 @@ export interface Order {
     updatedAt?: Date;
     type?: string;
     isLead?: boolean;
+    totalTax?: number;      // <-- ADD THIS
+    baseAmount?: number;
 }
 
 const formatDate = (date: Date): string => {
@@ -163,6 +169,8 @@ export const useOrdersData = (
             type: data.type || "order",
             isLead: data.isLead || false,
             totalAmount: Number(data.totalAmount || 0),
+            totalTax: Number(data.totalTax || 0),      // <-- ADD THIS
+            baseAmount: Number(data.baseAmount || 0),
             paidAmount: Number(data.paidAmount || 0),
             creditNoteAmount: Number(data.creditNoteAmount || 0),
             refundAmount: Number(data.refundAmount || 0),
@@ -471,40 +479,40 @@ const OrdersPage: React.FC = () => {
 
     // Fetch customer credit when the Payment Modal opens
     useEffect(() => {
-    const fetchCredit = async () => {
-        if (!showPaymentModal || !currentUser?.companyId) {
-            setCustomerCredit(0);
-            return;
-        }
+        const fetchCredit = async () => {
+            if (!showPaymentModal || !currentUser?.companyId) {
+                setCustomerCredit(0);
+                return;
+            }
 
-        const phone = showPaymentModal.userLoginPhone || showPaymentModal.billingDetails?.phone || '';
-        const normalizedPhone = phone.replace(/\D/g, '').slice(-10);
+            const phone = showPaymentModal.userLoginPhone || showPaymentModal.billingDetails?.phone || '';
+            const normalizedPhone = phone.replace(/\D/g, '').slice(-10);
 
-        if (normalizedPhone) {
-            try {
-                // ✅ Sirf customers collection — advance wahan store ho gaya
-                const customerRef = doc(
-                    db, 
-                    'companies', 
-                    currentUser.companyId, 
-                    'customers', 
-                    normalizedPhone
-                );
-                const snap = await getDoc(customerRef);
-                if (snap.exists()) {
-                    setCustomerCredit(Number(snap.data().creditBalance || 0));
-                } else {
+            if (normalizedPhone) {
+                try {
+                    // ✅ Sirf customers collection — advance wahan store ho gaya
+                    const customerRef = doc(
+                        db,
+                        'companies',
+                        currentUser.companyId,
+                        'customers',
+                        normalizedPhone
+                    );
+                    const snap = await getDoc(customerRef);
+                    if (snap.exists()) {
+                        setCustomerCredit(Number(snap.data().creditBalance || 0));
+                    } else {
+                        setCustomerCredit(0);
+                    }
+                } catch (err) {
+                    console.error("Error fetching credit balance:", err);
                     setCustomerCredit(0);
                 }
-            } catch (err) {
-                console.error("Error fetching credit balance:", err);
-                setCustomerCredit(0);
             }
-        }
-    };
+        };
 
-    fetchCredit();
-}, [showPaymentModal, currentUser?.companyId]);
+        fetchCredit();
+    }, [showPaymentModal, currentUser?.companyId]);
 
     useEffect(() => {
         const fetchExpiry = async () => {
@@ -666,7 +674,6 @@ const OrdersPage: React.FC = () => {
 
     const handleNetPriceChange = (id: string, value: string) => {
         if (!editingOrder) return;
-
         const newNetPrice = Number(value) || 0;
 
         const updatedItems = editingOrder.items?.map((item) => {
@@ -674,8 +681,6 @@ const OrdersPage: React.FC = () => {
 
             const mrp = Number(item.mrp || 0);
             const salesPrice = Number(item.salesPrice || 0);
-
-            // 3-Tier Base Price Determination
             const basePrice = mrp > 0 ? mrp : salesPrice;
 
             let discount = 0;
@@ -683,17 +688,21 @@ const OrdersPage: React.FC = () => {
                 discount = ((basePrice - newNetPrice) / basePrice) * 100;
             }
 
+            // Recalculate finalPrice (base + tax)
+            const taxRate = Number(item.tax || item.taxRate || 0);
+            const isExclusive = item.taxType?.toLowerCase() === 'exclusive' || item.taxType?.toLowerCase() === 'regular';
+            const newFinalPrice = isExclusive ? newNetPrice + (newNetPrice * (taxRate / 100)) : newNetPrice;
+
             return {
                 ...item,
-                finalPrice: Number(newNetPrice.toFixed(2)),
+                effectiveUnitPrice: Number(newNetPrice.toFixed(2)),
+                customPrice: Number(newNetPrice.toFixed(2)),
+                finalPrice: Number(newFinalPrice.toFixed(2)),
                 discount: Number(discount.toFixed(2)),
             };
         });
 
-        setEditingOrder({
-            ...editingOrder,
-            items: updatedItems,
-        });
+        setEditingOrder({ ...editingOrder, items: updatedItems });
     };
 
     const mappedOrderItems = (editingOrder?.items || []).map((item) => {
@@ -731,7 +740,8 @@ const OrdersPage: React.FC = () => {
             productId: item.itemId || item.id,
             isEditable: true,
             discount: Number(discount.toFixed(2)),
-            finalPrice: Number(netPrice.toFixed(2)),
+            customPrice: Number(netPrice.toFixed(2)), // <-- Ensures GenericCartList reads the base price
+            finalPrice: item.finalPrice,
             unitMultiplier: Number(item.unitMultiplier || 1),
             moq: liveMoq,
         };
@@ -764,7 +774,6 @@ const OrdersPage: React.FC = () => {
 
     const handleDiscountChange = (id: string, value: number | string) => {
         if (!editingOrder) return;
-
         const discountValue = typeof value === "string" ? parseFloat(value) || 0 : value;
 
         const updatedItems = editingOrder.items?.map((item) => {
@@ -772,23 +781,25 @@ const OrdersPage: React.FC = () => {
 
             const mrp = Number(item.mrp || 0);
             const salesPrice = Number(item.salesPrice || 0);
-
-            // 3-Tier Base Price Determination
             const basePrice = mrp > 0 ? mrp : salesPrice;
 
-            const netPrice = basePrice * (1 - discountValue / 100);
+            const newNetPrice = basePrice * (1 - discountValue / 100);
+
+            // Recalculate finalPrice (base + tax)
+            const taxRate = Number(item.tax || item.taxRate || 0);
+            const isExclusive = item.taxType?.toLowerCase() === 'exclusive' || item.taxType?.toLowerCase() === 'regular';
+            const newFinalPrice = isExclusive ? newNetPrice + (newNetPrice * (taxRate / 100)) : newNetPrice;
 
             return {
                 ...item,
                 discount: Number(discountValue.toFixed(2)),
-                finalPrice: Number(netPrice.toFixed(2)),
+                effectiveUnitPrice: Number(newNetPrice.toFixed(2)),
+                customPrice: Number(newNetPrice.toFixed(2)),
+                finalPrice: Number(newFinalPrice.toFixed(2)),
             };
         });
 
-        setEditingOrder({
-            ...editingOrder,
-            items: updatedItems,
-        });
+        setEditingOrder({ ...editingOrder, items: updatedItems });
     };
     const handleDeleteItem = (id: string) => {
         if (!editingOrder) return;
@@ -992,8 +1003,7 @@ const OrdersPage: React.FC = () => {
             const itemsWithBase64 = await Promise.all((Order.items || []).map(async (item: any, index: number) => {
                 const mrp = Number(item.mrp || 0);
                 const salesPrice = Number(item.salesPrice || 0);
-                const actualPrice = item.finalPrice ?? (salesPrice > 0 ? salesPrice : mrp);
-
+                const actualPrice = item.effectiveUnitPrice ?? item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
                 // --- THE MAGIC FALLBACK ---
                 let targetImageUrl = item.imageUrl;
 
@@ -1208,7 +1218,7 @@ const OrdersPage: React.FC = () => {
             const itemsWithBase64 = await Promise.all((Order.items || []).map(async (item: any, index: number) => {
                 const mrp = Number(item.mrp || 0);
                 const salesPrice = Number(item.salesPrice || 0);
-                const actualPrice = item.finalPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+                const actualPrice = item.effectiveUnitPrice ?? item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
                 const base64Image = item.imageUrl ? await convertImageUrlToBase64(item.imageUrl, item.name) : "";
                 return {
                     sno: index + 1,
@@ -2504,8 +2514,8 @@ const OrdersPage: React.FC = () => {
                                                         // item.quantity may already reflect post-return qty, so add back returned qty to get original
                                                         const originalQty = Number(item.quantity || 0) + totalReturnedFromHistory;
                                                         const remainingQty = originalQty - totalReturnedFromHistory; // = item.quantity
-                                                        const unitPrice = item.finalPrice ??
-                                                            (Number(item.salesPrice || 0) > 0 ? Number(item.salesPrice) : Number(item.mrp));
+                                                        // Extract the pure base price for display so the visual math aligns with the Tax row below it
+                                                        const unitPrice = item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0;
 
                                                         return (
                                                             <div key={idx} className="p-2 cursor-pointer">
@@ -2653,8 +2663,8 @@ const OrdersPage: React.FC = () => {
                                                                     </div>
                                                                     <div className="text-right ml-4">
                                                                         <p className="text-[13px] font-black" style={{ color: '#94a3b8', textDecoration: 'line-through' }}>
-                                                                            ₹{formatAmount((r.unitPrice ?? r.mrp ?? 0) * r.quantity)}
-                                                                        </p>
+                                                                            ₹{formatAmount((r.effectiveUnitPrice ?? r.customPrice ?? r.salesPrice ?? r.mrp ?? 0)
+                                                                                * r.quantity)}                                                                        </p>
                                                                         <p className="text-[9px] font-bold text-slate-400">Qty: {r.quantity}</p>
                                                                     </div>
                                                                 </div>
@@ -2678,8 +2688,18 @@ const OrdersPage: React.FC = () => {
                                                                     ))}
                                                                 </div>
                                                             )}
+                                                            {Number(Order.totalTax || 0) > 0 && (
+                                                                <div className="px-2 pt-0.5 flex justify-between items-center border-t">
+                                                                    <span className="text-[8px] font-bold text-slate-500 uppercase tracking-wide">
+                                                                        Tax
+                                                                    </span>
+                                                                    <span className="text-[9px] font-black text-orange-500">
+                                                                        +₹{formatAmount(Number(Order.totalTax))}
+                                                                    </span>
+                                                                </div>
+                                                            )}
                                                             {Number(Order.manualDiscount || 0) > 0 && (
-                                                                <div className="px-2 pt-0.5 flex justify-between items-center">
+                                                                <div className="px-2 pt-0.5 flex justify-between items-center border-t">
                                                                     <span className="text-[8px] font-bold text-red-500 uppercase tracking-wide">Bill Discount</span>
                                                                     <span className="text-[9px] font-black text-red-600">
                                                                         -₹{formatAmount(Number(Order.manualDiscount))}

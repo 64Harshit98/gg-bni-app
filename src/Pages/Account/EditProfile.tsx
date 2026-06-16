@@ -637,7 +637,7 @@ const EditProfilePage: React.FC = () => {
                     placeholder="Email Address"
                   />
                 </LabeledField>
-                <FloatingLabelInput type="text" name="panNumber" value={formData.panNumber || ''} onChange={handleInputChange} label="PAN No." />
+                <FloatingLabelInput type="text" name="panNumber" maxLength={10} value={formData.panNumber || ''} onChange={handleInputChange} label="PAN No." />
               </div>
             </SectionCard>
 
@@ -697,7 +697,7 @@ const EditProfilePage: React.FC = () => {
                   label="GSTIN"
                 />
 
-                <FloatingLabelInput type="text" name="msmeUdyamNumber" value={formData.msmeUdyamNumber || ''} onChange={handleInputChange} label="MSME No." />
+                <FloatingLabelInput type="text" name="msmeUdyamNumber" value={formData.msmeUdyamNumber || ''} maxLength={19} onChange={handleInputChange} label="MSME No." />
               </div>
             </SectionCard>
 

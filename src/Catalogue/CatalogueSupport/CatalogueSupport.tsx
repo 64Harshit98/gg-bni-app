@@ -69,7 +69,7 @@ const CatalogueSupport: React.FC = () => {
       <div className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-20">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
-            <BackButton/>
+            <BackButton />
             <h1 className="text-xl font-bold text-gray-800">Help & Support</h1>
             <div className="w-10"></div>
           </div>
@@ -180,7 +180,7 @@ const CatalogueSupport: React.FC = () => {
           </h2>
 
           <AccordionItem
-            title="Raise a Support Ticket"
+            title="Raise a Support Ticket (Coming soon)"
             icon={<Send className="w-5 h-5" />}
             isOpen={openSection === 'ticket'}
             onClick={() => toggleSection('ticket')}
@@ -188,11 +188,11 @@ const CatalogueSupport: React.FC = () => {
             <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); alert("Ticket Submitted!"); }}>
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1">Issue Subject</label>
-                <input type="text" placeholder="e.g., Cannot export sales report" className="w-full border border-gray-300 rounded-sm p-2 text-sm focus:ring-1 focus:ring-gray-900 outline-none" />
+                <input type="text" disabled placeholder="e.g., Cannot export sales report" className="w-full border border-gray-300 rounded-sm p-2 text-sm focus:ring-1 focus:ring-gray-900 outline-none" />
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1">Description</label>
-                <textarea rows={4} placeholder="Describe what happened..." className="w-full border border-gray-300 rounded-sm p-2 text-sm focus:ring-1 focus:ring-gray-900 outline-none" />
+                <textarea rows={4} disabled placeholder="Describe what happened..." className="w-full border border-gray-300 rounded-sm p-2 text-sm focus:ring-1 focus:ring-gray-900 outline-none" />
               </div>
               <button className="w-full bg-gray-900 text-white font-bold py-2 rounded-sm hover:bg-gray-800 transition-colors">
                 Submit Ticket

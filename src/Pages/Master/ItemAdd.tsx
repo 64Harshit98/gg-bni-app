@@ -570,7 +570,6 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       const worksheet = workbook.worksheets[0];
       if (!worksheet) throw new Error("Excel file is empty.");
 
-      // --- ADD THIS BLOCK BACK IN ---
       const images = worksheet.getImages();
       const rowImageMap = new Map<number, any>();
       for (const image of images) {
@@ -578,7 +577,6 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         const imgData = workbook.getImage(Number(image.imageId));
         rowImageMap.set(rowIndex, imgData);
       }
-      // ------------------------------
 
       let headerRowNum = 1;
       for (let r = 1; r <= Math.min(worksheet.rowCount, 15); r++) {
@@ -590,19 +588,28 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       }
       const dataStartRow = headerRowNum + 2;
 
+      // --- HELPER FIX: Extracted to ensure total count perfectly matches loop evaluation ---
+      const safeGetVal = (rowObj: any, colIdx: number) => {
+        const val = rowObj.getCell(colIdx).value;
+        if (val === null || val === undefined) return "";
+        if (typeof val === 'object' && 'hyperlink' in val) return (val.hyperlink || val.text || "").toString().trim();
+        if (typeof val === 'object' && 'richText' in val) return val.richText.map((rt: any) => rt.text).join('').trim();
+        return val.toString().trim();
+      };
+
       let processedCount = 0, createdCount = 0, updatedCount = 0, failedCount = 0, skippedCount = 0;
       let totalItems = 0;
+
       for (let r = dataStartRow; r <= worksheet.rowCount; r++) {
-        if (worksheet.getRow(r).getCell(1).text?.trim()) totalItems++;
+        const name = safeGetVal(worksheet.getRow(r), 1);
+        if (name && !name.toLowerCase().includes('full product name')) totalItems++;
       }
       setUploadProgress({ current: 0, total: totalItems });
 
-      // --- 1. Fetch Existing Groups & Items for Mapping ---
       let currentGroups = await dbOperations.getItemGroups();
       const groupMap = new Map<string, string>();
       currentGroups.forEach(g => groupMap.set(g.name.toLowerCase().trim(), g.id!));
 
-      // CRITICAL FIX: Fetch all items to get their true Document IDs
       const allExistingItems = await dbOperations.syncItems();
       const itemMapByBarcode = new Map<string, any>();
       const itemMapByName = new Map<string, any>();
@@ -612,10 +619,9 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         if (item.name) itemMapByName.set(item.name.toLowerCase().trim(), item);
       });
 
-      // --- NEW BLOCK: Find highest explicit numeric barcode ---
       let maxImportedNumericBarcode = 0;
       for (let r = dataStartRow; r <= worksheet.rowCount; r++) {
-        const rawBarcode = worksheet.getRow(r).getCell(2).text?.trim();
+        const rawBarcode = safeGetVal(worksheet.getRow(r), 2);
         if (rawBarcode && /^\d+$/.test(rawBarcode)) {
           maxImportedNumericBarcode = Math.max(maxImportedNumericBarcode, parseInt(rawBarcode, 10));
         }
@@ -623,70 +629,55 @@ const ItemAdd: React.FC<ItemAddProps> = ({
 
       let nextSeqNumber = 0;
       if (importMode === 'create_update') {
-        // Only reserve barcodes if we are actually creating items
         let needsBarcodeCount = 0;
         for (let r = dataStartRow; r <= worksheet.rowCount; r++) {
-          if (!worksheet.getRow(r).getCell(2).text?.trim() && worksheet.getRow(r).getCell(1).text?.trim()) {
+          if (!safeGetVal(worksheet.getRow(r), 2) && safeGetVal(worksheet.getRow(r), 1)) {
             needsBarcodeCount++;
           }
         }
         if (needsBarcodeCount > 0) nextSeqNumber = await reserveSequenceBlock(needsBarcodeCount);
       }
 
-      // --- 2. Process Rows ---
       for (let rowNum = dataStartRow; rowNum <= worksheet.rowCount; rowNum++) {
         const row = worksheet.getRow(rowNum);
-
-        // Helper to securely grab raw values regardless of cell formatting
-        // Helper to securely grab raw values regardless of cell formatting
-        const getVal = (colIdx: number) => {
-          const val = row.getCell(colIdx).value;
-
-          if (val === null || val === undefined) return "";
-
-          // 1. Handle Excel Hyperlink objects (This fixes your [object Object] bug)
-          if (typeof val === 'object' && 'hyperlink' in val) {
-            // @ts-ignore - exceljs types can be finicky here
-            return (val.hyperlink || val.text || "").toString().trim();
-          }
-
-          // 2. Handle Excel Rich Text objects (Just in case users copy-paste weirdly formatted text)
-          if (typeof val === 'object' && 'richText' in val) {
-            // @ts-ignore
-            return val.richText.map((rt: any) => rt.text).join('').trim();
-          }
-
-          // 3. Handle standard strings and numbers
-          return val.toString().trim();
-        };
-
-        const rawName = getVal(1);
+        const rawName = safeGetVal(row, 1);
         if (!rawName || rawName.toLowerCase().includes('full product name')) continue;
 
         await new Promise(resolve => setTimeout(resolve, 0));
         setUploadProgress({ current: processedCount + 1, total: totalItems });
 
-        const rowBarcodeStr = getVal(2);
-        const rowMRP = parseFloat(getVal(3)) || 0;
-        const rowSale = parseFloat(getVal(4)) || 0;
-        const rowPurchase = parseFloat(getVal(5)) || 0;
-        const rowSaleDiscount = parseFloat(getVal(6)) || 0;
-        const rowPurchaseDiscount = parseFloat(getVal(7)) || 0;
-        const rowTax = parseFloat(getVal(8)) || 0;
-        const rowHsn = getVal(9);
-        let csvCategoryValue = getVal(10);
-        if (
-          csvCategoryValue &&
-          ['uncategorized', 'none', 'n/a', 'null'].includes(csvCategoryValue.toLowerCase())
-        ) {
+        const rowBarcodeStr = safeGetVal(row, 2);
+        const rowMRP = parseFloat(safeGetVal(row, 3)) || 0;
+        const rowSale = parseFloat(safeGetVal(row, 4)) || 0;
+        const rowPurchase = parseFloat(safeGetVal(row, 5)) || 0;
+        const rowSaleDiscount = parseFloat(safeGetVal(row, 6)) || 0;
+        const rowPurchaseDiscount = parseFloat(safeGetVal(row, 7)) || 0;
+        const rowTax = parseFloat(safeGetVal(row, 8)) || 0;
+        const rowHsn = safeGetVal(row, 9);
+        let csvCategoryValue = safeGetVal(row, 10);
+
+        if (csvCategoryValue && ['uncategorized', 'none', 'n/a', 'null'].includes(csvCategoryValue.toLowerCase())) {
           csvCategoryValue = "";
         }
-        const stockVal = parseInt(getVal(11)) || 0;
-        const rowRestock = parseInt(getVal(12)) || 0;
-        const rowMoq = parseInt(getVal(13)) || 1;
-        const rowImageUrlStr = getVal(14);
 
-        // Determine Category ID if needed
+        const stockVal = parseInt(safeGetVal(row, 11)) || 0;
+        const rowRestock = parseInt(safeGetVal(row, 12)) || 0;
+        const rowMoq = parseInt(safeGetVal(row, 13)) || 1;
+        const rowImageUrlStr = safeGetVal(row, 14);
+
+        // --- STRICT VALIDATION FIX ---
+        // Catches bad data early and increments fail count properly
+        let rowIsValid = true;
+        if (rowMRP === 0 && rowSale === 0) rowIsValid = false; // Missing prices
+        if (rowMRP > 0 && rowSale > 0 && rowSale > rowMRP) rowIsValid = false; // Invalid pricing
+        if (itemSettings.requirePurchasePrice && rowPurchase <= 0) rowIsValid = false;
+
+        if (!rowIsValid) {
+          failedCount++;
+          processedCount++;
+          continue;
+        }
+
         let targetGroupId = "";
         if (csvCategoryValue && (importMode === 'create_update' || updateFields.category)) {
           const categoryLower = csvCategoryValue.toLowerCase();
@@ -703,7 +694,6 @@ const ItemAdd: React.FC<ItemAddProps> = ({
           }
         }
 
-        // --- MATCHING LOGIC ---
         let existingItem = null;
         if (rowBarcodeStr && itemMapByBarcode.has(rowBarcodeStr)) {
           existingItem = itemMapByBarcode.get(rowBarcodeStr);
@@ -711,7 +701,6 @@ const ItemAdd: React.FC<ItemAddProps> = ({
           existingItem = itemMapByName.get(rawName.toLowerCase());
         }
 
-        // --- ADD IMAGE UPLOAD LOGIC BACK IN ---
         let finalUploadedImageUrl = null;
         const embeddedImageData = rowImageMap.get(rowNum - 1);
 
@@ -733,10 +722,9 @@ const ItemAdd: React.FC<ItemAddProps> = ({
           if (!existingItem) {
             skippedCount++;
             processedCount++;
-            continue; // Skip if we are strictly updating and no match is found
+            continue;
           }
 
-          // Selectively update fields based on user selection
           const updates: any = {};
           if (updateFields.mrp) updates.mrp = rowMRP;
           if (updateFields.salesPrice) updates.salesPrice = rowSale;
@@ -747,15 +735,13 @@ const ItemAdd: React.FC<ItemAddProps> = ({
             updates.itemGroupIds = [targetGroupId];
           }
           if (updateFields.discount) { updates.discount = rowSaleDiscount; updates.purchasediscount = rowPurchaseDiscount; }
-          if (updateFields.discount) { updates.discount = rowSaleDiscount; updates.purchasediscount = rowPurchaseDiscount; }
-          if (finalUploadedImageUrl) updates.imageUrl = finalUploadedImageUrl; // <-- ADD THIS
+          if (finalUploadedImageUrl) updates.imageUrl = finalUploadedImageUrl;
           if (updateFields.tax) updates.tax = rowTax;
           if (updateFields.hsnCode) updates.hsnSac = rowHsn;
           if (updateFields.restockQuantity) updates.restockQuantity = rowRestock;
           if (updateFields.moq) updates.moq = rowMoq;
 
           try {
-            // CRITICAL FIX: Use the existing document ID
             await dbOperations.updateItem(existingItem.id, updates);
             updatedCount++;
           } catch (e) {
@@ -763,14 +749,13 @@ const ItemAdd: React.FC<ItemAddProps> = ({
           }
 
         } else {
-          // Mode: Create & Update All (Standard)
           let finalRowBarcode = rowBarcodeStr;
 
           if (!existingItem && !finalRowBarcode) {
             finalRowBarcode = String(nextSeqNumber);
             nextSeqNumber++;
           } else if (existingItem) {
-            finalRowBarcode = existingItem.barcode; // Persist the barcode if updating
+            finalRowBarcode = existingItem.barcode;
           }
 
           const itemData: any = {
@@ -795,13 +780,18 @@ const ItemAdd: React.FC<ItemAddProps> = ({
 
           try {
             if (existingItem) {
-              // CRITICAL FIX: Use the true document ID to update
               await dbOperations.updateItem(existingItem.id, itemData);
               updatedCount++;
             } else {
-              // Create completely new item, forcing the document ID to match the barcode for new items
               await dbOperations.createItem(itemData, finalRowBarcode);
               createdCount++;
+
+              // --- MAP UPDATE FIX ---
+              // Add newly created items to the maps immediately.
+              // If there are duplicate barcodes in the same Excel sheet, the next one will trigger an update rather than an overwrite.
+              const newItemObj = { ...itemData, id: finalRowBarcode };
+              itemMapByBarcode.set(finalRowBarcode, newItemObj);
+              itemMapByName.set(rawName.toLowerCase(), newItemObj);
             }
           } catch (e) {
             failedCount++;
@@ -810,7 +800,6 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         processedCount++;
       }
 
-      // --- NEW BLOCK: Sync Database Counter ---
       if (maxImportedNumericBarcode > 0) {
         try {
           const counterRef = doc(db, 'companies', currentUser.companyId, 'counters', 'items');
@@ -828,10 +817,11 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       }
 
       await fetchGroups();
-      await fetchNextBarcode(true); // Force refresh UI Counter (bypasses draft)
+      await fetchNextBarcode(true);
 
       if (failedCount > 0) {
-        setModal({ message: `Imported with errors. ${failedCount} rows failed.`, type: State.ERROR });
+        // Now accurately captures failing items due to bad input or DB rejections
+        setModal({ message: `Imported with errors. ${failedCount} rows failed due to missing prices or Name.`, type: State.ERROR });
       } else {
         setSuccess(`Completed: ${createdCount} New, ${updatedCount} Updated, ${skippedCount} Skipped.`);
       }

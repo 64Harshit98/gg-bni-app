@@ -204,7 +204,9 @@ export const getFirestoreOperations = (companyId: string) => {
           ifscCode: (data.ifscCode as string) || "",
           bankName: (data.bankName as string) || "",
           email: (data.email as string) || "",
-          gstin: (data.gstin as string) || ""
+          gstin: (data.gstin as string) || "",
+          msmeNumber: (data.msmeUdyamNumber as string) || "",
+          panNumber: (data.panNumber as string) || "",
         };
       } else {
         return { name: "", address: "", phoneNumber: "", email: "", gstin: "" };

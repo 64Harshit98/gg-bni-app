@@ -1,5 +1,5 @@
 import { useAuth } from "../../context/auth-context";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../../lib/Firebase";
 import { useEffect, useState, useRef } from "react";
 import { FiShare2, FiDownload } from "react-icons/fi"; // Download icon add kiya
@@ -44,7 +44,7 @@ const compressImage = (file: File): Promise<string> => {
     });
 };
 
-const STORAGE_KEY = "businessCard_uploadedCard";
+// const STORAGE_KEY = "businessCard_uploadedCard";
 function BusinessCard() {
     const { currentUser } = useAuth();
     const [data, setData] = useState<any>(null);
@@ -58,9 +58,20 @@ function BusinessCard() {
     const cardRef2 = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) setUploadedCard(saved);
-    }, []);
+        const fetchUploadedCard = async () => {
+            if (!currentUser?.companyId || !currentUser?.uid) return;
+            try {
+                const cardRef = doc(db, "companies", currentUser.companyId, "business_cards", currentUser.uid);
+                const cardSnap = await getDoc(cardRef);
+                if (cardSnap.exists()) {
+                    setUploadedCard(cardSnap.data().uploadedCard || null);
+                }
+            } catch (err) {
+                console.error("Error fetching uploaded card:", err);
+            }
+        };
+        fetchUploadedCard();
+    }, [currentUser?.companyId, currentUser?.uid]);
     const handleScroll = () => {
         if (scrollRef.current) {
             const scrollLeft = scrollRef.current.scrollLeft;
@@ -101,18 +112,28 @@ function BusinessCard() {
 
     const handleUploadCard = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (!file) return;
+        if (!file || !currentUser?.companyId || !currentUser?.uid) return;
+
+        const cardRef = doc(db, "companies", currentUser.companyId, "business_cards", currentUser.uid);
+
+        const saveCard = async (base64: string) => {
+            setUploadedCard(base64);
+            try {
+                await setDoc(cardRef, { uploadedCard: base64, updatedAt: new Date().toISOString() }, { merge: true });
+            } catch (err) {
+                console.error("Error saving uploaded card:", err);
+            }
+        };
+
         try {
             const compressed = await compressImage(file);
-            setUploadedCard(compressed);
-            localStorage.setItem(STORAGE_KEY, compressed);
+            await saveCard(compressed);
         } catch (err) {
             console.error("Compression error:", err);
             const reader = new FileReader();
             reader.onload = (ev) => {
                 const base64 = ev.target?.result as string;
-                setUploadedCard(base64);
-                localStorage.setItem(STORAGE_KEY, base64);
+                saveCard(base64);
             };
             reader.readAsDataURL(file);
         }
@@ -142,11 +163,16 @@ function BusinessCard() {
         }
     };
 
-    const removeUploadedCard = () => {
+    const removeUploadedCard = async () => {
         setUploadedCard(null);
-        localStorage.removeItem(STORAGE_KEY);
+        if (!currentUser?.companyId || !currentUser?.uid) return;
+        try {
+            const cardRef = doc(db, "companies", currentUser.companyId, "business_cards", currentUser.uid);
+            await setDoc(cardRef, { uploadedCard: null }, { merge: true });
+        } catch (err) {
+            console.error("Error removing uploaded card:", err);
+        }
     };
-
     useEffect(() => {
         const fetchBusinessCardData = async () => {
             if (!currentUser?.uid || !currentUser?.companyId) return;

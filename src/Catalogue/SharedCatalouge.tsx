@@ -422,12 +422,13 @@ const SharedCataloguePage: React.FC = () => {
                                 setPersonalizationItem({} as Item);
                                 setPersonalizationText('');
                             }}
-                            className="flex items-center justify-center gap-1.5 bg-[#F97316] text-white py-2 px-3 md:px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all"
+                            className="flex flex-col items-center justify-center gap-0.5 bg-[#F97316] text-white py-2 px-3 md:px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all md:flex-row md:gap-1.5"
                             title="Send a Query"
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                             </svg>
+                            <span className="text-[8px] leading-none">Query</span>
                         </button>
                         <button
                             onClick={(e) => {
@@ -677,11 +678,11 @@ const SharedCataloguePage: React.FC = () => {
             {/* PERSONALIZATION POPUP */}
             {personalizationItem && (
                 <div
-                    className="fixed inset-0 z-[2000] flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm"
+                    className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
                     onClick={() => setPersonalizationItem(null)}
                 >
                     <div
-                        className="bg-white w-full md:max-w-md rounded-t-sm md:rounded-sm shadow-2xl p-5 space-y-4"
+                        className="bg-white w-full max-w-md rounded-sm shadow-2xl p-5 space-y-4"
                         onClick={(e) => e.stopPropagation()}
                     >
                         <div className="flex items-center justify-between">

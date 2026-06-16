@@ -61,6 +61,45 @@ const getEffectivePriceInfo = (item: Item) => {
         hasBothPrices: mrp > 0 && salePrice > 0 && salePrice < mrp
     };
 };
+// Self-contained slideshow for a grid card's image area.
+const ProductCardImage: React.FC<{ images: string[]; alt: string }> = ({ images, alt }) => {
+    const [slideIndex, setSlideIndex] = useState(0);
+
+    useEffect(() => {
+        if (images.length <= 1) return;
+        const timer = setInterval(() => {
+            setSlideIndex(prev => (prev + 1) % images.length);
+        }, 3000);
+        return () => clearInterval(timer);
+    }, [images.length]);
+
+    if (images.length === 0) {
+        return <FiPackage className="w-10 h-10 text-gray-200" />;
+    }
+
+    return (
+        <>
+            {images.map((url, idx) => (
+                <img
+                    key={url + idx}
+                    src={url}
+                    alt={alt}
+                    className={`absolute inset-0 object-contain w-full h-full transition-opacity duration-700 ease-in-out group-hover:scale-110 ${idx === slideIndex ? 'opacity-100' : 'opacity-0'}`}
+                />
+            ))}
+            {images.length > 1 && (
+                <div className="absolute bottom-1 left-0 right-0 flex items-center justify-center gap-1">
+                    {images.map((_, idx) => (
+                        <span
+                            key={idx}
+                            className={`h-1 rounded-sm transition-all duration-300 ${idx === slideIndex ? 'w-3 bg-[#F97316]' : 'w-1 bg-white/80'}`}
+                        />
+                    ))}
+                </div>
+            )}
+        </>
+    );
+};
 
 const SharedProduct: React.FC = () => {
     const navigate = useNavigate();
@@ -889,6 +928,55 @@ const SharedProduct: React.FC = () => {
         }
     }, [location.search, allItems]);
 
+    // / Which images make up each item's slideshow: its own image + any item
+    // it's linked to through `variants`.
+    const itemSlideImagesMap = useMemo(() => {
+        const listedItems = allItems.filter(i => i.isListed === true);
+        const itemById = new Map(listedItems.map(i => [String(i.id), i]));
+
+        const parent = new Map<string, string>();
+        const find = (id: string): string => {
+            if (!parent.has(id)) parent.set(id, id);
+            let root = id;
+            while (parent.get(root) !== root) root = parent.get(root)!;
+            parent.set(id, root);
+            return root;
+        };
+        const union = (a: string, b: string) => {
+            const ra = find(a);
+            const rb = find(b);
+            if (ra !== rb) parent.set(ra, rb);
+        };
+
+        listedItems.forEach(item => {
+            const id = String(item.id);
+            find(id);
+            const variantIds: string[] = ((item as any).variants || []).map(String);
+            variantIds.forEach(vid => {
+                if (itemById.has(vid)) union(id, vid);
+            });
+        });
+
+        const groups = new Map<string, string[]>();
+        listedItems.forEach(item => {
+            const root = find(String(item.id));
+            if (!groups.has(root)) groups.set(root, []);
+            groups.get(root)!.push(String(item.id));
+        });
+
+        const map: Record<string, string[]> = {};
+        listedItems.forEach(item => {
+            const root = find(String(item.id));
+            const groupIds = groups.get(root) || [String(item.id)];
+            const images = groupIds
+                .map(gid => itemById.get(gid)?.imageUrl)
+                .filter((url): url is string => Boolean(url));
+            map[String(item.id)] = images.length > 0 ? images : (item.imageUrl ? [item.imageUrl] : []);
+        });
+
+        return map;
+    }, [allItems]);
+
     const filteredItems = useMemo(() => {
         const result = allItems.filter(item => {
             // Hide unlisted items
@@ -1239,12 +1327,13 @@ const SharedProduct: React.FC = () => {
                                 setPersonalizationItem({} as Item);
                                 setPersonalizationText('');
                             }}
-                            className="flex items-center justify-center gap-1.5 bg-[#F97316] text-white py-2 px-3 md:px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all"
+                            className="flex flex-col items-center justify-center gap-0.5 bg-[#F97316] text-white py-2 px-3 md:px-4 rounded-sm font-black text-[10px] uppercase tracking-wider shadow-md active:scale-95 transition-all md:flex-row md:gap-1.5"
                             title="Send a Query"
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                             </svg>
+                            <span className="text-[8px] leading-none">Query</span>
                         </button>
                         <button
                             ref={cartIconRef}
@@ -1421,15 +1510,10 @@ const SharedProduct: React.FC = () => {
                                             <Pin size={12} className="fill-[#F97316]" />
                                         </div>
                                     )}
-                                    {item.imageUrl ? (
-                                        <img
-                                            src={item.imageUrl}
-                                            alt={item.name}
-                                            className="object-contain w-full h-full transition-transform duration-500 group-hover:scale-110"
-                                        />
-                                    ) : (
-                                        <FiPackage className="w-10 h-10 text-gray-200" />
-                                    )}
+                                    <ProductCardImage
+                                        images={itemSlideImagesMap[item.id!] || (item.imageUrl ? [item.imageUrl] : [])}
+                                        alt={item.name}
+                                    />
                                     {isOutOfStock && (
                                         <div className="absolute top-2 left-2 bg-orange-500 text-white px-1 py-0.5 rounded-sm text-[10px] font-black uppercase">
                                             Out of Stock
@@ -1620,11 +1704,11 @@ const SharedProduct: React.FC = () => {
             {/* PERSONALIZATION POPUP */}
             {personalizationItem && (
                 <div
-                    className="fixed inset-0 z-[2000] flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm"
+                    className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
                     onClick={() => setPersonalizationItem(null)}
                 >
                     <div
-                        className="bg-white w-full md:max-w-md rounded-t-sm md:rounded-sm shadow-2xl p-5 space-y-4"
+                        className="bg-white w-full max-w-md rounded-sm shadow-2xl p-5 space-y-4"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Header */}

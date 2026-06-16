@@ -68,6 +68,7 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
     companyId,
     onVariantSelect,
     variantGroupIds = [],
+    isCustomerApproved = false,
 }) => {
     const [quantity, setQuantity] = useState(initialQuantity || 0);
     const [isAdding, setIsAdding] = useState(false);
@@ -114,7 +115,8 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
     const { mrp, salePrice, discountPercent, hasDiscount, hasBothPrices } = getEffectivePriceInfo(item);
 
     const hidePriceEnabled = catalogueSettings?.hidePrice === true;
-    const shouldHidePrice = hidePriceEnabled;
+const approvalEnabled = catalogueSettings?.requireApproval === true;
+const shouldHidePrice = hidePriceEnabled || (approvalEnabled && !isCustomerApproved);
 
     const showDiscountBadge =
         !hidePriceEnabled &&
@@ -269,9 +271,11 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
                                                             : <div className={`w-10 h-10 rounded-sm ${isSelected ? 'bg-orange-100' : 'bg-gray-100'}`} />
                                                         }
                                                         <span className="text-[9px] font-black max-w-[52px] truncate text-center leading-tight">{v.name}</span>
-                                                        <span className={`text-[9px] font-bold ${isSelected ? 'text-[#F97316]' : 'text-gray-500'}`}>
-                                                            ₹{vPriceInfo.salePrice}
-                                                        </span>
+                                                        {!shouldHidePrice && (
+                                                            <span className={`text-[9px] font-bold ${isSelected ? 'text-[#F97316]' : 'text-gray-500'}`}>
+                                                                ₹{vPriceInfo.salePrice}
+                                                            </span>
+                                                        )}
                                                     </button>
                                                 );
                                             })

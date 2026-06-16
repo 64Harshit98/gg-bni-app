@@ -131,7 +131,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
 
   // --- NORMALIZATION ---
   const safeScheme = (data.gstScheme && data.gstScheme.trim() !== '') ? data.gstScheme.toUpperCase() : 'NONE';
-  const safeTaxType = (data.taxType && data.taxType.trim() !== '') ? data.taxType.toUpperCase() : 'EXCLUSIVE';
+  const safeTaxType = (data.taxType && data.taxType.trim() !== '') ? data.taxType.toLowerCase() : 'EXCLUSIVE';
   const showGstinDetails = !isEstimate && safeScheme !== 'NONE' && safeTaxType !== 'EXEMPT' && safeTaxType !== 'NONE';
   const showTaxColumns = !isEstimate;
 
@@ -224,8 +224,16 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
 
     if (isEstimate || safeScheme === 'NONE' || safeTaxType === 'EXEMPT' || safeTaxType === 'NONE') {
       taxRate = 0;
+
+      // Preserve the full value for Inclusive items, strip tax for Exclusive
+      const itemTaxType = ((item as any).taxType || safeTaxType).toUpperCase();
+      if (itemTaxType === 'INCLUSIVE') {
+        finalAmount = taxableAmt + taxAmt;
+      } else {
+        finalAmount = taxableAmt;
+      }
+
       taxAmt = 0;
-      finalAmount = taxableAmt;
     }
 
     totalQty += qty;
@@ -282,7 +290,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   const roundOffAmt = invoiceTotal - pureCalculated;
 
   // Lock the settled amount to a minimum of 0
-  const settledAmount = Math.max(0, invoiceTotal - advance);
+  const settledAmount = data.due !== undefined ? Number(data.due) : Math.max(0, invoiceTotal - advance);
 
   const prevBal = Number(data.previousBalance) || 0;
 
@@ -326,7 +334,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     doc.text(title, pageWidth / 2, cursorY + 5, { align: 'center' });
 
     doc.setFontSize(8);
-    if (!isEstimate) doc.text(`Msme No ${data.msmeNumber || ''}`, endX - 2, cursorY + 5, { align: 'right' });
+    if (!isEstimate) doc.text(`Msme No : ${data.msmeNumber || ''}`, endX - 2, cursorY + 5, { align: 'right' });
 
     if (data.companyLogoBase64) {
       try { doc.addImage(data.companyLogoBase64, 'JPEG', endX - 20, cursorY + 7, 18, 14, undefined, 'FAST'); } catch (e) { }
@@ -361,7 +369,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     doc.text(`Place of Supply : ${displayPos}`, (pageWidth / 2) + 2, cursorY + 5);
     if (showGstinDetails) {
       doc.setFont('helvetica', 'bold');
-      doc.text(`GST Type: ${safeScheme}${safeScheme === 'REGULAR' ? ` (${safeTaxType})` : ''}`, (pageWidth / 2) + 2, cursorY + 10);
+      doc.text(`GST Type: ${safeScheme}${safeScheme === 'REGULAR' ? ` (tax ${safeTaxType})` : ''}`, (pageWidth / 2) + 2, cursorY + 10);
       doc.setFont('helvetica', 'normal');
     }
     cursorY += metaHeight;
@@ -466,12 +474,12 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
 
     // --- ADVANCE & SETTLED AMOUNT ---
     if (advance > 0 && !isEstimate) {
-      addRow('Advance Paid (-)', advance, 6);
+      addRow('Amount Paid (-)', advance, 6);
 
       doc.setFontSize(9); doc.setFont('helvetica', 'bold');
-      doc.rect(startX, finalY, contentWidth, 8);
+      doc.rect(startX, finalY, contentWidth, 6);
       doc.text('Balance Due', vBoxX - 6, finalY + 5.5, { align: 'right' });
-      doc.rect(endX - 30, finalY, 30, 8);
+      doc.rect(endX - 30, finalY, 30, 6);
       doc.text(settledAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }), endX - 2, finalY + 5.5, { align: 'right' });
       finalY += 8;
     }
@@ -546,8 +554,8 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
       doc.rect(startX, finalY, contentWidth, 10);
       doc.setFont('helvetica', 'bold'); doc.text('BANK DETAIL :', startX + 2, finalY + 4);
       doc.line(startX + 2, finalY + 4.5, startX + 2 + doc.getTextWidth('BANK DETAIL :'), finalY + 4.5);
-      doc.text(`Bank name : ${data.bankDetails?.bankName || ''} , A/C NO. ${data.bankDetails?.accountNumber || ''}`, startX + 35, finalY + 4);
-      doc.text(`IFSC Code ${data.bankDetails?.ifsc || data.bankDetails?.ifscCode || ''}`, startX + 35, finalY + 8);
+      doc.text(`Bank name : ${data.bankDetails?.bankName || ''} , A/C NO : ${data.bankDetails?.accountNumber || ''}`, startX + 35, finalY + 4);
+      doc.text(`IFSC Code : ${data.bankDetails?.ifsc || data.bankDetails?.ifscCode || ''}`, startX + 35, finalY + 8);
       finalY += 10;
     }
 

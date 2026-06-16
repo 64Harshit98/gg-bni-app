@@ -331,19 +331,44 @@ const CartPage: React.FC = () => {
     const scheme = salesSettings?.gstScheme?.toLowerCase() || 'regular';
     const taxType = salesSettings?.taxType?.toLowerCase() || 'inclusive';
 
-    // Only add tax on top IF they are Regular AND Exclusive
+    // 2. Calculate Subtotal & Tax safely handling both scenarios
+    let totalTaxAmount = 0;
+    let baseSubtotal = 0;
+
     const applyExclusiveTax = scheme === 'regular' && taxType === 'exclusive';
 
-    // 2. Calculate Subtotal
     const subtotal = cartItems.reduce((acc, item) => {
-        const baseAmount = item.salesPrice * item.quantity;
-        let taxAmount = 0;
+        const qty = item.quantity;
+        const price = item.salesPrice;
+        const taxRate = item.tax || 0;
 
-        if (applyExclusiveTax) {
-            taxAmount = baseAmount * ((item.tax || 0) / 100);
+        let itemBaseAmount = 0;
+        let itemTaxAmount = 0;
+        let itemTotalAmount = 0;
+
+        if (scheme === 'regular') {
+            if (taxType === 'exclusive') {
+                // EXCLUSIVE: Tax is calculated on top of the base price
+                itemBaseAmount = price * qty;
+                itemTaxAmount = itemBaseAmount * (taxRate / 100);
+                itemTotalAmount = itemBaseAmount + itemTaxAmount;
+            } else {
+                // INCLUSIVE: Tax is already inside the price, we extract it
+                itemTotalAmount = price * qty;
+                itemBaseAmount = itemTotalAmount / (1 + (taxRate / 100));
+                itemTaxAmount = itemTotalAmount - itemBaseAmount;
+            }
+        } else {
+            // EXEMPT / COMPOSITION: No tax to display or calculate
+            itemBaseAmount = price * qty;
+            itemTaxAmount = 0;
+            itemTotalAmount = itemBaseAmount;
         }
 
-        return acc + baseAmount + taxAmount;
+        baseSubtotal += itemBaseAmount;
+        totalTaxAmount += itemTaxAmount;
+
+        return acc + itemTotalAmount;
     }, 0);
 
     const totalPay = Math.round(subtotal);
@@ -363,8 +388,8 @@ const CartPage: React.FC = () => {
         if (isPlacing || cartItems.length === 0) return;
 
         // Basic address validation
-        const billingValid = billing.name?.trim() && billing.phone?.length === 10 && billing.address?.trim();
-        const shippingValid = isSameAsShipping ? billingValid : (shipping.name?.trim() && shipping.phone?.length === 10 && shipping.address?.trim());
+        const billingValid = billing.name?.trim() && billing.phone?.length === 10 && billing.address?.trim() && billing.city?.trim() && billing.state?.trim();
+        const shippingValid = isSameAsShipping ? billingValid : (shipping.name?.trim() && shipping.phone?.length === 10 && shipping.address?.trim()) && shipping.city?.trim() && shipping.state?.trim();
 
         if (!billingValid || !shippingValid) {
             setShowAlert(true);
@@ -408,6 +433,8 @@ const CartPage: React.FC = () => {
                     userName: billing.name || "",
                     userLoginPhone: customerPhone || billing.phone || "",
                     totalAmount: totalPay,
+                    totalTax: Number(totalTaxAmount.toFixed(2)),
+                    baseAmount: Number(baseSubtotal.toFixed(2)),
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp(),
                     specialInstruction: specialInstruction || "",
@@ -418,15 +445,18 @@ const CartPage: React.FC = () => {
                     items: cartItems.map(i => {
                         const originalUnitPrice = Number(i.salesPrice);
                         const qty = Number(i.quantity);
+                        const taxRate = Number(i.tax || 0);
 
-                        // FIX: If exclusive, calculate the new unit price by adding the tax directly to it
-                        const actualUnitPrice = applyExclusiveTax
-                            ? originalUnitPrice + (originalUnitPrice * ((i.tax || 0) / 100))
-                            : originalUnitPrice;
+                        // Don't bake tax into the salesPrice! Keep it pure.
+                        let lineBaseAmount = originalUnitPrice * qty;
+                        let lineTaxAmount = 0;
+                        let lineFinalAmount = lineBaseAmount;
 
-                        const finalPriceWithTax = actualUnitPrice * qty;
+                        if (applyExclusiveTax) {
+                            lineTaxAmount = lineBaseAmount * (taxRate / 100);
+                            lineFinalAmount = lineBaseAmount + lineTaxAmount;
+                        }
 
-                        // Determine the correct string to save for the POS bill engine
                         let itemTaxTypeToSave = 'Inclusive';
                         if (scheme === 'exempt' || scheme === 'composition') {
                             itemTaxTypeToSave = scheme.charAt(0).toUpperCase() + scheme.slice(1);
@@ -441,13 +471,20 @@ const CartPage: React.FC = () => {
                             name: i.name,
                             quantity: qty,
                             mrp: Number(i.mrp),
-                            // 👇 Send the tax-loaded unit price to the POS engine so it can back-calculate correctly
-                            salesPrice: actualUnitPrice,
-                            tax: i.tax,
+
+                            // 👇 Keep the pure base price, just like Sales.tsx
+                            salesPrice: originalUnitPrice,
+                            effectiveUnitPrice: originalUnitPrice,
+
+                            tax: taxRate,
+                            taxRate: taxRate,
                             taxType: itemTaxTypeToSave,
+                            taxableAmount: applyExclusiveTax ? lineBaseAmount : (lineBaseAmount / (1 + (taxRate / 100))),
+                            taxAmount: applyExclusiveTax ? lineTaxAmount : (lineBaseAmount - (lineBaseAmount / (1 + (taxRate / 100)))),
+                            finalPrice: lineFinalAmount,
+
                             note: i.note,
                             image: i.imageUrl || "",
-                            finalPrice: finalPriceWithTax, // This will now perfectly equal actualUnitPrice * qty
                             unit: i.unit || "pcs",
                             unitMultiplier: i.unitMultiplier || 1
                         };
@@ -1023,8 +1060,16 @@ const CartPage: React.FC = () => {
                                 <h3 className="text-[#1A3B5D] font-black text-xs uppercase tracking-wider mb-4 pb-2 border-b border-gray-50">Order Summary</h3>
                                 <div className="space-y-3 mb-6">
                                     <div className="flex justify-between items-center text-[12px] font-bold text-gray-400 uppercase">
-                                        <span>Subtotal</span> <span className="text-[#1A3B5D]"> {shouldShowPrice ? `₹${subtotal.toLocaleString()}` : "—"}</span>
+                                        <span>Subtotal</span>
+                                        <span className="text-[#1A3B5D]"> {shouldShowPrice ? `₹${baseSubtotal.toFixed(2)}` : "—"}</span>
                                     </div>
+
+                                    {totalTaxAmount > 0 && (
+                                        <div className="flex justify-between items-center text-[12px] font-bold text-gray-400 uppercase">
+                                            <span>Tax</span>
+                                            <span className="text-[#1A3B5D]"> {shouldShowPrice ? `₹${totalTaxAmount.toFixed(2)}` : "—"}</span>
+                                        </div>
+                                    )}
 
                                     <div className="pt-3 border-t border-gray-50 flex justify-between items-center">
                                         <span className="text-[#F97316] font-black text-xs uppercase">Total Pay</span>
@@ -1087,11 +1132,17 @@ const CartPage: React.FC = () => {
                             <button onClick={() => setIsDrawerOpen(false)} className="p-1.5 bg-gray-50 rounded-sm"><X size={16} /></button>
                         </div>
                         <div className="space-y-4 mb-8">
-                            <div className="flex justify-between text-[11px] font-bold uppercase tracking-widest text-gray-400">
-                                <span>Items ({cartItems.length})</span> <span className="text-[#1A3B5D]">
-                                    {shouldShowPrice ? `₹${subtotal.toLocaleString()}` : "—"}
-                                </span>
+                            <div className="flex justify-between items-center text-[12px] font-bold text-gray-400 uppercase">
+                                <span>Subtotal</span>
+                                <span className="text-[#1A3B5D]"> {shouldShowPrice ? `₹${baseSubtotal.toFixed(2)}` : "—"}</span>
                             </div>
+
+                            {totalTaxAmount > 0 && (
+                                <div className="flex justify-between items-center text-[12px] font-bold text-gray-400 uppercase">
+                                    <span>Tax</span>
+                                    <span className="text-[#1A3B5D]"> {shouldShowPrice ? `₹${totalTaxAmount.toFixed(2)}` : "—"}</span>
+                                </div>
+                            )}
 
                             <div className="pt-4 border-t border-gray-100 flex justify-between items-center">
                                 <span className="text-[#1A3B5D] font-black text-sm uppercase">Amount Payable</span>

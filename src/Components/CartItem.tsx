@@ -156,6 +156,18 @@ export const GenericCartList = <T extends CartItem>({
 
           const netPrice = parseFloat(displayPrice) || 0;
           const lineSubtotal = Math.round((netPrice * (item.quantity || 1)) * 100) / 100;
+          const handleDiscountChange = (val: string) => {
+            if (val === '') {
+              onDiscountChange(item.id, val);
+              return;
+            }
+            const numVal = parseFloat(val);
+            if (numVal > 100) {
+              onDiscountChange(item.id, '100');
+            } else {
+              onDiscountChange(item.id, val);
+            }
+          };
 
           return (
             <div
@@ -239,7 +251,7 @@ export const GenericCartList = <T extends CartItem>({
                       <label className="absolute -top-1 left-2 bg-white px-1 text-[10px] text-gray-500 leading-none z-10">Disc%</label>
                       <FloatingInput
                         value={item.discount !== undefined ? String(item.discount) : ''}
-                        onChange={(val) => onDiscountChange(item.id, val)}
+                        onChange={handleDiscountChange}
                         onBlur={() => {
                           if ((item.discount as any) === '' || item.discount === undefined) {
                             onDiscountChange(item.id, 0);

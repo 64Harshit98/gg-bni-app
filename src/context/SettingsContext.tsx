@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 import { useAuth } from './auth-context';
 import { type SalesSettings, getDefaultSalesSettings } from '../Pages/Settings/SalesSetting';
@@ -49,9 +49,17 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
 
         const unsubscribe = onSnapshot(docRef, (docSnap) => {
             if (docSnap.exists()) {
-                setCatalogueSettings(docSnap.data() as CatalogueSalesSettings);
+                const dbSettings = docSnap.data();
+                const defaultSettings = getDefaultCatalogueSalesSettings(companyId);
+                const mergedSettings = { ...defaultSettings, ...dbSettings };
+
+                const missingKeys = Object.keys(defaultSettings).filter(key => !(key in dbSettings));
+                if (missingKeys.length > 0) {
+                    setDoc(docRef, mergedSettings).catch(err => console.error('Failed to sync missing catalogue settings:', err));
+                }
+
+                setCatalogueSettings(mergedSettings as CatalogueSalesSettings);
             } else {
-                // This ensures the app "sees" defaults even if DB is empty
                 setCatalogueSettings(getDefaultCatalogueSalesSettings(companyId));
             }
             setLoadingCatalogueSettings(false);
@@ -67,7 +75,7 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
     // --- FETCH SALES SETTINGS ---
     useEffect(() => {
         if (currentUser?.role === ROLES.AGENT || currentUser?.role === ROLES.AGENCY) {
-            return; // Stop fetching! Partners don't need POS settings.
+            return;
         }
 
         if (!currentUser?.companyId) {
@@ -78,13 +86,25 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
 
         setLoadingSalesSettings(true);
         const companyId = currentUser.companyId;
-
-        // FIX: Target the exact document ID your page saves to
         const docRef = doc(db, 'companies', companyId, 'settings', 'sales-settings');
 
         const unsubscribeSales = onSnapshot(docRef, (docSnap) => {
             if (docSnap.exists()) {
-                setSalesSettings(docSnap.data() as SalesSettings);
+                const dbSettings = docSnap.data();
+                const defaultSettings = getDefaultSalesSettings(companyId);
+
+                // 1. dbSettings overwrites defaultSettings, keeping signup data perfectly safe
+                const mergedSettings = { ...defaultSettings, ...dbSettings };
+
+                // 2. Check if the database was missing any keys
+                const missingKeys = Object.keys(defaultSettings).filter(key => !(key in dbSettings));
+
+                if (missingKeys.length > 0) {
+                    // 3. Physically save the complete settings back to Firestore
+                    setDoc(docRef, mergedSettings).catch(err => console.error('Failed to sync missing sales settings:', err));
+                }
+
+                setSalesSettings(mergedSettings as SalesSettings);
             } else {
                 console.warn(`SettingsProvider: No 'sales' settings found. Using defaults.`);
                 setSalesSettings(getDefaultSalesSettings(companyId));
@@ -109,13 +129,20 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
 
         setLoadingPurchaseSettings(true);
         const companyId = currentUser.companyId;
-
-        // FIX: Target the exact document ID your page saves to
         const docRef = doc(db, 'companies', companyId, 'settings', 'purchase-settings');
 
         const unsubscribePurchase = onSnapshot(docRef, (docSnap) => {
             if (docSnap.exists()) {
-                setPurchaseSettings(docSnap.data() as PurchaseSettings);
+                const dbSettings = docSnap.data();
+                const defaultSettings = getDefaultPurchaseSettings(companyId);
+                const mergedSettings = { ...defaultSettings, ...dbSettings };
+
+                const missingKeys = Object.keys(defaultSettings).filter(key => !(key in dbSettings));
+                if (missingKeys.length > 0) {
+                    setDoc(docRef, mergedSettings).catch(err => console.error('Failed to sync missing purchase settings:', err));
+                }
+
+                setPurchaseSettings(mergedSettings as PurchaseSettings);
             } else {
                 console.warn(`SettingsProvider: No 'purchase' settings found. Using defaults.`);
                 setPurchaseSettings(getDefaultPurchaseSettings(companyId));
@@ -140,13 +167,20 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
 
         setLoadingItemSettings(true);
         const companyId = currentUser.companyId;
-
-        // FIX: Target the exact document ID your page saves to
         const docRef = doc(db, 'companies', companyId, 'settings', 'item-settings');
 
         const unsubscribeItem = onSnapshot(docRef, (docSnap) => {
             if (docSnap.exists()) {
-                setItemSettings(docSnap.data() as ItemSettings);
+                const dbSettings = docSnap.data();
+                const defaultSettings = getDefaultItemSettings(companyId);
+                const mergedSettings = { ...defaultSettings, ...dbSettings };
+
+                const missingKeys = Object.keys(defaultSettings).filter(key => !(key in dbSettings));
+                if (missingKeys.length > 0) {
+                    setDoc(docRef, mergedSettings).catch(err => console.error('Failed to sync missing item settings:', err));
+                }
+
+                setItemSettings(mergedSettings as ItemSettings);
             } else {
                 console.warn(`SettingsProvider: No 'item' settings found. Using defaults.`);
                 setItemSettings(getDefaultItemSettings(companyId));
@@ -160,7 +194,6 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
 
         return () => unsubscribeItem();
     }, [currentUser?.companyId]);
-
 
     const isLoadingSettings = loadingSalesSettings || loadingPurchaseSettings || loadingItemSettings || loadingCatalogueSettings;
 

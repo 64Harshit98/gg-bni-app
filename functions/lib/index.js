@@ -526,7 +526,7 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data) => {
         await admin.auth().setCustomUserClaims(userRecord.uid, { companyId: newCompanyId, role });
 
         const trialDate = new Date();
-        trialDate.setDate(trialDate.getDate() + 7);
+        trialDate.setDate(trialDate.getDate() + 3);
 
         const batch = db.batch();
         batch.set(db.doc(`companies/${newCompanyId}`), {

@@ -663,8 +663,8 @@ const Journal: React.FC = () => {
       companyLogoBase64: companyLogoBase64 || undefined,
       signatureBase64: billSettings.signatureBase64 || '',
       companyGstin: billSettings.companyGstin || businessInfo?.gstin || '',
-      msmeNumber: billSettings.msmeNumber || '',
-      panNumber: billSettings.panNumber || '',
+      msmeNumber: businessInfo?.msmeNumber || '',
+      panNumber: businessInfo?.panNumber || '',
       companyState: businessInfo?.state || '',         // <-- ADD THIS
       placeOfSupply: invoice.placeOfSupply || '',
       billDiscount: invoice.manualDiscount || 0,

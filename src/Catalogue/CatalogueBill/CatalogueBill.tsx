@@ -131,10 +131,16 @@ export const CatalogueBill = async (
           gstAmount = 0;
           finalRowTotal = subtotal;
         } else {
-          // DB price already includes tax, so back-calculate for BOTH inclusive and exclusive
-          finalRowTotal = rawPrice * qty;
-          subtotal = finalRowTotal / (1 + (effectiveTaxRate / 100));
-          gstAmount = finalRowTotal - subtotal;
+          if (safeTaxType === "EXCLUSIVE") {
+            subtotal = rawPrice * qty;
+            gstAmount = subtotal * (effectiveTaxRate / 100);
+            finalRowTotal = subtotal + gstAmount;
+          } else {
+            // Inclusive: Back-calculate
+            finalRowTotal = rawPrice * qty;
+            subtotal = finalRowTotal / (1 + (effectiveTaxRate / 100));
+            gstAmount = finalRowTotal - subtotal;
+          }
         }
 
         let discountAmt = (mrp * qty) - (rawPrice * qty);
@@ -306,10 +312,16 @@ export const CatalogueBill = async (
       taxableAmt = rowNet;
       finalAmount = taxableAmt;
     } else {
-      // DB price already includes tax, so back-calculate for BOTH inclusive and exclusive
-      finalAmount = rowNet;
-      taxableAmt = finalAmount / (1 + (taxRate / 100));
-      taxAmt = finalAmount - taxableAmt;
+      if (safeTaxType === "EXCLUSIVE") {
+        taxableAmt = rowNet;
+        taxAmt = rowNet * (taxRate / 100);
+        finalAmount = rowNet + taxAmt;
+      } else {
+        // Inclusive: Back-calculate
+        finalAmount = rowNet;
+        taxableAmt = finalAmount / (1 + (taxRate / 100));
+        taxAmt = finalAmount - taxableAmt;
+      }
     }
 
     totalQty += qty;
@@ -846,18 +858,10 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
     }
   }
 
-  const extractStateFromAddress = (address: string) => {
-    if (!address) return "";
-    const parts = address.split(",");
-    return parts.length > 1 ? parts[parts.length - 1].trim() : address.trim();
-  };
-
   const determinedPlaceOfSupply =
     invoiceData.placeOfSupply ||
     invoiceData.shippingDetails?.state ||
-    invoiceData.billingDetails?.state ||
-    invoiceData.customer?.shipping?.state ||
-    extractStateFromAddress(invoiceData.customer?.shipping?.address);
+    invoiceData.billingDetails?.state;
 
   // --- STRICT MATH FIX: Calculate true post-tax total ---
   const taxType = invoiceData.taxType || salesSettings?.taxType || 'exclusive';
@@ -874,15 +878,22 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
   invoiceData.items?.forEach((item: any) => {
     const mrp = Number(item.mrp || 0);
     const salesPrice = Number(item.salesPrice || 0);
-    const actualPrice = item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+
+    // 👉 Pull the pure base price, NOT the tax-included customPrice
+    const actualPrice = item.effectiveUnitPrice ?? item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
     const qty = Number(item.quantity || 0);
 
     let rowGross = actualPrice * qty;
     let billDisc = sumPostDiscountAmounts > 0 ? (rowGross / sumPostDiscountAmounts) * totalBillDiscount : 0;
     let rowNet = rowGross - billDisc;
 
-    // We no longer explicitly add tax here because actualPrice already includes it
     let finalRowAmount = rowNet;
+    const itemTaxRate = Number(item.tax ?? item.taxRate ?? 0);
+
+    // 👉 If exclusive, add tax on top of the row net
+    if (taxType === 'exclusive' && itemTaxRate > 0) {
+      finalRowAmount = rowNet + (rowNet * (itemTaxRate / 100));
+    }
 
     trueGrandTotal += finalRowAmount;
   });

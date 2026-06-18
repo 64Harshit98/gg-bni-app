@@ -200,10 +200,14 @@ export const useOrdersData = (
                         quantity: Number(i.quantity || 0),
                         mrp,
                         salesPrice,
+                        effectiveUnitPrice: i.effectiveUnitPrice, // 👈 Ensures edited price doesn't reset
+                        customPrice: i.customPrice,               // 👈 Ensures edited price doesn't reset
                         unitPrice: finalPrice,
                         moq: Number(i.moq ?? 0),
                         itemGroupId: i.itemGroupId || i.groupId || null,
-                        tax: Number(i.tax ?? 0),
+                        tax: Number(i.tax ?? i.taxRate ?? 0),
+                        taxRate: Number(i.taxRate ?? i.tax ?? 0),
+                        taxType: i.taxType || '',                 // 👈 CRITICAL: Prevents tax from vanishing!
                         unitMultiplier: Number(i.unitMultiplier ?? i.multiplier ?? 1),
                         unit: i.unit ?? "pcs",
                         finalPrice: Number(i.finalPrice ?? finalPrice * Number(i.quantity || 0)),
@@ -660,16 +664,21 @@ const OrdersPage: React.FC = () => {
 
     const calculatedEditTotal = useMemo(() => {
         if (!editingOrder?.items) return 0;
+        let dynamicTax = 0;
         const itemsTotal = editingOrder.items.reduce((sum, item) => {
-            const salesPrice = Number(item.salesPrice || 0);
-            const mrp = Number(item.mrp || 0);
-            const price =
-                item.finalPrice ??
-                (salesPrice > 0 ? salesPrice : mrp);
-            return sum + price * Number(item.quantity || 0);
+            const qty = Number(item.quantity || 0);
+            const unitPrice = Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
+            const rowNet = unitPrice * qty;
+
+            const taxRate = Number(item.tax ?? item.taxRate ?? 0);
+            const taxType = (item.taxType || '').toLowerCase();
+            if (taxRate > 0 && (taxType === 'exclusive' || taxType === 'regular')) {
+                dynamicTax += rowNet * (taxRate / 100);
+            }
+            return sum + rowNet;
         }, 0);
         const expensesTotal = editExpenses.reduce((sum, e) => sum + (parseFloat(e.amount.toString()) || 0), 0);
-        return Math.max(0, itemsTotal + expensesTotal - editDiscount);
+        return Math.max(0, itemsTotal + dynamicTax + expensesTotal - editDiscount);
     }, [editingOrder?.items, editExpenses, editDiscount]);
 
     const handleNetPriceChange = (id: string, value: string) => {
@@ -688,10 +697,15 @@ const OrdersPage: React.FC = () => {
                 discount = ((basePrice - newNetPrice) / basePrice) * 100;
             }
 
-            // Recalculate finalPrice (base + tax)
-            const taxRate = Number(item.tax || item.taxRate || 0);
-            const isExclusive = item.taxType?.toLowerCase() === 'exclusive' || item.taxType?.toLowerCase() === 'regular';
-            const newFinalPrice = isExclusive ? newNetPrice + (newNetPrice * (taxRate / 100)) : newNetPrice;
+            // Recalculate line total (Base + Tax)
+            const qty = Number(item.quantity || 1);
+            const taxRate = Number(item.tax ?? item.taxRate ?? 0);
+            const taxType = (item.taxType || '').toLowerCase();
+            const isExclusive = taxType === 'exclusive' || taxType === 'regular';
+
+            const lineBase = newNetPrice * qty;
+            const lineTax = isExclusive ? lineBase * (taxRate / 100) : 0;
+            const newFinalPrice = lineBase + lineTax;
 
             return {
                 ...item,
@@ -706,33 +720,21 @@ const OrdersPage: React.FC = () => {
     };
 
     const mappedOrderItems = (editingOrder?.items || []).map((item) => {
-        const mrp = Number(item.mrp || 0);
+        const dbMrp = Number(item.mrp || 0);
         const salePrice = Number(item.salesPrice || 0);
+
+        // 1. If MRP is 0, use the Sale Price as the base reference so the UI doesn't show "₹0"
+        const basePrice = dbMrp > 0 ? dbMrp : salePrice;
+
+        // 2. Extract the pure UNIT price, NEVER the line total (finalPrice)
+        let netPrice = item.effectiveUnitPrice ?? item.customPrice ?? salePrice ?? dbMrp ?? 0;
+
         let discount = Number(item.discount || 0);
-
-        // Fall back to undefined so we know if we need to run initial calculations
-        let netPrice = item.finalPrice;
-
-        const basePrice = mrp > 0 ? mrp : salePrice;
         const liveMoq = liveMoqMap[item.id] ?? Number(item.moq ?? 0);
 
-        // 3-Tier Initialization Logic
-        if (netPrice === undefined || netPrice === null) {
-            if (mrp > 0 && salePrice > 0) {
-                netPrice = salePrice;
-                discount = ((mrp - salePrice) / mrp) * 100;
-            } else if (salePrice > 0) {
-                netPrice = salePrice * (1 - discount / 100);
-            } else if (mrp > 0) {
-                netPrice = mrp * (1 - discount / 100);
-            } else {
-                netPrice = 0;
-            }
-        } else {
-            // If netPrice is actively being edited, keep the discount synced to the base
-            if (basePrice > 0) {
-                discount = ((basePrice - netPrice) / basePrice) * 100;
-            }
+        // 3. Keep the discount synced correctly to the base price
+        if (basePrice > 0 && netPrice > 0) {
+            discount = ((basePrice - netPrice) / basePrice) * 100;
         }
 
         return {
@@ -740,8 +742,9 @@ const OrdersPage: React.FC = () => {
             productId: item.itemId || item.id,
             isEditable: true,
             discount: Number(discount.toFixed(2)),
-            customPrice: Number(netPrice.toFixed(2)), // <-- Ensures GenericCartList reads the base price
-            finalPrice: item.finalPrice,
+            customPrice: Number(netPrice.toFixed(2)), // <-- Ensures CartList uses the Unit Price
+            finalPrice: item.finalPrice,              // Keeps the DB Line Total intact
+            mrp: basePrice,                           // <-- Fixes the "MRP ₹0" visual bug
             unitMultiplier: Number(item.unitMultiplier || 1),
             moq: liveMoq,
         };
@@ -1379,37 +1382,45 @@ const OrdersPage: React.FC = () => {
             return item;
         });
 
-        const newTotal = updatedItems.reduce((sum, i) => {
-            const salesPrice = Number(i.salesPrice || 0);
-            const mrp = Number(i.mrp || 0);
+        let dynamicTax = 0;
+        const itemsBaseTotal = updatedItems.reduce((sum, item) => {
+            const qty = Number(item.quantity || 0);
+            const unitPrice = Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
+            const rowNet = unitPrice * qty;
 
-            const price = i.finalPrice ?? (salesPrice > 0 ? salesPrice : mrp);
-
-            return sum + price * Number(i.quantity || 0);
+            const taxRate = Number(item.tax ?? item.taxRate ?? 0);
+            const taxType = (item.taxType || '').toLowerCase();
+            if (taxRate > 0 && (taxType === 'exclusive' || taxType === 'regular')) {
+                dynamicTax += rowNet * (taxRate / 100);
+            }
+            return sum + rowNet;
         }, 0);
 
+        const expensesTotal = (editingOrder.expenses || []).reduce((sum: number, e: any) => sum + (parseFloat(e.amount?.toString()) || 0), 0);
+        const finalNewTotal = Math.max(0, itemsBaseTotal + dynamicTax + expensesTotal - Number(editingOrder.manualDiscount || 0));
+
         setEditingOrder((prev) =>
-            prev
-                ? {
-                    ...prev,
-                    items: updatedItems,
-                    totalAmount: newTotal,
-                }
-                : prev
+            prev ? { ...prev, items: updatedItems, totalAmount: finalNewTotal } : prev
         );
 
         if (currentUser?.companyId) {
-            const orderRef = doc(
-                db,
-                "companies",
-                currentUser.companyId,
-                "Orders",
-                editingOrder.id
-            );
+            const orderRef = doc(db, "companies", currentUser.companyId, "Orders", editingOrder.id);
+
+            // Sweep undefined values from the items array so Firebase doesn't crash
+            const safeItems = updatedItems.map(item => {
+                const safeItem = { ...item };
+                Object.keys(safeItem).forEach(key => {
+                    if (safeItem[key as keyof typeof safeItem] === undefined) {
+                        delete safeItem[key as keyof typeof safeItem];
+                    }
+                });
+                return safeItem;
+            });
 
             updateDoc(orderRef, {
-                items: updatedItems,
-                totalAmount: newTotal,
+                items: safeItems,
+                totalAmount: finalNewTotal,
+                totalTax: dynamicTax, // Ensure DB has updated tax
                 updatedAt: serverTimestamp(),
             });
         }
@@ -1817,10 +1828,12 @@ const OrdersPage: React.FC = () => {
         if (!editingOrder || !currentUser?.companyId) return;
         // ── Zero-amount guard ──────────────────────────────────────────────────
         const itemsOnlyTotal = (editingOrder.items || []).reduce((sum, item) => {
-            const salesPrice = Number(item.salesPrice || 0);
-            const mrp = Number(item.mrp || 0);
-            const unitPrice = item.finalPrice ?? (salesPrice > 0 ? salesPrice : mrp);
-            return sum + Number(unitPrice || 0) * Number(item.quantity || 0);
+            // FIX: finalPrice is already the line total
+            if (item.finalPrice !== undefined && item.finalPrice !== null) {
+                return sum + Number(item.finalPrice);
+            }
+            const unitPrice = item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0;
+            return sum + (Number(unitPrice) * Number(item.quantity || 0));
         }, 0);
         const expensesTotal = editExpenses.reduce((sum, e) => sum + (parseFloat(e.amount.toString()) || 0), 0);
         const preCheckTotal = Math.max(0, itemsOnlyTotal + expensesTotal - editDiscount);
@@ -1840,15 +1853,34 @@ const OrdersPage: React.FC = () => {
                 : Orders.find(o => o.id === editingOrder.id);
 
             const getItemsTotal = (items: any[] = [], expenses: any[] = [], discount: number = 0) => {
+                let dynamicTax = 0;
                 const base = items.reduce((sum, item) => {
-                    const salesPrice = Number(item.salesPrice || 0);
-                    const mrp = Number(item.mrp || 0);
-                    const unitPrice = item.finalPrice ?? (salesPrice > 0 ? salesPrice : mrp);
-                    return sum + Number(unitPrice || 0) * Number(item.quantity || 0);
+                    const qty = Number(item.quantity || 0);
+                    const unitPrice = Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
+                    const rowNet = unitPrice * qty;
+
+                    const taxRate = Number(item.tax ?? item.taxRate ?? 0);
+                    const taxType = (item.taxType || '').toLowerCase();
+                    if (taxRate > 0 && (taxType === 'exclusive' || taxType === 'regular')) {
+                        dynamicTax += rowNet * (taxRate / 100);
+                    }
+                    return sum + rowNet;
                 }, 0);
                 const exp = expenses.reduce((sum: number, e: any) => sum + (parseFloat(e.amount?.toString()) || 0), 0);
-                return Math.max(0, base + exp - discount);
+                return Math.max(0, base + dynamicTax + exp - discount);
             };
+
+            // Calculate exact tax separately so we can save it to DB
+            const newTotalTax = (editingOrder.items || []).reduce((sum, item) => {
+                const qty = Number(item.quantity || 0);
+                const unitPrice = Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
+                const taxRate = Number(item.tax ?? item.taxRate ?? 0);
+                const taxType = (item.taxType || '').toLowerCase();
+                if (taxRate > 0 && (taxType === 'exclusive' || taxType === 'regular')) {
+                    return sum + (unitPrice * qty * (taxRate / 100));
+                }
+                return sum;
+            }, 0);
 
 
             // Compare item-based totals so increase/decrease detection is always correct,
@@ -1882,18 +1914,41 @@ const OrdersPage: React.FC = () => {
             const allPids = new Set([...oldQuantities.keys(), ...newQuantities.keys()]);
 
             // ── Helper: build the Firestore update payload ──────────────────────
-            const buildUpdatePayload = (extraFields: Record<string, any> = {}) => ({
-                items: editingOrder.items,
-                totalAmount: newTotal,
-                manualDiscount: editDiscount,
-                expenses: editExpenses.map(({ id, name, amount }) => ({ id, name, amount: parseFloat(amount.toString()) || 0 })),
-                billingDetails: editingOrder.billingDetails,
-                shippingDetails: editingOrder.shippingDetails,
-                userName: editingOrder.billingDetails?.name,
-                userLoginPhone: editingOrder.billingDetails?.phone,
-                updatedAt: serverTimestamp(),
-                ...extraFields,
-            });
+            const buildUpdatePayload = (extraFields: Record<string, any> = {}) => {
+
+                // 1. Sweep undefined values from the items array
+                const safeItems = (editingOrder.items || []).map(item => {
+                    const safeItem = { ...item };
+                    Object.keys(safeItem).forEach(key => {
+                        if (safeItem[key as keyof typeof safeItem] === undefined) {
+                            delete safeItem[key as keyof typeof safeItem];
+                        }
+                    });
+                    return safeItem;
+                });
+
+                // 2. Build the payload with safety fallbacks for optional fields
+                const payload: any = {
+                    items: safeItems,
+                    totalAmount: newTotal,
+                    totalTax: newTotalTax,
+                    manualDiscount: editDiscount,
+                    expenses: editExpenses.map(({ id, name, amount }) => ({ id, name, amount: parseFloat(amount.toString()) || 0 })),
+                    billingDetails: editingOrder.billingDetails || null,
+                    shippingDetails: editingOrder.shippingDetails || null,
+                    userName: editingOrder.billingDetails?.name || editingOrder.userName || "",
+                    userLoginPhone: editingOrder.billingDetails?.phone || editingOrder.userLoginPhone || "",
+                    updatedAt: serverTimestamp(),
+                    ...extraFields,
+                };
+
+                // 3. Final top-level sweep to guarantee no undefined values leak through
+                Object.keys(payload).forEach(key => {
+                    if (payload[key] === undefined) delete payload[key];
+                });
+
+                return payload;
+            };
 
             // ── Helper: resolve status after amount change ──────────────────────
             // Replace your existing resolveStatus inside handleSaveChanges with this:
@@ -2017,14 +2072,21 @@ const OrdersPage: React.FC = () => {
         if (!editingOrder || !currentUser?.companyId || !pendingAdjustment) return;
 
         const liveOrder = Orders.find(o => o.id === editingOrder.id);
-        const totalAmt = Number(
-            (editingOrder.items || []).reduce((sum, item) => {
-                const salesPrice = Number(item.salesPrice || 0);
-                const mrp = Number(item.mrp || 0);
-                const unitPrice = item.finalPrice ?? (salesPrice > 0 ? salesPrice : mrp);
-                return sum + Number(unitPrice || 0) * Number(item.quantity || 0);
-            }, 0)
-        );
+        let dynamicTax = 0;
+        const baseItemsTotal = (editingOrder.items || []).reduce((sum, item) => {
+            const qty = Number(item.quantity || 0);
+            const unitPrice = Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
+            const rowNet = unitPrice * qty;
+
+            const taxRate = Number(item.tax ?? item.taxRate ?? 0);
+            const taxType = (item.taxType || '').toLowerCase();
+            if (taxRate > 0 && (taxType === 'exclusive' || taxType === 'regular')) {
+                dynamicTax += rowNet * (taxRate / 100);
+            }
+            return sum + rowNet;
+        }, 0);
+        const expensesTotal = (editingOrder.expenses || []).reduce((sum: number, e: any) => sum + (parseFloat(e.amount?.toString()) || 0), 0);
+        const totalAmt = Math.max(0, baseItemsTotal + dynamicTax + expensesTotal - Number(editingOrder.manualDiscount || 0));
         const paidAmt = Number(liveOrder?.paidAmount || 0);
         const updatedPaidAmt = Math.max(0, paidAmt - pendingAdjustment.amount);
         const effectiveDue = Math.max(0, totalAmt - updatedPaidAmt);
@@ -2081,14 +2143,21 @@ const OrdersPage: React.FC = () => {
         if (!editingOrder || !currentUser?.companyId || !pendingAdjustment) return;
 
         const liveOrder = Orders.find(o => o.id === editingOrder.id);
-        const totalAmt = Number(
-            (editingOrder.items || []).reduce((sum, item) => {
-                const salesPrice = Number(item.salesPrice || 0);
-                const mrp = Number(item.mrp || 0);
-                const unitPrice = item.finalPrice ?? (salesPrice > 0 ? salesPrice : mrp);
-                return sum + Number(unitPrice || 0) * Number(item.quantity || 0);
-            }, 0)
-        );
+        let dynamicTax = 0;
+        const baseItemsTotal = (editingOrder.items || []).reduce((sum, item) => {
+            const qty = Number(item.quantity || 0);
+            const unitPrice = Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
+            const rowNet = unitPrice * qty;
+
+            const taxRate = Number(item.tax ?? item.taxRate ?? 0);
+            const taxType = (item.taxType || '').toLowerCase();
+            if (taxRate > 0 && (taxType === 'exclusive' || taxType === 'regular')) {
+                dynamicTax += rowNet * (taxRate / 100);
+            }
+            return sum + rowNet;
+        }, 0);
+        const expensesTotal = (editingOrder.expenses || []).reduce((sum: number, e: any) => sum + (parseFloat(e.amount?.toString()) || 0), 0);
+        const totalAmt = Math.max(0, baseItemsTotal + dynamicTax + expensesTotal - Number(editingOrder.manualDiscount || 0));
         const paidAmt = Number(liveOrder?.paidAmount || 0);
         const updatedPaidAmt = Math.max(0, paidAmt - pendingAdjustment.amount);
         const effectiveDue = Math.max(0, totalAmt - updatedPaidAmt);
@@ -2313,17 +2382,13 @@ const OrdersPage: React.FC = () => {
                             const isExpanded = expandedorderId === Order.id;
                             const isUpcomingStatus = Order.status === 'Upcoming';
                             const itemsSubtotal = (Order.items || []).reduce((sum, item) => {
-                                const salesPrice = Number(item.salesPrice || 0);
-                                const mrp = Number(item.mrp || 0);
-                                const price =
-                                    item.finalPrice ??
-                                    (salesPrice > 0 ? salesPrice : mrp);
-                                return sum + price * Number(item.quantity || 0);
+                                const unitPrice = item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0;
+                                return sum + (Number(unitPrice) * Number(item.quantity || 0));
                             }, 0);
                             const orderExpensesTotal = (Order.expenses || []).reduce(
                                 (sum, ex) => sum + (parseFloat(String(ex.amount)) || 0), 0
                             );
-                            const total = Math.max(0, itemsSubtotal + orderExpensesTotal - Number(Order.manualDiscount || 0));
+                            const total = Math.max(0, itemsSubtotal + orderExpensesTotal + Number(Order.totalTax || 0) - Number(Order.manualDiscount || 0));
                             let paid = Number(Order.paidAmount || 0);
                             let due = Math.max(0, total - paid);
                             const isPaid = Order.status === 'Paid';

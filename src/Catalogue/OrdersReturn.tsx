@@ -1413,6 +1413,7 @@ const OrdersReturnPage: React.FC = () => {
 
                             onDeleteItem={(id: any) => handleRemoveFromList(setExchangeItems, id)}
                             onDiscountChange={handleDiscountChange}
+                            onDiscount2Change={() => {}} 
                             onCustomPriceChange={handleCustomPriceChange}
                             onCustomPriceBlur={handleCustomPriceBlur}
                             onQuantityChange={handleQuantityChange}

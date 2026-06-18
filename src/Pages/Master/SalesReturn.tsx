@@ -1058,6 +1058,7 @@ const SalesReturnPage: React.FC = () => {
                               onOpenEditDrawer={handleOpenEditDrawer}
                               onDeleteItem={(id) => handleRemoveFromList(setExchangeItems, id)}
                               onDiscountChange={handleDiscountChange}
+                              onDiscount2Change={() => { }}
                               onCustomPriceChange={handleCustomPriceChange}
                               onCustomPriceBlur={handleCustomPriceBlur}
                               onQuantityChange={handleQuantityChange}

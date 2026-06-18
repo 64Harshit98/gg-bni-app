@@ -34,6 +34,7 @@ import CalcDisplay from '../../Components/CalcDisplay';
 export interface SalesItem extends OriginalSalesItem {
     isEditable: boolean;
     customPrice?: number | string;
+    discount2?: number;
     taxableAmount?: number;
     taxAmount?: number;
     taxRate?: number;
@@ -386,6 +387,7 @@ const Sales: React.FC = () => {
                 quantity: item.quantity || 1,
                 mrp: item.mrp || 0,
                 discount: item.discount || 0,
+                discount2: item.discount2 || 0,
                 taxableAmount: item.taxableAmount,
                 taxAmount: item.taxAmount,
                 taxRate: item.taxRate,
@@ -502,7 +504,8 @@ const Sales: React.FC = () => {
             if (cartItem.customPrice !== undefined && cartItem.customPrice !== null && cartItem.customPrice !== '') {
                 effectiveUnitPrice = parseFloat(String(cartItem.customPrice));
             } else {
-                effectiveUnitPrice = baseForDiscount * (1 - (cartItem.discount || 0) / 100);
+                const priceAfterDiscount1 = baseForDiscount * (1 - (cartItem.discount || 0) / 100);
+                effectiveUnitPrice = priceAfterDiscount1 * (1 - (cartItem.discount2 || 0) / 100);
             }
 
             effectiveUnitPrice = applyRounding(effectiveUnitPrice, isRoundingEnabled, roundingInterval);
@@ -725,6 +728,7 @@ const Sales: React.FC = () => {
                     customPrice: segmentValue,
                     quantity: 1,
                     discount: 0,
+                    discount2: 0,
                     isEditable: true,
                     purchasePrice: 0,
                     tax: salesSettings?.defaultTaxRate || 0,
@@ -872,6 +876,7 @@ const Sales: React.FC = () => {
             productId: itemToAdd.id!,
             quantity: Math.max(1, initialMoq),
             discount: calculatedDiscount,
+            discount2: 0,
             customPrice: finalNetPrice,
             isEditable: true,
             purchasePrice: itemToAdd.purchasePrice || 0,
@@ -1007,11 +1012,30 @@ const Sales: React.FC = () => {
             if (i.id === id) {
                 // FIXED: Base price is MRP if it exists, otherwise Sales Price
                 const basePrice = (i.mrp > 0) ? i.mrp : (i.salesPrice || 0);
-                let newPrice = basePrice * (1 - safeDiscount / 100);
+                const safeDiscount2 = i.discount2 || 0;
+                const priceAfterFirstDiscount = basePrice * (1 - safeDiscount / 100);
+                let newPrice = priceAfterFirstDiscount * (1 - safeDiscount2 / 100);
                 const isRoundingEnabled = salesSettings?.enableRounding ?? true;
                 const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
                 newPrice = applyRounding(newPrice, isRoundingEnabled, roundingInterval);
                 return { ...i, discount: safeDiscount, customPrice: newPrice };
+            }
+            return i;
+        }));
+    };
+    const handleDiscount2Change = (id: string, v: number | string) => {
+        const n = typeof v === 'string' ? parseFloat(v) : v;
+        const safeDiscount2 = isNaN(n) ? 0 : n;
+        setItems(prev => prev.map(i => {
+            if (i.id === id) {
+                const basePrice = (i.mrp > 0) ? i.mrp : (i.salesPrice || 0);
+                const safeDiscount1 = i.discount || 0;
+                const priceAfterFirstDiscount = basePrice * (1 - safeDiscount1 / 100);
+                let newPrice = priceAfterFirstDiscount * (1 - safeDiscount2 / 100);
+                const isRoundingEnabled = salesSettings?.enableRounding ?? true;
+                const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
+                newPrice = applyRounding(newPrice, isRoundingEnabled, roundingInterval);
+                return { ...i, discount2: safeDiscount2, customPrice: newPrice };
             }
             return i;
         }));
@@ -1061,6 +1085,7 @@ const Sales: React.FC = () => {
                 const mrp = Number(mergedItem.mrp || 0);
                 const salesPrice = Number(mergedItem.salesPrice || 0);
                 const presetDiscount = Number(mergedItem.discount || 0);
+                const existingDiscount2 = Number(mergedItem.discount2 || 0);
 
                 let finalNetPrice = 0;
                 let calculatedDiscount = 0;
@@ -1076,14 +1101,15 @@ const Sales: React.FC = () => {
                     calculatedDiscount = presetDiscount;
                     finalNetPrice = mrp * (1 - (presetDiscount / 100));
                 }
-
+                // Apply existing discount2 on top, compounding it
+                finalNetPrice = finalNetPrice * (1 - (existingDiscount2 / 100));
                 const isRoundingEnabled = salesSettings?.enableRounding ?? true;
                 const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
                 finalNetPrice = applyRounding(finalNetPrice, isRoundingEnabled, roundingInterval);
 
                 mergedItem.customPrice = finalNetPrice;
                 mergedItem.discount = parseFloat(calculatedDiscount.toFixed(2)); // Make sure discount updates!
-
+                mergedItem.discount2 = existingDiscount2;
                 return mergedItem;
             }
             return cartItem;
@@ -1236,6 +1262,7 @@ const Sales: React.FC = () => {
         const formatItemsForDB = (itemsToFormat: SalesItem[]) => {
             return itemsToFormat.map(({ isEditable, customPrice, ...item }) => {
                 const currentDiscount = Number(item.discount) || 0;
+                const currentDiscount2 = Number(item.discount2) || 0;
                 const currentQuantity = Number(item.quantity) || 1;
 
                 let effectiveUnitPrice = 0;
@@ -1243,7 +1270,8 @@ const Sales: React.FC = () => {
                     effectiveUnitPrice = parseFloat(String(customPrice));
                 } else {
                     const basePrice = (item.mrp && item.mrp > 0) ? item.mrp : (item.salesPrice || 0);
-                    effectiveUnitPrice = basePrice * (1 - currentDiscount / 100);
+                    const priceAfterDiscount1 = basePrice * (1 - currentDiscount / 100);
+                    effectiveUnitPrice = priceAfterDiscount1 * (1 - currentDiscount2 / 100);
                 }
 
                 effectiveUnitPrice = applyRounding(effectiveUnitPrice, isRoundingEnabled, roundingInterval);
@@ -1287,6 +1315,7 @@ const Sales: React.FC = () => {
                     id: item.productId || item.id,
                     quantity: currentQuantity,
                     discount: currentDiscount,
+                    discount2: currentDiscount2,
                     effectiveUnitPrice: effectiveUnitPrice,
                     finalPrice: itemFinalPrice,
                     unit: item.unit || '',
@@ -2646,6 +2675,7 @@ const Sales: React.FC = () => {
                             onOpenEditDrawer={handleOpenEditDrawer}
                             onDeleteItem={handleDeleteItem}
                             onDiscountChange={handleDiscountChange}
+                            onDiscount2Change={handleDiscount2Change}
                             onCustomPriceChange={handleCustomPriceChange}
                             onCustomPriceBlur={handleCustomPriceBlur}
                             onQuantityChange={handleQuantityChange}

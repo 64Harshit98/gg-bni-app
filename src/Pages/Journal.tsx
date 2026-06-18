@@ -60,6 +60,7 @@ interface InvoiceItem {
   effectiveUnitPrice?: number;
   unit?: string;
   discount?: number;
+  discount2?: number; 
   manualDiscount?: number;
   purchasePrice?: number;
   purchasediscount?: number;
@@ -229,6 +230,7 @@ const useJournalData = (companyId?: string) => {
             mrp: mrp,
             salesPrice: Number(item.salesPrice) || 0, // <-- Add this line
             discount: item.discount || 0,
+            discount2: Number(item.discount2) || 0,
             discountPercentage: Number(item.discountPercentage) || Number(item.discount) || 0,
             effectiveUnitPrice: effectiveUnit,
             manualDiscount: item.manualDiscount || 0,
@@ -633,6 +635,23 @@ const Journal: React.FC = () => {
       let absoluteDiscount = (basePrice * qty) - itemAmount;
       if (absoluteDiscount < 0) absoluteDiscount = 0;
 
+      // 4. Discount 1 + Discount 2 in ₹ amounts
+const d1Pct = Number(item.discount || item.discountPercentage) || 0;
+const d2Pct = Number(item.discount2) || 0;
+
+const priceAfterD1 = basePrice * (1 - d1Pct / 100);
+const priceAfterD2 = priceAfterD1 * (1 - d2Pct / 100);
+
+const discount1Amount = (basePrice - priceAfterD1) * qty;
+
+// Back-calculate discount2Amount from actual taxableAmount if discount2 pct is missing
+let discount2Amount = (priceAfterD1 - priceAfterD2) * qty;
+if (d2Pct === 0 && itemAmount > 0) {
+  // totalDiscount = basePrice*qty - itemAmount
+  const totalDiscountAmt = (basePrice * qty) - itemAmount;
+  discount2Amount = Math.max(0, totalDiscountAmt - discount1Amount);
+}
+
       return {
         sno: index + 1,
         name: item.name,
@@ -643,6 +662,8 @@ const Journal: React.FC = () => {
         price: basePrice,
 
         discountAmount: absoluteDiscount,
+        discount1Amount,   // NEW
+        discount2Amount,   // NEW
         amount: itemAmount,
         taxType: resolvedTaxType,
         taxAmount: item.taxAmount || 0,

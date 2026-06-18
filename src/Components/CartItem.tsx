@@ -9,6 +9,7 @@ export interface CartItem extends Partial<Item> {
   productId?: string;
   name: string;
   discount?: number;
+  discount2?: number;
   customPrice?: number | string;
   quantity: number;
   isEditable?: boolean;
@@ -35,6 +36,7 @@ interface GenericCartListProps<T extends CartItem> {
   onOpenEditDrawer: (item: Item) => void;
   onDeleteItem: (id: string) => void;
   onDiscountChange: (id: string, value: number | string) => void;
+  onDiscount2Change: (id: string, value: number | string) => void;
   onCustomPriceChange: (id: string, value: string) => void;
   onCustomPriceBlur: (id: string) => void;
   onQuantityChange: (id: string, newQuantity: number) => void;
@@ -118,6 +120,7 @@ export const GenericCartList = <T extends CartItem>({
   onOpenEditDrawer,
   onDeleteItem,
   onDiscountChange,
+  onDiscount2Change,
   onCustomPriceChange,
   onCustomPriceBlur,
   onQuantityChange,
@@ -130,7 +133,7 @@ export const GenericCartList = <T extends CartItem>({
 }: GenericCartListProps<T>) => {
 
   return (
-    <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-1 sm:space-y-4 pb-20 px-3 pt-1 sm:pt-4">
+    <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-1 sm:space-y-4 pb-20 px-1 pt-1 sm:pt-4">
       {items.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-40 text-gray-400">
           <p>Cart is empty</p>
@@ -139,7 +142,9 @@ export const GenericCartList = <T extends CartItem>({
         items.map((item) => {
           const currentBasePrice = Number(item[basePriceKey]) || 0;
           const currentDiscount = item.discount || 0;
-          const priceAfterDiscount = currentBasePrice * (1 - currentDiscount / 100);
+          const currentDiscount2 = item.discount2 || 0;
+          const priceAfterFirstDiscount = currentBasePrice * (1 - currentDiscount / 100);
+          const priceAfterDiscount = priceAfterFirstDiscount * (1 - currentDiscount2 / 100);
 
           const calculatedRoundedPrice = (currentDiscount > 0)
             ? applyRounding(priceAfterDiscount, settings.enableRounding, settings.roundingInterval)
@@ -226,15 +231,12 @@ export const GenericCartList = <T extends CartItem>({
                 </div>
 
                 {/* Row 2: MRP | Disc% | Net Price | Qty */}
-                <div className="border-t border-gray-100 px-2.5 py-2 flex items-center gap-1.5 flex-nowrap overflow-x-auto">
+                <div className="border-t border-gray-100 px-2 py-2 flex items-center gap-1 flex-nowrap overflow-x-auto">
 
                   {!settings.hideMrp && (
-                    <div className="relative flex-shrink-0">
-                      <label className="absolute -top-1 left-3.5 bg-white px-1 text-[10px] text-gray-500 leading-none z-10">{priceLabel}</label>
-                      <div className="flex items-center border border-slate-300 rounded h-9 px-2 bg-white min-w-[60px] cursor-not-allowed">
-                        <span className="text-xs text-gray-400 mr-1">₹</span>
-                        <span className="text-sm text-gray-400 text-center w-full">{currentBasePrice.toFixed()}</span>
-                      </div>
+                    <div className="flex flex-col items-center flex-shrink-0 min-w-[34px]">
+                      <span className="text-[9px] text-gray-500 leading-none mb-0.5">{priceLabel}</span>
+                      <span className="text-[9px] text-gray-500 leading-none">₹{currentBasePrice.toFixed()}</span>
                     </div>
                   )}
 
@@ -264,7 +266,24 @@ export const GenericCartList = <T extends CartItem>({
                       />
                     </div>
                   )}
-
+                  {settings.enableItemWiseDiscount && (
+                    <div className="relative w-13 flex-shrink-0">
+                      <label className="absolute -top-1 left-2 bg-white px-1 text-[10px] text-gray-500 leading-none z-10">Disc2%</label>
+                      <FloatingInput
+                        value={item.discount2 !== undefined ? String(item.discount2) : ''}
+                        onChange={(val) => onDiscount2Change(item.id, val)}
+                        onBlur={() => {
+                          if ((item.discount2 as any) === '' || item.discount2 === undefined) {
+                            onDiscount2Change(item.id, 0);
+                          }
+                        }}
+                        locked={discountLocked}
+                        placeholder="0"
+                        className={`w-full px-1 py-1 text-center text-sm border border-slate-300 rounded h-9 ${discountLocked ? 'bg-gray-50 cursor-not-allowed' : 'focus:border-blue-500'
+                          }`}
+                      />
+                    </div>
+                  )}
                   <div
                     className="relative flex-1 min-w-[70px]"
                     onMouseDown={onPricePressStart}
@@ -292,7 +311,7 @@ export const GenericCartList = <T extends CartItem>({
                     </div>
                   </div>
 
-                  <div className=" flex items-center border border-slate-300 rounded h-9 w-24 flex-shrink-0">
+                  <div className=" flex items-center border border-slate-300 rounded h-9 w-22 flex-shrink-0">
                     <button
                       onClick={() => {
                         const step = 1;
@@ -376,7 +395,7 @@ export const GenericCartList = <T extends CartItem>({
 
                 {/* MRP — label above amount */}
                 {!settings.hideMrp && (
-                  <div className="flex flex-col items-center flex-shrink-0 min-w-[48px]">
+                  <div className="flex flex-col items-center flex-shrink-0 min-w-[36px]">
                     <span className="text-[10px] text-gray-500 leading-none mb-0.5">{priceLabel}</span>
                     <span className="text-xs text-gray-500 leading-none">₹{currentBasePrice.toFixed()}</span>
                   </div>
@@ -409,7 +428,25 @@ export const GenericCartList = <T extends CartItem>({
                     />
                   </div>
                 )}
-
+                {/* Disc2% — floating label box */}
+                {settings.enableItemWiseDiscount && (
+                  <div className="relative w-14 flex-shrink-0">
+                    <label className="absolute -top-1 left-2 bg-white px-1 text-[10px] text-gray-500 leading-none z-10">Disc2%</label>
+                    <FloatingInput
+                      value={item.discount2 !== undefined ? String(item.discount2) : ''}
+                      onChange={(val) => onDiscount2Change(item.id, val)}
+                      onBlur={() => {
+                        if ((item.discount2 as any) === '' || item.discount2 === undefined) {
+                          onDiscount2Change(item.id, 0);
+                        }
+                      }}
+                      locked={discountLocked}
+                      placeholder="0"
+                      className={`w-full px-1 py-1 text-center text-sm border border-slate-300 rounded h-9 ${discountLocked ? 'bg-gray-50 cursor-not-allowed' : 'focus:border-blue-500'
+                        }`}
+                    />
+                  </div>
+                )}
                 {/* Net Price — floating label box */}
                 <div
                   className="relative w-24 flex-shrink-0"

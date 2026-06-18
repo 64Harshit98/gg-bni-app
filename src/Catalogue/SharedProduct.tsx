@@ -1612,7 +1612,7 @@ const SharedProduct: React.FC = () => {
                                                 }}
                                                 className={`w-full py-2 rounded-xs text-[9px] font-black uppercase tracking-widest shadow-sm transition-all flex items-center justify-center gap-2 ${notifiedItems[item.id!]
                                                     ? 'bg-green-600 text-white cursor-default'
-                                                    : 'bg-orange-500 text-white active:scale-95'
+                                                    : 'bg-orange-400 text-white active:scale-95'
                                                     }`}>
                                                 {notifiedItems[item.id!] ? '✓ We will notify you' : '🔔 Notify Me'}
                                             </button>

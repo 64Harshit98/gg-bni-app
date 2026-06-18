@@ -64,6 +64,8 @@ export interface InvoiceData {
     gstPercent?: number;
     taxRate?: number;
     discountAmount: number;
+    discount1Amount?: number;   // NEW
+    discount2Amount?: number;
     amount?: number;
     gstAmount?: number;
     imageBase64?: string;
@@ -210,14 +212,16 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
       mrp = effectiveUnitRate;
     }
 
-    // --- FIX: INCLUSIVE TAX BUG ---
-    // 1. Use the true item discount calculated safely on the frontend
-    let itemDisc = Number(item.discountAmount || 0);
+    // --- FIX: DISCOUNT 1 + DISCOUNT 2 dono ko ₹ amount mein dikhana ---
+    let disc1Amt = Number((item as any).discount1Amount || 0);
+    let disc2Amt = Number((item as any).discount2Amount || 0);
+    if (disc1Amt < 0) disc1Amt = 0;
+    if (disc2Amt < 0) disc2Amt = 0;
+    // Display format: "0.00 + 25.00"
+    const itemDiscDisplay = `${disc1Amt.toFixed(2)} + ${disc2Amt.toFixed(2)}`;
 
     // 2. Pro-rate the global bill discount across rows
     let billDisc = sumPostDiscountAmounts > 0 ? (finalAmount / sumPostDiscountAmounts) * totalBillDiscount : 0;
-
-    if (itemDisc < 0) itemDisc = 0;
     if (billDisc < 0) billDisc = 0;
 
     let taxRate = Number(item.taxRate || item.gstPercent || (item as any).tax || 0);
@@ -259,13 +263,13 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     if (!showTaxColumns) {
       return [
         item.sno, item.name, item.hsn || (item as any).hsnSac || '', qty, item.unit || 'PCS',
-        mrp.toFixed(2), itemDisc.toFixed(2), billDisc.toFixed(2), finalAmount.toFixed(2)
+        mrp.toFixed(2), itemDiscDisplay, billDisc.toFixed(2), finalAmount.toFixed(2)
       ];
     }
 
     return [
       item.sno, item.name, item.hsn || (item as any).hsnSac || '', qty, item.unit || 'PCS',
-      mrp.toFixed(2), itemDisc.toFixed(2), billDisc.toFixed(2), taxableAmt.toFixed(2),
+      mrp.toFixed(2), itemDiscDisplay, billDisc.toFixed(2), taxableAmt.toFixed(2),
       `${taxRate}%`, taxAmt.toFixed(2), finalAmount.toFixed(2)
     ];
   });
@@ -771,19 +775,44 @@ export const preparePdfData = async (invoiceData: any) => {
     expenses: invoiceData.expenses || [],
 
     // --- ARRAYS ---
-    items: (invoiceData.items || []).map((item: any) => ({
-      ...item,
-      name: item.name || 'Item',
-      unit: item.unit || 'pcs',
-      hsn: item.hsn || '',
-      gstRate: item.gstRate || item.tax || 0,
-      quantity: item.quantity || 0,
-      price: item.price || item.rate || 0,
-      amount: item.amount ?? undefined,
-      discountAmount: item.discountAmount ?? item.discount ?? 0,
-      // Ensure these exist for items too
-      taxType: item.taxType || 'exclusive'
-    }))
+    items: (invoiceData.items || []).map((item: any) => {
+      // --- NEW: Discount 1 + Discount 2 ko ₹ amount mein nikalna ---
+      const baseMrp = Number(item.mrp) || 0;
+      const qty = Number(item.quantity) || 1;
+      const d1Pct = Number(item.discount) || 0;
+      const d2Pct = Number(item.discount2) || 0;
+
+      const priceAfterD1 = baseMrp * (1 - d1Pct / 100);
+      const priceAfterD2 = priceAfterD1 * (1 - d2Pct / 100);
+
+      const discount1Amount = (baseMrp - priceAfterD1) * qty;
+let discount2Amount = (priceAfterD1 - priceAfterD2) * qty;
+
+// Back-calculate discount2Amount from taxableAmount if d2Pct is missing/zero
+if (d2Pct === 0) {
+  const taxableAmt = Number(item.taxableAmount) || 0;
+  if (taxableAmt > 0) {
+    const totalDiscountAmt = (baseMrp * qty) - taxableAmt;
+    discount2Amount = Math.max(0, totalDiscountAmt - discount1Amount);
+  }
+}
+
+      return {
+        ...item,
+        name: item.name || 'Item',
+        unit: item.unit || 'pcs',
+        hsn: item.hsn || '',
+        gstRate: item.gstRate || item.tax || 0,
+        quantity: item.quantity || 0,
+        price: item.price || item.rate || 0,
+        amount: item.amount ?? undefined,
+        discountAmount: item.discountAmount ?? item.discount ?? 0,
+        discount1Amount,   // NEW
+        discount2Amount,   // NEW
+        // Ensure these exist for items too
+        taxType: item.taxType || 'exclusive'
+      };
+    })
   };
 };
 export const generatePdfBlob = async (data: InvoiceData, withDuplicate: boolean = false): Promise<Blob> => {

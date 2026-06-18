@@ -241,7 +241,9 @@ function RequestPage() {
     // Bulk quotes with no matching customer row → shown as standalone cards
     const unmatchedBulkQuotes = useMemo(() => {
         const knownPhones = new Set(
-            requests.map(r => (r.customerNumber || '').replace(/\D/g, ''))
+            requests
+                .filter(r => r.type === 'notify')
+                .map(r => (r.customerNumber || '').replace(/\D/g, ''))
         );
         const queryText = searchQuery.toLowerCase();
         return bulkQuotes.filter(bq => {
@@ -256,7 +258,9 @@ function RequestPage() {
     }, [bulkQuotes, requests, searchQuery]);
     const unmatchedPersonalizations = useMemo(() => {
         const knownPhones = new Set(
-            requests.map(r => (r.customerNumber || '').replace(/\D/g, ''))
+            requests
+                .filter(r => r.type === 'notify')
+                .map(r => (r.customerNumber || '').replace(/\D/g, ''))
         );
         const queryText = searchQuery.toLowerCase();
         return personalizationRequests.filter(pr => {
@@ -695,9 +699,9 @@ function RequestPage() {
                                                     <div className="bg-[#F97316]/5 px-3 py-1.5">
                                                         <span className="text-[9px] font-black uppercase tracking-widest text-[#F97316]">Bulk Quote Requests ({card.bulks.length})</span>
                                                     </div>
-                                                    <div className="space-y-2 p-2">
+                                                    <div className="p-2">
                                                         {card.bulks.map(bq => (
-                                                            <div key={bq.id} className="flex gap-2 items-start bg-white border border-gray-100 rounded-sm p-2">
+                                                            <div key={bq.id} className="flex gap-2 items-start p-2">
                                                                 <div className="w-10 h-10 shrink-0 bg-gray-50 border border-gray-200 rounded-sm flex items-center justify-center overflow-hidden">
                                                                     {bq.itemImage ? <img src={bq.itemImage} alt={bq.itemName} className="w-full h-full object-contain" /> : <span className="text-gray-300 text-[9px]">No img</span>}
                                                                 </div>
@@ -717,9 +721,9 @@ function RequestPage() {
                                                     <div className="bg-[#1A3B5D]/5 px-3 py-1.5">
                                                         <span className="text-[9px] font-black uppercase tracking-widest text-[#1A3B5D]">Query Requests ({card.queries.length})</span>
                                                     </div>
-                                                    <div className="space-y-2 p-2">
+                                                    <div className="p-2">
                                                         {card.queries.map(pr => (
-                                                            <div key={pr.id} className="flex gap-2 items-start bg-white border border-gray-100 rounded-sm p-2">
+                                                            <div key={pr.id} className="flex gap-2 items-start p-2">
                                                                 <div className="flex-1 min-w-0">
                                                                     <div className="bg-yellow-50 border border-yellow-100 rounded-sm p-1.5">
                                                                         <span className="text-[9px] font-black uppercase text-yellow-700 block mb-0.5">Query</span>
@@ -861,25 +865,18 @@ function RequestPage() {
                                                 )}
                                             </div>
                                         ) : (
-
-                                            <div className="relative w-full overflow-hidden rounded-md border border-gray-200 bg-gray-100 group">
-                                                {req.businessCard && req.businessCard !== "Placeholder" ? (
+                                            req.businessCard && req.businessCard !== "Placeholder" && (
+                                                <div className="relative w-full overflow-hidden rounded-md border border-gray-200 bg-gray-100 group">
                                                     <img
                                                         src={req.businessCard}
                                                         alt="Business Card"
                                                         className="w-full h-auto max-h-[250px] object-contain"
                                                     />
-                                                ) : (
-                                                    <div className="h-32 flex items-center justify-center">
-                                                        <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 italic">
-                                                            No Business Card Provided
-                                                        </span>
-                                                    </div>
-                                                )}
-                                            </div>
+                                                </div>
+                                            )
                                         )}
-                                        {/* ── BULK QUOTE REQUESTS for this customer ── */}
-                                        {(() => {
+                                        {/* ── BULK QUOTE REQUESTS for this customer (notify cards only) ── */}
+                                        {req.type === "notify" && (() => {
                                             const phone = (req.customerNumber || '').replace(/\D/g, '');
                                             const customerBulks = bulkByPhone[phone] || [];
                                             if (customerBulks.length === 0) return null;
@@ -890,9 +887,9 @@ function RequestPage() {
                                                             Bulk Quote Requests ({customerBulks.length})
                                                         </span>
                                                     </div>
-                                                    <div className="space-y-2 p-2">
+                                                    <div className="p-2">
                                                         {customerBulks.map(bq => (
-                                                            <div key={bq.id} className="flex gap-2 items-start bg-white border border-gray-100 rounded-sm p-2">
+                                                            <div key={bq.id} className="flex gap-2 items-start p-2">
                                                                 <div className="w-10 h-10 shrink-0 bg-gray-50 border border-gray-200 rounded-sm flex items-center justify-center overflow-hidden">
                                                                     {bq.itemImage ? (
                                                                         <img src={bq.itemImage} alt={bq.itemName} className="w-full h-full object-contain" />
@@ -919,8 +916,8 @@ function RequestPage() {
                                                 </div>
                                             );
                                         })()}
-                                        {/* ── PERSONALIZATION REQUESTS for this customer ── */}
-                                        {(() => {
+                                        {/* ── PERSONALIZATION REQUESTS for this customer (notify cards only) ── */}
+                                        {req.type === "notify" && (() => {
                                             const phone = (req.customerNumber || '').replace(/\D/g, '');
                                             const customerPersonalizations = personalizationByPhone[phone] || [];
                                             if (customerPersonalizations.length === 0) return null;
@@ -931,9 +928,9 @@ function RequestPage() {
                                                             Query Requests ({customerPersonalizations.length})
                                                         </span>
                                                     </div>
-                                                    <div className="space-y-2 p-2">
+                                                    <div className="p-2">
                                                         {customerPersonalizations.map(pr => (
-                                                            <div key={pr.id} className="flex gap-2 items-start bg-white border border-gray-100 rounded-sm p-2">
+                                                            <div key={pr.id} className="flex gap-2 items-start p-2">
                                                                 <div className="flex-1 min-w-0">
                                                                     <div className="bg-yellow-50 border border-yellow-100 rounded-sm p-1.5">
                                                                         <span className="text-[9px] font-black uppercase text-yellow-700 block mb-0.5">Query</span>
@@ -950,6 +947,7 @@ function RequestPage() {
                                                 </div>
                                             );
                                         })()}
+                                        {/*  NOTIFY ACTION BUTTONS */}
                                         {/*  NOTIFY ACTION BUTTONS */}
                                         {req.type === "notify" && (
                                             <div className="grid grid-cols-3 gap-3 pt-2 border-t">
@@ -1031,125 +1029,6 @@ function RequestPage() {
                         );
                     })}
                 </div>
-                {/* ── Merged Pre-Order Cards (bulk + query grouped by customer phone) ── */}
-                {requestType === 'notify' && mergedPreOrderCards.length > 0 && (
-                    <div className="space-y-3 mt-3">
-                        {mergedPreOrderCards.map(card => {
-                            const cardKey = card.phone;
-                            const isExpanded = expandedId === cardKey;
-                            const badgeLabels = [
-                                ...(card.bulks.length > 0 ? ['Bulk Quote'] : []),
-                                ...(card.queries.length > 0 ? ['Query'] : []),
-                            ];
-                            // Use latest timestamp across bulks + queries for display
-                            const latestItem = [
-                                ...card.bulks.map(b => ({ createdAt: b.createdAt })),
-                                ...card.queries.map(q => ({ createdAt: q.createdAt })),
-                            ].sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))[0];
-
-                            return (
-                                <div
-                                    key={cardKey}
-                                    onClick={() => setExpandedId(isExpanded ? null : cardKey)}
-                                    className="p-3 shadow-sm border rounded-sm cursor-pointer bg-white border-gray-100 transition-all duration-300"
-                                >
-                                    {/* Header */}
-                                    <div className="flex justify-between items-start">
-                                        <div>
-                                            <h3 className="text-xs font-bold text-slate-800">{card.name}</h3>
-                                            <p className="text-xs font-medium flex items-center gap-1.5 p-0.5 rounded-xs border text-gray-600 bg-gray-50 border-gray-200">
-                                                <Phone size={14} className="text-gray-400" />
-                                                {card.phone || "No Number"}
-                                            </p>
-                                            <p className="text-[10px] text-gray-400 font-medium mt-1">{formatDate(latestItem?.createdAt)}</p>
-                                        </div>
-                                        <div className="flex items-center gap-1.5">
-                                            {badgeLabels.map(label => (
-                                                <span key={label} className={`text-[10px] font-bold px-2 py-0.5 rounded border ${label === 'Bulk Quote' ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-yellow-50 text-yellow-600 border-yellow-200'}`}>
-                                                    {label}
-                                                </span>
-                                            ))}
-                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"
-                                                className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? "rotate-180" : ""}`}>
-                                                <path d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                                            </svg>
-                                        </div>
-                                    </div>
-
-                                    {/* Expanded */}
-                                    {isExpanded && (
-                                        <div className="mt-4 border-t pt-4 space-y-3" onClick={e => e.stopPropagation()}>
-
-                                            {/* Bulk Quotes */}
-                                            {card.bulks.length > 0 && (
-                                                <div className="border border-[#F97316]/20 rounded-sm overflow-hidden">
-                                                    <div className="bg-[#F97316]/5 px-3 py-1.5">
-                                                        <span className="text-[9px] font-black uppercase tracking-widest text-[#F97316]">
-                                                            Bulk Quote Requests ({card.bulks.length})
-                                                        </span>
-                                                    </div>
-                                                    <div className="space-y-2 p-2">
-                                                        {card.bulks.map(bq => (
-                                                            <div key={bq.id} className="flex gap-2 items-start bg-white border border-gray-100 rounded-sm p-2">
-                                                                <div className="w-10 h-10 shrink-0 bg-gray-50 border border-gray-200 rounded-sm flex items-center justify-center overflow-hidden">
-                                                                    {bq.itemImage ? (
-                                                                        <img src={bq.itemImage} alt={bq.itemName} className="w-full h-full object-contain" />
-                                                                    ) : (
-                                                                        <span className="text-gray-300 text-[9px]">No img</span>
-                                                                    )}
-                                                                </div>
-                                                                <div className="flex-1 min-w-0">
-                                                                    <p className="text-[11px] font-black text-[#1A3B5D] uppercase truncate">{bq.itemName}</p>
-                                                                    <p className="text-[10px] text-gray-500"><span className="font-bold">Qty:</span> {bq.quantity}</p>
-                                                                    {bq.note && <p className="text-[10px] text-gray-400 mt-0.5 italic">{bq.note}</p>}
-                                                                </div>
-                                                                <button onClick={(e) => { e.stopPropagation(); handleDeleteBulk(bq.id); }}
-                                                                    className="text-red-400 hover:text-red-600 text-xs font-bold p-1 shrink-0">✕</button>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* Queries */}
-                                            {card.queries.length > 0 && (
-                                                <div className="border border-[#1A3B5D]/20 rounded-sm overflow-hidden">
-                                                    <div className="bg-[#1A3B5D]/5 px-3 py-1.5">
-                                                        <span className="text-[9px] font-black uppercase tracking-widest text-[#1A3B5D]">
-                                                            Query Requests ({card.queries.length})
-                                                        </span>
-                                                    </div>
-                                                    <div className="space-y-2 p-2">
-                                                        {card.queries.map(pr => (
-                                                            <div key={pr.id} className="flex gap-2 items-start bg-white border border-gray-100 rounded-sm p-2">
-                                                                <div className="flex-1 min-w-0">
-                                                                    <div className="bg-yellow-50 border border-yellow-100 rounded-sm p-1.5">
-                                                                        <span className="text-[9px] font-black uppercase text-yellow-700 block mb-0.5">Query</span>
-                                                                        <p className="text-[10px] text-gray-600">{pr.note}</p>
-                                                                    </div>
-                                                                </div>
-                                                                <button onClick={(e) => { e.stopPropagation(); handleDeletePersonalization(pr.id); }}
-                                                                    className="text-red-400 hover:text-red-600 text-xs font-bold p-1 shrink-0">✕</button>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* Action Buttons */}
-                                            <div className="grid grid-cols-2 gap-2 pt-2 border-t">
-                                                <a href={`tel:${card.phone}`} onClick={e => e.stopPropagation()}
-                                                    className="py-2.5 bg-white border border-emerald-200 text-emerald-600 text-xs font-bold rounded-sm text-center">Call</a>
-                                                <a href={`https://wa.me/91${card.phone}`} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
-                                                    className="py-2.5 bg-[#25D366] text-white text-xs font-bold rounded-sm text-center">WhatsApp</a>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
 
             </main>
         </div>

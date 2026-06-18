@@ -4,6 +4,7 @@ import { db } from '../lib/Firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import type { Item } from '../constants/models';
 import { FiPackage } from 'react-icons/fi';
+import { ensurePendingApprovalEntry } from './hooks/ensureApprovalEntry';
 
 interface BulkQuotePopupProps {
     item: Item;
@@ -22,6 +23,8 @@ const BulkQuotePopup: React.FC<BulkQuotePopupProps> = ({ item, companyId, onClos
         setLoading(true);
         try {
             const leadData = JSON.parse(localStorage.getItem('leadData') || '{}');
+            const customerName = leadData.name || 'Guest';
+            const customerNumber = (leadData.number || '').replace(/\D/g, '').trim();
             await addDoc(collection(db, 'companies', companyId, 'BulkQuoteRequests'), {
                 itemId: item.id,
                 itemName: item.name,
@@ -33,6 +36,8 @@ const BulkQuotePopup: React.FC<BulkQuotePopupProps> = ({ item, companyId, onClos
                 status: 'pending',
                 createdAt: serverTimestamp(),
             });
+            // ensure this customer shows up in Approval Requests later if seller enables approval
+            ensurePendingApprovalEntry(companyId, customerName, customerNumber);
             setSubmitted(true);
             setTimeout(() => onClose(), 3000);
         } catch (err) {

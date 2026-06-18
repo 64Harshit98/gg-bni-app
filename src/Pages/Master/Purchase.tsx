@@ -33,6 +33,7 @@ interface PurchaseItem extends Omit<SalesItem, 'finalPrice' | 'effectiveUnitPric
   purchasePrice: number | string;
   originalPurchasePrice?: number;
   purchasediscount?: number;
+  purchasediscount2?: number;
   barcode?: string;
   taxRate?: number;
   taxType?: 'inclusive' | 'exclusive' | 'exempt';
@@ -221,6 +222,7 @@ const PurchasePage: React.FC = () => {
 
               // Use the saved transaction discount, NOT master item sale discount
               const transactionDiscount = item.discount || 0;
+               const transactionDiscount2 = item.purchasediscount2 || 0;
 
               return {
                 // FIX: Force a brand new unique ID for React list rendering
@@ -233,6 +235,7 @@ const PurchasePage: React.FC = () => {
                 mrp: item.mrp || 0,
                 discount: transactionDiscount,
                 purchasediscount: transactionDiscount,
+                purchasediscount2: transactionDiscount2,
                 barcode: item.barcode || '',
                 taxRate: recoveredTaxRate,
                 taxType: item.taxType,
@@ -272,6 +275,7 @@ const PurchasePage: React.FC = () => {
       customPrice: item.purchasePrice,
       // GenericCartList will display this as "Discount"
       discount: item.purchasediscount ?? item.discount ?? 0,
+      discount2: item.purchasediscount2 ?? 0,
       isEditable: item.isEditable ?? true
     }));
   }, [items]);
@@ -345,6 +349,7 @@ const PurchasePage: React.FC = () => {
       unitMultiplier: 1,
       discount: parseFloat(calculatedDiscount.toFixed(2)),
       purchasediscount: parseFloat(calculatedDiscount.toFixed(2)),
+      purchasediscount2: 0,
       taxRate: resolvedTax,
       stock: itemToAdd.stock || (itemToAdd as any).Stock || 0,
       isEditable: true
@@ -386,11 +391,12 @@ const PurchasePage: React.FC = () => {
     const n = typeof v === 'string' ? parseFloat(v) : v;
     const safeDiscount = isNaN(n) ? 0 : n;
 
-    setItems(prev => prev.map(i => {
+     setItems(prev => prev.map(i => {
       if (i.id === id) {
         const basePrice = (i.mrp && i.mrp > 0) ? i.mrp : (i.originalPurchasePrice || 0);
+        const safeDiscount2 = i.purchasediscount2 || 0;
 
-        let newPrice = basePrice * (1 - safeDiscount / 100);
+        let newPrice = basePrice * (1 - safeDiscount / 100) * (1 - safeDiscount2 / 100);
 
         const isRoundingEnabled = purchaseSettings?.roundingOff ?? true;
         newPrice = applyPurchaseRounding(newPrice, isRoundingEnabled);
@@ -399,6 +405,30 @@ const PurchasePage: React.FC = () => {
           ...i,
           discount: safeDiscount,
           purchasediscount: safeDiscount,
+          purchasePrice: newPrice
+        };
+      }
+      return i;
+    }));
+  };
+  // --- LOGIC 3B: HANDLE SECOND DISCOUNT CHANGE (Compound on top of first discount) ---
+  const handleDiscount2Change = (id: string, v: number | string) => {
+    const n = typeof v === 'string' ? parseFloat(v) : v;
+    const safeDiscount2 = isNaN(n) ? 0 : n;
+
+    setItems(prev => prev.map(i => {
+      if (i.id === id) {
+        const basePrice = (i.mrp && i.mrp > 0) ? i.mrp : (i.originalPurchasePrice || 0);
+        const safeDiscount = i.discount || i.purchasediscount || 0;
+
+        let newPrice = basePrice * (1 - safeDiscount / 100) * (1 - safeDiscount2 / 100);
+
+        const isRoundingEnabled = purchaseSettings?.roundingOff ?? true;
+        newPrice = applyPurchaseRounding(newPrice, isRoundingEnabled);
+
+        return {
+          ...i,
+          purchasediscount2: safeDiscount2,
           purchasePrice: newPrice
         };
       }
@@ -425,6 +455,7 @@ const PurchasePage: React.FC = () => {
 
         const finalDiscount = parseFloat(d.toFixed(2));
 
+        // purchasediscount2 left as-is intentionally; only discount1 is recalculated from manual price
         return {
           ...i,
           purchasePrice: currentPriceVal,
@@ -665,6 +696,7 @@ const PurchasePage: React.FC = () => {
           id: item.productId || item.id,
           purchasePrice: purchasePrice,
           discount: item.purchasediscount ?? item.discount ?? 0,
+          purchasediscount2: item.purchasediscount2 ?? 0,
           taxableAmount: parseFloat(itemTaxableBase.toFixed(2)),
           taxAmount: parseFloat(itemTax.toFixed(2)),
           taxRate: itemTaxRate,
@@ -1047,7 +1079,9 @@ const PurchasePage: React.FC = () => {
         calculatedDiscount = masterPurchaseDiscount;
         finalNetPrice = 0;
       }
-
+// Apply second discount on top, compounded
+      const existingDiscount2 = cartItem.purchasediscount2 || 0;
+      finalNetPrice = finalNetPrice * (1 - (existingDiscount2 / 100));
       const stock = (updatedItemData as any).stock ?? (updatedItemData as any).Stock ?? cartItem.stock;
 
       return {
@@ -2028,6 +2062,7 @@ const PurchasePage: React.FC = () => {
                 onOpenEditDrawer={handleOpenEditDrawer}
                 onDeleteItem={handleDeleteItem}
                 onDiscountChange={handleDiscountChange}
+                onDiscount2Change={handleDiscount2Change}
                 onCustomPriceChange={handlePriceChange}
                 onCustomPriceBlur={handlePriceBlur}
                 onQuantityChange={(id, qty) => handleQuantityChange(id, qty)}

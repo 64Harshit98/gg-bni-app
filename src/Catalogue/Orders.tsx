@@ -48,6 +48,7 @@ export interface OrderItem {
     quantity: number;
     mrp: number;
     discount?: number;
+    discount2?: number;
     note: string;
     tax?: number;
     itemGroupId?: string;
@@ -207,7 +208,9 @@ export const useOrdersData = (
                         itemGroupId: i.itemGroupId || i.groupId || null,
                         tax: Number(i.tax ?? i.taxRate ?? 0),
                         taxRate: Number(i.taxRate ?? i.tax ?? 0),
-                        taxType: i.taxType || '',                 // 👈 CRITICAL: Prevents tax from vanishing!
+                        taxType: i.taxType || '',
+                        discount: Number(i.discount ?? 0),
+                        discount2: Number(i.discount2 ?? 0),                // 👈 CRITICAL: Prevents tax from vanishing!
                         unitMultiplier: Number(i.unitMultiplier ?? i.multiplier ?? 1),
                         unit: i.unit ?? "pcs",
                         finalPrice: Number(i.finalPrice ?? finalPrice * Number(i.quantity || 0)),
@@ -729,11 +732,13 @@ const OrdersPage: React.FC = () => {
         // 2. Extract the pure UNIT price, NEVER the line total (finalPrice)
         let netPrice = item.effectiveUnitPrice ?? item.customPrice ?? salePrice ?? dbMrp ?? 0;
 
-        let discount = Number(item.discount || 0);
+        let discount = Number(item.discount ?? 0);
         const liveMoq = liveMoqMap[item.id] ?? Number(item.moq ?? 0);
 
-        // 3. Keep the discount synced correctly to the base price
-        if (basePrice > 0 && netPrice > 0) {
+        // Only recalculate discount% from net price when there is NO discount2
+        // If discount2 exists, trust the stored discount value to avoid cascade corruption
+        const discount2 = Number(item.discount2 ?? 0);
+        if (basePrice > 0 && netPrice > 0 && discount2 === 0) {
             discount = ((basePrice - netPrice) / basePrice) * 100;
         }
 
@@ -742,6 +747,7 @@ const OrdersPage: React.FC = () => {
             productId: item.itemId || item.id,
             isEditable: true,
             discount: Number(discount.toFixed(2)),
+            discount2: Number(item.discount2 ?? 0),
             customPrice: Number(netPrice.toFixed(2)), // <-- Ensures CartList uses the Unit Price
             finalPrice: item.finalPrice,              // Keeps the DB Line Total intact
             mrp: basePrice,                           // <-- Fixes the "MRP ₹0" visual bug
@@ -776,34 +782,74 @@ const OrdersPage: React.FC = () => {
     };
 
     const handleDiscountChange = (id: string, value: number | string) => {
-        if (!editingOrder) return;
-        const discountValue = typeof value === "string" ? parseFloat(value) || 0 : value;
+    if (!editingOrder) return;
+    const discountValue = typeof value === "string" ? parseFloat(value) || 0 : value;
 
-        const updatedItems = editingOrder.items?.map((item) => {
-            if (item.id !== id) return item;
+    const updatedItems = editingOrder.items?.map((item) => {
+        if (item.id !== id) return item;
 
-            const mrp = Number(item.mrp || 0);
-            const salesPrice = Number(item.salesPrice || 0);
-            const basePrice = mrp > 0 ? mrp : salesPrice;
+        const mrp = Number(item.mrp || 0);
+        const salesPrice = Number(item.salesPrice || 0);
+        const basePrice = mrp > 0 ? mrp : salesPrice;
 
-            const newNetPrice = basePrice * (1 - discountValue / 100);
+        // Apply discount1 first
+        const priceAfterDiscount1 = basePrice * (1 - discountValue / 100);
 
-            // Recalculate finalPrice (base + tax)
-            const taxRate = Number(item.tax || item.taxRate || 0);
-            const isExclusive = item.taxType?.toLowerCase() === 'exclusive' || item.taxType?.toLowerCase() === 'regular';
-            const newFinalPrice = isExclusive ? newNetPrice + (newNetPrice * (taxRate / 100)) : newNetPrice;
+        // Then apply discount2 on top of discount1 result
+        const discount2 = Number(item.discount2 ?? 0);
+        const newNetPrice = priceAfterDiscount1 * (1 - discount2 / 100);
 
-            return {
-                ...item,
-                discount: Number(discountValue.toFixed(2)),
-                effectiveUnitPrice: Number(newNetPrice.toFixed(2)),
-                customPrice: Number(newNetPrice.toFixed(2)),
-                finalPrice: Number(newFinalPrice.toFixed(2)),
-            };
-        });
+        const taxRate = Number(item.tax || item.taxRate || 0);
+        const isExclusive = item.taxType?.toLowerCase() === 'exclusive' || item.taxType?.toLowerCase() === 'regular';
+        const newFinalPrice = isExclusive ? newNetPrice + (newNetPrice * (taxRate / 100)) : newNetPrice;
 
-        setEditingOrder({ ...editingOrder, items: updatedItems });
-    };
+        return {
+            ...item,
+            discount: Number(discountValue.toFixed(2)),
+            effectiveUnitPrice: Number(newNetPrice.toFixed(2)),
+            customPrice: Number(newNetPrice.toFixed(2)),
+            finalPrice: Number(newFinalPrice.toFixed(2)),
+        };
+    });
+
+    setEditingOrder({ ...editingOrder, items: updatedItems });
+};
+    const handleDiscount2Change = (id: string, value: number | string) => {
+    if (!editingOrder) return;
+    const discount2Value = typeof value === "string" ? parseFloat(value) || 0 : value;
+
+    const updatedItems = editingOrder.items?.map((item) => {
+        if (item.id !== id) return item;
+
+        const mrp = Number(item.mrp || 0);
+        const salesPrice = Number(item.salesPrice || 0);
+        const basePrice = mrp > 0 ? mrp : salesPrice;
+
+        // discount1 stays unchanged — only apply it to get intermediate price
+        const discount1 = Number(item.discount ?? 0);
+        const priceAfterDiscount1 = basePrice * (1 - discount1 / 100);
+
+        // discount2 applies on priceAfterDiscount1 only
+        const newNetPrice = priceAfterDiscount1 * (1 - discount2Value / 100);
+
+        const taxRate = Number(item.tax || item.taxRate || 0);
+        const isExclusive = item.taxType?.toLowerCase() === 'exclusive' || item.taxType?.toLowerCase() === 'regular';
+        const newFinalPrice = isExclusive
+            ? newNetPrice + (newNetPrice * (taxRate / 100))
+            : newNetPrice;
+
+        return {
+            ...item,
+            discount2: Number(discount2Value.toFixed(2)),
+            // Do NOT touch item.discount — it stays as is
+            effectiveUnitPrice: Number(newNetPrice.toFixed(2)),
+            customPrice: Number(newNetPrice.toFixed(2)),
+            finalPrice: Number(newFinalPrice.toFixed(2)),
+        };
+    });
+
+    setEditingOrder({ ...editingOrder, items: updatedItems });
+};
     const handleDeleteItem = (id: string) => {
         if (!editingOrder) return;
 
@@ -1037,6 +1083,8 @@ const OrdersPage: React.FC = () => {
                     price: actualPrice,
                     total: actualPrice * item.quantity,
                     imageBase64: base64Image,
+                    discount: Number(item.discount ?? 0),
+                    discount2: Number(item.discount2 ?? 0),
                 };
             }));
 
@@ -1233,6 +1281,8 @@ const OrdersPage: React.FC = () => {
                     price: actualPrice,
                     total: actualPrice * item.quantity,
                     imageBase64: base64Image,
+                    discount: Number(item.discount ?? 0),
+                    discount2: Number(item.discount2 ?? 0),
                 };
             }));
 
@@ -3301,7 +3351,7 @@ const OrdersPage: React.FC = () => {
             })()}
 
             {editingOrder && (
-                <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-2 md:p-4">
+                <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-1 md:p-3">
                     <div className="bg-white rounded-sm w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
                         {/* Header */}
                         <div className="px-5 py-3 border-b flex justify-between items-center bg-slate-50">
@@ -3513,8 +3563,8 @@ const OrdersPage: React.FC = () => {
                                         />
                                     </div>
 
-                                    <div className="h-fit self-start w-full p-2 rounded-sm border border-slate-200 bg-slate-50 flex flex-col">
-                                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">
+                                    <div className="h-fit self-start w-full flex flex-col">
+                                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 mt-2">
                                             Items ({editingOrder.items?.length})
                                         </h4>
 
@@ -3542,6 +3592,7 @@ const OrdersPage: React.FC = () => {
                                                 }}
                                                 onDeleteItem={handleDeleteItem}
                                                 onDiscountChange={handleDiscountChange}
+                                                onDiscount2Change={handleDiscount2Change}
                                                 onCustomPriceChange={handleNetPriceChange}
                                                 onCustomPriceBlur={() => { }}
                                                 onQuantityChange={handleQuantityChange}

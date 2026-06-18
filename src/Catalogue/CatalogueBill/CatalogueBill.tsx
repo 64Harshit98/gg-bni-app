@@ -292,7 +292,17 @@ export const CatalogueBill = async (
     // If not Regular, force tax rate to 0 internally for math
     let taxRate = isRegular ? Number(item.tax ?? item.gst ?? item.taxRate ?? 0) : 0;
 
-    let itemDisc = (mrp * qty) - (rawPrice * qty);
+    // --- Split discount into disc1 amount + disc2 amount (chained: MRP -> disc1 -> disc2) ---
+    const disc1Pct = Number((item as any).discount || 0);
+    //const disc2Pct = Number((item as any).discount2 || 0);
+    const priceAfterDisc1 = mrp * (1 - disc1Pct / 100);
+
+    let disc1Amt = (mrp - priceAfterDisc1) * qty;
+    let disc2Amt = (priceAfterDisc1 - rawPrice) * qty;
+    if (disc1Amt < 0) disc1Amt = 0;
+    if (disc2Amt < 0) disc2Amt = 0;
+
+    let itemDisc = disc1Amt + disc2Amt;
     if (itemDisc < 0) {
       itemDisc = 0;
       mrp = rawPrice;
@@ -350,14 +360,16 @@ export const CatalogueBill = async (
     const printTaxRate = isComposition ? "-" : `${taxRate}%`;
     const printTaxAmt = isComposition ? "-" : taxAmt.toFixed(2);
 
+    const discDisplay = `${disc1Amt.toFixed(2)} + ${disc2Amt.toFixed(2)}`;
+
     if (!showTaxColumns) {
       return [
-        index + 1, "", itemNameCell, qty, unitText, mrp.toFixed(2), itemDisc.toFixed(2), ...(hasBillDiscount ? [billDisc.toFixed(2)] : []), finalAmount.toFixed(2)
+        index + 1, "", itemNameCell, qty, unitText, mrp.toFixed(2), discDisplay, ...(hasBillDiscount ? [billDisc.toFixed(2)] : []), finalAmount.toFixed(2)
       ];
     }
 
     return [
-      index + 1, "", itemNameCell, qty, unitText, mrp.toFixed(2), itemDisc.toFixed(2), ...(hasBillDiscount ? [billDisc.toFixed(2)] : []), taxableAmt.toFixed(2),
+      index + 1, "", itemNameCell, qty, unitText, mrp.toFixed(2), discDisplay, ...(hasBillDiscount ? [billDisc.toFixed(2)] : []), taxableAmt.toFixed(2),
       printTaxRate, printTaxAmt, finalAmount.toFixed(2)
     ];
   });

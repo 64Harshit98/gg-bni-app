@@ -267,7 +267,10 @@ const SuperAdminDashboard: React.FC = () => {
 
     const [activeTab, setActiveTab] = useState<'agents' | 'payouts' | 'users'>('users');
 
-    const MASTER_ADMIN_UID = "6vwZ1HRqX7VSnh5KP4JW0TKeuZm2";
+    const MASTER_ADMIN_UID = [
+        "6vwZ1HRqX7VSnh5KP4JW0TKeuZm2",
+        "1AKioGfop8PmHhry6uXOz8Rw6qT2"
+    ];
 
     const fetchData = async () => {
         setLoading(true);
@@ -362,7 +365,7 @@ const SuperAdminDashboard: React.FC = () => {
     };
 
     useEffect(() => {
-        if (currentUser?.uid === MASTER_ADMIN_UID) {
+        if (currentUser?.uid && Array.isArray(MASTER_ADMIN_UID) && MASTER_ADMIN_UID.includes(currentUser.uid)) {
             fetchData();
         }
     }, [currentUser]);
@@ -514,7 +517,7 @@ const SuperAdminDashboard: React.FC = () => {
         }
     };
 
-    if (currentUser?.uid !== MASTER_ADMIN_UID) {
+    if (!currentUser || !MASTER_ADMIN_UID.includes(currentUser.uid)) {
         return <div className="min-h-screen flex items-center justify-center text-red-600 font-bold text-xl">Access Denied. Master Admin Only.</div>;
     }
 

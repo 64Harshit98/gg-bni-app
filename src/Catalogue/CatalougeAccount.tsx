@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/auth-context';
-import { logoutUser } from '../lib/AuthOperations';
+import { logoutUser, generateCompanyReferralCode } from '../lib/AuthOperations';
 import { db } from '../lib/Firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { ROUTES } from '../constants/routes.constants';
 import BusinessCard from './BusinessCards/BusinessCard';
 import ShinyText from '../Components/ShinyText';
 import NotificationBell from '../Components/NotificationBell';
+import { FiCopy, FiCheck } from 'react-icons/fi';
 
 interface UserProfile {
     name: string;
@@ -22,6 +23,10 @@ const Account: React.FC = () => {
     const [profileData, setProfileData] = useState<UserProfile | null>(null);
     const [loadingProfile, setLoadingProfile] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [companyReferralCode, setCompanyReferralCode] = useState<string | null>(null);
+    const [copied, setCopied] = useState(false);
+    const [isGenerating, setIsGenerating] = useState(false);
+
 
     const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
 
@@ -93,7 +98,26 @@ const Account: React.FC = () => {
 
         fetchUserProfile();
     }, [currentUser, loadingAuth, navigate]);
+    const handleCopy = () => {
+        if (companyReferralCode) {
+            navigator.clipboard.writeText(companyReferralCode);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        }
+    };
 
+    const handleGenerateCode = async () => {
+        if (!currentUser?.companyId) return;
+        setIsGenerating(true);
+        try {
+            const newCode = await generateCompanyReferralCode(currentUser.companyId);
+            setCompanyReferralCode(newCode);
+        } catch (err) {
+            console.error("Failed to generate code:", err);
+        } finally {
+            setIsGenerating(false);
+        }
+    };
 
     const handleLogout = async () => {
         try {
@@ -197,6 +221,29 @@ const Account: React.FC = () => {
                     {profileData.name}
                 </h2>
                 <p className="text-base text-gray-500">{profileData.email}</p>
+                <div className="mt-3 h-10 flex items-center justify-center">
+                    {companyReferralCode ? (
+                        <div className="flex items-center bg-white border border-gray-300 rounded-sm px-3 py-1.5 shadow-sm">
+                            <span className="text-sm text-gray-500 mr-2">Ref Code:</span>
+                            <span className="font-mono font-bold tracking-wider text-gray-800">{companyReferralCode}</span>
+                            <button
+                                onClick={handleCopy}
+                                className="ml-3 text-gray-500 hover:text-black transition"
+                                title="Copy Referral Code"
+                            >
+                                {copied ? <FiCheck className="text-green-500" size={18} /> : <FiCopy size={16} />}
+                            </button>
+                        </div>
+                    ) : (
+                        <button
+                            onClick={handleGenerateCode}
+                            disabled={isGenerating}
+                            className="text-sm text-blue-600 hover:underline disabled:text-gray-400"
+                        >
+                            {isGenerating ? 'Generating...' : 'Generate Referral Code'}
+                        </button>
+                    )}
+                </div>
             </div>
 
             <div className="flex-1 bg-gray-100 p-2">

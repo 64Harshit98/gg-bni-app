@@ -30,6 +30,7 @@ export const PACK_LIMITS: Record<PLANS, Permissions[]> = {
     [PLANS.POS_BASIC]: [
         Permissions.ViewDashboard,
         Permissions.ViewSalescard,
+        Permissions.ViewAccount,
         Permissions.ManageEditProfile,
         Permissions.CreateSales,
         Permissions.ViewTransactions,
@@ -46,6 +47,7 @@ export const PACK_LIMITS: Record<PLANS, Permissions[]> = {
         Permissions.ViewDashboard,
         Permissions.ViewSalescard,
         Permissions.ManageEditProfile,
+        Permissions.ViewAccount,
         Permissions.CreateSales,
         Permissions.ViewTransactions,
         Permissions.ViewHidebutton,

@@ -51,6 +51,12 @@ export const getSalesColumns = (): TableColumn<any>[] => [
       className: 'text-slate-600'
     },
     {
+      header: 'INV No.',
+      accessor: 'invoiceNumber',
+      sortKey: 'invoiceNumber',
+      className: 'font-medium text-slate-600'
+    },
+    {
       header: 'Party Name',
       accessor: 'partyName',
       sortKey: 'partyName',

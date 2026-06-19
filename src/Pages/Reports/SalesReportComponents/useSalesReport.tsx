@@ -66,6 +66,7 @@ export default function useSalesReport() {
           return {
             id: doc.id,
             partyName: data.partyName || 'N/A',
+            invoiceNumber: data.invoiceNumber || 'N/A',
             totalAmount: data.totalAmount || 0,
             paymentMethods: data.paymentMethods || {},
             createdAt:

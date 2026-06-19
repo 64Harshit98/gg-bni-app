@@ -16,6 +16,7 @@ import DownloadChoiceModal from '../../Pages/Reports/ItemReportComponents/Downlo
 import { Modal } from '../../constants/Modal';
 import BackButton from '../../Components/BackButton';
 import { useExpenses } from '../../Pages/Reports/ExpenseReport/useExpense';
+import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 //import CataShowWrapper from '../../context/CataShowWrapper';
 //import { Cata_Permissions } from '../enum/cata_permissions.enum';
 
@@ -209,7 +210,8 @@ const CatalogueProfitLossReport: React.FC = () => {
       const boxWidth = textWidth + paddingX * 2;
       const boxHeight = 5;
 
-      const boxX = pageWidth - 14 - boxWidth;
+      const logoReservedWidth = 18; // space reserved for logo + gap, so tag never overlaps it
+      const boxX = pageWidth - 14 - logoReservedWidth - boxWidth;
       const boxY = 10;
 
       doc.setFillColor(245, 245, 245);
@@ -219,6 +221,25 @@ const CatalogueProfitLossReport: React.FC = () => {
       doc.text(tagText, boxX + paddingX, boxY + 3.5);
 
       doc.setTextColor(0, 0, 0);
+
+      // ===== LOGO (drawn after, in its own reserved slot at top-right corner) =====
+      try {
+        const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
+        if (base64Logo) {
+          const img = new Image();
+          img.src = base64Logo;
+          await new Promise<void>((resolve) => {
+            img.onload = () => {
+              const logoWidth = 13;
+              const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
+              const logoX = pageWidth - logoWidth - 14;
+              doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
+              resolve();
+            };
+            img.onerror = () => resolve();
+          });
+        }
+      } catch { }
 
       const { totalRevenue, totalCost, grossProfit, grossProfitPercentage } = pnlSummary;
 

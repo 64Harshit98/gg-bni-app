@@ -254,26 +254,7 @@ const ItemsSoldReport: React.FC = () => {
             const pageWidth = doc.internal.pageSize.getWidth();
             const pageHeight = doc.internal.pageSize.getHeight();
 
-            // ===== LOGO =====
-            try {
-                const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
-                if (base64Logo) {
-                    const img = new Image();
-                    img.src = base64Logo;
-                    await new Promise<void>((resolve) => {
-                        img.onload = () => {
-                            const logoWidth = 13;
-                            const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
-                            const logoX = pageWidth - logoWidth - 14;
-                            doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
-                            resolve();
-                        };
-                        img.onerror = () => resolve();
-                    });
-                }
-            } catch { }
-
-            // ===== CLEAN GENERATION TAG =====
+            // ===== CLEAN GENERATION TAG (drawn first, reserves space for logo) =====
             const now = new Date();
             const generatedAt = now.toLocaleString('en-IN', {
                 day: '2-digit',
@@ -296,7 +277,8 @@ const ItemsSoldReport: React.FC = () => {
             const boxWidth = textWidth + paddingX * 2;
             const boxHeight = 5;
 
-            const boxX = pageWidth - margin - boxWidth;
+            const logoReservedWidth = 18; // space reserved for logo + gap, so tag never overlaps it
+            const boxX = pageWidth - margin - logoReservedWidth - boxWidth;
             const boxY = 10;
 
             doc.setFillColor(245, 245, 245);
@@ -306,6 +288,25 @@ const ItemsSoldReport: React.FC = () => {
             doc.text(tagText, boxX + paddingX, boxY + 3.5);
 
             doc.setTextColor(0, 0, 0);
+
+            // ===== LOGO (drawn after, in its own reserved slot at top-right corner) =====
+            try {
+                const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
+                if (base64Logo) {
+                    const img = new Image();
+                    img.src = base64Logo;
+                    await new Promise<void>((resolve) => {
+                        img.onload = () => {
+                            const logoWidth = 13;
+                            const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
+                            const logoX = pageWidth - logoWidth - 14;
+                            doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
+                            resolve();
+                        };
+                        img.onerror = () => resolve();
+                    });
+                }
+            } catch { }
 
 
             doc.setFillColor(37, 99, 235);

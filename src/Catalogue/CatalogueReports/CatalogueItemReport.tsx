@@ -178,27 +178,7 @@ const CatalogueItemReport: React.FC = () => {
       const doc = new jsPDF('l', 'mm', 'a4');
       const pageWidth = doc.internal.pageSize.getWidth();
 
-      // Embed company logo
-      try {
-        const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
-        if (base64Logo) {
-          const img = new Image();
-          img.src = base64Logo;
-          await new Promise<void>((resolve) => {
-            img.onload = () => {
-              const logoWidth = 15;
-              const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
-              const logoX = pageWidth - logoWidth - 14;
-              doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
-              resolve();
-            };
-            img.onerror = () => resolve();
-          });
-        }
-      } catch {
-        // Continue without logo
-      }
-      // ===== CLEAN GENERATION TAG =====
+      // ===== CLEAN GENERATION TAG (drawn first, reserves space for logo) =====
       const now = new Date();
       const generatedAt = now.toLocaleString('en-IN', {
         day: '2-digit',
@@ -221,7 +201,8 @@ const CatalogueItemReport: React.FC = () => {
       const boxWidth = textWidth + paddingX * 2;
       const boxHeight = 5;
 
-      const boxX = pageWidth - margin - boxWidth;
+      const logoReservedWidth = 20; // space reserved for logo + gap, so tag never overlaps it
+      const boxX = pageWidth - margin - logoReservedWidth - boxWidth;
       const boxY = 10;
 
       // light gray background
@@ -235,6 +216,27 @@ const CatalogueItemReport: React.FC = () => {
       // reset styles
       doc.setTextColor(0, 0, 0);
       doc.setFontSize(14);
+
+      // Embed company logo (drawn after, in its own reserved slot at top-right corner)
+      try {
+        const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
+        if (base64Logo) {
+          const img = new Image();
+          img.src = base64Logo;
+          await new Promise<void>((resolve) => {
+            img.onload = () => {
+              const logoWidth = 15;
+              const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
+              const logoX = pageWidth - logoWidth - 14;
+              doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
+              resolve();
+            };
+            img.onerror = () => resolve();
+          });
+        }
+      } catch {
+        // Continue without logo
+      }
 
 
       const pageHeight = doc.internal.pageSize.getHeight();

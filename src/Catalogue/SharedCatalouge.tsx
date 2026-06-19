@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getItemGroupsByCompany, getItemsByCompany } from '../lib/ItemsFirebase';
 import type { ItemGroup, Item } from '../constants/models';
 import { FiPackage, FiPlus } from 'react-icons/fi';
+import { FaWhatsapp } from 'react-icons/fa';
 import { ShoppingCart, Pin } from 'lucide-react';
 import { Spinner } from '../constants/Spinner';
 import Footer from './Footer';
@@ -13,6 +14,7 @@ import { doc, getDoc, collection, query, where, getDocs } from "firebase/firesto
 import { db } from "../lib/Firebase";
 import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting';
 import LeadPopUp from './PopUp.tsx';
+import { ensurePendingApprovalEntry } from './hooks/ensureApprovalEntry';
 
 const SharedCataloguePage: React.FC = () => {
     const { companyId: pathId } = useParams<{ companyId: string }>();
@@ -128,6 +130,15 @@ const SharedCataloguePage: React.FC = () => {
             return acc + price * curr.quantity;
         }, 0);
     }, [cart]);
+
+     const whatsappLink = useMemo(() => {
+    const rawNumber = socialLinks?.whatsappNumber || socialLinks?.phoneNumber || '';
+    const digits = rawNumber.replace(/\D/g, '');
+    if (!digits) return null;
+    const fullNumber = digits.length === 10 ? `91${digits}` : digits;
+    const message = encodeURIComponent(`Hi, I'm interested in your products at ${companyName}.`);
+    return `https://wa.me/${fullNumber}?text=${message}`;
+}, [socialLinks, companyName]);
 
     useEffect(() => {
         const handleScroll = () => {
@@ -348,7 +359,8 @@ const SharedCataloguePage: React.FC = () => {
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
             }, { merge: true });
-
+            // ensure this customer shows up in Approval Requests later if seller enables approval
+            ensurePendingApprovalEntry(effectiveCompanyId, name || "Guest User", number);
             setPersonalizationItem(null);
             setPersonalizationText('');
             setShowPersonalizationSuccess(true);
@@ -675,6 +687,17 @@ const SharedCataloguePage: React.FC = () => {
 
                 </div>
             </div>
+            {whatsappLink && (
+                <a
+                    href={whatsappLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="fixed bottom-24 right-4 md:bottom-6 md:right-6 z-[10000] bg-[#25D366] text-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center active:scale-95 transition-all"
+                    title="Chat on WhatsApp"
+                >
+                    <FaWhatsapp size={26} />
+                </a>
+            )}
             {/* PERSONALIZATION POPUP */}
             {personalizationItem && (
                 <div

@@ -481,7 +481,47 @@ const CatalogueCustomerReport: React.FC = () => {
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
 
-      // Embed company logo
+     doc.setFontSize(16);
+
+      const pageHeight = doc.internal.pageSize.getHeight();
+
+      // ===== CLEAN GENERATION TAG (drawn first, reserves space for logo) =====
+      const generatedAt = new Date().toLocaleString();
+      const margin = 14;
+      const y = 10;
+
+      const tagText = `Genrated by SELLAR • ${generatedAt}`;
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+
+      const textWidth = doc.getTextWidth(tagText);
+      const paddingX = 2;
+
+      const boxWidth = textWidth + paddingX * 2;
+      const boxHeight = 5;
+
+      const logoReservedWidth = 18; // space reserved for logo + gap, so tag never overlaps it
+      const boxX = pageWidth - margin - logoReservedWidth - boxWidth;
+      const boxY = y + 1;
+
+      // light gray background
+      doc.setFillColor(245, 245, 245);
+      doc.rect(boxX, boxY, boxWidth, boxHeight, "F");
+
+      // text
+      doc.setTextColor(80, 80, 80);
+      doc.text(
+        tagText,
+        boxX + paddingX,
+        boxY + 3.5
+      );
+
+      // reset styles
+      doc.setTextColor(0, 0, 0);
+      doc.setFont("helvetica", "bold");
+
+      // Embed company logo (drawn after, in its own reserved slot at top-right corner)
       try {
         const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
         if (base64Logo) {
@@ -501,45 +541,6 @@ const CatalogueCustomerReport: React.FC = () => {
       } catch {
         // Continue without logo
       }
-
-      doc.setFontSize(16);
-
-      const pageHeight = doc.internal.pageSize.getHeight();
-
-      // ===== CLEAN GENERATION TAG =====
-      const generatedAt = new Date().toLocaleString();
-      const margin = 14;
-      const y = 10;
-
-      const tagText = `Genrated by SELLAR • ${generatedAt}`;
-
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(8);
-
-      const textWidth = doc.getTextWidth(tagText);
-      const paddingX = 2;
-
-      const boxWidth = textWidth + paddingX * 2;
-      const boxHeight = 5;
-
-      const boxX = pageWidth - margin - boxWidth;
-      const boxY = y + 1;
-
-      // light gray background
-      doc.setFillColor(245, 245, 245);
-      doc.rect(boxX, boxY, boxWidth, boxHeight, "F");
-
-      // text
-      doc.setTextColor(80, 80, 80);
-      doc.text(
-        tagText,
-        boxX + paddingX,
-        boxY + 3.5
-      );
-
-      // reset styles
-      doc.setTextColor(0, 0, 0);
-      doc.setFont("helvetica", "bold");
 
       // --- 1. BRAND ACCENT BAR ---
       // Uses the #F97316 orange from your UI

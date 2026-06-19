@@ -439,6 +439,7 @@ const OrdersPage: React.FC = () => {
     const [editExpenses, setEditExpenses] = useState<{ id: number; name: string; amount: number | '' }[]>([]);
     const [editDiscount, setEditDiscount] = useState<number>(0);
     const [editDiscountPercent, setEditDiscountPercent] = useState<number>(0);
+    const [showBillDiscountFields, setShowBillDiscountFields] = useState<boolean>(false);
     const [pendingAdjustment, setPendingAdjustment] = useState<{ amount: number } | null>(null);
     const [showAdjustmentPopup, setShowAdjustmentPopup] = useState(false);
     const [showZeroAmountModal, setShowZeroAmountModal] = useState(false);
@@ -782,74 +783,74 @@ const OrdersPage: React.FC = () => {
     };
 
     const handleDiscountChange = (id: string, value: number | string) => {
-    if (!editingOrder) return;
-    const discountValue = typeof value === "string" ? parseFloat(value) || 0 : value;
+        if (!editingOrder) return;
+        const discountValue = typeof value === "string" ? parseFloat(value) || 0 : value;
 
-    const updatedItems = editingOrder.items?.map((item) => {
-        if (item.id !== id) return item;
+        const updatedItems = editingOrder.items?.map((item) => {
+            if (item.id !== id) return item;
 
-        const mrp = Number(item.mrp || 0);
-        const salesPrice = Number(item.salesPrice || 0);
-        const basePrice = mrp > 0 ? mrp : salesPrice;
+            const mrp = Number(item.mrp || 0);
+            const salesPrice = Number(item.salesPrice || 0);
+            const basePrice = mrp > 0 ? mrp : salesPrice;
 
-        // Apply discount1 first
-        const priceAfterDiscount1 = basePrice * (1 - discountValue / 100);
+            // Apply discount1 first
+            const priceAfterDiscount1 = basePrice * (1 - discountValue / 100);
 
-        // Then apply discount2 on top of discount1 result
-        const discount2 = Number(item.discount2 ?? 0);
-        const newNetPrice = priceAfterDiscount1 * (1 - discount2 / 100);
+            // Then apply discount2 on top of discount1 result
+            const discount2 = Number(item.discount2 ?? 0);
+            const newNetPrice = priceAfterDiscount1 * (1 - discount2 / 100);
 
-        const taxRate = Number(item.tax || item.taxRate || 0);
-        const isExclusive = item.taxType?.toLowerCase() === 'exclusive' || item.taxType?.toLowerCase() === 'regular';
-        const newFinalPrice = isExclusive ? newNetPrice + (newNetPrice * (taxRate / 100)) : newNetPrice;
+            const taxRate = Number(item.tax || item.taxRate || 0);
+            const isExclusive = item.taxType?.toLowerCase() === 'exclusive' || item.taxType?.toLowerCase() === 'regular';
+            const newFinalPrice = isExclusive ? newNetPrice + (newNetPrice * (taxRate / 100)) : newNetPrice;
 
-        return {
-            ...item,
-            discount: Number(discountValue.toFixed(2)),
-            effectiveUnitPrice: Number(newNetPrice.toFixed(2)),
-            customPrice: Number(newNetPrice.toFixed(2)),
-            finalPrice: Number(newFinalPrice.toFixed(2)),
-        };
-    });
+            return {
+                ...item,
+                discount: Number(discountValue.toFixed(2)),
+                effectiveUnitPrice: Number(newNetPrice.toFixed(2)),
+                customPrice: Number(newNetPrice.toFixed(2)),
+                finalPrice: Number(newFinalPrice.toFixed(2)),
+            };
+        });
 
-    setEditingOrder({ ...editingOrder, items: updatedItems });
-};
+        setEditingOrder({ ...editingOrder, items: updatedItems });
+    };
     const handleDiscount2Change = (id: string, value: number | string) => {
-    if (!editingOrder) return;
-    const discount2Value = typeof value === "string" ? parseFloat(value) || 0 : value;
+        if (!editingOrder) return;
+        const discount2Value = typeof value === "string" ? parseFloat(value) || 0 : value;
 
-    const updatedItems = editingOrder.items?.map((item) => {
-        if (item.id !== id) return item;
+        const updatedItems = editingOrder.items?.map((item) => {
+            if (item.id !== id) return item;
 
-        const mrp = Number(item.mrp || 0);
-        const salesPrice = Number(item.salesPrice || 0);
-        const basePrice = mrp > 0 ? mrp : salesPrice;
+            const mrp = Number(item.mrp || 0);
+            const salesPrice = Number(item.salesPrice || 0);
+            const basePrice = mrp > 0 ? mrp : salesPrice;
 
-        // discount1 stays unchanged — only apply it to get intermediate price
-        const discount1 = Number(item.discount ?? 0);
-        const priceAfterDiscount1 = basePrice * (1 - discount1 / 100);
+            // discount1 stays unchanged — only apply it to get intermediate price
+            const discount1 = Number(item.discount ?? 0);
+            const priceAfterDiscount1 = basePrice * (1 - discount1 / 100);
 
-        // discount2 applies on priceAfterDiscount1 only
-        const newNetPrice = priceAfterDiscount1 * (1 - discount2Value / 100);
+            // discount2 applies on priceAfterDiscount1 only
+            const newNetPrice = priceAfterDiscount1 * (1 - discount2Value / 100);
 
-        const taxRate = Number(item.tax || item.taxRate || 0);
-        const isExclusive = item.taxType?.toLowerCase() === 'exclusive' || item.taxType?.toLowerCase() === 'regular';
-        const newFinalPrice = isExclusive
-            ? newNetPrice + (newNetPrice * (taxRate / 100))
-            : newNetPrice;
+            const taxRate = Number(item.tax || item.taxRate || 0);
+            const isExclusive = item.taxType?.toLowerCase() === 'exclusive' || item.taxType?.toLowerCase() === 'regular';
+            const newFinalPrice = isExclusive
+                ? newNetPrice + (newNetPrice * (taxRate / 100))
+                : newNetPrice;
 
-        return {
-            ...item,
-            discount2: Number(discount2Value.toFixed(2)),
-            // Do NOT touch item.discount — it stays as is
-            effectiveUnitPrice: Number(newNetPrice.toFixed(2)),
-            customPrice: Number(newNetPrice.toFixed(2)),
-            finalPrice: Number(newFinalPrice.toFixed(2)),
-        };
-    });
+            return {
+                ...item,
+                discount2: Number(discount2Value.toFixed(2)),
+                // Do NOT touch item.discount — it stays as is
+                effectiveUnitPrice: Number(newNetPrice.toFixed(2)),
+                customPrice: Number(newNetPrice.toFixed(2)),
+                finalPrice: Number(newFinalPrice.toFixed(2)),
+            };
+        });
 
-    setEditingOrder({ ...editingOrder, items: updatedItems });
-};
+        setEditingOrder({ ...editingOrder, items: updatedItems });
+    };
     const handleDeleteItem = (id: string) => {
         if (!editingOrder) return;
 
@@ -2501,6 +2502,7 @@ const OrdersPage: React.FC = () => {
                                                         return sum + price * Number(item.quantity || 0);
                                                     }, 0);
                                                     setEditDiscountPercent(itemsBase > 0 ? parseFloat(((savedDiscount / itemsBase) * 100).toFixed(2)) : 0);
+                                                    setShowBillDiscountFields(savedDiscount > 0);
                                                 }}
                                                 className="absolute top-5 left-2 p-2 bg-white/90 backdrop-blur-sm text-slate-500 rounded-sm transition-all duration-300 z-20 group"
                                             >
@@ -3613,17 +3615,23 @@ const OrdersPage: React.FC = () => {
                             </div>
                         </div>
                         {/* Expenses & Discount Section */}
-                        <div className="px-6 py-3 bg-white border-t space-y-3">
-                            {/* Expenses */}
-                            <div className="flex items-center justify-between">
-                                <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest">Extra Expenses</p>
+                        <div className="px-4 py-2 bg-white border-t space-y-3">
+                            {/* Combined action row */}
+                            <div className="flex items-center gap-2">
                                 <button
                                     onClick={() => setEditExpenses(prev => [...prev, { id: Date.now(), name: '', amount: '' }])}
-                                    className="text-[10px] font-bold text-orange-500 border border-orange-300 px-2 py-0.5 rounded-sm hover:bg-orange-50"
+                                    className="flex-1 text-[10px] font-bold text-orange-500 border border-orange-300 px-2 py-1.5 rounded-sm hover:bg-orange-50"
                                 >
                                     + Add Expense
                                 </button>
+                                <button
+                                    onClick={() => setShowBillDiscountFields(prev => !prev)}
+                                    className="flex-1 text-[10px] font-bold text-red-500 border border-red-300 px-2 py-1.5 rounded-sm hover:bg-red-50"
+                                >
+                                    + Bill Discount
+                                </button>
                             </div>
+
                             {editExpenses.length > 0 && (
                                 <div className="flex flex-col gap-2">
                                     {editExpenses.map((expense) => (
@@ -3656,56 +3664,57 @@ const OrdersPage: React.FC = () => {
                                 </div>
                             )}
 
-                            {/* Discount */}
-                            <div className="flex items-center justify-between gap-3">
-                                <p className="text-[10px] font-black text-red-500 uppercase tracking-widest whitespace-nowrap">Bill Discount</p>
-                                <div className="flex items-center gap-1 ml-auto">
-                                    <div className="relative flex items-center">
-                                        <input
-                                            type="number"
-                                            placeholder="0"
-                                            value={editDiscountPercent || ''}
-                                            onChange={(e) => {
-                                                let pct = parseFloat(e.target.value) || 0;
-                                                if (pct > 100) pct = 100;
-                                                if (pct < 0) pct = 0;
-                                                setEditDiscountPercent(pct);
-                                                // base = items only (no expenses, no existing discount)
-                                                const base = (editingOrder?.items || []).reduce((sum, item) => {
-                                                    const salesPrice = Number(item.salesPrice || 0);
-                                                    const mrp = Number(item.mrp || 0);
-                                                    const price = item.finalPrice ?? (salesPrice > 0 ? salesPrice : mrp);
-                                                    return sum + price * Number(item.quantity || 0);
-                                                }, 0);
-                                                setEditDiscount(parseFloat(((pct / 100) * base).toFixed(2)));
-                                            }}
-                                            className="w-16 text-center bg-red-50 border border-red-200 rounded-sm text-red-700 text-xs p-1.5 outline-none focus:border-red-400 pr-4"
-                                        />
-                                        <span className="absolute right-1 text-[10px] text-red-400 font-bold pointer-events-none">%</span>
-                                    </div>
-                                    <span className="text-gray-300 text-xs">|</span>
-                                    <div className="relative flex items-center">
-                                        <span className="absolute left-1 text-[10px] text-red-400 font-bold pointer-events-none">₹</span>
-                                        <input
-                                            type="number"
-                                            placeholder="0"
-                                            value={editDiscount || ''}
-                                            onChange={(e) => {
-                                                const amt = parseFloat(e.target.value) || 0;
-                                                setEditDiscount(amt);
-                                                const base = (editingOrder?.items || []).reduce((sum, item) => {
-                                                    const salesPrice = Number(item.salesPrice || 0);
-                                                    const mrp = Number(item.mrp || 0);
-                                                    const price = item.finalPrice ?? (salesPrice > 0 ? salesPrice : mrp);
-                                                    return sum + price * Number(item.quantity || 0);
-                                                }, 0);
-                                                setEditDiscountPercent(base > 0 ? parseFloat(((amt / base) * 100).toFixed(2)) : 0);
-                                            }}
-                                            className="w-20 text-center bg-red-50 border border-red-200 rounded-sm text-red-700 text-xs p-1.5 outline-none focus:border-red-400 pl-4"
-                                        />
+                            {showBillDiscountFields && (
+                                <div className="flex items-center justify-between gap-3 p-2 bg-red-50 rounded-sm border border-red-100">
+                                    <p className="text-[10px] font-black text-red-500 uppercase tracking-widest whitespace-nowrap">Bill Discount</p>
+                                    <div className="flex items-center gap-1">
+                                        <div className="relative flex items-center">
+                                            <input
+                                                type="number"
+                                                placeholder="0"
+                                                value={editDiscountPercent || ''}
+                                                onChange={(e) => {
+                                                    let pct = parseFloat(e.target.value) || 0;
+                                                    if (pct > 100) pct = 100;
+                                                    if (pct < 0) pct = 0;
+                                                    setEditDiscountPercent(pct);
+                                                    // base = items only (no expenses, no existing discount)
+                                                    const base = (editingOrder?.items || []).reduce((sum, item) => {
+                                                        const salesPrice = Number(item.salesPrice || 0);
+                                                        const mrp = Number(item.mrp || 0);
+                                                        const price = item.finalPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+                                                        return sum + price * Number(item.quantity || 0);
+                                                    }, 0);
+                                                    setEditDiscount(parseFloat(((pct / 100) * base).toFixed(2)));
+                                                }}
+                                                className="w-16 text-center bg-white border border-red-200 rounded-sm text-red-700 text-xs p-1.5 outline-none focus:border-red-400 pr-4"
+                                            />
+                                            <span className="absolute right-1 text-[10px] text-red-400 font-bold pointer-events-none">%</span>
+                                        </div>
+                                        <span className="text-gray-300 text-xs">|</span>
+                                        <div className="relative flex items-center">
+                                            <span className="absolute left-1 text-[10px] text-red-400 font-bold pointer-events-none">₹</span>
+                                            <input
+                                                type="number"
+                                                placeholder="0"
+                                                value={editDiscount || ''}
+                                                onChange={(e) => {
+                                                    const amt = parseFloat(e.target.value) || 0;
+                                                    setEditDiscount(amt);
+                                                    const base = (editingOrder?.items || []).reduce((sum, item) => {
+                                                        const salesPrice = Number(item.salesPrice || 0);
+                                                        const mrp = Number(item.mrp || 0);
+                                                        const price = item.finalPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+                                                        return sum + price * Number(item.quantity || 0);
+                                                    }, 0);
+                                                    setEditDiscountPercent(base > 0 ? parseFloat(((amt / base) * 100).toFixed(2)) : 0);
+                                                }}
+                                                className="w-20 text-center bg-white border border-red-200 rounded-sm text-red-700 text-xs p-1.5 outline-none focus:border-red-400 pl-4"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
+                            )}
 
                             {/* Live total preview */}
                             <div className="flex justify-between items-center pt-1 border-t border-slate-100">

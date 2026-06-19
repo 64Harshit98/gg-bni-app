@@ -191,28 +191,7 @@ const PurchaseReport: React.FC = () => {
       doc.setFillColor(37, 99, 235);
       doc.rect(0, 0, pageWidth, 6, 'F');
 
-      // --- 2. COMPANY LOGO (top-right) ---
-      try {
-        const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
-        if (base64Logo) {
-          const img = new Image();
-          img.src = base64Logo;
-          await new Promise<void>((resolve) => {
-            img.onload = () => {
-              const logoWidth = 20;
-              const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
-              doc.addImage(base64Logo, 'PNG', pageWidth - logoWidth - 14, 10, logoWidth, logoHeight);
-              resolve();
-            };
-            img.onerror = () => resolve();
-          });
-        }
-      } catch {
-        // Continue without logo
-      }
-
-
-      // ===== CLEAN GENERATION TAG =====
+      // ===== CLEAN GENERATION TAG (drawn first, reserves space for logo) =====
       const now = new Date();
       const generatedAt = now.toLocaleString('en-IN', {
         day: '2-digit',
@@ -235,7 +214,8 @@ const PurchaseReport: React.FC = () => {
       const boxWidth = textWidth + paddingX * 2;
       const boxHeight = 5;
 
-      const boxX = pageWidth - margin - boxWidth;
+      const logoReservedWidth = 25; // space reserved for logo + gap, so tag never overlaps it
+      const boxX = pageWidth - margin - logoReservedWidth - boxWidth;
       const boxY = 10;
 
       // background
@@ -248,6 +228,26 @@ const PurchaseReport: React.FC = () => {
 
       // reset
       doc.setTextColor(0, 0, 0);
+
+      // --- 2. COMPANY LOGO (top-right, drawn after, in its own reserved slot) ---
+      try {
+        const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
+        if (base64Logo) {
+          const img = new Image();
+          img.src = base64Logo;
+          await new Promise<void>((resolve) => {
+            img.onload = () => {
+              const logoWidth = 15;
+              const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
+              doc.addImage(base64Logo, 'PNG', pageWidth - logoWidth - 14, 10, logoWidth, logoHeight);
+              resolve();
+            };
+            img.onerror = () => resolve();
+          });
+        }
+      } catch {
+        // Continue without logo
+      }
 
       // --- 3. HEADER SECTION ---
       doc.setFontSize(22);

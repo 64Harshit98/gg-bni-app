@@ -13,6 +13,10 @@ import sellarLogo from '../assets/sellar-logo-heading.png';
 import { TutorialStep } from '../Components/TutorialStep';
 import { ExpenseModal } from '../Components/ExpenseModal';
 import { useExpenses } from '../Pages/Reports/ExpenseReport/useExpense';
+import { useShopHours } from '../Pages/hooks/useShopHours'; // already exists
+import { ROLES } from '../enums';
+import ShopClosingReminderModal from '../Components/ShopClosingReminderModal';
+
 
 const MainLayout = () => {
   const location = useLocation();
@@ -22,6 +26,53 @@ const MainLayout = () => {
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const { currentUser } = useAuth();
   const { addExpense } = useExpenses(currentUser?.companyId, 'pos');
+
+  const { settings: shopSettings, isClosingSoon, shouldAutoClose, needsReset } = useShopHours(currentUser?.companyId);
+  const isOwner =
+    !!currentUser &&
+    currentUser.companyId !== 'PARTNER_ACCOUNT' &&
+    currentUser.role !== ROLES.SALESMAN &&
+    currentUser.role !== ROLES.MANAGER;
+
+  const [reminderDismissed, setReminderDismissed] = useState(false);
+
+  const showReminder = isOwner && isClosingSoon && !reminderDismissed;
+
+  // 1hr grace period after closing time expired with no owner action -> force-close for real.
+  useEffect(() => {
+    if (isOwner && shouldAutoClose && currentUser?.companyId) {
+      const ref = doc(db, 'companies', currentUser.companyId, 'settings', 'shop-hours');
+      setDoc(ref, { forceClosed: true, snoozeUntil: null }, { merge: true }).catch((err) =>
+        console.error('Failed to auto-close shop', err)
+      );
+    }
+  }, [isOwner, shouldAutoClose, currentUser?.companyId]);
+
+  // Back before today's closing time -> clear yesterday's close/snooze flags for a fresh cycle.
+  useEffect(() => {
+    if (isOwner && needsReset && currentUser?.companyId) {
+      const ref = doc(db, 'companies', currentUser.companyId, 'settings', 'shop-hours');
+      setDoc(ref, { forceClosed: false, snoozeUntil: null }, { merge: true }).catch((err) =>
+        console.error('Failed to reset shop-hours overrides', err)
+      );
+      setReminderDismissed(false);
+    }
+  }, [isOwner, needsReset, currentUser?.companyId]);
+
+  const handleConfirmClose = async () => {
+    if (currentUser?.companyId) {
+      const ref = doc(db, 'companies', currentUser.companyId, 'settings', 'shop-hours');
+      await setDoc(ref, { forceClosed: true, snoozeUntil: null }, { merge: true });
+    }
+    setReminderDismissed(true);
+  };
+
+  const handleSnooze = async () => {
+    if (currentUser?.companyId) {
+      const ref = doc(db, 'companies', currentUser.companyId, 'settings', 'shop-hours');
+      await setDoc(ref, { snoozeUntil: Date.now() + 15 * 60 * 1000 }, { merge: true }); // 15 minutes
+    }
+  };
 
   useEffect(() => {
     const checkTutorial = async () => {
@@ -110,7 +161,14 @@ const MainLayout = () => {
 
   return (
     <div className="h-dvh w-screen flex flex-col md:flex-row overflow-hidden bg-gray-100">
-
+      {/* NEW: Closing Reminder Modal */}
+      {showReminder && shopSettings && (
+        <ShopClosingReminderModal
+          closeTime={shopSettings.closeTime}
+          onConfirmClose={handleConfirmClose}
+          onSnooze={handleSnooze}
+        />
+      )}
       {/* DESKTOP SIDEBAR */}
       <aside className="hidden md:flex flex-col w-48 bg-white border-r border-slate-200 h-full flex-shrink-0 z-20">
         <div className="p-6 border-b border-slate-100">

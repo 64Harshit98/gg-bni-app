@@ -1,11 +1,18 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
+import { useState } from 'react';
 import { ROUTES } from '../constants/routes.constants';
 import ShowWrapper from '../context/ShowWrapper';
 import { Permissions } from '../enums';
 import BackButton from '../Components/BackButton';
+import ShopHoursSettingPage from './Settings/ShopHoursSetting';
+import { ROLES } from '../enums';
+import { useAuth } from '../context/auth-context';
 
 const Masters = () => {
+  const { currentUser } = useAuth();
   const location = useLocation();
+  const [shopHoursOpen, setShopHoursOpen] = useState(false);
+
 
   const isDefaultMastersView =
     location.pathname === '/masters' || location.pathname === '/masters/';
@@ -55,13 +62,39 @@ const Masters = () => {
                 <span className="text-xl text-gray-500">→</span>
               </Link> */}
             </ShowWrapper>
+            {currentUser?.role === ROLES.OWNER && (
+  <button
+    onClick={() => setShopHoursOpen(true)}
+    className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg w-full text-left"
+  >
+    <span className="text-lg font-medium">Shop Timing</span>
+    <span className="text-xl text-gray-500">→</span>
+  </button>
+)}
           </div>
         ) : (
-          <div className="bg-white p-6 rounded-xl shadow-md mt-6 min-h-[200px] flex justify-center items-center text-gray-500 italic">
+          <div className="bg-white p-6 rounded-sm shadow-md mt-6 min-h-[200px] flex justify-center items-center text-gray-500 italic">
             <Outlet />
           </div>
         )}
       </div>
+      {/* Shop Hours Modal */}
+      {shopHoursOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-sm shadow-xl w-full max-w-md mx-4 relative">
+            <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-100">
+              <h2 className="text-base font-semibold text-gray-800">Shop Timing</h2>
+              <button
+                onClick={() => setShopHoursOpen(false)}
+                className="text-gray-400 hover:text-gray-600 transition text-xl leading-none"
+              >
+                ✕
+              </button>
+            </div>
+            <ShopHoursSettingPage />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

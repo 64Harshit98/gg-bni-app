@@ -13,8 +13,11 @@ import GlobalCatalogueModal from '../Components/CatalogueShareCard';
 import { ExpenseModal } from '../Components/ExpenseModal';
 import { useExpenses } from '../Pages/Reports/ExpenseReport/useExpense';
 // Add Firebase imports for fetching the subdomain
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
+import { useShopHours } from '../Pages/hooks/useShopHours';
+import { ROLES } from '../enums';
+import ShopClosingReminderModal from '../Components/ShopClosingReminderModal';
 
 const CatalogueLayout = () => {
     const navigate = useNavigate();
@@ -28,6 +31,53 @@ const CatalogueLayout = () => {
     const [storeLink, setStoreLink] = useState(`${window.location.origin}/catalogue/${currentUser?.companyId}`);
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
     const { addExpense } = useExpenses(currentUser?.companyId, 'catalogue');
+
+    const { settings: shopSettings, isClosingSoon, shouldAutoClose, needsReset } = useShopHours(currentUser?.companyId);
+    const isOwner =
+        !!currentUser &&
+        currentUser.companyId !== 'PARTNER_ACCOUNT' &&
+        currentUser.role !== ROLES.SALESMAN &&
+        currentUser.role !== ROLES.MANAGER;
+
+    const [reminderDismissed, setReminderDismissed] = useState(false);
+
+    const showReminder = isOwner && isClosingSoon && !reminderDismissed;
+
+    // 1hr grace period after closing time expired with no owner action -> force-close for real.
+    useEffect(() => {
+        if (isOwner && shouldAutoClose && currentUser?.companyId) {
+            const ref = doc(db, 'companies', currentUser.companyId, 'settings', 'shop-hours');
+            setDoc(ref, { forceClosed: true, snoozeUntil: null }, { merge: true }).catch((err) =>
+                console.error('Failed to auto-close shop', err)
+            );
+        }
+    }, [isOwner, shouldAutoClose, currentUser?.companyId]);
+
+    // Back before today's closing time -> clear yesterday's close/snooze flags for a fresh cycle.
+    useEffect(() => {
+        if (isOwner && needsReset && currentUser?.companyId) {
+            const ref = doc(db, 'companies', currentUser.companyId, 'settings', 'shop-hours');
+            setDoc(ref, { forceClosed: false, snoozeUntil: null }, { merge: true }).catch((err) =>
+                console.error('Failed to reset shop-hours overrides', err)
+            );
+            setReminderDismissed(false);
+        }
+    }, [isOwner, needsReset, currentUser?.companyId]);
+
+    const handleConfirmClose = async () => {
+        if (currentUser?.companyId) {
+            const ref = doc(db, 'companies', currentUser.companyId, 'settings', 'shop-hours');
+            await setDoc(ref, { forceClosed: true, snoozeUntil: null }, { merge: true });
+        }
+        setReminderDismissed(true);
+    };
+
+    const handleSnooze = async () => {
+        if (currentUser?.companyId) {
+            const ref = doc(db, 'companies', currentUser.companyId, 'settings', 'shop-hours');
+            await setDoc(ref, { snoozeUntil: Date.now() + 15 * 60 * 1000 }, { merge: true });
+        }
+    };
 
     // 2. Fetch the custom subdomain on load
     useEffect(() => {
@@ -104,6 +154,13 @@ const CatalogueLayout = () => {
 
     return (
         <div className="h-dvh w-screen flex flex-col md:flex-row overflow-hidden bg-gray-100">
+            {showReminder && shopSettings && (
+                <ShopClosingReminderModal
+                    closeTime={shopSettings.closeTime}
+                    onConfirmClose={handleConfirmClose}
+                    onSnooze={handleSnooze}
+                />
+            )}
             {/* --- DESKTOP SIDEBAR --- */}
             <aside className="hidden md:flex flex-col w-48 bg-white border-r border-slate-200 h-full flex-shrink-0 z-20">
                 <div className="p-6 border-b border-slate-100">

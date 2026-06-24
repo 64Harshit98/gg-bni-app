@@ -3,9 +3,15 @@ import { ROUTES } from '../../constants/routes.constants';
 import BackButton from '../../Components/BackButton';
 //import CataShowWrapper from '../../context/CataShowWrapper';
 //import { Cata_Permissions } from '../enum/cata_permissions.enum';
+import { useAuth } from '../../context/auth-context';
+import { ROLES } from '../../enums';
+import { useState } from 'react';
+import ShopHoursSettingPage from '../../Pages/Settings/ShopHoursSetting';
 
 const CatalogueMasters = () => {
   const location = useLocation();
+  const { currentUser } = useAuth();
+  const [shopHoursOpen, setShopHoursOpen] = useState(false);
 
   const isDefaultMastersView =
     location.pathname === '/catalogue-home/cata-masters' || location.pathname === '/catalogue-home/cata-masters/';
@@ -60,7 +66,15 @@ const CatalogueMasters = () => {
               {/* Optional: Keep the arrow but make it look disabled, or remove it */}
               <span className="text-xl text-gray-300">→</span>
             </div>
-
+{currentUser?.role === ROLES.OWNER && (
+              <button
+                onClick={() => setShopHoursOpen(true)}
+                className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg w-full text-left"
+              >
+                <span className="text-lg font-medium">Shop Timing</span>
+                <span className="text-xl text-gray-500">→</span>
+              </button>
+            )}
           </div>
         ) : (
           <div className="bg-white p-6 rounded-xl shadow-md mt-6 min-h-[200px] flex justify-center items-center text-gray-500 italic">
@@ -68,6 +82,22 @@ const CatalogueMasters = () => {
           </div>
         )}
       </div>
+      {shopHoursOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-sm shadow-xl w-full max-w-md mx-4 relative">
+            <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-100">
+              <h2 className="text-base font-semibold text-gray-800">Shop Timing</h2>
+              <button
+                onClick={() => setShopHoursOpen(false)}
+                className="text-gray-400 hover:text-gray-600 transition text-xl leading-none"
+              >
+                ✕
+              </button>
+            </div>
+            <ShopHoursSettingPage theme="orange" />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

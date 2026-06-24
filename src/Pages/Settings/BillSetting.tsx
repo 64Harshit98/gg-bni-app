@@ -116,10 +116,10 @@ const BillSettings: React.FC = () => {
 
                 const loadedSettings: BillSettingsData = {
                     upiId: sData.upiId || bData.upiId || '',
-                    termsAndConditions: sData.termsAndConditions || '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
+                    termsAndConditions: sData.posTermsAndConditions || '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
                     signatureBase64: sData.signatureBase64 || '',
-                    printFormat: sData.printFormat || 'A4',
-                    whatsappExtraMessage: sData.whatsappExtraMessage || '', // <-- ADD THIS LINE
+                    printFormat: sData.posPrintFormat || 'A4',
+                    whatsappExtraMessage: sData.posWhatsappExtraMessage || '',
                 };
 
                 setSettings(loadedSettings);
@@ -170,11 +170,14 @@ const BillSettings: React.FC = () => {
             }
 
             const dataToSave = {
-                // Editable settings
+                // Editable settings (shared)
                 upiId: settings.upiId,
-                termsAndConditions: settings.termsAndConditions,
-                printFormat: settings.printFormat,
                 signatureBase64: currentSignature,
+
+                // Editable settings (independent per bill type)
+                posTermsAndConditions: settings.termsAndConditions,
+                posPrintFormat: settings.printFormat,
+                posWhatsappExtraMessage: settings.whatsappExtraMessage,
 
                 // ✅ Always sync from businessInfo so these stay fresh
                 companyGstin: businessInfo.gstin,
@@ -184,7 +187,6 @@ const BillSettings: React.FC = () => {
                 accountNumber: businessInfo.accountNumber,
                 bankName: businessInfo.bankName,
                 ifscCode: businessInfo.ifscCode,
-                whatsappExtraMessage: settings.whatsappExtraMessage, // <-- ADD THIS LINE
                 updatedAt: serverTimestamp()
             };
 

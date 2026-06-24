@@ -71,6 +71,14 @@ export interface InvoiceData {
     imageBase64?: string;
   }[];
   terms: string;
+  transportDetails?: {
+    transportName?: string;
+    grRrNo?: string;
+    grRrDate?: string;
+    vehicleNo?: string;
+    stationFrom?: string;
+    pinCode?: string;
+  };
   bankDetails?: {
     accountName?: string;
     accountNumber?: string;
@@ -160,6 +168,14 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
 
   const headerHeight = 25 + addressBlockHeight; // Expanded box height
   const metaHeight = 16;
+
+const td = data.transportDetails ?? undefined;
+  const hasTransport = !!(
+    td &&
+    typeof td === 'object' &&
+    (td.transportName || td.grRrNo || td.vehicleNo || td.stationFrom || td.grRrDate || td.pinCode)
+  );
+  const transportRowHeight = hasTransport ? 10 : 0;
 
   const billName = data.billTo.name;
   const billAddr = doc.splitTextToSize(data.billTo.address, contentWidth / 2 - 10);
@@ -377,6 +393,49 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
       doc.setFont('helvetica', 'normal');
     }
     cursorY += metaHeight;
+
+ // 3a. Transport Details Row (optional)
+    if (hasTransport && td) {
+      drawBox(cursorY, transportRowHeight);
+
+      // Dividers — split into 3 equal columns
+      const colW = contentWidth / 3;
+
+      doc.setFontSize(7); doc.setFont('helvetica', 'bold');
+
+      // Column 1: Transport Name + GR/RR No
+      doc.text('Transport :', startX + 2, cursorY + 3.5);
+      doc.setFont('helvetica', 'normal');
+      doc.text(td.transportName || '-', startX + 22, cursorY + 3.5);
+      doc.setFont('helvetica', 'bold');
+      doc.text('GR/RR No :', startX + 2, cursorY + 8);
+      doc.setFont('helvetica', 'normal');
+      doc.text(td.grRrNo || '-', startX + 22, cursorY + 8);
+
+      // Column 2: GR/RR Date + Vehicle No
+      const col2X = startX + colW + 2;
+      doc.setFont('helvetica', 'bold');
+      doc.text('GR/RR Date :', col2X, cursorY + 3.5);
+      doc.setFont('helvetica', 'normal');
+      doc.text(td.grRrDate || '-', col2X + 24, cursorY + 3.5);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Vehicle No :', col2X, cursorY + 8);
+      doc.setFont('helvetica', 'normal');
+      doc.text(td.vehicleNo || '-', col2X + 24, cursorY + 8);
+
+      // Column 3: Station From + PIN Code
+      const col3X = startX + colW * 2 + 2;
+      doc.setFont('helvetica', 'bold');
+      doc.text('Station From :', col3X, cursorY + 3.5);
+      doc.setFont('helvetica', 'normal');
+      doc.text(td.stationFrom || '-', col3X + 27, cursorY + 3.5);
+      doc.setFont('helvetica', 'bold');
+      doc.text('PIN Code :', col3X, cursorY + 8);
+      doc.setFont('helvetica', 'normal');
+      doc.text(td.pinCode || '-', col3X + 27, cursorY + 8);
+
+      cursorY += transportRowHeight;
+    }
 
     // 3. Parties
     drawBox(cursorY, partyHeight); doc.line(pageWidth / 2, cursorY, pageWidth / 2, cursorY + partyHeight);
@@ -745,7 +804,8 @@ export const preparePdfData = async (invoiceData: any) => {
   return {
     ...invoiceData,
     companyLogoBase64,
-
+// --- TRANSPORT DETAILS ---
+    transportDetails: invoiceData.transportDetails || undefined,
     // --- TEXT FIELDS (The likely culprits) ---
     companyState: companyData.state, // Fetch this from your companyDoc
     placeOfSupply: invoiceData.placeOfSupply || '',

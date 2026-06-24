@@ -46,6 +46,7 @@ export interface SalesSettings {
     enableExtraExpense?: boolean;
     enableNarration?: boolean;
     enableCustomerInfoToggle?: boolean;
+    enableTransportDetails?: boolean;
     lastSavedPlan?: string;
 }
 
@@ -89,6 +90,7 @@ export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     enableShippingDetails: false,
     enableExtraExpense: false,
     enableNarration: false,
+    enableTransportDetails: false,
 });
 
 interface CardProps {
@@ -591,6 +593,7 @@ const SalesSettingsPage: React.FC = () => {
                                     <ToggleRow id="enable-shipping" label="Enable Shipping Details" description="Allow shipping address and GST capture." checked={settings.enableShippingDetails ?? false} onChange={(checked) => handleCheckboxChange('enableShippingDetails', checked)} tooltip="Allow capturing separate shipping address and GST for customers." />
                                     <ToggleRow id="enable-expense" label="Enable Extra Expense" description="Allow additional charges like freight/packing." checked={settings.enableExtraExpense ?? false} onChange={(checked) => handleCheckboxChange('enableExtraExpense', checked)} tooltip="Add extra charge to final bill." />
                                     <ToggleRow id="enable-narration" label="Enable Narration / Remarks" description="Allow adding custom note in invoice." checked={settings.enableNarration ?? false} onChange={(checked) => handleCheckboxChange('enableNarration', checked)} tooltip="Allow custom remarks on invoice." />
+                                    <ToggleRow id="enable-transport" label="Enable Transport Details" description="Allow capturing transport info like GR/RR No, vehicle number etc." checked={settings.enableTransportDetails ?? false} onChange={(checked) => handleCheckboxChange('enableTransportDetails', checked)} tooltip="Show transport details option in payment drawer." />
                                 </SettingsCard>
                             </ShowWrapper>
                             {/* Required Fields (Outside ShowWrapper to display for all plans) */}

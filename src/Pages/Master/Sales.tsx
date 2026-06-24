@@ -1388,6 +1388,7 @@ const Sales: React.FC = () => {
                 shippingGST: completionData.shippingGST || '',
                 expenses: completionData.expenses || [],
                 narration: completionData.narration || '',
+                transportDetails: completionData.transportDetails || null,
             };
 
             if (isNew) {
@@ -2396,9 +2397,11 @@ const Sales: React.FC = () => {
                     initialShippingState={isEditMode ? invoiceToEdit?.shippingState : ''}
                     initialExpenses={isEditMode ? (invoiceToEdit?.expenses || (invoiceToEdit?.extraExpenseName ? [{ name: invoiceToEdit.extraExpenseName, amount: invoiceToEdit.extraExpenseAmount }] : [])) : []}
                     initialNarration={isEditMode ? invoiceToEdit?.narration : ''}
+                    initialTransportDetails={isEditMode ? invoiceToEdit?.transportDetails : undefined}
                     enableShippingDetails={salesSettings?.enableShippingDetails}
                     enableExtraExpense={salesSettings?.enableExtraExpense}
                     enableNarration={salesSettings?.enableNarration}
+                    enableTransportDetails={salesSettings?.enableTransportDetails ?? false}
                 />
                 <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
 
@@ -2760,9 +2763,11 @@ const Sales: React.FC = () => {
                 initialShippingGST={isEditMode ? invoiceToEdit?.shippingGST : ''}
                 initialExpenses={isEditMode ? (invoiceToEdit?.expenses || (invoiceToEdit?.extraExpenseName ? [{ name: invoiceToEdit.extraExpenseName, amount: invoiceToEdit.extraExpenseAmount }] : [])) : []}
                 initialNarration={isEditMode ? invoiceToEdit?.narration : ''}
+                initialTransportDetails={isEditMode ? invoiceToEdit?.transportDetails : undefined}
                 enableShippingDetails={salesSettings?.enableShippingDetails}
                 enableExtraExpense={salesSettings?.enableExtraExpense}
                 enableNarration={salesSettings?.enableNarration}
+                enableTransportDetails={salesSettings?.enableTransportDetails ?? false}
                 taxMode={activeTaxMode}
                 onTaxModeChange={setActiveTaxMode}
                 isTaxToggleLocked={(salesSettings?.gstScheme !== 'regular' || salesSettings?.lockTaxToggle)}

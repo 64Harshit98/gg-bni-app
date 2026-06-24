@@ -2,6 +2,24 @@ import { db } from '../lib/Firebase';
 import { doc, runTransaction, DocumentReference, getDoc } from 'firebase/firestore';
 
 /**
+ * Returns Indian Financial Year string for internal tracking only.
+ * Not shown in the invoice number — just used to detect year change.
+ */
+const getFinancialYear = (date: Date = new Date()): string => {
+    const year = date.getFullYear();
+    const month = date.getMonth(); // Jan=0 ... Apr=3
+    if (month >= 3) {
+        return `${year}-${String(year + 1).slice(-2)}`; // Apr-Dec
+    } else {
+        return `${year - 1}-${String(year).slice(-2)}`; // Jan-Mar
+    }
+};
+
+interface CounterData {
+    currentNumber: number;
+    financialYear: string;
+}
+/**
  * Generates the next invoice number for a specific company.
  * @param companyId The ID of the company to get the counter for.
  */
@@ -11,14 +29,20 @@ export const peekNextInvoiceNumber = async (companyId: string): Promise<string> 
     const settingsRef = doc(db, 'companies', companyId, 'settings', 'sales-settings');
     const counterRef = doc(db, 'companies', companyId, 'counters', 'invoiceCounter');
 
-    // Simple getDocs (no transaction, no writes)
     const [settingsSnap, counterSnap] = await Promise.all([
         getDoc(settingsRef),
         getDoc(counterRef)
     ]);
 
     const prefix = settingsSnap.exists() ? (settingsSnap.data().voucherPrefix || 'INV') : 'INV';
-    const nextNumber = counterSnap.exists() ? (counterSnap.data().currentNumber || 1) : 1;
+    const currentFY = getFinancialYear();
+
+    let nextNumber = 1;
+    if (counterSnap.exists()) {
+        const data = counterSnap.data() as CounterData;
+        // agar stored FY current FY se match nahi karti, naye saal ka counter 1 se start
+        nextNumber = data.financialYear === currentFY ? (data.currentNumber || 1) : 1;
+    }
 
     return `${prefix}-${nextNumber}`;
 };
@@ -26,10 +50,23 @@ export const peekNextInvoiceNumber = async (companyId: string): Promise<string> 
 // 2. WRITE: Use this inside your handleSavePayment logic
 export const incrementInvoiceCounter = async (companyId: string) => {
     const counterRef = doc(db, 'companies', companyId, 'counters', 'invoiceCounter');
+    const currentFY = getFinancialYear();
+
     await runTransaction(db, async (transaction) => {
         const counterDoc = await transaction.get(counterRef);
-        const nextNumber = counterDoc.exists() ? (counterDoc.data().currentNumber || 1) : 1;
-        transaction.set(counterRef, { currentNumber: nextNumber + 1 }, { merge: true });
+
+        let nextNumber = 1;
+        if (counterDoc.exists()) {
+            const data = counterDoc.data() as CounterData;
+            nextNumber = data.financialYear === currentFY ? (data.currentNumber || 1) : 1;
+        }
+
+        // merge:false zaroori hai warna purani financialYear field reh sakti hai
+        transaction.set(
+            counterRef,
+            { currentNumber: nextNumber + 1, financialYear: currentFY },
+            { merge: false }
+        );
     });
 };
 
@@ -48,7 +85,13 @@ export const peekNextPurchaseNumber = async (companyId: string): Promise<string>
     ]);
 
     const prefix = settingsSnap.exists() ? (settingsSnap.data().voucherPrefix || 'INV') : 'INV';
-    const nextNumber = counterSnap.exists() ? (counterSnap.data().currentNumber || 1) : 1;
+    const currentFY = getFinancialYear();
+
+    let nextNumber = 1;
+    if (counterSnap.exists()) {
+        const data = counterSnap.data() as CounterData;
+        nextNumber = data.financialYear === currentFY ? (data.currentNumber || 1) : 1;
+    }
 
     return `${prefix}-${nextNumber}`;
 };
@@ -56,10 +99,22 @@ export const peekNextPurchaseNumber = async (companyId: string): Promise<string>
 // 2. WRITE: Call this ONLY inside createNewPurchase when saving
 export const incrementPurchaseCounter = async (companyId: string) => {
     const counterRef = doc(db, 'companies', companyId, 'counters', 'purchaseCounter');
+    const currentFY = getFinancialYear();
+
     await runTransaction(db, async (transaction) => {
         const counterDoc = await transaction.get(counterRef);
-        const nextNumber = counterDoc.exists() ? (counterDoc.data().currentNumber || 1) : 1;
-        transaction.set(counterRef, { currentNumber: nextNumber + 1 }, { merge: true });
+
+        let nextNumber = 1;
+        if (counterDoc.exists()) {
+            const data = counterDoc.data() as CounterData;
+            nextNumber = data.financialYear === currentFY ? (data.currentNumber || 1) : 1;
+        }
+
+        transaction.set(
+            counterRef,
+            { currentNumber: nextNumber + 1, financialYear: currentFY },
+            { merge: false }
+        );
     });
 };
 export const OrderInvoiceNumber = async (companyId: string): Promise<string> => {
@@ -71,6 +126,7 @@ export const OrderInvoiceNumber = async (companyId: string): Promise<string> => 
     // Note: Your original path was 'counter' (singular), I've kept it here.
     // You may want to standardize on 'counters' (plural).
     const counterRef: DocumentReference = doc(db, 'companies', companyId, 'counters', 'orderInvoice');
+    const currentFY = getFinancialYear();
 
     try {
         const newNumber = await runTransaction(db, async (transaction) => {
@@ -78,11 +134,19 @@ export const OrderInvoiceNumber = async (companyId: string): Promise<string> => 
             let nextNumber = 1001;
 
             if (counterDoc.exists()) {
-                const current = counterDoc.data()?.currentNumber || 1000;
-                nextNumber = current + 1;
+                const data = counterDoc.data() as CounterData;
+                if (data.financialYear === currentFY) {
+                    const current = data.currentNumber || 1000;
+                    nextNumber = current + 1;
+                }
+                // FY badal gaya to nextNumber 1001 hi rahega (reset)
             }
 
-            transaction.set(counterRef, { currentNumber: nextNumber }, { merge: true });
+            transaction.set(
+                counterRef,
+                { currentNumber: nextNumber, financialYear: currentFY },
+                { merge: false }
+            );
             return nextNumber;
         });
 

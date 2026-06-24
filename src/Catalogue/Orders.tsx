@@ -121,6 +121,14 @@ export interface Order {
     isLead?: boolean;
     totalTax?: number;      // <-- ADD THIS
     baseAmount?: number;
+    transportDetails?: {
+        transportName: string;
+        grRrNo: string;
+        grRrDate: string;
+        vehicleNo: string;
+        stationFrom: string;
+        pinCode: string;
+    };
 }
 
 const formatDate = (date: Date): string => {
@@ -182,6 +190,7 @@ export const useOrdersData = (
             specialInstruction: data.specialInstruction || "",
             expenses: Array.isArray(data.expenses) ? data.expenses : [],
             manualDiscount: Number(data.manualDiscount || 0),
+            transportDetails: data.transportDetails || undefined,
             updatedAt,
             userName: data.userName || data.billingDetails?.name || 'Anonymous',
             userLoginPhone: data.userLoginPhone || data.billingDetails?.phone || '',
@@ -426,6 +435,7 @@ const OrdersPage: React.FC = () => {
     const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
     const [selectedItemForEdit, setSelectedItemForEdit] = useState<any>(null);
     const [_billSettings, setBillSettings] = useState<any>(null);
+    const [catalogueWhatsappExtra, setCatalogueWhatsappExtra] = useState<string>('');
     const [searchQuery, setSearchQuery] = useState('');
     const [showSearch, setShowSearch] = useState(false);
     const [expandedorderId, setExpandedorderId] = useState<string | null>(null);
@@ -440,6 +450,15 @@ const OrdersPage: React.FC = () => {
     const [editDiscount, setEditDiscount] = useState<number>(0);
     const [editDiscountPercent, setEditDiscountPercent] = useState<number>(0);
     const [showBillDiscountFields, setShowBillDiscountFields] = useState<boolean>(false);
+    const [showTransportModal, setShowTransportModal] = useState(false);
+    const [transportName, setTransportName] = useState('');
+    const [grRrNo, setGrRrNo] = useState('');
+    const [grRrDate, setGrRrDate] = useState('');
+    const [vehicleNo, setVehicleNo] = useState('');
+    const [stationFrom, setStationFrom] = useState('');
+    const [pinCode, setPinCode] = useState('');
+
+    const hasTransportDetails = !!(transportName || grRrNo || grRrDate || vehicleNo || stationFrom || pinCode);
     const [pendingAdjustment, setPendingAdjustment] = useState<{ amount: number } | null>(null);
     const [showAdjustmentPopup, setShowAdjustmentPopup] = useState(false);
     const [showZeroAmountModal, setShowZeroAmountModal] = useState(false);
@@ -451,6 +470,7 @@ const OrdersPage: React.FC = () => {
     const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
     const [showQrModal, setShowQrModal] = useState<Order | null>(null);
     const [enableItemWiseDiscount, setEnableItemWiseDiscount] = useState(false);
+    const [enableTransportDetails, setEnableTransportDetails] = useState(false);
     const [sendingPdf, setSendingPdf] = useState(false);
     const [showPrintSubMenu, setShowPrintSubMenu] = useState(false);
     const [dateRange, setDateRange] = useState<{ start: Date | null, end: Date | null }>(() => {
@@ -508,9 +528,13 @@ const OrdersPage: React.FC = () => {
                     );
                     const snap = await getDoc(customerRef);
                     if (snap.exists()) {
-                        setCustomerCredit(Number(snap.data().creditBalance || 0));
-                    } else {
-                        setCustomerCredit(0);
+                        const data = snap.data();
+                        setEnableItemWiseDiscount(
+                            data.enableItemWiseDiscount ?? false
+                        );
+                        setEnableTransportDetails(
+                            data.enableTransportDetails ?? false
+                        );
                     }
                 } catch (err) {
                     console.error("Error fetching credit balance:", err);
@@ -901,9 +925,12 @@ const OrdersPage: React.FC = () => {
                 const snap = await getDoc(ref);
 
                 if (snap.exists()) {
-                    setBillSettings(snap.data());
+                    const data = snap.data();
+                    setBillSettings(data);
+                    setCatalogueWhatsappExtra(data.catalogueWhatsappExtraMessage || '');
                 } else {
                     setBillSettings({});
+                    setCatalogueWhatsappExtra('');
                 }
             } catch (err) {
                 console.error("Bill settings fetch error:", err);
@@ -931,8 +958,12 @@ const OrdersPage: React.FC = () => {
 
                 if (snap.exists()) {
                     const data = snap.data();
+                    console.log("Sales settings loaded:", data);
                     setEnableItemWiseDiscount(
                         data.enableItemWiseDiscount ?? false
+                    );
+                    setEnableTransportDetails(
+                        data.enableTransportDetails ?? false
                     );
                 }
             } catch (error) {
@@ -1182,7 +1213,7 @@ const OrdersPage: React.FC = () => {
                 ifscCode: businessData.ifscCode || "",
 
                 specialInstruction: Order.specialInstruction || "",
-
+                transportDetails: Order.transportDetails || null,
                 customer: {
                     billing: {
                         name: Order.billingDetails?.name || Order.userName || "Customer",
@@ -1348,7 +1379,8 @@ const OrdersPage: React.FC = () => {
 
             // 5. Send via BotMaster
             const amount = Order.totalAmount;
-            const message = `Hello ${name},\n\nHere is your order bill #${Order.orderId}.\nAmount: ${Number(amount).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}\n\nThank you!`;
+            const extraMsg = catalogueWhatsappExtra ? `\n\n${catalogueWhatsappExtra}` : '';
+            const message = `Hello ${name},\n\nHere is your order bill #${Order.orderId}.\nAmount: ${Number(amount).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}\n\nThank you!${extraMsg}`;
 
             const response = await botMasterService.sendPdfFromUrl(
                 botMasterToken,
@@ -1369,7 +1401,7 @@ const OrdersPage: React.FC = () => {
             }
 
             if (isSuccess) {
-                setModal({ message: "Invoice sent! Cleaning up...", type: State.SUCCESS });
+                setModal({ message: "Invoice sent!", type: State.SUCCESS });
                 setTimeout(async () => {
                     try { await deleteObject(storageRef); } catch (error) { console.warn("Auto-delete failed:", error); }
                 }, 60000); // 1 minute cleanup
@@ -1383,6 +1415,155 @@ const OrdersPage: React.FC = () => {
         } finally {
             setSendingPdf(false);
             setSelectedOrderForAction(null);
+        }
+    };
+
+    const handleSendReminder = async (Order: Order) => {
+        const phone = Order.userLoginPhone || Order.billingDetails?.phone || '';
+        const name = Order.userName || Order.billingDetails?.name || 'Customer';
+
+        if (!phone) {
+            setModal({ message: "Customer phone number is missing.", type: State.ERROR });
+            return;
+        }
+        if (!currentUser?.companyId) return;
+
+        setSendingPdf(true);
+
+        try {
+            const businessDocRef = doc(db, 'companies', currentUser.companyId, 'business_info', currentUser.companyId);
+            const businessSnap = await getDoc(businessDocRef);
+            const { botMasterToken, whatsappNumber } = businessSnap.data() || {};
+
+            if (!botMasterToken || !whatsappNumber) {
+                setSendingPdf(false);
+                navigate(ROUTES.WHATSAPP_PLAN || '/whatsapp-plans');
+                return;
+            }
+
+            const itemsSubtotal = (Order.items || []).reduce((sum, item) => {
+                const unitPrice = item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0;
+                return sum + (Number(unitPrice) * Number(item.quantity || 0));
+            }, 0);
+            const orderExpensesTotal = (Order.expenses || []).reduce(
+                (sum, ex) => sum + (parseFloat(String(ex.amount)) || 0), 0
+            );
+            const total = Math.max(0, itemsSubtotal + orderExpensesTotal + Number(Order.totalTax || 0) - Number(Order.manualDiscount || 0));
+            const paid = Number(Order.paidAmount || 0);
+            const due = Math.max(0, total - paid);
+
+            const dueAmt = due.toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
+            const totalAmt = total.toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
+
+            const message = `Dear ${name},\n\nThis is a gentle reminder that an amount of ${dueAmt} is still due against your order #${Order.orderId} (Total: ${totalAmt}).\n\nKindly clear the due amount at your earliest convenience. Thank you!`;
+
+            // --- NEW: Build the bill PDF, same prep as handlePdfAction/handleSendWhatsapp ---
+            const businessData = businessSnap.exists() ? businessSnap.data() : {};
+
+            const itemsWithBase64 = await Promise.all((Order.items || []).map(async (item: any, index: number) => {
+                const mrp = Number(item.mrp || 0);
+                const salesPrice = Number(item.salesPrice || 0);
+                const actualPrice = item.effectiveUnitPrice ?? item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+                const base64Image = item.imageUrl ? await convertImageUrlToBase64(item.imageUrl, item.name) : "";
+                return {
+                    sno: index + 1,
+                    name: item.name,
+                    qty: item.quantity,
+                    unitMultiplier: item.unitMultiplier ?? 1,
+                    tax: item.tax ?? 0,
+                    mrp: mrp,
+                    price: actualPrice,
+                    total: actualPrice * item.quantity,
+                    imageBase64: base64Image,
+                    discount: Number(item.discount ?? 0),
+                    discount2: Number(item.discount2 ?? 0),
+                };
+            }));
+
+            const rawBillData = {
+                companyId: currentUser?.companyId,
+                companyName: companyInfo?.name || "",
+                companyAddress: companyInfo?.address || "",
+                companyPhone: companyInfo?.ownerPhoneNumber || "",
+                companyGstin: businessData.gstin || "",
+                panNumber: businessData.panNumber || "",
+                msmeNumber: businessData.msmeUdyamNumber || "",
+                bankName: businessData.bankName || "",
+                accountName: businessData.accountHolderName || "",
+                accountNumber: businessData.accountNumber || "",
+                ifscCode: businessData.ifscCode || "",
+                specialInstruction: Order.specialInstruction || "",
+                customer: {
+                    billing: {
+                        name: Order.billingDetails?.name || Order.userName || "Customer",
+                        phone: Order.billingDetails?.phone || "",
+                        address: Order.billingDetails?.address || "",
+                        gstin: Order.billingDetails?.gstin || "",
+                    },
+                    shipping: {
+                        name: Order.shippingDetails?.name || Order.billingDetails?.name || "",
+                        phone: Order.shippingDetails?.phone || "",
+                        address: Order.shippingDetails?.address || "",
+                        gstin: Order.shippingDetails?.gstin || ""
+                    }
+                },
+                order: {
+                    orderId: Order.orderId,
+                    date: Order.time,
+                },
+                items: itemsWithBase64,
+                grandTotal: total,
+                paidAmount: paid,
+                advancePaid: paid,
+                dueAmount: due,
+            };
+
+            const preparedData = await prepareCatalogueBillData({
+                ...rawBillData,
+                isEstimate: billType === 'estimate'
+            });
+
+            const pdfBlob = await CatalogueBill(preparedData, "blob");
+            if (!pdfBlob) throw new Error("Failed to generate PDF Blob.");
+
+            const safeNum = Order.orderId.replace(/[\/\\?%*:|"<>]/g, '-');
+            const cleanName = `${safeNum}.pdf`;
+            const storageRef = ref(storage, cleanName);
+            await uploadBytes(storageRef, pdfBlob);
+
+            const fileUrl = await getDownloadURL(storageRef);
+            // -------------------------------------------------------------------------------
+
+            const response = await botMasterService.sendPdfFromUrl(
+                botMasterToken,
+                whatsappNumber,
+                phone,
+                message,
+                fileUrl,
+                cleanName
+            );
+
+            let isSuccess = false;
+            if (Array.isArray(response) && response.length > 0) {
+                const res = response[0];
+                if (res.status === 'sent' || res.status === 'delivered') isSuccess = true;
+            } else if (response?.status === 'sent' || response?.status === 'success' || response?.status === 200) {
+                isSuccess = true;
+            }
+
+            if (isSuccess) {
+                setModal({ message: "Reminder sent via WhatsApp!", type: State.SUCCESS });
+                setTimeout(async () => {
+                    try { await deleteObject(storageRef); } catch (error) { console.warn("Auto-delete failed:", error); }
+                }, 60000);
+            } else {
+                throw new Error("API reported failure.");
+            }
+        } catch (err) {
+            console.error("Reminder Send Error:", err);
+            setModal({ message: "Failed to send reminder.", type: State.ERROR });
+        } finally {
+            setSendingPdf(false);
         }
     };
 
@@ -1989,6 +2170,14 @@ const OrdersPage: React.FC = () => {
                     shippingDetails: editingOrder.shippingDetails || null,
                     userName: editingOrder.billingDetails?.name || editingOrder.userName || "",
                     userLoginPhone: editingOrder.billingDetails?.phone || editingOrder.userLoginPhone || "",
+                    transportDetails: hasTransportDetails ? {
+                        transportName: transportName.trim(),
+                        grRrNo: grRrNo.trim(),
+                        grRrDate: grRrDate.trim(),
+                        vehicleNo: vehicleNo.trim(),
+                        stationFrom: stationFrom.trim(),
+                        pinCode: pinCode.trim(),
+                    } : null,
                     updatedAt: serverTimestamp(),
                     ...extraFields,
                 };
@@ -2067,6 +2256,14 @@ const OrdersPage: React.FC = () => {
                         updateDoc(orderRef, {
                             expenses: expensesPayload,
                             manualDiscount: editDiscount,
+                            transportDetails: hasTransportDetails ? {
+                                transportName: transportName.trim(),
+                                grRrNo: grRrNo.trim(),
+                                grRrDate: grRrDate.trim(),
+                                vehicleNo: vehicleNo.trim(),
+                                stationFrom: stationFrom.trim(),
+                                pinCode: pinCode.trim(),
+                            } : null,
                             updatedAt: serverTimestamp(),
                         }),
                     ]);
@@ -2495,6 +2692,14 @@ const OrdersPage: React.FC = () => {
                                                     // Restore saved discount
                                                     const savedDiscount = Number((Order as any).manualDiscount || 0);
                                                     setEditDiscount(savedDiscount);
+                                                    // Restore saved transport details
+                                                    const savedTransport = (Order as any).transportDetails || {};
+                                                    setTransportName(savedTransport.transportName || '');
+                                                    setGrRrNo(savedTransport.grRrNo || '');
+                                                    setGrRrDate(savedTransport.grRrDate || '');
+                                                    setVehicleNo(savedTransport.vehicleNo || '');
+                                                    setStationFrom(savedTransport.stationFrom || '');
+                                                    setPinCode(savedTransport.pinCode || '');
                                                     const itemsBase = (Order.items || []).reduce((sum, item) => {
                                                         const salesPrice = Number(item.salesPrice || 0);
                                                         const mrp = Number(item.mrp || 0);
@@ -2900,7 +3105,7 @@ const OrdersPage: React.FC = () => {
                                                                 : Order.status === "Paid"
                                                                     ? 'grid-cols-3'
                                                                     : Order.status === "Completed"
-                                                                        ? 'grid-cols-4'
+                                                                        ? (!isPaid ? 'grid-cols-5' : 'grid-cols-4')
                                                                         : 'grid-cols-4'
                                                             } gap-3 pt-6 border-t`}
                                                     >
@@ -2961,6 +3166,19 @@ const OrdersPage: React.FC = () => {
                                                                         className="py-2.5 bg-emerald-500 text-white text-xs font-bold rounded-sm"
                                                                     >
                                                                         Settle
+                                                                    </button>
+                                                                )}
+                                                                {/* REMIND – only UNPAID Completed orders */}
+                                                                {!isPaid && Order.status === 'Completed' && (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            handleSendReminder(Order);
+                                                                        }}
+                                                                        disabled={sendingPdf}
+                                                                        className="py-2.5 bg-amber-500 text-white text-xs font-bold rounded-sm disabled:opacity-50 flex items-center justify-center"
+                                                                    >
+                                                                        {sendingPdf ? <Spinner /> : "Remind"}
                                                                     </button>
                                                                 )}
 
@@ -3352,6 +3570,63 @@ const OrdersPage: React.FC = () => {
                 );
             })()}
 
+            {showTransportModal && (
+                <div className="fixed inset-0 z-[2500] flex items-center justify-center p-4" onClick={() => setShowTransportModal(false)}>
+                    <div className="absolute inset-0 bg-black/50" />
+                    <div className="relative w-full max-w-md bg-white rounded-sm shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                        <div className="bg-orange-500 px-4 py-2.5 flex items-center justify-between">
+                            <h3 className="text-white font-semibold text-sm">Transport Details</h3>
+                            <button onClick={() => setShowTransportModal(false)} className="text-white hover:text-orange-100">
+                                <FiX size={18} />
+                            </button>
+                        </div>
+                        <div className="p-4 space-y-3">
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="col-span-2">
+                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Transport Name</label>
+                                    <input type="text" value={transportName} onChange={(e) => setTransportName(e.target.value)} placeholder="e.g. DP World Express Logistic" className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-orange-500 outline-none" />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">GR/RR No.</label>
+                                    <input type="text" value={grRrNo} onChange={(e) => setGrRrNo(e.target.value)} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-orange-500 outline-none" />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">GR/RR Date</label>
+                                    <input type="date" value={grRrDate} onChange={(e) => setGrRrDate(e.target.value)} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-orange-500 outline-none" />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Vehicle No.</label>
+                                    <input type="text" value={vehicleNo} onChange={(e) => setVehicleNo(e.target.value)} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-orange-500 outline-none" />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">PIN Code</label>
+                                    <input type="text" maxLength={6} value={pinCode} onChange={(e) => setPinCode(e.target.value.replace(/\D/g, '').slice(0, 6))} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-orange-500 outline-none" />
+                                </div>
+                                <div className="col-span-2">
+                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Station / From Place</label>
+                                    <input type="text" value={stationFrom} onChange={(e) => setStationFrom(e.target.value)} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-orange-500 outline-none" />
+                                </div>
+                            </div>
+                            <div className="flex gap-2 pt-2">
+                                {hasTransportDetails && (
+                                    <button
+                                        onClick={() => { setTransportName(''); setGrRrNo(''); setGrRrDate(''); setVehicleNo(''); setStationFrom(''); setPinCode(''); }}
+                                        className="px-4 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-sm transition-colors"
+                                    >
+                                        Clear
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => setShowTransportModal(false)}
+                                    className="flex-1 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-sm font-bold text-sm transition-colors"
+                                >
+                                    OK
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
             {editingOrder && (
                 <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-1 md:p-3">
                     <div className="bg-white rounded-sm w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
@@ -3384,19 +3659,21 @@ const OrdersPage: React.FC = () => {
                             <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
                                 {/* LEFT SIDE: ADDRESSES */}
                                 <div className="space-y-4">
-                                    <div className="flex sm:hidden p-1 bg-slate-100 rounded-sm mb-2">
-                                        <button
-                                            onClick={() => setActiveTab('billing')}
-                                            className={`flex-1 py-2 text-xs font-bold rounded-sm transition-all ${activeTab === 'billing' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-500'}`}
-                                        >
-                                            Billing
-                                        </button>
-                                        <button
-                                            onClick={() => setActiveTab('shipping')}
-                                            className={`flex-1 py-2 text-xs font-bold rounded-sm transition-all ${activeTab === 'shipping' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}
-                                        >
-                                            Shipping
-                                        </button>
+                                    <div className="flex justify-between items-center">
+                                        <div className="flex sm:hidden p-1 bg-slate-100 rounded-sm mb-2 flex-1">
+                                            <button
+                                                onClick={() => setActiveTab('billing')}
+                                                className={`flex-1 py-2 text-xs font-bold rounded-sm transition-all ${activeTab === 'billing' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-500'}`}
+                                            >
+                                                Billing
+                                            </button>
+                                            <button
+                                                onClick={() => setActiveTab('shipping')}
+                                                className={`flex-1 py-2 text-xs font-bold rounded-sm transition-all ${activeTab === 'shipping' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}
+                                            >
+                                                Shipping
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -3617,7 +3894,7 @@ const OrdersPage: React.FC = () => {
                         {/* Expenses & Discount Section */}
                         <div className="px-4 py-2 bg-white border-t space-y-3">
                             {/* Combined action row */}
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                                 <button
                                     onClick={() => setEditExpenses(prev => [...prev, { id: Date.now(), name: '', amount: '' }])}
                                     className="flex-1 text-[10px] font-bold text-orange-500 border border-orange-300 px-2 py-1.5 rounded-sm hover:bg-orange-50"
@@ -3630,6 +3907,14 @@ const OrdersPage: React.FC = () => {
                                 >
                                     + Bill Discount
                                 </button>
+                                {enableTransportDetails && (
+                                    <button
+                                        onClick={() => setShowTransportModal(true)}
+                                        className={`flex-1 text-[10px] font-bold border px-2 py-1.5 rounded-sm transition-colors ${hasTransportDetails ? 'text-teal-700 border-teal-400 bg-teal-50' : 'text-teal-600 border-teal-300 hover:bg-teal-50'}`}
+                                    >
+                                        {hasTransportDetails ? '✓ Transport' : '+ Transport'}
+                                    </button>
+                                )}
                             </div>
 
                             {editExpenses.length > 0 && (
@@ -3725,8 +4010,10 @@ const OrdersPage: React.FC = () => {
                         {/* Footer Buttons */}
                         <div className="px-6 py-4 bg-slate-50 border-t flex gap-3">
                             <button
-                                onClick={() => setEditingOrder(null)}
-
+                                onClick={() => {
+                                    setEditingOrder(null);
+                                    setTransportName(''); setGrRrNo(''); setGrRrDate(''); setVehicleNo(''); setStationFrom(''); setPinCode('');
+                                }}
                                 className="flex-1 py-2.5 bg-gray-400 text-black text-sm font-bold hover:bg-slate-300 rounded-sm transition-colors"
                             >
                                 Discard

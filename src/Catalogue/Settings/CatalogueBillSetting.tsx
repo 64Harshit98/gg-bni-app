@@ -14,6 +14,7 @@ export interface BillSettingsData {
     upiId?: string;
     termsAndConditions: string;
     signatureBase64?: string;
+    whatsappExtraMessage?: string;
 }
 
 interface BusinessInfoData {
@@ -63,7 +64,8 @@ const CatalogueBillSettings: React.FC = () => {
         printFormat: "A4",
         upiId: '',
         termsAndConditions: '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
-        signatureBase64: ''
+        signatureBase64: '',
+        whatsappExtraMessage: ''
     });
 
     const formatAddress = (addr: any): string => {
@@ -118,12 +120,13 @@ const CatalogueBillSettings: React.FC = () => {
                 });
 
                 const loadedSettings: BillSettingsData = {
-                    printFormat: sData.printFormat || "A4",
+                    printFormat: sData.cataloguePrintFormat || "A4",
                     upiId: sData.upiId || bData.upiId || '',
                     termsAndConditions:
-                        sData.termsAndConditions ||
+                        sData.catalogueTermsAndConditions ||
                         '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
                     signatureBase64: sData.signatureBase64 || '',
+                    whatsappExtraMessage: sData.catalogueWhatsappExtraMessage || '',
                 };
                 setSettings(loadedSettings);
 
@@ -180,11 +183,14 @@ const CatalogueBillSettings: React.FC = () => {
             }
 
             const dataToSave = {
-                // Editable settings
+                // Editable settings (shared)
                 upiId: settings.upiId,
-                termsAndConditions: settings.termsAndConditions,
                 signatureBase64: currentSignature,
-                printFormat: settings.printFormat || "A4",
+
+                // Editable settings (independent per bill type)
+                catalogueTermsAndConditions: settings.termsAndConditions,
+                cataloguePrintFormat: settings.printFormat || "A4",
+                catalogueWhatsappExtraMessage: settings.whatsappExtraMessage,
 
                 // ✅ Always sync from businessInfo so these stay fresh
                 companyGstin: businessInfo.gstin,
@@ -500,7 +506,23 @@ const CatalogueBillSettings: React.FC = () => {
                         </div>
                     </div>
                 </div>
-
+                {/* SECTION 4: WhatsApp Message */}
+                <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden">
+                    <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+                        <h2 className="text-lg font-semibold text-gray-800">WhatsApp Message</h2>
+                        <p className="text-xs text-gray-500">Add an extra message to send along with your invoices on WhatsApp.</p>
+                    </div>
+                    <div className="p-6">
+                        <textarea
+                            name="whatsappExtraMessage"
+                            value={settings.whatsappExtraMessage || ''}
+                            onChange={handleChange}
+                            placeholder="e.g., Thank you for shopping with us! Please leave a Google review."
+                            rows={3}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-blue-500 focus:border-blue-500 outline-none text-sm leading-relaxed"
+                        />
+                    </div>
+                </div>
                 {/* SECTION 4: Terms & Conditions */}
                 <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden mb-20">
                     <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
@@ -525,7 +547,7 @@ const CatalogueBillSettings: React.FC = () => {
             </div>
 
             {/* Floating Save Button */}
-            <div className="fixed bottom-0 left-0 right-0 p-4 bg-transparent pb-18 flex justify-end md:px-8">
+            <div className="fixed bottom-0 left-0 right-0 p-4 bg-transparent pb-18 flex justify-center md:px-8">
                 <button
                     onClick={handleSave}
                     disabled={isSaving}
@@ -540,7 +562,7 @@ const CatalogueBillSettings: React.FC = () => {
                             <span>Saving...</span>
                         </div>
                     ) : (
-                        'Save Changes'
+                        'Save Settings'
                     )}
                 </button>
             </div>

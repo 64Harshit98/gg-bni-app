@@ -24,7 +24,14 @@ export interface ExpenseItem {
     name: string;
     amount: number;
 }
-
+export interface TransportDetails {
+    transportName: string;
+    grRrNo: string;
+    grRrDate: string;
+    vehicleNo: string;
+    stationFrom: string;
+    pinCode: string;
+}
 const INDIAN_STATES = [
     "Andaman and Nicobar Islands", "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar",
     "Chandigarh", "Chhattisgarh", "Dadra and Nagar Haveli and Daman and Diu", "Delhi", "Goa",
@@ -54,6 +61,7 @@ export interface PaymentCompletionData {
     narration?: string;
     placeOfSupply?: string;
     shippingState?: string;
+    transportDetails?: TransportDetails;
 }
 
 interface PaymentDrawerProps {
@@ -85,6 +93,8 @@ interface PaymentDrawerProps {
     enableExtraExpense?: boolean;
     enableNarration?: boolean;
     enableCustomerDetails?: boolean;
+    enableTransportDetails?: boolean;
+    initialTransportDetails?: TransportDetails;
     initialPartyAddress?: string;
     initialPartyGST?: string;
     initialPlaceOfSupply?: string;
@@ -110,6 +120,7 @@ const SESSION_STORAGE_SAME_AS_BILLING_KEY = 'sessionIsSameAsBilling';
 const SESSION_STORAGE_EXPENSES_KEY = 'sessionExpenses';
 const SESSION_STORAGE_NARRATION_KEY = 'sessionNarration';
 const SESSION_STORAGE_PAYMENTS_KEY = 'sessionSelectedPayments';
+const SESSION_STORAGE_TRANSPORT_KEY = 'sessionTransportDetails';
 
 interface PartySuggestion {
     name: string;
@@ -152,6 +163,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     enableExtraExpense = false,
     enableNarration = false,
     enableCustomerDetails = true,
+    enableTransportDetails = false,
+    initialTransportDetails,
     initialPartyAddress,
     initialPartyGST,
     initialPlaceOfSupply,
@@ -207,6 +220,15 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const [narration, setNarration] = useState('');
     const [isNarrationExpanded, setIsNarrationExpanded] = useState(false);
 
+    const [showTransportModal, setShowTransportModal] = useState(false);
+    const [transportName, setTransportName] = useState('');
+    const [grRrNo, setGrRrNo] = useState('');
+    const [grRrDate, setGrRrDate] = useState('');
+    const [vehicleNo, setVehicleNo] = useState('');
+    const [stationFrom, setStationFrom] = useState('');
+    const [pinCode, setPinCode] = useState('');
+
+    const hasTransportDetails = !!(transportName || grRrNo || grRrDate || vehicleNo || stationFrom || pinCode);
     // --- CALCULATIONS ---
     const liveTax = useMemo(() => {
         if (!billTotal || billTotal <= 0) return totalTax || 0;
@@ -296,7 +318,24 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             : [];
         let finalNarration = initialNarration || '';
         let loadedPayments: PaymentDetails = {};
-
+        let finalTransport: TransportDetails = initialTransportDetails || {
+            transportName: '', grRrNo: '', grRrDate: '', vehicleNo: '', stationFrom: '', pinCode: ''
+        };
+        // In edit mode, always prefer the prop value
+        if (initialPartyName || initialPartyNumber) {
+            // Edit mode: use prop directly, ignore session storage
+            if (initialTransportDetails) {
+                finalTransport = initialTransportDetails;
+            }
+        } else {
+            // New bill mode: try session storage first, then prop
+            const savedTransport = sessionStorage.getItem(SESSION_STORAGE_TRANSPORT_KEY);
+            if (savedTransport) {
+                try { finalTransport = JSON.parse(savedTransport); } catch (e) { }
+            } else if (initialTransportDetails) {
+                finalTransport = initialTransportDetails;
+            }
+        }
         if (initialPaymentMethods && Object.keys(initialPaymentMethods).length > 0) {
             Object.entries(initialPaymentMethods).forEach(([key, value]) => {
                 if (key === 'due' || key === 'Credit Note' || key === 'Debit Note') return;
@@ -325,6 +364,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 sessionStorage.removeItem(SESSION_STORAGE_EXPENSES_KEY);
                 sessionStorage.removeItem(SESSION_STORAGE_NARRATION_KEY);
                 sessionStorage.removeItem(SESSION_STORAGE_PAYMENTS_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_TRANSPORT_KEY);
             } catch (e) { }
         } else {
             // NEW BILL MODE: Enable automatic local caching
@@ -348,6 +388,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
 
                 const savedPayments = sessionStorage.getItem(SESSION_STORAGE_PAYMENTS_KEY);
                 if (savedPayments) loadedPayments = JSON.parse(savedPayments);
+                
             } catch (e) { }
         }
 
@@ -367,13 +408,19 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         setNarration(finalNarration);
         setSelectedPayments(loadedPayments);
 
+        setTransportName(finalTransport.transportName || '');
+        setGrRrNo(finalTransport.grRrNo || '');
+        setGrRrDate(finalTransport.grRrDate || '');
+        setVehicleNo(finalTransport.vehicleNo || '');
+        setStationFrom(finalTransport.stationFrom || '');
+        setPinCode(finalTransport.pinCode || '');
         setIsNarrationExpanded(!!finalNarration);
         setIsDetailsExpanded(!!(finalAddress || finalGST || finalState));
 
         if (isSale && finalNumber) searchParty(finalNumber, 'number');
         if (!isSale && finalName) searchParty(finalName, 'name');
 
-    }, [isOpen, mode, billTotal, initialDiscount, originalBillTotal, initialPartyName, initialPartyNumber, initialPartyAddress, initialPartyGST, initialShippingName, initialShippingNumber, initialShippingAddress, initialShippingGST, initialNarration]);
+    }, [isOpen, mode, billTotal, initialDiscount, originalBillTotal, initialPartyName, initialPartyNumber, initialPartyAddress, initialPartyGST, initialShippingName, initialShippingNumber, initialShippingAddress, initialShippingGST, initialNarration, initialTransportDetails, initialPlaceOfSupply, initialShippingState]);
 
     // --- AUTOMATIC SESSION SYNC EFFECT ---
     useEffect(() => {
@@ -393,12 +440,15 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 sessionStorage.setItem(SESSION_STORAGE_NARRATION_KEY, narration);
                 sessionStorage.setItem(SESSION_STORAGE_EXPENSES_KEY, JSON.stringify(expenses));
                 sessionStorage.setItem(SESSION_STORAGE_PAYMENTS_KEY, JSON.stringify(selectedPayments));
+                sessionStorage.setItem(SESSION_STORAGE_TRANSPORT_KEY, JSON.stringify({
+                    transportName, grRrNo, grRrDate, vehicleNo, stationFrom, pinCode
+                }));
             } catch (e) { }
         }
     }, [
         partyName, partyNumber, partyAddress, partyGST, partyState,
         shippingName, shippingNumber, shippingAddress, shippingGST, shippingState,
-        isSameAsBilling, expenses, narration, selectedPayments, isOpen, isSubmitting
+        isSameAsBilling, expenses, narration, selectedPayments, isOpen, isSubmitting, transportName, grRrNo, grRrDate, vehicleNo, stationFrom, pinCode
     ]);
 
     const searchParty = async (term: string, field: 'name' | 'number') => {
@@ -591,7 +641,14 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                     amount: parseFloat(e.amount.toString()) || 0
                 }));
             const safeNarration = narration ? narration.trim() : '';
-
+            const safeTransportDetails: TransportDetails = {
+                transportName: transportName.trim(),
+                grRrNo: grRrNo.trim(),
+                grRrDate: grRrDate.trim(),
+                vehicleNo: vehicleNo.trim(),
+                stationFrom: stationFrom.trim(),
+                pinCode: pinCode.trim(),
+            };
             await onPaymentComplete({
                 paymentDetails: payloadToSave || {},
                 partyName: safePartyName,
@@ -611,6 +668,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 narration: safeNarration,
                 placeOfSupply: partyState,
                 shippingState: shippingState,
+                transportDetails: hasTransportDetails ? safeTransportDetails : undefined,
             });
 
             const identifier = safePartyNumber || safePartyName;
@@ -662,11 +720,13 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 sessionStorage.removeItem(SESSION_STORAGE_EXPENSES_KEY);
                 sessionStorage.removeItem(SESSION_STORAGE_NARRATION_KEY);
                 sessionStorage.removeItem(SESSION_STORAGE_PAYMENTS_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_TRANSPORT_KEY);
             } catch (e) { }
 
             setPartyName(''); setPartyNumber(''); setSelectedPayments({});
             setShippingName(''); setShippingNumber(''); setShippingAddress(''); setShippingGST('');
             setExpenses([]); setNarration('');
+            setTransportName(''); setGrRrNo(''); setGrRrDate(''); setVehicleNo(''); setStationFrom(''); setPinCode('');
 
         } catch (error) {
             setModal({ message: (error as Error).message || 'Failed to save.', type: State.ERROR });
@@ -707,7 +767,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                     width: rect.width * 2 + 8,
                     zIndex: 99999,
                 }}
-                className="bg-white border border-gray-200 shadow-xl rounded-lg max-h-48 overflow-y-auto"
+                className="bg-white border border-gray-200 shadow-xl rounded-sm max-h-48 overflow-y-auto"
             >
                 {suggestions.map((party, idx) => (
                     <div key={idx} className="px-2 py-1 hover:bg-blue-50 cursor-pointer border-b last:border-0 text-sm flex justify-between items-center" onClick={() => selectParty(party)}>
@@ -730,7 +790,63 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" />
 
             {modal && <div className="absolute z-[10000]"><Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} /></div>}
-
+            {showTransportModal && (
+                <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4" onClick={() => setShowTransportModal(false)}>
+                    <div className="absolute inset-0 bg-black/50" />
+                    <div className="relative w-full max-w-md bg-white rounded-sm shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                        <div className="bg-blue-500 px-4 py-2.5 flex items-center justify-between">
+                            <h3 className="text-white font-semibold text-sm">Transport Details</h3>
+                            <button onClick={() => setShowTransportModal(false)} className="text-white hover:text-orange-100">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                            </button>
+                        </div>
+                        <div className="p-4 space-y-3">
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="col-span-2">
+                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Transport Name</label>
+                                    <input type="text" value={transportName} onChange={(e) => setTransportName(e.target.value)} placeholder="e.g. DP World Express Logistic" className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-orange-500 outline-none" />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">GR/RR No.</label>
+                                    <input type="text" value={grRrNo} onChange={(e) => setGrRrNo(e.target.value)} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-orange-500 outline-none" />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">GR/RR Date</label>
+                                    <input type="date" value={grRrDate} onChange={(e) => setGrRrDate(e.target.value)} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-orange-500 outline-none" />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Vehicle No.</label>
+                                    <input type="text" value={vehicleNo} onChange={(e) => setVehicleNo(e.target.value)} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-orange-500 outline-none" />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">PIN Code</label>
+                                    <input type="text" maxLength={6} value={pinCode} onChange={(e) => setPinCode(e.target.value.replace(/\D/g, '').slice(0, 6))} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-orange-500 outline-none" />
+                                </div>
+                                <div className="col-span-2">
+                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Station / From Place</label>
+                                    <input type="text" value={stationFrom} onChange={(e) => setStationFrom(e.target.value)} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-orange-500 outline-none" />
+                                </div>
+                            </div>
+                            <div className="flex gap-2 pt-2">
+                                {hasTransportDetails && (
+                                    <button
+                                        onClick={() => { setTransportName(''); setGrRrNo(''); setGrRrDate(''); setVehicleNo(''); setStationFrom(''); setPinCode(''); }}
+                                        className="px-4 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-sm transition-colors"
+                                    >
+                                        Clear
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => setShowTransportModal(false)}
+                                    className="flex-1 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-sm font-bold text-sm transition-colors"
+                                >
+                                    OK
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
             <div className="relative w-full max-w-lg md:max-w-3xl bg-gray-50 rounded-t-xs sm:rounded-2xl shadow-2xl max-h-[90dvh] flex flex-col transform transition-transform duration-300 ease-out animate-slide-up" onClick={(e) => e.stopPropagation()}>
                 {/* Header */}
                 <div className="p-3 bg-white rounded-t-xs border-b border-gray-200 sticky top-0 z-10 flex items-center justify-center shadow-sm">
@@ -823,6 +939,11 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                             {isSale && enableExtraExpense && (
                                                 <div onClick={() => setExpenses(prev => [...prev, { id: Date.now(), name: '', amount: '' }])} className="flex items-center justify-end cursor-pointer text-orange-600 hover:text-orange-700 transition-colors text-[10px] md:text-xs font-semibold select-none">
                                                     <span>+ Add Expense</span>
+                                                </div>
+                                            )}
+                                            {enableTransportDetails && (
+                                                <div onClick={() => setShowTransportModal(true)} className="flex items-center justify-end cursor-pointer text-teal-600 hover:text-teal-700 transition-colors text-[10px] md:text-xs font-semibold select-none">
+                                                    <span>{hasTransportDetails ? '✓ Transport Details' : '+ Add Transport Details'}</span>
                                                 </div>
                                             )}
                                         </div>

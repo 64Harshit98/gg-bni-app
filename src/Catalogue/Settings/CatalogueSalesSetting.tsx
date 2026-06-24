@@ -39,6 +39,7 @@ export interface CatalogueSalesSettings {
   requireApproval: boolean;
   enableItemWiseDiscount?: boolean;
   hideOutOfStock?: boolean;
+  enableTransportDetails?: boolean;
 }
 
 export const getDefaultCatalogueSalesSettings = (companyId: string): CatalogueSalesSettings => ({
@@ -65,7 +66,8 @@ export const getDefaultCatalogueSalesSettings = (companyId: string): CatalogueSa
   cartInsertionOrder: 'top',
   requireApproval: false,
   enableItemWiseDiscount: false,
-  hideOutOfStock: false
+  hideOutOfStock: false,
+  enableTransportDetails: false,
 });
 
 interface CardProps {
@@ -296,7 +298,14 @@ const CatalogueSalesSettings: React.FC = () => {
                 onChange={(checked) => handleCheckboxChange('enableItemWiseDiscount', checked)}
                 tooltip="Allow discounts to be applied to individual cart items."
               />
-
+              <ToggleRow
+                id="enable-transport-details"
+                label="Enable Transport Details"
+                description="Show transport details fields (transporter name, GR/RR No, vehicle no, etc.) on the order edit screen."
+                checked={settings.enableTransportDetails ?? false}
+                onChange={(checked) => handleCheckboxChange('enableTransportDetails', checked)}
+                tooltip="Allows adding transport/logistics information to each order."
+              />
               {/* GST Scheme */}
               <div className="rounded-sm bg-gray-50 border border-gray-100 p-3">
                 <div className="flex items-center gap-2 mb-2">

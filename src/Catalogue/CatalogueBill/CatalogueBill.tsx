@@ -73,6 +73,14 @@ export interface CatalogueInvoiceData {
   advancePaid?: number;
   previousBalance?: number;
   billDiscount?: number;
+  transportDetails?: {
+    transportName?: string;
+    grRrNo?: string;
+    grRrDate?: string;
+    vehicleNo?: string;
+    stationFrom?: string;
+    pinCode?: string;
+  };
 
   extraExpenses?: { name: string; amount: number }[];
   extraExpenseName?: string;
@@ -456,7 +464,53 @@ export const CatalogueBill = async (
     doc.setLineWidth(0.4);
     doc.line(margin, cursorY, pageWidth - margin, cursorY);
     cursorY += 4;
+    // --- TRANSPORT DETAILS ROW ---
+    const td = data.transportDetails;
+    const hasTransport = td && (td.transportName || td.grRrNo || td.vehicleNo || td.grRrDate || td.stationFrom || td.pinCode);
+    if (hasTransport && !isEstimate) {
+      const transportRowHeight = 10;
+      doc.setLineWidth(0.1);
+      drawBox(cursorY, transportRowHeight);
 
+      // Draw 2 vertical dividers for 3 equal columns (matches POS layout)
+      const colW = contentWidth / 3;
+
+      doc.setFontSize(7); doc.setFont('helvetica', 'bold');
+
+      // Column 1: Transporter + GR/RR No (label and value on same line)
+      doc.text('Transport :', startX + 2, cursorY + 3.5);
+      doc.setFont('helvetica', 'normal');
+      doc.text(td.transportName || '-', startX + 22, cursorY + 3.5);
+      doc.setFont('helvetica', 'bold');
+      doc.text('GR/RR No :', startX + 2, cursorY + 8);
+      doc.setFont('helvetica', 'normal');
+      doc.text(td.grRrNo || '-', startX + 22, cursorY + 8);
+
+      // Column 2: GR/RR Date + Vehicle No
+      const col2X = startX + colW + 2;
+      doc.setFont('helvetica', 'bold');
+      doc.text('GR/RR Date :', col2X, cursorY + 3.5);
+      doc.setFont('helvetica', 'normal');
+      doc.text(td.grRrDate || '-', col2X + 24, cursorY + 3.5);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Vehicle No :', col2X, cursorY + 8);
+      doc.setFont('helvetica', 'normal');
+      doc.text(td.vehicleNo || '-', col2X + 24, cursorY + 8);
+
+      // Column 3: Station From + PIN Code
+      const col3X = startX + colW * 2 + 2;
+      doc.setFont('helvetica', 'bold');
+      doc.text('Station From :', col3X, cursorY + 3.5);
+      doc.setFont('helvetica', 'normal');
+      doc.text(td.stationFrom || '-', col3X + 27, cursorY + 3.5);
+      doc.setFont('helvetica', 'bold');
+      doc.text('PIN Code :', col3X, cursorY + 8);
+      doc.setFont('helvetica', 'normal');
+      doc.text(td.pinCode || '-', col3X + 27, cursorY + 8);
+
+      cursorY += transportRowHeight;
+    }
+    // --- END TRANSPORT DETAILS ROW ---
     // --- RESTORED PARTIES + TOP TOTAL BOX ---
     const totalBoxWidth = 35;
     const tableWidth = contentWidth - totalBoxWidth;
@@ -925,6 +979,7 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
     extraExpenseName: invoiceData.extraExpenseName || '',
     extraExpenseAmount: invoiceData.extraExpenseAmount || 0,
     extraExpenses: invoiceData.extraExpenses || invoiceData.expenses || [],
+    transportDetails: invoiceData.transportDetails || null,
     printFormat: billSettings.printFormat || "A4",
     logoBase64,
     companyName: companyData.name || "",

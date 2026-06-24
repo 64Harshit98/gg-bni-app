@@ -60,7 +60,7 @@ interface InvoiceItem {
   effectiveUnitPrice?: number;
   unit?: string;
   discount?: number;
-  discount2?: number; 
+  discount2?: number;
   manualDiscount?: number;
   purchasePrice?: number;
   purchasediscount?: number;
@@ -109,6 +109,14 @@ interface Invoice {
   extraExpenseName?: string;
   extraExpenseAmount?: number;
   narration?: string;
+  transportDetails?: {
+    transportName?: string;
+    grRrNo?: string;
+    grRrDate?: string;
+    vehicleNo?: string;
+    stationFrom?: string;
+    pinCode?: string;
+  };
 }
 
 interface PdfData {
@@ -144,6 +152,14 @@ interface PdfData {
   extraExpenseName?: string;
   extraExpenseAmount?: number;
   narration?: string;
+  transportDetails?: {
+    transportName?: string;
+    grRrNo?: string;
+    grRrDate?: string;
+    vehicleNo?: string;
+    stationFrom?: string;
+    pinCode?: string;
+  };
   invoice: {
     number: string;
     date: string;
@@ -296,6 +312,7 @@ const useJournalData = (companyId?: string) => {
           extraExpenseName: data.extraExpenseName || '',
           extraExpenseAmount: Number(data.extraExpenseAmount) || 0,
           narration: data.narration || '',
+          transportDetails: data.transportDetails || undefined,
         };
       });
     };
@@ -636,21 +653,21 @@ const Journal: React.FC = () => {
       if (absoluteDiscount < 0) absoluteDiscount = 0;
 
       // 4. Discount 1 + Discount 2 in ₹ amounts
-const d1Pct = Number(item.discount || item.discountPercentage) || 0;
-const d2Pct = Number(item.discount2) || 0;
+      const d1Pct = Number(item.discount || item.discountPercentage) || 0;
+      const d2Pct = Number(item.discount2) || 0;
 
-const priceAfterD1 = basePrice * (1 - d1Pct / 100);
-const priceAfterD2 = priceAfterD1 * (1 - d2Pct / 100);
+      const priceAfterD1 = basePrice * (1 - d1Pct / 100);
+      const priceAfterD2 = priceAfterD1 * (1 - d2Pct / 100);
 
-const discount1Amount = (basePrice - priceAfterD1) * qty;
+      const discount1Amount = (basePrice - priceAfterD1) * qty;
 
-// Back-calculate discount2Amount from actual taxableAmount if discount2 pct is missing
-let discount2Amount = (priceAfterD1 - priceAfterD2) * qty;
-if (d2Pct === 0 && itemAmount > 0) {
-  // totalDiscount = basePrice*qty - itemAmount
-  const totalDiscountAmt = (basePrice * qty) - itemAmount;
-  discount2Amount = Math.max(0, totalDiscountAmt - discount1Amount);
-}
+      // Back-calculate discount2Amount from actual taxableAmount if discount2 pct is missing
+      let discount2Amount = (priceAfterD1 - priceAfterD2) * qty;
+      if (d2Pct === 0 && itemAmount > 0) {
+        // totalDiscount = basePrice*qty - itemAmount
+        const totalDiscountAmt = (basePrice * qty) - itemAmount;
+        discount2Amount = Math.max(0, totalDiscountAmt - discount1Amount);
+      }
 
       return {
         sno: index + 1,
@@ -706,6 +723,7 @@ if (d2Pct === 0 && itemAmount > 0) {
       extraExpenseName: invoice.extraExpenseName || '',
       extraExpenseAmount: invoice.extraExpenseAmount || 0,
       narration: invoice.narration || '',
+      transportDetails: invoice.transportDetails || undefined,
       invoice: {
         number: invoice.invoiceNumber,
         date: new Date(invoice.createdAt).toLocaleString('en-IN', {
@@ -851,7 +869,7 @@ if (d2Pct === 0 && itemAmount > 0) {
 
       let isSuccess = false;
       if (isSuccess) {
-        setModal({ message: "Invoice sent! Cleaning up...", type: State.SUCCESS });
+        setModal({ message: "Invoice sent!", type: State.SUCCESS });
         setTimeout(async () => {
           try {
             await deleteObject(storageRef);
@@ -882,6 +900,85 @@ if (d2Pct === 0 && itemAmount > 0) {
     }
   };
 
+  const handleSendReminder = async (invoice: Invoice) => {
+    if (!invoice.partyNumber) {
+      setModal({ message: "Customer phone number is missing.", type: State.ERROR });
+      return;
+    }
+    if (!currentUser?.companyId) return;
+
+    setSendingPdf(true);
+
+    try {
+      const businessDocRef = doc(db, 'companies', currentUser.companyId, 'business_info', currentUser.companyId);
+      const businessSnap = await getDoc(businessDocRef);
+      const { botMasterToken, whatsappNumber } = businessSnap.data() || {};
+
+      if (!botMasterToken || !whatsappNumber) {
+        setSendingPdf(false);
+        navigate(ROUTES.WHATSAPP_PLAN);
+        return;
+      }
+
+      // --- NEW: Generate PDF and upload, same as handleSendWhatsapp ---
+      const dataForPdf = await preparePdfData({
+        ...invoice,
+        isEstimate: billType === 'estimate'
+      } as any, isPosBasicPlan);
+      if (!dataForPdf) throw new Error("Failed to prepare invoice data.");
+
+      const pdfBlob = await generatePdfBlob(dataForPdf);
+
+      const safeNum = invoice.invoiceNumber.replace(/[\/\\?%*:|"<>]/g, '-');
+      const cleanName = `${safeNum}.pdf`;
+      const storageRef = ref(storage, cleanName);
+      await uploadBytes(storageRef, pdfBlob);
+
+      const fileUrl = await getDownloadURL(storageRef);
+      // -------------------------------------------------------------
+
+      const dueAmt = (invoice.dueAmount || 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
+      const totalAmt = invoice.amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
+
+      const message = `Dear ${invoice.partyName},\n\nThis is a gentle reminder that an amount of ${dueAmt} is still due against your invoice #${invoice.invoiceNumber} (Total: ${totalAmt}).\n\nKindly clear the due amount at your earliest convenience. Thank you!`;
+
+      const response = await botMasterService.sendPdfFromUrl(
+        botMasterToken,
+        whatsappNumber,
+        invoice.partyNumber,
+        message,
+        fileUrl,
+        cleanName
+      );
+
+      let isSuccess = false;
+      if (Array.isArray(response) && response.length > 0) {
+        const res = response[0];
+        if (res.status === 'sent' || res.status === 'delivered') isSuccess = true;
+      } else if (response?.status === 'sent' || response?.status === 'success' || response?.status === 200) {
+        isSuccess = true;
+      }
+
+      if (isSuccess) {
+        setModal({ message: "Reminder sent via WhatsApp!", type: State.SUCCESS });
+        // Cleanup temp file after 1 minute, same pattern as handleSendWhatsapp
+        setTimeout(async () => {
+          try {
+            await deleteObject(storageRef);
+          } catch (error) {
+            console.warn("Could not auto-delete temp file:", error);
+          }
+        }, 60000);
+      } else {
+        throw new Error("API reported failure.");
+      }
+    } catch (err) {
+      console.error("Reminder Send Error:", err);
+      setModal({ message: "Failed to send reminder.", type: State.ERROR });
+    } finally {
+      setSendingPdf(false);
+    }
+  };
   const handleShowQr = (invoice: Invoice) => {
     setInvoiceToPrint(null);
     setShowQrModal(invoice);
@@ -1164,9 +1261,11 @@ if (d2Pct === 0 && itemAmount > 0) {
         // --- Button visibility logic ---
         const hasProPermission = (currentUser as any)?.permissions?.includes(Permissions.HiddenProFeatures);
         const visibleButtonsCount =
-          (invoice.status === 'Unpaid' ? 1 : 0) +
-          (invoice.status === 'Paid' ? 1 : 0) +
-          (hasProPermission ? (invoice.type === 'Credit' ? 3 : 2) : 0);
+          (invoice.status === 'Unpaid' ? 1 : 0) +                              // Settle
+          (invoice.status === 'Unpaid' && invoice.partyNumber ? 1 : 0) +       // Remind
+          (invoice.status === 'Paid' ? 1 : 0) +                                // Delete
+          (hasProPermission ? 1 : 0) +                                         // Edit
+          (hasProPermission ? (invoice.type === 'Credit' ? 2 : 2) : 0);        // Return + Print
 
         return (
           <CustomCard key={invoice.id} onClick={() => handleInvoiceClick(invoice.id)} className="cursor-pointer transition-shadow hover:shadow-md">
@@ -1476,24 +1575,37 @@ if (d2Pct === 0 && itemAmount > 0) {
                   </div>
                 )}
 
-                <div className={`flex gap-2 mt-2 pt-4 border-t border-slate-200 ${visibleButtonsCount === 1 ? 'justify-center' : 'justify-between'
+                <div className={`grid gap-1.5 mt-2 pt-4 border-t border-slate-200 ${visibleButtonsCount === 1 ? 'grid-cols-1' :
+                  visibleButtonsCount === 2 ? 'grid-cols-2' :
+                    visibleButtonsCount === 3 ? 'grid-cols-3' :
+                      visibleButtonsCount === 4 ? 'grid-cols-4' :
+                        'grid-cols-5'
                   }`}>
-                  {invoice.status === 'Unpaid' && (<button onClick={(e) => { e.stopPropagation(); openPaymentModal(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-emerald-500 rounded-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors">Settle</button>)}
-                  {invoice.status === 'Paid' && (<button onClick={(e) => { e.stopPropagation(); promptDeleteInvoice(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors">Delete</button>)}
+                  {invoice.status === 'Unpaid' && (<button onClick={(e) => { e.stopPropagation(); openPaymentModal(invoice); }} className="py-2 text-[11px] font-bold text-white bg-emerald-500 rounded-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors text-center">Settle</button>)}
+                  {invoice.status === 'Unpaid' && invoice.partyNumber && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleSendReminder(invoice); }}
+                      disabled={sendingPdf}
+                      className="py-2 text-[11px] font-bold text-white bg-amber-500 rounded-sm hover:bg-amber-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                    >
+                      {sendingPdf ? <Spinner /> : <>Remind</>}
+                    </button>
+                  )}
+                  {invoice.status === 'Paid' && (<button onClick={(e) => { e.stopPropagation(); promptDeleteInvoice(invoice); }} className="py-2 text-[11px] font-bold text-white bg-red-500 rounded-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors">Delete</button>)}
                   <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-                    <button onClick={(e) => { e.stopPropagation(); handleEditInvoice(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-gray-400 rounded-sm hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors">Edit</button>
+                    <button onClick={(e) => { e.stopPropagation(); handleEditInvoice(invoice); }} className="py-2 text-[11px] font-bold text-white bg-gray-400 rounded-sm hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors text-center">Edit</button>
                   </ShowWrapper>
 
                   {invoice.type === 'Credit' && (
                     <>
                       <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-                        <button onClick={(e) => { e.stopPropagation(); handleSalesReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">Return</button>
+                        <button onClick={(e) => { e.stopPropagation(); handleSalesReturn(invoice); }} className="py-2 text-[11px] font-bold text-white bg-blue-600 rounded-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors text-center">Return</button>
 
                       </ShowWrapper>
                       <button
                         onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }}
                         disabled={pdfGenerating === invoice.id}
-                        className="px-4 py-2 text-sm font-medium text-white bg-black rounded-sm hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="py-2 text-[11px] font-bold text-white bg-black rounded-sm hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {pdfGenerating === invoice.id ? <Spinner /> : 'Print'}
                       </button>
@@ -1503,8 +1615,8 @@ if (d2Pct === 0 && itemAmount > 0) {
                   {invoice.type === 'Debit' && (
                     <>
                       <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-                        <button onClick={(e) => { e.stopPropagation(); handlePurchaseReturn(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-sm hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-colors">Return</button>
-                        <button onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }} className="px-4 py-2 text-sm font-medium text-white bg-black rounded-sm hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center gap-2">Print</button>
+                        <button onClick={(e) => { e.stopPropagation(); handlePurchaseReturn(invoice); }} className="py-2 text-[11px] font-bold text-white bg-blue-600 rounded-sm hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-colors text-center">Return</button>
+                        <button onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }} className="py-2 text-[11px] font-bold text-white bg-black rounded-sm hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors flex items-center justify-center gap-1 text-center">Print</button>
                       </ShowWrapper>
                     </>
                   )}

@@ -39,9 +39,13 @@ import { useAuth } from '../../context/auth-context';
 import { CustomCard } from '../../Components/CustomCard';
 import { IconChevronDown } from '../../constants/Icons';
 import { db } from '../../lib/Firebase';
-import { collection, query, onSnapshot, orderBy, where } from 'firebase/firestore';
+import { collection, query, onSnapshot, orderBy, where, doc, getDoc } from 'firebase/firestore';
 import BackButton from '../../Components/BackButton';
 import { PaymentModal } from '../../constants/Modal';
+import { useNavigate } from 'react-router-dom';
+import { botMasterService } from '../../Pages/Additional/Whatsapp/WhatsappApi';
+import { ROUTES } from '../../constants/routes.constants';
+import { Spinner } from '../../constants/Spinner';
 
 const useOrdersData = (companyId?: string) => {
     const [Orders, setOrders] = React.useState<any[]>([]);
@@ -63,6 +67,8 @@ const useOrdersData = (companyId?: string) => {
 const CataloguePartyLedger: React.FC = () => {
     const pageTopRef = useRef<HTMLDivElement | null>(null);
     const { currentUser } = useAuth();
+    const navigate = useNavigate();
+    const [sendingReminderFor, setSendingReminderFor] = useState<string | null>(null);
     const { Orders } = useOrdersData(currentUser?.companyId);
     useEffect(() => {
         setLocalPaidOverrides(prev => {
@@ -108,43 +114,43 @@ const CataloguePartyLedger: React.FC = () => {
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
     useEffect(() => {
-    const fetchAvailableCredit = async () => {
-        if (!isPaymentModalOpen || !currentUser?.companyId || !selectedPartyNumber) {
-            setAvailableCredit(0);
-            return;
-        }
+        const fetchAvailableCredit = async () => {
+            if (!isPaymentModalOpen || !currentUser?.companyId || !selectedPartyNumber) {
+                setAvailableCredit(0);
+                return;
+            }
 
-        const normalizedPhone = selectedPartyNumber.replace(/\D/g, '').slice(-10);
-        if (!normalizedPhone) {
-            setAvailableCredit(0);
-            return;
-        }
+            const normalizedPhone = selectedPartyNumber.replace(/\D/g, '').slice(-10);
+            if (!normalizedPhone) {
+                setAvailableCredit(0);
+                return;
+            }
 
-        try {
-            const { doc: fsDoc, getDoc: fsGetDoc } = await import('firebase/firestore');
-            
-            // ✅ Ab sirf customers collection se lo — advance wahan store ho gaya
-            const customerRef = fsDoc(
-                db, 
-                'companies', 
-                currentUser.companyId, 
-                'customers', 
-                normalizedPhone
-            );
-            const snap = await fsGetDoc(customerRef);
-            if (snap.exists()) {
-                setAvailableCredit(Number(snap.data().creditBalance || 0));
-            } else {
+            try {
+                const { doc: fsDoc, getDoc: fsGetDoc } = await import('firebase/firestore');
+
+                // ✅ Ab sirf customers collection se lo — advance wahan store ho gaya
+                const customerRef = fsDoc(
+                    db,
+                    'companies',
+                    currentUser.companyId,
+                    'customers',
+                    normalizedPhone
+                );
+                const snap = await fsGetDoc(customerRef);
+                if (snap.exists()) {
+                    setAvailableCredit(Number(snap.data().creditBalance || 0));
+                } else {
+                    setAvailableCredit(0);
+                }
+            } catch (err) {
+                console.error('Credit fetch error:', err);
                 setAvailableCredit(0);
             }
-        } catch (err) {
-            console.error('Credit fetch error:', err);
-            setAvailableCredit(0);
-        }
-    };
+        };
 
-    fetchAvailableCredit();
-}, [isPaymentModalOpen, selectedPartyNumber, currentUser?.companyId]);
+        fetchAvailableCredit();
+    }, [isPaymentModalOpen, selectedPartyNumber, currentUser?.companyId]);
     const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<any | null>(null);
     const [openingBalances, setOpeningBalances] = useState<OpeningBalance[]>([]);
     const [isOBModalOpen, setIsOBModalOpen] = useState(false);
@@ -157,11 +163,73 @@ const CataloguePartyLedger: React.FC = () => {
         note: ''
     });
     const [obLoading, setObLoading] = useState(false);
-    const [availableCredit, setAvailableCredit] = useState(0); 
+    const [availableCredit, setAvailableCredit] = useState(0);
 
     const showToast = (message: string, type: 'success' | 'error' = 'success') => {
         setToast({ message, type });
         setTimeout(() => setToast(null), 3500);
+    };
+    // NEW: Send a combined WhatsApp due-reminder for a party, listing all unpaid invoice/order numbers
+    const handleSendPartyReminder = async (party: { partyName: string; partyNumber: string; totalDue: number; unpaidItems: { label: string; dueAmount: number }[] }) => {
+        if (!party.partyNumber || party.partyNumber.trim() === '') {
+            showToast('Party phone number is missing.', 'error');
+            return;
+        }
+        if (!currentUser?.companyId) return;
+
+        setSendingReminderFor(party.partyNumber);
+
+        try {
+            const businessDocRef = doc(db, 'companies', currentUser.companyId, 'business_info', currentUser.companyId);
+            const businessSnap = await getDoc(businessDocRef);
+            const { botMasterToken, whatsappNumber } = businessSnap.data() || {};
+
+            if (!botMasterToken || !whatsappNumber) {
+                setSendingReminderFor(null);
+                navigate(ROUTES.WHATSAPP_PLAN);
+                return;
+            }
+
+            if (!party.unpaidItems || party.unpaidItems.length === 0) {
+                showToast('No due invoices found for this party.', 'error');
+                setSendingReminderFor(null);
+                return;
+            }
+
+            const invoiceLines = party.unpaidItems
+                .map((item) => `• ${item.label}: ${item.dueAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}`)
+                .join('\n');
+
+            const totalDueStr = party.totalDue.toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
+
+            const message = `Dear ${party.partyName},\n\nThis is a gentle reminder that a total amount of ${totalDueStr} is due against the following invoice(s):\n\n${invoiceLines}\n\nKindly clear the due amount at your earliest convenience. Thank you!`;
+
+            const response = await botMasterService.sendMessage(
+                botMasterToken,
+                whatsappNumber,
+                party.partyNumber,
+                message
+            );
+
+            let isSuccess = false;
+            if (Array.isArray(response) && response.length > 0) {
+                const res = response[0];
+                if (res.status === 'sent' || res.status === 'delivered') isSuccess = true;
+            } else if (response?.status === 'sent' || response?.status === 'success' || response?.status === 200) {
+                isSuccess = true;
+            }
+
+            if (isSuccess) {
+                showToast('Reminder sent via WhatsApp!', 'success');
+            } else {
+                throw new Error('API reported failure.');
+            }
+        } catch (err) {
+            console.error('Catalogue Party Reminder Send Error:', err);
+            showToast('Failed to send reminder.', 'error');
+        } finally {
+            setSendingReminderFor(null);
+        }
     };
     const handleSettlePayment = async (
         invoice: any,
@@ -176,18 +244,18 @@ const CataloguePartyLedger: React.FC = () => {
             if (!invoice.id) throw new Error('Invalid invoice data.');
             // Handle opening balance settlement separately
             if (invoice.isOpeningBalance) {
-                const { doc, runTransaction , setDoc: fsSetDoc, serverTimestamp: fsST, increment: fsIncrement } = await import('firebase/firestore');
+                const { doc, runTransaction, setDoc: fsSetDoc, serverTimestamp: fsST, increment: fsIncrement } = await import('firebase/firestore');
                 if (method.toUpperCase() === 'CREDIT NOTE' || method.toUpperCase() === 'CREDIT') {
-        const normalizedPhone = selectedPartyNumber.replace(/\D/g, '').slice(-10);
-        if (normalizedPhone) {
-            const customerRef = doc(db, 'companies', currentUser.companyId, 'customers', normalizedPhone);
-            await fsSetDoc(customerRef, {
-                creditBalance: fsIncrement(-amount),
-                updatedAt: fsST(),
-            }, { merge: true });
-            setAvailableCredit(prev => Math.max(0, prev - amount));
-        }
-    }
+                    const normalizedPhone = selectedPartyNumber.replace(/\D/g, '').slice(-10);
+                    if (normalizedPhone) {
+                        const customerRef = doc(db, 'companies', currentUser.companyId, 'customers', normalizedPhone);
+                        await fsSetDoc(customerRef, {
+                            creditBalance: fsIncrement(-amount),
+                            updatedAt: fsST(),
+                        }, { merge: true });
+                        setAvailableCredit(prev => Math.max(0, prev - amount));
+                    }
+                }
 
                 const obRef = doc(db, 'companies', currentUser.companyId, 'openingBalances', invoice.id);
                 await runTransaction(db, async (transaction) => {
@@ -318,93 +386,93 @@ const CataloguePartyLedger: React.FC = () => {
         });
     }, [Orders]);
     useEffect(() => {
-    if (!currentUser?.companyId) return;
-    const fetchOpeningBalances = async () => {
-        try {
-            const { 
-                collection: col, 
-                getDocs, 
-                Timestamp,
-                doc,
-                setDoc,
-                serverTimestamp,
-                increment: fsIncrement
-            } = await import('firebase/firestore');
-            
-            const obRef = col(db, 'companies', currentUser.companyId, 'openingBalances');
-            const obSnapshot = await getDocs(obRef);
-            
-            const mappedOB: OpeningBalance[] = obSnapshot.docs
-                .filter(doc => doc.data().source === 'catalogue')
-                .map(doc => {
-                    const data = doc.data();
-                    const creationMillis = data.createdAt instanceof Timestamp
-                        ? data.createdAt.toMillis()
-                        : Date.now();
-                    return {
-                        id: doc.id,
-                        partyName: data.partyName || 'Unknown',
-                        partyNumber: data.partyNumber || '',
-                        partyType: data.partyType || 'Customer',
-                        amount: data.amount || 0,
-                        dueAmount: data.dueAmount ?? data.amount ?? 0,
-                        balanceType: data.balanceType || 'due',
-                        note: data.note || '',
-                        createdAt: creationMillis,
-                        paymentHistory: data.paymentHistory || [],
-                    };
+        if (!currentUser?.companyId) return;
+        const fetchOpeningBalances = async () => {
+            try {
+                const {
+                    collection: col,
+                    getDocs,
+                    Timestamp,
+                    doc,
+                    setDoc,
+                    serverTimestamp,
+                    increment: fsIncrement
+                } = await import('firebase/firestore');
+
+                const obRef = col(db, 'companies', currentUser.companyId, 'openingBalances');
+                const obSnapshot = await getDocs(obRef);
+
+                const mappedOB: OpeningBalance[] = obSnapshot.docs
+                    .filter(doc => doc.data().source === 'catalogue')
+                    .map(doc => {
+                        const data = doc.data();
+                        const creationMillis = data.createdAt instanceof Timestamp
+                            ? data.createdAt.toMillis()
+                            : Date.now();
+                        return {
+                            id: doc.id,
+                            partyName: data.partyName || 'Unknown',
+                            partyNumber: data.partyNumber || '',
+                            partyType: data.partyType || 'Customer',
+                            amount: data.amount || 0,
+                            dueAmount: data.dueAmount ?? data.amount ?? 0,
+                            balanceType: data.balanceType || 'due',
+                            note: data.note || '',
+                            createdAt: creationMillis,
+                            paymentHistory: data.paymentHistory || [],
+                        };
+                    });
+
+                setOpeningBalances(mappedOB);
+
+                // ✅ Purane advance OBs ka credit sync karo
+                // Sirf woh OBs jo creditSynced: true nahi hain
+                const advanceOBs = obSnapshot.docs.filter(d => {
+                    const data = d.data();
+                    return data.source === 'catalogue'
+                        && data.balanceType === 'advance'
+                        && !data.creditSynced; // ← sirf unsynced wale
                 });
-            
-            setOpeningBalances(mappedOB);
 
-            // ✅ Purane advance OBs ka credit sync karo
-            // Sirf woh OBs jo creditSynced: true nahi hain
-            const advanceOBs = obSnapshot.docs.filter(d => {
-                const data = d.data();
-                return data.source === 'catalogue' 
-                    && data.balanceType === 'advance'
-                    && !data.creditSynced; // ← sirf unsynced wale
-            });
+                for (const obDoc of advanceOBs) {
+                    const data = obDoc.data();
+                    const normalizedPhone = (data.partyNumber || '')
+                        .replace(/\D/g, '').slice(-10);
 
-            for (const obDoc of advanceOBs) {
-                const data = obDoc.data();
-                const normalizedPhone = (data.partyNumber || '')
-                    .replace(/\D/g, '').slice(-10);
-                
-                if (!normalizedPhone) continue;
+                    if (!normalizedPhone) continue;
 
-                try {
-                    // Customer credit mein add karo
-                    const customerRef = doc(
-                        db,
-                        'companies',
-                        currentUser.companyId,
-                        'customers',
-                        normalizedPhone
-                    );
-                    await setDoc(customerRef, {
-                        number: normalizedPhone,
-                        name: data.partyName || '',
-                        creditBalance: fsIncrement(data.dueAmount ?? data.amount ?? 0),
-                        updatedAt: serverTimestamp(),
-                    }, { merge: true });
+                    try {
+                        // Customer credit mein add karo
+                        const customerRef = doc(
+                            db,
+                            'companies',
+                            currentUser.companyId,
+                            'customers',
+                            normalizedPhone
+                        );
+                        await setDoc(customerRef, {
+                            number: normalizedPhone,
+                            name: data.partyName || '',
+                            creditBalance: fsIncrement(data.dueAmount ?? data.amount ?? 0),
+                            updatedAt: serverTimestamp(),
+                        }, { merge: true });
 
-                    // OB ko mark karo ki sync ho gaya
-                    const { updateDoc } = await import('firebase/firestore');
-                    await updateDoc(obDoc.ref, { creditSynced: true });
-                    
-                    console.log('✅ Synced OB credit:', normalizedPhone, data.dueAmount ?? data.amount);
-                } catch (e) {
-                    console.error('❌ Sync failed for:', normalizedPhone, e);
+                        // OB ko mark karo ki sync ho gaya
+                        const { updateDoc } = await import('firebase/firestore');
+                        await updateDoc(obDoc.ref, { creditSynced: true });
+
+                        console.log('✅ Synced OB credit:', normalizedPhone, data.dueAmount ?? data.amount);
+                    } catch (e) {
+                        console.error('❌ Sync failed for:', normalizedPhone, e);
+                    }
                 }
-            }
 
-        } catch (err) {
-            console.error('Error fetching opening balances:', err);
-        }
-    };
-    fetchOpeningBalances();
-}, [currentUser?.companyId]);
+            } catch (err) {
+                console.error('Error fetching opening balances:', err);
+            }
+        };
+        fetchOpeningBalances();
+    }, [currentUser?.companyId]);
 
     const toggleBillExpansion = (billId: string) => {
         setExpandedBillId(prev => prev === billId ? null : billId);
@@ -488,6 +556,7 @@ const CataloguePartyLedger: React.FC = () => {
                     totalDue: 0,
                     totalTransactions: 0,
                     partyType: 'Customer',
+                    unpaidItems: [] as { label: string; dueAmount: number }[], // NEW
                 });
             } else {
                 const existing = map.get(key);
@@ -500,9 +569,18 @@ const CataloguePartyLedger: React.FC = () => {
             const paid = localPaidOverrides[order.id] !== undefined
                 ? localPaidOverrides[order.id]
                 : Number(order.paidAmount || 0);
+            const due = Math.max(0, total - paid);
             existing.totalBilled += total;
-            existing.totalDue += Math.max(0, total - paid);
+            existing.totalDue += due;
             existing.totalTransactions += 1;
+
+            // NEW: track unpaid order for reminder message
+            if (due > 0) {
+                existing.unpaidItems.push({
+                    label: order.orderId || `#${order.id.slice(0, 6).toUpperCase()}`,
+                    dueAmount: due,
+                });
+            }
         });
         openingBalances.forEach((ob) => {
             // ✅ Filter opening balances by date range
@@ -522,12 +600,20 @@ const CataloguePartyLedger: React.FC = () => {
                     totalDue: 0,
                     totalTransactions: 0,
                     partyType: 'Customer',
+                    unpaidItems: [] as { label: string; dueAmount: number }[], // NEW
                 });
             }
             const existing = map.get(key);
             existing.totalBilled += ob.amount;
             if (ob.balanceType !== 'advance') {
                 existing.totalDue += ob.dueAmount;
+                // NEW: track unpaid OB for reminder message
+                if (ob.dueAmount > 0) {
+                    existing.unpaidItems.push({
+                        label: 'Opening Due',
+                        dueAmount: ob.dueAmount,
+                    });
+                }
             }
             // existing.totalTransactions += 1;
         });
@@ -651,93 +737,93 @@ const CataloguePartyLedger: React.FC = () => {
     };
 
     const addOpeningBalance = async (
-    partyName: string,
-    partyNumber: string,
-    partyType: 'Customer' | 'Supplier',
-    amount: number,
-    note?: string,
-    balanceType: 'due' | 'advance' = 'due'
-) => {
-    if (!currentUser?.companyId) throw new Error('Company ID not found.');
-    
-    // ✅ Sab ek saath import karo
-    const { 
-        doc, 
-        collection: col, 
-        setDoc, 
-        serverTimestamp,
-        increment: fsIncrement
-    } = await import('firebase/firestore');
-    
-    // Step 1: Opening Balance save karo
-    const obRef = doc(col(db, 'companies', currentUser.companyId, 'openingBalances'));
-    const newOB = {
-        partyName,
-        partyNumber,
-        partyType,
-        amount,
-        dueAmount: balanceType === 'due' ? amount : 0,
-        balanceType,
-        note: note || '',
-        paymentHistory: [],
-        createdAt: serverTimestamp(),
-        source: 'catalogue',
-    };
-    
-    await setDoc(obRef, newOB);
-    console.log('✅ OB saved:', obRef.id);
+        partyName: string,
+        partyNumber: string,
+        partyType: 'Customer' | 'Supplier',
+        amount: number,
+        note?: string,
+        balanceType: 'due' | 'advance' = 'due'
+    ) => {
+        if (!currentUser?.companyId) throw new Error('Company ID not found.');
 
-    // Step 2: Agar advance hai toh customer credit update karo
-    if (balanceType === 'advance') {
-        const normalizedPhone = partyNumber.replace(/\D/g, '').slice(-10);
-        console.log('📱 Normalized phone:', normalizedPhone);
-        
-        if (normalizedPhone) {
-            try {
-                const customerRef = doc(
-                    db,
-                    'companies',
-                    currentUser.companyId,
-                    'customers',
-                    normalizedPhone
-                );
-                
-                await setDoc(customerRef, {
-                    number: normalizedPhone,
-                    name: partyName,
-                    creditBalance: fsIncrement(amount),
-                    updatedAt: serverTimestamp(),
-                }, { merge: true });
-                
-                console.log('✅ Credit updated for:', normalizedPhone, 'Amount:', amount);
-            } catch (creditErr) {
-                console.error('❌ Credit update failed:', creditErr);
-                // OB toh save ho gaya, credit update fail hua
-                // Toast show karo user ko
-                showToast('Opening balance saved but credit update failed.', 'error');
+        // ✅ Sab ek saath import karo
+        const {
+            doc,
+            collection: col,
+            setDoc,
+            serverTimestamp,
+            increment: fsIncrement
+        } = await import('firebase/firestore');
+
+        // Step 1: Opening Balance save karo
+        const obRef = doc(col(db, 'companies', currentUser.companyId, 'openingBalances'));
+        const newOB = {
+            partyName,
+            partyNumber,
+            partyType,
+            amount,
+            dueAmount: balanceType === 'due' ? amount : 0,
+            balanceType,
+            note: note || '',
+            paymentHistory: [],
+            createdAt: serverTimestamp(),
+            source: 'catalogue',
+        };
+
+        await setDoc(obRef, newOB);
+        console.log('✅ OB saved:', obRef.id);
+
+        // Step 2: Agar advance hai toh customer credit update karo
+        if (balanceType === 'advance') {
+            const normalizedPhone = partyNumber.replace(/\D/g, '').slice(-10);
+            console.log('📱 Normalized phone:', normalizedPhone);
+
+            if (normalizedPhone) {
+                try {
+                    const customerRef = doc(
+                        db,
+                        'companies',
+                        currentUser.companyId,
+                        'customers',
+                        normalizedPhone
+                    );
+
+                    await setDoc(customerRef, {
+                        number: normalizedPhone,
+                        name: partyName,
+                        creditBalance: fsIncrement(amount),
+                        updatedAt: serverTimestamp(),
+                    }, { merge: true });
+
+                    console.log('✅ Credit updated for:', normalizedPhone, 'Amount:', amount);
+                } catch (creditErr) {
+                    console.error('❌ Credit update failed:', creditErr);
+                    // OB toh save ho gaya, credit update fail hua
+                    // Toast show karo user ko
+                    showToast('Opening balance saved but credit update failed.', 'error');
+                }
+            } else {
+                console.warn('⚠️ No phone number — credit not updated');
+                showToast('Opening balance saved. Note: No phone number provided, credit not linked.', 'error');
             }
-        } else {
-            console.warn('⚠️ No phone number — credit not updated');
-            showToast('Opening balance saved. Note: No phone number provided, credit not linked.', 'error');
         }
-    }
 
-    // Step 3: Local state update
-    const localOB: OpeningBalance = {
-        id: obRef.id,
-        partyName,
-        partyNumber,
-        partyType,
-        amount,
-        dueAmount: balanceType === 'due' ? amount : 0,
-        balanceType,
-        note: note || '',
-        createdAt: Date.now(),
-        paymentHistory: [],
+        // Step 3: Local state update
+        const localOB: OpeningBalance = {
+            id: obRef.id,
+            partyName,
+            partyNumber,
+            partyType,
+            amount,
+            dueAmount: balanceType === 'due' ? amount : 0,
+            balanceType,
+            note: note || '',
+            createdAt: Date.now(),
+            paymentHistory: [],
+        };
+        setOpeningBalances(prev => [...prev, localOB]);
+        return localOB;
     };
-    setOpeningBalances(prev => [...prev, localOB]);
-    return localOB;
-};
 
     const handleAddOpeningBalance = async () => {
         if (!obForm.partyName.trim() || !obForm.amount || Number(obForm.amount) <= 0) {
@@ -991,6 +1077,21 @@ const CataloguePartyLedger: React.FC = () => {
                                                 </p>
                                             </div>
                                         </div>
+                                        {/* NEW: Remind button — only when party has a due and a valid number */}
+                                        {party.totalDue > 0 && party.partyNumber && party.partyNumber.trim() !== '' && (
+                                            <div className="mt-2 pt-2 border-t border-slate-100">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleSendPartyReminder(party);
+                                                    }}
+                                                    disabled={sendingReminderFor === party.partyNumber}
+                                                    className="w-full py-1.5 text-[11px] font-bold text-white bg-orange-500 rounded-sm hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                                                >
+                                                    {sendingReminderFor === party.partyNumber ? <Spinner /> : 'Remind'}
+                                                </button>
+                                            </div>
+                                        )}
                                     </CustomCard>
                                 ))}
                             </>

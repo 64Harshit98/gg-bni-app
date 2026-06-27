@@ -2,11 +2,17 @@ import React, { useState, useMemo, useEffect } from 'react';
 import FilterSelect from './SalesReportComponents/FilterSelect';
 import { formatDate, formatDateForInput } from './SalesReportComponents/salesReport.utils';
 import usePartyLedger, { type LedgerTransaction, type PaymentRecord } from './PartyLedger/usePartyLedger';
-
+import { Spinner } from '../../constants/Spinner';
 import { CustomCard } from '../../Components/CustomCard';
 import { PaymentModal } from '../../constants/Modal';
 import { IconChevronDown } from '../../constants/Icons';
 import BackButton from '../../Components/BackButton';
+//import { useAuth } from '../../context/auth-context';
+import { db } from '../../lib/Firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { botMasterService } from '../Additional/Whatsapp/WhatsappApi';
+import { ROUTES } from '../../constants/routes.constants';
+import { useNavigate } from 'react-router-dom';
 
 const PartyLedger: React.FC = () => {
     const {
@@ -21,6 +27,10 @@ const PartyLedger: React.FC = () => {
         updateOpeningBalanceLocally,
         addOpeningBalance,
     } = usePartyLedger();
+
+    //const { currentUser } = useAuth();
+    const navigate = useNavigate();
+    const [sendingReminderFor, setSendingReminderFor] = useState<string | null>(null);
 
     const [expandedBillId, setExpandedBillId] = useState<string | null>(null);
     const [showTransactionList, setShowTransactionList] = useState(false);
@@ -45,6 +55,77 @@ const PartyLedger: React.FC = () => {
     const showToast = (message: string, type: 'success' | 'error' = 'success') => {
         setToast({ message, type });
         setTimeout(() => setToast(null), 3500);
+    };
+    // NEW: Send a combined WhatsApp due-reminder for a party, listing all unpaid invoice numbers
+    const handleSendPartyReminder = async (party: typeof partySummaries[number]) => {
+        if (!party.partyNumber || party.partyNumber === 'N/A') {
+            showToast('Party phone number is missing.', 'error');
+            return;
+        }
+        if (!companyId) return;
+
+        setSendingReminderFor(party.partyNumber);
+
+        try {
+            const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
+            const businessSnap = await getDoc(businessDocRef);
+            const { botMasterToken, whatsappNumber } = businessSnap.data() || {};
+
+            if (!botMasterToken || !whatsappNumber) {
+                setSendingReminderFor(null);
+                navigate(ROUTES.WHATSAPP_PLAN);
+                return;
+            }
+
+            // Build list of unpaid (due > 0) transactions, excluding advance opening balances
+            const unpaidTxns = party.transactions.filter(
+                (t: any) => t.dueAmount > 0 && !(t.isOpeningBalance && t.balanceType === 'advance')
+            );
+
+            if (unpaidTxns.length === 0) {
+                showToast('No due invoices found for this party.', 'error');
+                setSendingReminderFor(null);
+                return;
+            }
+
+            const invoiceLines = unpaidTxns
+                .map((t: any) => {
+                    const label = t.isOpeningBalance ? 'Opening Due' : (t.invoiceNumber || `#${t.id.slice(0, 6).toUpperCase()}`);
+                    const due = Number(t.dueAmount).toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
+                    return `• ${label}: ${due}`;
+                })
+                .join('\n');
+
+            const totalDueStr = party.totalDue.toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
+
+            const message = `Dear ${party.partyName},\n\nThis is a gentle reminder that a total amount of ${totalDueStr} is due against the following invoice(s):\n\n${invoiceLines}\n\nKindly clear the due amount at your earliest convenience. Thank you!`;
+
+            const response = await botMasterService.sendMessage(
+                botMasterToken,
+                whatsappNumber,
+                party.partyNumber,
+                message
+            );
+
+            let isSuccess = false;
+            if (Array.isArray(response) && response.length > 0) {
+                const res = response[0];
+                if (res.status === 'sent' || res.status === 'delivered') isSuccess = true;
+            } else if (response?.status === 'sent' || response?.status === 'success' || response?.status === 200) {
+                isSuccess = true;
+            }
+
+            if (isSuccess) {
+                showToast('Reminder sent via WhatsApp!', 'success');
+            } else {
+                throw new Error('API reported failure.');
+            }
+        } catch (err) {
+            console.error('Party Reminder Send Error:', err);
+            showToast('Failed to send reminder.', 'error');
+        } finally {
+            setSendingReminderFor(null);
+        }
     };
     useEffect(() => {
         // Set default to last 30 days (acts as last month)
@@ -556,6 +637,21 @@ const PartyLedger: React.FC = () => {
                                             </p>
                                         </div>
                                     </div>
+                                    {/* NEW: Remind button — only when party has a due and a valid number */}
+                                    {party.totalDue > 0 && party.partyNumber && party.partyNumber !== 'N/A' && (
+                                        <div className="mt-2 pt-2 border-t border-slate-100">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleSendPartyReminder(party);
+                                                }}
+                                                disabled={sendingReminderFor === party.partyNumber}
+                                                className="w-full py-1.5 text-[11px] font-bold text-white bg-blue-500 rounded-sm hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                                            >
+                                                {sendingReminderFor === party.partyNumber ? <Spinner /> : 'Remind'}
+                                            </button>
+                                        </div>
+                                    )}
                                 </CustomCard>
                             ))}
                         </>
@@ -766,13 +862,13 @@ const PartyLedger: React.FC = () => {
                                                                     const { doc, getDoc } = await import('firebase/firestore');
                                                                     const { db } = await import('../../lib/Firebase');
                                                                     // Purchase (Supplier) → debitBalance, Sales (Customer) → creditBalance
-                                                    const isSupplier = txn.type === 'purchase';
-                                                    const collectionName = isSupplier ? 'suppliers' : 'customers';
-                                                    const balanceField = isSupplier ? 'debitBalance' : 'creditBalance';
+                                                                    const isSupplier = txn.type === 'purchase';
+                                                                    const collectionName = isSupplier ? 'suppliers' : 'customers';
+                                                                    const balanceField = isSupplier ? 'debitBalance' : 'creditBalance';
 
-                                                    const partyRef = doc(db, 'companies', companyId, collectionName, partyNum);
-                                                    const snap = await getDoc(partyRef);
-                                                    setAvailableCredit(snap.exists() ? Number(snap.data()[balanceField] || 0) : 0);
+                                                                    const partyRef = doc(db, 'companies', companyId, collectionName, partyNum);
+                                                                    const snap = await getDoc(partyRef);
+                                                                    setAvailableCredit(snap.exists() ? Number(snap.data()[balanceField] || 0) : 0);
                                                                 } catch {
                                                                     setAvailableCredit(0);
                                                                 }

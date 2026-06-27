@@ -1,10 +1,14 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronLeft } from 'lucide-react'
-import { collection, doc, updateDoc, deleteDoc, onSnapshot } from "firebase/firestore";
+import { collection, doc, updateDoc, deleteDoc, onSnapshot, getDoc } from "firebase/firestore";
 import { db } from '../lib/Firebase';
 import { useAuth } from "../context/auth-context";
 import { Search, Phone, Filter } from 'lucide-react'
+import { State } from '../enums'
+import { Modal } from '../constants/Modal'
+import { botMasterService } from '../Pages/Additional/Whatsapp/WhatsappApi';
+import { ROUTES } from '../constants/routes.constants'
 
 type RequestType = {
     id: string;
@@ -53,6 +57,7 @@ function RequestPage() {
     const companyId = currentUser?.companyId;
     const [requireApproval, setRequireApproval] = useState<boolean>(false);
     const [requestType, setRequestType] = useState<'notify' | 'approval'>('approval')
+    const [catalogueBaseUrl, setCatalogueBaseUrl] = useState<string>('');
     const [approvalStatus, setApprovalStatus] = useState<'pending' | 'completed'>('pending')
     const [requests, setRequests] = useState<RequestType[]>([]);
     const [bulkQuotes, setBulkQuotes] = useState<BulkQuoteType[]>([]);
@@ -63,6 +68,10 @@ function RequestPage() {
     const [searchQuery, setSearchQuery] = useState('')
     const [isFilterOpen, setIsFilterOpen] = useState(false)
     const [completedFilter, setCompletedFilter] = useState<'all' | 'approved' | 'declined'>('all')
+    const [replyOpen, setReplyOpen] = useState<Record<string, boolean>>({})
+    const [replyMessage, setReplyMessage] = useState<Record<string, string>>({})
+    const [sendingId, setSendingId] = useState<string | null>(null)   // tracks which row is currently sending
+    const [modal, setModal] = useState<{ message: string; type: State } | null>(null)   // ⬅ same pattern as Journal.tsx
 
     useEffect(() => {
         if (!companyId) return;
@@ -83,6 +92,18 @@ function RequestPage() {
                 }
             } catch (err) {
                 console.error('Failed to fetch settings:', err);
+            }
+            // ── Fetch catalogue base URL (subdomain or fallback) ──
+            try {
+                const companySnap = await getDoc(doc(db, 'companies', companyId));
+                if (companySnap.exists() && companySnap.data().subdomain) {
+                    setCatalogueBaseUrl(`https://${companySnap.data().subdomain}.sellar.in`);
+                } else {
+                    setCatalogueBaseUrl(`${window.location.origin}/catalogue/${companyId}`);
+                }
+            } catch (err) {
+                console.error('Failed to fetch subdomain:', err);
+                setCatalogueBaseUrl(`${window.location.origin}/catalogue/${companyId}`);
             }
         };
         fetchSettings();
@@ -143,7 +164,7 @@ function RequestPage() {
 
         if (anyInStock && req.messageSent) {
             return {
-                text: "In Stock + Message Sent",
+                text: "Message Sent",
                 class: "bg-emerald-50 text-emerald-600 border-emerald-200"
             };
         }
@@ -493,22 +514,74 @@ function RequestPage() {
             console.error("Delete personalization error:", err);
         }
     };
-    const formatWhatsAppNumber = (num?: string) => {
-        if (!num) return "";
-
-        let clean = num.replace(/\D/g, "");
-
-        // India default
-        if (clean.length === 10) {
-            clean = "91" + clean;
+    const sendDirectWhatsappMessage = async (
+        customerNumber: string | undefined,
+        message: string,
+        rowKey: string
+    ): Promise<boolean> => {
+        if (!companyId) {
+            setModal({ message: "Company not found.", type: State.ERROR });
+            return false;
+        }
+        if (!customerNumber) {
+            setModal({ message: "Customer phone number is missing.", type: State.ERROR });
+            return false;
         }
 
-        return clean;
+        setSendingId(rowKey);
+
+        try {
+            const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
+            const businessSnap = await getDoc(businessDocRef);
+            const { botMasterToken, whatsappNumber } = businessSnap.data() || {};
+
+            if (!botMasterToken || !whatsappNumber) {
+                setSendingId(null);
+                navigate(ROUTES.WHATSAPP_PLAN);
+                return false;
+            }
+
+            const response = await botMasterService.sendMessage(
+                botMasterToken,
+                whatsappNumber,
+                customerNumber,
+                message
+            );
+
+            let isSuccess = false;
+            if (Array.isArray(response) && response.length > 0) {
+                const res = response[0];
+                if (res.status === 'sent' || res.status === 'delivered') isSuccess = true;
+            } else if (response?.status === 'sent' || response?.status === 'success' || response?.status === 200) {
+                isSuccess = true;
+            }
+
+            if (isSuccess) {
+                setModal({ message: "Message sent on WhatsApp!", type: State.SUCCESS });
+                return true;
+            } else {
+                throw new Error("API reported failure.");
+            }
+        } catch (err) {
+            console.error("WhatsApp Send Error:", err);
+            setModal({ message: "Failed to send WhatsApp message.", type: State.ERROR });
+            return false;
+        } finally {
+            setSendingId(null);
+        }
     };
 
     return (
         <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col">
-
+            {modal && (
+                <Modal
+                    message={modal.message}
+                    type={modal.type}
+                    onClose={() => setModal(null)}
+                    onConfirm={() => setModal(null)}
+                    showConfirmButton={false}
+                />
+            )}
             {/* --- HEADER --- */}
             <header className="sticky top-0 z-[100] bg-white border-b border-gray-100 shadow-sm w-full">
                 <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
@@ -736,9 +809,74 @@ function RequestPage() {
                                                     </div>
                                                 </div>
                                             )}
-                                            <div className="grid grid-cols-2 gap-2 pt-2 border-t">
-                                                <a href={`tel:${card.phone}`} onClick={e => e.stopPropagation()} className="py-2.5 bg-white border border-emerald-200 text-emerald-600 text-xs font-bold rounded-sm text-center">Call</a>
-                                                <a href={`https://wa.me/91${card.phone}`} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="py-2.5 bg-[#25D366] text-white text-xs font-bold rounded-sm text-center">WhatsApp</a>
+                                            <div className="pt-2 border-t space-y-2">
+                                                {/* ── Call + Reply buttons ── */}
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <a
+                                                        href={`tel:${card.phone}`}
+                                                        onClick={e => e.stopPropagation()}
+                                                        className="py-2.5 bg-white border border-emerald-200 text-emerald-600 text-xs font-bold rounded-sm text-center"
+                                                    >
+                                                        Call
+                                                    </a>
+                                                    <button
+                                                        onClick={e => {
+                                                            e.stopPropagation();
+                                                            setReplyOpen(prev => ({ ...prev, [cardKey]: true }));
+                                                        }}
+                                                        className="py-2.5 bg-[#1A3B5D] text-white text-xs font-bold rounded-sm text-center"
+                                                    >
+                                                        Reply
+                                                    </button>
+                                                </div>
+
+                                                {/* ── Reply Popup Modal ── */}
+                                                {replyOpen[cardKey] && (
+                                                    <div
+                                                        className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/40"
+                                                        onClick={e => {
+                                                            e.stopPropagation();
+                                                            setReplyOpen(prev => ({ ...prev, [cardKey]: false }));
+                                                        }}
+                                                    >
+                                                        <div
+                                                            className="bg-white w-full max-w-sm rounded-t-xl sm:rounded-xl shadow-xl p-4 space-y-3"
+                                                            onClick={e => e.stopPropagation()}
+                                                        >
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="text-xs font-black uppercase tracking-widest text-[#1A3B5D]">Reply to Customer</span>
+                                                                <button
+                                                                    onClick={() => setReplyOpen(prev => ({ ...prev, [cardKey]: false }))}
+                                                                    className="text-gray-400 hover:text-gray-600 text-sm font-bold"
+                                                                >✕</button>
+                                                            </div>
+                                                            <textarea
+                                                                rows={4}
+                                                                placeholder="Type your message to the customer..."
+                                                                value={replyMessage[cardKey] || ''}
+                                                                onChange={e => setReplyMessage(prev => ({ ...prev, [cardKey]: e.target.value }))}
+                                                                className="w-full p-2 border border-gray-200 rounded-sm text-xs outline-none focus:border-[#25D366] resize-none"
+                                                            />
+                                                            <button
+                                                                disabled={sendingId === `reply_${cardKey}` || !replyMessage[cardKey]?.trim()}
+                                                                onClick={async () => {
+                                                                    const sent = await sendDirectWhatsappMessage(
+                                                                        card.phone,
+                                                                        replyMessage[cardKey] || '',
+                                                                        `reply_${cardKey}`
+                                                                    );
+                                                                    if (sent) {
+                                                                        setReplyMessage(prev => ({ ...prev, [cardKey]: '' }));
+                                                                        setReplyOpen(prev => ({ ...prev, [cardKey]: false }));
+                                                                    }
+                                                                }}
+                                                                className="block w-full py-2 bg-[#25D366] text-white text-xs font-bold rounded-sm text-center disabled:opacity-50 disabled:cursor-not-allowed"
+                                                            >
+                                                                {sendingId === `reply_${cardKey}` ? 'Sending...' : 'Send on WhatsApp'}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     )}
@@ -834,35 +972,42 @@ function RequestPage() {
                                     >
 
                                         {req.type === 'notify' ? (
-                                            <div className="space-y-2 mb-4">
-                                                {req.items?.length ? (
-                                                    req.items.map((item, idx) => (
-                                                        <div
-                                                            key={idx}
-                                                            className="text-xs border border-gray-200 rounded p-2 bg-gray-50 flex justify-between items-center"
-                                                        >
-                                                            <span className="font-semibold text-slate-700">
-                                                                {item.name}
-                                                            </span>
+                                            <div className="mb-4 border border-gray-200 rounded-sm overflow-hidden">
+                                                <div className="bg-gray-50 px-3 py-1.5">
+                                                    <span className="text-[9px] font-black uppercase tracking-widest text-gray-500">
+                                                        Notify Me Items ({req.items?.length || 0})
+                                                    </span>
+                                                </div>
+                                                <div className="space-y-2 p-2">
+                                                    {req.items?.length ? (
+                                                        req.items.map((item, idx) => (
+                                                            <div
+                                                                key={idx}
+                                                                className="text-xs border border-gray-200 rounded p-2 bg-gray-50 flex justify-between items-center"
+                                                            >
+                                                                <span className="font-semibold text-slate-700">
+                                                                    {item.name}
+                                                                </span>
 
-                                                            {/* NEW STOCK LABEL */}
-                                                            {!item.inStock && (
-                                                                <span className="text-[9px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-xs">
-                                                                    Out of Stock
-                                                                </span>
-                                                            )}
-                                                            {item.inStock && (
-                                                                <span className="text-[10px] font-bold text-green-500 bg-green-50 border border-green-300 px-2 py-0.5 rounded-xs">
-                                                                    In Stock
-                                                                </span>
-                                                            )}
+                                                                {/* NEW STOCK LABEL */}
+                                                                {!item.inStock && (
+                                                                    <span className="text-[9px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-xs">
+                                                                        Out of Stock
+                                                                    </span>
+                                                                )}
+                                                                {item.inStock && (
+                                                                    <span className="text-[10px] font-bold text-green-500 bg-green-50 border border-green-300 px-2 py-0.5 rounded-xs">
+                                                                        In Stock
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        ))
+                                                    ) : (
+                                                        <div className="text-xs text-gray-400 italic text-center py-3">
+                                                            No items found
                                                         </div>
-                                                    ))
-                                                ) : (
-                                                    <div className="text-xs text-gray-400 italic text-center py-3">
-                                                        No items found
-                                                    </div>
-                                                )}
+                                                    )}
+                                                </div>
                                             </div>
                                         ) : (
                                             req.businessCard && req.businessCard !== "Placeholder" && (
@@ -947,46 +1092,116 @@ function RequestPage() {
                                                 </div>
                                             );
                                         })()}
-                                        {/*  NOTIFY ACTION BUTTONS */}
-                                        {/*  NOTIFY ACTION BUTTONS */}
                                         {req.type === "notify" && (
-                                            <div className="grid grid-cols-3 gap-3 pt-2 border-t">
-                                                {/* CALL */}
-                                                <a
-                                                    href={`tel:${req.customerNumber?.replace(/\D/g, "")}`}
-                                                    onClick={(e) => e.stopPropagation()}
-                                                    className="py-2.5 bg-white border border-emerald-200 text-emerald-600 text-xs font-bold rounded-sm text-center"
-                                                >
-                                                    Call
-                                                </a>
+                                            <div className="space-y-2 pt-2 border-t">
+                                                {/* ── 4 action buttons ── */}
+                                                <div className={`grid gap-0.5 ${(req.items || []).some(i => i.inStock === true) ? 'grid-cols-4' : 'grid-cols-3'}`}>
+                                                    <a
+                                                        href={`tel:${req.customerNumber?.replace(/\D/g, "")}`}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="py-2.5 bg-white border border-emerald-200 text-emerald-600 text-xs font-bold rounded-sm text-center"
+                                                    >
+                                                        Call
+                                                    </a>
+                                                    {(req.items || []).some(i => i.inStock === true) && (
+                                                        <button
+                                                            disabled={sendingId === req.id}
+                                                            onClick={async (e) => {
+                                                                e.stopPropagation();
+                                                                const inStockItems = (req.items || []).filter(i => i.inStock === true);
+                                                                const itemLines = inStockItems
+                                                                    .map(i => {
+                                                                        const productLink = i.id && catalogueBaseUrl
+                                                                            ? `${catalogueBaseUrl}?itemId=${i.id}`
+                                                                            : null;
+                                                                        return productLink
+                                                                            ? `• ${i.name}\n${productLink}`
+                                                                            : `• ${i.name}`;
+                                                                    })
+                                                                    .join('\n\n');
+                                                                const message =
+                                                                    `Hi ${req.customerName || 'there'},\n\n` +
+                                                                    `Great news! The following item(s) you were waiting for are now *In Stock*:\n\n` +
+                                                                    `${itemLines}\n\n` +
+                                                                    `Please visit us or reply here to place your order.`;
+                                                                const sent = await sendDirectWhatsappMessage(req.customerNumber, message, req.id);
+                                                                if (sent) {
+                                                                    await markMessageSent(req.id);
+                                                                }
+                                                            }}
+                                                            className="py-2.5 bg-[#25D366] text-white text-xs font-bold rounded-sm text-center disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        >
+                                                            {sendingId === req.id ? 'Sending...' : 'In Stock'}
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setReplyOpen(prev => ({ ...prev, [req.id]: true }));
+                                                        }}
+                                                        className="py-2.5 bg-[#1A3B5D] text-white text-xs font-bold rounded-sm text-center"
+                                                    >
+                                                        Reply
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleDeleteNotify(req);
+                                                        }}
+                                                        className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm text-center"
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                </div>
 
-                                                {/* WHATSAPP */}
-                                                <a
-                                                    href="#"
-                                                    onClick={async (e) => {
-                                                        e.preventDefault();
-                                                        e.stopPropagation();
-
-                                                        await markMessageSent(req.id);
-
-                                                        const waNumber = formatWhatsAppNumber(req.customerNumber);
-                                                        window.open(`https://wa.me/${waNumber}`, "_blank");
-                                                    }}
-                                                    className="py-2.5 bg-[#25D366] text-white text-xs font-bold rounded-sm text-center"
-                                                >
-                                                    WhatsApp
-                                                </a>
-
-                                                {/* DELETE */}
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleDeleteNotify(req);
-                                                    }}
-                                                    className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm"
-                                                >
-                                                    Delete
-                                                </button>
+                                                {/* ── Reply Popup Modal ── */}
+                                                {replyOpen[req.id] && (
+                                                    <div
+                                                        className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/40"
+                                                        onClick={e => {
+                                                            e.stopPropagation();
+                                                            setReplyOpen(prev => ({ ...prev, [req.id]: false }));
+                                                        }}
+                                                    >
+                                                        <div
+                                                            className="bg-white w-full max-w-sm rounded-t-xl sm:rounded-xl shadow-xl p-4 space-y-3"
+                                                            onClick={e => e.stopPropagation()}
+                                                        >
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="text-xs font-black uppercase tracking-widest text-[#1A3B5D]">Reply to Customer</span>
+                                                                <button
+                                                                    onClick={() => setReplyOpen(prev => ({ ...prev, [req.id]: false }))}
+                                                                    className="text-gray-400 hover:text-gray-600 text-sm font-bold"
+                                                                >✕</button>
+                                                            </div>
+                                                            <textarea
+                                                                rows={4}
+                                                                placeholder="Type your message to the customer..."
+                                                                value={replyMessage[req.id] || ''}
+                                                                onChange={e => setReplyMessage(prev => ({ ...prev, [req.id]: e.target.value }))}
+                                                                className="w-full p-2 border border-gray-200 rounded-sm text-xs outline-none focus:border-[#25D366] resize-none"
+                                                            />
+                                                            <button
+                                                                disabled={sendingId === `reply_${req.id}` || !replyMessage[req.id]?.trim()}
+                                                                onClick={async () => {
+                                                                    const sent = await sendDirectWhatsappMessage(
+                                                                        req.customerNumber,
+                                                                        replyMessage[req.id] || '',
+                                                                        `reply_${req.id}`
+                                                                    );
+                                                                    if (sent) {
+                                                                        await markMessageSent(req.id);
+                                                                        setReplyMessage(prev => ({ ...prev, [req.id]: '' }));
+                                                                        setReplyOpen(prev => ({ ...prev, [req.id]: false }));
+                                                                    }
+                                                                }}
+                                                                className="block w-full py-2 bg-[#25D366] text-white text-xs font-bold rounded-sm text-center disabled:opacity-50 disabled:cursor-not-allowed"
+                                                            >
+                                                                {sendingId === `reply_${req.id}` ? 'Sending...' : 'Send on WhatsApp'}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
 
@@ -1024,14 +1239,15 @@ function RequestPage() {
                                             );
                                         })()}
                                     </div>
-                                )}
+                                )
+                                }
                             </div>
                         );
                     })}
-                </div>
+                </div >
 
-            </main>
-        </div>
+            </main >
+        </div >
     )
 }
 

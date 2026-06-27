@@ -4,6 +4,11 @@ import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore
 import { db } from '../../../lib/Firebase';
 import { formatDateForInput } from '../SalesReportComponents/salesReport.utils';
 
+export const normalizePartyNumber = (num?: string): string => {
+    if (!num) return '';
+    const digits = num.replace(/\D/g, '');
+    return digits.length >= 10 ? digits.slice(-10) : digits;
+};
 export interface PaymentRecord {
     amount: number;
     method: string;
@@ -21,6 +26,16 @@ export interface OpeningBalance {
     note?: string;
     createdAt: number;
     paymentHistory: PaymentRecord[];
+}
+// NEW: shape of one parsed row from the bulk-import Excel sheet
+export interface BulkOpeningBalanceRow {
+    partyName: string;
+    partyNumber: string;
+    partyType: 'Customer' | 'Supplier';
+    amount: number;
+    balanceType: 'due' | 'advance';
+    note?: string;
+    date?: number; // millis, optional — defaults to "now" if not in the sheet
 }
 
 // Renamed from LedgerSaleRecord to LedgerTransaction to reflect both Sales & Purchases
@@ -63,11 +78,9 @@ export default function usePartyLedger() {
     const [datePreset, setDatePreset] = useState<string>('thisMonth'); // Change default state
 
     useEffect(() => {
-        const today = new Date();
-
-        // Calculate This Month's start and end dates for the initial load
-        const start = new Date(today.getFullYear(), today.getMonth(), 1);
-        const end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        const start = new Date();
+        start.setDate(start.getDate() - 29);
+        const end = new Date();
 
         const startDateStr = formatDateForInput(start);
         const endDateStr = formatDateForInput(end);
@@ -253,14 +266,16 @@ export default function usePartyLedger() {
         const allItems = [...transactions, ...obAsTransactions];
 
         const grouped = allItems.reduce((acc, txn) => {
-            const key = txn.partyNumber?.trim() || txn.partyName;
+            const normalizedNumber = normalizePartyNumber(txn.partyNumber);
+            // Falls back to lowercased name only when there's truly no number to key on
+            const key = normalizedNumber || txn.partyName.trim().toLowerCase();
             const currentTxnType = txn.type === 'sale' ? 'Customer' : 'Supplier';
 
             if (!acc[key]) {
                 acc[key] = {
                     partyName: txn.partyName || 'N/A',
-                    partyNumber: txn.partyNumber || 'N/A',
-                    partyType: txn.isOpeningBalance ? currentTxnType : currentTxnType, // will be corrected below
+                    partyNumber: normalizedNumber || txn.partyNumber || 'N/A',
+                    partyType: txn.isOpeningBalance ? currentTxnType : currentTxnType,
                     totalBilled: 0,
                     totalDue: 0,
                     totalTransactions: 0,
@@ -334,6 +349,19 @@ export default function usePartyLedger() {
         balanceType: 'due' | 'advance' = 'due'
     ) => {
         if (!currentUser?.companyId) throw new Error('Company ID not found.');
+
+        // ✅ Reject if this number already belongs to a different party
+        const normalizedNumber = normalizePartyNumber(partyNumber);
+        if (normalizedNumber) {
+            const clash = partySummaries.find(
+                p => normalizePartyNumber(p.partyNumber) === normalizedNumber &&
+                    p.partyName.trim().toLowerCase() !== partyName.trim().toLowerCase()
+            );
+            if (clash) {
+                throw new Error(`This number is already saved against "${clash.partyName}". Use the same name, or correct the number.`);
+            }
+        }
+
         const { doc, collection: col, setDoc, serverTimestamp, increment } = await import('firebase/firestore');
         const obRef = doc(col(db, 'companies', currentUser.companyId, 'openingBalances'));
         const newOB = {
@@ -393,6 +421,99 @@ export default function usePartyLedger() {
         setOpeningBalances(prev => [...prev, localOB]);
         return localOB;
     };
+    // NEW: bulk version of addOpeningBalance — loops through parsed Excel rows,
+    // writes each as an opening balance, and reports progress as it goes.
+    const addBulkOpeningBalances = async (
+        rows: BulkOpeningBalanceRow[],
+        onProgress?: (current: number, total: number) => void
+    ): Promise<{ success: number; failed: number; duplicates: number }> => {
+        if (!currentUser?.companyId) throw new Error('Company ID not found.');
+        const { doc, collection: col, setDoc, increment, Timestamp: FsTimestamp } = await import('firebase/firestore');
+        const companyId = currentUser.companyId;
+
+        let success = 0;
+        let failed = 0;
+        let duplicates = 0;
+        const newLocalOBs: OpeningBalance[] = [];
+
+        // ✅ Seed a number→name map with parties that already exist, then keep it
+        // updated as we go through the sheet so within-file duplicates are caught too
+        const numberToName = new Map<string, string>();
+        partySummaries.forEach(p => {
+            const norm = normalizePartyNumber(p.partyNumber);
+            if (norm) numberToName.set(norm, p.partyName.trim().toLowerCase());
+        });
+
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            try {
+                const normalizedNumber = normalizePartyNumber(row.partyNumber);
+                const rowNameLower = row.partyName.trim().toLowerCase();
+
+                if (normalizedNumber) {
+                    const existingName = numberToName.get(normalizedNumber);
+                    if (existingName && existingName !== rowNameLower) {
+                        console.warn(`Row ${i + 1} skipped: number ${row.partyNumber} already used by "${existingName}"`);
+                        duplicates++;
+                        onProgress?.(i + 1, rows.length);
+                        continue;
+                    }
+                    numberToName.set(normalizedNumber, rowNameLower);
+                }
+
+                const obRef = doc(col(db, 'companies', companyId, 'openingBalances'));
+                const createdAtValue = row.date ? FsTimestamp.fromMillis(row.date) : FsTimestamp.now();
+
+                const newOB = {
+                    partyName: row.partyName,
+                    partyNumber: row.partyNumber,
+                    partyType: row.partyType,
+                    amount: row.amount,
+                    dueAmount: row.balanceType === 'due' ? row.amount : 0,
+                    balanceType: row.balanceType,
+                    note: row.note || '',
+                    paymentHistory: [],
+                    createdAt: createdAtValue,
+                };
+                await setDoc(obRef, newOB);
+
+                // Same credit/debit balance sync logic as the single addOpeningBalance
+                if (row.partyNumber.trim().length >= 3 && row.balanceType === 'advance') {
+                    const collectionName = row.partyType === 'Customer' ? 'customers' : 'suppliers';
+                    const balanceField = row.partyType === 'Customer' ? 'creditBalance' : 'debitBalance';
+                    const partyRef = doc(db, 'companies', companyId, collectionName, row.partyNumber.trim());
+                    await setDoc(partyRef, {
+                        name: row.partyName,
+                        number: row.partyNumber,
+                        [balanceField]: increment(row.amount),
+                    }, { merge: true });
+                }
+
+                newLocalOBs.push({
+                    id: obRef.id,
+                    partyName: row.partyName,
+                    partyNumber: row.partyNumber,
+                    partyType: row.partyType,
+                    amount: row.amount,
+                    dueAmount: row.balanceType === 'due' ? row.amount : 0,
+                    balanceType: row.balanceType,
+                    note: row.note || '',
+                    createdAt: row.date || Date.now(),
+                    paymentHistory: [],
+                });
+                success++;
+            } catch (e) {
+                console.error('Failed to import opening balance row:', row, e);
+                failed++;
+            }
+            onProgress?.(i + 1, rows.length);
+        }
+
+        if (newLocalOBs.length > 0) {
+            setOpeningBalances(prev => [...prev, ...newLocalOBs]);
+        }
+        return { success, failed, duplicates };
+    };
 
     return {
         isLoading, authLoading, error,
@@ -401,6 +522,7 @@ export default function usePartyLedger() {
         updateOpeningBalanceLocally,
         addOpeningBalance,
         openingBalances,
+        addBulkOpeningBalances,
         datePreset, setDatePreset,
         customStartDate, setCustomStartDate,
         customEndDate, setCustomEndDate,

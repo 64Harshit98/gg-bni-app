@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { ChevronLeft, Trash2, Check, ChevronUp, X } from 'lucide-react';
+import { Trash2, Check, ChevronUp, X } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Footer from './Footer';
 import { doc, getDoc, setDoc, serverTimestamp, collection, onSnapshot, query, where, increment, runTransaction, getDocs } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 import { FiPackage } from 'react-icons/fi';
 import LeadPopUp from './PopUp';
+import { FaWhatsapp } from 'react-icons/fa';
 import { indianStates } from '../Components/IndianStates';
-
 
 interface CartItem {
     id: string | number
@@ -147,6 +147,15 @@ const CartPage: React.FC = () => {
     const effectiveCompanyId = resolvedCompanyId;
 
     const { businessName: companyName, socialLinks } = useBusinessName(effectiveCompanyId || "");
+    const whatsappLink = useMemo(() => {
+        const rawNumber = socialLinks?.whatsappNumber || socialLinks?.phoneNumber || '';
+        const digits = rawNumber.replace(/\D/g, '');
+        if (!digits) return null;
+        const fullNumber = digits.length === 10 ? `91${digits}` : digits;
+        const message = encodeURIComponent(`Hi, I'm interested in your products at ${companyName}.`);
+        return `https://wa.me/${fullNumber}?text=${message}`;
+    }, [socialLinks, companyName]);
+
     const [salesSettings, setSalesSettings] = useState<CatalogueSalesSettings | null>(null);
     const getSavedLead = () => {
         try {
@@ -715,8 +724,21 @@ const CartPage: React.FC = () => {
                     <div className="max-w-7xl mx-auto px-4 py-2 flex flex-col gap-2">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-1.5">
-                                <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 rounded-sm transition-colors">
-                                    <ChevronLeft size={20} className="text-[#1A3B5D]" />
+                                <button onClick={() => navigate(-1)} className="p-2 rounded-sm hover:bg-slate-200 transition-colors text-slate-700">
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        width="24"
+                                        height="24"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2.5"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                    >
+                                        <line x1="19" y1="12" x2="5" y2="12"></line>
+                                        <polyline points="12 19 5 12 12 5"></polyline>
+                                    </svg>
                                 </button>
                                 <div className="w-1 h-5 bg-[#F97316] rounded-sm"></div>
                                 <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">My Cart</h1>
@@ -1196,6 +1218,17 @@ const CartPage: React.FC = () => {
                     </button>
                 </div>
             </div>
+            {whatsappLink && (
+                <a
+                    href={whatsappLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="fixed bottom-24 right-4 md:bottom-6 md:right-6 z-[10000] bg-[#25D366] text-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center active:scale-95 transition-all"
+                    title="Chat on WhatsApp"
+                >
+                    <FaWhatsapp size={26} />
+                </a>
+            )}
         </>
     );
 };

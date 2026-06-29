@@ -1475,10 +1475,12 @@ const SharedProduct: React.FC = () => {
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-0.5">
                     {itemsToDisplay.map((item) => {
                         const cartItem = cart.find(i => i.item.id === item.id);
+                        const isActuallyOutOfStock = (item.stock || 0) <= 0;
                         const isOutOfStock =
                             !catalogueSettings?.allowNegativeInventory &&
-                            (item.stock || 0) <= 0;
-                        const showNotifyButton = catalogueSettings?.enableOutOfStockNotification && isOutOfStock;
+                            isActuallyOutOfStock;
+                        const showNotifyButton =
+                            catalogueSettings?.enableOutOfStockNotification && isActuallyOutOfStock;
                         const disableAddToCart = isOutOfStock;
                         const { mrp, salePrice, discountPercent, hasDiscount, hasBothPrices } = getEffectivePriceInfo(item);
                         const showDiscountBadge = !hidePriceEnabled && catalogueSettings?.showDiscountBadge && hasDiscount;

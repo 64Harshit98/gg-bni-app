@@ -16,6 +16,7 @@ import { useLocation } from 'react-router-dom';
 import LeadPopUp from './PopUp';
 import BulkQuotePopup from './BulkQuotePopup';
 import { getItemGroupsByCompany, getItemsByCompany } from '../lib/ItemsFirebase';
+import { FaWhatsapp } from 'react-icons/fa';
 //port { runTransaction } from 'firebase/firestore';
 
 const ITEMS_PER_BATCH_RENDER = 24;
@@ -187,6 +188,14 @@ const SharedProduct: React.FC = () => {
     const [selectedItemForDetails, setSelectedItemForDetails] = useState<Item | null>(null);
     const [variantGroupIds, setVariantGroupIds] = useState<string[]>([]);
     const [socialLinks, setSocialLinks] = useState<any>({});
+    const whatsappLink = useMemo(() => {
+        const rawNumber = socialLinks?.whatsappNumber || socialLinks?.phoneNumber || '';
+        const digits = rawNumber.replace(/\D/g, '');
+        if (!digits) return null;
+        const fullNumber = digits.length === 10 ? `91${digits}` : digits;
+        const message = encodeURIComponent(`Hi, I'm interested in your products at ${companyName}.`);
+        return `https://wa.me/${fullNumber}?text=${message}`;
+    }, [socialLinks, companyName]);
     const observerRef = useRef<IntersectionObserver | null>(null);
     const loadMoreRef = useRef<HTMLDivElement | null>(null);
     const [sortOrder, setSortOrder] = useState<'A-Z' | 'Z-A' | 'Price: Low-High' | 'Price: High-Low'>('A-Z');
@@ -1774,6 +1783,17 @@ const SharedProduct: React.FC = () => {
                     setVariantGroupIds(resolveVariantGroup(variantItem as Item));
                 }}
             />
+            {whatsappLink && (
+                <a
+                    href={whatsappLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="fixed bottom-24 right-4 md:bottom-6 md:right-6 z-[10000] bg-[#25D366] text-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center active:scale-95 transition-all"
+                    title="Chat on WhatsApp"
+                >
+                    <FaWhatsapp size={26} />
+                </a>
+            )}
         </div>
     );
 };

@@ -1335,6 +1335,8 @@ const OrdersPage: React.FC = () => {
                 ifscCode: businessData.ifscCode || "",
 
                 specialInstruction: Order.specialInstruction || "",
+                transportDetails: Order.transportDetails || null,
+                placeOfSupply: Order.shippingDetails?.state || "",
                 customer: {
                     billing: {
                         name: Order.billingDetails?.name || Order.userName || "Customer",
@@ -1493,6 +1495,8 @@ const OrdersPage: React.FC = () => {
                 accountNumber: businessData.accountNumber || "",
                 ifscCode: businessData.ifscCode || "",
                 specialInstruction: Order.specialInstruction || "",
+                transportDetails: Order.transportDetails || null,
+                placeOfSupply: Order.shippingDetails?.state || "",
                 customer: {
                     billing: {
                         name: Order.billingDetails?.name || Order.userName || "Customer",

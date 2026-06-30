@@ -529,17 +529,22 @@ const OrdersPage: React.FC = () => {
                     const snap = await getDoc(customerRef);
                     if (snap.exists()) {
                         const data = snap.data();
+                        setCustomerCredit(Number(data.creditBalance || 0));
                         setEnableItemWiseDiscount(
                             data.enableItemWiseDiscount ?? false
                         );
                         setEnableTransportDetails(
                             data.enableTransportDetails ?? false
                         );
+                    } else {
+                        setCustomerCredit(0);
                     }
                 } catch (err) {
                     console.error("Error fetching credit balance:", err);
                     setCustomerCredit(0);
                 }
+            } else {
+                setCustomerCredit(0);
             }
         };
 
@@ -3444,17 +3449,10 @@ const OrdersPage: React.FC = () => {
 
             {showPaymentModal && (() => {
                 // FIX 3: Include Expenses and Discounts in the Payment Drawer Total
-                const itemsTotal = (showPaymentModal.items || []).reduce(
-                    (sum, item) =>
-                        sum + (
-                            (item.finalPrice ??
-                                (Number(item.salesPrice || 0) > 0
-                                    ? Number(item.salesPrice)
-                                    : Number(item.mrp || 0)))
-                            * Number(item.quantity || 0)
-                        ),
-                    0
-                );
+                const itemsTotal = (showPaymentModal.items || []).reduce((sum, item) => {
+                    const unitPrice = item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0;
+                    return sum + (Number(unitPrice) * Number(item.quantity || 0));
+                }, 0);
 
                 const expTotal = (showPaymentModal.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0);
                 const discTotal = Number(showPaymentModal.manualDiscount || 0);

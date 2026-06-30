@@ -119,7 +119,6 @@ const CataloguePartyLedger: React.FC = () => {
                 setAvailableCredit(0);
                 return;
             }
-
             const normalizedPhone = selectedPartyNumber.replace(/\D/g, '').slice(-10);
             if (!normalizedPhone) {
                 setAvailableCredit(0);
@@ -283,8 +282,20 @@ const CataloguePartyLedger: React.FC = () => {
                 showToast(`Opening balance payment of ₹${amount} settled via ${method}!`, 'success');
                 return;
             }
-            const { doc, runTransaction } = await import('firebase/firestore');
+            const { doc, runTransaction, setDoc: fsSetDoc, serverTimestamp: fsST, increment: fsIncrement } = await import('firebase/firestore');
             const docRef = doc(db, 'companies', currentUser.companyId, 'Orders', invoice.id);
+
+            if (method.toUpperCase() === 'CREDIT NOTE' || method.toUpperCase() === 'CREDIT') {
+                const normalizedPhone = selectedPartyNumber.replace(/\D/g, '').slice(-10);
+                if (normalizedPhone) {
+                    const customerRef = doc(db, 'companies', currentUser.companyId, 'customers', normalizedPhone);
+                    await fsSetDoc(customerRef, {
+                        creditBalance: fsIncrement(-amount),
+                        updatedAt: fsST(),
+                    }, { merge: true });
+                    setAvailableCredit(prev => Math.max(0, prev - amount));
+                }
+            }
 
             await runTransaction(db, async (transaction) => {
                 const sfDoc = await transaction.get(docRef);

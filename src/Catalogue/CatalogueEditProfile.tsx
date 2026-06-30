@@ -124,6 +124,44 @@ const businessCategoryOptions = [
   { value: 'Food & Beverage', label: 'Food & Beverage' },
   { value: 'Other', label: 'Other' },
 ];
+const stateOptions = [
+  { value: 'Andhra Pradesh', label: 'Andhra Pradesh' },
+  { value: 'Arunachal Pradesh', label: 'Arunachal Pradesh' },
+  { value: 'Assam', label: 'Assam' },
+  { value: 'Bihar', label: 'Bihar' },
+  { value: 'Chhattisgarh', label: 'Chhattisgarh' },
+  { value: 'Goa', label: 'Goa' },
+  { value: 'Gujarat', label: 'Gujarat' },
+  { value: 'Haryana', label: 'Haryana' },
+  { value: 'Himachal Pradesh', label: 'Himachal Pradesh' },
+  { value: 'Jharkhand', label: 'Jharkhand' },
+  { value: 'Karnataka', label: 'Karnataka' },
+  { value: 'Kerala', label: 'Kerala' },
+  { value: 'Madhya Pradesh', label: 'Madhya Pradesh' },
+  { value: 'Maharashtra', label: 'Maharashtra' },
+  { value: 'Manipur', label: 'Manipur' },
+  { value: 'Meghalaya', label: 'Meghalaya' },
+  { value: 'Mizoram', label: 'Mizoram' },
+  { value: 'Nagaland', label: 'Nagaland' },
+  { value: 'Odisha', label: 'Odisha' },
+  { value: 'Punjab', label: 'Punjab' },
+  { value: 'Rajasthan', label: 'Rajasthan' },
+  { value: 'Sikkim', label: 'Sikkim' },
+  { value: 'Tamil Nadu', label: 'Tamil Nadu' },
+  { value: 'Telangana', label: 'Telangana' },
+  { value: 'Tripura', label: 'Tripura' },
+  { value: 'Uttar Pradesh', label: 'Uttar Pradesh' },
+  { value: 'Uttarakhand', label: 'Uttarakhand' },
+  { value: 'West Bengal', label: 'West Bengal' },
+  { value: 'Andaman and Nicobar Islands', label: 'Andaman and Nicobar Islands' },
+  { value: 'Chandigarh', label: 'Chandigarh' },
+  { value: 'Dadra and Nagar Haveli and Daman and Diu', label: 'Dadra and Nagar Haveli and Daman and Diu' },
+  { value: 'Delhi', label: 'Delhi' },
+  { value: 'Jammu and Kashmir', label: 'Jammu and Kashmir' },
+  { value: 'Ladakh', label: 'Ladakh' },
+  { value: 'Lakshadweep', label: 'Lakshadweep' },
+  { value: 'Puducherry', label: 'Puducherry' },
+];
 
 // --- Custom Hook ---
 const useCatalogueData = (companyId?: string, catalogueId?: string, userId?: string) => {
@@ -462,7 +500,7 @@ const EditProfilePage: React.FC = () => {
     setRemoveCompanyLogo(true);
     if (logoInputRef.current) logoInputRef.current.value = '';
   };
-   const openImageMenu = (type: 'profile' | 'logo') => setActiveImageMenu(type);
+  const openImageMenu = (type: 'profile' | 'logo') => setActiveImageMenu(type);
   const closeImageMenu = () => setActiveImageMenu(null);
 
   const handleMenuUpload = () => {
@@ -760,7 +798,13 @@ const EditProfilePage: React.FC = () => {
                     <FloatingLabelInput name="streetAddress" value={formData.streetAddress || ''} onChange={handleInputChange} label="Street Address" />
                   </div>
                   <FloatingLabelInput type="text" name="city" value={formData.city || ''} onChange={handleInputChange} label="City" />
-                  <FloatingLabelInput type="text" name="state" value={formData.state || ''} onChange={handleInputChange} label="State" />
+                  <FloatingLabelSelect
+                    id="state"
+                    label="State"
+                    value={formData.state || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, state: e.target.value }))}
+                    options={stateOptions}
+                  />
                   <div>
                     <FloatingLabelInput type="text" name="postalCode" value={formData.postalCode || ''} onChange={handlePostalCodeChange} label="Postal Code" maxLength={6} inputMode="numeric" />
                     {postalError && <p className="text-red-500 text-[11px] mt-1 mb-0">{postalError}</p>}
@@ -781,7 +825,13 @@ const EditProfilePage: React.FC = () => {
                     <FloatingLabelInput name="streetAddress" value={formData.streetAddress || ''} onChange={handleInputChange} label="Street Address" />
                   </div>
                   <FloatingLabelInput type="text" name="city" value={formData.city || ''} onChange={handleInputChange} label="City" />
-                  <FloatingLabelInput type="text" name="state" value={formData.state || ''} onChange={handleInputChange} label="State" />
+                  <FloatingLabelSelect
+                    id="state"
+                    label="State"
+                    value={formData.state || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, state: e.target.value }))}
+                    options={stateOptions}
+                  />
                   <div className='col-span-2'>
                     <FloatingLabelInput type="text" name="postalCode" value={formData.postalCode || ''} onChange={handlePostalCodeChange} label="Postal Code" maxLength={6} inputMode="numeric" />
                     {postalError && <p className="text-red-500 text-[11px] mt-1 mb-0">{postalError}</p>}
@@ -834,7 +884,7 @@ const EditProfilePage: React.FC = () => {
                 <FloatingLabelInput type="text" name="instagram" value={formData.instagram || ''} onChange={handleInputChange} label="Instagram" />
                 <FloatingLabelInput type="text" name="facebook" value={formData.facebook || ''} onChange={handleInputChange} label="Facebook" />
                 <FloatingLabelInput type="text" name="twitter" value={formData.twitter || ''} onChange={handleInputChange} label="Twitter / X" />
-                 <FloatingLabelInput type="text" name="whatsappNumber" value={formData.whatsappNumber || ''} onChange={handleInputChange} label="WhatsApp No." maxLength={10} inputMode="numeric" />
+                <FloatingLabelInput type="text" name="whatsappNumber" value={formData.whatsappNumber || ''} onChange={handleInputChange} label="WhatsApp No." maxLength={10} inputMode="numeric" />
               </div>
             </SectionCard>
           </div>
@@ -881,7 +931,7 @@ const EditProfilePage: React.FC = () => {
             </button>
           </div>
         </form>
-         {activeImageMenu === 'profile' && (
+        {activeImageMenu === 'profile' && (
           <ImageOptionsModal
             title="Profile Photo"
             hasImage={!!previewUrl}

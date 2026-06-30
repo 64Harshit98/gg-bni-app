@@ -408,6 +408,14 @@ const SharedCataloguePage: React.FC = () => {
                     setTimedPopupOpen(false);
                     setForceLeadOpen(false);
                     localStorage.setItem("leadJustSubmitted", "true");
+                    // ensure this customer shows up in Approval Requests later if seller enables approval
+                    if (effectiveCompanyId) {
+                        const leadData = JSON.parse(localStorage.getItem("leadData") || "{}");
+                        const cleanNumber = (leadData.number || "").replace(/\D/g, "").trim();
+                        if (cleanNumber) {
+                            ensurePendingApprovalEntry(effectiveCompanyId, leadData.name || "Guest User", cleanNumber);
+                        }
+                    }
                     setShowLeadSuccess(true);
                     setTimeout(() => setShowLeadSuccess(false), 4000);
                 }}

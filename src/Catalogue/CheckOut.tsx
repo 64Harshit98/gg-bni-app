@@ -432,15 +432,15 @@ const CartPage: React.FC = () => {
                 const invoice = `${prefix}${currentNumber}`;
                 const newOrderDoc = doc(ordersRef);
                 const leadData = JSON.parse(localStorage.getItem("leadData") || "{}");
-                const customerPhone = (leadData.number || "").replace(/\D/g, "").trim();
+                const fallbackPhone = (leadData.number || "").replace(/\D/g, "").trim();
                 // 2. WRITE: Create the final order
                 transaction.set(newOrderDoc, {
                     orderId: invoice,
                     invoiceNumber: invoice,
                     status: 'Confirmed',
                     isLead: false,
-                    userName: billing.name || "",
-                    userLoginPhone: customerPhone || billing.phone || "",
+                    userName: billing.name || leadData.name || "",
+                    userLoginPhone: billing.phone || fallbackPhone || "",
                     totalAmount: totalPay,
                     totalTax: Number(totalTaxAmount.toFixed(2)),
                     baseAmount: Number(baseSubtotal.toFixed(2)),

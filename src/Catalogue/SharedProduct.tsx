@@ -17,6 +17,7 @@ import LeadPopUp from './PopUp';
 import BulkQuotePopup from './BulkQuotePopup';
 import { getItemGroupsByCompany, getItemsByCompany } from '../lib/ItemsFirebase';
 import { FaWhatsapp } from 'react-icons/fa';
+import { ensurePendingApprovalEntry } from './hooks/ensureApprovalEntry';
 //port { runTransaction } from 'firebase/firestore';
 
 const ITEMS_PER_BATCH_RENDER = 24;
@@ -488,6 +489,14 @@ const SharedProduct: React.FC = () => {
             setTimeout(() => setForceLeadOpen(true), 0);
             return;
         }
+        // ensure this customer shows up in Approval Requests later if seller enables approval
+        if (effectiveCompanyId) {
+            const leadData = JSON.parse(localStorage.getItem("leadData") || "{}");
+            const cleanNumber = (leadData.number || "").replace(/\D/g, "").trim();
+            if (cleanNumber) {
+                ensurePendingApprovalEntry(effectiveCompanyId, leadData.name || "Guest User", cleanNumber);
+            }
+        }
 
         // lead filled → cart allow
         setCart(prev => {
@@ -604,6 +613,8 @@ const SharedProduct: React.FC = () => {
                 },
                 { merge: true }
             );
+            // ensure this customer shows up in Approval Requests later if seller enables approval
+            ensurePendingApprovalEntry(effectiveCompanyId, name, number);
 
             setShowNotifySuccess(true);
             setNotifiedItems(prev => ({ ...prev, [item.id!]: true }));
@@ -650,6 +661,8 @@ const SharedProduct: React.FC = () => {
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
             }, { merge: true });
+            // ensure this customer shows up in Approval Requests later if seller enables approval
+            ensurePendingApprovalEntry(effectiveCompanyId, name || "Guest User", number);
 
             setPersonalizationItem(null);
             setPersonalizationText('');
@@ -1233,6 +1246,14 @@ const SharedProduct: React.FC = () => {
 
                     const phone = leadData.number || "";
                     setLeadPhone(phone);
+                    // ensure this customer shows up in Approval Requests later if seller enables approval
+                    if (effectiveCompanyId) {
+                        const cleanNumber = phone.replace(/\D/g, "").trim();
+                        if (cleanNumber) {
+                            ensurePendingApprovalEntry(effectiveCompanyId, leadData.name || "Guest User", cleanNumber);
+                        }
+                    }
+
 
                     setTimeout(() => {
                         fetchUserNotifyStatus();

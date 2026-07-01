@@ -2327,126 +2327,158 @@ const OrdersPage: React.FC = () => {
     // --- Adjustment Handlers ---
     const handleCreditNote = async () => {
         if (!editingOrder || !currentUser?.companyId || !pendingAdjustment) return;
-
-        const liveOrder = Orders.find(o => o.id === editingOrder.id);
-        let dynamicTax = 0;
-        const baseItemsTotal = (editingOrder.items || []).reduce((sum, item) => {
-            const qty = Number(item.quantity || 0);
-            const unitPrice = Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
-            const rowNet = unitPrice * qty;
-
-            const taxRate = Number(item.tax ?? item.taxRate ?? 0);
-            const taxType = (item.taxType || '').toLowerCase();
-            if (taxRate > 0 && (taxType === 'exclusive' || taxType === 'regular')) {
-                dynamicTax += rowNet * (taxRate / 100);
-            }
-            return sum + rowNet;
-        }, 0);
-        const expensesTotal = (editingOrder.expenses || []).reduce((sum: number, e: any) => sum + (parseFloat(e.amount?.toString()) || 0), 0);
-        const totalAmt = Math.max(0, baseItemsTotal + dynamicTax + expensesTotal - Number(editingOrder.manualDiscount || 0));
-        const paidAmt = Number(liveOrder?.paidAmount || 0);
-        const updatedPaidAmt = Math.max(0, paidAmt - pendingAdjustment.amount);
-        const effectiveDue = Math.max(0, totalAmt - updatedPaidAmt);
-
-        // --- SMART STATUS LOGIC ---
-        const liveStatus = liveOrder?.status || editingOrder.status;
-        let updatedStatus = liveStatus;
-
-        // Only alter the status if it's already in the final stages
-        if (liveStatus === 'Completed' || liveStatus === 'Paid') {
-            updatedStatus = effectiveDue > 0.1 ? 'Completed' : 'Paid';
-        }
-        // --------------------------
-
-        await updateDoc(
-            doc(db, 'companies', currentUser.companyId, 'Orders', editingOrder.id),
-            {
-                items: editingOrder.items,
-                totalAmount: totalAmt,
-                paidAmount: updatedPaidAmt,
-                status: updatedStatus, // Uses the smart status
-                billingDetails: editingOrder.billingDetails,
-                shippingDetails: editingOrder.shippingDetails,
-                creditNoteAmount: firebaseIncrement(pendingAdjustment.amount),
-                updatedAt: serverTimestamp(),
-            }
-        );
-
-        // Credit balance update (your existing customer code stays the same)
         try {
-            const normalizePhone = (num: string) => num.replace(/\D/g, '').slice(-10);
-            const rawNumber = editingOrder.userLoginPhone || editingOrder.billingDetails?.phone || '';
-            const customerIdentifier = normalizePhone(rawNumber);
-            if (customerIdentifier) {
-                const customerRef = doc(db, 'companies', currentUser.companyId, 'customers', customerIdentifier);
-                const customerName = editingOrder.userName || editingOrder.billingDetails?.name || '';
-                await setDoc(customerRef, {
-                    number: customerIdentifier,
-                    name: customerName,
-                    creditBalance: firebaseIncrement(pendingAdjustment.amount),
-                    updatedAt: serverTimestamp(),
-                }, { merge: true });
-            }
-        } catch (err) {
-            console.error("Failed to update customer credit balance:", err);
-        }
+            const liveOrder = Orders.find(o => o.id === editingOrder.id);
+            let dynamicTax = 0;
+            const baseItemsTotal = (editingOrder.items || []).reduce((sum, item) => {
+                const qty = Number(item.quantity || 0);
+                const unitPrice = Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
+                const rowNet = unitPrice * qty;
 
-        setShowAdjustmentPopup(false);
-        setPendingAdjustment(null);
-        setEditingOrder(null);
-        setModal({ message: `Credit Note: ₹${pendingAdjustment.amount.toFixed(2)} added`, type: State.SUCCESS });
+                const taxRate = Number(item.tax ?? item.taxRate ?? 0);
+                const taxType = (item.taxType || '').toLowerCase();
+                if (taxRate > 0 && (taxType === 'exclusive' || taxType === 'regular')) {
+                    dynamicTax += rowNet * (taxRate / 100);
+                }
+                return sum + rowNet;
+            }, 0);
+            const expensesTotal = (editingOrder.expenses || []).reduce((sum: number, e: any) => sum + (parseFloat(e.amount?.toString()) || 0), 0);
+            const totalAmt = Math.max(0, baseItemsTotal + dynamicTax + expensesTotal - Number(editingOrder.manualDiscount || 0));
+            const paidAmt = Number(liveOrder?.paidAmount || 0);
+            const updatedPaidAmt = Math.max(0, paidAmt - pendingAdjustment.amount);
+            const effectiveDue = Math.max(0, totalAmt - updatedPaidAmt);
+
+            // --- SMART STATUS LOGIC ---
+            const liveStatus = liveOrder?.status || editingOrder.status;
+            let updatedStatus = liveStatus;
+
+            // Only alter the status if it's already in the final stages
+            if (liveStatus === 'Completed' || liveStatus === 'Paid') {
+                updatedStatus = effectiveDue > 0.1 ? 'Completed' : 'Paid';
+            }
+            // --------------------------
+            // 🔧 Sweep undefined values so Firestore doesn't reject the write
+            const safeItems = (editingOrder.items || []).map(item => {
+                const safeItem = { ...item };
+                Object.keys(safeItem).forEach(key => {
+                    if (safeItem[key as keyof typeof safeItem] === undefined) {
+                        delete safeItem[key as keyof typeof safeItem];
+                    }
+                });
+                return safeItem;
+            });
+            await updateDoc(
+                doc(db, 'companies', currentUser.companyId, 'Orders', editingOrder.id),
+                {
+                    items: safeItems,
+                    totalAmount: totalAmt,
+                    totalTax: dynamicTax,
+                    expenses: editExpenses.map(({ id, name, amount }) => ({ id, name, amount: parseFloat(amount.toString()) || 0 })),
+                    manualDiscount: editDiscount,
+                    paidAmount: updatedPaidAmt,
+                    status: updatedStatus, // Uses the smart status
+                    billingDetails: editingOrder.billingDetails,
+                    shippingDetails: editingOrder.shippingDetails,
+                    creditNoteAmount: firebaseIncrement(pendingAdjustment.amount),
+                    updatedAt: serverTimestamp(),
+                }
+            );
+
+            // Credit balance update (your existing customer code stays the same)
+            try {
+                const normalizePhone = (num: string) => num.replace(/\D/g, '').slice(-10);
+                const rawNumber = editingOrder.userLoginPhone || editingOrder.billingDetails?.phone || '';
+                const customerIdentifier = normalizePhone(rawNumber);
+                if (customerIdentifier) {
+                    const customerRef = doc(db, 'companies', currentUser.companyId, 'customers', customerIdentifier);
+                    const customerName = editingOrder.userName || editingOrder.billingDetails?.name || '';
+                    await setDoc(customerRef, {
+                        number: customerIdentifier,
+                        name: customerName,
+                        creditBalance: firebaseIncrement(pendingAdjustment.amount),
+                        updatedAt: serverTimestamp(),
+                    }, { merge: true });
+                }
+            } catch (err) {
+                console.error("Failed to update customer credit balance:", err);
+            }
+
+            setShowAdjustmentPopup(false);
+            setPendingAdjustment(null);
+            setEditingOrder(null);
+            setModal({ message: `Credit Note: ₹${pendingAdjustment.amount.toFixed(2)} added`, type: State.SUCCESS });
+        } catch (err) {
+            console.error("Credit Note Error:", err);
+            setModal({ message: "Failed to add credit note.", type: State.ERROR });
+        }
     };
     const handleRefund = async () => {
         if (!editingOrder || !currentUser?.companyId || !pendingAdjustment) return;
+        try {
+            const liveOrder = Orders.find(o => o.id === editingOrder.id);
+            let dynamicTax = 0;
+            const baseItemsTotal = (editingOrder.items || []).reduce((sum, item) => {
+                const qty = Number(item.quantity || 0);
+                const unitPrice = Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
+                const rowNet = unitPrice * qty;
 
-        const liveOrder = Orders.find(o => o.id === editingOrder.id);
-        let dynamicTax = 0;
-        const baseItemsTotal = (editingOrder.items || []).reduce((sum, item) => {
-            const qty = Number(item.quantity || 0);
-            const unitPrice = Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
-            const rowNet = unitPrice * qty;
+                const taxRate = Number(item.tax ?? item.taxRate ?? 0);
+                const taxType = (item.taxType || '').toLowerCase();
+                if (taxRate > 0 && (taxType === 'exclusive' || taxType === 'regular')) {
+                    dynamicTax += rowNet * (taxRate / 100);
+                }
+                return sum + rowNet;
+            }, 0);
+            const expensesTotal = (editingOrder.expenses || []).reduce((sum: number, e: any) => sum + (parseFloat(e.amount?.toString()) || 0), 0);
+            const totalAmt = Math.max(0, baseItemsTotal + dynamicTax + expensesTotal - Number(editingOrder.manualDiscount || 0));
+            const paidAmt = Number(liveOrder?.paidAmount || 0);
+            const updatedPaidAmt = Math.max(0, paidAmt - pendingAdjustment.amount);
+            const effectiveDue = Math.max(0, totalAmt - updatedPaidAmt);
 
-            const taxRate = Number(item.tax ?? item.taxRate ?? 0);
-            const taxType = (item.taxType || '').toLowerCase();
-            if (taxRate > 0 && (taxType === 'exclusive' || taxType === 'regular')) {
-                dynamicTax += rowNet * (taxRate / 100);
+            // --- SMART STATUS LOGIC ---
+            const liveStatus = liveOrder?.status || editingOrder.status;
+            let updatedStatus = liveStatus;
+
+            // Only alter the status if it's already in the final stages
+            if (liveStatus === 'Completed' || liveStatus === 'Paid') {
+                updatedStatus = effectiveDue > 0.1 ? 'Completed' : 'Paid';
             }
-            return sum + rowNet;
-        }, 0);
-        const expensesTotal = (editingOrder.expenses || []).reduce((sum: number, e: any) => sum + (parseFloat(e.amount?.toString()) || 0), 0);
-        const totalAmt = Math.max(0, baseItemsTotal + dynamicTax + expensesTotal - Number(editingOrder.manualDiscount || 0));
-        const paidAmt = Number(liveOrder?.paidAmount || 0);
-        const updatedPaidAmt = Math.max(0, paidAmt - pendingAdjustment.amount);
-        const effectiveDue = Math.max(0, totalAmt - updatedPaidAmt);
+            // --------------------------
+            // 🔧 Sweep undefined values so Firestore doesn't reject the write
+            const safeItems = (editingOrder.items || []).map(item => {
+                const safeItem = { ...item };
+                Object.keys(safeItem).forEach(key => {
+                    if (safeItem[key as keyof typeof safeItem] === undefined) {
+                        delete safeItem[key as keyof typeof safeItem];
+                    }
+                });
+                return safeItem;
+            });
+            await updateDoc(
+                doc(db, 'companies', currentUser.companyId, 'Orders', editingOrder.id),
+                {
+                    items: safeItems,
+                    totalAmount: totalAmt,
+                    totalTax: dynamicTax,
+                    expenses: editExpenses.map(({ id, name, amount }) => ({ id, name, amount: parseFloat(amount.toString()) || 0 })),
+                    manualDiscount: editDiscount,
+                    paidAmount: updatedPaidAmt,
+                    status: updatedStatus, // Uses the smart status
+                    billingDetails: editingOrder.billingDetails,
+                    shippingDetails: editingOrder.shippingDetails,
+                    refundAmount: firebaseIncrement(pendingAdjustment.amount),
+                    updatedAt: serverTimestamp(),
+                }
+            );
 
-        // --- SMART STATUS LOGIC ---
-        const liveStatus = liveOrder?.status || editingOrder.status;
-        let updatedStatus = liveStatus;
-
-        // Only alter the status if it's already in the final stages
-        if (liveStatus === 'Completed' || liveStatus === 'Paid') {
-            updatedStatus = effectiveDue > 0.1 ? 'Completed' : 'Paid';
+            setShowAdjustmentPopup(false);
+            setPendingAdjustment(null);
+            setEditingOrder(null);
+            setModal({ message: `Refund: ₹${pendingAdjustment.amount.toFixed(2)} processed`, type: State.SUCCESS });
+        } catch (err) {
+            console.error("Refund Error:", err);
+            setModal({ message: "Failed to process refund.", type: State.ERROR });
         }
-        // --------------------------
-
-        await updateDoc(
-            doc(db, 'companies', currentUser.companyId, 'Orders', editingOrder.id),
-            {
-                items: editingOrder.items,
-                totalAmount: totalAmt,
-                paidAmount: updatedPaidAmt,
-                status: updatedStatus, // Uses the smart status
-                billingDetails: editingOrder.billingDetails,
-                shippingDetails: editingOrder.shippingDetails,
-                refundAmount: firebaseIncrement(pendingAdjustment.amount),
-                updatedAt: serverTimestamp(),
-            }
-        );
-
-        setShowAdjustmentPopup(false);
-        setPendingAdjustment(null);
-        setEditingOrder(null);
-        setModal({ message: `Refund: ₹${pendingAdjustment.amount.toFixed(2)} processed`, type: State.SUCCESS });
     };
 
     return (
@@ -3455,10 +3487,11 @@ const OrdersPage: React.FC = () => {
                 }, 0);
 
                 const expTotal = (showPaymentModal.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0);
+                const taxTotal = Number(showPaymentModal.totalTax || 0);
                 const discTotal = Number(showPaymentModal.manualDiscount || 0);
 
                 // FIX: Round the total to 2 decimal places
-                const updatedTotal = Number(Math.max(0, itemsTotal + expTotal - discTotal).toFixed(2));
+                const updatedTotal = Number(Math.max(0, itemsTotal + expTotal + taxTotal - discTotal).toFixed(2));
 
                 // Current paid
                 const alreadyPaid = Number(showPaymentModal.paidAmount || 0);

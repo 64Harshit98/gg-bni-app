@@ -121,6 +121,7 @@ interface Invoice {
 
 interface PdfData {
   printFormat?: 'A4' | 'THERMAL58';
+  enableTriplicate?: boolean;
   gstScheme: string;
   taxType: string;
   companyName: string;
@@ -135,6 +136,7 @@ interface PdfData {
   placeOfSupply?: string;
   companyState?: string;       // <-- ADD THIS
   billDiscount: number;
+  discountDisplayFormat?: 'amount' | 'percentage';
   upiId: string;
   billTo: {
     name: string;
@@ -385,6 +387,7 @@ const Journal: React.FC = () => {
   const [showQrModal, setShowQrModal] = useState<Invoice | null>(null);
   const [sendingPdf, setSendingPdf] = useState(false);
   const [showPrintSubMenu, setShowPrintSubMenu] = useState(false);
+  const [enableTriplicate, setEnableTriplicate] = useState(false);
 
   const { currentUser, loading: authLoading, hasPermission } = useAuth();
 
@@ -504,7 +507,22 @@ const Journal: React.FC = () => {
     };
     fetchExpiry();
   }, [currentUser?.companyId]);
-
+ // NEW: fetch bill settings to know if triplicate printing is enabled
+  useEffect(() => {
+    const fetchBillSettings = async () => {
+      if (!currentUser?.companyId) return;
+      try {
+        const billSettingsRef = doc(db, 'companies', currentUser.companyId, 'settings', 'bill');
+        const snap = await getDoc(billSettingsRef);
+        if (snap.exists()) {
+          setEnableTriplicate(!!snap.data().enableTriplicate); // FIXED: field is 'enableTriplicate', not 'posEnableTriplicate'
+        }
+      } catch (err) {
+        console.error('Error fetching bill settings for triplicate flag:', err);
+      }
+    };
+    fetchBillSettings();
+  }, [currentUser?.companyId]);
 
   const showBadge = daysRemaining !== null && daysRemaining <= 7 && daysRemaining >= 0;
   const isUrgent = daysRemaining !== null && daysRemaining <= 2;
@@ -681,6 +699,8 @@ const Journal: React.FC = () => {
         discountAmount: absoluteDiscount,
         discount1Amount,   // NEW
         discount2Amount,   // NEW
+        discount1Percent: d1Pct,   // NEW
+        discount2Percent: d2Pct,   // NEW
         amount: itemAmount,
         taxType: resolvedTaxType,
         taxAmount: item.taxAmount || 0,
@@ -691,7 +711,8 @@ const Journal: React.FC = () => {
     });
 
     return {
-      printFormat: (forcePosPrint || isPosBasicPlan) ? 'THERMAL58' : (billSettings.printFormat || 'A4'),
+      printFormat: (forcePosPrint || isPosBasicPlan) ? 'THERMAL58' : (billSettings.posPrintFormat || 'A4'),
+      enableTriplicate: billSettings.enableTriplicate || false,
       gstScheme: salesSettings?.gstScheme || '',
       taxType: invoice.taxType || salesSettings?.taxType || '',
       companyName: businessInfo?.name || '',
@@ -706,6 +727,7 @@ const Journal: React.FC = () => {
       companyState: businessInfo?.state || '',         // <-- ADD THIS
       placeOfSupply: invoice.placeOfSupply || '',
       billDiscount: invoice.manualDiscount || 0,
+      discountDisplayFormat: billSettings?.discountDisplayFormat || 'amount',
       upiId: billSettings.upiId || '',
       billTo: {
         name: invoice.partyName,
@@ -1790,7 +1812,7 @@ const Journal: React.FC = () => {
                 }}
                 className="w-full border border-blue-500 text-blue-600 py-2.5 rounded-sm font-bold text-sm"
               >
-                Print (Bill + Duplicate)
+               {enableTriplicate ? 'Print (Bill + 2 Duplicates)' : 'Print (Bill + Duplicate)'}
               </button>
               <button
                 onClick={() => setShowPrintSubMenu(false)}

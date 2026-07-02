@@ -7,6 +7,7 @@ import { State } from '../../enums';
 import { Modal } from '../../constants/Modal';
 import { useNavigate } from 'react-router';
 import BackButton from '../../Components/BackButton';
+import { InfoTooltip } from '../../Components/InfoToolTip';
 
 // --- Interface for Bill Specific Settings ---
 export interface BillSettingsData {
@@ -15,6 +16,8 @@ export interface BillSettingsData {
     termsAndConditions: string;
     signatureBase64?: string;
     whatsappExtraMessage?: string;
+    enableTriplicate?: boolean;
+    discountDisplayFormat?: 'amount' | 'percentage';
 }
 
 interface BusinessInfoData {
@@ -65,7 +68,9 @@ const CatalogueBillSettings: React.FC = () => {
         upiId: '',
         termsAndConditions: '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
         signatureBase64: '',
-        whatsappExtraMessage: ''
+        whatsappExtraMessage: '',
+        enableTriplicate: false,
+        discountDisplayFormat: 'amount',
     });
 
     const formatAddress = (addr: any): string => {
@@ -127,6 +132,8 @@ const CatalogueBillSettings: React.FC = () => {
                         '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
                     signatureBase64: sData.signatureBase64 || '',
                     whatsappExtraMessage: sData.catalogueWhatsappExtraMessage || '',
+                    enableTriplicate: sData.enableTriplicate || false,
+                    discountDisplayFormat: sData.discountDisplayFormat || 'amount',
                 };
                 setSettings(loadedSettings);
 
@@ -155,6 +162,10 @@ const CatalogueBillSettings: React.FC = () => {
     // --- 2. Handle Inputs ---
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
+        setSettings(prev => ({ ...prev, [name]: value }));
+    };
+     // Handle boolean toggles (e.g. Triplicate switch)
+    const handleToggle = (name: keyof BillSettingsData, value: boolean) => {
         setSettings(prev => ({ ...prev, [name]: value }));
     };
 
@@ -186,11 +197,13 @@ const CatalogueBillSettings: React.FC = () => {
                 // Editable settings (shared)
                 upiId: settings.upiId,
                 signatureBase64: currentSignature,
+                enableTriplicate: settings.enableTriplicate || false,
 
                 // Editable settings (independent per bill type)
                 catalogueTermsAndConditions: settings.termsAndConditions,
                 cataloguePrintFormat: settings.printFormat || "A4",
                 catalogueWhatsappExtraMessage: settings.whatsappExtraMessage,
+                discountDisplayFormat: settings.discountDisplayFormat || 'amount',
 
                 // ✅ Always sync from businessInfo so these stay fresh
                 companyGstin: businessInfo.gstin,
@@ -222,7 +235,7 @@ const CatalogueBillSettings: React.FC = () => {
     if (isLoading) {
         return (
             <div className="flex items-center justify-center min-h-screen bg-gray-50">
-                <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-8 h-8 border-4 border-orange-600 border-t-transparent rounded-full animate-spin"></div>
                 <span className="ml-3 text-gray-600 font-medium">Loading Settings...</span>
             </div>
         );
@@ -255,7 +268,7 @@ const CatalogueBillSettings: React.FC = () => {
                                 <button
                                     type="button"
                                     onClick={() => navigate('/catalogue-home/cata-edit-profile')}
-                                    className="text-blue-600 hover:underline text-xs bg-transparent border-0 cursor-pointer p-0 font-normal"
+                                    className="text-orange-600 hover:underline text-xs bg-transparent border-0 cursor-pointer p-0 font-normal"
                                 >
                                     Business Profile
                                 </button>
@@ -420,7 +433,7 @@ const CatalogueBillSettings: React.FC = () => {
                                 value={settings.upiId || ''}
                                 onChange={handleChange}
                                 placeholder="e.g. yourname@upi"
-                                className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-orange-500 focus:border-orange-500 outline-none"
                             />
                         </div>
                     </div>
@@ -434,14 +447,14 @@ const CatalogueBillSettings: React.FC = () => {
                     </div>
                     <div className="p-6">
                         <div className="flex flex-col sm:flex-row gap-4">
-                            <label className={`flex-1 flex items-center p-4 border rounded-sm cursor-pointer transition-colors ${settings.printFormat === 'A4' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 hover:bg-gray-50'}`}>
+                            <label className={`flex-1 flex items-center p-4 border rounded-sm cursor-pointer transition-colors ${settings.printFormat === 'A4' ? 'border-orange-600 bg-orange-50' : 'border-gray-300 hover:bg-gray-50'}`}>
                                 <input
                                     type="radio"
                                     name="printFormat"
                                     value="A4"
                                     checked={settings.printFormat === 'A4'}
                                     onChange={handleChange}
-                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                    className="w-4 h-4 text-orange-600 border-gray-300 focus:ring-orange-500"
                                 />
                                 <div className="ml-3">
                                     <span className="block text-sm font-medium text-gray-900">A4 Size</span>
@@ -449,7 +462,7 @@ const CatalogueBillSettings: React.FC = () => {
                                 </div>
                             </label>
 
-                            <label className={`flex-1 flex items-center p-4 border rounded-sm cursor-pointer transition-colors ${settings.printFormat === 'A5' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 hover:bg-gray-50'
+                            <label className={`flex-1 flex items-center p-4 border rounded-sm cursor-pointer transition-colors ${settings.printFormat === 'A5' ? 'border-orange-600 bg-orange-50' : 'border-gray-300 hover:bg-gray-50'
                                 }`}>
                                 <input
                                     type="radio"
@@ -458,13 +471,60 @@ const CatalogueBillSettings: React.FC = () => {
                                     checked={settings.printFormat === 'A5'}
                                     onChange={handleChange}
                                     // disabled={true}
-                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                    className="w-4 h-4 text-orange-600 border-gray-300 focus:ring-orange-500"
                                 />
                                 <div className="ml-3">
                                     <span className="block text-sm font-medium text-gray-900">A5 Size</span>
                                     <span className="block text-xs text-gray-500">Half-page compact invoice layout.</span>
                                 </div>
                             </label>
+                        </div>
+                        {/* Triplicate toggle */}
+                        <div className="mt-4 flex items-center justify-between p-4 border border-gray-200 rounded-sm bg-gray-50/50">
+                            <div>
+                                <span className="block text-sm font-medium text-gray-900">
+                                    Print Triplicate
+                                </span>
+                                <span className="block text-xs text-gray-500">
+                                    When enabled, "Bill + Duplicate" prints 3 copies (1 Original + 2 Duplicate).
+                                </span>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={settings.enableTriplicate || false}
+                                    onChange={(e) => handleToggle('enableTriplicate', e.target.checked)}
+                                    className="sr-only peer"
+                                />
+                                <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
+                            </label>
+                        </div>
+                    {/* NEW: Discount 1 + Discount 2 display format */}
+                        <div className="mt-5 pt-5 border-t border-gray-100">
+                            <div className="rounded-sm bg-gray-50 border border-gray-100 p-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <p className="text-sm font-semibold text-gray-800 leading-5">Discount Display on Bill</p>
+                                    <InfoTooltip text="Choose how the Disc1 + Disc2 column is shown on the printed/PDF bill." />
+                                </div>
+                                <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+                                    {[
+                                        { label: 'Amount (₹)', value: 'amount' },
+                                        { label: 'Percentage (%)', value: 'percentage' },
+                                    ].map((opt) => (
+                                        <button
+                                            key={opt.value}
+                                            type="button"
+                                            onClick={() => setSettings(prev => ({ ...prev, discountDisplayFormat: opt.value as 'amount' | 'percentage' }))}
+                                            className={`min-w-0 min-h-[42px] px-2 py-2 rounded-sm text-[11px] sm:text-sm font-semibold border leading-tight text-center whitespace-normal break-words ${(settings.discountDisplayFormat ?? 'amount') === opt.value
+                                                ? 'bg-orange-600 text-white border-orange-600'
+                                                : 'bg-white text-gray-700 border-gray-300'
+                                                }`}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -519,7 +579,7 @@ const CatalogueBillSettings: React.FC = () => {
                             onChange={handleChange}
                             placeholder="e.g., Thank you for shopping with us! Please leave a Google review."
                             rows={3}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-blue-500 focus:border-blue-500 outline-none text-sm leading-relaxed"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-orange-500 focus:border-orange-500 outline-none text-sm leading-relaxed"
                         />
                     </div>
                 </div>
@@ -539,7 +599,7 @@ const CatalogueBillSettings: React.FC = () => {
                             value={settings.termsAndConditions}
                             onChange={handleChange}
                             rows={5}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-blue-500 focus:border-blue-500 outline-none text-sm leading-relaxed"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-orange-500 focus:border-orange-500 outline-none text-sm leading-relaxed"
                         />
                     </div>
                 </div>

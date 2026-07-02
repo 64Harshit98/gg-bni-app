@@ -9,6 +9,7 @@ import { generateA5Invoice } from './A5PdfGenerator';
 
 export interface InvoiceData {
   printFormat?: 'A4' | 'THERMAL58' | 'A5';
+  enableTriplicate?: boolean;
   gstScheme?: string;
   taxType?: string;
   companyGstType?: string;
@@ -23,6 +24,7 @@ export interface InvoiceData {
   msmeNumber?: string;
   signatureBase64?: string;
   billDiscount?: number;
+  discountDisplayFormat?: 'amount' | 'percentage';
   upiId?: string;
   ifscCode?: number;
 
@@ -66,6 +68,8 @@ export interface InvoiceData {
     discountAmount: number;
     discount1Amount?: number;   // NEW
     discount2Amount?: number;
+    discount1Percent?: number;  // NEW
+    discount2Percent?: number;  // NEW
     amount?: number;
     gstAmount?: number;
     imageBase64?: string;
@@ -169,7 +173,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   const headerHeight = 25 + addressBlockHeight; // Expanded box height
   const metaHeight = 16;
 
-const td = data.transportDetails ?? undefined;
+  const td = data.transportDetails ?? undefined;
   const hasTransport = !!(
     td &&
     typeof td === 'object' &&
@@ -233,8 +237,14 @@ const td = data.transportDetails ?? undefined;
     let disc2Amt = Number((item as any).discount2Amount || 0);
     if (disc1Amt < 0) disc1Amt = 0;
     if (disc2Amt < 0) disc2Amt = 0;
-    // Display format: "0.00 + 25.00"
-    const itemDiscDisplay = `${disc1Amt.toFixed(2)} + ${disc2Amt.toFixed(2)}`;
+    const fmtPct = (n: number) => {
+      const v = Number(n) || 0;
+      return v % 1 === 0 ? v.toFixed(0) : v.toFixed(1);
+    };
+
+    const itemDiscDisplay = data.discountDisplayFormat === 'percentage'
+      ? `${fmtPct((item as any).discount1Percent)}% + ${fmtPct((item as any).discount2Percent)}%`
+      : `${disc1Amt.toFixed(2)} + ${disc2Amt.toFixed(2)}`;
 
     // 2. Pro-rate the global bill discount across rows
     let billDisc = sumPostDiscountAmounts > 0 ? (finalAmount / sumPostDiscountAmounts) * totalBillDiscount : 0;
@@ -394,7 +404,7 @@ const td = data.transportDetails ?? undefined;
     }
     cursorY += metaHeight;
 
- // 3a. Transport Details Row (optional)
+    // 3a. Transport Details Row (optional)
     if (hasTransport && td) {
       drawBox(cursorY, transportRowHeight);
 
@@ -663,6 +673,10 @@ const td = data.transportDetails ?? undefined;
 
   if (withDuplicate && !isEstimate) {
     renderPage(true);
+    // NEW: triplicate mode prints one extra "DUPLICATE" copy (1 original + 2 duplicates)
+    if (data.enableTriplicate) {
+      renderPage(true);
+    }
   }
 
   // --- OUTPUT ---
@@ -804,7 +818,7 @@ export const preparePdfData = async (invoiceData: any) => {
   return {
     ...invoiceData,
     companyLogoBase64,
-// --- TRANSPORT DETAILS ---
+    // --- TRANSPORT DETAILS ---
     transportDetails: invoiceData.transportDetails || undefined,
     // --- TEXT FIELDS (The likely culprits) ---
     companyState: companyData.state, // Fetch this from your companyDoc
@@ -819,7 +833,8 @@ export const preparePdfData = async (invoiceData: any) => {
     partyName: invoiceData.partyName || 'Cash Customer',
     invoiceNumber: invoiceData.invoiceNumber || 'INV-000',
     mode: invoiceData.mode || 'print',
-    upiId: invoiceData.settings?.upiId || companyData.upiId || '',        // Some generators check 'mode'
+    upiId: invoiceData.settings?.upiId || companyData.upiId || '',
+    discountDisplayFormat: invoiceData.settings?.discountDisplayFormat || invoiceData.discountDisplayFormat || 'amount',
 
     // --- OBJECTS ---
     company: companyData,
@@ -846,16 +861,16 @@ export const preparePdfData = async (invoiceData: any) => {
       const priceAfterD2 = priceAfterD1 * (1 - d2Pct / 100);
 
       const discount1Amount = (baseMrp - priceAfterD1) * qty;
-let discount2Amount = (priceAfterD1 - priceAfterD2) * qty;
+      let discount2Amount = (priceAfterD1 - priceAfterD2) * qty;
 
-// Back-calculate discount2Amount from taxableAmount if d2Pct is missing/zero
-if (d2Pct === 0) {
-  const taxableAmt = Number(item.taxableAmount) || 0;
-  if (taxableAmt > 0) {
-    const totalDiscountAmt = (baseMrp * qty) - taxableAmt;
-    discount2Amount = Math.max(0, totalDiscountAmt - discount1Amount);
-  }
-}
+      // Back-calculate discount2Amount from taxableAmount if d2Pct is missing/zero
+      if (d2Pct === 0) {
+        const taxableAmt = Number(item.taxableAmount) || 0;
+        if (taxableAmt > 0) {
+          const totalDiscountAmt = (baseMrp * qty) - taxableAmt;
+          discount2Amount = Math.max(0, totalDiscountAmt - discount1Amount);
+        }
+      }
 
       return {
         ...item,
@@ -869,6 +884,8 @@ if (d2Pct === 0) {
         discountAmount: item.discountAmount ?? item.discount ?? 0,
         discount1Amount,   // NEW
         discount2Amount,   // NEW
+        discount1Percent: d1Pct,   // NEW
+        discount2Percent: d2Pct,   // NEW
         // Ensure these exist for items too
         taxType: item.taxType || 'exclusive'
       };

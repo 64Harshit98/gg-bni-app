@@ -30,6 +30,7 @@ export interface CatalogueInvoiceData {
   signatureBase64?: string;
   taxType?: 'inclusive' | 'exclusive';
   upiId?: string;
+  enableTriplicate?: boolean;
 
   customer: {
     billing: {
@@ -85,6 +86,7 @@ export interface CatalogueInvoiceData {
   extraExpenses?: { name: string; amount: number }[];
   extraExpenseName?: string;
   extraExpenseAmount?: number;
+  discountDisplayMode?: 'amount' | 'percentage';
 }
 export const CatalogueBill = async (
   data: CatalogueInvoiceData,
@@ -100,6 +102,7 @@ export const CatalogueBill = async (
       isEstimate: data.isEstimate === true,
       companyGstType: data.companyGstType,
       taxType: data.taxType,
+      enableTriplicate: (data as any).enableTriplicate === true,
 
       billTo: {
         name: data.customer?.billing?.name || data.customer?.shipping?.name || "",
@@ -302,7 +305,7 @@ export const CatalogueBill = async (
 
     // --- Split discount into disc1 amount + disc2 amount (chained: MRP -> disc1 -> disc2) ---
     const disc1Pct = Number((item as any).discount || 0);
-    //const disc2Pct = Number((item as any).discount2 || 0);
+    const disc2Pct = Number((item as any).discount2 || 0);
     const priceAfterDisc1 = mrp * (1 - disc1Pct / 100);
 
     let disc1Amt = (mrp - priceAfterDisc1) * qty;
@@ -368,7 +371,9 @@ export const CatalogueBill = async (
     const printTaxRate = isComposition ? "-" : `${taxRate}%`;
     const printTaxAmt = isComposition ? "-" : taxAmt.toFixed(2);
 
-    const discDisplay = `${disc1Amt.toFixed(2)} + ${disc2Amt.toFixed(2)}`;
+    const discDisplay = data.discountDisplayMode === 'percentage'
+      ? `${disc1Pct.toFixed(2)}% + ${disc2Pct.toFixed(2)}%`
+      : `${disc1Amt.toFixed(2)} + ${disc2Amt.toFixed(2)}`;
 
     if (!showTaxColumns) {
       return [
@@ -766,7 +771,11 @@ export const CatalogueBill = async (
   renderPage(false);
 
   if (withDuplicate && !isEstimate) {
-    renderPage(true);
+    // Triplicate mode prints 2 duplicate copies (Original + 2 Duplicates = 3 total)
+    const duplicateCopies = data.enableTriplicate ? 2 : 1;
+    for (let i = 0; i < duplicateCopies; i++) {
+      renderPage(true);
+    }
   }
 
   if (action === "print") {
@@ -980,7 +989,7 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
     extraExpenseAmount: invoiceData.extraExpenseAmount || 0,
     extraExpenses: invoiceData.extraExpenses || invoiceData.expenses || [],
     transportDetails: invoiceData.transportDetails || null,
-    printFormat: billSettings.printFormat || "A4",
+    printFormat: billSettings.cataloguePrintFormat || "A4",
     logoBase64,
     companyName: companyData.name || "",
     companyAddress: companyData.address || "",
@@ -998,6 +1007,8 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
     ifscCode: invoiceData.ifscCode || billSettings.ifscCode || "",
     upiId: billSettings.upiId || companyData.upiId || "",
     termsAndConditions: billSettings.termsAndConditions || "",
-    signatureBase64: billSettings.signatureBase64 || ""
+    signatureBase64: billSettings.signatureBase64 || "",
+    enableTriplicate: billSettings.enableTriplicate || false,
+    discountDisplayMode: salesSettings?.discountDisplayMode || invoiceData.discountDisplayMode || 'amount',
   };
 };

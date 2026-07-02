@@ -3441,7 +3441,9 @@ const OrdersPage: React.FC = () => {
                                 }}
                                 className="w-full border border-orange-400 text-orange-600 py-2.5 rounded-sm font-bold text-sm"
                             >
-                                Print (Bill + Duplicate)
+                                 {_billSettings?.enableTriplicate
+                                    ? "Print (Bill + 2 Duplicates)"
+                                    : "Print (Bill + Duplicate)"}
                             </button>
                             <button
                                 onClick={() => setShowPrintSubMenu(false)}

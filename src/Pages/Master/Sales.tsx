@@ -10,7 +10,7 @@ import BarcodeScanner from '../../UseComponents/BarcodeScanner';
 import PaymentDrawer, { type PaymentCompletionData } from '../../Components/PaymentDrawer';
 import { peekNextInvoiceNumber } from '../../UseComponents/InvoiceCounter';
 import { Modal } from '../../constants/Modal';
-import { Permissions, ROLES, State, Variant } from '../../enums';
+import { Permissions, ROLES, State, Variant, ACTION } from '../../enums';
 import { CustomButton } from '../../Components';
 import type { User } from '../../Role/permission';
 import { useSalesSettings } from '../../context/SettingsContext';
@@ -20,12 +20,12 @@ import { GenericCartList } from '../../Components/CartItem';
 import BarcodeLinkModal from '../../Components/BarcodeLinkModal';
 import { FiTrash2, FiX, FiEdit, FiCamera, FiDelete, FiSearch, FiMenu } from 'react-icons/fi';
 import { GenericBillFooter } from '../../Components/Footer';
-import { IconScanCircle } from '../../constants/Icons';
+import { IconScanCircle, IconPrint } from '../../constants/Icons';
 import QRCode from 'react-qr-code';
 import { FiSend } from 'react-icons/fi';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { storage } from '../../lib/Firebase';
-import { generatePdfBlob } from '../../UseComponents/pdfGenerator';
+import { generatePdfBlob, generatePdf } from '../../UseComponents/pdfGenerator';
 import { getFirestoreOperations } from '../../lib/ItemsFirebase';
 import { botMasterService } from '../Additional/Whatsapp/WhatsappApi';
 import { PLAN_ALLOWED_FEATURES } from '../Settings/SalesSetting';
@@ -152,6 +152,9 @@ const Sales: React.FC = () => {
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
     const [savedBillData, setSavedBillData] = useState<{ id: string, number: string, invoiceData?: any } | null>(null);
     const [sendingPdf, setSendingPdf] = useState(false);
+    const [printingPdf, setPrintingPdf] = useState(false);
+    const [showPrintSubMenu, setShowPrintSubMenu] = useState(false);
+    const [enableTriplicate, setEnableTriplicate] = useState(false);
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [isSortOpen, setIsSortOpen] = useState(false);
     const [invoiceNumber, setInvoiceNumber] = useState<string>('');
@@ -367,6 +370,20 @@ const Sales: React.FC = () => {
         return () => unsubscribeCounter();
 
     }, [authLoading, currentUser, dbOperations, isEditMode, invoiceToEdit, loadingSettings]);
+
+    useEffect(() => {
+        const fetchBillSettings = async () => {
+            if (!currentUser?.companyId) return;
+            try {
+                const billSettingsRef = doc(db, 'companies', currentUser.companyId, 'settings', 'bill');
+                const snap = await getDoc(billSettingsRef);
+                if (snap.exists()) setEnableTriplicate(!!snap.data().enableTriplicate);
+            } catch (err) {
+                console.error('Error fetching bill settings for triplicate flag:', err);
+            }
+        };
+        fetchBillSettings();
+    }, [currentUser?.companyId]);
 
     useEffect(() => {
         if (!loadingSettings && salesSettings) {
@@ -1575,7 +1592,28 @@ const Sales: React.FC = () => {
             const fullItem = fetchedItems.find((fi: any) => fi.id === item.productId || fi.id === item.id);
             const finalTaxRate = item.taxRate || item.tax || fullItem?.tax || 0;
             const itemAmount = (item.finalPrice !== undefined && item.finalPrice !== null) ? item.finalPrice : (item.mrp * item.quantity);
+            // --- Discount 1 + Discount 2 ko ₹ amount mein nikalna (Journal.tsx jaisa) ---
+            const qty = Number(item.quantity) || 1;
+            const actualMrp = Number(item.mrp) || 0;
+            const basePrice = actualMrp > 0 ? actualMrp : (Number(item.salesPrice) || 0);
 
+            const d1Pct = Number(item.discount || item.discountPercentage) || 0;
+            const d2Pct = Number(item.discount2) || 0;
+
+            const priceAfterD1 = basePrice * (1 - d1Pct / 100);
+            const priceAfterD2 = priceAfterD1 * (1 - d2Pct / 100);
+
+            const discount1Amount = (basePrice - priceAfterD1) * qty;
+            let discount2Amount = (priceAfterD1 - priceAfterD2) * qty;
+
+            // Agar discount2 % missing hai, actual amount se back-calculate karo
+            if (d2Pct === 0 && itemAmount > 0) {
+                const totalDiscountAmt = (basePrice * qty) - itemAmount;
+                discount2Amount = Math.max(0, totalDiscountAmt - discount1Amount);
+            }
+
+            let absoluteDiscount = (basePrice * qty) - itemAmount;
+            if (absoluteDiscount < 0) absoluteDiscount = 0;
             return {
                 sno: index + 1,
                 name: item.name,
@@ -1584,12 +1622,18 @@ const Sales: React.FC = () => {
                 listPrice: item.mrp,
                 gstPercent: finalTaxRate,
                 hsn: fullItem?.hsnSac || item.hsnSac || "N/A",
-                discountAmount: item.discount || 0,
+                discountAmount: absoluteDiscount,
+                discount1Amount,
+                discount2Amount,
+                discount1Percent: d1Pct,   // NEW
+                discount2Percent: d2Pct,   // NEW
                 amount: itemAmount
             };
         });
 
         return {
+            printFormat: billSettings.posPrintFormat || 'A4',
+            enableTriplicate: billSettings.enableTriplicate || false,
             gstScheme: salesSettings?.gstScheme || '',
             taxType: salesSettings?.taxType || '',
             companyName: businessInfo?.name || 'Your Company',
@@ -1601,6 +1645,7 @@ const Sales: React.FC = () => {
             msmeNumber: billSettings.msmeNumber || '',
             panNumber: billSettings.panNumber || '',
             billDiscount: invoice.manualDiscount || 0,
+            discountDisplayFormat: billSettings?.discountDisplayFormat || 'amount',
             billTo: { name: invoice.partyName, address: invoice.partyAddress || '', phone: invoice.partyNumber || '', gstin: invoice.partyGstin || '' },
             invoice: {
                 number: invoice.invoiceNumber,
@@ -1682,7 +1727,23 @@ const Sales: React.FC = () => {
             setSendingPdf(false);
         }
     };
-
+    const handlePrintAction = async (invoice: any, withDuplicate: boolean = false) => {
+        setShowPrintSubMenu(false);
+        setPrintingPdf(true);
+        try {
+            const dataForPdf = await preparePdfData(invoice);
+            if (dataForPdf) {
+                await generatePdf(dataForPdf, ACTION.PRINT, withDuplicate);
+            } else {
+                throw new Error("Could not prepare PDF data");
+            }
+        } catch (err) {
+            console.error('Failed to print PDF:', err);
+            setModal({ message: 'Failed to print invoice. Please try again.', type: State.ERROR });
+        } finally {
+            setPrintingPdf(false);
+        }
+    };
     const showSuccessModal = (message: string, navigateTo?: string) => {
         sessionStorage.removeItem('sales_cart_draft');
         sessionStorage.removeItem('sales_tax_mode_draft');
@@ -2423,7 +2484,30 @@ const Sales: React.FC = () => {
                             ) : (
                                 <p className="text-xs text-amber-600 mb-3 text-center bg-amber-50 p-2 rounded w-full border border-amber-200">No phone number provided for WhatsApp.</p>
                             )}
+                            <button onClick={() => setShowPrintSubMenu(true)} disabled={printingPdf}
+                                className="w-full bg-gray-900 text-white py-3 rounded-lg font-semibold hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 mb-3 disabled:opacity-50">
+                                {printingPdf ? <Spinner /> : <><IconPrint /> Print</>}
+                            </button>
                             <button onClick={handleCloseQrModal} className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors">Done</button>
+                        </div>
+                    </div>
+                )}
+
+                {showPrintSubMenu && savedBillData && (
+                    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50" onClick={() => setShowPrintSubMenu(false)}>
+                        <div className="bg-white rounded-sm p-6 w-full max-w-xs mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
+                            <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest mb-4 text-center">Print Options</h3>
+                            <div className="flex flex-col gap-3">
+                                <button onClick={() => handlePrintAction(savedBillData.invoiceData, false)} className="w-full border py-2.5 rounded-sm font-bold text-sm">
+                                    Print (Bill Only)
+                                </button>
+                                <button onClick={() => handlePrintAction(savedBillData.invoiceData, true)} className="w-full border border-blue-500 text-blue-600 py-2.5 rounded-sm font-bold text-sm">
+                                    {enableTriplicate ? 'Print (Bill + 2 Duplicates)' : 'Print (Bill + Duplicate)'}
+                                </button>
+                                <button onClick={() => setShowPrintSubMenu(false)} className="w-full text-[11px] font-bold text-slate-400 hover:text-slate-700 mt-1">
+                                    Cancel
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -2811,12 +2895,40 @@ const Sales: React.FC = () => {
                             </p>
                         )}
 
+                        {/* --- NEW PRINT BUTTON --- */}
+                        <button
+                            onClick={() => setShowPrintSubMenu(true)}
+                            disabled={printingPdf}
+                            className="w-full bg-gray-900 text-white py-3 rounded-lg font-semibold hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 mb-3 disabled:opacity-50"
+                        >
+                            {printingPdf ? <Spinner /> : <><IconPrint /> Print</>}
+                        </button>
+
                         <button
                             onClick={handleCloseQrModal}
                             className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
                         >
                             Done
                         </button>
+                    </div>
+                </div>
+            )}
+
+            {showPrintSubMenu && savedBillData && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50" onClick={() => setShowPrintSubMenu(false)}>
+                    <div className="bg-white rounded-sm p-6 w-full max-w-xs mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest mb-4 text-center">Print Options</h3>
+                        <div className="flex flex-col gap-3">
+                            <button onClick={() => handlePrintAction(savedBillData.invoiceData, false)} className="w-full border py-2.5 rounded-sm font-bold text-sm">
+                                Print (Bill Only)
+                            </button>
+                            <button onClick={() => handlePrintAction(savedBillData.invoiceData, true)} className="w-full border border-blue-500 text-blue-600 py-2.5 rounded-sm font-bold text-sm">
+                                {enableTriplicate ? 'Print (Bill + 2 Duplicates)' : 'Print (Bill + Duplicate)'}
+                            </button>
+                            <button onClick={() => setShowPrintSubMenu(false)} className="w-full text-[11px] font-bold text-slate-400 hover:text-slate-700 mt-1">
+                                Cancel
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

@@ -841,6 +841,9 @@ export const generateA5Invoice = async (
     drawPage(false);
     if (withDuplicate && !resolvedIsEstimate) {
         drawPage(true);
+        if ((data as any).enableTriplicate) {
+        drawPage(true);
+    }
     }
     // --- PRINT / DOWNLOAD / BLOB ---
     if (action === ACTION.PRINT) {

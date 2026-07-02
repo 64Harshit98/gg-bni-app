@@ -7,6 +7,7 @@ import { State } from '../../enums';
 import { Modal } from '../../constants/Modal';
 import { useNavigate } from 'react-router';
 import BackButton from '../../Components/BackButton';
+import { InfoTooltip } from '../../Components/InfoToolTip';
 
 // --- Interfaces ---
 export interface BillSettingsData {
@@ -15,7 +16,8 @@ export interface BillSettingsData {
     signatureBase64?: string;
     printFormat?: 'A4' | 'A5' | 'THERMAL58';
     whatsappExtraMessage?: string;
-
+    enableTriplicate?: boolean;
+    discountDisplayFormat?: 'amount' | 'percentage';
 }
 
 interface BusinessInfoData {
@@ -61,7 +63,9 @@ const BillSettings: React.FC = () => {
         termsAndConditions: '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
         signatureBase64: '',
         printFormat: 'A4',
-        whatsappExtraMessage: '' // <-- ADD THIS LINE
+        whatsappExtraMessage: '',
+        enableTriplicate: false,
+        discountDisplayFormat: 'amount',
     });
 
     const formatAddress = (addr: any): string => {
@@ -120,6 +124,8 @@ const BillSettings: React.FC = () => {
                     signatureBase64: sData.signatureBase64 || '',
                     printFormat: sData.posPrintFormat || 'A4',
                     whatsappExtraMessage: sData.posWhatsappExtraMessage || '',
+                    enableTriplicate: sData.enableTriplicate || false,
+                    discountDisplayFormat: sData.discountDisplayFormat || 'amount',
                 };
 
                 setSettings(loadedSettings);
@@ -178,6 +184,8 @@ const BillSettings: React.FC = () => {
                 posTermsAndConditions: settings.termsAndConditions,
                 posPrintFormat: settings.printFormat,
                 posWhatsappExtraMessage: settings.whatsappExtraMessage,
+                enableTriplicate: settings.enableTriplicate || false,
+                discountDisplayFormat: settings.discountDisplayFormat || 'amount',
 
                 // ✅ Always sync from businessInfo so these stay fresh
                 companyGstin: businessInfo.gstin,
@@ -432,6 +440,53 @@ const BillSettings: React.FC = () => {
                                     <span className="block text-xs text-gray-500">58mm continuous receipt layout.</span>
                                 </div>
                             </label>
+                        </div>
+                        {/* NEW: Triplicate toggle */}
+                        <div className="mt-5 pt-5 border-t border-gray-100 flex items-center justify-between">
+                            <div>
+                                <span className="block text-sm font-medium text-gray-900">Print Triplicate Copies</span>
+                                <span className="block text-xs text-gray-500">
+                                    When enabled, "Print (Bill + Duplicate)" prints 1 original + 2 "DUPLICATE" stamped copies instead of 1.
+                                </span>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-4">
+                                <input
+                                    type="checkbox"
+                                    checked={!!settings.enableTriplicate}
+                                    onChange={(e) =>
+                                        setSettings(prev => ({ ...prev, enableTriplicate: e.target.checked }))
+                                    }
+                                    className="sr-only peer"
+                                />
+                                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:bg-blue-600 transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5"></div>
+                            </label>
+                        </div>
+                        {/* NEW: Discount 1 + Discount 2 display format */}
+                        <div className="mt-5 pt-5 border-t border-gray-100">
+                            <div className="rounded-sm bg-gray-50 border border-gray-100 p-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <p className="text-sm font-semibold text-gray-800 leading-5">Discount Display on Bill</p>
+                                    <InfoTooltip text="Choose how the Disc1 + Disc2 column is shown on the printed/PDF bill." />
+                                </div>
+                                <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+                                    {[
+                                        { label: 'Amount (₹)', value: 'amount' },
+                                        { label: 'Percentage (%)', value: 'percentage' },
+                                    ].map((opt) => (
+                                        <button
+                                            key={opt.value}
+                                            type="button"
+                                            onClick={() => setSettings(prev => ({ ...prev, discountDisplayFormat: opt.value as 'amount' | 'percentage' }))}
+                                            className={`min-w-0 min-h-[42px] px-2 py-2 rounded-sm text-[11px] sm:text-sm font-semibold border leading-tight text-center whitespace-normal break-words ${(settings.discountDisplayFormat ?? 'amount') === opt.value
+                                                ? 'bg-blue-600 text-white border-blue-600'
+                                                : 'bg-white text-gray-700 border-gray-300'
+                                                }`}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

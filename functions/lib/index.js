@@ -578,3 +578,64 @@ exports.inviteUserToCompany = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError("internal", error.message);
     }
 });
+exports.getPublicItem = functions
+    .region("us-central1")
+    .https.onRequest(async (req, res) => {
+        const { cId, itemId } = req.query;
+
+        if (!cId || !itemId) {
+            res.status(400).json({ error: "Missing cId or itemId" });
+            return;
+        }
+
+        try {
+            const itemRef = db
+                .collection("companies")
+                .doc(String(cId))
+                .collection("items")
+                .doc(String(itemId));
+
+            const itemSnap = await itemRef.get();
+
+            if (!itemSnap.exists) {
+                res.status(404).json({ error: "Item not found" });
+                return;
+            }
+
+            const data = itemSnap.data();
+
+            // Only expose what's needed for a preview card — never the full doc.
+            const mrp = Number(data.mrp || 0);
+            const salesPrice = Number(data.salesPrice || 0);
+            const discount = Number(data.discount || 0);
+
+            let salePrice = 0;
+            if (mrp > 0 && salesPrice > 0) {
+                salePrice = salesPrice;
+            } else if (salesPrice > 0) {
+                salePrice = salesPrice * (1 - discount / 100);
+            } else if (mrp > 0) {
+                salePrice = mrp * (1 - discount / 100);
+            }
+            salePrice = Math.round((salePrice + Number.EPSILON) * 100) / 100;
+
+            const publicItem = {
+                id: itemSnap.id,
+                name: data.name || "Product",
+                imageUrl: data.imageUrl || null,
+                mrp,
+                salePrice,
+                isListed: data.isListed ?? false,
+            };
+
+            // Cache like getPublicCatalogue: short browser cache, longer CDN cache.
+            res.set(
+                "Cache-Control",
+                "public, max-age=60, s-maxage=3600, stale-while-revalidate=600"
+            );
+            res.status(200).json(publicItem);
+        } catch (error) {
+            console.error("Error fetching public item:", error);
+            res.status(500).json({ error: "Internal Server Error" });
+        }
+    });

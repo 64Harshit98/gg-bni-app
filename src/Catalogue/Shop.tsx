@@ -4,7 +4,7 @@ import type { Item, ItemGroup } from '../constants/models';
 import { Modal } from '../constants/Modal';
 import { State } from '../enums';
 import { FiX, FiPackage, FiPlus } from 'react-icons/fi';
-import { Trash2, X, Send, Pin } from 'lucide-react';
+import { Trash2, X, Send, Pin, Download, Loader2 } from 'lucide-react';
 import { Spinner } from '../constants/Spinner';
 import { db } from '../lib/Firebase';
 import { addDoc, collection, serverTimestamp, doc, getDoc, setDoc } from 'firebase/firestore';
@@ -14,6 +14,96 @@ import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName';
 import SubdomainClaimModal from '../Components/SubDomainModal';
 import SearchableItemInput from '../UseComponents/SearchIteminput';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
+
+// 1. Updated normalizer: Converts ANY image format (WebP, AVIF, PNG) into a jsPDF-safe JPEG
+const blobToNormalizedBase64 = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.crossOrigin = 'Anonymous';
+
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+
+            if (ctx) {
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0);
+                resolve(canvas.toDataURL('image/jpeg', 0.8)); // 0.8 compression keeps PDF file size down
+            } else {
+                reject(new Error("Canvas context failed"));
+            }
+            URL.revokeObjectURL(url);
+        };
+        img.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error("Image load error"));
+        };
+        img.src = url;
+    });
+};
+
+// 2. Your existing fetch logic, routing the blob through the new Canvas normalizer
+const convertImageUrlToBase64 = async (url: string, itemName: string): Promise<string> => {
+    if (!url) {
+        console.warn(`⚠️ [${itemName}] No Image URL provided in the database.`);
+        return "";
+    }
+
+    try {
+        const cacheBuster = url + (url.includes('?') ? '&' : '?') + 'cb=' + new Date().getTime();
+        const response = await fetch(cacheBuster, { mode: 'cors' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const blob = await response.blob();
+
+        // Pass through the new normalizer
+        return await blobToNormalizedBase64(blob);
+
+    } catch (err) {
+        console.warn(`⚠️ [${itemName}] Direct fetch blocked. Trying Proxy...`);
+        try {
+            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+            const proxyResponse = await fetch(proxyUrl);
+            if (!proxyResponse.ok) throw new Error(`Proxy HTTP ${proxyResponse.status}`);
+            const blob = await proxyResponse.blob();
+
+            // Pass through the new normalizer
+            return await blobToNormalizedBase64(blob);
+
+        } catch (proxyErr) {
+            console.error(`❌ [${itemName}] Both direct and proxy fetch failed.`);
+            return "";
+        }
+    }
+};
+// Helper to calculate effective prices consistently
+const getEffectivePriceInfo = (item: Item) => {
+    const mrp = Number(item.mrp || 0);
+    const itemSalesPrice = Number(item.salesPrice || 0);
+    const presetDiscount = Number(item.discount || 0);
+
+    let salePrice = 0;
+    if (mrp > 0 && itemSalesPrice > 0) {
+        salePrice = itemSalesPrice;
+    } else if (itemSalesPrice > 0) {
+        salePrice = itemSalesPrice * (1 - (presetDiscount / 100));
+    } else if (mrp > 0) {
+        salePrice = mrp * (1 - (presetDiscount / 100));
+    }
+    salePrice = Math.round((salePrice + Number.EPSILON) * 100) / 100;
+
+    return {
+        mrp,
+        salePrice,
+        hasBothPrices: mrp > 0 && salePrice > 0 && salePrice < mrp
+    };
+};
 
 const OrderingPage: React.FC = () => {
     // --- States ---
@@ -37,6 +127,7 @@ const OrderingPage: React.FC = () => {
     const [sortOrder, setSortOrder] = useState<'A-Z' | 'Z-A'>('A-Z');
     const [isSortOpen, setIsSortOpen] = useState(false);
     const [socialLinks, setSocialLinks] = useState<any>({});
+    const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
     // --- YOUR NEW STATES ---
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -222,6 +313,159 @@ const OrderingPage: React.FC = () => {
         }, {} as Record<string, string>);
     }, [itemGroups]);
 
+    const handleDownloadFullCatalogPDF = async () => {
+        // 1. STRICT filter for live items only
+        const liveItems = items.filter(item => item.isListed === true);
+
+        if (liveItems.length === 0) {
+            setModal({ message: 'No live items available to download.', type: State.ERROR });
+            return;
+        }
+
+        setIsGeneratingPDF(true);
+
+        try {
+            const doc = new jsPDF();
+
+            // --- Document Header ---
+            doc.setFontSize(18);
+            doc.text(`${companyName} - Full Master Catalogue`, 14, 20);
+            doc.setFontSize(10);
+            doc.setTextColor(100);
+            doc.text(`Generated by SELLAR: ${new Date().toLocaleDateString()}`, 14, 26);
+
+            const tableBody: any[] = [];
+            const tableImages: string[] = [];
+
+            // 2. Sort ONLY the strictly filtered live items
+            const sortedItems = [...liveItems].sort((a, b) => {
+                const catA = a.itemGroupId ? itemGroupMap[a.itemGroupId] || 'Uncategorized' : 'Uncategorized';
+                const catB = b.itemGroupId ? itemGroupMap[b.itemGroupId] || 'Uncategorized' : 'Uncategorized';
+
+                if (catA === catB) {
+                    return (a.name || '').localeCompare(b.name || '');
+                }
+                return catA.localeCompare(catB);
+            });
+
+            // --- Prepare Data (Throttled to prevent 429 errors) ---
+            for (const item of sortedItems) {
+                const { salePrice, mrp, hasBothPrices } = getEffectivePriceInfo(item);
+                let base64Img = '';
+
+                if (item.imageUrl) {
+                    // Make sure your convertImageUrlToBase64 function in THIS file 
+                    // has been updated to use the Canvas normalizer!
+                    base64Img = await convertImageUrlToBase64(
+                        item.imageUrl,
+                        item.name || 'Unknown Product'
+                    );
+
+                    // Tiny 50ms artificial delay between fetches to keep Google servers happy
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                }
+
+                const catName = item.itemGroupId ? itemGroupMap[item.itemGroupId] || 'Uncategorized' : 'Uncategorized';
+                const mrpText = hasBothPrices ? `Rs. ${mrp}` : '-';
+                const salePriceText = `Rs. ${salePrice}`;
+
+                tableBody.push([
+                    '', // Image placeholder
+                    item.name?.toUpperCase() || 'UNNAMED PRODUCT',
+                    catName,
+                    mrpText,
+                    salePriceText
+                ]);
+
+                tableImages.push(base64Img);
+            }
+
+            // --- Generate AutoTable ---
+            autoTable(doc, {
+                startY: 32,
+                margin: { bottom: 25 }, // CRITICAL: Adds space at the bottom so the table doesn't hit the footer
+                head: [['Image', 'Product Details', 'Category', 'MRP', 'Sale Price']],
+                body: tableBody,
+                headStyles: { fillColor: [249, 115, 22] }, // Orange
+                bodyStyles: { minCellHeight: 25, valign: 'middle' },
+                columnStyles: {
+                    0: { cellWidth: 25 },
+                    1: { cellWidth: 'auto', fontStyle: 'bold', textColor: [26, 59, 93] },
+                    2: { cellWidth: 35, textColor: [100, 100, 100] },
+                    3: { cellWidth: 20, halign: 'center', textColor: [156, 163, 175] },
+                    4: { cellWidth: 30, halign: 'right', fontStyle: 'bold', textColor: [249, 115, 22] }
+                },
+                didDrawCell: (data) => {
+                    // Inject images into the first column
+                    if (data.column.index === 0 && data.cell.section === 'body') {
+                        const base64Img = tableImages[data.row.index];
+                        if (base64Img) {
+                            // Because we used the Canvas normalizer, this is now a guaranteed clean JPEG
+                            doc.addImage(base64Img, 'JPEG', data.cell.x + 2, data.cell.y + 2, 21, 21);
+                        }
+                    }
+                },
+                didDrawPage: () => {
+                    // --- Footer Branding Injection ---
+                    const pageSize = doc.internal.pageSize;
+                    const pageWidth = pageSize.width ? pageSize.width : pageSize.getWidth();
+                    const pageHeight = pageSize.height ? pageSize.height : pageSize.getHeight();
+                    const footerY = pageHeight - 12; // Base Y position near the bottom
+
+                    doc.setFontSize(10);
+
+                    // -- Line 1: Powered by SELLAR.IN --
+                    doc.setFont('helvetica', 'bold');
+                    const text1a = "Powered by ";
+                    const text1b = "SELLAR.IN";
+                    const w1a = doc.getTextWidth(text1a);
+                    const w1b = doc.getTextWidth(text1b);
+                    const startX1 = (pageWidth - (w1a + w1b)) / 2; // Centers the combined text
+
+                    doc.setTextColor(0, 0, 0); // Black
+                    doc.text(text1a, startX1, footerY - 5);
+
+                    doc.setTextColor(37, 99, 235); // Blue
+                    doc.text(text1b, startX1 + w1a, footerY - 5);
+
+                    // Draw underline for SELLAR.IN
+                    doc.setLineWidth(0.3);
+                    doc.setDrawColor(37, 99, 235);
+                    doc.line(startX1 + w1a, footerY - 4, startX1 + w1a + w1b, footerY - 4);
+
+                    // -- Line 2: Made with Love in India --
+                    doc.setFont('helvetica', 'normal');
+                    const text2a = "Made with ";
+                    const text2b = "Love";
+                    const text2c = " in India";
+                    const w2a = doc.getTextWidth(text2a);
+                    const w2b = doc.getTextWidth(text2b);
+                    const w2c = doc.getTextWidth(text2c);
+                    const startX2 = (pageWidth - (w2a + w2b + w2c)) / 2;
+
+                    doc.setTextColor(0, 0, 128); // Dark Navy/Blackish for start
+                    doc.text(text2a, startX2, footerY);
+
+                    doc.setTextColor(239, 68, 68); // Red
+                    doc.text(text2b, startX2 + w2a, footerY);
+
+                    doc.setTextColor(0, 0, 128); // Dark Navy for end
+                    doc.text(text2c, startX2 + w2a + w2b, footerY);
+                }
+            });
+
+            // --- Save the PDF ---
+            const safeCompanyName = (companyName || 'Company').replace(/\s+/g, '_');
+            doc.save(`${safeCompanyName}_Full_Master_Catalogue.pdf`);
+
+        } catch (error) {
+            console.error("Error generating full PDF:", error);
+            setModal({ message: 'Failed to generate PDF.', type: State.ERROR });
+        } finally {
+            setIsGeneratingPDF(false);
+        }
+    };
+
     const filteredItems = useMemo(() => {
         const validGroupIds = new Set(itemGroups.map(g => g.id));
         const uncategorizedItems = items.filter(item =>
@@ -357,8 +601,21 @@ const OrderingPage: React.FC = () => {
                 </div>
             </header>
             <main className="p-4 space-y-4 flex-1 max-w-7xl mx-auto w-full pb-20">
-                <div className='flex items-center justify-center'>
-                    <h1 className="text-sm md:text-xl font-extrabold text-[#F97316] uppercase tracking-tighter">Categories</h1>
+                <div className='relative flex items-center justify-center w-full py-2'>
+                    <h1 className="text-sm md:text-xl font-extrabold text-[#F97316] uppercase tracking-tighter">
+                        Categories
+                    </h1>
+                    <button
+                        onClick={handleDownloadFullCatalogPDF}
+                        disabled={items.length === 0 || isGeneratingPDF}
+                        className="absolute right-0 flex items-center gap-1.5 bg-white border border-gray-100 px-3 py-1.5 rounded-sm shadow-sm active:scale-95 transition-all text-[#1A3B5D] hover:text-[#F97316] disabled:opacity-50"
+                        title="Download Master PDF"
+                    >
+                        {isGeneratingPDF ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                        <span className="text-[10px] font-black uppercase hidden sm:inline">
+                            {isGeneratingPDF ? 'Generating...' : 'PDF'}
+                        </span>
+                    </button>
                 </div>
 
                 {/* --- STICKY SEARCH BAR --- */}

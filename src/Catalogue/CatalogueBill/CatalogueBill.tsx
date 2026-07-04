@@ -1006,9 +1006,9 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
     accountNumber: invoiceData.accountNumber || billSettings.accountNumber || "",
     ifscCode: invoiceData.ifscCode || billSettings.ifscCode || "",
     upiId: billSettings.upiId || companyData.upiId || "",
-    termsAndConditions: billSettings.termsAndConditions || "",
+    termsAndConditions: billSettings.catalogueTermsAndConditions || invoiceData.termsAndConditions || "",
     signatureBase64: billSettings.signatureBase64 || "",
     enableTriplicate: billSettings.enableTriplicate || false,
-    discountDisplayMode: salesSettings?.discountDisplayMode || invoiceData.discountDisplayMode || 'amount',
+    discountDisplayMode: billSettings.discountDisplayFormat || invoiceData.discountDisplayFormat || 'amount',
   };
 };

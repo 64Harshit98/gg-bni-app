@@ -1654,7 +1654,7 @@ const Sales: React.FC = () => {
                 roNumber: '',
             },
             items: populatedItems,
-            terms: billSettings.termsAndConditions || 'Goods once sold will not be taken back.',
+            terms: billSettings.posTermsAndConditions || billSettings.termsAndConditions || 'Goods once sold will not be taken back.',
             finalAmount: invoice.amount,
             bankDetails: {
                 accountName: billSettings.accountName || businessInfo?.accountHolderName,

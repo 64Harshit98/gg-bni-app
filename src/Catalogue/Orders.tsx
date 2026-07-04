@@ -41,6 +41,12 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage
 import { storage } from '../lib/Firebase'; // Ensure 'storage' is exported from your Firebase config
 import { botMasterService } from '../Pages/Additional/Whatsapp/WhatsappApi';
 import { FiSend } from 'react-icons/fi';
+import { TutorialStep } from '../Components/TutorialStep';
+import useTutorial from '../Catalogue/hooks/useTutorial';
+import { completeTutorial } from '../Catalogue/hooks/useCompleteTutorial';
+
+// ─── Total tutorial steps for Orders ────────────────────────────────────────
+const TOTAL_STEPS = 4;
 
 export interface OrderItem {
     id: string;
@@ -92,6 +98,8 @@ export interface Order {
         phone: string;
         name: string;
         gstin: string;
+        city?: string;
+        state?: string;
     };
     shippingDetails?: any;
     userEmail?: string;
@@ -414,6 +422,11 @@ const OrdersPage: React.FC = () => {
 
     // AUDIO REF
     const audioRef = useRef<HTMLAudioElement | null>(null);
+    // ─── Refs for tutorial autoscroll ─────────────────────────────────────────
+    const tutorialRefs = useRef<(HTMLElement | null)[]>([]);
+    const setTutorialRef = (index: number) => (el: HTMLElement | null) => {
+        tutorialRefs.current[index] = el;
+    };
     const seenOrdersRef = useRef<Set<string>>(
         new Set(JSON.parse(localStorage.getItem(NOTIFICATION_SEEN_ORDERS_KEY) || "[]"))
     );
@@ -500,6 +513,23 @@ const OrdersPage: React.FC = () => {
     const [pendingRequestCount, setPendingRequestCount] = useState(0);
 
     const { currentUser } = useAuth();
+    // ─── Tutorial state (mirrors Journal.tsx pattern) ─────────────────────────
+    const [tutorialStep, setTutorialStep] = useState(0);
+    const next = (n: number) => setTutorialStep(n <= TOTAL_STEPS ? n : 0);
+    const skip = () => {
+        completeTutorial(currentUser, 'ordersTutorialDone', setTutorialStep);
+    };
+
+    useTutorial(currentUser, setTutorialStep, 'ordersTutorialDone');
+
+    // ─── Autoscroll: whenever tutorialStep changes, scroll that element into view
+    useEffect(() => {
+        if (tutorialStep === 0) return;
+        const el = tutorialRefs.current[tutorialStep];
+        if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }, [tutorialStep]);
 
     // ── Subscription badge ────────────────────────────────────────────────────
     const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
@@ -1224,12 +1254,16 @@ const OrdersPage: React.FC = () => {
                         name: Order.billingDetails?.name || Order.userName || "Customer",
                         phone: Order.billingDetails?.phone || "",
                         address: Order.billingDetails?.address || "",
+                        city: Order.billingDetails?.city || "",
+                        state: Order.billingDetails?.state || "",
                         gstin: Order.billingDetails?.gstin || "",
                     },
                     shipping: {
                         name: Order.shippingDetails?.name || Order.billingDetails?.name || "",
                         phone: Order.shippingDetails?.phone || "",
                         address: Order.shippingDetails?.address || "",
+                        city: Order.shippingDetails?.city || Order.billingDetails?.city || "",
+                        state: Order.shippingDetails?.state || Order.billingDetails?.state || "",
                         gstin: Order.shippingDetails?.gstin || ""
                     }
                 },
@@ -1347,12 +1381,16 @@ const OrdersPage: React.FC = () => {
                         name: Order.billingDetails?.name || Order.userName || "Customer",
                         phone: Order.billingDetails?.phone || "",
                         address: Order.billingDetails?.address || "",
+                        city: Order.billingDetails?.city || "",
+                        state: Order.billingDetails?.state || "",
                         gstin: Order.billingDetails?.gstin || "",
                     },
                     shipping: {
                         name: Order.shippingDetails?.name || Order.billingDetails?.name || "",
                         phone: Order.shippingDetails?.phone || "",
                         address: Order.shippingDetails?.address || "",
+                        city: Order.shippingDetails?.city || Order.billingDetails?.city || "",
+                        state: Order.shippingDetails?.state || Order.billingDetails?.state || "",
                         gstin: Order.shippingDetails?.gstin || ""
                     }
                 },
@@ -1507,12 +1545,16 @@ const OrdersPage: React.FC = () => {
                         name: Order.billingDetails?.name || Order.userName || "Customer",
                         phone: Order.billingDetails?.phone || "",
                         address: Order.billingDetails?.address || "",
+                        city: Order.billingDetails?.city || "",
+                        state: Order.billingDetails?.state || "",
                         gstin: Order.billingDetails?.gstin || "",
                     },
                     shipping: {
                         name: Order.shippingDetails?.name || Order.billingDetails?.name || "",
                         phone: Order.shippingDetails?.phone || "",
                         address: Order.shippingDetails?.address || "",
+                        city: Order.shippingDetails?.city || Order.billingDetails?.city || "",
+                        state: Order.shippingDetails?.state || Order.billingDetails?.state || "",
                         gstin: Order.shippingDetails?.gstin || ""
                     }
                 },
@@ -2497,9 +2539,17 @@ const OrdersPage: React.FC = () => {
                 <div className="flex items-center justify-between">
                     {/* Left: Search Icon - Changed w-10 to w-24 and added flex justify-start */}
                     <div className="w-24 flex justify-start">
-                        <button onClick={() => setShowSearch(!showSearch)} className="text-slate-500">
-                            {showSearch ? <FiX className="w-6 h-6" /> : <FiSearch className="w-6 h-6" />}
-                        </button>
+                        <TutorialStep
+                            step={1}
+                            currentStep={tutorialStep}
+                            text="Tap the search icon to find orders by name, order ID, or phone."
+                            onNext={() => next(2)}
+                            onSkip={skip}
+                        >
+                            <button onClick={() => setShowSearch(!showSearch)} className="text-slate-500">
+                                {showSearch ? <FiX className="w-6 h-6" /> : <FiSearch className="w-6 h-6" />}
+                            </button>
+                        </TutorialStep>
                     </div>
 
                     {/* Center: Title & Search Input */}
@@ -2518,11 +2568,19 @@ const OrdersPage: React.FC = () => {
                         )}
 
                         {/* Date Filter - Just below Header */}
-                        <div className="mt-0.5">
-                            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                                {getDateDisplay}
-                            </span>
-                        </div>
+                        <TutorialStep
+                            step={2}
+                            currentStep={tutorialStep}
+                            text="This shows the date range currently applied to your orders."
+                            onNext={() => next(3)}
+                            onSkip={skip}
+                        >
+                            <div className="mt-0.5">
+                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                    {getDateDisplay}
+                                </span>
+                            </div>
+                        </TutorialStep>
                     </div>
 
                     {/* Right: Notification Bell + Filter Icon */}
@@ -2532,9 +2590,17 @@ const OrdersPage: React.FC = () => {
                         </div>
                         {/* //<CataShowWrapper permission={Cata_Permissions.ViewFilterbutton}> */}
                         <div className="relative" ref={filterRef}>
-                            <button onClick={() => setIsFilterOpen(!isFilterOpen)} className="text-slate-500 hover:text-slate-800 cursor-pointer">
-                                <IconFilter />
-                            </button>
+                            <TutorialStep
+                                step={3}
+                                currentStep={tutorialStep}
+                                text="Use this filter to quickly jump to Today, Last 7 Days, Last 30 Days, and more."
+                                onNext={() => next(4)}
+                                onSkip={skip}
+                            >
+                                <button onClick={() => setIsFilterOpen(!isFilterOpen)} className="text-slate-500 hover:text-slate-800 cursor-pointer">
+                                    <IconFilter />
+                                </button>
+                            </TutorialStep>
 
                             {isFilterOpen && (
                                 <div className="absolute top-full right-0 mt-3 w-64 bg-white rounded-sm shadow-lg z-[1000] border p-3">
@@ -2585,56 +2651,82 @@ const OrdersPage: React.FC = () => {
                 </div>
 
                 {/* ORDER TIMELINE */}
-                <div className="flex items-center w-full px-2 md:px-10 pt-9 pb-9 bg-white">
-                    {OrderStatuses.map((status, index) => {
-                        const activeIndex = OrderStatuses.indexOf(activeStatusTab);
-                        const isCompleted = index < activeIndex;
-                        const isActive = index === activeIndex;
-                        const count = statusCounts[status] || 0;
+                <TutorialStep
+                    step={4}
+                    currentStep={tutorialStep}
+                    text="Track your order here — from Upcoming to Confirmed, Packed, and Completed."
+                    onNext={async () => {
+                        if (!currentUser?.companyId) {
+                            setTutorialStep(0);
+                            window.dispatchEvent(new Event("orders_tutorial_done"));
+                            return;
+                        }
+                        try {
+                            await setDoc(
+                                doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial'),
+                                { ordersTutorialDone: true },
+                                { merge: true }
+                            );
+                        } catch (e) {
+                            console.error('Error saving orders tutorial:', e);
+                        }
+                        setTutorialStep(0);
+                        window.dispatchEvent(new Event("orders_tutorial_done"));
+                    }}
+                    onSkip={skip}
+                    isLast
+                >
+                    <div ref={setTutorialRef(4) as any} className="flex items-center w-full px-2 md:px-10 pt-9 pb-9 bg-white">
+                        {OrderStatuses.map((status, index) => {
+                            const activeIndex = OrderStatuses.indexOf(activeStatusTab);
+                            const isCompleted = index < activeIndex;
+                            const isActive = index === activeIndex;
+                            const count = statusCounts[status] || 0;
 
-                        return (
-                            <React.Fragment key={status}>
-                                <div
-                                    className="relative flex flex-col items-center flex-1 min-w-0 cursor-pointer"
-                                    onClick={() => setActiveStatusTab(status)}
-                                >
-                                    <span
-                                        className={`absolute ${index % 2 === 0 ? 'bottom-full mb-2' : 'top-full mt-2'
-                                            } text-center text-[8px] sm:text-[10px] md:text-[11px] uppercase tracking-tighter ${isActive ? 'text-[#F97316] font-black' : 'text-gray-400 font-bold'} whitespace-nowrap`}
-                                    >
-                                        {status}
-                                    </span>
+                            return (
+                                <React.Fragment key={status}>
                                     <div
-                                        className={`relative w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center transition-all duration-300 z-10 ${status === "Upcoming"
-                                            ? "bg-orange-500 text-white"
-                                            : isCompleted || isActive
-                                                ? "bg-orange-500 text-white"
-                                                : "bg-gray-200 text-gray-500"
-                                            } ${isActive ? "scale-110 shadow-md ring-2 ring-orange-100" : ""}`}
+                                        className="relative flex flex-col items-center flex-1 min-w-0 cursor-pointer"
+                                        onClick={() => setActiveStatusTab(status)}
                                     >
+                                        <span
+                                            className={`absolute ${index % 2 === 0 ? 'bottom-full mb-2' : 'top-full mt-2'
+                                                } text-center text-[8px] sm:text-[10px] md:text-[11px] uppercase tracking-tighter ${isActive ? 'text-[#F97316] font-black' : 'text-gray-400 font-bold'} whitespace-nowrap`}
+                                        >
+                                            {status}
+                                        </span>
+                                        <div
+                                            className={`relative w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center transition-all duration-300 z-10 ${status === "Upcoming"
+                                                ? "bg-orange-500 text-white"
+                                                : isCompleted || isActive
+                                                    ? "bg-orange-500 text-white"
+                                                    : "bg-gray-200 text-gray-500"
+                                                } ${isActive ? "scale-110 shadow-md ring-2 ring-orange-100" : ""}`}
+                                        >
 
-                                        {/* {status === "Upcoming" ? (
+                                            {/* {status === "Upcoming" ? (
                                         //     <span className="absolute px-1 py-[2px] text-[5px] font-black uppercase rounded-full bg-orange-100 text-[#F97316] border border-orange-300 whitespace-nowrap">
                                         //         Coming Soon
                                         //     </span>
                                         // ) : ( */}
-                                        <span className="text-[10px] md:text-xs font-black">
-                                            {count}
-                                        </span>
+                                            <span className="text-[10px] md:text-xs font-black">
+                                                {count}
+                                            </span>
 
+                                        </div>
                                     </div>
-                                </div>
 
-                                {index < OrderStatuses.length - 1 && (
-                                    <div
-                                        className={`flex-auto h-0.5 md:h-1.5 transition-colors duration-500 ${index < activeIndex ? 'bg-[#F97316]' : 'bg-gray-200'
-                                            }`}
-                                    />
-                                )}
-                            </React.Fragment>
-                        );
-                    })}
-                </div>
+                                    {index < OrderStatuses.length - 1 && (
+                                        <div
+                                            className={`flex-auto h-0.5 md:h-1.5 transition-colors duration-500 ${index < activeIndex ? 'bg-[#F97316]' : 'bg-gray-200'
+                                                }`}
+                                        />
+                                    )}
+                                </React.Fragment>
+                            );
+                        })}
+                    </div>
+                </TutorialStep>
             </div>
             {activeStatusTab === 'Completed' && (
                 <div className="sticky top-[248px] z-[90] flex p-1 bg-white mx-4 mt-2 rounded-sm shadow-sm border border-slate-200 max-w-md md:mx-auto w-[92%]">
@@ -2826,12 +2918,25 @@ const OrdersPage: React.FC = () => {
                                                             <p className="text-[8px] font-black text-[#F97316] uppercase">Billing Address</p>
                                                             <p className="text-[11px] font-bold text-slate-800">{Order.billingDetails?.name}</p>
                                                             <p className="text-[10px] text-gray-500 leading-tight">{Order.billingDetails?.address}</p>
+                                                            {(Order.billingDetails?.city || Order.billingDetails?.state) && (
+                                                                <p className="text-[10px] text-gray-500 leading-tight">
+                                                                    {[Order.billingDetails?.city, Order.billingDetails?.state].filter(Boolean).join(', ')}
+                                                                </p>
+                                                            )}
                                                             <p className="text-[10px] text-gray-500">{Order.billingDetails?.phone}</p>
                                                         </div>
                                                         <div className="space-y-1 border-l pl-4">
                                                             <p className="text-[8px] font-black text-blue-500 uppercase">Shipping Address</p>
                                                             <p className="text-[11px] font-bold text-slate-800">{Order.shippingDetails?.name || Order.billingDetails?.name}</p>
                                                             <p className="text-[10px] text-gray-500 leading-tight">{Order.shippingDetails?.address || Order.billingDetails?.address}</p>
+                                                            {(Order.shippingDetails?.city || Order.shippingDetails?.state || Order.billingDetails?.city || Order.billingDetails?.state) && (
+                                                                <p className="text-[10px] text-gray-500 leading-tight">
+                                                                    {[
+                                                                        Order.shippingDetails?.city || Order.billingDetails?.city,
+                                                                        Order.shippingDetails?.state || Order.billingDetails?.state
+                                                                    ].filter(Boolean).join(', ')}
+                                                                </p>
+                                                            )}
                                                             <p className="text-[10px] text-gray-500">{Order.shippingDetails?.phone}</p>
                                                         </div>
                                                     </div>
@@ -3441,7 +3546,7 @@ const OrdersPage: React.FC = () => {
                                 }}
                                 className="w-full border border-orange-400 text-orange-600 py-2.5 rounded-sm font-bold text-sm"
                             >
-                                 {_billSettings?.enableTriplicate
+                                {_billSettings?.enableTriplicate
                                     ? "Print (Bill + 2 Duplicates)"
                                     : "Print (Bill + Duplicate)"}
                             </button>

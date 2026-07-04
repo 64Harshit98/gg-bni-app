@@ -37,12 +37,16 @@ export interface CatalogueInvoiceData {
       name: string;
       phone: string;
       address?: string;
+      city?: string;
+      state?: string;
       gstin?: string;
     };
     shipping: {
       name: string;
       phone: string;
       address?: string;
+      city?: string;
+      state?: string;
       gstin?: string;
     };
   };
@@ -106,14 +110,22 @@ export const CatalogueBill = async (
 
       billTo: {
         name: data.customer?.billing?.name || data.customer?.shipping?.name || "",
-        address: data.customer?.billing?.address || data.customer?.shipping?.address || "",
+        address: [
+          data.customer?.billing?.address || data.customer?.shipping?.address || "",
+          data.customer?.billing?.city || data.customer?.shipping?.city || "",
+          data.customer?.billing?.state || data.customer?.shipping?.state || ""
+        ].filter(Boolean).join(', '),
         phone: data.customer?.billing?.phone || data.customer?.shipping?.phone || "",
         email: "",
         gstin: data.customer?.billing?.gstin || data.customer?.shipping?.gstin || ""
       },
       shipTo: {
         name: data.customer?.shipping?.name || data.customer?.billing?.name || "",
-        address: data.customer?.shipping?.address || data.customer?.billing?.address || "",
+        address: [
+          data.customer?.shipping?.address || data.customer?.billing?.address || "",
+          data.customer?.shipping?.city || data.customer?.billing?.city || "",
+          data.customer?.shipping?.state || data.customer?.billing?.state || ""
+        ].filter(Boolean).join(', '),
         phone: data.customer?.shipping?.phone || data.customer?.billing?.phone || "",
         gstin: data.customer?.shipping?.gstin || data.customer?.billing?.gstin || ""
       },
@@ -276,12 +288,22 @@ export const CatalogueBill = async (
   const headerHeight = (showGstinDetails ? 30 : 25) + addressBlockHeight;
 
   const billName = data.customer?.billing?.name || data.customer?.shipping?.name || "";
-  const billAddr = doc.splitTextToSize(data.customer?.billing?.address || data.customer?.shipping?.address || "", contentWidth / 2 - 10);
+  const billFullAddress = [
+    data.customer?.billing?.address || data.customer?.shipping?.address || "",
+    data.customer?.billing?.city || "",
+    data.customer?.billing?.state || ""
+  ].filter(Boolean).join(', ');
+  const billAddr = doc.splitTextToSize(billFullAddress, contentWidth / 2 - 10);
   const billPhone = `Phone.No.  : ${data.customer?.billing?.phone || ""}`;
   const billGstin = data.customer?.billing?.gstin || "";
 
   const shipName = data.customer?.shipping?.name || "";
-  const shipAddr = doc.splitTextToSize(data.customer?.shipping?.address || "", contentWidth / 2 - 10);
+ const shipFullAddress = [
+    data.customer?.shipping?.address || "",
+    data.customer?.shipping?.city || "",
+    data.customer?.shipping?.state || ""
+  ].filter(Boolean).join(', ');
+  const shipAddr = doc.splitTextToSize(shipFullAddress, contentWidth / 2 - 10);
   const shipPhone = `Phone.No.  : ${data.customer?.shipping?.phone || ""}`;
   const shipGstin = data.customer?.shipping?.gstin || "";
 

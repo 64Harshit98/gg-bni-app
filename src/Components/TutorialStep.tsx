@@ -50,17 +50,31 @@ export const TutorialStep: React.FC<Props> = ({
 
   const getTooltipStyle = (rect: DOMRect) => {
     const tooltipHeight = 110;
+    const tooltipWidth = 256;
     const gap = 12;
+    const margin = 8;
 
-    const top = position === 'top'
-      ? rect.top - tooltipHeight - gap
-      : rect.bottom + gap;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
 
-    const left = Math.max(rect.right - 256, 8);
+    // Prefer requested position, but flip if there isn't enough room
+    let placeBelow = position !== 'top';
+    if (placeBelow && spaceBelow < tooltipHeight + gap && spaceAbove > spaceBelow) {
+      placeBelow = false;
+    } else if (!placeBelow && spaceAbove < tooltipHeight + gap && spaceBelow > spaceAbove) {
+      placeBelow = true;
+    }
 
-    return { top, left };
+    let top = placeBelow ? rect.bottom + gap : rect.top - tooltipHeight - gap;
+    // Clamp vertically inside the viewport
+    top = Math.min(Math.max(top, margin), window.innerHeight - tooltipHeight - margin);
+
+    let left = Math.max(rect.right - tooltipWidth, margin);
+    // Clamp horizontally inside the viewport
+    left = Math.min(left, window.innerWidth - tooltipWidth - margin);
+
+    return { top, left, placeBelow };
   };
-
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
 
 useEffect(() => {
@@ -109,15 +123,18 @@ useEffect(() => {
           />
 
           {/* Tooltip */}
-          <div
-            className="fixed z-50 bg-white rounded-sm shadow-xl p-4 w-64"
-            style={getTooltipStyle(rect)}
-          >
-            {position === 'top' ? (
-              <div className={`absolute -bottom-2 ${computedArrowAlign === 'left' ? 'left-6' : 'right-6'} w-4 h-4 bg-white border-r border-b border-gray-100 rotate-45`} />
-            ) : (
-              <div className={`absolute -top-2 ${computedArrowAlign === 'left' ? 'left-6' : 'right-6'} w-4 h-4 bg-white border-l border-t border-gray-100 rotate-45`} />
-            )}
+          {(() => {
+            const { top, left, placeBelow } = getTooltipStyle(rect);
+            return (
+              <div
+                className="fixed z-50 bg-white rounded-sm shadow-xl p-4 w-64"
+                style={{ top, left }}
+              >
+                {!placeBelow ? (
+                  <div className={`absolute -bottom-2 ${computedArrowAlign === 'left' ? 'left-6' : 'right-6'} w-4 h-4 bg-white border-r border-b border-gray-100 rotate-45`} />
+                ) : (
+                  <div className={`absolute -top-2 ${computedArrowAlign === 'left' ? 'left-6' : 'right-6'} w-4 h-4 bg-white border-l border-t border-gray-100 rotate-45`} />
+                )}
 
             <p className="text-sm font-medium text-gray-800 mb-3">{text}</p>
             <div className="flex justify-between items-center">
@@ -131,7 +148,9 @@ useEffect(() => {
                 {isLast ? "Finish" : "Next →"}
               </button>
             </div>
-          </div>
+              </div>
+            );
+          })()}
         </>
       )}
     </>

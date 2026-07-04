@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { db } from '../lib/Firebase';
-import { doc, getDoc, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
 import { FilterControls, FilterProvider, useFilter } from '../Components/Filter';
 import { Permissions } from '../enums';
@@ -17,6 +17,9 @@ import { fetchDashboardData, CACHE_DURATION } from '../lib/fetchDashboardData';
 import ShinyText from '../Components/ShinyText';
 import type { WithCacheMeta } from '../lib/fetchDashboardData';
 import NotificationBell from '../Components/NotificationBell';
+import { TutorialStep } from '../Components/TutorialStep';
+import useTutorial from '../Catalogue/hooks/useTutorial';
+import { completeTutorial } from '../Catalogue/hooks/useCompleteTutorial';
 
 
 // ─── Shared Types ─────────────────────────────────────────────────────────────
@@ -71,6 +74,8 @@ const useBusinessName = (userId?: string, companyId?: string) => {
 
     return { businessName, loading };
 };
+// Total tutorial steps
+const TOTAL_STEPS = 7;
 
 // ─── Inner Dashboard Component ────────────────────────────────────────────────
 const HomePageContent: React.FC = () => {
@@ -78,6 +83,30 @@ const HomePageContent: React.FC = () => {
     const { currentUser, loading: authLoading } = useAuth();
     const { filters } = useFilter();
     const { businessName, loading: nameLoading } = useBusinessName(currentUser?.uid, currentUser?.companyId);
+
+    const [tutorialStep, setTutorialStep] = useState(0);
+
+    // ─── Refs for autoscroll ──────────────────────────────────────────────────
+    const tutorialRefs = useRef<(HTMLElement | null)[]>([]);
+    const mainRef = useRef<HTMLElement | null>(null);
+
+    const setTutorialRef = (index: number) => (el: HTMLElement | null) => {
+        tutorialRefs.current[index] = el;
+    };
+
+    useEffect(() => {
+        if (tutorialStep === 0) return;
+        const el = tutorialRefs.current[tutorialStep];
+        if (!el) return;
+        if (tutorialStep <= 2) return;
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, [tutorialStep]);
+    // ─────────────────────────────────────────────────────────────────────────
+
+    const next = (n: number) => setTutorialStep(n <= TOTAL_STEPS ? n : 0);
+    const skip = () => {
+        completeTutorial(currentUser, 'catalogueTutorialDone', setTutorialStep);
+    };
 
     // Expiry date state and effect
     const [expiryDate, setExpiryDate] = useState<any>(null);
@@ -241,6 +270,18 @@ const HomePageContent: React.FC = () => {
         if (!data?.lastUpdated) return 'Never';
         return new Date(data.lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }, [data]);
+    useTutorial(currentUser, setTutorialStep, 'catalogueTutorialDone');
+
+    useEffect(() => {
+        const checkTutorial = async () => {
+            if (!currentUser?.companyId) return;
+            const docRef = doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial');
+            const snap = await getDoc(docRef);
+            const done = snap.exists() && snap.data()?.catalogueTutorialDone;
+            if (!done) setTutorialStep(1);
+        };
+        checkTutorial();
+    }, [currentUser]);
 
     return (
         <div className="flex min-h-screen w-full flex-col bg-gray-100 mb-16">
@@ -267,36 +308,38 @@ const HomePageContent: React.FC = () => {
             <header className="flex flex-shrink-0 items-center justify-between border-b border-slate-300 bg-gray-100 p-2">
 
                 {/* Left: page navigation dropdown */}
-                <div className="relative flex justify-start">
-                    <button
-                        disabled={!hasCataloguePermission}
-                        onClick={() => setIsMenuOpen(!isMenuOpen)}
-                        className={`flex min-w-20 items-center justify-between rounded-sm border border-slate-400 p-2 text-sm font-medium text-slate-700 transition-colors whitespace-nowrap
+                <TutorialStep step={1} currentStep={tutorialStep} text="Use this menu to switch between POS and Catalogue views." onNext={() => next(2)} onSkip={skip} mobileArrowAlign="left">
+                    <div ref={setTutorialRef(1)} className="relative flex justify-start">
+                        <button
+                            disabled={!hasCataloguePermission}
+                            onClick={() => setIsMenuOpen(!isMenuOpen)}
+                            className={`flex min-w-20 items-center justify-between rounded-sm border border-slate-400 p-2 text-sm font-medium text-slate-700 transition-colors whitespace-nowrap
                             ${!hasCataloguePermission ? 'opacity-50 cursor-not-allowed bg-gray-100' : 'hover:bg-slate-200 cursor-pointer'}`}
-                    >
-                        <span className="font-medium">{currentLabel}</span>
-                        <IconChevronDown width={16} height={16} className={`transition-transform ${isMenuOpen ? 'rotate-180' : 'rotate-0'}`} />
-                    </button>
+                        >
+                            <span className="font-medium">{currentLabel}</span>
+                            <IconChevronDown width={16} height={16} className={`transition-transform ${isMenuOpen ? 'rotate-180' : 'rotate-0'}`} />
+                        </button>
 
-                    {isMenuOpen && hasCataloguePermission && (
-                        <div className="absolute top-full left-0 mt-2 w-56 bg-white border border-slate-300 rounded-md shadow-lg z-10">
-                            <ul className="py-1">
-                                {SiteItems.map(({ to, label }) => (
-                                    <li key={to}>
-                                        <Link
-                                            to={to}
-                                            onClick={() => setIsMenuOpen(false)}
-                                            className={`flex w-full items-center gap-3 px-4 py-2 text-sm font-medium
+                        {isMenuOpen && hasCataloguePermission && (
+                            <div className="absolute top-full left-0 mt-2 w-56 bg-white border border-slate-300 rounded-md shadow-lg z-10">
+                                <ul className="py-1">
+                                    {SiteItems.map(({ to, label }) => (
+                                        <li key={to}>
+                                            <Link
+                                                to={to}
+                                                onClick={() => setIsMenuOpen(false)}
+                                                className={`flex w-full items-center gap-3 px-4 py-2 text-sm font-medium
                                                 ${location.pathname === to ? 'bg-gray-500 text-white' : 'text-slate-700 hover:bg-gray-100'}`}
-                                        >
-                                            {label}
-                                        </Link>
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    )}
-                </div>
+                                            >
+                                                {label}
+                                            </Link>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+                    </div>
+                </TutorialStep>
 
                 {/* Center: dashboard title and business name */}
                 <div className="flex-1 text-center flex flex-col items-center justify-center">
@@ -309,24 +352,26 @@ const HomePageContent: React.FC = () => {
                     <div className="border border-slate-300 rounded-sm bg-gray-100 shadow-sm">
                         <NotificationBell />
                     </div>
-                    <button
-                        onClick={() => setIsDataVisible(!isDataVisible)}
-                        className="p-2 rounded-sm border border-slate-400 hover:bg-slate-200 transition-colors"
-                        title={isDataVisible ? 'Hide Data' : 'Show Data'}
-                    >
-                        {isDataVisible ? (
-                            // Eye open — data is currently visible
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></svg>
-                        ) : (
-                            // Eye closed — data is currently hidden
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" /><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" /><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" /><line x1="2" x2="22" y1="2" y2="22" /></svg>
-                        )}
-                    </button>
+                    <TutorialStep step={2} currentStep={tutorialStep} text="Toggle this to show or hide sensitive sales figures." onNext={() => next(3)} onSkip={skip}>
+                        <button
+                            onClick={() => setIsDataVisible(!isDataVisible)}
+                            className="p-2 rounded-sm border border-slate-400 hover:bg-slate-200 transition-colors"
+                            title={isDataVisible ? 'Hide Data' : 'Show Data'}
+                        >
+                            {isDataVisible ? (
+                                // Eye open — data is currently visible
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></svg>
+                            ) : (
+                                // Eye closed — data is currently hidden
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" /><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" /><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" /><line x1="2" x2="22" y1="2" y2="22" /></svg>
+                            )}
+                        </button>
+                    </TutorialStep>
                 </div>
             </header>
 
             {/* ── Main Content ─────────────────────────────────────────────── */}
-            <main className="flex-grow overflow-y-auto p-2">
+            <main ref={mainRef} className="flex-grow overflow-y-auto p-2">
 
                 {/* Refresh bar: shows when data was last fetched + manual refresh button */}
                 <div className="flex justify-center gap-2 mb-2">
@@ -344,10 +389,11 @@ const HomePageContent: React.FC = () => {
                 <div className="mx-auto max-w-7xl relative">
 
                     {/* Date Filter — matches POS (mb-2 inside max-w-7xl) */}
-                    <div className="mb-2">
-                        <FilterControls />
-                    </div>
-
+                    <TutorialStep step={3} currentStep={tutorialStep} text="Use these filters to select the date range for your dashboard data." onNext={() => next(4)} onSkip={skip}>
+                        <div ref={setTutorialRef(3)} className="mb-2">
+                            <FilterControls />
+                        </div>
+                    </TutorialStep>
                     {/* Full-page loader shown only on the very first load */}
                     {loading && !data ? (
                         <div className="flex h-64 items-center justify-center text-slate-500">
@@ -358,36 +404,68 @@ const HomePageContent: React.FC = () => {
 
                             {/* ── Row 1+2: Completed Sales + Order Journey — side by side ── */}
                             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                <CompletedSalesCard
-                                    isDataVisible={isDataVisible}
-                                    totalSalesAmount={data?.totalSalesAmount ?? 0}
-                                    totalSalesCount={data?.totalSalesCount ?? 0}
-                                    loading={loading}
-                                />
-                                <OrderTimeline
-                                    isDataVisible={isDataVisible}
-                                    orderCounts={data?.orderCounts ?? {}}
-                                    loading={loading}
-                                />
+                                <TutorialStep step={4} currentStep={tutorialStep} text="This shows your total completed sales for the selected period." onNext={() => next(5)} onSkip={skip}>
+                                    <div ref={setTutorialRef(4)} className="h-full [&>*]:h-full">
+                                        <CompletedSalesCard
+                                            isDataVisible={isDataVisible}
+                                            totalSalesAmount={data?.totalSalesAmount ?? 0}
+                                            totalSalesCount={data?.totalSalesCount ?? 0}
+                                            loading={loading}
+                                        />
+                                    </div>
+                                </TutorialStep>
+                                <TutorialStep step={5} currentStep={tutorialStep} text="Track your order journey from upcoming to completed." onNext={() => next(6)} onSkip={skip}>
+                                    <div ref={setTutorialRef(5)} className="h-full [&>*]:h-full">
+                                        <OrderTimeline
+                                            isDataVisible={isDataVisible}
+                                            orderCounts={data?.orderCounts ?? {}}
+                                            loading={loading}
+                                        />
+                                    </div>
+                                </TutorialStep>
                             </div>
 
                             {/* ── Row 3: Three equal columns ──────────────── */}
                             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
 
-                                <OrderBarChartReport
-                                    isDataVisible={isDataVisible}
-                                    chartData={data?.chartData ?? []}
-                                    totalSales={data?.totalSalesAmount ?? 0}
-                                    totalBills={data?.totalSalesCount ?? 0}
-                                    loading={loading}
-                                />
+                                <TutorialStep step={6} currentStep={tutorialStep} text="This bar chart shows your order sales performance over the selected date range." onNext={() => next(7)} onSkip={skip}>
+                                    <div ref={setTutorialRef(6)} className="h-full [&>*]:h-full">
+                                        <OrderBarChartReport
+                                            isDataVisible={isDataVisible}
+                                            chartData={data?.chartData ?? []}
+                                            totalSales={data?.totalSalesAmount ?? 0}
+                                            totalBills={data?.totalSalesCount ?? 0}
+                                            loading={loading}
+                                        />
+                                    </div>
+                                </TutorialStep>
 
-                                <TopSoldItemsCard
-                                    isDataVisible={isDataVisible}
-                                    topByQuantity={data?.topByQuantity ?? []}
-                                    topByAmount={data?.topByAmount ?? []}
-                                    loading={loading}
-                                />
+                                <TutorialStep
+                                    step={7}
+                                    currentStep={tutorialStep}
+                                    isLast={true}
+                                    text="See your top selling items by quantity and amount."
+                                    onNext={async () => {
+                                        if (!currentUser?.companyId) return;
+                                        await setDoc(
+                                            doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial'),
+                                            { catalogueTutorialDone: true },
+                                            { merge: true }
+                                        );
+                                        setTutorialStep(0);
+                                        window.dispatchEvent(new Event("catalogue_tutorial_done"));
+                                    }}
+                                    onSkip={skip}
+                                >
+                                    <div ref={setTutorialRef(7)} className="h-full [&>*]:h-full">
+                                        <TopSoldItemsCard
+                                            isDataVisible={isDataVisible}
+                                            topByQuantity={data?.topByQuantity ?? []}
+                                            topByAmount={data?.topByAmount ?? []}
+                                            loading={loading}
+                                        />
+                                    </div>
+                                </TutorialStep>
 
                                 {/* Coming Soon placeholder */}
                                 <div className="relative rounded-xl border border-gray-200 bg-white p-4 shadow-sm opacity-70 cursor-not-allowed flex items-center justify-center min-h-[160px]">

@@ -66,32 +66,54 @@ const getEffectivePriceInfo = (item: Item) => {
 // Self-contained slideshow for a grid card's image area.
 const ProductCardImage: React.FC<{ images: string[]; alt: string }> = ({ images, alt }) => {
     const [slideIndex, setSlideIndex] = useState(0);
+    const [brokenUrls, setBrokenUrls] = useState<Set<string>>(new Set());
+
+    // Only keep images that haven't failed to load
+    const validImages = useMemo(
+        () => images.filter(url => !brokenUrls.has(url)),
+        [images, brokenUrls]
+    );
 
     useEffect(() => {
-        if (images.length <= 1) return;
+        if (validImages.length <= 1) return;
         const timer = setInterval(() => {
-            setSlideIndex(prev => (prev + 1) % images.length);
+            setSlideIndex(prev => (prev + 1) % validImages.length);
         }, 3000);
         return () => clearInterval(timer);
-    }, [images.length]);
+    }, [validImages.length]);
 
-    if (images.length === 0) {
+    // Keep slideIndex in range if a broken image shrinks the list
+    useEffect(() => {
+        if (slideIndex >= validImages.length) {
+            setSlideIndex(0);
+        }
+    }, [validImages.length, slideIndex]);
+
+    if (validImages.length === 0) {
         return <FiPackage className="w-10 h-10 text-gray-200" />;
     }
 
     return (
         <>
-            {images.map((url, idx) => (
+            {validImages.map((url, idx) => (
                 <img
                     key={url + idx}
                     src={url}
                     alt={alt}
+                    onError={() => {
+                        setBrokenUrls(prev => {
+                            if (prev.has(url)) return prev;
+                            const next = new Set(prev);
+                            next.add(url);
+                            return next;
+                        });
+                    }}
                     className={`absolute inset-0 object-contain w-full h-full transition-opacity duration-700 ease-in-out group-hover:scale-110 ${idx === slideIndex ? 'opacity-100' : 'opacity-0'}`}
                 />
             ))}
-            {images.length > 1 && (
+            {validImages.length > 1 && (
                 <div className="absolute bottom-1 left-0 right-0 flex items-center justify-center gap-1">
-                    {images.map((_, idx) => (
+                    {validImages.map((_, idx) => (
                         <span
                             key={idx}
                             className={`h-1 rounded-sm transition-all duration-300 ${idx === slideIndex ? 'w-3 bg-[#F97316]' : 'w-1 bg-white/80'}`}

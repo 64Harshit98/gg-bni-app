@@ -795,7 +795,7 @@ const Journal: React.FC = () => {
         } catch { return 0; }
       })(),
       items: populatedItems,
-      terms: billSettings.termsAndConditions || 'Goods once sold will not be taken back.',
+      terms: billSettings.posTermsAndConditions || billSettings.termsAndConditions || 'Goods once sold will not be taken back.',
       finalAmount: invoice.amount,
       isEstimate: (invoice as any).isEstimate || false,
       bankDetails: {

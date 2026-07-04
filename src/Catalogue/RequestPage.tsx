@@ -4,7 +4,7 @@ import { ChevronLeft } from 'lucide-react'
 import { collection, doc, updateDoc, deleteDoc, onSnapshot, getDoc } from "firebase/firestore";
 import { db } from '../lib/Firebase';
 import { useAuth } from "../context/auth-context";
-import { Search, Phone, Filter } from 'lucide-react'
+import { Search, Phone, Filter, Reply, Trash2 } from 'lucide-react'
 import { State } from '../enums'
 import { Modal } from '../constants/Modal'
 import { botMasterService } from '../Pages/Additional/Whatsapp/WhatsappApi';
@@ -489,6 +489,29 @@ function RequestPage() {
                 );
             }
 
+            // ── Cascade delete: remove associated bulk quotes & queries for this phone ──
+            const phone = (req.customerNumber || '').replace(/\D/g, '');
+            if (phone) {
+                const relatedBulks = bulkQuotes.filter(
+                    bq => (bq.customerNumber || '').replace(/\D/g, '') === phone
+                );
+                const relatedQueries = personalizationRequests.filter(
+                    pr => (pr.customerNumber || '').replace(/\D/g, '') === phone
+                );
+
+                await Promise.all([
+                    ...relatedBulks.map(bq =>
+                        deleteDoc(doc(db, "companies", companyId, "BulkQuoteRequests", bq.id))
+                    ),
+                    ...relatedQueries.map(pr =>
+                        deleteDoc(doc(db, "companies", companyId, "PersonalizationRequests", pr.id))
+                    ),
+                ]);
+
+                setBulkQuotes(prev => prev.filter(bq => (bq.customerNumber || '').replace(/\D/g, '') !== phone));
+                setPersonalizationRequests(prev => prev.filter(pr => (pr.customerNumber || '').replace(/\D/g, '') !== phone));
+            }
+
             setRequests(prev => prev.filter(r => r.id !== req.id));
         } catch (err) {
             console.error("Delete error:", err);
@@ -512,6 +535,31 @@ function RequestPage() {
             setPersonalizationRequests(prev => prev.filter(p => p.id !== pid));
         } catch (err) {
             console.error("Delete personalization error:", err);
+        }
+    };
+    const handleDeleteMergedCard = async (phone: string) => {
+        if (!companyId) return;
+        try {
+            const relatedBulks = bulkQuotes.filter(
+                bq => (bq.customerNumber || '').replace(/\D/g, '') === phone
+            );
+            const relatedQueries = personalizationRequests.filter(
+                pr => (pr.customerNumber || '').replace(/\D/g, '') === phone
+            );
+
+            await Promise.all([
+                ...relatedBulks.map(bq =>
+                    deleteDoc(doc(db, "companies", companyId, "BulkQuoteRequests", bq.id))
+                ),
+                ...relatedQueries.map(pr =>
+                    deleteDoc(doc(db, "companies", companyId, "PersonalizationRequests", pr.id))
+                ),
+            ]);
+
+            setBulkQuotes(prev => prev.filter(bq => (bq.customerNumber || '').replace(/\D/g, '') !== phone));
+            setPersonalizationRequests(prev => prev.filter(pr => (pr.customerNumber || '').replace(/\D/g, '') !== phone));
+        } catch (err) {
+            console.error("Delete merged card error:", err);
         }
     };
     const sendDirectWhatsappMessage = async (
@@ -625,10 +673,10 @@ function RequestPage() {
             )}
 
             {/* --- PAGE CONTENT --- */}
-            <main className="p-4 flex-1 max-w-7xl mx-auto w-full">
+            <main className="py-2 px-2 flex-1 max-w-7xl mx-auto w-full">
 
                 {/* Main Toggle: Pending / Completed */}
-                <div className="sticky top-[56px] z-[90] bg-[#E9F0F7] py-1">
+                <div className="sticky top-[56px] z-[90] bg-[#E9F0F7] py-0">
                     {requireApproval ? (
                         <div className="flex bg-white p-1 rounded-sm shadow-sm mb-2 border border-gray-200">
                             <button
@@ -694,7 +742,7 @@ function RequestPage() {
                             </button>
 
                             {isFilterOpen && (
-                                <div className="absolute right-0 mt-2 w-32 bg-white border border-gray-200 rounded-md shadow-md z-50 overflow-hidden">
+                                <div className="absolute right-0 mt-2 w-32 bg-white border border-gray-200 rounded-sm shadow-md z-50 overflow-hidden">
                                     {['all', 'approved', 'declined'].map(option => (
                                         <button
                                             key={option}
@@ -721,7 +769,7 @@ function RequestPage() {
                     Showing {requestType === 'notify' ? 'notify' : approvalStatus} requests...
                 </div>
 
-                <div className="space-y-3 mt-1">
+                <div className="space-y-2 mt-1">
                     {(requestType === 'notify' ? unifiedNotifyList : filteredRequests.map(r => ({ kind: 'notify' as const, ts: 0, data: r }))).map((row) => {
 
                         // ── MERGED CARD (bulk + query, no approval row) ──
@@ -742,105 +790,148 @@ function RequestPage() {
                                 <div
                                     key={`merged_${cardKey}`}
                                     onClick={() => setExpandedId(isExpanded ? null : cardKey)}
-                                    className="p-3 shadow-sm border rounded-sm cursor-pointer bg-white border-gray-100 transition-all duration-300"
+                                    className="p-3.5 shadow-sm border rounded-sm cursor-pointer bg-white border-gray-100 transition-all duration-300"
                                 >
-                                    <div className="flex justify-between items-start">
-                                        <div>
-                                            <h3 className="text-xs font-bold text-slate-800">{card.name}</h3>
-                                            <p className="text-xs font-medium flex items-center gap-1.5 p-0.5 rounded-xs border text-gray-600 bg-gray-50 border-gray-200">
-                                                <Phone size={14} className="text-gray-400" />
-                                                {card.phone || "No Number"}
-                                            </p>
-                                            <p className="text-[10px] text-gray-400 font-medium mt-1">{formatDate(latestItem?.createdAt)}</p>
+                                    <div className="flex justify-between items-start gap-2">
+                                        <div className="flex items-center gap-2.5 min-w-0">
+                                            <a
+                                                href={`tel:${card.phone}`}
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors"
+                                                title="Call"
+                                            >
+                                                <Phone size={16} />
+                                            </a>
+                                            <div className="min-w-0">
+                                                <h3 className="text-sm font-bold text-slate-800 truncate">{card.name}</h3>
+                                                <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
+                                                    <Phone size={12} className="text-gray-400 shrink-0" />
+                                                    {card.phone || "No Number"}
+                                                </p>
+                                            </div>
                                         </div>
-                                        <div className="flex items-center gap-1.5">
-                                            {badgeLabels.map(label => (
-                                                <span key={label} className={`text-[10px] font-bold px-2 py-0.5 rounded border ${label === 'Bulk Quote' ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-yellow-50 text-yellow-600 border-yellow-200'}`}>
-                                                    {label}
-                                                </span>
-                                            ))}
-                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"
-                                                className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? "rotate-180" : ""}`}>
-                                                <path d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                                            </svg>
+                                        <div className="flex flex-col items-end gap-1.5 shrink-0">
+                                            <div className="flex items-center gap-1">
+                                                {badgeLabels.map(label => (
+                                                    <span key={label} className={`text-[10px] font-bold px-2 py-0.5 rounded-sm ${label === 'Bulk Quote' ? 'bg-[#F97316]/10 text-[#9A4A14]' : 'bg-yellow-50 text-yellow-700'}`}>
+                                                        {label === 'Bulk Quote' ? 'Bulk' : label}
+                                                    </span>
+                                                ))}
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"
+                                                    className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? "rotate-180" : ""}`}>
+                                                    <path d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                                                </svg>
+                                            </div>
+                                            <span className="text-[10px] text-gray-400 font-medium">{formatDate(latestItem?.createdAt)}</span>
                                         </div>
                                     </div>
                                     {isExpanded && (
                                         <div className="mt-4 border-t pt-4 space-y-3" onClick={e => e.stopPropagation()}>
                                             {card.bulks.length > 0 && (
-                                                <div className="border border-[#F97316]/20 rounded-sm overflow-hidden">
-                                                    <div className="bg-[#F97316]/5 px-3 py-1.5">
-                                                        <span className="text-[9px] font-black uppercase tracking-widest text-[#F97316]">Bulk Quote Requests ({card.bulks.length})</span>
+                                                <div>
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <div className="flex-1 h-px bg-gray-200" />
+                                                        <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 whitespace-nowrap">Bulk Quote Requests ({card.bulks.length})</span>
+                                                        <div className="flex-1 h-px bg-gray-200" />
                                                     </div>
-                                                    <div className="p-2">
-                                                        {card.bulks.map(bq => (
-                                                            <div key={bq.id} className="flex gap-2 items-start p-2">
-                                                                <div className="w-10 h-10 shrink-0 bg-gray-50 border border-gray-200 rounded-sm flex items-center justify-center overflow-hidden">
-                                                                    {bq.itemImage ? <img src={bq.itemImage} alt={bq.itemName} className="w-full h-full object-contain" /> : <span className="text-gray-300 text-[9px]">No img</span>}
+                                                    <div className="rounded-sm overflow-hidden border border-[#F97316]/30">
+                                                        <div className="bg-[#F97316] px-3 py-1.5 flex items-center justify-between">
+                                                            <span className="text-[9px] font-black uppercase tracking-widest text-white">Quote Item</span>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setReplyMessage(prev => ({ ...prev, [cardKey]: '' }));
+                                                                    setReplyOpen(prev => ({ ...prev, [cardKey]: true }));
+                                                                }}
+                                                                className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-sm bg-white/20 hover:bg-white/30 text-white shrink-0"
+                                                            >
+                                                                <Reply size={11} /> Reply
+                                                            </button>
+                                                        </div>
+                                                        <div className="bg-[#F97316]/5 divide-y divide-[#F97316]/10">
+                                                            {card.bulks.map(bq => (
+                                                                <div key={bq.id} className="flex gap-3 items-center p-3">
+                                                                    <div className="w-10 h-10 shrink-0 bg-white border border-gray-200 rounded-sm flex items-center justify-center overflow-hidden">
+                                                                        {bq.itemImage ? <img src={bq.itemImage} alt={bq.itemName} className="w-full h-full object-contain" /> : <span className="text-gray-300 text-[8px] text-center">No img</span>}
+                                                                    </div>
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <p className="text-[12px] font-black text-slate-800 uppercase truncate">{bq.itemName}</p>
+                                                                        <p className="text-[10px] text-gray-500"><span className="font-bold">Qty:</span> {bq.quantity}</p>
+                                                                        {bq.note && <p className="text-[10px] text-gray-400 mt-0.5 italic">{bq.note}</p>}
+                                                                    </div>
+                                                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteBulk(bq.id); }} className="text-red-400 hover:text-red-600 text-sm font-bold p-1 shrink-0">✕</button>
                                                                 </div>
-                                                                <div className="flex-1 min-w-0">
-                                                                    <p className="text-[11px] font-black text-[#1A3B5D] uppercase truncate">{bq.itemName}</p>
-                                                                    <p className="text-[10px] text-gray-500"><span className="font-bold">Qty:</span> {bq.quantity}</p>
-                                                                    {bq.note && <p className="text-[10px] text-gray-400 mt-0.5 italic">{bq.note}</p>}
-                                                                </div>
-                                                                <button onClick={(e) => { e.stopPropagation(); handleDeleteBulk(bq.id); }} className="text-red-400 hover:text-red-600 text-xs font-bold p-1 shrink-0">✕</button>
-                                                            </div>
-                                                        ))}
+                                                            ))}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             )}
                                             {card.queries.length > 0 && (
-                                                <div className="border border-[#1A3B5D]/20 rounded-sm overflow-hidden">
-                                                    <div className="bg-[#1A3B5D]/5 px-3 py-1.5">
-                                                        <span className="text-[9px] font-black uppercase tracking-widest text-[#1A3B5D]">Query Requests ({card.queries.length})</span>
+                                                <div>
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <div className="flex-1 h-px bg-gray-200" />
+                                                        <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 whitespace-nowrap">Query Requests ({card.queries.length})</span>
+                                                        <div className="flex-1 h-px bg-gray-200" />
                                                     </div>
-                                                    <div className="p-2">
-                                                        {card.queries.map(pr => (
-                                                            <div key={pr.id} className="flex gap-2 items-start p-2">
-                                                                <div className="flex-1 min-w-0">
-                                                                    <div className="bg-yellow-50 border border-yellow-100 rounded-sm p-1.5">
-                                                                        <span className="text-[9px] font-black uppercase text-yellow-700 block mb-0.5">Query</span>
-                                                                        <p className="text-[10px] text-gray-600">{pr.note}</p>
+                                                    <div className="rounded-sm overflow-hidden border border-[#1A3B5D]/30">
+                                                        <div className="bg-[#1A3B5D] px-3 py-1.5 flex items-center justify-between">
+                                                            <span className="text-[9px] font-black uppercase tracking-widest text-white">Customer Query</span>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setReplyMessage(prev => ({ ...prev, [cardKey]: '' }));
+                                                                    setReplyOpen(prev => ({ ...prev, [cardKey]: true }));
+                                                                }}
+                                                                className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-sm bg-white/20 hover:bg-white/30 text-white shrink-0"
+                                                            >
+                                                                <Reply size={11} /> Reply
+                                                            </button>
+                                                        </div>
+                                                        <div className="bg-[#1A3B5D]/5 divide-y divide-[#1A3B5D]/10">
+                                                            {card.queries.map(pr => (
+                                                                <div key={pr.id} className="flex gap-2 items-center p-3">
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <span className="text-[9px] font-black uppercase text-gray-400 block mb-0.5">Query</span>
+                                                                        <p className="text-[11px] text-gray-700 italic">"{pr.note}"</p>
                                                                     </div>
+                                                                    <button onClick={(e) => { e.stopPropagation(); handleDeletePersonalization(pr.id); }} className="text-red-400 hover:text-red-600 text-sm font-bold p-1 shrink-0">✕</button>
                                                                 </div>
-                                                                <button onClick={(e) => { e.stopPropagation(); handleDeletePersonalization(pr.id); }} className="text-red-400 hover:text-red-600 text-xs font-bold p-1 shrink-0">✕</button>
-                                                            </div>
-                                                        ))}
+                                                            ))}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             )}
                                             <div className="pt-2 border-t space-y-2">
-                                                {/* ── Call + Reply buttons ── */}
-                                                <div className="grid grid-cols-2 gap-2">
+                                                <div className="flex rounded-sm overflow-hidden">
                                                     <a
                                                         href={`tel:${card.phone}`}
                                                         onClick={e => e.stopPropagation()}
-                                                        className="py-2.5 bg-white border border-emerald-200 text-emerald-600 text-xs font-bold rounded-sm text-center"
+                                                        className="flex-1 flex items-center justify-center gap-1.5 py-3 bg-emerald-50 text-emerald-600 text-xs font-bold"
                                                     >
-                                                        Call
+                                                        <Phone size={14} /> Call
                                                     </a>
                                                     <button
                                                         onClick={e => {
                                                             e.stopPropagation();
-                                                            setReplyOpen(prev => ({ ...prev, [cardKey]: true }));
+                                                            handleDeleteMergedCard(cardKey);
                                                         }}
-                                                        className="py-2.5 bg-[#1A3B5D] text-white text-xs font-bold rounded-sm text-center"
+                                                        className="flex-1 flex items-center justify-center gap-1.5 py-3 bg-[#FF3B30] text-white text-xs font-bold"
                                                     >
-                                                        Reply
+                                                        <Trash2 size={14} /> Delete
                                                     </button>
                                                 </div>
 
                                                 {/* ── Reply Popup Modal ── */}
                                                 {replyOpen[cardKey] && (
                                                     <div
-                                                        className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/40"
+                                                        className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40"
                                                         onClick={e => {
                                                             e.stopPropagation();
                                                             setReplyOpen(prev => ({ ...prev, [cardKey]: false }));
                                                         }}
                                                     >
                                                         <div
-                                                            className="bg-white w-full max-w-sm rounded-t-xl sm:rounded-xl shadow-xl p-4 space-y-3"
+                                                            className="bg-white w-full max-w-sm rounded-sm shadow-xl p-4 space-y-3"
                                                             onClick={e => e.stopPropagation()}
                                                         >
                                                             <div className="flex items-center justify-between">
@@ -851,7 +942,7 @@ function RequestPage() {
                                                                 >✕</button>
                                                             </div>
                                                             <textarea
-                                                                rows={4}
+                                                                rows={8}
                                                                 placeholder="Type your message to the customer..."
                                                                 value={replyMessage[cardKey] || ''}
                                                                 onChange={e => setReplyMessage(prev => ({ ...prev, [cardKey]: e.target.value }))}
@@ -895,72 +986,69 @@ function RequestPage() {
                                 }
                                 className={`p-3 shadow-sm border rounded-sm cursor-pointer transition-all duration-300 bg-white border-gray-100 ${animatingId === req.id ? "opacity-0 scale-95 -translate-x-3" : "opacity-100 scale-100 translate-x-0"}`}>
                                 {/* ===== COLLAPSED HEADER ===== */}
-                                <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-2">
-                                    {/* LEFT SIDE */}
-                                    <div className="min-w-0">
-                                        <div className='items-center'>
-                                            <h3 className="text-xs font-bold text-slate-800">
+                                <div className="flex justify-between items-start gap-2">
+                                    {/* LEFT SIDE — avatar + name + phone */}
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                        <a
+                                            href={`tel:${req.customerNumber?.replace(/\D/g, "")}`}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors"
+                                            title="Call"
+                                        >
+                                            <Phone size={16} />
+                                        </a>
+                                        <div className="min-w-0">
+                                            <h3 className="text-sm font-bold text-slate-800 truncate">
                                                 {req.customerName || "No Name"}
                                             </h3>
-
-                                            <p
-                                                className={`text-xs font-medium flex items-center gap-1.5 p-0.5 rounded-xs border w-fit ${req.type === "notify" ? "text-gray-600 bg-gray-50 border-gray-200" : "text-emerald-600 bg-emerald-50 border-emerald-200"}`}>
-                                                <Phone size={14} className="text-gray-400" />
+                                            <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
+                                                <Phone size={12} className="text-gray-400 shrink-0" />
                                                 {req.customerNumber || "No Number"}
                                             </p>
-
                                         </div>
+                                    </div>
 
-                                        {/* DATE */}
-                                        <p className="text-[10px] text-gray-400 font-medium mt-1">
-                                            {formatDate(req.createdAt)}
-                                        </p>
-                                    </div>
-                                    {/* CENTER — always rendered to hold the grid column */}
-                                    <div className="self-center flex justify-center">
-                                        {(() => {
-                                            const phone = (req.customerNumber || '').replace(/\D/g, '');
-                                            const bulkCount = (bulkByPhone[phone] || []).length;
-                                            if (bulkCount === 0) return null;
-                                            return (
-                                                <span className="flex items-center gap-1 text-[8px] font-black px-1.5 py-1 rounded-sm bg-[#F97316]/10 text-[#F97316] border border-[#F97316]/30 uppercase tracking-wide whitespace-nowrap">
-                                                    Bulk Order
-                                                </span>
-                                            );
-                                        })()}
-                                    </div>
-                                    {/* RIGHT SIDE */}
-                                    <div className="flex flex-col items-end gap-1">
-                                        <div className="flex items-center gap-2">
+                                    {/* RIGHT SIDE — badges + date, stacked */}
+                                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                                        <div className="flex items-center gap-1.5">
+                                            {(() => {
+                                                const phone = (req.customerNumber || '').replace(/\D/g, '');
+                                                const bulkCount = (bulkByPhone[phone] || []).length;
+                                                if (bulkCount === 0) return null;
+                                                return (
+                                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm bg-[#F97316]/10 text-[#9A4A14] uppercase tracking-wide whitespace-nowrap">
+                                                        Bulk
+                                                    </span>
+                                                );
+                                            })()}
                                             {req.type === "notify" && (() => {
                                                 const badge = getNotifyBadge(req);
                                                 if (!badge) return null;
-
                                                 return (
-                                                    <span
-                                                        className={`text-[10px] font-bold px-2 py-0.5 rounded border ${badge.class}`}
-                                                    >
+                                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-sm ${badge.class}`}>
                                                         {badge.text}
                                                     </span>
                                                 );
                                             })()}
-                                            {req.type === "approval" && (<span
-                                                className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded border ${getStatusStyle(req.status)}`}
-                                            >
-                                                {req.status || "pending"}
-                                            </span>)}
+                                            {req.type === "approval" && (
+                                                <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-sm ${getStatusStyle(req.status)}`}>
+                                                    {req.status || "pending"}
+                                                </span>
+                                            )}
                                             <svg
                                                 xmlns="http://www.w3.org/2000/svg"
                                                 fill="none"
                                                 viewBox="0 0 24 24"
                                                 strokeWidth={2.5}
                                                 stroke="currentColor"
-                                                className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? "rotate-180" : ""
-                                                    }`}
+                                                className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? "rotate-180" : ""}`}
                                             >
                                                 <path d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
                                             </svg>
                                         </div>
+                                        <p className="text-[10px] text-gray-400 font-medium">
+                                            {formatDate(req.createdAt)}
+                                        </p>
                                     </div>
                                 </div>
 
@@ -972,46 +1060,76 @@ function RequestPage() {
                                     >
 
                                         {req.type === 'notify' ? (
-                                            <div className="mb-4 border border-gray-200 rounded-sm overflow-hidden">
-                                                <div className="bg-gray-50 px-3 py-1.5">
-                                                    <span className="text-[9px] font-black uppercase tracking-widest text-gray-500">
+                                            <div className="mb-3">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <div className="flex-1 h-px bg-gray-200" />
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 whitespace-nowrap">
                                                         Notify Me Items ({req.items?.length || 0})
                                                     </span>
+                                                    <div className="flex-1 h-px bg-gray-200" />
                                                 </div>
-                                                <div className="space-y-2 p-2">
-                                                    {req.items?.length ? (
-                                                        req.items.map((item, idx) => (
-                                                            <div
-                                                                key={idx}
-                                                                className="text-xs border border-gray-200 rounded p-2 bg-gray-50 flex justify-between items-center"
-                                                            >
-                                                                <span className="font-semibold text-slate-700">
-                                                                    {item.name}
-                                                                </span>
-
-                                                                {/* NEW STOCK LABEL */}
-                                                                {!item.inStock && (
-                                                                    <span className="text-[9px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-xs">
-                                                                        Out of Stock
-                                                                    </span>
-                                                                )}
-                                                                {item.inStock && (
-                                                                    <span className="text-[10px] font-bold text-green-500 bg-green-50 border border-green-300 px-2 py-0.5 rounded-xs">
-                                                                        In Stock
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        ))
-                                                    ) : (
-                                                        <div className="text-xs text-gray-400 italic text-center py-3">
-                                                            No items found
+                                                {req.items?.length ? (
+                                                    <div className="rounded-sm overflow-hidden border border-[#334155]/30">
+                                                        <div className="bg-gray-500 px-3 py-1.5 flex items-center justify-between">
+                                                            <span className="text-[9px] font-black uppercase tracking-widest text-white">
+                                                                Requested Item
+                                                            </span>
+                                                            {(req.items || []).some(i => i.inStock === true) && (
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        const inStockItems = (req.items || []).filter(i => i.inStock === true);
+                                                                        const itemLines = inStockItems
+                                                                            .map(i => {
+                                                                                const productLink = i.id && catalogueBaseUrl
+                                                                                    ? `${catalogueBaseUrl}?itemId=${i.id}`
+                                                                                    : null;
+                                                                                return productLink
+                                                                                    ? `• ${i.name}\n${productLink}`
+                                                                                    : `• ${i.name}`;
+                                                                            })
+                                                                            .join('\n\n');
+                                                                        const message =
+                                                                            `Hi ${req.customerName || 'there'},\n\n` +
+                                                                            `Great news! The following item(s) you were waiting for are now *In Stock*:\n\n` +
+                                                                            `${itemLines}\n\n` +
+                                                                            `Please visit us or reply here to place your order.`;
+                                                                        setReplyMessage(prev => ({ ...prev, [req.id]: message }));
+                                                                        setReplyOpen(prev => ({ ...prev, [req.id]: true }));
+                                                                    }}
+                                                                    className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-sm bg-white/20 hover:bg-white/30 text-white shrink-0"
+                                                                >
+                                                                    <Reply size={11} /> Send In Stock
+                                                                </button>
+                                                            )}
                                                         </div>
-                                                    )}
-                                                </div>
+                                                        <div className="bg-[#334155]/5 divide-y divide-[#334155]/10">
+                                                            {req.items.map((item, idx) => (
+                                                                <div key={idx} className="flex justify-between items-center p-3">
+                                                                    <span className="text-[12px] font-black text-slate-800 uppercase truncate">
+                                                                        {item.name}
+                                                                    </span>
+                                                                    <span
+                                                                        className={`text-[9px] font-bold px-2 py-0.5 rounded-sm border shrink-0 ${item.inStock
+                                                                            ? 'text-green-600 bg-green-100 border-green-200'
+                                                                            : 'text-red-600 bg-red-100 border-red-200'
+                                                                            }`}
+                                                                    >
+                                                                        {item.inStock ? 'In Stock' : 'Out of Stock'}
+                                                                    </span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="text-xs text-gray-400 italic text-center py-3">
+                                                        No items found
+                                                    </div>
+                                                )}
                                             </div>
                                         ) : (
                                             req.businessCard && req.businessCard !== "Placeholder" && (
-                                                <div className="relative w-full overflow-hidden rounded-md border border-gray-200 bg-gray-100 group">
+                                                <div className="relative w-full overflow-hidden rounded-sm border border-gray-200 bg-gray-100 group">
                                                     <img
                                                         src={req.businessCard}
                                                         alt="Business Card"
@@ -1026,37 +1144,56 @@ function RequestPage() {
                                             const customerBulks = bulkByPhone[phone] || [];
                                             if (customerBulks.length === 0) return null;
                                             return (
-                                                <div className="mt-3 border border-[#F97316]/20 rounded-sm overflow-hidden">
-                                                    <div className="bg-[#F97316]/5 px-3 py-1.5">
-                                                        <span className="text-[9px] font-black uppercase tracking-widest text-[#F97316]">
+                                                <div className="mt-3">
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <div className="flex-1 h-px bg-gray-200" />
+                                                        <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 whitespace-nowrap">
                                                             Bulk Quote Requests ({customerBulks.length})
                                                         </span>
+                                                        <div className="flex-1 h-px bg-gray-200" />
                                                     </div>
-                                                    <div className="p-2">
-                                                        {customerBulks.map(bq => (
-                                                            <div key={bq.id} className="flex gap-2 items-start p-2">
-                                                                <div className="w-10 h-10 shrink-0 bg-gray-50 border border-gray-200 rounded-sm flex items-center justify-center overflow-hidden">
-                                                                    {bq.itemImage ? (
-                                                                        <img src={bq.itemImage} alt={bq.itemName} className="w-full h-full object-contain" />
-                                                                    ) : (
-                                                                        <span className="text-gray-300 text-[9px]">No img</span>
-                                                                    )}
+                                                    <div className="rounded-sm overflow-hidden border border-[#F97316]/30">
+                                                        <div className="bg-[#F97316] px-3 py-1.5 flex items-center justify-between">
+                                                            <span className="text-[9px] font-black uppercase tracking-widest text-white">
+                                                                Quote Item
+                                                            </span>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setReplyMessage(prev => ({ ...prev, [req.id]: '' }));
+                                                                    setReplyOpen(prev => ({ ...prev, [req.id]: true }));
+                                                                }}
+                                                                className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-sm bg-white/20 hover:bg-white/30 text-white shrink-0"
+                                                            >
+                                                                <Reply size={11} /> Reply
+                                                            </button>
+                                                        </div>
+                                                        <div className="bg-[#F97316]/5 divide-y divide-[#F97316]/10">
+                                                            {customerBulks.map(bq => (
+                                                                <div key={bq.id} className="flex gap-3 items-center p-3">
+                                                                    <div className="w-10 h-10 shrink-0 bg-white border border-gray-200 rounded-sm flex items-center justify-center overflow-hidden">
+                                                                        {bq.itemImage ? (
+                                                                            <img src={bq.itemImage} alt={bq.itemName} className="w-full h-full object-contain" />
+                                                                        ) : (
+                                                                            <span className="text-gray-300 text-[8px] text-center">No img</span>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <p className="text-[12px] font-black text-slate-800 uppercase truncate">{bq.itemName}</p>
+                                                                        <p className="text-[10px] text-gray-500"><span className="font-bold">Qty:</span> {bq.quantity}</p>
+                                                                        {bq.note && (
+                                                                            <p className="text-[10px] text-gray-400 mt-0.5 italic">{bq.note}</p>
+                                                                        )}
+                                                                    </div>
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); handleDeleteBulk(bq.id); }}
+                                                                        className="text-red-400 hover:text-red-600 text-sm font-bold p-1 shrink-0"
+                                                                    >
+                                                                        ✕
+                                                                    </button>
                                                                 </div>
-                                                                <div className="flex-1 min-w-0">
-                                                                    <p className="text-[11px] font-black text-[#1A3B5D] uppercase truncate">{bq.itemName}</p>
-                                                                    <p className="text-[10px] text-gray-500"><span className="font-bold">Qty:</span> {bq.quantity}</p>
-                                                                    {bq.note && (
-                                                                        <p className="text-[10px] text-gray-400 mt-0.5 italic">{bq.note}</p>
-                                                                    )}
-                                                                </div>
-                                                                <button
-                                                                    onClick={(e) => { e.stopPropagation(); handleDeleteBulk(bq.id); }}
-                                                                    className="text-red-400 hover:text-red-600 text-xs font-bold p-1 shrink-0"
-                                                                >
-                                                                    ✕
-                                                                </button>
-                                                            </div>
-                                                        ))}
+                                                            ))}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             );
@@ -1067,104 +1204,81 @@ function RequestPage() {
                                             const customerPersonalizations = personalizationByPhone[phone] || [];
                                             if (customerPersonalizations.length === 0) return null;
                                             return (
-                                                <div className="mt-3 border border-[#1A3B5D]/20 rounded-sm overflow-hidden">
-                                                    <div className="bg-[#1A3B5D]/5 px-3 py-1.5">
-                                                        <span className="text-[9px] font-black uppercase tracking-widest text-[#1A3B5D]">
+                                                <div className="mt-3">
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <div className="flex-1 h-px bg-gray-200" />
+                                                        <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 whitespace-nowrap">
                                                             Query Requests ({customerPersonalizations.length})
                                                         </span>
+                                                        <div className="flex-1 h-px bg-gray-200" />
                                                     </div>
-                                                    <div className="p-2">
-                                                        {customerPersonalizations.map(pr => (
-                                                            <div key={pr.id} className="flex gap-2 items-start p-2">
-                                                                <div className="flex-1 min-w-0">
-                                                                    <div className="bg-yellow-50 border border-yellow-100 rounded-sm p-1.5">
-                                                                        <span className="text-[9px] font-black uppercase text-yellow-700 block mb-0.5">Query</span>
-                                                                        <p className="text-[10px] text-gray-600">{pr.note}</p>
+                                                    <div className="rounded-sm overflow-hidden border border-[#1A3B5D]/30">
+                                                        <div className="bg-[#1A3B5D] px-3 py-1.5 flex items-center justify-between">
+                                                            <span className="text-[9px] font-black uppercase tracking-widest text-white">
+                                                                Customer Query
+                                                            </span>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setReplyMessage(prev => ({ ...prev, [req.id]: '' }));
+                                                                    setReplyOpen(prev => ({ ...prev, [req.id]: true }));
+                                                                }}
+                                                                className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-sm bg-white/20 hover:bg-white/30 text-white shrink-0"
+                                                            >
+                                                                <Reply size={11} /> Reply
+                                                            </button>
+                                                        </div>
+                                                        <div className="bg-[#1A3B5D]/5 divide-y divide-[#1A3B5D]/10">
+                                                            {customerPersonalizations.map(pr => (
+                                                                <div key={pr.id} className="flex gap-2 items-center p-3">
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <span className="text-[9px] font-black uppercase text-gray-400 block mb-0.5">Query</span>
+                                                                        <p className="text-[11px] text-gray-700 italic">"{pr.note}"</p>
                                                                     </div>
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); handleDeletePersonalization(pr.id); }}
+                                                                        className="text-red-400 hover:text-red-600 text-sm font-bold p-1 shrink-0"
+                                                                    >✕</button>
                                                                 </div>
-                                                                <button
-                                                                    onClick={(e) => { e.stopPropagation(); handleDeletePersonalization(pr.id); }}
-                                                                    className="text-red-400 hover:text-red-600 text-xs font-bold p-1 shrink-0"
-                                                                >✕</button>
-                                                            </div>
-                                                        ))}
+                                                            ))}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             );
                                         })()}
                                         {req.type === "notify" && (
                                             <div className="space-y-2 pt-2 border-t">
-                                                {/* ── 4 action buttons ── */}
-                                                <div className={`grid gap-0.5 ${(req.items || []).some(i => i.inStock === true) ? 'grid-cols-4' : 'grid-cols-3'}`}>
+                                                {/* ── Solid footer bar: In Stock (if applicable) / Call / Reply / Delete ── */}
+                                                <div className="flex rounded-sm overflow-hidden">
                                                     <a
                                                         href={`tel:${req.customerNumber?.replace(/\D/g, "")}`}
                                                         onClick={(e) => e.stopPropagation()}
-                                                        className="py-2.5 bg-white border border-emerald-200 text-emerald-600 text-xs font-bold rounded-sm text-center"
+                                                        className="flex-1 flex items-center justify-center gap-1.5 py-3 bg-emerald-50 text-emerald-600 text-xs font-bold"
                                                     >
-                                                        Call
+                                                        <Phone size={14} /> Call
                                                     </a>
-                                                    {(req.items || []).some(i => i.inStock === true) && (
-                                                        <button
-                                                            disabled={sendingId === req.id}
-                                                            onClick={async (e) => {
-                                                                e.stopPropagation();
-                                                                const inStockItems = (req.items || []).filter(i => i.inStock === true);
-                                                                const itemLines = inStockItems
-                                                                    .map(i => {
-                                                                        const productLink = i.id && catalogueBaseUrl
-                                                                            ? `${catalogueBaseUrl}?itemId=${i.id}`
-                                                                            : null;
-                                                                        return productLink
-                                                                            ? `• ${i.name}\n${productLink}`
-                                                                            : `• ${i.name}`;
-                                                                    })
-                                                                    .join('\n\n');
-                                                                const message =
-                                                                    `Hi ${req.customerName || 'there'},\n\n` +
-                                                                    `Great news! The following item(s) you were waiting for are now *In Stock*:\n\n` +
-                                                                    `${itemLines}\n\n` +
-                                                                    `Please visit us or reply here to place your order.`;
-                                                                const sent = await sendDirectWhatsappMessage(req.customerNumber, message, req.id);
-                                                                if (sent) {
-                                                                    await markMessageSent(req.id);
-                                                                }
-                                                            }}
-                                                            className="py-2.5 bg-[#25D366] text-white text-xs font-bold rounded-sm text-center disabled:opacity-50 disabled:cursor-not-allowed"
-                                                        >
-                                                            {sendingId === req.id ? 'Sending...' : 'In Stock'}
-                                                        </button>
-                                                    )}
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setReplyOpen(prev => ({ ...prev, [req.id]: true }));
-                                                        }}
-                                                        className="py-2.5 bg-[#1A3B5D] text-white text-xs font-bold rounded-sm text-center"
-                                                    >
-                                                        Reply
-                                                    </button>
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();
                                                             handleDeleteNotify(req);
                                                         }}
-                                                        className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm text-center"
+                                                        className="flex-1 flex items-center justify-center gap-1.5 py-3 bg-[#FF3B30] text-white text-xs font-bold"
                                                     >
-                                                        Delete
+                                                        <Trash2 size={14} /> Delete
                                                     </button>
                                                 </div>
 
                                                 {/* ── Reply Popup Modal ── */}
                                                 {replyOpen[req.id] && (
                                                     <div
-                                                        className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/40"
+                                                        className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40"
                                                         onClick={e => {
                                                             e.stopPropagation();
                                                             setReplyOpen(prev => ({ ...prev, [req.id]: false }));
                                                         }}
                                                     >
                                                         <div
-                                                            className="bg-white w-full max-w-sm rounded-t-xl sm:rounded-xl shadow-xl p-4 space-y-3"
+                                                            className="bg-white w-full max-w-sm rounded-sm shadow-xl p-4 space-y-3"
                                                             onClick={e => e.stopPropagation()}
                                                         >
                                                             <div className="flex items-center justify-between">
@@ -1175,7 +1289,7 @@ function RequestPage() {
                                                                 >✕</button>
                                                             </div>
                                                             <textarea
-                                                                rows={4}
+                                                                rows={8}
                                                                 placeholder="Type your message to the customer..."
                                                                 value={replyMessage[req.id] || ''}
                                                                 onChange={e => setReplyMessage(prev => ({ ...prev, [req.id]: e.target.value }))}

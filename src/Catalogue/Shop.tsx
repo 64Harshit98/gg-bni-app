@@ -135,6 +135,20 @@ const OrderingPage: React.FC = () => {
     const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
     const [isSubdomainModalOpen, setIsSubdomainModalOpen] = useState(false); // <-- NEW STATE
 
+    // --- GLOBAL "LIVE ENTIRE CATALOGUE" STATES ---
+    const [isAllCatalogueLive, setIsAllCatalogueLive] = useState(false);
+    const [showCatalogueConfirmPopup, setShowCatalogueConfirmPopup] = useState(false);
+    const [pendingCatalogueLiveState, setPendingCatalogueLiveState] = useState<boolean | null>(null);
+    const [isTogglingCatalogue, setIsTogglingCatalogue] = useState(false);
+
+    useEffect(() => {
+        if (!items || items.length === 0) {
+            setIsAllCatalogueLive(false);
+            return;
+        }
+        setIsAllCatalogueLive(items.every(item => item.isListed === true));
+    }, [items]);
+
     useEffect(() => {
         if (!companyId) return;
         const loadPins = async () => {
@@ -282,6 +296,35 @@ const OrderingPage: React.FC = () => {
             return next;
         });
     };
+    const handleToggleAllCatalogueLive = () => {
+        setPendingCatalogueLiveState(!isAllCatalogueLive);
+        setShowCatalogueConfirmPopup(true);
+    };
+
+    const confirmToggleAllCatalogueLive = async () => {
+        if (!dbOperations || pendingCatalogueLiveState === null) return;
+        const newState = pendingCatalogueLiveState;
+        setShowCatalogueConfirmPopup(false);
+        setIsTogglingCatalogue(true);
+
+        try {
+            const updates = items.map(item =>
+                dbOperations.updateItem(item.id!, { isListed: newState })
+            );
+            await Promise.all(updates);
+
+            setItems(prev => prev.map(item => ({ ...item, isListed: newState })));
+            setIsAllCatalogueLive(newState);
+            setModal({ message: `Entire catalogue is now ${newState ? 'LIVE' : 'UNLIVE'}`, type: State.SUCCESS });
+        } catch (err) {
+            console.error("Bulk catalogue toggle failed:", err);
+            setModal({ message: 'Failed to update catalogue status', type: State.ERROR });
+        } finally {
+            setIsTogglingCatalogue(false);
+            setPendingCatalogueLiveState(null);
+        }
+    };
+
     const handleSaveEdit = async (id: string) => {
         if (!dbOperations) {
             setModal({ message: 'Database connection error', type: State.ERROR });
@@ -680,6 +723,26 @@ const OrderingPage: React.FC = () => {
                     </div>
                 </div>
 
+                {/* --- GLOBAL LIVE TOGGLE (ALL CATEGORIES) --- */}
+                <div>
+                    <div>
+                        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">
+                            Live Entire Catalogue
+                        </span>
+
+                        <button
+                            onClick={handleToggleAllCatalogueLive}
+                            disabled={isTogglingCatalogue || items.length === 0}
+                            className={`w-11 h-4 flex items-center rounded-sm p-1 transition-all duration-300 disabled:opacity-50 ${isAllCatalogueLive ? 'bg-[#F97316]' : 'bg-gray-300'}`}
+                        >
+                            <div
+                                className={`bg-white w-3 h-3 rounded-sm shadow-md transform transition-all duration-300 ${isAllCatalogueLive ? 'translate-x-6' : 'translate-x-0'
+                                    }`}
+                            />
+                        </button>
+                    </div>
+                </div>
+
                 {/* --- PRODUCT GRID --- */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1">
                     {filteredItems.map(group => {
@@ -883,6 +946,37 @@ const OrderingPage: React.FC = () => {
                     })}
                 </div>
             </main>
+
+            {showCatalogueConfirmPopup && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center">
+                    <div
+                        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+                        onClick={() => setShowCatalogueConfirmPopup(false)}
+                    />
+                    <div className="relative bg-white w-[90%] max-w-sm rounded-lg shadow-xl p-5 z-10 animate-in fade-in zoom-in duration-200">
+                        <h2 className="text-sm font-black text-[#1A3B5D] uppercase mb-2">
+                            Confirmation
+                        </h2>
+                        <p className="text-lg font-bold text-gray-600 mb-4">
+                            Do you want to make the ENTIRE catalogue {pendingCatalogueLiveState ? "LIVE" : "UNLIVE"}? This affects all categories.
+                        </p>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={confirmToggleAllCatalogueLive}
+                                className="flex-1 bg-green-500 text-white py-2 rounded-sm text-xs font-black uppercase"
+                            >
+                                Yes
+                            </button>
+                            <button
+                                onClick={() => setShowCatalogueConfirmPopup(false)}
+                                className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-sm text-xs font-black uppercase"
+                            >
+                                No
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {isCustomerModalOpen && (
                 <div className="fixed inset-0 z-[110] flex items-center justify-center bg-[#1A3B5D]/60 backdrop-blur-md p-4">

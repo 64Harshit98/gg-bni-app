@@ -16,6 +16,28 @@ import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSale
 import LeadPopUp from './PopUp.tsx';
 import { ensurePendingApprovalEntry } from './hooks/ensureApprovalEntry';
 
+// Shows the item image, falling back to the package placeholder if the URL fails to load
+const CollageImage: React.FC<{ src: string; alt: string }> = ({ src, alt }) => {
+    const [isBroken, setIsBroken] = useState(false);
+
+    if (isBroken) {
+        return (
+            <div className="w-full h-full flex items-center justify-center bg-gray-50">
+                <FiPackage className="h-5 w-5 text-gray-200" />
+            </div>
+        );
+    }
+
+    return (
+        <img
+            src={src}
+            alt={alt}
+            onError={() => setIsBroken(true)}
+            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+        />
+    );
+};
+
 const SharedCataloguePage: React.FC = () => {
     const { companyId: pathId } = useParams<{ companyId: string }>();
     const navigate = useNavigate();
@@ -601,11 +623,7 @@ const SharedCataloguePage: React.FC = () => {
                                                         collageImages.length === 3 && index === 0 ? 'row-span-2' : ''
                                                         }`}
                                                 >
-                                                    <img
-                                                        src={img}
-                                                        alt={`product-${index}`}
-                                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                                                    />
+                                                    <CollageImage src={img} alt={`product-${index}`} />
                                                 </div>
                                             ))}
                                         </div>

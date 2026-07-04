@@ -672,6 +672,22 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         if (rowMRP > 0 && rowSale > 0 && rowSale > rowMRP) rowIsValid = false; // Invalid pricing
         if (itemSettings.requirePurchasePrice && rowPurchase <= 0) rowIsValid = false;
 
+        // --- NEGATIVE VALUE GUARD ---
+        // Reject any row containing negative numeric values
+        if (
+          rowMRP < 0 ||
+          rowSale < 0 ||
+          rowPurchase < 0 ||
+          rowSaleDiscount < 0 ||
+          rowPurchaseDiscount < 0 ||
+          rowTax < 0 ||
+          stockVal < 0 ||
+          rowRestock < 0 ||
+          rowMoq < 0
+        ) {
+          rowIsValid = false;
+        }
+
         if (!rowIsValid) {
           failedCount++;
           processedCount++;

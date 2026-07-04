@@ -2,8 +2,10 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/auth-context';
 import { logoutUser, generateCompanyReferralCode } from '../lib/AuthOperations';
+import useTutorial from '../Catalogue/hooks/useTutorial';
+import { completeTutorial } from '../Catalogue/hooks/useCompleteTutorial';
 import { db } from '../lib/Firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { ROUTES } from '../constants/routes.constants';
 import { Permissions } from '../enums';
 import ShowWrapper from '../context/ShowWrapper';
@@ -20,7 +22,7 @@ interface UserProfile {
   profilePicture?: string;
 }
 
-const TOTAL_STEPS = 8;
+const TOTAL_STEPS = 7;
 
 const Account: React.FC = () => {
   const navigate = useNavigate();
@@ -63,21 +65,8 @@ const Account: React.FC = () => {
     setTutorialStep(nextStep);
   }, []);
 
-  const skip = useCallback(async () => {
-    if (!currentUser?.companyId) return;
-
-    try {
-      await setDoc(
-        doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial'),
-        { accountTutorialDone: true },
-        { merge: true }
-      );
-    } catch (e) {
-      console.error('Error saving account tutorial:', e);
-    }
-
-    setTutorialStep(0);
-    window.dispatchEvent(new Event("account_tutorial_done"));
+  const skip = useCallback(() => {
+    completeTutorial(currentUser, 'accountTutorialDone', setTutorialStep);
   }, [currentUser]);
 
   // Auto-scroll when step changes
@@ -161,26 +150,7 @@ const Account: React.FC = () => {
     fetchUserProfile();
   }, [currentUser, loadingAuth, navigate]);
 
-  useEffect(() => {
-    const checkTutorial = async () => {
-      if (!currentUser?.companyId) return;
-
-      try {
-        const ref = doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial');
-        const snap = await getDoc(ref);
-        const done = snap.exists() && snap.data()?.accountTutorialDone;
-
-        if (!done) {
-          setTutorialStep(1);
-        }
-      } catch (e) {
-        console.error('Error fetching account tutorial:', e);
-        setTutorialStep(1);
-      }
-    };
-
-    checkTutorial();
-  }, [currentUser]);
+  useTutorial(currentUser, setTutorialStep, 'accountTutorialDone');
 
   const handleCopy = () => {
     if (companyReferralCode) {
@@ -422,20 +392,7 @@ const Account: React.FC = () => {
                 step={7}
                 currentStep={tutorialStep}
                 text="Unlock extra features for your business with Add Ons."
-                onNext={async () => {
-                  if (currentUser?.companyId) {
-                    try {
-                      await setDoc(
-                        doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial'),
-                        { accountTutorialDone: true },
-                        { merge: true }
-                      );
-                    } catch (e) {
-                      console.error('Error saving account tutorial:', e);
-                    }
-                  }
-                  next(8);
-                }}
+                onNext={() => completeTutorial(currentUser, 'accountTutorialDone', setTutorialStep)}
                 onSkip={skip}
                 isLast
               >

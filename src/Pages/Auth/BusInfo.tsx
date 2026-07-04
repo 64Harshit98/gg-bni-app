@@ -586,11 +586,11 @@ const BusinessInfoPage: React.FC = () => {
                   </div>
                 </div>
               </div>
-              {error && (
+              {/* {error && (
                 <p className="text-red-500 text-sm text-center bg-red-50 p-2 rounded-sm animate-pulse">
                   {error}
                 </p>
-              )}
+              )} */}
             </form>
           </div>
         </div>
